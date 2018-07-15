@@ -1,4 +1,6 @@
 -r prod.txt
 
+check-manifest==0.37
+docutils==0.14
 pylint==2.0.0
 flake8==3.5.0

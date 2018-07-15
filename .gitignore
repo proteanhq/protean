@@ -129,5 +129,5 @@ output/*/index.html
 .appveyor.token
 *.bak
 
-# VS Codde
+# VS Code
 .vscode
