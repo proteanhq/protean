@@ -1,0 +1,4 @@
+-r prod.txt
+
+pylint==2.0.0
+flake8==3.5.0

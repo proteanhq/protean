@@ -1,0 +1,4 @@
+-r prod.txt
+-r dev.txt
+
+pytest==3.6.3
