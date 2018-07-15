@@ -1,0 +1,16 @@
+[paths]
+source =
+   src/protean
+   */site-packages/protean
+
+[run]
+branch = true
+source =
+    protean
+    tests
+parallel = true
+
+[report]
+show_missing = true
+precision = 2
+omit = *migrations*
