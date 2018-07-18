@@ -49,5 +49,5 @@ default_context:
     test_runner:               'pytest'
     travis:                    'no'
     version:                   '0.0.1'
-    website:                   'https://proteanhq.com'
+    website:                   'https://protean.readthedocs.io/'
     year:                      'now'

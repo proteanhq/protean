@@ -1,6 +1,9 @@
 -r prod.txt
 
 check-manifest==0.37
+coverage==4.5.1
 docutils==0.14
-pylint==2.0.0
 flake8==3.5.0
+pylint==2.0.0
+tox==3.1.2
+twine==1.11.0

@@ -62,6 +62,10 @@ https://protean.readthedocs.io/
 Development
 ===========
 
+::
+
+    pyenv virtualenv -p python3.6 3.6.5 protean-dev
+
 To run the all tests run::
 
     tox

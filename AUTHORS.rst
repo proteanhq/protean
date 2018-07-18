@@ -2,4 +2,4 @@
 Authors
 =======
 
-* Subhash Bhushan C - https://proteanhq.com
+* Subhash Bhushan C - https://protean.readthedocs.io/
