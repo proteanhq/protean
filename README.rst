@@ -14,7 +14,6 @@ Overview
         |
     * - package
       - | |version| |wheel| |supported-versions| |supported-implementations|
-        | |commits-since|
 
 .. |docs| image:: https://readthedocs.org/projects/protean/badge/?style=flat
     :target: https://readthedocs.org/projects/protean
@@ -23,10 +22,6 @@ Overview
 .. |version| image:: https://img.shields.io/pypi/v/protean.svg
     :alt: PyPI Package latest release
     :target: https://pypi.python.org/pypi/protean
-
-.. |commits-since| image:: https://img.shields.io/github/commits-since/proteanhq/protean/v0.0.4..svg
-    :alt: Commits since latest release
-    :target: https://github.com/proteanhq/protean/compare/v0.0.4....master
 
 .. |wheel| image:: https://img.shields.io/pypi/wheel/protean.svg
     :alt: PyPI Wheel
