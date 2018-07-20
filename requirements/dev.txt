@@ -1,5 +1,3 @@
--r prod.txt
-
 check-manifest==0.37
 coverage==4.5.1
 docutils==0.14

@@ -17,21 +17,10 @@ class Dog(BaseEntity):
         'id', 'name', 'age', 'owner'
     ]
     _field_definitions = {
-        'id': {
-            'type': 'IDENTIFIER',
-            'length': 'IDENTIFIER'
-        },
-        'name': {
-            'type': 'STRING',
-            'length': 'MEDIUM'
-        },
-        'age': {
-            'type': 'INTEGER'
-        },
-        'owner': {
-            'type': 'STRING',
-            'length': 'SHORT'
-        }
+        'id': {'type': 'IDENTIFIER', 'length': 'IDENTIFIER'},
+        'name': {'type': 'STRING', 'length': 'MEDIUM'},
+        'age': {'type': 'INTEGER'},
+        'owner': {'type': 'STRING', 'length': 'SHORT'}
     }
     _mandatory = ['name', 'owner']
     _defaults = {
