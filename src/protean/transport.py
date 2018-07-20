@@ -1,7 +1,8 @@
 """Module for Data Transport Utility Classes"""
 
+from abc import ABCMeta
+from abc import abstractmethod
 from enum import Enum
-from abc import ABCMeta, abstractmethod
 
 
 class Status(Enum):

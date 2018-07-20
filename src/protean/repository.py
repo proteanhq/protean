@@ -1,6 +1,7 @@
 """Abstract Repository Classes"""
 
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
+from abc import abstractmethod
 
 
 class Repository(metaclass=ABCMeta):
