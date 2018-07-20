@@ -24,9 +24,9 @@ Overview
     :alt: PyPI Package latest release
     :target: https://pypi.python.org/pypi/protean
 
-.. |commits-since| image:: https://img.shields.io/github/commits-since/proteanhq/protean/v0.0.3..svg
+.. |commits-since| image:: https://img.shields.io/github/commits-since/proteanhq/protean/v0.0.4..svg
     :alt: Commits since latest release
-    :target: https://github.com/proteanhq/protean/compare/v0.0.3....master
+    :target: https://github.com/proteanhq/protean/compare/v0.0.4....master
 
 .. |wheel| image:: https://img.shields.io/pypi/wheel/protean.svg
     :alt: PyPI Wheel
