@@ -1,11 +1,12 @@
 """Tests for Entity Functionality and Base Classes"""
 
-import pytest
 import factory
+import pytest
 from faker import Faker
 from pytest_factoryboy import register
 
-from protean.entity import BaseEntity, STRING_LENGTHS
+from protean.entity import STRING_LENGTHS
+from protean.entity import BaseEntity
 
 fake = Faker()  # pylint: disable=C0103
 

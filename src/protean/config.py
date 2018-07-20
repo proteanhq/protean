@@ -1,7 +1,7 @@
 """Package Configuration Module"""
 
-import os
 import configparser
+import os
 
 BASEDIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 

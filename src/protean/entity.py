@@ -23,6 +23,7 @@ TYPE_CODES = {
     'DICT': dict
 }
 
+
 class BaseEntity(metaclass=ABCMeta):
     """Base Class for Domain Entities"""
 

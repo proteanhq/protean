@@ -1,7 +1,6 @@
 """Module to setup Factories and other required artifacts for tests"""
 
 import pytest
-
 from tests.test_entity import DogFactory  # pylint: disable=W0611
 
 
