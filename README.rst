@@ -21,19 +21,19 @@ Overview
 
 .. |version| image:: https://img.shields.io/pypi/v/protean.svg
     :alt: PyPI Package latest release
-    :target: https://pypi.python.org/pypi/protean
+    :target: https://pypi.org/project/protean/
 
 .. |wheel| image:: https://img.shields.io/pypi/wheel/protean.svg
     :alt: PyPI Wheel
-    :target: https://pypi.python.org/pypi/protean
+    :target: https://pypi.org/project/protean/
 
 .. |supported-versions| image:: https://img.shields.io/pypi/pyversions/protean.svg
     :alt: Supported versions
-    :target: https://pypi.python.org/pypi/protean
+    :target: https://pypi.org/project/protean/
 
 .. |supported-implementations| image:: https://img.shields.io/pypi/implementation/protean.svg
     :alt: Supported implementations
-    :target: https://pypi.python.org/pypi/protean
+    :target: https://pypi.org/project/protean/
 
 
 .. end-badges
@@ -52,7 +52,7 @@ Installation
 Documentation
 =============
 
-https://protean.readthedocs.io/
+https://protean.readthedocs.io/en/latest/
 
 Development
 ===========

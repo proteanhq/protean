@@ -89,3 +89,11 @@ class TestDeleteUseCase:
     @pytest.mark.skip(reason="To Be Implemented")
     def test_process_request(self):
         """Test Delete UseCase's `process_request` method"""
+
+
+class TestTasklet:
+    """Tests for Tasklet Utility Methods"""
+
+    @pytest.mark.skip(reason="To Be Implemented")
+    def test_perform(self):
+        """Test call to Tasklet's perform method"""
