@@ -1,3 +1,3 @@
 """Primary Module to define version and expose packages"""
 
-__version__ = '0.0.2'
+__version__ = '0.0.3'

@@ -28,7 +28,7 @@ def read(*names, **kwargs):
 
 setup(
     name='protean',
-    version='0.0.2',
+    version='0.0.3',
     license='BSD 3-Clause License',
     description='Protean Application Framework',
     long_description='%s\n%s' % (
