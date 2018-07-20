@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+
+"""Setup Module for Protean Application Framework"""
+
 from __future__ import absolute_import
 from __future__ import print_function
 
@@ -16,6 +19,7 @@ from setuptools import setup
 
 
 def read(*names, **kwargs):
+    """Helper method to read files"""
     return io.open(
         join(dirname(__file__), *names),
         encoding=kwargs.get('encoding', 'utf8')
@@ -58,7 +62,8 @@ setup(
         # eg: 'keyword1', 'keyword2', 'keyword3',
     ],
     install_requires=[
-        'click',
+        'click==6.7',
+        'bleach==2.1.3'
         # eg: 'aspectlib==1.1.1', 'six>=1.7',
     ],
     extras_require={

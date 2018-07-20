@@ -1,6 +1,7 @@
 """Entity Functionality and Classes"""
 
 from abc import ABCMeta
+from decimal import Decimal
 
 import bleach
 
@@ -20,7 +21,10 @@ TYPE_CODES = {
     'INTEGER': int,
     'TEXT': str,
     'FLOAT': float,
-    'DICT': dict
+    'DECIMAL': Decimal,
+    'DICT': dict,
+    'TIMESTAMP': 'TIMESTAMP',  # Validation Not Implemented
+    'GEOPOINT': 'GEOPOINT'  # Validation Not Implemented
 }
 
 
@@ -82,13 +86,16 @@ class BaseEntity(metaclass=ABCMeta):
                     datalength = self._field_definitions[name]['length']
                     if len(value) > STRING_LENGTHS[datalength]:
                         raise ValueError("{} has invalid length".format(name))
-                elif datatype in ['BOOLEAN', 'INTEGER', 'LIST', 'DICT', 'TEXT']:
+                elif datatype in ['BOOLEAN', 'INTEGER', 'LIST',
+                                  'DICT', 'TEXT', 'FLOAT', 'DECIMAL']:
                     if not isinstance(value, TYPE_CODES[datatype]):
-                        raise ValueError("{} - Invalid Value".format(name))
-                elif datatype in ['TIMESTAMP']:
+                        raise ValueError("{} - Invalid Value for field {}".format(value, name))
+                elif datatype in ['TIMESTAMP', 'GEOPOINT']:
+                    # FIXME Implement Timestamp and Geopoint validations
                     pass
                 else:
-                    raise TypeError("{} - Invalid Type with type {}".format(name, datatype))
+                    raise TypeError("{} - Expected data type as {}, but saw {}".format(
+                        name, datatype, type(value)))
 
             return errors
         except AttributeError:
