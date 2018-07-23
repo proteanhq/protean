@@ -18,8 +18,13 @@ Changelog
 * Add `bleach` as a setup requirement
 * Add GeoPoint and Decimal Data Types to Entities
 
-0.0.4 (2018-)
+0.0.4 (2018-07-20)
 ------------------
 
 * UseCase Utility Classes
 * Repository Abstract Classes
+
+0.0.5 (2018-)
+------------------
+
+* Context Class
