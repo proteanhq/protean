@@ -5,13 +5,13 @@ import traceback
 from abc import ABCMeta
 from abc import abstractmethod
 
-from protean.config import CONFIG
-from protean.repository import Repository
-from protean.transport import InvalidRequestObject
-from protean.transport import ResponseFailure
-from protean.transport import ResponseSuccess
-from protean.transport import Status
-from protean.transport import ValidRequestObject
+from protean.conf import active_config
+from protean.core.repository import Repository
+from protean.core.transport import InvalidRequestObject
+from protean.core.transport import ResponseFailure
+from protean.core.transport import ResponseSuccess
+from protean.core.transport import Status
+from protean.core.transport import ValidRequestObject
 
 
 class ObjectNotFoundException(Exception):
@@ -129,7 +129,7 @@ class ListRequestObject(ValidRequestObject):
     """
 
     def __init__(self, entity,
-                 page=1, per_page=CONFIG.PER_PAGE,
+                 page=1, per_page=config.PER_PAGE,
                  sort=None, sort_order='desc',
                  filters=None):
         """Initialize Request Object with parameters"""

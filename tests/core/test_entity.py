@@ -5,8 +5,8 @@ import pytest
 from faker import Faker
 from pytest_factoryboy import register
 
-from protean.entity import STRING_LENGTHS
-from protean.entity import BaseEntity
+from protean.core.entity import STRING_LENGTHS
+from protean.core.entity import BaseEntity
 
 fake = Faker()  # pylint: disable=C0103
 
