@@ -6,6 +6,8 @@ Inspired, and guided, by Django's Settings Module.
 Django doc reference: https://docs.djangoproject.com/en/2.0/topics/settings/
 """
 
+import os
+
 
 ####################
 # CORE             #
@@ -16,3 +18,18 @@ DEBUG = False
 # A secret key for this particular Protean installation. Used in secret-key
 # hashing algorithms.
 SECRET_KEY = ''
+
+####################
+# GENERIC DATABASE #
+####################
+
+# Default no. of records to fetch per query
+PER_PAGE = 10
+
+####################
+# ElasticSearch    #
+####################
+
+ELASTICSEARCH_HOSTS = ['localhost']
+ELASTICSEARCH_USER = 'elastic'
+ELASTICSEARCH_SECRET = os.environ.get('ELASTICSEARCH_SECRET') or 'changeme'
