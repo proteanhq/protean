@@ -5,17 +5,13 @@ import traceback
 from abc import ABCMeta
 from abc import abstractmethod
 
-from protean.conf import active_config
 from protean.core.repository import Repository
 from protean.core.transport import InvalidRequestObject
 from protean.core.transport import ResponseFailure
 from protean.core.transport import ResponseSuccess
 from protean.core.transport import Status
 from protean.core.transport import ValidRequestObject
-
-
-class ObjectNotFoundException(Exception):
-    """This exception can be raised to indicate 404 Response codes"""
+from protean.core.exceptions import ObjectNotFoundException
 
 
 class UseCase(metaclass=ABCMeta):

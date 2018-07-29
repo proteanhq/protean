@@ -3,5 +3,8 @@ Custom Protean exception classes
 """
 
 class ImproperlyConfigured(Exception):
-    """Django is somehow improperly configured"""
-    pass
+    """An important configuration variable is missing"""
+
+
+class ObjectNotFoundException(Exception):
+    """Object was not found, can raise 404"""
