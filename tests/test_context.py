@@ -3,7 +3,8 @@
 import threading
 import time
 
-from protean.context import Context, context
+from protean.context import Context
+from protean.context import context
 
 
 def test_with_thread_interloop():

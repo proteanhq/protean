@@ -26,3 +26,15 @@ class Repository(metaclass=ABCMeta):
     @abstractmethod
     def delete(self, identifier):
         """Delete a Record"""
+
+
+class RepositoryFactory(metaclass=ABCMeta):
+    """Repository Factory interface to retrieve resource repositories"""
+
+    def __init__(self, resource: str):
+        """"Initialize repository factory"""
+        self.repo = self.get_repo(resource)
+
+    @abstractmethod
+    def get_repo(self, resource: str):
+        """Retrieve repository for a given resource"""

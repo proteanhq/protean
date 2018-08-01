@@ -5,21 +5,23 @@ import traceback
 from abc import ABCMeta
 from abc import abstractmethod
 
-from protean.core.repository import Repository
+from protean.conf import active_config
+from protean.core.exceptions import ObjectNotFoundException
+from protean.core.repository import RepositoryFactory
 from protean.core.transport import InvalidRequestObject
 from protean.core.transport import ResponseFailure
 from protean.core.transport import ResponseSuccess
 from protean.core.transport import Status
 from protean.core.transport import ValidRequestObject
-from protean.core.exceptions import ObjectNotFoundException
 
 
 class UseCase(metaclass=ABCMeta):
     """This is the base class for all UseCases"""
 
-    def __init__(self, repo: Repository):
-        """Initialize UseCase with repository object"""
-        self.repo = repo
+    def __init__(self, repo_factory: RepositoryFactory, resource: str):
+        """Initialize UseCase with repository factory object"""
+        self.repo_factory = repo_factory
+        self.repo = self.repo_factory.get_repo(resource)
 
     def execute(self, request_object):
         """Generic executor method of all UseCases"""
@@ -125,7 +127,7 @@ class ListRequestObject(ValidRequestObject):
     """
 
     def __init__(self, entity,
-                 page=1, per_page=config.PER_PAGE,
+                 page=1, per_page=getattr(active_config, 'PER_PAGE', 10),
                  sort=None, sort_order='desc',
                  filters=None):
         """Initialize Request Object with parameters"""
@@ -144,7 +146,7 @@ class ListRequestObject(ValidRequestObject):
         invalid_req = InvalidRequestObject()
 
         page = int(adict.get('page', 1))
-        per_page = int(adict.get('per_page', CONFIG.PER_PAGE))
+        per_page = int(adict.get('per_page', getattr(active_config, 'PER_PAGE', 10)))
         sort = adict.get('sort', None)
         sort_order = adict.get('sort_order', 'desc')
 
@@ -168,7 +170,6 @@ class ListUseCase(UseCase):
 
     def process_request(self, request_object):
         """Return a list of resources"""
-
         resources = self.repo.query(request_object.entity._tenant_independent,
                                     request_object.page,
                                     request_object.per_page,

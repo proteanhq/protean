@@ -8,13 +8,9 @@ for a list of all possible variables.
 
 import importlib
 import os
-import time
-import warnings
-from pathlib import Path
 
 from protean.conf import default_config
 from protean.core.exceptions import ImproperlyConfigured
-
 
 ENVIRONMENT_VARIABLE = "PROTEAN_CONFIG"
 
@@ -24,7 +20,13 @@ class Config:
 
     def __init__(self, config_module_str=default_config):
         """Read variables in UPPER_CASE from specified config"""
-        config_module = importlib.import_module(config_module_str)
+
+        # Fetch Config module string from environment if defined, otherwise use default config
+        config_module_str = os.environ.get(ENVIRONMENT_VARIABLE, None)
+        if config_module_str:
+            config_module = importlib.import_module(config_module_str)
+        else:
+            config_module = default_config
 
         for setting in dir(config_module):
             if setting.isupper():
@@ -44,4 +46,4 @@ class Config:
         }
 
 
-active_config = Config(os.environ.get(ENVIRONMENT_VARIABLE))
+active_config = Config()

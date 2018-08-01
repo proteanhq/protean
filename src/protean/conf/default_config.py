@@ -1,13 +1,9 @@
 """
 Default settings. Override these with settings in the module pointed to
-by the PROTEAN_SETTINGS_MODULE environment variable.
-
-Inspired, and guided, by Django's Settings Module.
-Django doc reference: https://docs.djangoproject.com/en/2.0/topics/settings/
+by the PROTEAN_CONFIG environment variable.
 """
 
 import os
-
 
 ####################
 # CORE             #
