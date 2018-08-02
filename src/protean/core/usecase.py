@@ -18,10 +18,10 @@ from protean.core.transport import ValidRequestObject
 class UseCase(metaclass=ABCMeta):
     """This is the base class for all UseCases"""
 
-    def __init__(self, repo_factory: RepositoryFactory, resource: str):
+    def __init__(self, repo_factory: RepositoryFactory):
         """Initialize UseCase with repository factory object"""
         self.repo_factory = repo_factory
-        self.repo = self.repo_factory.get_repo(resource)
+        self.repo = self.repo_factory.repo
 
     def execute(self, request_object):
         """Generic executor method of all UseCases"""
@@ -322,15 +322,10 @@ class Tasklet:
     """Utility class to execute UseCases"""
 
     @classmethod
-    def perform(cls, repository, cls_entity, cls_usecase, cls_request_object,
+    def perform(cls, repo_factory, cls_entity, cls_usecase, cls_request_object,
                 payload, many=False):
         """This method bundles all essential artifacts and initiates usecase execution"""
 
-        use_case = cls_usecase(repository)
+        use_case = cls_usecase(repo_factory)
         request_object = cls_request_object.from_dict(cls_entity, payload)
-        response_object = use_case.execute(request_object)
-
-        if many:
-            return response_object.value['data']
-        else:
-            return response_object.value
+        return use_case.execute(request_object)

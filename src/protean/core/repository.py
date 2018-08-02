@@ -33,6 +33,7 @@ class RepositoryFactory(metaclass=ABCMeta):
 
     def __init__(self, resource: str):
         """"Initialize repository factory"""
+        self.resource = resource
         self.repo = self.get_repo(resource)
 
     @abstractmethod
