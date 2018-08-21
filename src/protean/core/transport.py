@@ -78,7 +78,7 @@ class ResponseFailure:
     def __init__(self, code, message):
         """Initialize a Failure Response Object"""
         self.code = code
-        if code in [500, 400]:
+        if code in [Status.SYSTEM_ERROR.value, Status.PARAMETERS_ERROR.value]:
             self.message = self.EXCEPTION_MESSAGE
         else:
             self.message = message
@@ -103,4 +103,24 @@ class ResponseFailure:
         message = dict([
             (err['parameter'], err['message']) for err in invalid_request_object.errors
             ])
-        return cls.build_response(422, message)
+        return cls.build_response(Status.UNPROCESSABLE_ENTITY.value, message)
+
+    @classmethod
+    def build_not_found(cls, message=None):
+        """Utility method to build a new Resource Error object"""
+        return cls(Status.NOT_FOUND.value, message)
+
+    @classmethod
+    def build_system_error(cls, message=None):
+        """Utility method to build a new System Error object"""
+        return cls(Status.SYSTEM_ERROR.value, message)
+
+    @classmethod
+    def build_parameters_error(cls, message=None):
+        """Utility method to build a new Parameter Error object"""
+        return cls(Status.PARAMETERS_ERROR.value, message)
+
+    @classmethod
+    def build_unprocessable_error(cls, message=None):
+        """Utility method to build a new Parameter Error object"""
+        return cls(Status.UNPROCESSABLE_ENTITY.value, message)
