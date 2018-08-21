@@ -322,8 +322,7 @@ class Tasklet:
     """Utility class to execute UseCases"""
 
     @classmethod
-    def perform(cls, repo_factory, cls_entity, cls_usecase, cls_request_object,
-                payload, many=False):
+    def perform(cls, repo_factory, cls_entity, cls_usecase, cls_request_object, payload):
         """This method bundles all essential artifacts and initiates usecase execution"""
 
         use_case = cls_usecase(repo_factory)
