@@ -131,3 +131,6 @@ output/*/index.html
 
 # VS Code
 .vscode
+
+# Sphinx
+docs/.doctrees
