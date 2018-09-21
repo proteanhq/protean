@@ -3,7 +3,8 @@ python:
   - '3.6'
 install:
   - pip install -r requirements/test.txt
+  - python setup.py install
 script:
-  - pytest --cov --cov-config .coveragerc tests
+  - pytest --cov=protean --cov-config .coveragerc tests
 after_success:
   - codecov
