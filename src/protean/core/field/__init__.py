@@ -1,3 +1,5 @@
+"""Module for defining different Field types used in Entities"""
+
 from abc import ABCMeta, abstractmethod
 from typing import Union, Iterable, Callable, Any
 from protean.core import exceptions
@@ -29,8 +31,8 @@ class Field(metaclass=ABCMeta):
     # These values will trigger the self.required check.
     empty_values = (None, '', [], (), {})
 
-    def __init__(self, default: Union[Callable, str]=None, required: bool=False,
-                 validators: Iterable=(), error_messages: dict=None):
+    def __init__(self, default: Union[Callable, str] = None, required: bool = False,
+                 validators: Iterable = (), error_messages: dict = None):
         self.default = default
         self.required = required
         self.validators = validators

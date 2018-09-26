@@ -20,7 +20,7 @@ class ValidationError(Exception):
      error is stored in its default location.
     """
 
-    def __init__(self, message, field_names=None):
+    def __init__(self, message, field_names=None, **kwargs):
         # String, list, or dictionary of error messages.
         if not isinstance(message, dict) and not isinstance(message, list):
             messages = [message]
@@ -33,13 +33,14 @@ class ValidationError(Exception):
             self.field_names = [field_names]
         else:
             self.field_names = field_names or []
+        super().__init__(**kwargs)
 
     @property
     def n_messages(self, no_field_name='_entity'):
         """Return all the error messages as a dictionary"""
         if isinstance(self.messages, dict):
             return self.messages
-        if len(self.field_names) == 0:
+        if not self.field_names:
             return {no_field_name: self.messages}
 
         return dict((name, self.messages) for name in self.field_names)
