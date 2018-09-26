@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from typing import Callable, Iterable, Any
+from typing import Union, Iterable, Callable, Any
 from protean.core import exceptions
 
 
@@ -29,11 +29,12 @@ class Field(metaclass=ABCMeta):
     # These values will trigger the self.required check.
     empty_values = (None, '', [], (), {})
 
-    def __init__(self, default: Callable=None, required: bool=False,
+    def __init__(self, default: Union[Callable, str]=None, required: bool=False,
                  validators: Iterable=(), error_messages: dict=None):
         self.default = default
         self.required = required
         self.validators = validators
+        self.value = None
 
         # Collect default error message from self and parent classes
         messages = {}
@@ -88,7 +89,13 @@ class Field(metaclass=ABCMeta):
         can override this to provide validation logic.
 
         :param value: value of the field to be validated
+
         """
+        # Set the value to default if its empty
+        if value in self.empty_values and self.default:
+            default = self.default
+            self.value = default() if callable(default) else default
+            return
 
         #  Check for required attribute of the field
         if value in self.empty_values and self.required:
@@ -99,3 +106,5 @@ class Field(metaclass=ABCMeta):
 
         # Call the rest of the validators defined for this Field
         self._run_validators(value)
+
+        self.value = value

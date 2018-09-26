@@ -35,7 +35,7 @@ class ValidationError(Exception):
             self.field_names = field_names or []
 
     @property
-    def normalized_messages(self, no_field_name='_entity'):
+    def n_messages(self, no_field_name='_entity'):
         """Return all the error messages as a dictionary"""
         if isinstance(self.messages, dict):
             return self.messages
