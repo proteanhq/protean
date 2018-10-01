@@ -99,8 +99,9 @@ class TestField:
                             'Ensure this value has at least 5 character.']}
 
     def test_default_validators(self):
+        """ Test that default validators for a Field are called"""
         def medium_string_validator(value):
-            # Function checks the max length of a field
+            """Function checks the max length of a field"""
             if len(value) > 15:
                 raise ValidationError(
                     'Value cannot be more than 15 characters long.')

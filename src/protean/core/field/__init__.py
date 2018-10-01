@@ -125,6 +125,12 @@ class Field(metaclass=ABCMeta):
 
 
 class String(Field):
+    """Concrete field implementation for the string type.
+
+    :param min_length: The minimum allowed length for the field.
+    :param max_length: The maximum allowed length for the field.
+
+    """
     default_error_messages = {
         'invalid_type': 'Value of this Field must be of str type.',
     }
@@ -139,6 +145,6 @@ class String(Field):
         super().__init__(**kwargs)
 
     def validate_type(self, value: str):
-        if type(value) != str:
+        if isinstance(value, str):
             self.fail('invalid_type')
         return True

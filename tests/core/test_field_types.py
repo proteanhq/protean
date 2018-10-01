@@ -1,9 +1,12 @@
+""" Test cases for all available field type implementations"""
+
+import pytest  # pylint: disable=E0401
 from protean.core import field
 from protean.core.exceptions import ValidationError
-import pytest
 
 
 class TestStringField:
+    """ Test the String Field Implementation"""
 
     def test_init(self):
         """Test successful String Field initialization"""
@@ -30,44 +33,3 @@ class TestStringField:
         with pytest.raises(ValidationError):
             name = field.String(max_length=5)
             name.validate('Dummy Dummy')
-
-    # def test_error_message(self):
-    #     """ Test that proper error message is generated"""
-    #
-    #     # Test the basic error message
-    #     try:
-    #         name = String(required=True)
-    #         name.validate(None)
-    #     except ValidationError as err:
-    #         assert err.n_messages == {
-    #             '_entity': [name.error_messages['required']]}
-    #
-    #     # Test overriding of error message
-    #     try:
-    #         name = String()
-    #         name.validate(1)
-    #     except ValidationError as err:
-    #         assert err.n_messages == {
-    #             '_entity': ['Field value must be of str type.']}
-    #
-    #     # Test multiple error messages
-    #     try:
-    #         name = String(
-    #             validators=[MinLengthValidator(min_length=5),
-    #                         MinLengthValidator(min_length=5)])
-    #         name.validate('Dum')
-    #     except ValidationError as err:
-    #         assert err.n_messages == {
-    #             '_entity': ['Ensure this value has at least 5 character.',
-    #                         'Ensure this value has at least 5 character.']}
-    #
-    # def test_default_validators(self):
-    #     def medium_string_validator(value):
-    #         # Function checks the max length of a field
-    #         if len(value) > 15:
-    #             raise ValidationError(
-    #                 'Value cannot be more than 15 characters long.')
-    #     String.default_validators = [medium_string_validator]
-    #     with pytest.raises(ValidationError):
-    #         name = String()
-    #         name.validate('Dummy Dummy Dummy')

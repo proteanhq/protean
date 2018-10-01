@@ -1,7 +1,10 @@
+"""Module for defining different validators used by Field Types"""
+
 from protean.core.exceptions import ValidationError
 
 
 class MinLengthValidator:
+    """ Validate the minimum length for the field value"""
     def __init__(self, min_length):
         self.min_length = min_length
         self.error = f'Ensure this value has at least ' \
@@ -13,6 +16,7 @@ class MinLengthValidator:
 
 
 class MaxLengthValidator:
+    """ Validate the maximum length for the field value"""
     def __init__(self, max_length):
         self.max_length = max_length
         self.error = f'Ensure this value has at most ' \
