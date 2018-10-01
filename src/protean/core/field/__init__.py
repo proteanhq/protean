@@ -3,6 +3,7 @@
 from abc import ABCMeta, abstractmethod
 from typing import Union, Iterable, Callable, Any
 from protean.core import exceptions
+from protean.core.field import validators
 
 
 MISSING_ERROR_MESSAGE = (
@@ -121,3 +122,23 @@ class Field(metaclass=ABCMeta):
         self._run_validators(value)
 
         self.value = value
+
+
+class String(Field):
+    default_error_messages = {
+        'invalid_type': 'Value of this Field must be of str type.',
+    }
+
+    def __init__(self, min_length=None, max_length=None, **kwargs):
+        self.min_length = min_length
+        self.max_length = max_length
+        self.default_validators.extend([
+            validators.MinLengthValidator(self.min_length),
+            validators.MaxLengthValidator(self.max_length)
+        ])
+        super().__init__(**kwargs)
+
+    def validate_type(self, value: str):
+        if type(value) != str:
+            self.fail('invalid_type')
+        return True
