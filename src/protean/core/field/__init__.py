@@ -204,3 +204,16 @@ class Float(Field):
             return float(value)
         except (TypeError, ValueError):
             self.fail('invalid_type', value=value)
+
+
+class Boolean(Field):
+    """Concrete field implementation for the Boolean type.
+    """
+    default_error_messages = {
+        'invalid_type': '"{value}" value must be of bool type.',
+    }
+
+    def _validate_type(self, value):
+        if not isinstance(value, bool):
+            self.fail('invalid_type', value=value)
+        return value
