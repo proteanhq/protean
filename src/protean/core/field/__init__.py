@@ -217,3 +217,16 @@ class Boolean(Field):
         if not isinstance(value, bool):
             self.fail('invalid_type', value=value)
         return value
+
+
+class List(Field):
+    """Concrete field implementation for the List type.
+    """
+    default_error_messages = {
+        'invalid_type': '"{value}" value must be of list type.',
+    }
+
+    def _validate_type(self, value):
+        if not isinstance(value, list):
+            self.fail('invalid_type', value=value)
+        return value

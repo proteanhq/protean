@@ -135,3 +135,22 @@ class TestBooleanField:
         with pytest.raises(ValidationError):
             married = field.Boolean()
             married.validate('x')
+
+
+class TestListField:
+    """ Test the List Field Implementation"""
+
+    def test_init(self):
+        """Test successful List Field initialization"""
+
+        tags = field.List()
+        assert tags is not None
+
+        tags.validate(['x', 'y', 'z'])
+        assert tags.value == ['x', 'y', 'z']
+
+    def test_type_validation(self):
+        """ Test type checking validation for the Field"""
+        with pytest.raises(ValidationError):
+            tags = field.Boolean()
+            tags.validate('x')
