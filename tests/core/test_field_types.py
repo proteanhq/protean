@@ -42,7 +42,7 @@ class TestIntegerField:
     """ Test the Integer Field Implementation"""
 
     def test_init(self):
-        """Test successful String Field initialization"""
+        """Test successful Integer Field initialization"""
 
         age = field.Integer()
         assert age is not None
@@ -82,7 +82,7 @@ class TestFloatField:
     """ Test the Float Field Implementation"""
 
     def test_init(self):
-        """Test successful String Field initialization"""
+        """Test successful Float Field initialization"""
 
         score = field.Float()
         assert score is not None
@@ -116,3 +116,22 @@ class TestFloatField:
 
         score.validate(Decimal(3.1))
         assert score.value == 3.1
+
+
+class TestBooleanField:
+    """ Test the Boolean Field Implementation"""
+
+    def test_init(self):
+        """Test successful Boolean Field initialization"""
+
+        married = field.Boolean()
+        assert married is not None
+
+        married.validate(True)
+        assert married.value is True
+
+    def test_type_validation(self):
+        """ Test type checking validation for the Field"""
+        with pytest.raises(ValidationError):
+            married = field.Boolean()
+            married.validate('x')
