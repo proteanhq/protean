@@ -154,3 +154,22 @@ class TestListField:
         with pytest.raises(ValidationError):
             tags = field.Boolean()
             tags.validate('x')
+
+
+class TestDictField:
+    """ Test the Dict Field Implementation"""
+
+    def test_init(self):
+        """Test successful Dict Field initialization"""
+
+        add_info = field.Dict()
+        assert add_info is not None
+
+        add_info.validate({'available': 'weekdays'})
+        assert add_info.value == {'available': 'weekdays'}
+
+    def test_type_validation(self):
+        """ Test type checking validation for the Field"""
+        with pytest.raises(ValidationError):
+            add_info = field.Dict()
+            add_info.validate('x')
