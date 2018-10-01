@@ -7,4 +7,5 @@ install:
 script:
   - pytest --cov=protean --cov-config .coveragerc tests
 after_success:
+  - pip install codecov
   - codecov
