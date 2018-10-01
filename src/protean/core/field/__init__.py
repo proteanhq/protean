@@ -75,7 +75,8 @@ class Field(metaclass=ABCMeta):
 
     @abstractmethod
     def validate_type(self, value: Any):
-        """ Abstract method to validate the type of the value passed"""
+        """ Abstract method to validate the type of the value passed.
+        Must return the value if validated"""
         pass
 
     def _run_validators(self, value):
@@ -117,7 +118,7 @@ class Field(metaclass=ABCMeta):
             self.fail('required')
 
         # Check the type of the value
-        self.validate_type(value)
+        value = self.validate_type(value)
 
         # Call the rest of the validators defined for this Field
         self._run_validators(value)
@@ -139,13 +140,41 @@ class String(Field):
     def __init__(self, min_length=None, max_length=None, **kwargs):
         self.min_length = min_length
         self.max_length = max_length
-        self.default_validators.extend([
+        self.default_validators = [
             f_validators.MinLengthValidator(self.min_length),
             f_validators.MaxLengthValidator(self.max_length)
-        ])
+        ]
         super().__init__(**kwargs)
 
     def validate_type(self, value: str):
         if not isinstance(value, str):
             self.fail('invalid_type')
-        return True
+        return value
+
+
+class Integer(Field):
+    """Concrete field implementation for the Integer type.
+
+    :param min_value: The minimum allowed value for the field.
+    :param max_value: The maximum allowed value for the field.
+
+    """
+    default_error_messages = {
+        'invalid_type': 'Value of this Field must be of int type.',
+    }
+
+    def __init__(self, min_value=None, max_value=None, **kwargs):
+        self.min_value = min_value
+        self.max_value = max_value
+        self.default_validators = [
+            f_validators.MinValueValidator(self.min_value),
+            f_validators.MaxValueValidator(self.max_value)
+        ]
+        super().__init__(**kwargs)
+
+    def validate_type(self, value: str):
+        try:
+            value = int(value)
+            return value
+        except ValueError:
+            self.fail('invalid_type')

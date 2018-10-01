@@ -25,3 +25,25 @@ class MaxLengthValidator:
     def __call__(self, value):
         if self.max_length and len(value) > self.max_length:
             raise ValidationError(self.error)
+
+
+class MinValueValidator:
+    """ Validate the minimum value for the field"""
+    def __init__(self, min_value):
+        self.min_value = min_value
+        self.error = f'Ensure this value is greater than {self.min_value}'
+
+    def __call__(self, value):
+        if self.min_value and value < self.min_value:
+            raise ValidationError(self.error)
+
+
+class MaxValueValidator:
+    """ Validate the maximum value for the field"""
+    def __init__(self, max_value):
+        self.max_value = max_value
+        self.error = f'Ensure this value is lesser than {self.max_value}'
+
+    def __call__(self, value):
+        if self.max_value and value > self.max_value:
+            raise ValidationError(self.error)

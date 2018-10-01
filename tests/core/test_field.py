@@ -13,7 +13,7 @@ class String(Field):
     def validate_type(self, value: str):
         if type(value) != str:
             self.fail('invalid_type')
-        return True
+        return value
 
 
 class MinLengthValidator:
