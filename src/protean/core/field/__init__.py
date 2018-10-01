@@ -2,7 +2,9 @@
 
 from abc import ABCMeta, abstractmethod
 from typing import Union, Iterable, Callable, Any
+
 from protean.core import exceptions
+from protean.core.field import validators as f_validators
 
 
 MISSING_ERROR_MESSAGE = (
@@ -28,6 +30,9 @@ class Field(metaclass=ABCMeta):
         'required': 'This field is required.',
     }
 
+    # Default validators for a Field
+    default_validators = []
+
     # These values will trigger the self.required check.
     empty_values = (None, '', [], (), {})
 
@@ -35,7 +40,7 @@ class Field(metaclass=ABCMeta):
                  validators: Iterable = (), error_messages: dict = None):
         self.default = default
         self.required = required
-        self.validators = validators
+        self._validators = validators
         self.value = None
 
         # Collect default error message from self and parent classes
@@ -59,6 +64,14 @@ class Field(metaclass=ABCMeta):
             msg = msg.format(**kwargs)
 
         raise exceptions.ValidationError(msg)
+
+    @property
+    def validators(self):
+        """
+        Some validators can't be created at field initialization time.
+        This method provides a way to handle such default validators.
+        """
+        return [*self.default_validators, *self._validators]
 
     @abstractmethod
     def validate_type(self, value: Any):
@@ -110,3 +123,29 @@ class Field(metaclass=ABCMeta):
         self._run_validators(value)
 
         self.value = value
+
+
+class String(Field):
+    """Concrete field implementation for the string type.
+
+    :param min_length: The minimum allowed length for the field.
+    :param max_length: The maximum allowed length for the field.
+
+    """
+    default_error_messages = {
+        'invalid_type': 'Value of this Field must be of str type.',
+    }
+
+    def __init__(self, min_length=None, max_length=None, **kwargs):
+        self.min_length = min_length
+        self.max_length = max_length
+        self.default_validators.extend([
+            f_validators.MinLengthValidator(self.min_length),
+            f_validators.MaxLengthValidator(self.max_length)
+        ])
+        super().__init__(**kwargs)
+
+    def validate_type(self, value: str):
+        if not isinstance(value, str):
+            self.fail('invalid_type')
+        return True
