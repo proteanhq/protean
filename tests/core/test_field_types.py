@@ -1,7 +1,8 @@
 """ Test cases for all available field type implementations"""
 
-import pytest  # pylint: disable=E0401
 from decimal import Decimal
+
+import pytest
 
 from protean.core import field
 from protean.core.exceptions import ValidationError
