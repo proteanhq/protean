@@ -2,8 +2,9 @@
 
 from abc import ABCMeta, abstractmethod
 from typing import Union, Iterable, Callable, Any
+
 from protean.core import exceptions
-from protean.core.field import validators
+from protean.core.field import validators as f_validators
 
 
 MISSING_ERROR_MESSAGE = (
@@ -139,12 +140,12 @@ class String(Field):
         self.min_length = min_length
         self.max_length = max_length
         self.default_validators.extend([
-            validators.MinLengthValidator(self.min_length),
-            validators.MaxLengthValidator(self.max_length)
+            f_validators.MinLengthValidator(self.min_length),
+            f_validators.MaxLengthValidator(self.max_length)
         ])
         super().__init__(**kwargs)
 
     def validate_type(self, value: str):
-        if isinstance(value, str):
+        if not isinstance(value, str):
             self.fail('invalid_type')
         return True
