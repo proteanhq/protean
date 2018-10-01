@@ -74,7 +74,7 @@ class Field(metaclass=ABCMeta):
         return [*self.default_validators, *self._validators]
 
     @abstractmethod
-    def validate_type(self, value: Any):
+    def _validate_type(self, value: Any):
         """ Abstract method to validate the type of the value passed.
         Must return the value if validated"""
         pass
@@ -118,7 +118,7 @@ class Field(metaclass=ABCMeta):
             self.fail('required')
 
         # Check the type of the value
-        value = self.validate_type(value)
+        value = self._validate_type(value)
 
         # Call the rest of the validators defined for this Field
         self._run_validators(value)
@@ -134,7 +134,7 @@ class String(Field):
 
     """
     default_error_messages = {
-        'invalid_type': 'Value of this Field must be of str type.',
+        'invalid_type': '{value}" value must be of str type.',
     }
 
     def __init__(self, min_length=None, max_length=None, **kwargs):
@@ -146,9 +146,9 @@ class String(Field):
         ]
         super().__init__(**kwargs)
 
-    def validate_type(self, value: str):
+    def _validate_type(self, value: str):
         if not isinstance(value, str):
-            self.fail('invalid_type')
+            self.fail('invalid_type', value=value)
         return value
 
 
@@ -160,7 +160,7 @@ class Integer(Field):
 
     """
     default_error_messages = {
-        'invalid_type': 'Value of this Field must be of int type.',
+        'invalid_type': '"{value}" value must be of int type.',
     }
 
     def __init__(self, min_value=None, max_value=None, **kwargs):
@@ -172,9 +172,35 @@ class Integer(Field):
         ]
         super().__init__(**kwargs)
 
-    def validate_type(self, value: str):
+    def _validate_type(self, value):
         try:
-            value = int(value)
-            return value
-        except ValueError:
-            self.fail('invalid_type')
+            return int(value)
+        except (TypeError, ValueError):
+            self.fail('invalid_type', value=value)
+
+
+class Float(Field):
+    """Concrete field implementation for the Floating type.
+
+    :param min_value: The minimum allowed value for the field.
+    :param max_value: The maximum allowed value for the field.
+
+    """
+    default_error_messages = {
+        'invalid_type': '"{value}" value must be of float type.',
+    }
+
+    def __init__(self, min_value=None, max_value=None, **kwargs):
+        self.min_value = min_value
+        self.max_value = max_value
+        self.default_validators = [
+            f_validators.MinValueValidator(self.min_value),
+            f_validators.MaxValueValidator(self.max_value)
+        ]
+        super().__init__(**kwargs)
+
+    def _validate_type(self, value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            self.fail('invalid_type', value=value)
