@@ -97,3 +97,14 @@ class TestField:
             assert err.n_messages == {
                 '_entity': ['Ensure this value has at least 5 character.',
                             'Ensure this value has at least 5 character.']}
+
+    def test_default_validators(self):
+        def medium_string_validator(value):
+            # Function checks the max length of a field
+            if len(value) > 15:
+                raise ValidationError(
+                    'Value cannot be more than 15 characters long.')
+        String.default_validators = [medium_string_validator]
+        with pytest.raises(ValidationError):
+            name = String()
+            name.validate('Dummy Dummy Dummy')
