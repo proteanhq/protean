@@ -10,7 +10,7 @@ class String(Field):
         'invalid_type': 'Field value must be of str type.',
     }
 
-    def validate_type(self, value: str):
+    def _validate_type(self, value: str):
         if type(value) != str:
             self.fail('invalid_type')
         return value
