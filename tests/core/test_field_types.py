@@ -61,7 +61,7 @@ class TestIntegerField:
             age.validate(3)
 
     def test_max_value(self):
-        """ Test maximum value validation for the string field"""
+        """ Test maximum value validation for the integer field"""
 
         with pytest.raises(ValidationError):
             age = field.Integer(max_value=5)
@@ -76,3 +76,43 @@ class TestIntegerField:
 
         age.validate(Decimal(3.1))
         assert age.value == 3
+
+
+class TestFloatField:
+    """ Test the Float Field Implementation"""
+
+    def test_init(self):
+        """Test successful String Field initialization"""
+
+        score = field.Float()
+        assert score is not None
+
+    def test_type_validation(self):
+        """ Test type checking validation for the Field"""
+        with pytest.raises(ValidationError):
+            score = field.Float()
+            score.validate('x')
+
+    def test_min_value(self):
+        """ Test minimum value validation for the float field"""
+
+        with pytest.raises(ValidationError):
+            score = field.Float(min_value=5.4)
+            score.validate(5.3)
+
+    def test_max_value(self):
+        """ Test maximum value validation for the float field"""
+
+        with pytest.raises(ValidationError):
+            score = field.Float(max_value=5.5)
+            score.validate(5.6)
+
+    def test_float_input(self):
+        """ Test that integers and decimals are converted to integer"""
+
+        score = field.Float()
+        score.validate(3)
+        assert score.value == 3.0
+
+        score.validate(Decimal(3.1))
+        assert score.value == 3.1
