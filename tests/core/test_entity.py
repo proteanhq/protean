@@ -80,8 +80,8 @@ class TestEntity:
                 'name': ['Ensure this value has at least 5 characters.'],
                 'owner': [Dog.owner.error_messages['required']]}
 
-    def test_entity_subclassing(self):
-
+    def test_entity_inheritance(self):
+        """ Test that subclasses of `Entity` can be inherited"""
         class TimestampedEntity(Entity):
             """ Class that provides the default fields """
             age = field.String(default=5)

@@ -45,6 +45,7 @@ class EntityBase(type):
 
 class Entity(metaclass=EntityBase):
     """Class for defining Domain Entities"""
+    _declared_fields = {}
 
     def __init__(self, *template, **kwargs):
         """
