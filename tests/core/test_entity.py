@@ -1,108 +1,96 @@
 """Tests for Entity Functionality and Base Classes"""
 
-import factory
 import pytest
-from faker import Faker
-from pytest_factoryboy import register
 
-from protean.core.entity import STRING_LENGTHS
-from protean.core.entity import BaseEntity
-
-fake = Faker()  # pylint: disable=C0103
+from protean.core.entity import Entity
+from protean.core.exceptions import ValidationError
+from protean.core import field
 
 
-class Dog(BaseEntity):
+class Dog(Entity):
     """This is a dummy Dog Entity class"""
-    _fields = [
-        'id', 'name', 'age', 'owner'
-    ]
-    _field_definitions = {
-        'id': {'type': 'IDENTIFIER', 'length': 'IDENTIFIER'},
-        'name': {'type': 'STRING', 'length': 'MEDIUM'},
-        'age': {'type': 'INTEGER'},
-        'owner': {'type': 'STRING', 'length': 'SHORT'}
-    }
-    _mandatory = ['name', 'owner']
-    _defaults = {
-        'age': 5
-    }
+    name = field.String(required=True, max_length=50, min_length=5)
+    age = field.Integer(default=5)
+    owner = field.String(required=True, max_length=15)
 
 
-@register
-class DogFactory(factory.Factory):
-    """DogFactory"""
-    id = fake.uuid4()[:STRING_LENGTHS['IDENTIFIER']]
-    name = fake.name()
-    owner = fake.name()[:STRING_LENGTHS['SHORT']]
-
-    class Meta:
-        """Factory is Connected to Dog"""
-        model = Dog
-
-
-class TestDog:
+class TestEntity:
     """This class holds tests for Base Entity Abstract class"""
 
-    def test_init(self, dog):
+    def test_init(self):
         """Test successful Account Entity initialization"""
 
-        dog = Dog(name=dog.name,
-                  age=dog.age,
-                  owner=dog.owner)
-
+        dog = Dog(
+            name='John Doe', age=10, owner='Jimmy')
         assert dog is not None
+        assert dog.name == 'John Doe'
+        assert dog.age == 10
+        assert dog.owner == 'Jimmy'
 
-    def test_missing_fields(self, dog):
+    def test_required_fields(self):
         """Test errors if mandatory fields are missing"""
 
-        with pytest.raises(ValueError):
-            Dog(name=dog.name)
+        with pytest.raises(ValidationError):
+            Dog(name='John Doe')
 
-    def test_invalid_fields(self, dog):
-        """Test that invalid fields are not set on Dog instance"""
-
-        with pytest.raises(ValueError):
-            Dog(name=dog.name,
-                age=dog.age,
-                foo='bar')
-
-    def test_defaults(self, dog):
+    def test_defaults(self):
         """Test that values are defaulted properly"""
+        dog = Dog(
+            name='John Doe', owner='Jimmy')
         assert dog.age == 5
 
-    def test_validate_string_length(self, dog):
+    def test_validate_string_length(self):
         """Test validation of String length checks"""
-        with pytest.raises(ValueError):
-            Dog(id=dog.id,
-                name=dog.name,
+        with pytest.raises(ValidationError):
+            Dog(name='John Doe',
                 owner='12345678901234567890')
 
-    def test_validate_data_value_against_type(self, dog):
-        """Test validation of String length checks"""
-        with pytest.raises(ValueError):
-            Dog(id=dog.id,
-                name=dog.name,
+    def test_validate_data_value_against_type(self):
+        """Test validation of data types of values"""
+        with pytest.raises(ValidationError):
+            Dog(name='John Doe',
                 owner='1234567890',
                 age="foo")
 
-    def test_validate_data_type(self, dog):
-        """Test validation of String length checks"""
-        with pytest.raises(TypeError):
-            class InvalidDog(BaseEntity):
-                """This is a dummy Dog Entity class"""
-                _fields = [
-                    'name'
-                ]
-                _field_definitions = {
-                    'name': {
-                        'type': 'FOO'
-                    }
-                }
-            InvalidDog(name=dog.name)
+    def test_template_init(self):
+        """Test initialization using a template dictionary"""
+        with pytest.raises(AssertionError):
+            Dog('Dummy')
 
-    def test_sanitization(self, dog):
-        """Test that string values are sanitized"""
-        dog2 = Dog(id=dog.id,
-                   name='an <script>evil()</script> example',
-                   owner='1234567890')
-        assert getattr(dog2, 'name', None) == u'an &lt;script&gt;evil()&lt;/script&gt; example'
+        dog = Dog(
+            dict(name='John Doe', owner='Jimmy'))
+        assert dog.name == 'John Doe'
+        assert dog.owner == 'Jimmy'
+
+    def test_error_messages(self):
+        """Test the correct error messages are generated"""
+
+        # Test single error message
+        try:
+            Dog(name='John Doe')
+        except ValidationError as err:
+            assert err.normalized_messages == {
+                'owner': [Dog.owner.error_messages['required']]}
+
+        # Test multiple error messages
+        try:
+            Dog(name='Joh')
+        except ValidationError as err:
+            assert err.normalized_messages == {
+                'name': ['Ensure this value has at least 5 characters.'],
+                'owner': [Dog.owner.error_messages['required']]}
+
+    def test_entity_subclassing(self):
+
+        class TimestampedEntity(Entity):
+            """ Class that provides the default fields """
+            age = field.String(default=5)
+
+        class Dog2(TimestampedEntity):
+            """This is a dummy Dog Entity class with a mixin"""
+            name = field.String(required=True, max_length=50, min_length=5)
+
+        dog2 = Dog2(
+            name='John Doe', owner='Jimmy')
+        assert dog2 is not None
+        assert dog2.age == 5

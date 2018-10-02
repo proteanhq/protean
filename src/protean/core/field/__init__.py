@@ -36,12 +36,17 @@ class Field(metaclass=ABCMeta):
     # These values will trigger the self.required check.
     empty_values = (None, '', [], (), {})
 
-    def __init__(self, default: Union[Callable, str] = None, required: bool = False,
+    def __init__(self, default: Union[Callable, str] = None,
+                 required: bool = False, label: str = None,
                  validators: Iterable = (), error_messages: dict = None):
+
         self.default = default
         self.required = required
+        self.label = label
         self._validators = validators
-        self.value = None
+
+        # These are set up by `.bind()` when the field is added to a serializer.
+        self.field_name = None
 
         # Collect default error message from self and parent classes
         messages = {}
@@ -49,6 +54,18 @@ class Field(metaclass=ABCMeta):
             messages.update(getattr(cls, 'default_error_messages', {}))
         messages.update(error_messages or {})
         self.error_messages = messages
+
+    def bind(self, field_name):
+        """
+        Initializes the field name for the field instance.
+        Called when a field is added to the parent entity instance.
+        """
+
+        self.field_name = field_name
+
+        # `self.label` should default to being based on the field name.
+        if self.label is None:
+            self.label = field_name.replace('_', ' ').capitalize()
 
     def fail(self, key, **kwargs):
         """A helper method that simply raises a `ValidationError`.
@@ -63,7 +80,7 @@ class Field(metaclass=ABCMeta):
         if isinstance(msg, str):
             msg = msg.format(**kwargs)
 
-        raise exceptions.ValidationError(msg)
+        raise exceptions.ValidationError(msg, self.field_name)
 
     @property
     def validators(self):
@@ -107,23 +124,31 @@ class Field(metaclass=ABCMeta):
         :param value: value of the field to be validated
 
         """
-        # Set the value to default if its empty
-        if value in self.empty_values and self.default:
-            default = self.default
-            self.value = default() if callable(default) else default
-            return
 
-        #  Check for required attribute of the field
-        if value in self.empty_values and self.required:
-            self.fail('required')
+        if value in self.empty_values:
+            # If a default has been set for the field return it
+            if self.default:
+                default = self.default
+                value = default() if callable(default) else default
+                return value
 
-        # Check the type of the value
+            # If no default is set and this field is required
+            elif self.required:
+                self.fail('required')
+
+            # In all other cases just return `None` as we do not want to
+            # run validations against an empty value
+            else:
+                return None
+
+        # Run the validations for this field and return the value once passed
+        # Validate the type of the value for this Field
         value = self._validate_type(value)
 
         # Call the rest of the validators defined for this Field
         self._run_validators(value)
 
-        self.value = value
+        return value
 
 
 class String(Field):

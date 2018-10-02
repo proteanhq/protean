@@ -46,13 +46,11 @@ class TestField:
         """ Test default value is set when no value is supplied"""
         # Test with default value as constant
         name = String(default='dummy')
-        name.validate('')
-        assert name.value == 'dummy'
+        assert name.validate('') == 'dummy'
 
         # Test with default value as callable
         name = String(default=lambda: 'dummy')
-        name.validate('')
-        assert name.value == 'dummy'
+        assert name.validate('') == 'dummy'
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
@@ -76,7 +74,7 @@ class TestField:
             name = String(required=True)
             name.validate(None)
         except ValidationError as err:
-            assert err.n_messages == {
+            assert err.normalized_messages == {
                 '_entity': [name.error_messages['required']]}
 
         # Test overriding of error message
@@ -84,7 +82,7 @@ class TestField:
             name = String()
             name.validate(1)
         except ValidationError as err:
-            assert err.n_messages == {
+            assert err.normalized_messages == {
                 '_entity': ['Field value must be of str type.']}
 
         # Test multiple error messages
@@ -94,7 +92,7 @@ class TestField:
                             MinLengthValidator(min_length=5)])
             name.validate('Dum')
         except ValidationError as err:
-            assert err.n_messages == {
+            assert err.normalized_messages == {
                 '_entity': ['Ensure this value has at least 5 character.',
                             'Ensure this value has at least 5 character.']}
 

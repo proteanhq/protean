@@ -4,7 +4,7 @@ import os
 
 import mock
 import pytest
-from tests.core.test_entity import DogFactory  # pylint: disable=W0611
+# from tests.core.xxtest_entity import DogFactory  # pylint: disable=W0611
 
 
 @pytest.fixture(scope='module', autouse=True)
