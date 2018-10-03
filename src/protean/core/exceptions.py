@@ -15,7 +15,8 @@ class ValidationError(Exception):
     """Raised when validation fails on a field. Validators and custom fields should
     raise this exception.
 
-    :param message: An error message
+    :param message: An error message or a list of error messages or a
+    dictionary of error message where key is field name and value is error
     :param list field_names: Field names to store the error on. If `None`, the
      error is stored in its default location.
     """
@@ -36,7 +37,7 @@ class ValidationError(Exception):
         super().__init__(**kwargs)
 
     @property
-    def n_messages(self, no_field_name='_entity'):
+    def normalized_messages(self, no_field_name='_entity'):
         """Return all the error messages as a dictionary"""
         if isinstance(self.messages, dict):
             return self.messages

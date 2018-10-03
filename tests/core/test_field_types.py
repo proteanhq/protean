@@ -21,21 +21,21 @@ class TestStringField:
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
             name = field.String()
-            name.validate(1)
+            name.load(1)
 
     def test_min_length(self):
         """ Test minimum length validation for the string field"""
 
         with pytest.raises(ValidationError):
             name = field.String(min_length=5)
-            name.validate('Dum')
+            name.load('Dum')
 
     def test_max_length(self):
         """ Test maximum length validation for the string field"""
 
         with pytest.raises(ValidationError):
             name = field.String(max_length=5)
-            name.validate('Dummy Dummy')
+            name.load('Dummy Dummy')
 
 
 class TestIntegerField:
@@ -51,31 +51,21 @@ class TestIntegerField:
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
             age = field.Integer()
-            age.validate('x')
+            age.load('x')
 
     def test_min_value(self):
         """ Test minimum value validation for the integer field"""
 
         with pytest.raises(ValidationError):
             age = field.Integer(min_value=5)
-            age.validate(3)
+            age.load(3)
 
     def test_max_value(self):
         """ Test maximum value validation for the integer field"""
 
         with pytest.raises(ValidationError):
             age = field.Integer(max_value=5)
-            age.validate(6)
-
-    def test_float_input(self):
-        """ Test that floats and decimals are converted to integer"""
-
-        age = field.Integer()
-        age.validate(3.1)
-        assert age.value == 3
-
-        age.validate(Decimal(3.1))
-        assert age.value == 3
+            age.load(6)
 
 
 class TestFloatField:
@@ -91,31 +81,21 @@ class TestFloatField:
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
             score = field.Float()
-            score.validate('x')
+            score.load('x')
 
     def test_min_value(self):
         """ Test minimum value validation for the float field"""
 
         with pytest.raises(ValidationError):
             score = field.Float(min_value=5.4)
-            score.validate(5.3)
+            score.load(5.3)
 
     def test_max_value(self):
         """ Test maximum value validation for the float field"""
 
         with pytest.raises(ValidationError):
             score = field.Float(max_value=5.5)
-            score.validate(5.6)
-
-    def test_float_input(self):
-        """ Test that integers and decimals are converted to integer"""
-
-        score = field.Float()
-        score.validate(3)
-        assert score.value == 3.0
-
-        score.validate(Decimal(3.1))
-        assert score.value == 3.1
+            score.load(5.6)
 
 
 class TestBooleanField:
@@ -126,15 +106,13 @@ class TestBooleanField:
 
         married = field.Boolean()
         assert married is not None
-
-        married.validate(True)
-        assert married.value is True
+        assert married.load(True) is True
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
             married = field.Boolean()
-            married.validate('x')
+            married.load('x')
 
 
 class TestListField:
@@ -146,14 +124,13 @@ class TestListField:
         tags = field.List()
         assert tags is not None
 
-        tags.validate(['x', 'y', 'z'])
-        assert tags.value == ['x', 'y', 'z']
+        assert tags.load(['x', 'y', 'z']) == ['x', 'y', 'z']
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
             tags = field.Boolean()
-            tags.validate('x')
+            tags.load('x')
 
 
 class TestDictField:
@@ -165,11 +142,11 @@ class TestDictField:
         add_info = field.Dict()
         assert add_info is not None
 
-        add_info.validate({'available': 'weekdays'})
-        assert add_info.value == {'available': 'weekdays'}
+        value = add_info.load({'available': 'weekdays'})
+        assert value == {'available': 'weekdays'}
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
             add_info = field.Dict()
-            add_info.validate('x')
+            add_info.load('x')

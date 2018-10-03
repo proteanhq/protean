@@ -1,119 +1,108 @@
 """Entity Functionality and Classes"""
+import copy
 
-from abc import ABCMeta
-from decimal import Decimal
+from collections import OrderedDict
 
-import bleach
-
-STRING_LENGTHS = {
-    'IDENTIFIER': 20,
-    'SHORT': 15,
-    'MEDIUM': 50,
-    'CUSTOM_IDENTIFIER': 50,
-    'LONG': 255
-}
-
-TYPE_CODES = {
-    'BOOLEAN': bool,
-    'STRING': str,
-    'IDENTIFIER': str,
-    'LIST': list,
-    'INTEGER': int,
-    'TEXT': str,
-    'FLOAT': float,
-    'DECIMAL': Decimal,
-    'DICT': dict,
-    'TIMESTAMP': 'TIMESTAMP',  # Validation Not Implemented
-    'GEOPOINT': 'GEOPOINT'  # Validation Not Implemented
-}
+from protean.core.field import Field
+from protean.core.exceptions import ValidationError
 
 
-class BaseEntity(metaclass=ABCMeta):
-    """Base Class for Domain Entities"""
+class EntityBase(type):
+    """
+    This base metaclass sets a dictionary named `_declared_fields` on the class.
+    Any instances of `Field` included as attributes on either the class
+    or on any of its superclasses will be include in the
+    `_declared_fields` dictionary.
+    """
 
-    _tenant_independent = False
-    _fields = []
-    _field_definitions = {}
-    _mandatory = []
-    _unique = []
-    _defaults = {}
+    @classmethod
+    def _get_declared_fields(mcs, bases, attrs):
+        # Load all attributes of the class that are instances of `Field`
+        fields = []
+        for attr_name, attr_obj in attrs.items():
+            if isinstance(attr_obj, Field):
+                # Bind the field object and append to list
+                attr_obj.bind(attr_name)
+                fields.append((attr_name, attr_obj))
+
+        # If this class is subclassing another Entity, add that Entity's
+        # fields.  Note that we loop over the bases in *reverse*.
+        # This is necessary in order to maintain the correct order of fields.
+        for base in reversed(bases):
+            if hasattr(base, '_declared_fields'):
+                fields = [
+                    (field_name, field_obj) for field_name, field_obj
+                    in base._declared_fields.items()
+                    if field_name not in attrs
+                ] + fields
+
+        return OrderedDict(fields)
+
+    def __new__(mcs, name, bases, attrs):
+        attrs['_declared_fields'] = mcs._get_declared_fields(bases, attrs)
+        return super(EntityBase, mcs).__new__(mcs, name, bases, attrs)
+
+
+class Entity(metaclass=EntityBase):
+    """Class for defining Domain Entities"""
+    _declared_fields = {}
 
     def __init__(self, *template, **kwargs):
         """
-        This initialization technique supports keyword arguments
-        as well as dictionaries. You can even use a template for
-        initial data.
-        https://stackoverflow.com/questions/2466191/set-attributes-from-dictionary-in-python
+        Initialise the entity object perform the validations on each of
+        the fields and set its value on passing. This initialization technique
+        supports keyword arguments as well as dictionaries. You can even use
+        a template for initial data.
         """
+
+        self.errors = {}
+        fields = self.get_fields()
+
+        # Load the attributes based on the template
         for dictionary in template:
-            for key in dictionary:
-                setattr(self, key, dictionary[key])
-        for key in kwargs:
-            setattr(self, key, kwargs[key])
-        self.__set_defaults()
-        self.__validate()
+            if not isinstance(dictionary, dict):
+                raise AssertionError(
+                    f'Positional argument "{dictionary}" passed must be a dict.'
+                    f'This argument serves as a template for loading common '
+                    f'values.'
+                )
+            for field_name, val in dictionary.items():
+                field_obj = fields.pop(field_name, None)
+                if field_obj:
+                    self._setattr(field_name, field_obj, val)
 
-    def __setattr__(self, name, value):
-        """Verify that field is valid before setting on instance"""
-        if name not in self._fields:
-            raise ValueError(
-                "{} is an Invalid Attribute".format(name))
-        else:
-            # Validate Value against Field Definition
-            self.__validate_field_definitions(name, value)
+        # Now load against the keyword arguments
+        for field_name, val in kwargs.items():
+            field_obj = fields.pop(field_name, None)
+            if field_obj:
+                self._setattr(field_name, field_obj, val)
 
-            # Sanitize Value
-            value = self.__sanitize(value)
+        # Now load the remaining fields with a None value, which will fail
+        # for required fields
+        for field_name, field_obj in fields.items():
+            self._setattr(field_name, field_obj, None)
 
-            super().__setattr__(name, value)
+        # Raise any errors found during load
+        if self.errors:
+            raise ValidationError(self.errors)
 
-    def __validate(self):
-        """Validate if all mandatory fields are specified"""
-        if not all(field in dir(self) for field in self._mandatory):
-            raise ValueError("Not all mandatory fields have been specified")
-
-    def __validate_field_definitions(self, name, value):
+    def _setattr(self, field_name, field_obj, value):
         """
-        Checks the dictionary and verifies the length and type
-        of entities using parameter field_definitions
+        Load the value for the field, set it if passes and if not
+        add to the error list.
         """
-        errors = {}
         try:
-            datatype = self._field_definitions[name]['type']
-            if value is not None:
-                if datatype in ['IDENTIFIER', 'STRING'] and \
-                        isinstance(value, TYPE_CODES[datatype]):
-                    datalength = self._field_definitions[name]['length']
-                    if len(value) > STRING_LENGTHS[datalength]:
-                        raise ValueError("{} has invalid length".format(name))
-                elif datatype in ['BOOLEAN', 'INTEGER', 'LIST',
-                                  'DICT', 'TEXT', 'FLOAT', 'DECIMAL']:
-                    if not isinstance(value, TYPE_CODES[datatype]):
-                        raise ValueError("{} - Invalid Value for field {}".format(value, name))
-                elif datatype in ['TIMESTAMP', 'GEOPOINT']:
-                    # FIXME Implement Timestamp and Geopoint validations
-                    pass
-                else:
-                    raise TypeError("{} - Expected data type as {}, but saw {}".format(
-                        name, datatype, type(value)))
+            valid_value = field_obj.load(value)
+            setattr(self, field_name, valid_value)
+        except ValidationError as err:
+            self.errors[field_name] = err.messages
 
-            return errors
-        except AttributeError:
-            return {}
+    def get_fields(self):
+        """
+        Returns a dictionary of {field_name: field_instance}.
+        """
+        # Every new entity is created with a clone of the field instances.
+        # This allows users to dynamically modify the fields on a entity
+        # instance without affecting every other entity instance.
 
-    def __sanitize(self, value):
-        """Sanitize all the strings"""
-        result = value
-        if isinstance(value, str):
-            result = bleach.clean(value)
-        elif isinstance(value, dict):
-            for key, val in value.items():
-                result[key] = self.__sanitize(val)
-
-        return result
-
-    def __set_defaults(self):
-        """Set defaults if not set already"""
-        for key, value in self._defaults.items():
-            if getattr(self, key, None) is None:
-                setattr(self, key, value)
+        return copy.deepcopy(self._declared_fields)

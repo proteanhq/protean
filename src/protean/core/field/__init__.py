@@ -36,12 +36,17 @@ class Field(metaclass=ABCMeta):
     # These values will trigger the self.required check.
     empty_values = (None, '', [], (), {})
 
-    def __init__(self, default: Union[Callable, str] = None, required: bool = False,
+    def __init__(self, default: Union[Callable, str] = None,
+                 required: bool = False, label: str = None,
                  validators: Iterable = (), error_messages: dict = None):
+
         self.default = default
         self.required = required
+        self.label = label
         self._validators = validators
-        self.value = None
+
+        # These are set up by `.bind()` when the field is added to a serializer.
+        self.field_name = None
 
         # Collect default error message from self and parent classes
         messages = {}
@@ -49,6 +54,18 @@ class Field(metaclass=ABCMeta):
             messages.update(getattr(cls, 'default_error_messages', {}))
         messages.update(error_messages or {})
         self.error_messages = messages
+
+    def bind(self, field_name):
+        """
+        Initializes the field name for the field instance.
+        Called when a field is added to the parent entity instance.
+        """
+
+        self.field_name = field_name
+
+        # `self.label` should default to being based on the field name.
+        if self.label is None:
+            self.label = field_name.replace('_', ' ').capitalize()
 
     def fail(self, key, **kwargs):
         """A helper method that simply raises a `ValidationError`.
@@ -63,7 +80,7 @@ class Field(metaclass=ABCMeta):
         if isinstance(msg, str):
             msg = msg.format(**kwargs)
 
-        raise exceptions.ValidationError(msg)
+        raise exceptions.ValidationError(msg, self.field_name)
 
     @property
     def validators(self):
@@ -75,8 +92,11 @@ class Field(metaclass=ABCMeta):
 
     @abstractmethod
     def _validate_type(self, value: Any):
-        """ Abstract method to validate the type of the value passed.
-        Must return the value if validated"""
+        """
+        Abstract method to validate the type of the value passed.
+        All subclasses must implement this method.
+        Raise a :exc:`ValidationError` if validation does not succeed.
+        """
         pass
 
     def _run_validators(self, value):
@@ -99,31 +119,40 @@ class Field(metaclass=ABCMeta):
         if errors:
             raise exceptions.ValidationError(errors)
 
-    def validate(self, value: Any):
+    def load(self, value: Any):
         """
-        Validate value and raise ValidationError if necessary. Subclasses
-        can override this to provide validation logic.
+        Load the value for the field, run validators and return the value.
+        Subclasses can override this to provide custom load logic.
 
-        :param value: value of the field to be validated
+        :param value: value of the field
 
         """
-        # Set the value to default if its empty
-        if value in self.empty_values and self.default:
-            default = self.default
-            self.value = default() if callable(default) else default
-            return
 
-        #  Check for required attribute of the field
-        if value in self.empty_values and self.required:
-            self.fail('required')
+        if value in self.empty_values:
+            # If a default has been set for the field return it
+            if self.default:
+                default = self.default
+                value = default() if callable(default) else default
+                return value
 
-        # Check the type of the value
-        value = self._validate_type(value)
+            # If no default is set and this field is required
+            elif self.required:
+                self.fail('required')
+
+            # In all other cases just return `None` as we do not want to
+            # run validations against an empty value
+            else:
+                return None
+
+        # Run the validations for this field and return the value once passed
+
+        # Validate the type of the value for this Field
+        self._validate_type(value)
 
         # Call the rest of the validators defined for this Field
         self._run_validators(value)
 
-        self.value = value
+        return value
 
 
 class String(Field):
@@ -149,7 +178,6 @@ class String(Field):
     def _validate_type(self, value: str):
         if not isinstance(value, str):
             self.fail('invalid_type', value=value)
-        return value
 
 
 class Integer(Field):
@@ -173,9 +201,7 @@ class Integer(Field):
         super().__init__(**kwargs)
 
     def _validate_type(self, value):
-        try:
-            return int(value)
-        except (TypeError, ValueError):
+        if not isinstance(value, int):
             self.fail('invalid_type', value=value)
 
 
@@ -200,9 +226,7 @@ class Float(Field):
         super().__init__(**kwargs)
 
     def _validate_type(self, value):
-        try:
-            return float(value)
-        except (TypeError, ValueError):
+        if not isinstance(value, float):
             self.fail('invalid_type', value=value)
 
 
@@ -216,7 +240,6 @@ class Boolean(Field):
     def _validate_type(self, value):
         if not isinstance(value, bool):
             self.fail('invalid_type', value=value)
-        return value
 
 
 class List(Field):
@@ -229,7 +252,6 @@ class List(Field):
     def _validate_type(self, value):
         if not isinstance(value, list):
             self.fail('invalid_type', value=value)
-        return value
 
 
 class Dict(Field):
@@ -242,4 +264,3 @@ class Dict(Field):
     def _validate_type(self, value):
         if not isinstance(value, dict):
             self.fail('invalid_type', value=value)
-        return value
