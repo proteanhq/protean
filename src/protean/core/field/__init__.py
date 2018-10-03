@@ -92,8 +92,11 @@ class Field(metaclass=ABCMeta):
 
     @abstractmethod
     def _validate_type(self, value: Any):
-        """ Abstract method to validate the type of the value passed.
-        Must return the value if validated"""
+        """
+        Abstract method to validate the type of the value passed.
+        All subclasses must implement this method.
+        Raise a :exc:`ValidationError` if validation does not succeed.
+        """
         pass
 
     def _run_validators(self, value):
@@ -116,12 +119,12 @@ class Field(metaclass=ABCMeta):
         if errors:
             raise exceptions.ValidationError(errors)
 
-    def validate(self, value: Any):
+    def load(self, value: Any):
         """
-        Validate value and raise ValidationError if necessary. Subclasses
-        can override this to provide validation logic.
+        Load the value for the field, run validators and return the value.
+        Subclasses can override this to provide custom load logic.
 
-        :param value: value of the field to be validated
+        :param value: value of the field
 
         """
 
@@ -142,8 +145,9 @@ class Field(metaclass=ABCMeta):
                 return None
 
         # Run the validations for this field and return the value once passed
+
         # Validate the type of the value for this Field
-        value = self._validate_type(value)
+        self._validate_type(value)
 
         # Call the rest of the validators defined for this Field
         self._run_validators(value)
@@ -174,7 +178,6 @@ class String(Field):
     def _validate_type(self, value: str):
         if not isinstance(value, str):
             self.fail('invalid_type', value=value)
-        return value
 
 
 class Integer(Field):
@@ -198,9 +201,7 @@ class Integer(Field):
         super().__init__(**kwargs)
 
     def _validate_type(self, value):
-        try:
-            return int(value)
-        except (TypeError, ValueError):
+        if not isinstance(value, int):
             self.fail('invalid_type', value=value)
 
 
@@ -225,9 +226,7 @@ class Float(Field):
         super().__init__(**kwargs)
 
     def _validate_type(self, value):
-        try:
-            return float(value)
-        except (TypeError, ValueError):
+        if not isinstance(value, float):
             self.fail('invalid_type', value=value)
 
 
@@ -241,7 +240,6 @@ class Boolean(Field):
     def _validate_type(self, value):
         if not isinstance(value, bool):
             self.fail('invalid_type', value=value)
-        return value
 
 
 class List(Field):
@@ -254,7 +252,6 @@ class List(Field):
     def _validate_type(self, value):
         if not isinstance(value, list):
             self.fail('invalid_type', value=value)
-        return value
 
 
 class Dict(Field):
@@ -267,4 +264,3 @@ class Dict(Field):
     def _validate_type(self, value):
         if not isinstance(value, dict):
             self.fail('invalid_type', value=value)
-        return value

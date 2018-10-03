@@ -88,11 +88,11 @@ class Entity(metaclass=EntityBase):
 
     def _setattr(self, field_name, field_obj, value):
         """
-        Validate the value for the field, set it if passes if not
-        return the error.
+        Load the value for the field, set it if passes and if not
+        add to the error list.
         """
         try:
-            valid_value = field_obj.validate(value)
+            valid_value = field_obj.load(value)
             setattr(self, field_name, valid_value)
         except ValidationError as err:
             self.errors[field_name] = err.messages
