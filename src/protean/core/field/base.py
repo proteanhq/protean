@@ -35,12 +35,20 @@ class Field(metaclass=ABCMeta):
     # These values will trigger the self.required check.
     empty_values = (None, '', [], (), {})
 
-    def __init__(self, default: Union[Callable, str] = None,
+    def __init__(self, identifier: bool = False,
+                 default: Union[Callable, str] = None,
                  required: bool = False, label: str = None,
                  validators: Iterable = (), error_messages: dict = None):
 
+        self.identifier = identifier
         self.default = default
-        self.required = required
+
+        # Make identifier fields as required
+        if self.identifier:
+            self.required = True
+        else:
+            self.required = required
+
         self.label = label
         self._validators = validators
 
