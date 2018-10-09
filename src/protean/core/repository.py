@@ -176,6 +176,7 @@ class RepositorySchemaOpts(object):
 class RepositorySchema(metaclass=OptionsMeta):
     """ Repository Schema defines an index/table in the repository"""
     options_class = RepositorySchemaOpts
+    opts = None
 
     @property
     def name(self):

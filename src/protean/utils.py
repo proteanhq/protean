@@ -14,9 +14,9 @@ class OptionsMeta(ABCMeta):
     def __new__(mcs, name, bases, attrs):
         klass = super().__new__(mcs, name, bases, attrs)
 
-        if not inspect.isabstract(klass):
-            # Get the Meta class attribute defined for the base class
-            meta = getattr(klass, 'Meta')
+        # Get the Meta class attribute defined for the base class
+        meta = getattr(klass, 'Meta', None)
+        if meta:
 
             # Set klass.opts by initializing the `OPTIONS_CLASS` with the meta
             klass.opts = klass.options_class(meta, klass)

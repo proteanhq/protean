@@ -11,7 +11,7 @@ from protean.core.repository import RepositoryFactory, Repository, \
 
 
 class DictRepository(Repository):
-
+    """ A repository for storing data in a dictionary """
     def _create(self, entity: Entity):
         """ Write a record to the dict repository"""
         # Check if the entity already exists in the repo
@@ -74,9 +74,7 @@ class DictRepository(Repository):
 
 
 class DictSchema(RepositorySchema):
-
-    class Meta:
-        entity = Entity
+    """ A schema withing the dictionary repository"""
 
     def from_entity(self, entity):
         """ Convert the entity to a dictionary record """
@@ -91,7 +89,7 @@ class DictSchema(RepositorySchema):
 
 
 class DictRepositoryFactory(RepositoryFactory):
-
+    """ Factory for the Dictionary repository"""
     def get_connection(self):
         """ Return the dictionary database object """
         if not self._connection:

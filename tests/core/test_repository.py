@@ -2,11 +2,11 @@
 
 import pytest
 
-from ..support.dict_repo import drf, DictSchema, DictRepository
-
 from protean.core.entity import Entity
 from protean.core.exceptions import ValidationError, ObjectNotFoundError
 from protean.core import field
+
+from ..support.dict_repo import drf, DictSchema, DictRepository
 
 
 class Dog(Entity):
@@ -18,8 +18,10 @@ class Dog(Entity):
 
 
 class DogSchema(DictSchema):
+    """ Schema for the Dog Entity"""
 
     class Meta:
+        """ Meta class for schema options"""
         entity = Dog
         schema_name = 'dogs'
 
