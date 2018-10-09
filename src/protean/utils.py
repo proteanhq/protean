@@ -1,7 +1,5 @@
 """ Utility classes and functions used throughout Protean"""
 
-import inspect
-
 from abc import ABCMeta
 
 
