@@ -4,7 +4,7 @@ import copy
 from collections import OrderedDict
 
 from protean.core.field import Field
-from protean.core.exceptions import ValidationError
+from protean.core.exceptions import ValidationError, ConfigurationError
 
 
 class EntityBase(type):
@@ -38,8 +38,23 @@ class EntityBase(type):
 
         return OrderedDict(fields)
 
+    @classmethod
+    def _get_id_field(mcs, fields):
+        """ Method to find the identifier field for this entity. Raises
+        `ConfigurationError` if no identifier is defined"""
+        try:
+            id_field = next(field_name for field_name, field in fields.items()
+                            if field.identifier)
+            return id_field
+        except StopIteration:
+            raise ConfigurationError(
+                'Identifier field must be defined for an Entity.')
+
     def __new__(mcs, name, bases, attrs):
         attrs['_declared_fields'] = mcs._get_declared_fields(bases, attrs)
+        # Set the id field only when an entity has declared fields
+        if attrs['_declared_fields']:
+            attrs['id_field'] = mcs._get_id_field(attrs['_declared_fields'])
         return super(EntityBase, mcs).__new__(mcs, name, bases, attrs)
 
 
