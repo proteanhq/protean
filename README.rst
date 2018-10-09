@@ -1,61 +1,38 @@
-========
-Overview
-========
+*****************************************
+Protean: The Clean Architecture Framework
+*****************************************
 
-.. start-badges
-
-.. list-table::
-    :stub-columns: 1
-
-    * - docs
-      - |docs|
-    * - tests
-      - |
-        |
-    * - package
-      - | |version| |wheel| |supported-versions| |supported-implementations|
-
-.. |docs| image:: https://readthedocs.org/projects/protean/badge/?style=flat
+.. image:: https://readthedocs.org/projects/protean/badge/?style=flat
     :target: https://readthedocs.org/projects/protean
-    :alt: Documentation Status
-
-.. |version| image:: https://img.shields.io/pypi/v/protean.svg
-    :alt: PyPI Package latest release
+.. image:: https://img.shields.io/pypi/l/protean.svg
     :target: https://pypi.org/project/protean/
-
-.. |wheel| image:: https://img.shields.io/pypi/wheel/protean.svg
-    :alt: PyPI Wheel
+.. image:: https://img.shields.io/pypi/v/protean.svg
     :target: https://pypi.org/project/protean/
-
-.. |supported-versions| image:: https://img.shields.io/pypi/pyversions/protean.svg
-    :alt: Supported versions
+.. image:: https://img.shields.io/pypi/wheel/protean.svg
     :target: https://pypi.org/project/protean/
-
-.. |supported-implementations| image:: https://img.shields.io/pypi/implementation/protean.svg
-    :alt: Supported implementations
+.. image:: https://img.shields.io/pypi/pyversions/protean.svg
     :target: https://pypi.org/project/protean/
-
-
-.. end-badges
-
-Protean Application Framework
-
-* Free software: BSD 3-Clause License
+.. image:: https://img.shields.io/pypi/implementation/protean.svg
+    :target: https://pypi.org/project/protean/
+.. image:: https://api.codacy.com/project/badge/Grade/826792451bd94ec6a8b46a3887443e93
+    :target: https://www.codacy.com/app/subhashb/protean?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=proteanhq/protean&amp;utm_campaign=Badge_Grade
+.. image:: https://codecov.io/gh/proteanhq/protean/branch/master/graph/badge.svg
+    :target: https://codecov.io/gh/proteanhq/protean
 
 Installation
-============
+############
 
 ::
 
     pip install protean
 
-Documentation
-=============
+Read the Docs
+#############
 
-https://protean.readthedocs.io/en/latest/
+Online docs are available at: https://protean.readthedocs.io/en/latest/
 
 Development
-===========
+###########
 
 ::
 
@@ -64,20 +41,3 @@ Development
 To run the all tests run::
 
     tox
-
-Note, to combine the coverage data from all the tox environments run:
-
-.. list-table::
-    :widths: 10 90
-    :stub-columns: 1
-
-    - - Windows
-      - ::
-
-            set PYTEST_ADDOPTS=--cov-append
-            tox
-
-    - - Other
-      - ::
-
-            PYTEST_ADDOPTS=--cov-append tox
