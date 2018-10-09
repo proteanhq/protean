@@ -76,11 +76,11 @@ class Repository(metaclass=ABCMeta):
         entity = self.schema.opts.entity(*args, **kwargs)
 
         # Create this object in the repository and return it
-        self._create(entity)
-        return entity
+        record = self._create(entity)
+        return self.schema.to_entity(record)
 
     @abstractmethod
-    def _read(self, page: int = 0, per_page: int = 10, order_by: list = None,
+    def _read(self, page: int = 1, per_page: int = 10, order_by: list = None,
               **filters) -> Pagination:
         """
         Read Record(s) from the repository. Method must return a `Pagination`
@@ -106,7 +106,7 @@ class Repository(metaclass=ABCMeta):
         # Convert to entity and return it
         return self.schema.to_entity(results.first)
 
-    def filter(self, page: int = 0, per_page: int = 10, order_by: list = None,
+    def filter(self, page: int = 1, per_page: int = 10, order_by: list = (),
                **filters) -> Pagination:
         """
         Read Record(s) from the repository. Method must return a `Pagination`
@@ -120,6 +120,9 @@ class Repository(metaclass=ABCMeta):
 
         :return Returns a `Pagination` object that holds the filtered results
         """
+        # order_by clause must be list of keys
+        if order_by and not isinstance(order_by, list):
+            order_by = [order_by]
 
         # Call the read method of the repository
         results = self._read(page, per_page, order_by, **filters)
@@ -133,7 +136,7 @@ class Repository(metaclass=ABCMeta):
         return results
 
     @abstractmethod
-    def _update(self, entity: Entity, data: dict):
+    def _update(self, entity: Entity):
         """Update a Record in the repository and return it"""
 
     def update(self, identifier: Any, data: dict):
@@ -142,12 +145,13 @@ class Repository(metaclass=ABCMeta):
         :param identifier: The id of the record to be updated
         :param data: A dictionary of record properties to be updated
         """
-        # Get the entity to be updated
+        # Get the entity and update it
         entity = self.get(identifier)
+        entity.update(data)
 
         # Update the record and return the Entity
-        result = self._update(entity, data)
-        return self.schema.to_entity(result)
+        record = self._update(entity)
+        return self.schema.to_entity(record)
 
     @abstractmethod
     def delete(self, identifier: Any):
@@ -158,8 +162,8 @@ class RepositorySchemaOpts(object):
     """class Meta options for the :class:`RepositorySchema`."""
 
     def __init__(self, meta, schema):
-        self.entity = getattr(meta, 'entity', ())
-        if not issubclass(self.entity, Entity):
+        self.entity = getattr(meta, 'entity', None)
+        if not self.entity or not issubclass(self.entity, Entity):
             raise ConfigurationError(
                 '`entity` option must be set and be a subclass of `Entity`.')
 
@@ -172,6 +176,12 @@ class RepositorySchemaOpts(object):
 class RepositorySchema(metaclass=OptionsMeta):
     """ Repository Schema defines an index/table in the repository"""
     options_class = RepositorySchemaOpts
+    opts = None
+
+    @property
+    def name(self):
+        """ Return the name of the schema"""
+        return self.opts.schema_name
 
     @abstractmethod
     def from_entity(self, entity):
@@ -188,6 +198,7 @@ class RepositoryFactory(metaclass=ABCMeta):
     def __init__(self):
         """"Initialize repository factory"""
         self._registry = {}
+        self._connection = None
 
     @abstractmethod
     def get_connection(self):
@@ -208,9 +219,9 @@ class RepositoryFactory(metaclass=ABCMeta):
 
         if schema not in self._registry:
             db = self.get_connection()
-            self._registry[schema] = repo(db, schema)
+            self._registry[schema.__name__] = repo(db, schema())
 
-    def __getattr__(self, schema: RepositorySchema):
+    def __getattr__(self, schema):
         try:
             return self._registry[schema]
         except KeyError:

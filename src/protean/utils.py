@@ -13,7 +13,10 @@ class OptionsMeta(ABCMeta):
         klass = super().__new__(mcs, name, bases, attrs)
 
         # Get the Meta class attribute defined for the base class
-        meta = getattr(klass, 'Meta')
+        meta = getattr(klass, 'Meta', None)
+        if meta:
 
-        # Set klass.opts by initializing the `OPTIONS_CLASS` with the meta
-        klass.opts = klass.options_class(meta, klass)
+            # Set klass.opts by initializing the `OPTIONS_CLASS` with the meta
+            klass.opts = klass.options_class(meta, klass)
+
+        return klass
