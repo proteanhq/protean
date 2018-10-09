@@ -3,11 +3,11 @@ Custom Protean exception classes
 """
 
 
-class ImproperlyConfigured(Exception):
+class ConfigurationError(Exception):
     """An important configuration variable is missing"""
 
 
-class ObjectNotFoundException(Exception):
+class ObjectNotFoundError(Exception):
     """Object was not found, can raise 404"""
 
 

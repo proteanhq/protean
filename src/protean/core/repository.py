@@ -7,9 +7,11 @@ from math import ceil
 
 from typing import Any
 
+import inflection
+
 from protean.core.entity import Entity
-from protean.core.exceptions import ImproperlyConfigured, \
-    ObjectNotFoundException
+from protean.core.exceptions import ConfigurationError, \
+    ObjectNotFoundError
 from protean.utils import OptionsMeta
 
 
@@ -98,7 +100,7 @@ class Repository(metaclass=ABCMeta):
         # Find this item in the repository or raise Error
         results = self._read(**filters)
         if not results.items:
-            raise ObjectNotFoundException(
+            raise ObjectNotFoundError(
                 f'{entity} Entity with identifier {identifier} does not exist.')
 
         # Convert to entity and return it
@@ -155,15 +157,20 @@ class Repository(metaclass=ABCMeta):
 class RepositorySchemaOpts(object):
     """class Meta options for the :class:`RepositorySchema`."""
 
-    def __init__(self, meta):
+    def __init__(self, meta, schema):
         self.entity = getattr(meta, 'entity', ())
         if not issubclass(self.entity, Entity):
-            raise ImproperlyConfigured(
+            raise ConfigurationError(
                 '`entity` option must be set and be a subclass of `Entity`.')
+
+        # Get the schema name to be used, if not provided default it
+        self.schema_name = getattr(meta, 'schema_name', None)
+        if not self.schema_name:
+            self.schema_name = inflection.underscore(schema.__name__)
 
 
 class RepositorySchema(metaclass=OptionsMeta):
-
+    """ Repository Schema defines an index/table in the repository"""
     options_class = RepositorySchemaOpts
 
     @abstractmethod
@@ -186,18 +193,24 @@ class RepositoryFactory(metaclass=ABCMeta):
     def get_connection(self):
         """Initialize the repository and return the database object"""
 
-    def register(self, repo, schema):
+    def register(self, repo: Repository, schema: RepositorySchema):
+        """ Register given schema against a repository
+        :param repo: The repository to be used for a schema
+        :param schema: The schema to be mapped to a repository
+        """
         if not issubclass(schema, RepositorySchema):
-            raise AssertionError
+            raise AssertionError(
+                f'Schema {schema} must be subclass of `RepositorySchema`')
 
         if not issubclass(repo, Repository):
-            raise AssertionError
+            raise AssertionError(
+                f'Repo {repo} must be subclass of `Repository`')
 
         if schema not in self._registry:
             db = self.get_connection()
             self._registry[schema] = repo(db, schema)
 
-    def __getattr__(self, schema):
+    def __getattr__(self, schema: RepositorySchema):
         try:
             return self._registry[schema]
         except KeyError:

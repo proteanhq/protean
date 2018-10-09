@@ -1,3 +1,5 @@
+""" Utility classes and functions used throughout Protean"""
+
 from abc import ABCMeta
 
 
@@ -14,4 +16,4 @@ class OptionsMeta(ABCMeta):
         meta = getattr(klass, 'Meta')
 
         # Set klass.opts by initializing the `OPTIONS_CLASS` with the meta
-        klass.opts = klass.options_class(meta)
+        klass.opts = klass.options_class(meta, klass)

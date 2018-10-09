@@ -44,11 +44,7 @@ class Field(metaclass=ABCMeta):
         self.default = default
 
         # Make identifier fields as required
-        if self.identifier:
-            self.required = True
-        else:
-            self.required = required
-
+        self.required = True if self.identifier else required
         self.label = label
         self._validators = validators
 

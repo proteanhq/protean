@@ -10,7 +10,7 @@ import importlib
 import os
 
 from protean.conf import default_config
-from protean.core.exceptions import ImproperlyConfigured
+from protean.core.exceptions import ConfigurationError
 
 ENVIRONMENT_VARIABLE = "PROTEAN_CONFIG"
 
@@ -36,7 +36,7 @@ class Config:
         self.CONFIG_MODULE = config_module
 
         if not getattr(self, 'SECRET_KEY', None):
-            raise ImproperlyConfigured("The SECRET_KEY setting must not be empty.")
+            raise ConfigurationError("The SECRET_KEY setting must not be empty.")
 
     def __repr__(self):
         """Print along with Config Module name"""
