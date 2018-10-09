@@ -1,5 +1,7 @@
 """ Utility classes and functions used throughout Protean"""
 
+import inspect
+
 from abc import ABCMeta
 
 
@@ -12,8 +14,11 @@ class OptionsMeta(ABCMeta):
     def __new__(mcs, name, bases, attrs):
         klass = super().__new__(mcs, name, bases, attrs)
 
-        # Get the Meta class attribute defined for the base class
-        meta = getattr(klass, 'Meta')
+        if not inspect.isabstract(klass):
+            # Get the Meta class attribute defined for the base class
+            meta = getattr(klass, 'Meta')
 
-        # Set klass.opts by initializing the `OPTIONS_CLASS` with the meta
-        klass.opts = klass.options_class(meta, klass)
+            # Set klass.opts by initializing the `OPTIONS_CLASS` with the meta
+            klass.opts = klass.options_class(meta, klass)
+
+        return klass

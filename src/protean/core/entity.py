@@ -71,9 +71,10 @@ class Entity(metaclass=EntityBase):
         """
 
         self.errors = {}
-        fields = self.get_fields()
+        self.declared_fields = self.get_fields()
 
         # Load the attributes based on the template
+        loaded_fields = []
         for dictionary in template:
             if not isinstance(dictionary, dict):
                 raise AssertionError(
@@ -82,20 +83,23 @@ class Entity(metaclass=EntityBase):
                     f'values.'
                 )
             for field_name, val in dictionary.items():
-                field_obj = fields.pop(field_name, None)
+                field_obj = self.declared_fields.get(field_name, None)
                 if field_obj:
+                    loaded_fields.append(field_name)
                     self._setattr(field_name, field_obj, val)
 
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
-            field_obj = fields.pop(field_name, None)
+            field_obj = self.declared_fields.get(field_name, None)
             if field_obj:
+                loaded_fields.append(field_name)
                 self._setattr(field_name, field_obj, val)
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields
-        for field_name, field_obj in fields.items():
-            self._setattr(field_name, field_obj, None)
+        for field_name, field_obj in self.declared_fields.items():
+            if field_name not in loaded_fields:
+                self._setattr(field_name, field_obj, None)
 
         # Raise any errors found during load
         if self.errors:
@@ -121,3 +125,20 @@ class Entity(metaclass=EntityBase):
         # instance without affecting every other entity instance.
 
         return copy.deepcopy(self._declared_fields)
+
+    def update(self, data):
+        """
+        Update the entity with the given set of values
+        :param data: the dictionary of values to be updated for the entity
+        """
+
+        # Load each of the fields given in the data dictionary
+        self.errors = {}
+        for field_name, val in data.items():
+            field_obj = self.declared_fields.get(field_name, None)
+            if field_obj:
+                self._setattr(field_name, field_obj, val)
+
+        # Raise any errors found during update
+        if self.errors:
+            raise ValidationError(self.errors)

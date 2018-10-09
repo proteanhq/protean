@@ -11,6 +11,10 @@ class ObjectNotFoundError(Exception):
     """Object was not found, can raise 404"""
 
 
+class DuplicateObjectError(Exception):
+    """Object already existed in the repository"""
+
+
 class ValidationError(Exception):
     """Raised when validation fails on a field. Validators and custom fields should
     raise this exception.
