@@ -4,7 +4,9 @@ import os
 
 import mock
 import pytest
-# from tests.core.xxtest_entity import DogFactory  # pylint: disable=W0611
+
+
+os.environ['PROTEAN_CONFIG'] = 'tests.support.sample_config'
 
 
 @pytest.fixture(scope='module', autouse=True)
