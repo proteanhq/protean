@@ -6,7 +6,7 @@ from abc import abstractmethod
 from protean.core.repository import Repository
 from protean.core.exceptions import ObjectNotFoundError, \
     DuplicateObjectError, ValidationError
-from protean.core.transport import ResponseFailure, Status
+from protean.core.transport import ResponseFailure
 
 
 class UseCase(metaclass=ABCMeta):

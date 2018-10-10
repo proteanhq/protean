@@ -20,6 +20,7 @@ class ShowRequestObject(ValidRequestObject):
 
     @classmethod
     def from_dict(cls, entity, adict):
+        """Initialize a ShowRequestObject object from a dictionary."""
         invalid_req = InvalidRequestObject()
 
         identifier = None
@@ -69,6 +70,7 @@ class ListRequestObject(ValidRequestObject):
 
     @classmethod
     def from_dict(cls, entity, adict):
+        """Initialize a ListRequestObject object from a dictionary."""
         invalid_req = InvalidRequestObject()
 
         # Extract the pagination parameters from the input
@@ -84,7 +86,7 @@ class ListRequestObject(ValidRequestObject):
         if invalid_req.has_errors:
             return invalid_req
 
-        # TODO: Do we need to pop out random?
+        # Do we need to pop out random?
         # adict.pop('random', None)
 
         return cls(entity, page, per_page, order_by, adict)
@@ -116,6 +118,7 @@ class CreateRequestObject(ValidRequestObject):
 
     @classmethod
     def from_dict(cls, entity, adict):
+        """Initialize a CreateRequestObject object from a dictionary."""
         return cls(entity, adict)
 
 
@@ -144,6 +147,7 @@ class UpdateRequestObject(ValidRequestObject):
 
     @classmethod
     def from_dict(cls, entity, adict):
+        """Initialize a UpdateRequestObject object from a dictionary."""
         invalid_req = InvalidRequestObject()
 
         identifier = None
@@ -186,6 +190,7 @@ class DeleteRequestObject(ValidRequestObject):
 
     @classmethod
     def from_dict(cls, entity, adict):
+        """Initialize a DeleteRequestObject object from a dictionary."""
         invalid_req = InvalidRequestObject()
 
         identifier = None
@@ -215,4 +220,3 @@ class DeleteUseCase(UseCase):
         # We have successfully deleted the object.
         # Sending a 204 Response code.
         return ResponseSuccessWithNoContent()
-

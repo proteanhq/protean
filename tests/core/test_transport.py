@@ -7,10 +7,11 @@ from protean.core.transport import ResponseSuccess, ResponseFailure, \
     ResponseSuccessCreated, ResponseSuccessWithNoContent, Status
 
 
-class SomeValidRequestObject(ValidRequestObject):
-
+class DummyValidRequestObject(ValidRequestObject):
+    """ Dummy Request object for testing"""
     @classmethod
     def from_dict(cls, entity, adict):
+        """Initialize a Request object from a dictionary."""
         pass
 
 
@@ -20,12 +21,12 @@ class TestValidRequestObject:
     def test_init(self):
         """Test that a ValidRequestObject instance can be initialized"""
 
-        request_obj = SomeValidRequestObject()
+        request_obj = DummyValidRequestObject()
         assert request_obj is not None
 
     def test_validity(self):
         """Test that ValidRequestObject is valid"""
-        request_obj = SomeValidRequestObject()
+        request_obj = DummyValidRequestObject()
         assert request_obj.is_valid
 
 
