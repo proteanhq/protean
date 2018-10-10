@@ -32,7 +32,7 @@ drf.register(DictRepository, DogSchema)
 class TestRepository:
     """This class holds tests for Repository class"""
 
-    def test_init(self):
+    def test_init(self, config):
         """Test successful access to the Dog repository"""
 
         drf.DogSchema.filter()

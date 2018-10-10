@@ -97,10 +97,10 @@ class ListUseCase(UseCase):
 
     def process_request(self, request_object):
         """Return a list of resources"""
-        resources = self.repo.query(request_object.page,
-                                    request_object.per_page,
-                                    request_object.order_by,
-                                    **request_object.filters)
+        resources = self.repo.filter(request_object.page,
+                                     request_object.per_page,
+                                     request_object.order_by,
+                                     **request_object.filters)
         return ResponseSuccess(Status.SUCCESS, resources)
 
 
