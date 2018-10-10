@@ -44,7 +44,7 @@ class ValidRequestObject(metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def from_dict(cls, adict):
+    def from_dict(cls, entity, adict):
         """
         Initialize a Request object from a dictionary.
 
