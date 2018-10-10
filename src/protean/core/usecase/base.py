@@ -23,7 +23,7 @@ class UseCase(metaclass=ABCMeta):
         """Generic executor method of all UseCases"""
 
         # If the request object is not valid then return a failure response
-        if not request_object:
+        if not request_object.is_valid:
             return ResponseFailure.build_from_invalid_request(
                 request_object)
 
@@ -32,20 +32,18 @@ class UseCase(metaclass=ABCMeta):
             return self.process_request(request_object)
 
         except ValidationError as err:
-            return ResponseFailure.build_response(
-                Status.PARAMETERS_ERROR, err.normalized_messages)
+            return ResponseFailure.build_unprocessable_error(
+                err.normalized_messages)
 
         except DuplicateObjectError:
-            return ResponseFailure.build_response(
-                Status.PARAMETERS_ERROR, request_object)
+            return ResponseFailure.build_unprocessable_error(
+                {'identifier': 'Object with this ID already exists.'})
 
         except ObjectNotFoundError:
-            return ResponseFailure.build_response(
-                Status.NOT_FOUND, request_object)
+            return ResponseFailure.build_not_found()
 
         except Exception as exc:  # pylint: disable=W0703
-            return ResponseFailure.build_response(
-                Status.SYSTEM_ERROR,
+            return ResponseFailure.build_system_error(
                 "{}: {}".format(exc.__class__.__name__, exc))
 
     @abstractmethod

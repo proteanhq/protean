@@ -2,7 +2,8 @@
 
 from protean.conf import active_config
 from protean.core.transport import (
-    InvalidRequestObject, ResponseSuccess, Status, ValidRequestObject)
+    InvalidRequestObject, ResponseSuccess, Status, ValidRequestObject,
+    ResponseSuccessCreated, ResponseSuccessWithNoContent)
 
 from .base import UseCase
 
@@ -27,7 +28,7 @@ class ShowRequestObject(ValidRequestObject):
         else:
             invalid_req.add_error('identifier', 'is required')
 
-        if invalid_req.has_errors():
+        if invalid_req.has_errors:
             return invalid_req
 
         return cls(entity, identifier)
@@ -80,7 +81,7 @@ class ListRequestObject(ValidRequestObject):
         if page < 0:
             invalid_req.add_error('page', 'is invalid')
 
-        if invalid_req.has_errors():
+        if invalid_req.has_errors:
             return invalid_req
 
         # TODO: Do we need to pop out random?
@@ -127,7 +128,7 @@ class CreateUseCase(UseCase):
         """Process Create Resource Request"""
 
         resource = self.repo.create(**request_object.data)
-        return ResponseSuccess(Status.SUCCESS_CREATED, resource)
+        return ResponseSuccessCreated(resource)
 
 
 class UpdateRequestObject(ValidRequestObject):
@@ -155,7 +156,7 @@ class UpdateRequestObject(ValidRequestObject):
         if len(adict) < 1:
             invalid_req.add_error('data', 'is required')
 
-        if invalid_req.has_errors():
+        if invalid_req.has_errors:
             return invalid_req
 
         return cls(entity, identifier, adict)
@@ -193,7 +194,7 @@ class DeleteRequestObject(ValidRequestObject):
         else:
             invalid_req.add_error('identifier', 'is required')
 
-        if invalid_req.has_errors():
+        if invalid_req.has_errors:
             return invalid_req
 
         return cls(entity, identifier)
@@ -213,5 +214,5 @@ class DeleteUseCase(UseCase):
 
         # We have successfully deleted the object.
         # Sending a 204 Response code.
-        return ResponseSuccess(Status.SUCCESS_WITH_NO_CONTENT)
+        return ResponseSuccessWithNoContent()
 
