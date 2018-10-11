@@ -256,4 +256,3 @@ class TestDeleteUseCase:
         response = use_case.execute(request_obj)
         assert response is not None
         assert not response.success
-

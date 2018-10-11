@@ -11,9 +11,10 @@ from ..support.dict_repo import drf, DictSchema, DictRepository
 
 
 class AppTasklet(Tasklet):
-
+    """ Custom tasklet implementation"""
     @classmethod
     def get_context_data(cls):
+        """ Pass the logged in user to the context"""
         return {'user': 'admin'}
 
 
