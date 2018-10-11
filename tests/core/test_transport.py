@@ -1,7 +1,5 @@
 """Tests for Transport Utility Classes"""
 
-import pytest
-
 from protean.core.transport import ValidRequestObject, InvalidRequestObject
 from protean.core.transport import ResponseSuccess, ResponseFailure, \
     ResponseSuccessCreated, ResponseSuccessWithNoContent, Status

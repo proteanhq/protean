@@ -23,10 +23,18 @@ class Tasklet:
         # Get the Repository for the Current Schema
         repo = getattr(repo_factory, cls_schema.__name__)
 
+        # Get the context object for this application
+        context = cls.get_context_data()
+
         # Initialize the use case and request objects
-        use_case = cls_usecase(repo)
+        use_case = cls_usecase(repo, context)
         request_object = cls_request_object.\
             from_dict(cls_schema.opts.entity, payload)
 
         # Run the use case and return the results
         return use_case.execute(request_object)
+
+    @classmethod
+    def get_context_data(cls):
+        """ Return the application context is passed to usecases"""
+        return {}
