@@ -12,12 +12,14 @@ from protean.core.transport import ResponseFailure
 class UseCase(metaclass=ABCMeta):
     """This is the base class for all UseCases"""
 
-    def __init__(self, repo: Repository):
+    def __init__(self, repo: Repository, context: dict = None):
         """Initialize UseCase with repository factory object
 
         :param repo: The repository associated with the use case
+        :param context: A dictionary consisting of contextual information
         """
         self.repo = repo
+        self.context = context
 
     def execute(self, request_object):
         """Generic executor method of all UseCases"""

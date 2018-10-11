@@ -8,7 +8,6 @@ from protean.core.usecase import (
     UseCase, ShowUseCase, ShowRequestObject, ListRequestObject, ListUseCase,
     CreateRequestObject, CreateUseCase, UpdateRequestObject, UpdateUseCase,
     DeleteRequestObject, DeleteUseCase)
-from protean.core.tasklet import Tasklet
 
 from ..support.dict_repo import drf, DictSchema, DictRepository
 
@@ -257,21 +256,3 @@ class TestDeleteUseCase:
         response = use_case.execute(request_obj)
         assert response is not None
         assert not response.success
-
-
-class TestTasklet:
-    """Tests for Tasklet Utility Methods"""
-
-    def test_perform(self):
-        """Test call to Tasklet's perform method"""
-
-        # Perform a Show Usecase using Tasklet
-        payload = {'identifier': 2}
-        response = Tasklet.perform(
-            drf, DogSchema, ShowUseCase, ShowRequestObject, payload)
-
-        # Validate the response received
-        assert response is not None
-        assert response.success
-        assert response.value.id == 2
-        assert response.value.name == 'Murdock'
