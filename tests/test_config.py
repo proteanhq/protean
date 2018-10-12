@@ -18,5 +18,5 @@ def test_config_module():
     # Set the config file and make sure values get loaded
     os.environ['PROTEAN_CONFIG'] = 'tests.support.sample_config'
     config = Config()
-    assert config.TESTING
-    assert config.SECRET_KEY == 'abcdefghijklmn'
+    assert config.TESTING  # pylint: disable=E1101
+    assert config.SECRET_KEY == 'abcdefghijklmn'  # pylint: disable=E1101

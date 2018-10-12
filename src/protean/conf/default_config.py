@@ -46,7 +46,7 @@ LOGGING_CONFIG = {
         'console': {
             'level': 'INFO',
             'class': 'logging.StreamHandler',
-            'formatter': 'django.server',
+            'formatter': 'console',
         }
     },
     'loggers': {
@@ -56,4 +56,3 @@ LOGGING_CONFIG = {
         }
     }
 }
-

@@ -2,6 +2,10 @@
 
 from abc import ABCMeta
 
+import logging.config
+
+from protean.conf import active_config
+
 
 class OptionsMeta(ABCMeta):
     """
@@ -20,3 +24,9 @@ class OptionsMeta(ABCMeta):
             klass.opts = klass.options_class(meta, klass)
 
         return klass
+
+
+def configure_logging():
+    """ Function to configure the logging for the Protean App"""
+    # Load the logger using the logging config
+    logging.config.dictConfig(active_config.LOGGING_CONFIG)
