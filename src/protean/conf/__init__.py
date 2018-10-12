@@ -18,25 +18,38 @@ ENVIRONMENT_VARIABLE = "PROTEAN_CONFIG"
 class Config:
     """Holder class for Config Variables"""
 
-    def __init__(self, config_module_str=default_config):
-        """Read variables in UPPER_CASE from specified config"""
+    def __init__(self, config_module_str=None):
+        """Read variables in UPPER_CASE from specified config
 
-        # Fetch Config module string from environment if defined, otherwise use default config
-        config_module_str = os.environ.get(ENVIRONMENT_VARIABLE, None)
+        :param config_module_str: Path of the config module to be loaded
+        """
+
+        # Update attrs from default settings
+        for setting in dir(default_config):
+            if setting.isupper():
+                setattr(self, setting, getattr(default_config, setting))
+
+        # Fetch Config module string from environment
+        config_module_str = os.environ.get(
+            ENVIRONMENT_VARIABLE, config_module_str)
+
+        # If config module is defined then load it and override the attrs
         if config_module_str:
             config_module = importlib.import_module(config_module_str)
+
+            # Override the config attrs
+            for setting in dir(config_module):
+                if setting.isupper():
+                    setattr(self, setting, getattr(config_module, setting))
+
+            # store the settings module for future use
+            self.CONFIG_MODULE = config_module
         else:
-            config_module = default_config
-
-        for setting in dir(config_module):
-            if setting.isupper():
-                setattr(self, setting, getattr(config_module, setting))
-
-        # store the settings module for future use
-        self.CONFIG_MODULE = config_module
+            self.CONFIG_MODULE = default_config
 
         if not getattr(self, 'SECRET_KEY', None):
-            raise ConfigurationError("The SECRET_KEY setting must not be empty.")
+            raise ConfigurationError(
+                "The SECRET_KEY setting must not be empty.")
 
     def __repr__(self):
         """Print along with Config Module name"""
