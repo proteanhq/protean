@@ -1,5 +1,7 @@
 """Abstract Repository Classes"""
 
+import logging
+
 from abc import ABCMeta
 from abc import abstractmethod
 
@@ -7,9 +9,8 @@ from math import ceil
 
 from typing import Any
 
-import inflection
 
-import logging
+import inflection
 
 from protean.core.entity import Entity
 from protean.core.exceptions import ConfigurationError, \
