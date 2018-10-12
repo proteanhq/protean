@@ -1,3 +1,4 @@
+"""Module to test Protean Logger"""
 import logging
 
 from io import StringIO
