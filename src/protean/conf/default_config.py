@@ -29,3 +29,30 @@ PER_PAGE = 10
 ELASTICSEARCH_HOSTS = ['localhost']
 ELASTICSEARCH_USER = 'elastic'
 ELASTICSEARCH_SECRET = os.environ.get('ELASTICSEARCH_SECRET') or 'changeme'
+
+####################
+# Logging          #
+####################
+
+LOGGING_CONFIG = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'console': {
+            'format': '%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+        }
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'console',
+        }
+    },
+    'loggers': {
+        'protean': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        }
+    }
+}

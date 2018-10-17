@@ -1,5 +1,7 @@
 """Abstract Repository Classes"""
 
+import logging
+
 from abc import ABCMeta
 from abc import abstractmethod
 
@@ -7,12 +9,15 @@ from math import ceil
 
 from typing import Any
 
+
 import inflection
 
 from protean.core.entity import Entity
 from protean.core.exceptions import ConfigurationError, \
     ObjectNotFoundError
 from protean.utils import OptionsMeta
+
+logger = logging.getLogger('protean.repository')
 
 
 class Pagination(object):
@@ -65,6 +70,7 @@ class Repository(metaclass=ABCMeta):
     def __init__(self, db, schema):
         self.db = db
         self.schema = schema
+        self.schema_name = schema.__class__.__name__
 
     @abstractmethod
     def _create(self, entity: Entity):
@@ -72,6 +78,9 @@ class Repository(metaclass=ABCMeta):
 
     def create(self, *args, **kwargs):
         """Create a new Record in the repository"""
+        logger.debug(
+            f'Creating new {self.schema_name} object using data {kwargs}')
+
         # Build the entity from the input arguments
         entity = self.schema.opts.entity(*args, **kwargs)
 
@@ -91,6 +100,8 @@ class Repository(metaclass=ABCMeta):
         :param identifier: The id of the record to be fetched from the
         repository.
         """
+        logger.debug(
+            f'Lookup {self.schema_name} object with identifier {identifier}')
         # Get the ID field for the entity
         entity = self.schema.opts.entity
         filters = {
@@ -101,7 +112,8 @@ class Repository(metaclass=ABCMeta):
         results = self._read(**filters)
         if not results.items:
             raise ObjectNotFoundError(
-                f'{entity} Entity with identifier {identifier} does not exist.')
+                f'{self.schema_name} object with identifier {identifier} '
+                f'does not exist.')
 
         # Convert to entity and return it
         return self.schema.to_entity(results.first)
@@ -120,6 +132,10 @@ class Repository(metaclass=ABCMeta):
 
         :return Returns a `Pagination` object that holds the filtered results
         """
+        logger.debug(
+            f'Query {self.schema_name} objects with filters {filters} and '
+            f'order results by {order_by}')
+
         # order_by clause must be list of keys
         if order_by and not isinstance(order_by, list):
             order_by = [order_by]
@@ -145,6 +161,10 @@ class Repository(metaclass=ABCMeta):
         :param identifier: The id of the record to be updated
         :param data: A dictionary of record properties to be updated
         """
+        logger.debug(
+            f'Updating existing {self.schema_name} object with id {identifier} '
+            f'using data {data}')
+
         # Get the entity and update it
         entity = self.get(identifier)
         entity.update(data)
@@ -220,6 +240,9 @@ class RepositoryFactory(metaclass=ABCMeta):
         if schema not in self._registry:
             db = self.get_connection()
             self._registry[schema.__name__] = repo(db, schema())
+            logger.debug(
+                f'Registered schema {schema.__name__} with repository '
+                f'{repo.__name__}.')
 
     def __getattr__(self, schema):
         try:
