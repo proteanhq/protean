@@ -4,7 +4,7 @@ import importlib
 
 from protean.core.exceptions import ConfigurationError
 from protean.conf import active_config
-from .base import RepositorySchema, BaseRepository
+from .base import BaseRepositorySchema, BaseRepository
 
 logger = logging.getLogger('protean.repository')
 
@@ -41,9 +41,9 @@ class RepositoryFactory:
         :param repo_cls: Optional repository class to use if not the
         `Repository` defined by the provider is userd
         """
-        if not issubclass(schema_cls, RepositorySchema):
+        if not issubclass(schema_cls, BaseRepositorySchema):
             raise AssertionError(
-                f'Schema {schema_cls} must be subclass of `RepositorySchema`')
+                f'Schema {schema_cls} must be subclass of `BaseRepositorySchema`')
 
         if repo_cls and not issubclass(repo_cls, BaseRepository):
             raise AssertionError(
