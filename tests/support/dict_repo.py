@@ -6,30 +6,32 @@ from operator import itemgetter
 
 from protean.core.entity import Entity
 from protean.core.exceptions import DuplicateObjectError
-from protean.core.repository import RepositoryFactory, Repository, \
-    RepositorySchema, Pagination
+from protean.core.repository import BaseRepository, RepositorySchema, \
+    Pagination, BaseConnectionHandler
 
 
-class DictRepository(Repository):
+class Repository(BaseRepository):
     """ A repository for storing data in a dictionary """
     def _create(self, entity: Entity):
         """ Write a record to the dict repository"""
+
         # Check if the entity already exists in the repo
         identifier = getattr(entity, entity.id_field)
-        if self.db[self.schema.name].get(identifier):
+        if self.conn[self.schema.name].get(identifier):
             raise DuplicateObjectError(
                 f'Entity with id {identifier} already exists')
 
         # Add the entity to the repository
-        self.db[self.schema.name][identifier] = self.schema.from_entity(entity)
-        return self.db[self.schema.name][identifier]
+        self.conn[self.schema.name][identifier] = \
+            self.schema.from_entity(entity)
+        return self.conn[self.schema.name][identifier]
 
     def _read(self, page=1, per_page=10, order_by=(), **filters):
         """ Read the repository and return results as per the filer"""
 
         # Filter the dictionary objects based on the filters
         items = []
-        for item in self.db[self.schema.name].values():
+        for item in self.conn[self.schema.name].values():
             for fk, fv in filters.items():
                 if item[fk] != fv:
                     break
@@ -57,8 +59,9 @@ class DictRepository(Repository):
     def _update(self, entity: Entity):
         """ Update the entity record in the dictionary """
         identifier = getattr(entity, entity.id_field)
-        self.db[self.schema.name][identifier] = self.schema.from_entity(entity)
-        return self.db[self.schema.name][identifier]
+        self.conn[self.schema.name][identifier] = self.schema.from_entity(
+            entity)
+        return self.conn[self.schema.name][identifier]
 
     def delete(self, identifier):
         """ Delete the dictionary object by its id"""
@@ -66,7 +69,7 @@ class DictRepository(Repository):
         # Delete the object from the dictionary and return the deletion count
         del_count = 0
         try:
-            del self.db[self.schema.name][identifier]
+            del self.conn[self.schema.name][identifier]
             del_count += 1
         except KeyError:
             pass
@@ -88,13 +91,12 @@ class DictSchema(RepositorySchema):
         return self.opts.entity(item)
 
 
-class DictRepositoryFactory(RepositoryFactory):
-    """ Factory for the Dictionary repository"""
+class ConnectionHandler(BaseConnectionHandler):
+    """ Handle connections to the dict repository """
+
+    def __init__(self, conn_info):
+        self.conn_info = conn_info
+
     def get_connection(self):
         """ Return the dictionary database object """
-        if not self._connection:
-            self._connection = defaultdict(dict)
-        return self._connection
-
-
-drf = DictRepositoryFactory()
+        return defaultdict(dict)

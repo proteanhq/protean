@@ -3,8 +3,6 @@ Default settings. Override these with settings in the module pointed to
 by the PROTEAN_CONFIG environment variable.
 """
 
-import os
-
 ####################
 # CORE             #
 ####################
@@ -16,19 +14,14 @@ DEBUG = False
 SECRET_KEY = ''
 
 ####################
-# GENERIC DATABASE #
+# GENERIC REPOSITORY #
 ####################
+
+# Repository connection information
+REPOSITORIES = {}
 
 # Default no. of records to fetch per query
 PER_PAGE = 10
-
-####################
-# ElasticSearch    #
-####################
-
-ELASTICSEARCH_HOSTS = ['localhost']
-ELASTICSEARCH_USER = 'elastic'
-ELASTICSEARCH_SECRET = os.environ.get('ELASTICSEARCH_SECRET') or 'changeme'
 
 ####################
 # Logging          #

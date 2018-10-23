@@ -4,10 +4,11 @@ from protean.core.tasklet import Tasklet
 from protean.core.usecase import ShowRequestObject, ShowUseCase, CreateUseCase, \
     CreateRequestObject
 from protean.core.entity import Entity
+from protean.core.repository import rf
 from protean.core import field
 
 from .test_usecase import DogSchema
-from ..support.dict_repo import drf, DictSchema, DictRepository
+from ..support.dict_repo import DictSchema
 
 
 class AppTasklet(Tasklet):
@@ -36,7 +37,7 @@ class Dog2Schema(DictSchema):
         schema_name = 'dogs2'
 
 
-drf.register(DictRepository, Dog2Schema)
+rf.register(Dog2Schema)
 
 
 class CreateUseCase2(CreateUseCase):
@@ -57,7 +58,7 @@ class TestTasklet:
         # Perform a Show Usecase using Tasklet
         payload = {'identifier': 2}
         response = Tasklet.perform(
-            drf, DogSchema, ShowUseCase, ShowRequestObject, payload)
+            rf, DogSchema, ShowUseCase, ShowRequestObject, payload)
 
         # Validate the response received
         assert response is not None
@@ -71,7 +72,7 @@ class TestTasklet:
         # Perform a Create Usecase using Tasklet
         payload = dict(id=1, name='Jerry', age=10, owner='Jack')
         response = AppTasklet.perform(
-            drf, Dog2Schema, CreateUseCase2, CreateRequestObject, payload)
+            rf, Dog2Schema, CreateUseCase2, CreateRequestObject, payload)
 
         # Validate the response received
         assert response is not None

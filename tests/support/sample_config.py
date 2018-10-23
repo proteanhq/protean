@@ -1,5 +1,5 @@
 """Sample Config Module for testing purposes"""
-
+# from . import dict_repo
 
 DEBUG = False
 
@@ -9,3 +9,10 @@ SECRET_KEY = 'abcdefghijklmn'
 
 # Flag indicates that we are testing
 TESTING = True
+
+# Define the repositories
+REPOSITORIES = {
+    'default': {
+        'PROVIDER': 'tests.support.dict_repo'
+    }
+}

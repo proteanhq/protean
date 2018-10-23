@@ -1,14 +1,10 @@
-"""Abstract Repository Classes"""
-
+""" Define the interfaces for Repository implementations """
 import logging
 
 from abc import ABCMeta
 from abc import abstractmethod
 
-from math import ceil
-
 from typing import Any
-
 
 import inflection
 
@@ -16,61 +12,18 @@ from protean.core.entity import Entity
 from protean.core.exceptions import ConfigurationError, \
     ObjectNotFoundError
 from protean.utils import OptionsMeta
+from .utils import Pagination
 
 logger = logging.getLogger('protean.repository')
 
 
-class Pagination(object):
-    """Internal helper class returned by :meth:`Repository._read`
-    """
-
-    def __init__(self, page: int, per_page: int, total: int,
-                 items: list):
-        # the current page number (1 indexed)
-        self.page = page
-        # the number of items to be displayed on a page.
-        self.per_page = per_page
-        # the total number of items matching the query
-        self.total = total
-        # the items for the current page
-        self.items = items
-
-    @property
-    def pages(self):
-        """The total number of pages"""
-        if self.per_page == 0 or self.total is None:
-            pages = 0
-        else:
-            pages = int(ceil(self.total / float(self.per_page)))
-
-        return pages
-
-    @property
-    def has_prev(self):
-        """True if a previous page exists"""
-        return self.page > 1
-
-    @property
-    def has_next(self):
-        """True if a next page exists."""
-        return self.page < self.pages
-
-    @property
-    def first(self):
-        """Return the first item from the result"""
-        if self.items:
-            return self.items[0]
-        else:
-            return None
-
-
-class Repository(metaclass=ABCMeta):
+class BaseRepository(metaclass=ABCMeta):
     """Repository interface to interact with databases"""
 
-    def __init__(self, db, schema):
-        self.db = db
-        self.schema = schema
-        self.schema_name = schema.__class__.__name__
+    def __init__(self, conn, schema_cls):
+        self.conn = conn
+        self.schema = schema_cls()
+        self.schema_name = schema_cls.__name__
 
     @abstractmethod
     def _create(self, entity: Entity):
@@ -181,7 +134,7 @@ class Repository(metaclass=ABCMeta):
 class RepositorySchemaOpts(object):
     """class Meta options for the :class:`RepositorySchema`."""
 
-    def __init__(self, meta, schema):
+    def __init__(self, meta, schema_cls):
         self.entity = getattr(meta, 'entity', None)
         if not self.entity or not issubclass(self.entity, Entity):
             raise ConfigurationError(
@@ -190,7 +143,10 @@ class RepositorySchemaOpts(object):
         # Get the schema name to be used, if not provided default it
         self.schema_name = getattr(meta, 'schema_name', None)
         if not self.schema_name:
-            self.schema_name = inflection.underscore(schema.__name__)
+            self.schema_name = inflection.underscore(schema_cls.__name__)
+
+        # Get the database bound to this schema
+        self.bind = getattr(meta, 'bind', 'default')
 
 
 class RepositorySchema(metaclass=OptionsMeta):
@@ -212,40 +168,8 @@ class RepositorySchema(metaclass=OptionsMeta):
         """Convert Repository Schema Object to Entity Object"""
 
 
-class RepositoryFactory(metaclass=ABCMeta):
-    """Repository Factory interface to retrieve resource repositories"""
-
-    def __init__(self):
-        """"Initialize repository factory"""
-        self._registry = {}
-        self._connection = None
-
+class BaseConnectionHandler(metaclass=ABCMeta):
+    """ Interface to manage connections to the database """
     @abstractmethod
     def get_connection(self):
-        """Initialize the repository and return the database object"""
-
-    def register(self, repo: Repository, schema: RepositorySchema):
-        """ Register given schema against a repository
-        :param repo: The repository to be used for a schema
-        :param schema: The schema to be mapped to a repository
-        """
-        if not issubclass(schema, RepositorySchema):
-            raise AssertionError(
-                f'Schema {schema} must be subclass of `RepositorySchema`')
-
-        if not issubclass(repo, Repository):
-            raise AssertionError(
-                f'Repo {repo} must be subclass of `Repository`')
-
-        if schema not in self._registry:
-            db = self.get_connection()
-            self._registry[schema.__name__] = repo(db, schema())
-            logger.debug(
-                f'Registered schema {schema.__name__} with repository '
-                f'{repo.__name__}.')
-
-    def __getattr__(self, schema):
-        try:
-            return self._registry[schema]
-        except KeyError:
-            raise AssertionError('Unregistered Schema')
+        """ Get the connection object for the repository"""

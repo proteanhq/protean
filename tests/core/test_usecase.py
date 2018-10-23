@@ -8,8 +8,9 @@ from protean.core.usecase import (
     UseCase, ShowUseCase, ShowRequestObject, ListRequestObject, ListUseCase,
     CreateRequestObject, CreateUseCase, UpdateRequestObject, UpdateUseCase,
     DeleteRequestObject, DeleteUseCase)
+from protean.core.repository import rf
 
-from ..support.dict_repo import drf, DictSchema, DictRepository
+from ..support.dict_repo import DictSchema
 
 
 class Dog(Entity):
@@ -29,8 +30,8 @@ class DogSchema(DictSchema):
         schema_name = 'dogs'
 
 
-drf.register(DictRepository, DogSchema)
-repo = drf.DogSchema
+rf.register(DogSchema)
+repo = rf.DogSchema
 
 
 class TestUseCase:
