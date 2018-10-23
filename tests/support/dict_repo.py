@@ -6,7 +6,7 @@ from operator import itemgetter
 
 from protean.core.entity import Entity
 from protean.core.exceptions import DuplicateObjectError
-from protean.core.repository import BaseRepository, RepositorySchema, \
+from protean.core.repository import BaseRepository, BaseRepositorySchema, \
     Pagination, BaseConnectionHandler
 
 
@@ -76,7 +76,7 @@ class Repository(BaseRepository):
         return del_count
 
 
-class DictSchema(RepositorySchema):
+class DictSchema(BaseRepositorySchema):
     """ A schema withing the dictionary repository"""
 
     def from_entity(self, entity):

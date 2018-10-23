@@ -149,7 +149,7 @@ class RepositorySchemaOpts(object):
         self.bind = getattr(meta, 'bind', 'default')
 
 
-class RepositorySchema(metaclass=OptionsMeta):
+class BaseRepositorySchema(metaclass=OptionsMeta):
     """ Repository Schema defines an index/table in the repository"""
     options_class = RepositorySchemaOpts
     opts = None
