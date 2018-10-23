@@ -124,5 +124,5 @@ class Auto(Field):
         super().__init__(*args, **kwargs)
         self.required = False
 
-    def _validate_type(self, value):
+    def _validate_type(self, *args, **kwargs):
         return True
