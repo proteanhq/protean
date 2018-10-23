@@ -1,15 +1,10 @@
-"""Abstract Repository Classes"""
-
+""" Define the interfaces for Repository implementations """
 import logging
-import importlib
 
 from abc import ABCMeta
 from abc import abstractmethod
 
-from math import ceil
-
 from typing import Any
-
 
 import inflection
 
@@ -17,53 +12,9 @@ from protean.core.entity import Entity
 from protean.core.exceptions import ConfigurationError, \
     ObjectNotFoundError
 from protean.utils import OptionsMeta
-from protean.conf import active_config
+from .utils import Pagination
 
 logger = logging.getLogger('protean.repository')
-
-
-class Pagination(object):
-    """Internal helper class returned by :meth:`Repository._read`
-    """
-
-    def __init__(self, page: int, per_page: int, total: int,
-                 items: list):
-        # the current page number (1 indexed)
-        self.page = page
-        # the number of items to be displayed on a page.
-        self.per_page = per_page
-        # the total number of items matching the query
-        self.total = total
-        # the items for the current page
-        self.items = items
-
-    @property
-    def pages(self):
-        """The total number of pages"""
-        if self.per_page == 0 or self.total is None:
-            pages = 0
-        else:
-            pages = int(ceil(self.total / float(self.per_page)))
-
-        return pages
-
-    @property
-    def has_prev(self):
-        """True if a previous page exists"""
-        return self.page > 1
-
-    @property
-    def has_next(self):
-        """True if a next page exists."""
-        return self.page < self.pages
-
-    @property
-    def first(self):
-        """Return the first item from the result"""
-        if self.items:
-            return self.items[0]
-        else:
-            return None
 
 
 class BaseRepository(metaclass=ABCMeta):
@@ -217,79 +168,8 @@ class RepositorySchema(metaclass=OptionsMeta):
         """Convert Repository Schema Object to Entity Object"""
 
 
-class RepositoryFactory:
-    """Repository Factory interface to retrieve resource repositories"""
-
-    def __init__(self):
-        """"Initialize repository factory"""
-        self._registry = {}
-        self._connections = {}
-        self._repositories = None
-
-    @property
-    def repositories(self):
-        """ Return the databases configured for the application"""
-        if self._repositories is None:
-            self._repositories = active_config.REPOSITORIES
-
-        if not isinstance(self._repositories, dict) or self._repositories == {}:
-            raise ConfigurationError(
-                "'REPOSITORIES' config must be a dict and at least one "
-                "database must be defined")
-
-        if 'default' not in self._repositories:
-            raise ConfigurationError(
-                "You must define a 'default' repository")
-
-        return self._repositories
-
-    def register(self, schema_cls, repo_cls=None):
-        """ Register the given schema with the factory
-        :param schema_cls: class of the schema to be registered
-        :param repo_cls: Optional repository class to use if not the
-        `Repository` defined by the provider is userd
-        """
-        if not issubclass(schema_cls, RepositorySchema):
-            raise AssertionError(
-                f'Schema {schema_cls} must be subclass of `RepositorySchema`')
-
-        if repo_cls and not issubclass(repo_cls, BaseRepository):
-            raise AssertionError(
-                f'Repository {repo_cls} must be subclass of `BaseRepository`')
-
-        # Register the schema if it does not exist
-        schema_name = schema_cls.__name__
-        if schema_name not in self._registry:
-            # Lookup the connection details for the schema
-            try:
-                conn_info = self.repositories[schema_cls.opts.bind]
-            except KeyError:
-                raise ConfigurationError(
-                    f"'{schema_cls.opts.bind}' repository not found in "
-                    f"'REPOSITORIES'")
-
-            # Load the repository provider
-            provider = importlib.import_module(conn_info['PROVIDER'])
-
-            # If no connection exists then build it
-            if schema_cls.opts.bind not in self._connections:
-                conn_handler = provider.ConnectionHandler(conn_info)
-                self._connections[schema_cls.opts.bind] = \
-                    conn_handler.get_connection()
-
-            # Finally register the schema against the provider repository
-            repo_cls = repo_cls or provider.Repository
-            self._registry[schema_name] = repo_cls(
-                self._connections[schema_cls.opts.bind], schema_cls)
-            logger.debug(
-                f'Registered schema {schema_name} with repository provider '
-                f'{conn_info["PROVIDER"]}.')
-
-    def __getattr__(self, schema):
-        try:
-            return self._registry[schema]
-        except KeyError:
-            raise AssertionError('Unregistered Schema')
-
-
-rf = RepositoryFactory()
+class BaseConnectionHandler(metaclass=ABCMeta):
+    """ Interface to manage connections to the database """
+    @abstractmethod
+    def get_connection(self):
+        """ Get the connection object for the repository"""

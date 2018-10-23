@@ -7,7 +7,7 @@ from operator import itemgetter
 from protean.core.entity import Entity
 from protean.core.exceptions import DuplicateObjectError
 from protean.core.repository import BaseRepository, RepositorySchema, \
-    Pagination
+    Pagination, BaseConnectionHandler
 
 
 class Repository(BaseRepository):
@@ -91,7 +91,7 @@ class DictSchema(RepositorySchema):
         return self.opts.entity(item)
 
 
-class ConnectionHandler:
+class ConnectionHandler(BaseConnectionHandler):
     """ Handle connections to the dict repository """
 
     def __init__(self, conn_info):
