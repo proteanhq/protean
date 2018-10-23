@@ -150,3 +150,21 @@ class TestDictField:
         with pytest.raises(ValidationError):
             add_info = field.Dict()
             add_info.load('x')
+
+
+class TestAutoField:
+    """ Test the Auto Field Implementation"""
+
+    def test_init(self):
+        """Test successful Dict Field initialization"""
+
+        add_info = field.Auto()
+        assert add_info is not None
+
+        value = add_info.load(1)
+        assert value == 1
+
+    def test_validation(self):
+        """ Test validation for the Auto Field"""
+        add_info = field.Auto(required=True)
+        add_info.load(None)

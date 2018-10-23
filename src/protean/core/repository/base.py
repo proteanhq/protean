@@ -38,8 +38,8 @@ class BaseRepository(metaclass=ABCMeta):
         entity = self.schema.opts.entity(*args, **kwargs)
 
         # Create this object in the repository and return it
-        record = self._create(entity)
-        return self.schema.to_entity(record)
+        entity = self._create(entity)
+        return entity
 
     @abstractmethod
     def _read(self, page: int = 1, per_page: int = 10, order_by: list = None,
@@ -123,8 +123,8 @@ class BaseRepository(metaclass=ABCMeta):
         entity.update(data)
 
         # Update the record and return the Entity
-        record = self._update(entity)
-        return self.schema.to_entity(record)
+        entity = self._update(entity)
+        return entity
 
     @abstractmethod
     def delete(self, identifier: Any):
