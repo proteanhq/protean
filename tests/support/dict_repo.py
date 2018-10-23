@@ -17,14 +17,14 @@ class Repository(BaseRepository):
 
         # Check if the entity already exists in the repo
         identifier = getattr(entity, entity.id_field)
-        if self.conn[self.schema.name].get(identifier):
+        if identifier in self.conn[self.schema.name]:
             raise DuplicateObjectError(
                 f'Entity with id {identifier} already exists')
 
         # Add the entity to the repository
         self.conn[self.schema.name][identifier] = \
             self.schema.from_entity(entity)
-        return self.conn[self.schema.name][identifier]
+        return entity
 
     def _read(self, page=1, per_page=10, order_by=(), **filters):
         """ Read the repository and return results as per the filer"""
@@ -61,7 +61,7 @@ class Repository(BaseRepository):
         identifier = getattr(entity, entity.id_field)
         self.conn[self.schema.name][identifier] = self.schema.from_entity(
             entity)
-        return self.conn[self.schema.name][identifier]
+        return entity
 
     def delete(self, identifier):
         """ Delete the dictionary object by its id"""
