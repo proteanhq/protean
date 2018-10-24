@@ -29,7 +29,7 @@ class Tasklet:
         # Initialize the use case and request objects
         use_case = cls_usecase(repo, context)
         request_object = cls_request_object.\
-            from_dict(cls_schema.opts.entity, payload)
+            from_dict(cls_schema.opts.entity_cls, payload)
 
         # Run the use case and return the results
         return use_case.execute(request_object)

@@ -77,7 +77,7 @@ class Repository(BaseRepository):
 
 
 class DictSchema(BaseRepositorySchema):
-    """ A schema withing the dictionary repository"""
+    """ A schema for the dictionary repository"""
 
     def from_entity(self, entity):
         """ Convert the entity to a dictionary record """
@@ -88,7 +88,7 @@ class DictSchema(BaseRepositorySchema):
 
     def to_entity(self, item):
         """ Convert the dictionary record to an entity """
-        return self.opts.entity(item)
+        return self.opts.entity_cls(item)
 
 
 class ConnectionHandler(BaseConnectionHandler):
