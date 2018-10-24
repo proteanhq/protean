@@ -3,7 +3,7 @@ import copy
 
 from collections import OrderedDict
 
-from protean.core.field import Field
+from protean.core.field import Field, Auto
 from protean.core.exceptions import ValidationError, ConfigurationError
 
 
@@ -33,28 +33,25 @@ class EntityBase(type):
                 fields = [
                     (field_name, field_obj) for field_name, field_obj
                     in base._declared_fields.items()
-                    if field_name not in attrs
+                    if field_name not in attrs and
+                       not isinstance(field_obj, Auto)
                 ] + fields
 
         return OrderedDict(fields)
-
-    @classmethod
-    def _get_id_field(mcs, fields):
-        """ Method to find the identifier field for this entity. Raises
-        `ConfigurationError` if no identifier is defined"""
-        try:
-            id_field = next(field_name for field_name, field in fields.items()
-                            if field.identifier)
-            return id_field
-        except StopIteration:
-            raise ConfigurationError(
-                'Identifier field must be defined for an Entity.')
 
     def __new__(mcs, name, bases, attrs):
         attrs['_declared_fields'] = mcs._get_declared_fields(bases, attrs)
         # Set the id field only when an entity has declared fields
         if attrs['_declared_fields']:
-            attrs['id_field'] = mcs._get_id_field(attrs['_declared_fields'])
+            try:
+                attrs['id_field'] = next(
+                    field_name for field_name, field in
+                    attrs['_declared_fields'].items() if field.identifier)
+            except StopIteration:
+                # If no id field is declared then create one
+                attrs['id_field'] = 'id'
+                attrs['_declared_fields']['id'] = Auto()
+
         return super(EntityBase, mcs).__new__(mcs, name, bases, attrs)
 
 

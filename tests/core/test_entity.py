@@ -81,21 +81,32 @@ class TestEntity:
                 'name': ['Ensure this value has at least 5 characters.'],
                 'owner': [Dog.owner.error_messages['required']]}
 
-    @pytest.mark.skip(
-        reason="Skipping this as mandatory identifier causing error")
     def test_entity_inheritance(self):
         """ Test that subclasses of `Entity` can be inherited"""
 
-        # class TimestampedEntity(Entity):
-        #     """ Class that provides the default fields """
-        #     age = field.String(default=5)
-        #
-        # class Dog2(TimestampedEntity):
-        #     """This is a dummy Dog Entity class with a mixin"""
-        #     id = field.Integer(identifier=True)
-        #     name = field.String(required=True, max_length=50, min_length=5)
-        #
-        # dog2 = Dog2(
-        #     name='John Doe', owner='Jimmy')
-        # assert dog2 is not None
-        # assert dog2.age == 5
+        class SharedEntity(Entity):
+            """ Class that provides the default fields """
+            age = field.String(default=5)
+
+        class Dog2(SharedEntity):
+            """This is a dummy Dog Entity class with a mixin"""
+            id = field.Integer(identifier=True)
+            name = field.String(required=True, max_length=50, min_length=5)
+            owner = field.String(required=True, max_length=15)
+
+        dog2 = Dog2(
+            id=3, name='John Doe', owner='Jimmy')
+        assert dog2 is not None
+        assert dog2.age == 5
+
+    def test_default_id(self):
+        """ Test that default id field is assigned when not defined"""
+
+        class Dog2(Entity):
+            """This is a dummy Dog Entity class without an id"""
+            name = field.String(required=True, max_length=50, min_length=5)
+
+        dog2 = Dog2(
+            id=3, name='John Doe')
+        assert dog2 is not None
+        assert dog2.id == 3
