@@ -35,7 +35,7 @@ class BaseRepository(metaclass=ABCMeta):
             f'Creating new {self.schema_name} object using data {kwargs}')
 
         # Build the entity from the input arguments
-        entity = self.schema.opts.entity(*args, **kwargs)
+        entity = self.schema.opts.entity_cls(*args, **kwargs)
 
         # Create this object in the repository and return it
         entity = self._create(entity)
@@ -56,9 +56,9 @@ class BaseRepository(metaclass=ABCMeta):
         logger.debug(
             f'Lookup {self.schema_name} object with identifier {identifier}')
         # Get the ID field for the entity
-        entity = self.schema.opts.entity
+        entity = self.schema.opts.entity_cls
         filters = {
-            entity.id_field: identifier
+            entity.id_field[0]: identifier
         }
 
         # Find this item in the repository or raise Error
@@ -135,8 +135,8 @@ class RepositorySchemaOpts(object):
     """class Meta options for the :class:`RepositorySchema`."""
 
     def __init__(self, meta, schema_cls):
-        self.entity = getattr(meta, 'entity', None)
-        if not self.entity or not issubclass(self.entity, Entity):
+        self.entity_cls = getattr(meta, 'entity', None)
+        if not self.entity_cls or not issubclass(self.entity_cls, Entity):
             raise ConfigurationError(
                 '`entity` option must be set and be a subclass of `Entity`.')
 
