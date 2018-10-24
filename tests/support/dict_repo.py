@@ -16,7 +16,7 @@ class Repository(BaseRepository):
         """ Write a record to the dict repository"""
 
         # Check if the entity already exists in the repo
-        identifier = getattr(entity, entity.id_field)
+        identifier = getattr(entity, entity.id_field[0])
         if identifier in self.conn[self.schema.name]:
             raise DuplicateObjectError(
                 f'Entity with id {identifier} already exists')
@@ -58,7 +58,7 @@ class Repository(BaseRepository):
 
     def _update(self, entity: Entity):
         """ Update the entity record in the dictionary """
-        identifier = getattr(entity, entity.id_field)
+        identifier = getattr(entity, entity.id_field[0])
         self.conn[self.schema.name][identifier] = self.schema.from_entity(
             entity)
         return entity

@@ -58,7 +58,7 @@ class BaseRepository(metaclass=ABCMeta):
         # Get the ID field for the entity
         entity = self.schema.opts.entity_cls
         filters = {
-            entity.id_field: identifier
+            entity.id_field[0]: identifier
         }
 
         # Find this item in the repository or raise Error

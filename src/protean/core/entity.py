@@ -45,12 +45,12 @@ class EntityBase(type):
         if attrs['_declared_fields']:
             try:
                 attrs['id_field'] = next(
-                    field_name for field_name, field in
+                    (field_name, field) for field_name, field in
                     attrs['_declared_fields'].items() if field.identifier)
             except StopIteration:
                 # If no id field is declared then create one
-                attrs['id_field'] = 'id'
-                attrs['_declared_fields']['id'] = Auto()
+                attrs['id_field'] = 'id', Auto()
+                attrs['_declared_fields']['id'] = attrs['id_field'][1]
 
         return super(EntityBase, mcs).__new__(mcs, name, bases, attrs)
 
