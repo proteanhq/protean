@@ -84,4 +84,4 @@ class RepositoryFactory:
             raise AssertionError('Unregistered Schema')
 
 
-rf = RepositoryFactory()
+repo_factory = RepositoryFactory()

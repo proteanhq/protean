@@ -13,6 +13,6 @@ TESTING = True
 # Define the repositories
 REPOSITORIES = {
     'default': {
-        'PROVIDER': 'tests.support.dict_repo'
+        'PROVIDER': 'protean.impl.repository.dict_repo'
     }
 }
