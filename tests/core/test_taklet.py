@@ -4,11 +4,11 @@ from protean.core.tasklet import Tasklet
 from protean.core.usecase import ShowRequestObject, ShowUseCase, CreateUseCase, \
     CreateRequestObject
 from protean.core.entity import Entity
-from protean.core.repository import rf
+from protean.core.repository import repo_factory as rf
 from protean.core import field
+from protean.impl.repository.dict_repo import DictSchema
 
 from .test_usecase import DogSchema
-from ..support.dict_repo import DictSchema
 
 
 class AppTasklet(Tasklet):

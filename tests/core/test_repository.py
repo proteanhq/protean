@@ -3,11 +3,10 @@
 import pytest
 
 from protean.core.entity import Entity
-from protean.core.repository import rf
+from protean.core.repository import repo_factory as rf
 from protean.core.exceptions import ValidationError, ObjectNotFoundError
 from protean.core import field
-
-from ..support.dict_repo import DictSchema
+from protean.impl.repository.dict_repo import DictSchema
 
 
 class Dog(Entity):

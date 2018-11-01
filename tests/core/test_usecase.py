@@ -8,9 +8,8 @@ from protean.core.usecase import (
     UseCase, ShowUseCase, ShowRequestObject, ListRequestObject, ListUseCase,
     CreateRequestObject, CreateUseCase, UpdateRequestObject, UpdateUseCase,
     DeleteRequestObject, DeleteUseCase)
-from protean.core.repository import rf
-
-from ..support.dict_repo import DictSchema
+from protean.core.repository import repo_factory as rf
+from protean.impl.repository.dict_repo import DictSchema
 
 
 class Dog(Entity):
