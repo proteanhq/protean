@@ -79,7 +79,7 @@ class TestResponseSuccessCreated:
         """Test that a ResponseSuccessCreated instance can be initialized"""
         response = ResponseSuccessCreated()
         assert response is not None
-        assert response.code == Status.SUCCESS_CREATED.value
+        assert response.code == Status.SUCCESS_CREATED
 
     def test_success(self):
         """Test that a ResponseSuccessCreated is success"""
@@ -96,7 +96,7 @@ class TestResponseSuccessWithNoContent:
         """
         response = ResponseSuccessWithNoContent()
         assert response is not None
-        assert response.code == Status.SUCCESS_WITH_NO_CONTENT.value
+        assert response.code == Status.SUCCESS_WITH_NO_CONTENT
 
     def test_success(self):
         """Test that a ResponseSuccessWithNoContent is success"""
@@ -110,21 +110,21 @@ class TestResponseFailure:
     def test_init(self):
         """Test that a ResponseFailure instance can be initialized"""
         response = ResponseFailure(
-            Status.PARAMETERS_ERROR.value, 'Failed to process')
+            Status.PARAMETERS_ERROR, 'Failed to process')
         assert response is not None
-        assert response.code == Status.PARAMETERS_ERROR.value
+        assert response.code == Status.PARAMETERS_ERROR
         assert response.message == ResponseFailure.exception_message
 
     def test_success(self):
         """Test that a ResponseFailure is not success"""
         response = ResponseFailure(
-            Status.PARAMETERS_ERROR.value, 'Failed to process')
+            Status.PARAMETERS_ERROR, 'Failed to process')
         assert not response.success
 
     def test_value(self):
         """Test retrieval of ResponseFailure information"""
         response = ResponseFailure(
-            Status.PARAMETERS_ERROR.value, 'Failed to process')
+            Status.PARAMETERS_ERROR, 'Failed to process')
         assert response is not None
 
         expected_value = {
@@ -136,16 +136,16 @@ class TestResponseFailure:
     def test_util_methods(self):
         """ Test the utility methods for building failure responses"""
         response = ResponseFailure.build_not_found()
-        assert response.code == Status.NOT_FOUND.value
+        assert response.code == Status.NOT_FOUND
 
         response = ResponseFailure.build_unprocessable_error()
-        assert response.code == Status.UNPROCESSABLE_ENTITY.value
+        assert response.code == Status.UNPROCESSABLE_ENTITY
 
         response = ResponseFailure.build_parameters_error()
-        assert response.code == Status.PARAMETERS_ERROR.value
+        assert response.code == Status.PARAMETERS_ERROR
 
         response = ResponseFailure.build_system_error()
-        assert response.code == Status.SYSTEM_ERROR.value
+        assert response.code == Status.SYSTEM_ERROR
 
     def test_build_invalid(self):
         """ Test the building of a ResponseFailure from Invalid Request"""
@@ -154,7 +154,7 @@ class TestResponseFailure:
 
         response = ResponseFailure.build_from_invalid_request(request_obj)
         assert response is not None
-        assert response.code == Status.UNPROCESSABLE_ENTITY.value
+        assert response.code == Status.UNPROCESSABLE_ENTITY
         expected_value = {
             'code': 422, 'message': {'field': 'is required'}
         }
