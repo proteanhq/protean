@@ -72,7 +72,7 @@ class ResponseFailure:
     def __init__(self, code, message):
         """Initialize a Failure Response Object"""
         self.code = code
-        if code in [Status.SYSTEM_ERROR.value, Status.PARAMETERS_ERROR.value]:
+        if code in [Status.SYSTEM_ERROR, Status.PARAMETERS_ERROR]:
             self.message = self.exception_message
         else:
             self.message = message
@@ -80,10 +80,15 @@ class ResponseFailure:
     @property
     def value(self):
         """Utility method to return Response Object information"""
-        return {'code': self.code, 'message': self.message}
+        # Set the code to the status value
+        if isinstance(self.code, Status):
+            code = self.code.value
+        else:
+            code = self.code
+        return {'code': code, 'message': self.message}
 
     @classmethod
-    def build_response(cls, code=500, message=None):
+    def build_response(cls, code=Status.SYSTEM_ERROR, message=None):
         """Utility method to build a new Resource Error object"""
         return cls(code, message)
 
@@ -93,32 +98,32 @@ class ResponseFailure:
         message = dict([
             (err['parameter'], err['message']) for err in
             invalid_request_object.errors])
-        return cls.build_response(Status.UNPROCESSABLE_ENTITY.value, message)
+        return cls.build_response(Status.UNPROCESSABLE_ENTITY, message)
 
     @classmethod
     def build_not_found(cls, message=None):
         """Utility method to build a new Resource Error object"""
-        return cls(Status.NOT_FOUND.value, message)
+        return cls(Status.NOT_FOUND, message)
 
     @classmethod
     def build_system_error(cls, message=None):
         """Utility method to build a new System Error object"""
-        return cls(Status.SYSTEM_ERROR.value, message)
+        return cls(Status.SYSTEM_ERROR, message)
 
     @classmethod
     def build_parameters_error(cls, message=None):
         """Utility method to build a new Parameter Error object"""
-        return cls(Status.PARAMETERS_ERROR.value, message)
+        return cls(Status.PARAMETERS_ERROR, message)
 
     @classmethod
     def build_unprocessable_error(cls, message=None):
         """Utility method to build a new Parameter Error object"""
-        return cls(Status.UNPROCESSABLE_ENTITY.value, message)
+        return cls(Status.UNPROCESSABLE_ENTITY, message)
 
 
 class ResponseSuccessCreated(ResponseSuccess):
     """This class defines a successful created Response Object"""
-    status_code = Status.SUCCESS_CREATED.value
+    status_code = Status.SUCCESS_CREATED
 
     def __init__(self, value=None, message=None):
         """Initialize Successful created Response Object"""
@@ -127,7 +132,7 @@ class ResponseSuccessCreated(ResponseSuccess):
 
 class ResponseSuccessWithNoContent(ResponseSuccess):
     """This class defines a successful created Response Object"""
-    status_code = Status.SUCCESS_WITH_NO_CONTENT.value
+    status_code = Status.SUCCESS_WITH_NO_CONTENT
 
     def __init__(self, value=None, message=None):
         """Initialize Successful created Response Object"""
