@@ -3,7 +3,7 @@ import logging
 
 from io import StringIO
 
-from protean.utils import configure_logging
+from protean.utils.log import configure_logging
 
 
 def test_protean_logger():

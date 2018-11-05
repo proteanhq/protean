@@ -6,12 +6,11 @@ from abc import abstractmethod
 
 from typing import Any
 
-import inflection
-
 from protean.core.entity import Entity
 from protean.core.exceptions import ConfigurationError, \
     ObjectNotFoundError
-from protean.utils import OptionsMeta
+from protean.utils.meta import OptionsMeta
+from protean.utils import inflection
 from .utils import Pagination
 
 logger = logging.getLogger('protean.repository')

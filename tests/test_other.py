@@ -2,7 +2,7 @@
 
 import pytest
 
-from protean.utils import perform_import
+from protean.utils.importlib import perform_import
 from protean.core import entity
 
 
