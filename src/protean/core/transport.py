@@ -1,4 +1,5 @@
 """Module for Data Transport Utility Classes"""
+import sys
 
 from abc import ABCMeta
 from abc import abstractmethod
@@ -76,6 +77,9 @@ class ResponseFailure:
             self.message = self.exception_message
         else:
             self.message = message
+
+        # Store the original exception if any
+        self.exc_type, self.exc, self.trace = sys.exc_info()
 
     @property
     def value(self):

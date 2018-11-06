@@ -1,11 +1,15 @@
 """Tests for Tasklet Functionality"""
+import pytest
 
 from protean.core.tasklet import Tasklet
 from protean.core.usecase import ShowRequestObject, ShowUseCase, CreateUseCase, \
     CreateRequestObject
 from protean.core.entity import Entity
 from protean.core.repository import repo_factory as rf
+from protean.core.exceptions import UsecaseExecutionError
+from protean.core.transport import Status
 from protean.core import field
+
 from protean.impl.repository.dict_repo import DictSchema
 
 from .test_usecase import DogSchema
@@ -80,3 +84,13 @@ class TestTasklet:
         assert response.value.id == 1
         assert response.value.name == 'Jerry'
         assert response.value.created_by == 'admin'
+
+    def test_raise_error(self):
+        """ Test raise error function of the Tasklet """
+        with pytest.raises(UsecaseExecutionError) as exc_info:
+            Tasklet.perform(
+                rf, DogSchema, ShowUseCase, ShowRequestObject, {},
+                raise_error=True)
+        assert exc_info.value.value[0] == Status.UNPROCESSABLE_ENTITY
+        assert exc_info.value.value[1] ==  \
+               {'code': 422, 'message': {'identifier': 'is required'}}
