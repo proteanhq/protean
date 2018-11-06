@@ -49,3 +49,20 @@ class ValidationError(Exception):
             return {no_field_name: self.messages}
 
         return dict((name, self.messages) for name in self.field_names)
+
+
+class UsecaseExecutionError(Exception):
+    """ Raised when a failure response is encountered on executing a usecase
+
+    :param value: a tuple comprising of the error code and error message
+    :type value: tuple
+    :param orig_exc: Optional original exception raised in the usecase
+    :param orig_trace: Optional trace of the original exception in the usecase
+    """
+
+    def __init__(self, value, orig_exc=None, orig_trace=None, **kwargs):
+        self.value = value
+        self.orig_exc = orig_exc
+        self.orig_trace = orig_trace
+
+        super().__init__(**kwargs)

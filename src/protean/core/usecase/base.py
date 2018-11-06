@@ -46,7 +46,8 @@ class UseCase(metaclass=ABCMeta):
                 {'identifier': 'Object with this ID already exists.'})
 
         except ObjectNotFoundError:
-            return ResponseFailure.build_not_found()
+            return ResponseFailure.build_not_found(
+                {'identifier': 'Object with this ID does not exist.'})
 
         except Exception as exc:  # pylint: disable=W0703
             logger.error(
