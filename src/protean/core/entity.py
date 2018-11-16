@@ -1,10 +1,8 @@
 """Entity Functionality and Classes"""
-import copy
-
 from collections import OrderedDict
 
 from protean.core.field import Field, Auto
-from protean.core.exceptions import ValidationError, ConfigurationError
+from protean.core.exceptions import ValidationError
 
 
 class EntityBase(type):
@@ -29,35 +27,35 @@ class EntityBase(type):
         # fields.  Note that we loop over the bases in *reverse*.
         # This is necessary in order to maintain the correct order of fields.
         for base in reversed(bases):
-            if hasattr(base, '_declared_fields'):
+            if hasattr(base, 'declared_fields'):
                 fields = [
                     (field_name, field_obj) for field_name, field_obj
-                    in base._declared_fields.items()
-                    if field_name not in attrs and
-                       not isinstance(field_obj, Auto)
+                    in base.declared_fields.items()
+                    if field_name not in attrs and not field_obj.identifier
                 ] + fields
 
         return OrderedDict(fields)
 
     def __new__(mcs, name, bases, attrs):
-        attrs['_declared_fields'] = mcs._get_declared_fields(bases, attrs)
+        attrs['declared_fields'] = mcs._get_declared_fields(bases, attrs)
         # Set the id field only when an entity has declared fields
-        if attrs['_declared_fields']:
+        if attrs['declared_fields']:
             try:
                 attrs['id_field'] = next(
                     (field_name, field) for field_name, field in
-                    attrs['_declared_fields'].items() if field.identifier)
+                    attrs['declared_fields'].items() if field.identifier)
             except StopIteration:
                 # If no id field is declared then create one
-                attrs['id_field'] = 'id', Auto()
-                attrs['_declared_fields']['id'] = attrs['id_field'][1]
+                attrs['id_field'] = 'id', Auto(identifier=True)
+                attrs['declared_fields']['id'] = attrs['id_field'][1]
 
         return super(EntityBase, mcs).__new__(mcs, name, bases, attrs)
 
 
 class Entity(metaclass=EntityBase):
     """Class for defining Domain Entities"""
-    _declared_fields = {}
+    declared_fields = {}
+    id_field = ()
 
     def __init__(self, *template, **kwargs):
         """
@@ -68,7 +66,6 @@ class Entity(metaclass=EntityBase):
         """
 
         self.errors = {}
-        self.declared_fields = self.get_fields()
 
         # Load the attributes based on the template
         loaded_fields = []
@@ -113,15 +110,12 @@ class Entity(metaclass=EntityBase):
         except ValidationError as err:
             self.errors[field_name] = err.messages
 
-    def get_fields(self):
-        """
-        Returns a dictionary of {field_name: field_instance}.
-        """
-        # Every new entity is created with a clone of the field instances.
-        # This allows users to dynamically modify the fields on a entity
-        # instance without affecting every other entity instance.
-
-        return copy.deepcopy(self._declared_fields)
+    @property
+    def unique_fields(self):
+        """ Return the unique fields for this entity """
+        return [(field_name, getattr(self, field_name, None))
+                for field_name, field_obj in self.declared_fields.items()
+                if field_obj.unique]
 
     def update(self, data):
         """

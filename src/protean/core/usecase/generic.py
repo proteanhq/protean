@@ -13,13 +13,13 @@ class ShowRequestObject(ValidRequestObject):
     This class encapsulates the Request Object for retrieving a resource
     """
 
-    def __init__(self, entity, identifier=None):
+    def __init__(self, entity_cls, identifier=None):
         """Initialize Request Object with ID"""
-        self.entity = entity
+        self.entity_cls = entity_cls
         self.identifier = identifier
 
     @classmethod
-    def from_dict(cls, entity, adict):
+    def from_dict(cls, entity_cls, adict):
         """Initialize a ShowRequestObject object from a dictionary."""
         invalid_req = InvalidRequestObject()
 
@@ -32,7 +32,7 @@ class ShowRequestObject(ValidRequestObject):
         if invalid_req.has_errors:
             return invalid_req
 
-        return cls(entity, identifier)
+        return cls(entity_cls, identifier)
 
 
 class ShowUseCase(UseCase):
@@ -55,13 +55,12 @@ class ListRequestObject(ValidRequestObject):
     This class encapsulates the Request Object for Listing a resource
     """
 
-    def __init__(self, entity,
-                 page=1, per_page=getattr(active_config, 'PER_PAGE', 10),
-                 order_by=(), filters=None):
+    def __init__(self, entity_cls, page=1, per_page=None, order_by=(),
+                 filters=None):
         """Initialize Request Object with parameters"""
-        self.entity = entity
+        self.entity_cls = entity_cls
         self.page = page
-        self.per_page = per_page
+        self.per_page = per_page or active_config.PER_PAGE
         self.order_by = order_by
 
         if not filters:
@@ -69,7 +68,7 @@ class ListRequestObject(ValidRequestObject):
         self.filters = filters
 
     @classmethod
-    def from_dict(cls, entity, adict):
+    def from_dict(cls, entity_cls, adict):
         """Initialize a ListRequestObject object from a dictionary."""
         invalid_req = InvalidRequestObject()
 
@@ -89,7 +88,7 @@ class ListRequestObject(ValidRequestObject):
         # Do we need to pop out random?
         # adict.pop('random', None)
 
-        return cls(entity, page, per_page, order_by, adict)
+        return cls(entity_cls, page, per_page, order_by, adict)
 
 
 class ListUseCase(UseCase):
@@ -111,15 +110,15 @@ class CreateRequestObject(ValidRequestObject):
     This class encapsulates the Request Object for Creating New Resource
     """
 
-    def __init__(self, entity, data=None):
+    def __init__(self, entity_cls, data=None):
         """Initialize Request Object with form data"""
-        self.entity = entity
+        self.entity_cls = entity_cls
         self.data = data
 
     @classmethod
-    def from_dict(cls, entity, adict):
+    def from_dict(cls, entity_cls, adict):
         """Initialize a CreateRequestObject object from a dictionary."""
-        return cls(entity, adict)
+        return cls(entity_cls, adict)
 
 
 class CreateUseCase(UseCase):
@@ -139,14 +138,14 @@ class UpdateRequestObject(ValidRequestObject):
     This class encapsulates the Request Object for Updating a Resource
     """
 
-    def __init__(self, entity, identifier, data=None):
+    def __init__(self, entity_cls, identifier, data=None):
         """Initialize Request Object with form data"""
-        self.entity = entity
+        self.entity_cls = entity_cls
         self.identifier = identifier
         self.data = data
 
     @classmethod
-    def from_dict(cls, entity, adict):
+    def from_dict(cls, entity_cls, adict):
         """Initialize a UpdateRequestObject object from a dictionary."""
         invalid_req = InvalidRequestObject()
 
@@ -159,7 +158,7 @@ class UpdateRequestObject(ValidRequestObject):
         if invalid_req.has_errors:
             return invalid_req
 
-        return cls(entity, adict['identifier'], adict['data'])
+        return cls(entity_cls, adict['identifier'], adict['data'])
 
 
 class UpdateUseCase(UseCase):
@@ -180,12 +179,12 @@ class UpdateUseCase(UseCase):
 class DeleteRequestObject(ValidRequestObject):
     """This class encapsulates the Request Object for Deleting a resource"""
 
-    def __init__(self, entity, identifier=None):
-        self.entity = entity
+    def __init__(self, entity_cls, identifier=None):
+        self.entity_cls = entity_cls
         self.identifier = identifier
 
     @classmethod
-    def from_dict(cls, entity, adict):
+    def from_dict(cls, entity_cls, adict):
         """Initialize a DeleteRequestObject object from a dictionary."""
         invalid_req = InvalidRequestObject()
 
@@ -198,7 +197,7 @@ class DeleteRequestObject(ValidRequestObject):
         if invalid_req.has_errors:
             return invalid_req
 
-        return cls(entity, identifier)
+        return cls(entity_cls, identifier)
 
 
 class DeleteUseCase(UseCase):

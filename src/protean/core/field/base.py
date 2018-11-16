@@ -1,7 +1,7 @@
 """Module for defining base Field class"""
 
 from abc import ABCMeta, abstractmethod
-from typing import Union, Iterable, Callable, Any
+from typing import Iterable, Any
 
 from protean.core import exceptions
 
@@ -19,8 +19,10 @@ class Field(metaclass=ABCMeta):
     if the field value is missing.
     :param required: if `True`, Raise a :exc:`ValidationError` if the field
     value is `None`.
+    :param unique: Indicate if this field needs to be checked for uniqueness.
     :param validators: Optional list of validators to be applied for this field.
-
+    :param error_messages: Optional list of validators to be applied for
+    this field.
     """
 
     # Default error messages for various kinds of errors.
@@ -36,14 +38,20 @@ class Field(metaclass=ABCMeta):
     empty_values = (None, '', [], (), {})
 
     def __init__(self, identifier: bool = False, default: Any = None,
-                 required: bool = False, label: str = None,
-                 validators: Iterable = (), error_messages: dict = None):
+                 required: bool = False, unique: bool = False,
+                 label: str = None, validators: Iterable = (),
+                 error_messages: dict = None):
 
         self.identifier = identifier
         self.default = default
 
-        # Make identifier fields as required
+        # Indicates if field values need to be unique within the repository
+        # always True for identifier field
+        self.unique = True if self.identifier else unique
+
+        # Indicates if this field is required, always True for identifier field
         self.required = True if self.identifier else required
+
         self.label = label
         self._validators = validators
 
@@ -132,7 +140,7 @@ class Field(metaclass=ABCMeta):
 
         if value in self.empty_values:
             # If a default has been set for the field return it
-            if self.default:
+            if self.default is not None:
                 default = self.default
                 value = default() if callable(default) else default
                 return value

@@ -64,6 +64,10 @@ class Repository(BaseRepository):
             entity)
         return entity
 
+    def _uniquify(self, unique_fields):
+        """ Check for uniqueness of the passed fields"""
+        pass
+
     def delete(self, identifier):
         """ Delete the dictionary object by its id"""
 

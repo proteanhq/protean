@@ -4,6 +4,8 @@ import logging
 from abc import ABCMeta
 from abc import abstractmethod
 
+import collections
+
 from typing import Any
 
 from protean.core.entity import Entity
@@ -17,28 +19,16 @@ logger = logging.getLogger('protean.repository')
 
 
 class BaseRepository(metaclass=ABCMeta):
-    """Repository interface to interact with databases"""
+    """Repository interface to interact with databases
+
+    :param conn: A connection/session to the data source of the schema
+    :param schema_cls: The schema class registered with this repository
+    """
 
     def __init__(self, conn, schema_cls):
         self.conn = conn
         self.schema = schema_cls()
         self.schema_name = schema_cls.__name__
-
-    @abstractmethod
-    def _create_object(self, entity: Entity):
-        """Create a new schema object from the entity"""
-
-    def create(self, *args, **kwargs):
-        """Create a new record in the repository"""
-        logger.debug(
-            f'Creating new {self.schema_name} object using data {kwargs}')
-
-        # Build the entity from the input arguments
-        entity = self.schema.opts.entity_cls(*args, **kwargs)
-
-        # Create this object in the repository and return it
-        entity = self._create_object(entity)
-        return entity
 
     @abstractmethod
     def _filter_objects(self, page: int = 1, per_page: int = 10,
@@ -48,7 +38,7 @@ class BaseRepository(metaclass=ABCMeta):
         object
         """
 
-    def get(self, identifier: Any):
+    def get(self, identifier: Any) -> Entity:
         """Get a specific Record from the Repository
 
         :param identifier: id of the record to be fetched from the repository.
@@ -57,9 +47,9 @@ class BaseRepository(metaclass=ABCMeta):
         logger.debug(
             f'Lookup {self.schema_name} object with identifier {identifier}')
         # Get the ID field for the entity
-        entity = self.schema.opts.entity_cls
+        entity_cls = self.schema.opts.entity_cls
         filters = {
-            entity.id_field[0]: identifier
+            entity_cls.id_field[0]: identifier
         }
 
         # Find this item in the repository or raise Error
@@ -91,7 +81,8 @@ class BaseRepository(metaclass=ABCMeta):
             f'order results by {order_by}')
 
         # order_by clause must be list of keys
-        if order_by and not isinstance(order_by, list):
+        order_by = self.schema.opts.order_by if not order_by else order_by
+        if not isinstance(order_by, collections.Iterable):
             order_by = [order_by]
 
         # Call the read method of the repository
@@ -106,10 +97,26 @@ class BaseRepository(metaclass=ABCMeta):
         return results
 
     @abstractmethod
-    def _update_object(self, entity: Entity):
+    def _create_object(self, entity: Entity) -> Entity:
+        """Create a new schema object from the entity"""
+
+    def create(self, *args, **kwargs) -> Entity:
+        """Create a new record in the repository"""
+        logger.debug(
+            f'Creating new {self.schema_name} object using data {kwargs}')
+
+        # Build the entity from the input arguments
+        entity = self.schema.opts.entity_cls(*args, **kwargs)
+
+        # Create this object in the repository and return it
+        entity = self._create_object(entity)
+        return entity
+
+    @abstractmethod
+    def _update_object(self, entity: Entity) -> Entity:
         """Update a schema object in the repository and return it"""
 
-    def update(self, identifier: Any, data: dict):
+    def update(self, identifier: Any, data: dict) -> Entity:
         """Update a Record in the repository
 
         :param identifier: The id of the record to be updated
@@ -126,6 +133,10 @@ class BaseRepository(metaclass=ABCMeta):
         # Update the record and return the Entity
         entity = self._update_object(entity)
         return entity
+
+    @abstractmethod
+    def _uniquify(self, unique_fields):
+        """Check for unique """
 
     @abstractmethod
     def delete(self, identifier: Any):
@@ -149,11 +160,30 @@ class RepositorySchemaOpts(object):
         # Get the database bound to this schema
         self.bind = getattr(meta, 'bind', 'default')
 
+        # Default ordering of the filter response
+        self.order_by = getattr(meta, 'order_by', ())
+
 
 class BaseRepositorySchema(metaclass=OptionsMeta):
     """ Repository Schema defines an index/table in the repository"""
     options_class = RepositorySchemaOpts
     opts = None
+
+    class Meta(object):
+        """Options object for a Schema.
+        Example usage: ::
+            class Meta:
+                entity = Dog
+        Available options:
+        - ``base``: Indicates that this is a base schema so ignore the meta
+        - ``entity``: the entity associated with this schema.
+        - ``schema_name``: name of this schema that will be used as table/index
+        names, defaults to underscore version of the class name.
+        - ``bind``: the name of the repository connection associated with this
+        schema, default value is `default`.
+        - ``order_by``: default ordering of objects returned by filter queries.
+        """
+        base = True
 
     @property
     def name(self):
