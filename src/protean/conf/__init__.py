@@ -51,6 +51,12 @@ class Config:
             raise ConfigurationError(
                 "The SECRET_KEY setting must not be empty.")
 
+    def update_defaults(self, ext_config):
+        """ Update the default settings for an extension from an object"""
+        for setting in dir(ext_config):
+            if setting.isupper() and not hasattr(self, setting):
+                setattr(self, setting, getattr(ext_config, setting))
+
     def __repr__(self):
         """Print along with Config Module name"""
         return '<%(cls)s "%(config_module)s">' % {

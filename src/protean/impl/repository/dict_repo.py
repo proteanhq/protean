@@ -12,7 +12,7 @@ from protean.core.repository import BaseRepository, BaseRepositorySchema, \
 
 class Repository(BaseRepository):
     """ A repository for storing data in a dictionary """
-    def _create(self, entity: Entity):
+    def _create_object(self, entity: Entity):
         """ Write a record to the dict repository"""
 
         # Check if the entity already exists in the repo
@@ -26,7 +26,8 @@ class Repository(BaseRepository):
             self.schema.from_entity(entity)
         return entity
 
-    def _read(self, page=1, per_page=10, order_by=(), **filters):
+    def _filter_objects(self, page: int = 1, per_page: int = 10,
+                        order_by: list = (), **filters):
         """ Read the repository and return results as per the filer"""
 
         # Filter the dictionary objects based on the filters
@@ -56,7 +57,7 @@ class Repository(BaseRepository):
             items=items[cur_offset: cur_limit])
         return result
 
-    def _update(self, entity: Entity):
+    def _update_object(self, entity: Entity):
         """ Update the entity record in the dictionary """
         identifier = getattr(entity, entity.id_field[0])
         self.conn[self.schema.name][identifier] = self.schema.from_entity(
@@ -76,7 +77,7 @@ class Repository(BaseRepository):
         return del_count
 
 
-class DictSchema(BaseRepositorySchema):
+class RepositorySchema(BaseRepositorySchema):
     """ A schema for the dictionary repository"""
 
     def from_entity(self, entity):

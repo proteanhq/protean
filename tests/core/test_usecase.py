@@ -9,7 +9,7 @@ from protean.core.usecase import (
     CreateRequestObject, CreateUseCase, UpdateRequestObject, UpdateUseCase,
     DeleteRequestObject, DeleteUseCase)
 from protean.core.repository import repo_factory as rf
-from protean.impl.repository.dict_repo import DictSchema
+from protean.impl.repository.dict_repo import RepositorySchema
 
 
 class Dog(Entity):
@@ -20,7 +20,7 @@ class Dog(Entity):
     owner = field.String(required=True, max_length=15)
 
 
-class DogSchema(DictSchema):
+class DogSchema(RepositorySchema):
     """ Schema for the Dog Entity"""
 
     class Meta:
@@ -90,7 +90,7 @@ class TestUpdateRequestObject:
         assert not request_obj.is_valid
 
         request_obj = UpdateRequestObject.from_dict(
-            Dog, {'identifier': 1, 'age': 13})
+            Dog, {'identifier': 1, 'data': {'age': 13}})
         assert request_obj.is_valid
         assert request_obj.identifier == 1
         assert request_obj.data == {'age': 13}
@@ -209,7 +209,7 @@ class TestUpdateUseCase:
 
         # Build the request object and run the usecase
         request_obj = UpdateRequestObject.from_dict(
-            Dog, {'identifier': 1, 'age': 13})
+            Dog, {'identifier': 1, 'data': {'age': 13}})
         use_case = UpdateUseCase(repo)
         response = use_case.execute(request_obj)
 
@@ -223,7 +223,7 @@ class TestUpdateUseCase:
         """Test Update Usecase for validation errors"""
         # Build the request object and run the usecase
         request_obj = UpdateRequestObject.from_dict(
-            Dog, {'identifier': 1, 'age': 'x'})
+            Dog, {'identifier': 1, 'data': {'age': 'x'}})
         use_case = UpdateUseCase(repo)
         response = use_case.execute(request_obj)
 

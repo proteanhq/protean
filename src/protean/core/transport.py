@@ -14,6 +14,8 @@ class Status(Enum):
     SUCCESS_WITH_NO_CONTENT = 204
     SUCCESS_REFRESH = 205
     PARAMETERS_ERROR = 400
+    UNAUTHORIZED = 401
+    FORBIDDEN = 403
     NOT_FOUND = 404
     RESOURCE_CONFLICT = 409
     UNPROCESSABLE_ENTITY = 422
@@ -44,7 +46,7 @@ class ValidRequestObject(metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def from_dict(cls, entity, adict):
+    def from_dict(cls, entity_cls, adict):
         """
         Initialize a Request object from a dictionary.
 

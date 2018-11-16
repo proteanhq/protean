@@ -150,20 +150,16 @@ class UpdateRequestObject(ValidRequestObject):
         """Initialize a UpdateRequestObject object from a dictionary."""
         invalid_req = InvalidRequestObject()
 
-        identifier = None
-        if 'identifier' in adict:
-            identifier = adict.pop('identifier')
-        else:
-            invalid_req.add_error('identifier', 'is required')
+        if 'identifier' not in adict:
+            invalid_req.add_error('identifier', 'Identifier is required')
 
-        # Need to send some data to update, otherwise throw a 422
-        if len(adict) < 1:
-            invalid_req.add_error('data', 'is required')
+        if 'data' not in adict:
+            invalid_req.add_error('data', 'Data dict is required')
 
         if invalid_req.has_errors:
             return invalid_req
 
-        return cls(entity, identifier, adict)
+        return cls(entity, adict['identifier'], adict['data'])
 
 
 class UpdateUseCase(UseCase):

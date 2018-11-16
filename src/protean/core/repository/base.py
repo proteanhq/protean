@@ -11,7 +11,7 @@ from protean.core.exceptions import ConfigurationError, \
     ObjectNotFoundError
 from protean.utils.meta import OptionsMeta
 from protean.utils import inflection
-from .utils import Pagination
+from .pagination import Pagination
 
 logger = logging.getLogger('protean.repository')
 
@@ -25,11 +25,11 @@ class BaseRepository(metaclass=ABCMeta):
         self.schema_name = schema_cls.__name__
 
     @abstractmethod
-    def _create(self, entity: Entity):
-        """Create a new Record"""
+    def _create_object(self, entity: Entity):
+        """Create a new schema object from the entity"""
 
     def create(self, *args, **kwargs):
-        """Create a new Record in the repository"""
+        """Create a new record in the repository"""
         logger.debug(
             f'Creating new {self.schema_name} object using data {kwargs}')
 
@@ -37,20 +37,22 @@ class BaseRepository(metaclass=ABCMeta):
         entity = self.schema.opts.entity_cls(*args, **kwargs)
 
         # Create this object in the repository and return it
-        entity = self._create(entity)
+        entity = self._create_object(entity)
         return entity
 
     @abstractmethod
-    def _read(self, page: int = 1, per_page: int = 10, order_by: list = None,
-              **filters) -> Pagination:
+    def _filter_objects(self, page: int = 1, per_page: int = 10,
+                        order_by: list = (), **filters) -> Pagination:
         """
-        Read Record(s) from the repository. Method must return a `Pagination`
-        object"""
+        Filter objects from the repository. Method must return a `Pagination`
+        object
+        """
 
     def get(self, identifier: Any):
         """Get a specific Record from the Repository
-        :param identifier: The id of the record to be fetched from the
-        repository.
+
+        :param identifier: id of the record to be fetched from the repository.
+
         """
         logger.debug(
             f'Lookup {self.schema_name} object with identifier {identifier}')
@@ -61,7 +63,7 @@ class BaseRepository(metaclass=ABCMeta):
         }
 
         # Find this item in the repository or raise Error
-        results = self._read(**filters)
+        results = self._filter_objects(**filters)
         if not results.items:
             raise ObjectNotFoundError(
                 f'{self.schema_name} object with identifier {identifier} '
@@ -93,7 +95,7 @@ class BaseRepository(metaclass=ABCMeta):
             order_by = [order_by]
 
         # Call the read method of the repository
-        results = self._read(page, per_page, order_by, **filters)
+        results = self._filter_objects(page, per_page, order_by, **filters)
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -104,8 +106,8 @@ class BaseRepository(metaclass=ABCMeta):
         return results
 
     @abstractmethod
-    def _update(self, entity: Entity):
-        """Update a Record in the repository and return it"""
+    def _update_object(self, entity: Entity):
+        """Update a schema object in the repository and return it"""
 
     def update(self, identifier: Any, data: dict):
         """Update a Record in the repository
@@ -122,7 +124,7 @@ class BaseRepository(metaclass=ABCMeta):
         entity.update(data)
 
         # Update the record and return the Entity
-        entity = self._update(entity)
+        entity = self._update_object(entity)
         return entity
 
     @abstractmethod
