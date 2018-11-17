@@ -133,3 +133,8 @@ class Entity(metaclass=EntityBase):
         # Raise any errors found during update
         if self.errors:
             raise ValidationError(self.errors)
+
+    def as_dict(self):
+        """ Convert the entity to a dictionary """
+        return {field_name: getattr(self, field_name, None)
+                for field_name in self.declared_fields}

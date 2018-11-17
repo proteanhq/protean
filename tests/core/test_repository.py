@@ -37,7 +37,7 @@ class TestRepository:
 
         rf.DogSchema.filter()
         current_db = dict(rf.DogSchema.conn)
-        assert current_db == {'dogs': {}}
+        assert current_db['data'] == {'dogs': {}}
 
     def test_create(self):
         """ Add an entity to the repository"""

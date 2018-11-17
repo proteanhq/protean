@@ -1,10 +1,12 @@
 """ Implementation of a dictionary based repository """
 
 from collections import defaultdict
+from itertools import count
 
 from operator import itemgetter
 
 from protean.core.entity import Entity
+from protean.core.field import Auto
 from protean.core.exceptions import DuplicateObjectError
 from protean.core.repository import BaseRepository, BaseRepositorySchema, \
     Pagination, BaseConnectionHandler
@@ -12,17 +14,33 @@ from protean.core.repository import BaseRepository, BaseRepositorySchema, \
 
 class Repository(BaseRepository):
     """ A repository for storing data in a dictionary """
+
+    def _set_auto_fields(self, entity):
+        """ Set the values of the auto field using counter"""
+        for field_name, field_obj in entity.declared_fields.items():
+            counter_key = f'{self.schema_name}_{field_name}'
+            if isinstance(field_obj, Auto) and \
+                    not getattr(entity, field_name, None):
+
+                # Increment the counter and it should start from 1
+                counter = next(self.conn['counters'][counter_key])
+                if not counter:
+                    counter = next(self.conn['counters'][counter_key])
+                setattr(entity, field_name, counter)
+
     def _create_object(self, entity: Entity):
         """ Write a record to the dict repository"""
+        # Update the value of the counters
+        self._set_auto_fields(entity)
 
         # Check if the entity already exists in the repo
         identifier = getattr(entity, entity.id_field[0])
-        if identifier in self.conn[self.schema.name]:
+        if identifier in self.conn['data'][self.schema.name]:
             raise DuplicateObjectError(
                 f'Entity with id {identifier} already exists')
 
         # Add the entity to the repository
-        self.conn[self.schema.name][identifier] = \
+        self.conn['data'][self.schema.name][identifier] = \
             self.schema.from_entity(entity)
         return entity
 
@@ -32,7 +50,7 @@ class Repository(BaseRepository):
 
         # Filter the dictionary objects based on the filters
         items = []
-        for item in self.conn[self.schema.name].values():
+        for item in self.conn['data'][self.schema.name].values():
             for fk, fv in filters.items():
                 if item[fk] != fv:
                     break
@@ -60,8 +78,8 @@ class Repository(BaseRepository):
     def _update_object(self, entity: Entity):
         """ Update the entity record in the dictionary """
         identifier = getattr(entity, entity.id_field[0])
-        self.conn[self.schema.name][identifier] = self.schema.from_entity(
-            entity)
+        self.conn['data'][self.schema.name][
+            identifier] = self.schema.from_entity(entity)
         return entity
 
     def _uniquify(self, unique_fields):
@@ -74,11 +92,15 @@ class Repository(BaseRepository):
         # Delete the object from the dictionary and return the deletion count
         del_count = 0
         try:
-            del self.conn[self.schema.name][identifier]
+            del self.conn['data'][self.schema.name][identifier]
             del_count += 1
         except KeyError:
             pass
         return del_count
+
+    def delete_all(self):
+        """ Delete all objects in this schema """
+        del self.conn['data'][self.schema.name]
 
 
 class RepositorySchema(BaseRepositorySchema):
@@ -104,4 +126,5 @@ class ConnectionHandler(BaseConnectionHandler):
 
     def get_connection(self):
         """ Return the dictionary database object """
-        return defaultdict(dict)
+        return {'data': defaultdict(dict),
+                'counters': defaultdict(count)}

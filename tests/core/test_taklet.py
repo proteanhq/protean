@@ -12,7 +12,7 @@ from protean.core import field
 
 from protean.impl.repository.dict_repo import RepositorySchema
 
-from .test_usecase import DogSchema
+from .test_repository import DogSchema
 
 
 class AppTasklet(Tasklet):
@@ -23,9 +23,17 @@ class AppTasklet(Tasklet):
         return {'user': 'admin'}
 
 
+class CreateUseCase2(CreateUseCase):
+    """ Updated Create use case to handle context """
+    def process_request(self, request_object):
+        """Process Create Resource Request"""
+
+        request_object.data['created_by'] = self.context['user']
+        return super().process_request(request_object)
+
+
 class Dog2(Entity):
     """This is a dummy Dog Entity class"""
-    id = field.Integer(identifier=True)
     name = field.String(required=True, max_length=50)
     age = field.Integer(default=5)
     owner = field.String(required=True, max_length=15)
@@ -42,15 +50,6 @@ class Dog2Schema(RepositorySchema):
 
 
 rf.register(Dog2Schema)
-
-
-class CreateUseCase2(CreateUseCase):
-    """ Updated Create use case to handle context """
-    def process_request(self, request_object):
-        """Process Create Resource Request"""
-
-        request_object.data['created_by'] = self.context['user']
-        return super().process_request(request_object)
 
 
 class TestTasklet:
@@ -74,7 +73,7 @@ class TestTasklet:
         """ Test context information is passed to use cases"""
 
         # Perform a Create Usecase using Tasklet
-        payload = dict(id=1, name='Jerry', age=10, owner='Jack')
+        payload = dict(name='Jerry', age=10, owner='Jack')
         response = AppTasklet.perform(
             rf, Dog2Schema, CreateUseCase2, CreateRequestObject, payload)
 
