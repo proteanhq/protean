@@ -7,7 +7,6 @@ from operator import itemgetter
 
 from protean.core.entity import Entity
 from protean.core.field import Auto
-from protean.core.exceptions import DuplicateObjectError
 from protean.core.repository import BaseRepository, BaseRepositorySchema, \
     Pagination, BaseConnectionHandler
 
@@ -33,28 +32,33 @@ class Repository(BaseRepository):
         # Update the value of the counters
         self._set_auto_fields(entity)
 
-        # Check if the entity already exists in the repo
-        identifier = getattr(entity, entity.id_field[0])
-        if identifier in self.conn['data'][self.schema.name]:
-            raise DuplicateObjectError(
-                f'Entity with id {identifier} already exists')
-
         # Add the entity to the repository
+        identifier = getattr(entity, entity.id_field[0])
         self.conn['data'][self.schema.name][identifier] = \
             self.schema.from_entity(entity)
         return entity
 
     def _filter_objects(self, page: int = 1, per_page: int = 10,
-                        order_by: list = (), **filters):
+                        order_by: list = (), _excludes=None, **filters):
         """ Read the repository and return results as per the filer"""
 
         # Filter the dictionary objects based on the filters
         items = []
+        excludes = _excludes if _excludes else {}
         for item in self.conn['data'][self.schema.name].values():
+            match = True
+
+            # Add objects that match the given filters
             for fk, fv in filters.items():
                 if item[fk] != fv:
-                    break
-            else:
+                    match = False
+
+            # Add objects that do not match excludes
+            for fk, fv in excludes.items():
+                if item[fk] == fv:
+                    match = False
+
+            if match:
                 items.append(item)
 
         # Sort the filtered results based on the order_by clause
@@ -81,10 +85,6 @@ class Repository(BaseRepository):
         self.conn['data'][self.schema.name][
             identifier] = self.schema.from_entity(entity)
         return entity
-
-    def _uniquify(self, unique_fields):
-        """ Check for uniqueness of the passed fields"""
-        pass
 
     def delete(self, identifier):
         """ Delete the dictionary object by its id"""

@@ -6,8 +6,7 @@ from abc import ABCMeta
 from abc import abstractmethod
 
 from protean.core.repository import BaseRepository
-from protean.core.exceptions import ObjectNotFoundError, \
-    DuplicateObjectError, ValidationError
+from protean.core.exceptions import ObjectNotFoundError, ValidationError
 from protean.core.transport import ResponseFailure
 
 logger = logging.getLogger('protean.usecase')
@@ -40,10 +39,6 @@ class UseCase(metaclass=ABCMeta):
         except ValidationError as err:
             return ResponseFailure.build_unprocessable_error(
                 err.normalized_messages)
-
-        except DuplicateObjectError:
-            return ResponseFailure.build_unprocessable_error(
-                {'identifier': 'Object with this ID already exists.'})
 
         except ObjectNotFoundError:
             return ResponseFailure.build_not_found(

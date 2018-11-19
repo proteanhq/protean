@@ -28,7 +28,9 @@ class Field(metaclass=ABCMeta):
     # Default error messages for various kinds of errors.
     default_error_messages = {
         'invalid_type': 'Value is not of the valid type for this field.',
+        'unique': '`{schema_name:s}` with this `{field_name:s}` already exists.',
         'required': 'This field is required.',
+        'invalid_choice': 'Value `{value:r}` is not a valid choice.',
     }
 
     # Default validators for a Field

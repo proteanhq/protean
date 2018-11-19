@@ -9,10 +9,12 @@ import collections
 from typing import Any
 
 from protean.core.entity import Entity
-from protean.core.exceptions import ConfigurationError, \
+from protean.core.field import Field
+from protean.core.exceptions import ValidationError, ConfigurationError, \
     ObjectNotFoundError
 from protean.utils.meta import OptionsMeta
 from protean.utils import inflection
+
 from .pagination import Pagination
 
 logger = logging.getLogger('protean.repository')
@@ -32,7 +34,8 @@ class BaseRepository(metaclass=ABCMeta):
 
     @abstractmethod
     def _filter_objects(self, page: int = 1, per_page: int = 10,
-                        order_by: list = (), **filters) -> Pagination:
+                        order_by: list = (), _excludes: dict = None,
+                        **filters) -> Pagination:
         """
         Filter objects from the repository. Method must return a `Pagination`
         object
@@ -63,7 +66,7 @@ class BaseRepository(metaclass=ABCMeta):
         return self.schema.to_entity(results.first)
 
     def filter(self, page: int = 1, per_page: int = 10, order_by: list = (),
-               **filters) -> Pagination:
+               _excludes: dict = None, **filters) -> Pagination:
         """
         Read Record(s) from the repository. Method must return a `Pagination`
         object
@@ -73,6 +76,8 @@ class BaseRepository(metaclass=ABCMeta):
         :param order_by: The list of parameters to be used for ordering the
         results. Use a `-` before the parameter name to sort in descending
         order and if not ascending order.
+        :param _excludes: Objects with these properties will be excluded
+        from the results
 
         :return Returns a `Pagination` object that holds the filtered results
         """
@@ -86,7 +91,8 @@ class BaseRepository(metaclass=ABCMeta):
             order_by = [order_by]
 
         # Call the read method of the repository
-        results = self._filter_objects(page, per_page, order_by, **filters)
+        results = self._filter_objects(page, per_page, order_by, _excludes,
+                                       **filters)
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -95,6 +101,19 @@ class BaseRepository(metaclass=ABCMeta):
         results.items = entity_items
 
         return results
+
+    def exists(self, _excludes, **filters):
+        """ Return `True` if objects matching the provided filters and excludes
+        exist if not return false.
+
+        Call the filter query by default. Can be overridden for better and
+        quicker implementations.
+
+        :param _excludes: entities without this combination of field name and
+        values will be returned
+        """
+        results = self._filter_objects(_excludes=_excludes, **filters)
+        return bool(results)
 
     @abstractmethod
     def _create_object(self, entity: Entity) -> Entity:
@@ -108,7 +127,8 @@ class BaseRepository(metaclass=ABCMeta):
         # Build the entity from the input arguments
         entity = self.schema.opts.entity_cls(*args, **kwargs)
 
-        # Create this object in the repository and return it
+        # Do unique checks, create this object and return it
+        self.validate_unique(entity)
         entity = self._create_object(entity)
         return entity
 
@@ -130,13 +150,33 @@ class BaseRepository(metaclass=ABCMeta):
         entity = self.get(identifier)
         entity.update(data)
 
-        # Update the record and return the Entity
+        # Do unique checks, update the record and return the Entity
+        self.validate_unique(entity, create=False)
         entity = self._update_object(entity)
         return entity
 
-    @abstractmethod
-    def _uniquify(self, unique_fields):
-        """Check for unique """
+    def validate_unique(self, entity, create=True):
+        """ Validate the unique constraints for the entity """
+        # Build the filters from the unique constraints
+        filters, excludes = {}, {}
+        for field_name, lookup_value in entity.unique_fields:
+            field_obj = entity.declared_fields[field_name]
+            # Ignore empty lookup values
+            if lookup_value in Field.empty_values:
+                continue
+            # Ignore identifiers on updates
+            if not create and field_obj.identifier:
+                excludes[field_name] = lookup_value
+                continue
+            filters[field_name] = lookup_value
+
+        # Lookup the objects by the filters and raise error on results
+        for filter_key, lookup_value in filters.items():
+            if self.exists(excludes, **{filter_key: lookup_value}):
+                field_obj = entity.declared_fields[filter_key]
+                field_obj.fail('unique',
+                               schema_name=self.schema.opts.schema_name,
+                               field_name=filter_key)
 
     @abstractmethod
     def delete(self, identifier: Any):

@@ -47,6 +47,7 @@ class EntityBase(type):
             except StopIteration:
                 # If no id field is declared then create one
                 attrs['id_field'] = 'id', Auto(identifier=True)
+                attrs['id_field'][1].bind('id')
                 attrs['declared_fields']['id'] = attrs['id_field'][1]
 
         return super(EntityBase, mcs).__new__(mcs, name, bases, attrs)
