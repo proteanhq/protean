@@ -2,6 +2,8 @@
 
 from datetime import datetime
 
+import enum
+
 import pytest
 
 from protean.core import field
@@ -35,6 +37,26 @@ class TestStringField:
         with pytest.raises(ValidationError):
             name = field.String(max_length=5)
             name.load('Dummy Dummy')
+
+    def test_choice(self):
+        """ Test choices validations for the string field """
+
+        class StatusChoices(enum.Enum):
+            """ Set of choices for the status"""
+            PENDING = 'Pending'
+            SUCCESS = 'Success'
+            ERROR = 'Error'
+
+        status = field.String(choices=StatusChoices)
+        assert status is not None
+
+        # Test loading of values to the status field
+        assert status.load('PENDING') == 'PENDING'
+        with pytest.raises(ValidationError) as e_info:
+            status.load('FAILURE')
+        assert e_info.value.normalized_messages == {
+            '_entity': ["Value `'FAILURE'` is not a valid choice. "
+                        "Must be one of ['PENDING', 'SUCCESS', 'ERROR']"]}
 
 
 class TestIntegerField:

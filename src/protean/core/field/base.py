@@ -1,5 +1,6 @@
 """Module for defining base Field class"""
 
+import enum
 from abc import ABCMeta, abstractmethod
 from typing import Iterable, Any
 
@@ -20,6 +21,9 @@ class Field(metaclass=ABCMeta):
     :param required: if `True`, Raise a :exc:`ValidationError` if the field
     value is `None`.
     :param unique: Indicate if this field needs to be checked for uniqueness.
+    :param label: Verbose name for this field
+    :param choices: Valid choices for this field, if value is not one of the
+    choices a `ValidationError` is raised.
     :param validators: Optional list of validators to be applied for this field.
     :param error_messages: Optional list of validators to be applied for
     this field.
@@ -30,7 +34,8 @@ class Field(metaclass=ABCMeta):
         'invalid': 'Value is not a valid type for this field.',
         'unique': '`{schema_name:s}` with this `{field_name:s}` already exists.',
         'required': 'This field is required.',
-        'invalid_choice': 'Value `{value:r}` is not a valid choice.',
+        'invalid_choice': 'Value `{value!r}` is not a valid choice. '
+                          'Must be one of {choices!r}',
     }
 
     # Default validators for a Field
@@ -41,8 +46,8 @@ class Field(metaclass=ABCMeta):
 
     def __init__(self, identifier: bool = False, default: Any = None,
                  required: bool = False, unique: bool = False,
-                 label: str = None, validators: Iterable = (),
-                 error_messages: dict = None):
+                 label: str = None, choices: enum.Enum = None,
+                 validators: Iterable = (), error_messages: dict = None):
 
         self.identifier = identifier
         self.default = default
@@ -53,6 +58,11 @@ class Field(metaclass=ABCMeta):
 
         # Indicates if this field is required, always True for identifier field
         self.required = True if self.identifier else required
+
+        # Set the choices for this field
+        self.choices = choices
+        if self.choices:
+            self.choice_list = list(self.choices.__members__)
 
         self.label = label
         self._validators = validators
@@ -156,9 +166,10 @@ class Field(metaclass=ABCMeta):
             else:
                 return None
 
-        # Run the validations for this field and return the value once passed
+        if self.choices and value not in self.choice_list:
+            self.fail('invalid_choice', value=value, choices=self.choice_list)
 
-        # Validate the type of the value for this Field
+        # Cast and Validate the value for this Field
         value = self._cast_to_type(value)
 
         # Call the rest of the validators defined for this Field

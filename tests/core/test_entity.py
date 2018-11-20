@@ -78,7 +78,7 @@ class TestEntity:
             Dog(id=1, name='Joh')
         except ValidationError as err:
             assert err.normalized_messages == {
-                'name': ['Ensure this value has at least 5 characters.'],
+                'name': ['Ensure value has at least 5 characters.'],
                 'owner': [Dog.owner.error_messages['required']]}
 
     def test_entity_inheritance(self):
