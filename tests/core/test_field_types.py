@@ -1,6 +1,6 @@
 """ Test cases for all available field type implementations"""
 
-from decimal import Decimal
+from datetime import datetime
 
 import pytest
 
@@ -167,3 +167,65 @@ class TestAutoField:
         """ Test validation for the Auto Field"""
         add_info = field.Auto(required=True)
         add_info.load(None)
+
+
+class TestDateField:
+    """ Test the Date Field Implementation"""
+
+    def test_init(self):
+        """Test successful Date Field initialization"""
+
+        age = field.Date()
+        assert age is not None
+
+        value = age.load(datetime.now().date())
+        assert value == datetime.now().date()
+
+    def test_type_casting(self):
+        """ Test type casting and validation for the Field"""
+
+        age = field.Date()
+
+        # Test datetime being passed as value
+        assert age.load(datetime.now()) == datetime.now().date()
+
+        # Test string dates being passed as value
+        expected = datetime(2018, 3, 16).date()
+        assert age.load('2018-03-16') == expected
+        assert age.load('2018-03-16 10:23:32') == expected
+        assert age.load('16th March 2018') == expected
+
+        # Test for invalid date
+        with pytest.raises(ValidationError):
+            assert age.load('15 Marchs')
+
+
+class TestDateTimeField:
+    """ Test the DateTime Field Implementation"""
+
+    def test_init(self):
+        """Test successful DateTime Field initialization"""
+
+        created_at = field.DateTime()
+        assert created_at is not None
+
+        value = datetime.now()
+        assert value == created_at.load(value)
+
+    def test_type_casting(self):
+        """ Test type casting and validation for the Field"""
+
+        created_at = field.DateTime()
+        today = datetime.now()
+        # Test date being passed as value
+        assert created_at.load(today.date()) == datetime(
+            today.year, today.month, today.day)
+
+        # Test string dates being passed as value
+        assert created_at.load('2018-03-16') == datetime(2018, 3, 16)
+        assert created_at.load('2018-03-16 10:23:32') == datetime(
+            2018, 3, 16, 10, 23, 32)
+
+        # Test for invalid datetime
+        with pytest.raises(ValidationError):
+            assert created_at.load('2018-03-16 10 23 32')

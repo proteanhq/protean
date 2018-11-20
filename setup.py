@@ -63,8 +63,8 @@ setup(
     ],
     install_requires=[
         'click==6.7',
-        'bleach==2.1.3',
-        'werkzeug==0.14.1'
+        'werkzeug==0.14.1',
+        'python-dateutil==2.7.3'
         # eg: 'aspectlib==1.1.1', 'six>=1.7',
     ],
     extras_require={
