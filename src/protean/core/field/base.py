@@ -67,7 +67,9 @@ class Field(metaclass=ABCMeta):
         self.label = label
         self._validators = validators
 
-        # These are set up by `.bind()` when the field is added to a serializer.
+        # These are set up by `.bind_to_entity()` when the field is added to
+        # the entity
+        self.entity_cls = None
         self.field_name = None
 
         # Collect default error message from self and parent classes
@@ -77,12 +79,16 @@ class Field(metaclass=ABCMeta):
         messages.update(error_messages or {})
         self.error_messages = messages
 
-    def bind_to_schema(self, field_name):
+    def bind_to_entity(self, entity_cls, field_name):
         """
         Initializes the field name for the field instance.
         Called when a field is added to the parent entity instance.
+
+        :param entity_cls: Entity class to which there fields are being bound to
+        :param field_name: Name of the field in the binding Entity
         """
 
+        self.entity_cls = entity_cls
         self.field_name = field_name
 
         # `self.label` should default to being based on the field name.

@@ -52,7 +52,7 @@ class BaseRepository(metaclass=ABCMeta):
         # Get the ID field for the entity
         entity_cls = self.schema.opts.entity_cls
         filters = {
-            entity_cls.id_field[0]: identifier
+            entity_cls.meta_.id_field[0]: identifier
         }
 
         # Find this item in the repository or raise Error
@@ -159,8 +159,8 @@ class BaseRepository(metaclass=ABCMeta):
         """ Validate the unique constraints for the entity """
         # Build the filters from the unique constraints
         filters, excludes = {}, {}
-        for field_name, lookup_value in entity.unique_fields:
-            field_obj = entity.declared_fields[field_name]
+        for field_name, field_obj in entity.meta_.unique_fields:
+            lookup_value = getattr(entity, field_name, None)
             # Ignore empty lookup values
             if lookup_value in Field.empty_values:
                 continue
@@ -173,7 +173,7 @@ class BaseRepository(metaclass=ABCMeta):
         # Lookup the objects by the filters and raise error on results
         for filter_key, lookup_value in filters.items():
             if self.exists(excludes, **{filter_key: lookup_value}):
-                field_obj = entity.declared_fields[filter_key]
+                field_obj = entity.meta_.declared_fields[filter_key]
                 field_obj.fail('unique',
                                schema_name=self.schema.opts.schema_name,
                                field_name=filter_key)

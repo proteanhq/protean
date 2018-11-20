@@ -16,7 +16,7 @@ class Repository(BaseRepository):
 
     def _set_auto_fields(self, entity):
         """ Set the values of the auto field using counter"""
-        for field_name, field_obj in entity.declared_fields.items():
+        for field_name, field_obj in entity.meta_.declared_fields.items():
             counter_key = f'{self.schema_name}_{field_name}'
             if isinstance(field_obj, Auto) and \
                     not getattr(entity, field_name, None):
@@ -33,7 +33,7 @@ class Repository(BaseRepository):
         self._set_auto_fields(entity)
 
         # Add the entity to the repository
-        identifier = getattr(entity, entity.id_field[0])
+        identifier = getattr(entity, entity.meta_.id_field[0])
         self.conn['data'][self.schema.name][identifier] = \
             self.schema.from_entity(entity)
         return entity
@@ -81,7 +81,7 @@ class Repository(BaseRepository):
 
     def _update_object(self, entity: Entity):
         """ Update the entity record in the dictionary """
-        identifier = getattr(entity, entity.id_field[0])
+        identifier = getattr(entity, entity.meta_.id_field[0])
         self.conn['data'][self.schema.name][
             identifier] = self.schema.from_entity(entity)
         return entity
@@ -109,7 +109,7 @@ class RepositorySchema(BaseRepositorySchema):
     def from_entity(self, entity):
         """ Convert the entity to a dictionary record """
         dict_obj = {}
-        for field_name in entity.declared_fields:
+        for field_name in entity.meta_.declared_fields:
             dict_obj[field_name] = getattr(entity, field_name)
         return dict_obj
 
