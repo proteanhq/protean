@@ -19,9 +19,8 @@ class TestStringField:
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
-        with pytest.raises(ValidationError):
-            name = field.String()
-            name.load(1)
+        name = field.String()
+        assert name.load(1) == '1'
 
     def test_min_length(self):
         """ Test minimum length validation for the string field"""

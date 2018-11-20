@@ -20,7 +20,7 @@ class EntityBase(type):
         for attr_name, attr_obj in attrs.items():
             if isinstance(attr_obj, Field):
                 # Bind the field object and append to list
-                attr_obj.bind(attr_name)
+                attr_obj.bind_to_schema(attr_name)
                 fields.append((attr_name, attr_obj))
 
         # If this class is subclassing another Entity, add that Entity's
@@ -47,7 +47,7 @@ class EntityBase(type):
             except StopIteration:
                 # If no id field is declared then create one
                 attrs['id_field'] = 'id', Auto(identifier=True)
-                attrs['id_field'][1].bind('id')
+                attrs['id_field'][1].bind_to_schema('id')
                 attrs['declared_fields']['id'] = attrs['id_field'][1]
 
         return super(EntityBase, mcs).__new__(mcs, name, bases, attrs)

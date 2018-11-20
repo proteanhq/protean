@@ -27,7 +27,7 @@ class Field(metaclass=ABCMeta):
 
     # Default error messages for various kinds of errors.
     default_error_messages = {
-        'invalid_type': 'Value is not of the valid type for this field.',
+        'invalid': 'Value is not a valid type for this field.',
         'unique': '`{schema_name:s}` with this `{field_name:s}` already exists.',
         'required': 'This field is required.',
         'invalid_choice': 'Value `{value:r}` is not a valid choice.',
@@ -67,7 +67,7 @@ class Field(metaclass=ABCMeta):
         messages.update(error_messages or {})
         self.error_messages = messages
 
-    def bind(self, field_name):
+    def bind_to_schema(self, field_name):
         """
         Initializes the field name for the field instance.
         Called when a field is added to the parent entity instance.
@@ -103,9 +103,9 @@ class Field(metaclass=ABCMeta):
         return [*self.default_validators, *self._validators]
 
     @abstractmethod
-    def _validate_type(self, value: Any):
+    def _cast_to_type(self, value: Any):
         """
-        Abstract method to validate the type of the value passed.
+        Abstract method to validate and convert the value passed to native type.
         All subclasses must implement this method.
         Raise a :exc:`ValidationError` if validation does not succeed.
         """
@@ -159,7 +159,7 @@ class Field(metaclass=ABCMeta):
         # Run the validations for this field and return the value once passed
 
         # Validate the type of the value for this Field
-        self._validate_type(value)
+        value = self._cast_to_type(value)
 
         # Call the rest of the validators defined for this Field
         self._run_validators(value)

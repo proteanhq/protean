@@ -253,7 +253,7 @@ class TestUpdateUseCase:
         assert response is not None
         assert not response.success
         assert response.value == {
-            'code': 422, 'message': {'age': ['"x" value must be of int type.']}}
+            'code': 422, 'message': {'age': ['"x" value must be an integer.']}}
 
     def test_unique_validation(self):
         """Test Update Usecase for unique validation"""

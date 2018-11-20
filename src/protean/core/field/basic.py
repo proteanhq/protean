@@ -12,7 +12,7 @@ class String(Field):
 
     """
     default_error_messages = {
-        'invalid_type': '{value}" value must be of str type.',
+        'invalid': '{value}" value must be a string.',
     }
 
     def __init__(self, min_length=None, max_length=None, **kwargs):
@@ -24,9 +24,9 @@ class String(Field):
         ]
         super().__init__(**kwargs)
 
-    def _validate_type(self, value: str):
-        if not isinstance(value, str):
-            self.fail('invalid_type', value=value)
+    def _cast_to_type(self, value):
+        """ Convert the value to its string representation"""
+        return str(value)
 
 
 class Integer(Field):
@@ -37,7 +37,7 @@ class Integer(Field):
 
     """
     default_error_messages = {
-        'invalid_type': '"{value}" value must be of int type.',
+        'invalid': '"{value}" value must be an integer.',
     }
 
     def __init__(self, min_value=None, max_value=None, **kwargs):
@@ -49,9 +49,12 @@ class Integer(Field):
         ]
         super().__init__(**kwargs)
 
-    def _validate_type(self, value):
-        if not isinstance(value, int):
-            self.fail('invalid_type', value=value)
+    def _cast_to_type(self, value):
+        """ Convert the value to an int and raise error on failures"""
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            self.fail('invalid', value=value)
 
 
 class Float(Field):
@@ -62,7 +65,7 @@ class Float(Field):
 
     """
     default_error_messages = {
-        'invalid_type': '"{value}" value must be of float type.',
+        'invalid': '"{value}" value must be floating point number.',
     }
 
     def __init__(self, min_value=None, max_value=None, **kwargs):
@@ -74,45 +77,58 @@ class Float(Field):
         ]
         super().__init__(**kwargs)
 
-    def _validate_type(self, value):
-        if not isinstance(value, float):
-            self.fail('invalid_type', value=value)
+    def _cast_to_type(self, value):
+        """ Convert the value to a float and raise error on failures"""
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            self.fail('invalid', value=value)
 
 
 class Boolean(Field):
     """Concrete field implementation for the Boolean type.
     """
     default_error_messages = {
-        'invalid_type': '"{value}" value must be of bool type.',
+        'invalid': '"{value}" value must be either True or False.',
     }
 
-    def _validate_type(self, value):
-        if not isinstance(value, bool):
-            self.fail('invalid_type', value=value)
+    def _cast_to_type(self, value):
+        """ Convert the value to a boolean and raise error on failures"""
+        if value in (True, False):
+            return bool(value)
+        if value in ('t', 'True', '1'):
+            return True
+        if value in ('f', 'False', '0'):
+            return False
+        self.fail('invalid', value=value)
 
 
 class List(Field):
     """Concrete field implementation for the List type.
     """
     default_error_messages = {
-        'invalid_type': '"{value}" value must be of list type.',
+        'invalid': '"{value}" value must be of list type.',
     }
 
-    def _validate_type(self, value):
+    def _cast_to_type(self, value):
+        """ Raise error if the value is not a list """
         if not isinstance(value, list):
-            self.fail('invalid_type', value=value)
+            self.fail('invalid', value=value)
+        return value
 
 
 class Dict(Field):
     """Concrete field implementation for the Dict type.
     """
     default_error_messages = {
-        'invalid_type': '"{value}" value must be of dict type.',
+        'invalid': '"{value}" value must be of dict type.',
     }
 
-    def _validate_type(self, value):
+    def _cast_to_type(self, value):
+        """ Raise error if the value is not a dict """
         if not isinstance(value, dict):
-            self.fail('invalid_type', value=value)
+            self.fail('invalid', value=value)
+        return value
 
 
 class Auto(Field):
@@ -124,5 +140,6 @@ class Auto(Field):
         super().__init__(*args, **kwargs)
         self.required = False
 
-    def _validate_type(self, *args, **kwargs):
-        return True
+    def _cast_to_type(self, value):
+        """ Perform no validation for auto fields. Return the value as is"""
+        return value
