@@ -4,20 +4,28 @@ import logging
 from abc import ABCMeta
 from abc import abstractmethod
 
+import collections
+
 from typing import Any
 
 from protean.core.entity import Entity
-from protean.core.exceptions import ConfigurationError, \
+from protean.core.field import Field
+from protean.core.exceptions import ValidationError, ConfigurationError, \
     ObjectNotFoundError
 from protean.utils.meta import OptionsMeta
 from protean.utils import inflection
-from .utils import Pagination
+
+from .pagination import Pagination
 
 logger = logging.getLogger('protean.repository')
 
 
 class BaseRepository(metaclass=ABCMeta):
-    """Repository interface to interact with databases"""
+    """Repository interface to interact with databases
+
+    :param conn: A connection/session to the data source of the schema
+    :param schema_cls: The schema class registered with this repository
+    """
 
     def __init__(self, conn, schema_cls):
         self.conn = conn
@@ -25,43 +33,30 @@ class BaseRepository(metaclass=ABCMeta):
         self.schema_name = schema_cls.__name__
 
     @abstractmethod
-    def _create(self, entity: Entity):
-        """Create a new Record"""
-
-    def create(self, *args, **kwargs):
-        """Create a new Record in the repository"""
-        logger.debug(
-            f'Creating new {self.schema_name} object using data {kwargs}')
-
-        # Build the entity from the input arguments
-        entity = self.schema.opts.entity_cls(*args, **kwargs)
-
-        # Create this object in the repository and return it
-        entity = self._create(entity)
-        return entity
-
-    @abstractmethod
-    def _read(self, page: int = 1, per_page: int = 10, order_by: list = None,
-              **filters) -> Pagination:
+    def _filter_objects(self, page: int = 1, per_page: int = 10,
+                        order_by: list = (), _excludes: dict = None,
+                        **filters) -> Pagination:
         """
-        Read Record(s) from the repository. Method must return a `Pagination`
-        object"""
+        Filter objects from the repository. Method must return a `Pagination`
+        object
+        """
 
-    def get(self, identifier: Any):
+    def get(self, identifier: Any) -> Entity:
         """Get a specific Record from the Repository
-        :param identifier: The id of the record to be fetched from the
-        repository.
+
+        :param identifier: id of the record to be fetched from the repository.
+
         """
         logger.debug(
             f'Lookup {self.schema_name} object with identifier {identifier}')
         # Get the ID field for the entity
-        entity = self.schema.opts.entity_cls
+        entity_cls = self.schema.opts.entity_cls
         filters = {
-            entity.id_field[0]: identifier
+            entity_cls.meta_.id_field[0]: identifier
         }
 
         # Find this item in the repository or raise Error
-        results = self._read(**filters)
+        results = self._filter_objects(**filters)
         if not results.items:
             raise ObjectNotFoundError(
                 f'{self.schema_name} object with identifier {identifier} '
@@ -71,7 +66,7 @@ class BaseRepository(metaclass=ABCMeta):
         return self.schema.to_entity(results.first)
 
     def filter(self, page: int = 1, per_page: int = 10, order_by: list = (),
-               **filters) -> Pagination:
+               _excludes: dict = None, **filters) -> Pagination:
         """
         Read Record(s) from the repository. Method must return a `Pagination`
         object
@@ -81,6 +76,8 @@ class BaseRepository(metaclass=ABCMeta):
         :param order_by: The list of parameters to be used for ordering the
         results. Use a `-` before the parameter name to sort in descending
         order and if not ascending order.
+        :param _excludes: Objects with these properties will be excluded
+        from the results
 
         :return Returns a `Pagination` object that holds the filtered results
         """
@@ -89,11 +86,13 @@ class BaseRepository(metaclass=ABCMeta):
             f'order results by {order_by}')
 
         # order_by clause must be list of keys
-        if order_by and not isinstance(order_by, list):
+        order_by = self.schema.opts.order_by if not order_by else order_by
+        if not isinstance(order_by, collections.Iterable):
             order_by = [order_by]
 
         # Call the read method of the repository
-        results = self._read(page, per_page, order_by, **filters)
+        results = self._filter_objects(page, per_page, order_by, _excludes,
+                                       **filters)
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -103,11 +102,41 @@ class BaseRepository(metaclass=ABCMeta):
 
         return results
 
-    @abstractmethod
-    def _update(self, entity: Entity):
-        """Update a Record in the repository and return it"""
+    def exists(self, _excludes, **filters):
+        """ Return `True` if objects matching the provided filters and excludes
+        exist if not return false.
 
-    def update(self, identifier: Any, data: dict):
+        Call the filter query by default. Can be overridden for better and
+        quicker implementations.
+
+        :param _excludes: entities without this combination of field name and
+        values will be returned
+        """
+        results = self._filter_objects(_excludes=_excludes, **filters)
+        return bool(results)
+
+    @abstractmethod
+    def _create_object(self, entity: Entity) -> Entity:
+        """Create a new schema object from the entity"""
+
+    def create(self, *args, **kwargs) -> Entity:
+        """Create a new record in the repository"""
+        logger.debug(
+            f'Creating new {self.schema_name} object using data {kwargs}')
+
+        # Build the entity from the input arguments
+        entity = self.schema.opts.entity_cls(*args, **kwargs)
+
+        # Do unique checks, create this object and return it
+        self.validate_unique(entity)
+        entity = self._create_object(entity)
+        return entity
+
+    @abstractmethod
+    def _update_object(self, entity: Entity) -> Entity:
+        """Update a schema object in the repository and return it"""
+
+    def update(self, identifier: Any, data: dict) -> Entity:
         """Update a Record in the repository
 
         :param identifier: The id of the record to be updated
@@ -121,9 +150,33 @@ class BaseRepository(metaclass=ABCMeta):
         entity = self.get(identifier)
         entity.update(data)
 
-        # Update the record and return the Entity
-        entity = self._update(entity)
+        # Do unique checks, update the record and return the Entity
+        self.validate_unique(entity, create=False)
+        entity = self._update_object(entity)
         return entity
+
+    def validate_unique(self, entity, create=True):
+        """ Validate the unique constraints for the entity """
+        # Build the filters from the unique constraints
+        filters, excludes = {}, {}
+        for field_name, field_obj in entity.meta_.unique_fields:
+            lookup_value = getattr(entity, field_name, None)
+            # Ignore empty lookup values
+            if lookup_value in Field.empty_values:
+                continue
+            # Ignore identifiers on updates
+            if not create and field_obj.identifier:
+                excludes[field_name] = lookup_value
+                continue
+            filters[field_name] = lookup_value
+
+        # Lookup the objects by the filters and raise error on results
+        for filter_key, lookup_value in filters.items():
+            if self.exists(excludes, **{filter_key: lookup_value}):
+                field_obj = entity.meta_.declared_fields[filter_key]
+                field_obj.fail('unique',
+                               schema_name=self.schema.opts.schema_name,
+                               field_name=filter_key)
 
     @abstractmethod
     def delete(self, identifier: Any):
@@ -147,11 +200,30 @@ class RepositorySchemaOpts(object):
         # Get the database bound to this schema
         self.bind = getattr(meta, 'bind', 'default')
 
+        # Default ordering of the filter response
+        self.order_by = getattr(meta, 'order_by', ())
+
 
 class BaseRepositorySchema(metaclass=OptionsMeta):
     """ Repository Schema defines an index/table in the repository"""
     options_class = RepositorySchemaOpts
     opts = None
+
+    class Meta(object):
+        """Options object for a Schema.
+        Example usage: ::
+            class Meta:
+                entity = Dog
+        Available options:
+        - ``base``: Indicates that this is a base schema so ignore the meta
+        - ``entity``: the entity associated with this schema.
+        - ``schema_name``: name of this schema that will be used as table/index
+        names, defaults to underscore version of the class name.
+        - ``bind``: the name of the repository connection associated with this
+        schema, default value is `default`.
+        - ``order_by``: default ordering of objects returned by filter queries.
+        """
+        base = True
 
     @property
     def name(self):

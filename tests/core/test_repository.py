@@ -6,18 +6,18 @@ from protean.core.entity import Entity
 from protean.core.repository import repo_factory as rf
 from protean.core.exceptions import ValidationError, ObjectNotFoundError
 from protean.core import field
-from protean.impl.repository.dict_repo import DictSchema
+from protean.impl.repository.dict_repo import RepositorySchema
 
 
 class Dog(Entity):
     """This is a dummy Dog Entity class"""
     id = field.Integer(identifier=True)
-    name = field.String(required=True, max_length=50)
+    name = field.String(required=True, unique=True, max_length=50)
     age = field.Integer(default=5)
     owner = field.String(required=True, max_length=15)
 
 
-class DogSchema(DictSchema):
+class DogSchema(RepositorySchema):
     """ Schema for the Dog Entity"""
 
     class Meta:
@@ -37,7 +37,7 @@ class TestRepository:
 
         rf.DogSchema.filter()
         current_db = dict(rf.DogSchema.conn)
-        assert current_db == {'dogs': {}}
+        assert current_db['data'] == {'dogs': {}}
 
     def test_create(self):
         """ Add an entity to the repository"""
@@ -69,6 +69,15 @@ class TestRepository:
         u_dog = rf.DogSchema.get(1)
         assert u_dog is not None
         assert u_dog.age == 10
+
+    def test_unique(self):
+        """ Test the unique constraints for the entity """
+
+        with pytest.raises(ValidationError) as err:
+            rf.DogSchema.create(
+                id=2, name='Johnny', owner='Carey')
+        assert err.value.normalized_messages == {
+            'name': ['`dogs` with this `name` already exists.']}
 
     def test_filter(self):
         """ Query the repository using filters """

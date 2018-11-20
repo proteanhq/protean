@@ -14,8 +14,10 @@ class OptionsMeta(ABCMeta):
 
         # Get the Meta class attribute defined for the base class
         meta = getattr(klass, 'Meta', None)
-        if meta:
 
+        # Load the meta class attributes for non base schemas
+        is_base = getattr(meta, 'base', False)
+        if not is_base:
             # Set klass.opts by initializing the `OPTIONS_CLASS` with the meta
             klass.opts = klass.options_class(meta, klass)
 

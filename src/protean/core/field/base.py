@@ -1,7 +1,8 @@
 """Module for defining base Field class"""
 
+import enum
 from abc import ABCMeta, abstractmethod
-from typing import Union, Iterable, Callable, Any
+from typing import Iterable, Any
 
 from protean.core import exceptions
 
@@ -19,14 +20,22 @@ class Field(metaclass=ABCMeta):
     if the field value is missing.
     :param required: if `True`, Raise a :exc:`ValidationError` if the field
     value is `None`.
+    :param unique: Indicate if this field needs to be checked for uniqueness.
+    :param label: Verbose name for this field
+    :param choices: Valid choices for this field, if value is not one of the
+    choices a `ValidationError` is raised.
     :param validators: Optional list of validators to be applied for this field.
-
+    :param error_messages: Optional list of validators to be applied for
+    this field.
     """
 
     # Default error messages for various kinds of errors.
     default_error_messages = {
-        'invalid_type': 'Value is not of the valid type for this field.',
+        'invalid': 'Value is not a valid type for this field.',
+        'unique': '`{schema_name:s}` with this `{field_name:s}` already exists.',
         'required': 'This field is required.',
+        'invalid_choice': 'Value `{value!r}` is not a valid choice. '
+                          'Must be one of {choices!r}',
     }
 
     # Default validators for a Field
@@ -35,20 +44,32 @@ class Field(metaclass=ABCMeta):
     # These values will trigger the self.required check.
     empty_values = (None, '', [], (), {})
 
-    def __init__(self, identifier: bool = False,
-                 default: Union[Callable, str] = None,
-                 required: bool = False, label: str = None,
+    def __init__(self, identifier: bool = False, default: Any = None,
+                 required: bool = False, unique: bool = False,
+                 label: str = None, choices: enum.Enum = None,
                  validators: Iterable = (), error_messages: dict = None):
 
         self.identifier = identifier
         self.default = default
 
-        # Make identifier fields as required
+        # Indicates if field values need to be unique within the repository
+        # always True for identifier field
+        self.unique = True if self.identifier else unique
+
+        # Indicates if this field is required, always True for identifier field
         self.required = True if self.identifier else required
+
+        # Set the choices for this field
+        self.choices = choices
+        if self.choices:
+            self.choice_list = list(self.choices.__members__)
+
         self.label = label
         self._validators = validators
 
-        # These are set up by `.bind()` when the field is added to a serializer.
+        # These are set up by `.bind_to_entity()` when the field is added to
+        # the entity
+        self.entity_cls = None
         self.field_name = None
 
         # Collect default error message from self and parent classes
@@ -58,12 +79,16 @@ class Field(metaclass=ABCMeta):
         messages.update(error_messages or {})
         self.error_messages = messages
 
-    def bind(self, field_name):
+    def bind_to_entity(self, entity_cls, field_name):
         """
         Initializes the field name for the field instance.
         Called when a field is added to the parent entity instance.
+
+        :param entity_cls: Entity class to which there fields are being bound to
+        :param field_name: Name of the field in the binding Entity
         """
 
+        self.entity_cls = entity_cls
         self.field_name = field_name
 
         # `self.label` should default to being based on the field name.
@@ -94,9 +119,9 @@ class Field(metaclass=ABCMeta):
         return [*self.default_validators, *self._validators]
 
     @abstractmethod
-    def _validate_type(self, value: Any):
+    def _cast_to_type(self, value: Any):
         """
-        Abstract method to validate the type of the value passed.
+        Abstract method to validate and convert the value passed to native type.
         All subclasses must implement this method.
         Raise a :exc:`ValidationError` if validation does not succeed.
         """
@@ -133,7 +158,7 @@ class Field(metaclass=ABCMeta):
 
         if value in self.empty_values:
             # If a default has been set for the field return it
-            if self.default:
+            if self.default is not None:
                 default = self.default
                 value = default() if callable(default) else default
                 return value
@@ -147,10 +172,11 @@ class Field(metaclass=ABCMeta):
             else:
                 return None
 
-        # Run the validations for this field and return the value once passed
+        if self.choices and value not in self.choice_list:
+            self.fail('invalid_choice', value=value, choices=self.choice_list)
 
-        # Validate the type of the value for this Field
-        self._validate_type(value)
+        # Cast and Validate the value for this Field
+        value = self._cast_to_type(value)
 
         # Call the rest of the validators defined for this Field
         self._run_validators(value)

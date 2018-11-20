@@ -1,41 +1,64 @@
 """ Implementation of a dictionary based repository """
 
 from collections import defaultdict
+from itertools import count
 
 from operator import itemgetter
 
 from protean.core.entity import Entity
-from protean.core.exceptions import DuplicateObjectError
+from protean.core.field import Auto
 from protean.core.repository import BaseRepository, BaseRepositorySchema, \
     Pagination, BaseConnectionHandler
 
 
 class Repository(BaseRepository):
     """ A repository for storing data in a dictionary """
-    def _create(self, entity: Entity):
-        """ Write a record to the dict repository"""
 
-        # Check if the entity already exists in the repo
-        identifier = getattr(entity, entity.id_field[0])
-        if identifier in self.conn[self.schema.name]:
-            raise DuplicateObjectError(
-                f'Entity with id {identifier} already exists')
+    def _set_auto_fields(self, entity):
+        """ Set the values of the auto field using counter"""
+        for field_name, field_obj in entity.meta_.declared_fields.items():
+            counter_key = f'{self.schema_name}_{field_name}'
+            if isinstance(field_obj, Auto) and \
+                    not getattr(entity, field_name, None):
+
+                # Increment the counter and it should start from 1
+                counter = next(self.conn['counters'][counter_key])
+                if not counter:
+                    counter = next(self.conn['counters'][counter_key])
+                setattr(entity, field_name, counter)
+
+    def _create_object(self, entity: Entity):
+        """ Write a record to the dict repository"""
+        # Update the value of the counters
+        self._set_auto_fields(entity)
 
         # Add the entity to the repository
-        self.conn[self.schema.name][identifier] = \
+        identifier = getattr(entity, entity.meta_.id_field[0])
+        self.conn['data'][self.schema.name][identifier] = \
             self.schema.from_entity(entity)
         return entity
 
-    def _read(self, page=1, per_page=10, order_by=(), **filters):
+    def _filter_objects(self, page: int = 1, per_page: int = 10,
+                        order_by: list = (), _excludes=None, **filters):
         """ Read the repository and return results as per the filer"""
 
         # Filter the dictionary objects based on the filters
         items = []
-        for item in self.conn[self.schema.name].values():
+        excludes = _excludes if _excludes else {}
+        for item in self.conn['data'][self.schema.name].values():
+            match = True
+
+            # Add objects that match the given filters
             for fk, fv in filters.items():
                 if item[fk] != fv:
-                    break
-            else:
+                    match = False
+
+            # Add objects that do not match excludes
+            for fk, fv in excludes.items():
+                if item[fk] == fv:
+                    match = False
+
+            if match:
                 items.append(item)
 
         # Sort the filtered results based on the order_by clause
@@ -56,11 +79,11 @@ class Repository(BaseRepository):
             items=items[cur_offset: cur_limit])
         return result
 
-    def _update(self, entity: Entity):
+    def _update_object(self, entity: Entity):
         """ Update the entity record in the dictionary """
-        identifier = getattr(entity, entity.id_field[0])
-        self.conn[self.schema.name][identifier] = self.schema.from_entity(
-            entity)
+        identifier = getattr(entity, entity.meta_.id_field[0])
+        self.conn['data'][self.schema.name][
+            identifier] = self.schema.from_entity(entity)
         return entity
 
     def delete(self, identifier):
@@ -69,20 +92,24 @@ class Repository(BaseRepository):
         # Delete the object from the dictionary and return the deletion count
         del_count = 0
         try:
-            del self.conn[self.schema.name][identifier]
+            del self.conn['data'][self.schema.name][identifier]
             del_count += 1
         except KeyError:
             pass
         return del_count
 
+    def delete_all(self):
+        """ Delete all objects in this schema """
+        del self.conn['data'][self.schema.name]
 
-class DictSchema(BaseRepositorySchema):
+
+class RepositorySchema(BaseRepositorySchema):
     """ A schema for the dictionary repository"""
 
     def from_entity(self, entity):
         """ Convert the entity to a dictionary record """
         dict_obj = {}
-        for field_name in entity.declared_fields:
+        for field_name in entity.meta_.declared_fields:
             dict_obj[field_name] = getattr(entity, field_name)
         return dict_obj
 
@@ -99,4 +126,5 @@ class ConnectionHandler(BaseConnectionHandler):
 
     def get_connection(self):
         """ Return the dictionary database object """
-        return defaultdict(dict)
+        return {'data': defaultdict(dict),
+                'counters': defaultdict(count)}

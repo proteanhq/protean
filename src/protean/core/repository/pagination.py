@@ -44,3 +44,10 @@ class Pagination(object):
             return self.items[0]
         else:
             return None
+
+    def __bool__(self):
+        """ Return true when the number of items is greater than 0"""
+        if self.items:
+            return True
+        else:
+            return False

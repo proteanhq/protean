@@ -1,63 +1,87 @@
 """Entity Functionality and Classes"""
-import copy
-
 from collections import OrderedDict
 
 from protean.core.field import Field, Auto
-from protean.core.exceptions import ValidationError, ConfigurationError
+from protean.core.exceptions import ValidationError
 
 
 class EntityBase(type):
     """
-    This base metaclass sets a dictionary named `_declared_fields` on the class.
+    This base metaclass sets a `_meta` attribute on the Entity to an instance
+    of Meta defined in the Entity
+
+    It also sets dictionary named `declared_fields` on the `_meta` attribute.
     Any instances of `Field` included as attributes on either the class
-    or on any of its superclasses will be include in the
-    `_declared_fields` dictionary.
+    or on any of its superclasses will be include in this dictionary.
     """
 
     @classmethod
-    def _get_declared_fields(mcs, bases, attrs):
+    def _get_declared_fields(mcs, klass, bases, attrs):
         # Load all attributes of the class that are instances of `Field`
         fields = []
         for attr_name, attr_obj in attrs.items():
             if isinstance(attr_obj, Field):
                 # Bind the field object and append to list
-                attr_obj.bind(attr_name)
+                attr_obj.bind_to_entity(klass, attr_name)
                 fields.append((attr_name, attr_obj))
 
         # If this class is subclassing another Entity, add that Entity's
         # fields.  Note that we loop over the bases in *reverse*.
         # This is necessary in order to maintain the correct order of fields.
         for base in reversed(bases):
-            if hasattr(base, '_declared_fields'):
+            if hasattr(base, 'meta_') and \
+                    hasattr(base.meta_, 'declared_fields'):
                 fields = [
                     (field_name, field_obj) for field_name, field_obj
-                    in base._declared_fields.items()
-                    if field_name not in attrs and
-                       not isinstance(field_obj, Auto)
+                    in base.meta_.declared_fields.items()
+                    if field_name not in attrs and not field_obj.identifier
                 ] + fields
 
         return OrderedDict(fields)
 
     def __new__(mcs, name, bases, attrs):
-        attrs['_declared_fields'] = mcs._get_declared_fields(bases, attrs)
-        # Set the id field only when an entity has declared fields
-        if attrs['_declared_fields']:
+        klass = super(EntityBase, mcs).__new__(mcs, name, bases, attrs)
+        declared_fields = mcs._get_declared_fields(klass, bases, attrs)
+
+        klass.meta_ = EntityMeta(getattr(klass, 'Meta'), klass)
+        klass.meta_.declared_fields = declared_fields
+
+        # Lookup the id field for this entity
+        if declared_fields:
             try:
-                attrs['id_field'] = next(
+                klass.meta_.id_field = next(
                     (field_name, field) for field_name, field in
-                    attrs['_declared_fields'].items() if field.identifier)
+                    declared_fields.items() if field.identifier)
             except StopIteration:
                 # If no id field is declared then create one
-                attrs['id_field'] = 'id', Auto()
-                attrs['_declared_fields']['id'] = attrs['id_field'][1]
+                klass.meta_.id_field = 'id', Auto(identifier=True)
+                klass.meta_.id_field[1].bind_to_entity(klass, 'id')
+                declared_fields['id'] = klass.meta_.id_field[1]
 
-        return super(EntityBase, mcs).__new__(mcs, name, bases, attrs)
+        return klass
+
+
+class EntityMeta:
+    """ Metadata information for the entity including any options defined."""
+
+    def __init__(self, meta, entity_cls):
+        self.entity_cls = entity_cls
+        self.declared_fields = {}
+        self.id_field = None
+
+    @property
+    def unique_fields(self):
+        """ Return the unique fields for this entity """
+        return [(field_name, field_obj)
+                for field_name, field_obj in self.declared_fields.items()
+                if field_obj.unique]
 
 
 class Entity(metaclass=EntityBase):
     """Class for defining Domain Entities"""
-    _declared_fields = {}
+
+    class Meta:
+        """Options object for an Entity"""
 
     def __init__(self, *template, **kwargs):
         """
@@ -68,7 +92,6 @@ class Entity(metaclass=EntityBase):
         """
 
         self.errors = {}
-        self.declared_fields = self.get_fields()
 
         # Load the attributes based on the template
         loaded_fields = []
@@ -80,21 +103,21 @@ class Entity(metaclass=EntityBase):
                     f'values.'
                 )
             for field_name, val in dictionary.items():
-                field_obj = self.declared_fields.get(field_name, None)
+                field_obj = self.meta_.declared_fields.get(field_name, None)
                 if field_obj:
                     loaded_fields.append(field_name)
                     self._setattr(field_name, field_obj, val)
 
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
-            field_obj = self.declared_fields.get(field_name, None)
+            field_obj = self.meta_.declared_fields.get(field_name, None)
             if field_obj:
                 loaded_fields.append(field_name)
                 self._setattr(field_name, field_obj, val)
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields
-        for field_name, field_obj in self.declared_fields.items():
+        for field_name, field_obj in self.meta_.declared_fields.items():
             if field_name not in loaded_fields:
                 self._setattr(field_name, field_obj, None)
 
@@ -113,16 +136,6 @@ class Entity(metaclass=EntityBase):
         except ValidationError as err:
             self.errors[field_name] = err.messages
 
-    def get_fields(self):
-        """
-        Returns a dictionary of {field_name: field_instance}.
-        """
-        # Every new entity is created with a clone of the field instances.
-        # This allows users to dynamically modify the fields on a entity
-        # instance without affecting every other entity instance.
-
-        return copy.deepcopy(self._declared_fields)
-
     def update(self, data):
         """
         Update the entity with the given set of values
@@ -132,10 +145,15 @@ class Entity(metaclass=EntityBase):
         # Load each of the fields given in the data dictionary
         self.errors = {}
         for field_name, val in data.items():
-            field_obj = self.declared_fields.get(field_name, None)
+            field_obj = self.meta_.declared_fields.get(field_name, None)
             if field_obj:
                 self._setattr(field_name, field_obj, val)
 
         # Raise any errors found during update
         if self.errors:
             raise ValidationError(self.errors)
+
+    def as_dict(self):
+        """ Convert the entity to a dictionary """
+        return {field_name: getattr(self, field_name, None)
+                for field_name in self.declared_fields}

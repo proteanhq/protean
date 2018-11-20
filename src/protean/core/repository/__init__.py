@@ -3,7 +3,7 @@
 from .base import BaseRepository, BaseRepositorySchema, RepositorySchemaOpts, \
     BaseConnectionHandler
 from .factory import RepositoryFactory, repo_factory
-from .utils import Pagination
+from .pagination import Pagination
 
 __all__ = ('BaseRepository', 'BaseRepositorySchema', 'RepositorySchemaOpts',
            'BaseConnectionHandler', 'RepositoryFactory', 'repo_factory',
