@@ -110,3 +110,12 @@ class TestEntity:
             id=3, name='John Doe')
         assert dog2 is not None
         assert dog2.id == 3
+
+    def test_to_dict(self):
+        """Test conversion of the entity to dict"""
+
+        dog = Dog(
+            id=1, name='John Doe', age=10, owner='Jimmy')
+        assert dog is not None
+        assert dog.to_dict() == {
+            'age': 10, 'id': 1, 'name': 'John Doe', 'owner': 'Jimmy'}
