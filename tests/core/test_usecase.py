@@ -9,7 +9,7 @@ from protean.core.usecase import (
     CreateRequestObject, CreateUseCase, UpdateRequestObject, UpdateUseCase,
     DeleteRequestObject, DeleteUseCase)
 from protean.core.repository import repo_factory as rf
-from protean.impl.repository.dict_repo import RepositorySchema
+from protean.impl.repository.dict_repo import DictSchema
 
 
 class Dog(Entity):
@@ -19,7 +19,7 @@ class Dog(Entity):
     owner = field.String(required=True, max_length=15)
 
 
-class DogAutoSchema(RepositorySchema):
+class DogAutoSchema(DictSchema):
     """ Schema for the Dog Entity"""
 
     class Meta:

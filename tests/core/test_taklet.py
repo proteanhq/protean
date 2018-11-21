@@ -10,7 +10,7 @@ from protean.core.exceptions import UsecaseExecutionError
 from protean.core.transport import Status
 from protean.core import field
 
-from protean.impl.repository.dict_repo import RepositorySchema
+from protean.impl.repository.dict_repo import DictSchema
 
 from .test_repository import DogSchema
 
@@ -40,7 +40,7 @@ class Dog2(Entity):
     created_by = field.String(required=True, max_length=15)
 
 
-class Dog2Schema(RepositorySchema):
+class Dog2Schema(DictSchema):
     """ Schema for the Dog2 Entity"""
 
     class Meta:

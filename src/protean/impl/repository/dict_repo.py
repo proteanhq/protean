@@ -5,9 +5,8 @@ from itertools import count
 
 from operator import itemgetter
 
-from protean.core.entity import Entity
 from protean.core.field import Auto
-from protean.core.repository import BaseRepository, BaseRepositorySchema, \
+from protean.core.repository import BaseRepository, BaseSchema, \
     Pagination, BaseConnectionHandler
 
 
@@ -112,7 +111,7 @@ class Repository(BaseRepository):
         del self.conn['data'][self.schema_name]
 
 
-class RepositorySchema(BaseRepositorySchema):
+class DictSchema(BaseSchema):
     """ A schema for the dictionary repository"""
 
     @classmethod
@@ -126,8 +125,7 @@ class RepositorySchema(BaseRepositorySchema):
     @classmethod
     def to_entity(cls, item):
         """ Convert the dictionary record to an entity """
-        print(item)
-        return cls.opts.entity_cls(item)
+        return cls.opts_.entity_cls(item)
 
 
 class ConnectionHandler(BaseConnectionHandler):

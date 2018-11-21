@@ -28,8 +28,8 @@ class BaseRepository(metaclass=ABCMeta):
     def __init__(self, conn, schema_cls):
         self.conn = conn
         self.schema_cls = schema_cls
-        self.entity_cls = schema_cls.opts.entity_cls
-        self.schema_name = schema_cls.opts.schema_name
+        self.entity_cls = schema_cls.opts_.entity_cls
+        self.schema_name = schema_cls.opts_.schema_name
 
     @abstractmethod
     def _filter_objects(self, page: int = 1, per_page: int = 10,
@@ -84,7 +84,7 @@ class BaseRepository(metaclass=ABCMeta):
             f'order results by {order_by}')
 
         # order_by clause must be list of keys
-        order_by = self.schema_cls.opts.order_by if not order_by else order_by
+        order_by = self.schema_cls.opts_.order_by if not order_by else order_by
         if not isinstance(order_by, (list, tuple)):
             order_by = [order_by]
 
@@ -205,7 +205,7 @@ class BaseRepository(metaclass=ABCMeta):
         return self._delete_objects(**filters)
 
 
-class RepositorySchemaOpts(object):
+class SchemaOptions(object):
     """class Meta options for the :class:`RepositorySchema`."""
 
     def __init__(self, meta, schema_cls):
@@ -226,10 +226,10 @@ class RepositorySchemaOpts(object):
         self.order_by = getattr(meta, 'order_by', ())
 
 
-class BaseRepositorySchema(metaclass=OptionsMeta):
+class BaseSchema(metaclass=OptionsMeta):
     """ Repository Schema defines an index/table in the repository"""
-    options_class = RepositorySchemaOpts
-    opts = None
+    options_cls = SchemaOptions
+    opts_ = None
 
     class Meta(object):
         """Options object for a Schema.
