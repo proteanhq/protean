@@ -76,6 +76,12 @@ class EntityMeta:
                 for field_name, field_obj in self.declared_fields.items()
                 if field_obj.unique]
 
+    @property
+    def has_auto_field(self):
+        """ Check the the id_field for the entity is Auto Type"""
+        return any([isinstance(field_obj, Auto) for
+                    _, field_obj in self.declared_fields.items()])
+
 
 class Entity(metaclass=EntityBase):
     """Class for defining Domain Entities"""
@@ -153,7 +159,7 @@ class Entity(metaclass=EntityBase):
         if self.errors:
             raise ValidationError(self.errors)
 
-    def as_dict(self):
+    def to_dict(self):
         """ Convert the entity to a dictionary """
         return {field_name: getattr(self, field_name, None)
                 for field_name in self.declared_fields}
