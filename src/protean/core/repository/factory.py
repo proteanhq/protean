@@ -4,7 +4,7 @@ import importlib
 
 from protean.core.exceptions import ConfigurationError
 from protean.conf import active_config
-from .base import BaseRepositorySchema, BaseRepository
+from .base import BaseSchema, BaseRepository
 
 logger = logging.getLogger('protean.repository')
 
@@ -41,9 +41,9 @@ class RepositoryFactory:
         :param repo_cls: Optional repository class to use if not the
         `Repository` defined by the provider is userd
         """
-        if not issubclass(schema_cls, BaseRepositorySchema):
+        if not issubclass(schema_cls, BaseSchema):
             raise AssertionError(
-                f'Schema {schema_cls} must be subclass of `BaseRepositorySchema`')
+                f'Schema {schema_cls} must be subclass of `BaseSchema`')
 
         if repo_cls and not issubclass(repo_cls, BaseRepository):
             raise AssertionError(
@@ -54,25 +54,25 @@ class RepositoryFactory:
         if schema_name not in self._registry:
             # Lookup the connection details for the schema
             try:
-                conn_info = self.repositories[schema_cls.opts.bind]
+                conn_info = self.repositories[schema_cls.opts_.bind]
             except KeyError:
                 raise ConfigurationError(
-                    f"'{schema_cls.opts.bind}' repository not found in "
+                    f"'{schema_cls.opts_.bind}' repository not found in "
                     f"'REPOSITORIES'")
 
             # Load the repository provider
             provider = importlib.import_module(conn_info['PROVIDER'])
 
             # If no connection exists then build it
-            if schema_cls.opts.bind not in self._connections:
+            if schema_cls.opts_.bind not in self._connections:
                 conn_handler = provider.ConnectionHandler(conn_info)
-                self._connections[schema_cls.opts.bind] = \
+                self._connections[schema_cls.opts_.bind] = \
                     conn_handler.get_connection()
 
             # Finally register the schema against the provider repository
             repo_cls = repo_cls or provider.Repository
             self._registry[schema_name] = repo_cls(
-                self._connections[schema_cls.opts.bind], schema_cls)
+                self._connections[schema_cls.opts_.bind], schema_cls)
             logger.debug(
                 f'Registered schema {schema_name} with repository provider '
                 f'{conn_info["PROVIDER"]}.')
