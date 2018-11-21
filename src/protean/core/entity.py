@@ -162,4 +162,4 @@ class Entity(metaclass=EntityBase):
     def to_dict(self):
         """ Convert the entity to a dictionary """
         return {field_name: getattr(self, field_name, None)
-                for field_name in self.declared_fields}
+                for field_name in self.meta_.declared_fields}
