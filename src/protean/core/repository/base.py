@@ -54,7 +54,7 @@ class BaseRepository(metaclass=ABCMeta):
         }
 
         # Find this item in the repository or raise Error
-        results = self.filter(**filters)
+        results = self.filter(page=1, per_page=1, **filters)
         if not results:
             raise ObjectNotFoundError(
                 f'`{self.schema_name}` object with identifier {identifier} '
@@ -113,7 +113,7 @@ class BaseRepository(metaclass=ABCMeta):
         :param excludes_: entities without this combination of field name and
         values will be returned
         """
-        results = self.filter(excludes_=excludes_, **filters)
+        results = self.filter(page=1, per_page=1, excludes_=excludes_, **filters)
         return bool(results)
 
     @abstractmethod
