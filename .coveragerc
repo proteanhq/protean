@@ -9,8 +9,10 @@ source =
     protean
     tests
 parallel = true
+omit = */__main__.py
 
 [report]
 show_missing = true
 precision = 2
 omit = *migrations*
+

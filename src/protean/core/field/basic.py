@@ -156,11 +156,6 @@ class Date(Field):
         'invalid': '"{value}" has an invalid date format.',
     }
 
-    def __init__(self, *args, **kwargs):
-        # Force set required to false
-        super().__init__(*args, **kwargs)
-        self.required = False
-
     def _cast_to_type(self, value):
         """ Convert the value to a date and raise error on failures"""
         if isinstance(value, datetime.datetime):
@@ -177,11 +172,6 @@ class Date(Field):
 class DateTime(Field):
     """ Concrete field implementation for the Datetime/Timestamp type.
     """
-
-    def __init__(self, *args, **kwargs):
-        # Force set required to false
-        super().__init__(*args, **kwargs)
-        self.required = False
 
     def _cast_to_type(self, value):
         """ Convert the value to a datetime and raise error on failures"""

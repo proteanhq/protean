@@ -28,7 +28,7 @@ def read(*names, **kwargs):
 
 setup(
     name='protean',
-    version='0.0.5',
+    version='0.0.6',
     license='BSD 3-Clause License',
     description='Protean Application Framework',
     long_description='%s\n%s' % (
@@ -62,7 +62,7 @@ setup(
         # eg: 'keyword1', 'keyword2', 'keyword3',
     ],
     install_requires=[
-        'click==6.7',
+        'click==7.0',
         'werkzeug==0.14.1',
         'python-dateutil==2.7.3'
         # eg: 'aspectlib==1.1.1', 'six>=1.7',
@@ -74,7 +74,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'protean = protean.cli:main',
+            'protean = protean.cli:cli',
         ]
     },
 )
