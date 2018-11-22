@@ -17,8 +17,15 @@ Why does this file exist, and why not put this in __main__?
 import click
 
 
-@click.command()
+@click.group()
+def cli():
+    """ CLI utilities for the protean package """
+    pass
+
+
+@cli.command()
 @click.argument('names', nargs=-1)
-def main(names):
+def echo(names):
     """Simply print input argument `names`"""
     click.echo(repr(names))
+
