@@ -106,7 +106,6 @@ class Field(metaclass=ABCMeta):
                                                key=key)
             raise AssertionError(msg)
         if isinstance(msg, str):
-            print(msg, kwargs)
             msg = msg.format(**kwargs)
 
         raise exceptions.ValidationError(msg, self.field_name)
