@@ -18,12 +18,12 @@ import click
 
 
 @click.group()
-def cli():
+def main():
     """ CLI utilities for the protean package """
     pass
 
 
-@cli.command()
+@main.command()
 @click.argument('names', nargs=-1)
 def echo(names):
     """Simply print input argument `names`"""
