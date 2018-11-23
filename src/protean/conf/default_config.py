@@ -24,6 +24,12 @@ REPOSITORIES = {}
 PER_PAGE = 10
 
 ####################
+# GENERIC CACHE    #
+####################
+# Cache connection information
+CACHE = {}
+
+####################
 # Logging          #
 ####################
 
