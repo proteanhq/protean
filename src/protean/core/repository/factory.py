@@ -2,6 +2,8 @@
 import logging
 import importlib
 
+from threading import local
+
 from protean.core.exceptions import ConfigurationError
 from protean.conf import active_config
 from .base import BaseSchema, BaseRepository
@@ -14,8 +16,8 @@ class RepositoryFactory:
 
     def __init__(self):
         """"Initialize repository factory"""
-        self._registry = {}
-        self._connections = {}
+        self._registry = local()
+        self._connections = local()
         self._repositories = None
 
     @property
@@ -35,6 +37,15 @@ class RepositoryFactory:
 
         return self._repositories
 
+    @property
+    def connections(self):
+        """ Return the registered repository connections"""
+        try:
+            return self._connections.connections
+        except AttributeError:
+            self._connections.connections = {}
+            return self._connections.connections
+
     def register(self, schema_cls, repo_cls=None):
         """ Register the given schema with the factory
         :param schema_cls: class of the schema to be registered
@@ -51,7 +62,7 @@ class RepositoryFactory:
 
         # Register the schema if it does not exist
         schema_name = schema_cls.__name__
-        if schema_name not in self._registry:
+        if not hasattr(self._registry, schema_name):
             # Lookup the connection details for the schema
             try:
                 conn_info = self.repositories[schema_cls.opts_.bind]
@@ -64,23 +75,24 @@ class RepositoryFactory:
             provider = importlib.import_module(conn_info['PROVIDER'])
 
             # If no connection exists then build it
-            if schema_cls.opts_.bind not in self._connections:
+            if schema_cls.opts_.bind not in self.connections:
                 conn_handler = provider.ConnectionHandler(conn_info)
-                self._connections[schema_cls.opts_.bind] = \
+                self._connections.connections[schema_cls.opts_.bind] = \
                     conn_handler.get_connection()
 
             # Finally register the schema against the provider repository
             repo_cls = repo_cls or provider.Repository
-            self._registry[schema_name] = repo_cls(
-                self._connections[schema_cls.opts_.bind], schema_cls)
+            setattr(self._registry, schema_name,
+                    repo_cls(self.connections[schema_cls.opts_.bind],
+                             schema_cls))
             logger.debug(
                 f'Registered schema {schema_name} with repository provider '
                 f'{conn_info["PROVIDER"]}.')
 
     def __getattr__(self, schema):
         try:
-            return self._registry[schema]
-        except KeyError:
+            return getattr(self._registry, schema)
+        except AttributeError:
             raise AssertionError('Unregistered Schema')
 
 
