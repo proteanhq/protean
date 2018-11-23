@@ -172,8 +172,15 @@ class Field(metaclass=ABCMeta):
             else:
                 return None
 
-        if self.choices and value not in self.choice_list:
-            self.fail('invalid_choice', value=value, choices=self.choice_list)
+        # If choices exist then validate that value is be one of the choices
+        if self.choices:
+            value_list = value
+            if not isinstance(value, (list, tuple)):
+                value_list = [value]
+            for v in value_list:
+                if v not in self.choice_list:
+                    self.fail(
+                        'invalid_choice', value=v, choices=self.choice_list)
 
         # Cast and Validate the value for this Field
         value = self._cast_to_type(value)
