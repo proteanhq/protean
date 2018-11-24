@@ -8,7 +8,7 @@ from protean.core.usecase import (
     UseCase, ShowUseCase, ShowRequestObject, ListRequestObject, ListUseCase,
     CreateRequestObject, CreateUseCase, UpdateRequestObject, UpdateUseCase,
     DeleteRequestObject, DeleteUseCase)
-from protean.core.repository import repo_factory as rf
+from protean.core.repository import repo
 from protean.impl.repository.dict_repo import DictSchema
 
 
@@ -28,8 +28,8 @@ class DogAutoSchema(DictSchema):
         schema_name = 'dogs-auto'
 
 
-rf.register(DogAutoSchema)
-repo = rf.DogAutoSchema
+repo.register(DogAutoSchema)
+dog_repo = repo.DogAutoSchema
 
 
 class TestUseCase:
@@ -38,7 +38,7 @@ class TestUseCase:
     def test_init(self):
         """Test Initialization of the generic UseCase class"""
         with pytest.raises(TypeError):
-            UseCase(repo)
+            UseCase(dog_repo)
 
 
 class TestShowRequestObject:
@@ -119,11 +119,11 @@ class TestShowUseCase:
         """Test Show UseCase's `process_request` method"""
 
         # Add an object to the repository
-        repo.create(name='Johnny', owner='John')
+        dog_repo.create(name='Johnny', owner='John')
 
         # Build the request object and run the usecase
         request_obj = ShowRequestObject.from_dict(Dog, {'identifier': 1})
-        use_case = ShowUseCase(repo)
+        use_case = ShowUseCase(dog_repo)
         response = use_case.execute(request_obj)
         assert response is not None
         assert response.success
@@ -136,7 +136,7 @@ class TestShowUseCase:
 
         # Build the request object and run the usecase
         request_obj = ShowRequestObject.from_dict(Dog, {})
-        use_case = ShowUseCase(repo)
+        use_case = ShowUseCase(dog_repo)
         response = use_case.execute(request_obj)
         assert response is not None
         assert not response.success
@@ -146,7 +146,7 @@ class TestShowUseCase:
 
         # Build the request object and run the usecase
         request_obj = ShowRequestObject.from_dict(Dog, {'identifier': 12})
-        use_case = ShowUseCase(repo)
+        use_case = ShowUseCase(dog_repo)
         response = use_case.execute(request_obj)
         assert response is not None
         assert not response.success
@@ -158,21 +158,21 @@ class TestListUseCase:
     @classmethod
     def setup_class(cls):
         """ Setup instructions for this case """
-        repo.create(name='Murdock', owner='John', age=7)
-        repo.create(name='Jean', owner='John', age=3)
-        repo.create(name='Bart', owner='Carrie', age=6)
+        dog_repo.create(name='Murdock', owner='John', age=7)
+        dog_repo.create(name='Jean', owner='John', age=3)
+        dog_repo.create(name='Bart', owner='Carrie', age=6)
 
     @classmethod
     def teardown_class(cls):
         """ Teardown instructions for this case """
-        repo.delete_all()
+        dog_repo.delete_all()
 
     def test_process_request(self):
         """Test List UseCase's `process_request` method"""
         # Build the request object and run the usecase
         request_obj = ListRequestObject.from_dict(
             Dog, dict(order_by=['age'], owner='John'))
-        use_case = ListUseCase(repo)
+        use_case = ListUseCase(dog_repo)
         response = use_case.execute(request_obj)
 
         # Validate the response received
@@ -193,7 +193,7 @@ class TestCreateUseCase:
         # Fix and rerun the usecase
         request_data = dict(name='Barry', age=10, owner='Jimmy')
         request_obj = CreateRequestObject.from_dict(Dog, request_data)
-        use_case = CreateUseCase(repo)
+        use_case = CreateUseCase(dog_repo)
         response = use_case.execute(request_obj)
 
         assert response is not None
@@ -207,7 +207,7 @@ class TestCreateUseCase:
         # Build the request object and run the usecase
         request_data = dict(id=5, name='Jerry', age=10, owner='Jimmy')
         request_obj = CreateRequestObject.from_dict(Dog, request_data)
-        use_case = CreateUseCase(repo)
+        use_case = CreateUseCase(dog_repo)
         response = use_case.execute(request_obj)
 
         # Validate the response received
@@ -224,7 +224,7 @@ class TestUpdateUseCase:
     @classmethod
     def setup_class(cls):
         """ Setup instructions for this case """
-        cls.dog = repo.create(name='Johnny', owner='John')
+        cls.dog = dog_repo.create(name='Johnny', owner='John')
 
     def test_process_request(self):
         """Test Update UseCase's `process_request` method"""
@@ -232,7 +232,7 @@ class TestUpdateUseCase:
         # Build the request object and run the usecase
         request_obj = UpdateRequestObject.from_dict(
             Dog, {'identifier': self.dog.id, 'data': {'age': 13}})
-        use_case = UpdateUseCase(repo)
+        use_case = UpdateUseCase(dog_repo)
         response = use_case.execute(request_obj)
 
         # Validate the response received
@@ -246,7 +246,7 @@ class TestUpdateUseCase:
         # Build the request object and run the usecase
         request_obj = UpdateRequestObject.from_dict(
             Dog, {'identifier': self.dog.id, 'data': {'age': 'x'}})
-        use_case = UpdateUseCase(repo)
+        use_case = UpdateUseCase(dog_repo)
         response = use_case.execute(request_obj)
 
         # Validate the response received
@@ -260,7 +260,7 @@ class TestUpdateUseCase:
         # Build the request object and run the usecase
         request_obj = UpdateRequestObject.from_dict(
             Dog, {'identifier': self.dog.id, 'data': {'name': 'Barry'}})
-        use_case = UpdateUseCase(repo)
+        use_case = UpdateUseCase(dog_repo)
         response = use_case.execute(request_obj)
 
         # Validate the response received
@@ -278,7 +278,7 @@ class TestDeleteUseCase:
     @classmethod
     def setup_class(cls):
         """ Setup instructions for this case """
-        cls.dog = repo.create(name='Jimmy', owner='John')
+        cls.dog = dog_repo.create(name='Jimmy', owner='John')
 
     def test_process_request(self):
         """Test Delete UseCase's `process_request` method"""
@@ -286,7 +286,7 @@ class TestDeleteUseCase:
         # Build the request object and run the usecase
         request_obj = DeleteRequestObject.from_dict(
             Dog, {'identifier': self.dog.id})
-        use_case = DeleteUseCase(repo)
+        use_case = DeleteUseCase(dog_repo)
         response = use_case.execute(request_obj)
 
         # Validate the response received
@@ -297,7 +297,7 @@ class TestDeleteUseCase:
         # Try to lookup the object again
         request_obj = ShowRequestObject.from_dict(
             Dog, {'identifier': self.dog.id})
-        use_case = ShowUseCase(repo)
+        use_case = ShowUseCase(dog_repo)
         response = use_case.execute(request_obj)
         assert response is not None
         assert not response.success

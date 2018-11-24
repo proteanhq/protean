@@ -3,7 +3,7 @@ import pytest
 import time
 
 from protean.core.cache import cache
-from protean.core.repository import repo_factory as rf
+from protean.core.repository import repo
 
 
 class TestCache:
@@ -11,7 +11,7 @@ class TestCache:
 
     @classmethod
     def teardown_class(cls):
-        rf.DogSchema.delete_all()
+        repo.DogSchema.delete_all()
 
     def test_init(self):
         """Test successful access to the Cache Wrapper"""
@@ -20,7 +20,7 @@ class TestCache:
     def test_add(self):
         """ Test adding and retrieving an entry to the cache """
         # Add an entity to the cache
-        dog = rf.DogSchema.create(id=1, name='Johnny', owner='John')
+        dog = repo.DogSchema.create(id=1, name='Johnny', owner='John')
         cache.provider.add(f'dog:{dog.id}', dog.to_dict())
 
         # Retrieve the entity
@@ -30,7 +30,7 @@ class TestCache:
     def test_set(self):
         """ Test setting an existing key and expiry of keys """
         # Set an entity to the cache
-        dog = rf.DogSchema.get(1)
+        dog = repo.DogSchema.get(1)
         cache.provider.set(f'dog:{dog.id}', dog.to_dict(), expiry=5)
 
         # Retrieve the entity
@@ -45,7 +45,7 @@ class TestCache:
     def test_touch(self):
         """ Test updating the expiry of key using touch """
         # Set an entity to the cache
-        dog = rf.DogSchema.get(1)
+        dog = repo.DogSchema.get(1)
         cache.provider.set(f'dog:{dog.id}', dog.to_dict(), expiry=1)
 
         # Retrieve the entity
@@ -61,7 +61,7 @@ class TestCache:
     def test_delete(self):
         """ Test deleting a key from the cache """
         # Set an entity to the cache
-        dog = rf.DogSchema.get(1)
+        dog = repo.DogSchema.get(1)
         cache.provider.set(f'dog:{dog.id}', dog.to_dict())
 
         # Retrieve the entity

@@ -2,9 +2,9 @@
 
 from .base import BaseRepository, BaseSchema, SchemaOptions, \
     BaseConnectionHandler
-from .factory import RepositoryFactory, repo_factory
+from .factory import RepositoryFactory, repo
 from .pagination import Pagination
 
 __all__ = ('BaseRepository', 'BaseSchema', 'SchemaOptions',
-           'BaseConnectionHandler', 'RepositoryFactory', 'repo_factory',
+           'BaseConnectionHandler', 'RepositoryFactory', 'repo',
            'Pagination')

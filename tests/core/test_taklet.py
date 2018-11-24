@@ -5,7 +5,7 @@ from protean.core.tasklet import Tasklet
 from protean.core.usecase import ShowRequestObject, ShowUseCase, CreateUseCase, \
     CreateRequestObject
 from protean.core.entity import Entity
-from protean.core.repository import repo_factory as rf
+from protean.core.repository import repo
 from protean.core.exceptions import UsecaseExecutionError
 from protean.core.transport import Status
 from protean.core import field
@@ -49,7 +49,7 @@ class Dog2Schema(DictSchema):
         schema_name = 'dogs2'
 
 
-rf.register(Dog2Schema)
+repo.register(Dog2Schema)
 
 
 class TestTasklet:
@@ -57,16 +57,16 @@ class TestTasklet:
 
     @classmethod
     def teardown_class(cls):
-        rf.DogSchema.delete_all()
+        repo.DogSchema.delete_all()
 
     def test_perform(self):
         """Test call to Tasklet's perform method"""
-        rf.DogSchema.create(id=1, name='Murdock', owner='John')
+        repo.DogSchema.create(id=1, name='Murdock', owner='John')
 
         # Perform a Show Usecase using Tasklet
         payload = {'identifier': 1}
         response = Tasklet.perform(
-            rf, DogSchema, ShowUseCase, ShowRequestObject, payload)
+            repo, DogSchema, ShowUseCase, ShowRequestObject, payload)
 
         # Validate the response received
         assert response is not None
@@ -80,7 +80,7 @@ class TestTasklet:
         # Perform a Create Usecase using Tasklet
         payload = dict(name='Jerry', age=10, owner='Jack')
         response = AppTasklet.perform(
-            rf, Dog2Schema, CreateUseCase2, CreateRequestObject, payload)
+            repo, Dog2Schema, CreateUseCase2, CreateRequestObject, payload)
 
         # Validate the response received
         assert response is not None
@@ -93,7 +93,7 @@ class TestTasklet:
         """ Test raise error function of the Tasklet """
         with pytest.raises(UsecaseExecutionError) as exc_info:
             Tasklet.perform(
-                rf, DogSchema, ShowUseCase, ShowRequestObject, {},
+                repo, DogSchema, ShowUseCase, ShowRequestObject, {},
                 raise_error=True)
         assert exc_info.value.value[0] == Status.UNPROCESSABLE_ENTITY
         assert exc_info.value.value[1] ==  \
