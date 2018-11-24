@@ -55,18 +55,23 @@ rf.register(Dog2Schema)
 class TestTasklet:
     """Tests for Tasklet Utility Methods"""
 
+    @classmethod
+    def teardown_class(cls):
+        rf.DogSchema.delete_all()
+
     def test_perform(self):
         """Test call to Tasklet's perform method"""
+        rf.DogSchema.create(id=1, name='Murdock', owner='John')
 
         # Perform a Show Usecase using Tasklet
-        payload = {'identifier': 2}
+        payload = {'identifier': 1}
         response = Tasklet.perform(
             rf, DogSchema, ShowUseCase, ShowRequestObject, payload)
 
         # Validate the response received
         assert response is not None
         assert response.success
-        assert response.value.id == 2
+        assert response.value.id == 1
         assert response.value.name == 'Murdock'
 
     def test_context(self):

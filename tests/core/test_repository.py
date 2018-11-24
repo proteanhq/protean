@@ -32,6 +32,10 @@ rf.register(DogSchema)
 class TestRepository:
     """This class holds tests for Repository class"""
 
+    @classmethod
+    def teardown_class(cls):
+        rf.DogSchema.delete_all()
+
     def test_init(self):
         """Test successful access to the Dog repository"""
 

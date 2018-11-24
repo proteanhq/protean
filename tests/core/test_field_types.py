@@ -153,6 +153,26 @@ class TestListField:
             tags = field.Boolean()
             tags.load('x')
 
+    def test_choice(self):
+        """ Test choices validations for the list field """
+
+        class StatusChoices(enum.Enum):
+            """ Set of choices for the status"""
+            PENDING = 'Pending'
+            SUCCESS = 'Success'
+            ERROR = 'Error'
+
+        status = field.List(choices=StatusChoices)
+        assert status is not None
+
+        # Test loading of values to the status field
+        assert status.load(['PENDING']) == ['PENDING']
+        with pytest.raises(ValidationError) as e_info:
+            status.load(['PENDING', 'FAILURE'])
+        assert e_info.value.normalized_messages == {
+            '_entity': ["Value `'FAILURE'` is not a valid choice. "
+                        "Must be one of ['PENDING', 'SUCCESS', 'ERROR']"]}
+
 
 class TestDictField:
     """ Test the Dict Field Implementation"""
