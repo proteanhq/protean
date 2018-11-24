@@ -6,6 +6,7 @@ from threading import local
 
 from protean.core.exceptions import ConfigurationError
 from protean.conf import active_config
+
 from .base import BaseSchema, BaseRepository
 
 logger = logging.getLogger('protean.repository')

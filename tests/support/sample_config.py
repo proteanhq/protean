@@ -1,6 +1,4 @@
 """Sample Config Module for testing purposes"""
-# from . import dict_repo
-
 DEBUG = False
 
 # A secret key for this particular Protean installation. Used in secret-key
@@ -15,4 +13,10 @@ REPOSITORIES = {
     'default': {
         'PROVIDER': 'protean.impl.repository.dict_repo'
     }
+}
+
+
+# Define the cache config
+CACHE = {
+    'PROVIDER': 'protean.impl.cache.local_mem.LocalMemCache'
 }

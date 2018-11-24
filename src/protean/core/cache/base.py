@@ -39,7 +39,7 @@ class BaseCache:
         """
         return f'{self.key_prefix}:{key}'
 
-    def add(self, key, value, timeout=None, version=None):
+    def add(self, key, value, expiry=None):
         """
         Set a value in the cache if the key does not already exist. If
         timeout is given, use that timeout for the key; otherwise use the
@@ -49,7 +49,7 @@ class BaseCache:
         raise NotImplementedError(
             'subclasses of BaseCache must provide an add() method')
 
-    def get(self, key, default=None, version=None):
+    def get(self, key, default=None):
         """
         Fetch a given key from the cache. If the key does not exist, return
         default, which itself defaults to None.
@@ -57,7 +57,7 @@ class BaseCache:
         raise NotImplementedError(
             'subclasses of BaseCache must provide a get() method')
 
-    def set(self, key, value, expiry=DEFAULT_EXPIRY, version=None):
+    def set(self, key, value, expiry=DEFAULT_EXPIRY):
         """
         Set a value in the cache. If expiry is given, use that expiry for the
         key; otherwise use the default cache timeout.
@@ -65,7 +65,7 @@ class BaseCache:
         raise NotImplementedError(
             'subclasses of BaseCache must provide a set() method')
 
-    def touch(self, key, expiry=DEFAULT_EXPIRY, version=None):
+    def touch(self, key, expiry=DEFAULT_EXPIRY):
         """
         Update the key's expiry time using expiry. Return True if successful
         or False if the key does not exist.
@@ -73,14 +73,14 @@ class BaseCache:
         raise NotImplementedError(
             'subclasses of BaseCache must provide a touch() method')
 
-    def delete(self, key, version=None):
+    def delete(self, key):
         """
         Delete a key from the cache, failing silently.
         """
         raise NotImplementedError(
             'subclasses of BaseCache must provide a delete() method')
 
-    def get_many(self, keys, version=None):
+    def get_many(self, keys):
         """
         Fetch a bunch of keys from the cache. For certain backends (memcached,
         pgsql) this can be *much* faster when fetching multiple values.
@@ -89,36 +89,64 @@ class BaseCache:
         """
         d = {}
         for k in keys:
-            val = self.get(k, version=version)
+            val = self.get(k)
             if val is not None:
                 d[k] = val
 
         return d
 
-    def has_key(self, key, version=None):
+    def has_key(self, key):
         """
         Return True if the key is in the cache and has not expired.
         """
-        return self.get(key, version=version) is not None
+        return self.get(key) is not None
 
-    def incr(self, key, delta=1, version=None):
+    def incr(self, key, delta=1):
         """
         Add delta to value in the cache. If the key does not exist, raise a
         ValueError exception.
         """
-        value = self.get(key, version=version)
+        value = self.get(key)
         if value is None:
             raise ValueError("Key '%s' not found" % key)
         new_value = value + delta
-        self.set(key, new_value, version=version)
+        self.set(key, new_value)
         return new_value
 
-    def decr(self, key, delta=1, version=None):
+    def decr(self, key, delta=1):
         """
         Subtract delta from value in the cache. If the key does not exist, raise
         a ValueError exception.
         """
-        return self.incr(key, -delta, version=version)
+        return self.incr(key, -delta)
+
+    def set_many(self, data, expiry=DEFAULT_EXPIRY):
+        """
+        Set a bunch of values in the cache at once from a dict of key/value
+        pairs.  For certain backends (memcached), this is much more efficient
+        than calling set() multiple times.
+        If timeout is given, use that timeout for the key; otherwise use the
+        default cache timeout.
+        On backends that support it, return a list of keys that failed
+        insertion, or an empty list if all keys were inserted successfully.
+        """
+        for key, value in data.items():
+            self.set(key, value, expiry=expiry)
+        return []
+
+    def delete_many(self, keys):
+        """
+        Delete a bunch of values in the cache at once. For certain backends
+        (memcached), this is much more efficient than calling delete() multiple
+        times.
+        """
+        for key in keys:
+            self.delete(key)
+
+    def clear(self):
+        """Remove *all* values from the cache at once."""
+        raise NotImplementedError(
+            'subclasses of BaseCache must provide a clear() method')
 
     def close(self, **kwargs):
         """Close the cache connection"""
