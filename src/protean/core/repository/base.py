@@ -50,7 +50,7 @@ class BaseRepository(metaclass=ABCMeta):
             f'Lookup `{self.schema_name}` object with identifier {identifier}')
         # Get the ID field for the entity
         filters = {
-            self.entity_cls.meta_.id_field[0]: identifier
+            self.entity_cls.meta_.id_field.field_name: identifier
         }
 
         # Find this item in the repository or raise Error
@@ -200,7 +200,7 @@ class BaseRepository(metaclass=ABCMeta):
     def delete(self, identifier: Any):
         """Delete a Record from the Repository"""
         filters = {
-            self.entity_cls.meta_.id_field[0]: identifier
+            self.entity_cls.meta_.id_field.field_name: identifier
         }
         return self._delete_objects(**filters)
 

@@ -34,7 +34,7 @@ class Repository(BaseRepository):
         schema_obj = self._set_auto_fields(schema_obj)
 
         # Add the entity to the repository
-        identifier = schema_obj[self.entity_cls.meta_.id_field[0]]
+        identifier = schema_obj[self.entity_cls.meta_.id_field.field_name]
         self.conn['data'][self.schema_name][identifier] = schema_obj
         return schema_obj
 
@@ -81,7 +81,7 @@ class Repository(BaseRepository):
 
     def _update_object(self, schema_obj):
         """ Update the entity record in the dictionary """
-        identifier = schema_obj[self.entity_cls.meta_.id_field[0]]
+        identifier = schema_obj[self.entity_cls.meta_.id_field.field_name]
         self.conn['data'][self.schema_name][identifier] = schema_obj
         return schema_obj
 

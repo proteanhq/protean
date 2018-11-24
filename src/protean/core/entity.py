@@ -50,13 +50,13 @@ class EntityBase(type):
         if declared_fields:
             try:
                 klass.meta_.id_field = next(
-                    (field_name, field) for field_name, field in
-                    declared_fields.items() if field.identifier)
+                    field for _, field in declared_fields.items()
+                    if field.identifier)
             except StopIteration:
                 # If no id field is declared then create one
-                klass.meta_.id_field = 'id', Auto(identifier=True)
-                klass.meta_.id_field[1].bind_to_entity(klass, 'id')
-                declared_fields['id'] = klass.meta_.id_field[1]
+                klass.meta_.id_field = Auto(identifier=True)
+                klass.meta_.id_field.bind_to_entity(klass, 'id')
+                declared_fields['id'] = klass.meta_.id_field
 
         return klass
 
