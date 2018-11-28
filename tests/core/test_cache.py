@@ -1,5 +1,4 @@
 """Tests for Cache Functionality"""
-import pytest
 import time
 
 from protean.core.cache import cache

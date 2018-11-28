@@ -15,8 +15,10 @@ REPOSITORIES = {
     }
 }
 
-
 # Define the cache config
 CACHE = {
     'PROVIDER': 'protean.impl.cache.local_mem.LocalMemCache'
 }
+
+# Email Configuration
+DEFAULT_FROM_EMAIL = 'johndoe@domain.com'

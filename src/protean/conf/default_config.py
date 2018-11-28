@@ -30,6 +30,13 @@ PER_PAGE = 10
 CACHE = {}
 
 ####################
+# GENERIC EMAIL    #
+####################
+
+EMAIL_BACKEND = 'protean.impl.email.local_mem.EmailBackend'
+DEFAULT_FROM_EMAIL = None
+
+####################
 # Logging          #
 ####################
 
