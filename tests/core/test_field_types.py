@@ -16,19 +16,19 @@ class TestStringField:
     def test_init(self):
         """Test successful String Field initialization"""
 
-        name = field.String()
+        name = field.String(max_length=10)
         assert name is not None
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
-        name = field.String()
+        name = field.String(max_length=10)
         assert name.load(1) == '1'
 
     def test_min_length(self):
         """ Test minimum length validation for the string field"""
 
         with pytest.raises(ValidationError):
-            name = field.String(min_length=5)
+            name = field.String(min_length=5, max_length=10)
             name.load('Dum')
 
     def test_max_length(self):
@@ -47,7 +47,7 @@ class TestStringField:
             SUCCESS = 'Success'
             ERROR = 'Error'
 
-        status = field.String(choices=StatusChoices)
+        status = field.String(max_length=10, choices=StatusChoices)
         assert status is not None
 
         # Test loading of values to the status field
@@ -271,3 +271,19 @@ class TestDateTimeField:
         # Test for invalid datetime
         with pytest.raises(ValidationError):
             assert created_at.load('2018-03-16 10 23 32')
+
+
+class TestTextField:
+    """ Test the Text Field Implementation"""
+
+    def test_init(self):
+        """Test successful Text Field initialization"""
+
+        address = field.Text()
+        assert address is not None
+
+    def test_type_validation(self):
+        """ Test type checking validation for the Field"""
+        address = field.Text()
+        value = address.load('My home address')
+        assert value == 'My home address'
