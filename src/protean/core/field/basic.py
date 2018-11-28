@@ -1,4 +1,4 @@
-"""Module for defining basic Field types used in Entities"""
+""" Module for defining basic Field types of Entity """
 
 import datetime
 
@@ -11,15 +11,15 @@ from protean.core.field import validators
 class String(Field):
     """Concrete field implementation for the string type.
 
-    :param min_length: The minimum allowed length for the field.
     :param max_length: The maximum allowed length for the field.
+    :param min_length: The minimum allowed length for the field.
 
     """
     default_error_messages = {
         'invalid': '{value}" value must be a string.',
     }
 
-    def __init__(self, min_length=None, max_length=None, **kwargs):
+    def __init__(self, max_length, min_length=None, **kwargs):
         self.min_length = min_length
         self.max_length = max_length
         self.default_validators = [
@@ -30,6 +30,22 @@ class String(Field):
 
     def _cast_to_type(self, value):
         """ Convert the value to its string representation"""
+        if isinstance(value, str) or value is None:
+            return value
+        return str(value)
+
+
+class Text(Field):
+    """Concrete field implementation for the text type.
+    """
+    default_error_messages = {
+        'invalid': '{value}" value must be a string.',
+    }
+
+    def _cast_to_type(self, value):
+        """ Convert the value to its string representation"""
+        if isinstance(value, str) or value is None:
+            return value
         return str(value)
 
 

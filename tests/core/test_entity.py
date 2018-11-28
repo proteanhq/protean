@@ -86,7 +86,7 @@ class TestEntity:
 
         class SharedEntity(Entity):
             """ Class that provides the default fields """
-            age = field.String(default=5)
+            age = field.Integer(default=5)
 
         class Dog2(SharedEntity):
             """This is a dummy Dog Entity class with a mixin"""

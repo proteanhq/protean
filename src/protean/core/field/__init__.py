@@ -3,8 +3,10 @@
 
 from .base import Field
 from .basic import String, Boolean, Integer, Float, List, Dict, Auto, Date, \
-    DateTime
+    DateTime, Text
+from .ext import StringShort, StringMedium, StringLarge
 
 
 __all__ = ('Field', 'String', 'Boolean', 'Integer', 'Float', 'List', 'Dict',
-           'Auto', 'Date', 'DateTime')
+           'Auto', 'Date', 'DateTime', 'Text', 'StringShort', 'StringMedium',
+           'StringLarge')

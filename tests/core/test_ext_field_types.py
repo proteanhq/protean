@@ -1,0 +1,70 @@
+""" Test cases for extended field type implementations"""
+
+from datetime import datetime
+
+import enum
+
+import pytest
+
+from protean.core import field
+from protean.core.exceptions import ValidationError
+
+
+class TestStringShortField:
+    """ Test the StringShort Field Implementation"""
+
+    def test_init(self):
+        """Test successful StringShort Field initialization"""
+
+        name = field.StringShort()
+        assert name is not None
+
+    def test_loading(self):
+        """ Test loading the value for the StringShort Field"""
+        name = field.StringShort()
+
+        # Check that it raises validation
+        with pytest.raises(ValidationError):
+            name.load('D' * 16)
+
+        assert name.load('dummy') == 'dummy'
+
+
+class TestStringMediumField:
+    """ Test the StringMedium Field Implementation"""
+
+    def test_init(self):
+        """Test successful StringMedium Field initialization"""
+
+        name = field.StringMedium()
+        assert name is not None
+
+    def test_loading(self):
+        """ Test loading the value for the StringMedium Field"""
+        name = field.StringMedium()
+
+        # Check that it raises validation
+        with pytest.raises(ValidationError):
+            name.load('D' * 51)
+
+        assert name.load('dummy') == 'dummy'
+
+
+class TestStringLargeField:
+    """ Test the StringLarge Field Implementation"""
+
+    def test_init(self):
+        """Test successful StringLarge Field initialization"""
+
+        name = field.StringLarge()
+        assert name is not None
+
+    def test_loading(self):
+        """ Test loading the value for the StringLarge Field"""
+        name = field.StringLarge()
+
+        # Check that it raises validation
+        with pytest.raises(ValidationError):
+            name.load('D' * 256)
+
+        assert name.load('dummy') == 'dummy'
