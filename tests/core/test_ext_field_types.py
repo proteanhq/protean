@@ -50,18 +50,18 @@ class TestStringMediumField:
         assert name.load('dummy') == 'dummy'
 
 
-class TestStringLargeField:
-    """ Test the StringLarge Field Implementation"""
+class TestStringLongField:
+    """ Test the StringLong Field Implementation"""
 
     def test_init(self):
-        """Test successful StringLarge Field initialization"""
+        """Test successful StringLong Field initialization"""
 
-        name = field.StringLarge()
+        name = field.StringLong()
         assert name is not None
 
     def test_loading(self):
-        """ Test loading the value for the StringLarge Field"""
-        name = field.StringLarge()
+        """ Test loading the value for the StringLong Field"""
+        name = field.StringLong()
 
         # Check that it raises validation
         with pytest.raises(ValidationError):

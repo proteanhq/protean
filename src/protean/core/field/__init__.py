@@ -4,9 +4,9 @@
 from .base import Field
 from .basic import String, Boolean, Integer, Float, List, Dict, Auto, Date, \
     DateTime, Text
-from .ext import StringShort, StringMedium, StringLarge
+from .ext import StringShort, StringMedium, StringLong
 
 
 __all__ = ('Field', 'String', 'Boolean', 'Integer', 'Float', 'List', 'Dict',
            'Auto', 'Date', 'DateTime', 'Text', 'StringShort', 'StringMedium',
-           'StringLarge')
+           'StringLong')
