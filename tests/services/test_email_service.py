@@ -1,5 +1,6 @@
 """ Test the Email Service using the Local Mem Backend """
-from protean.services.email import get_connection, send_mail, send_mass_mail
+from protean.services.email import get_connection, send_mail, send_mass_mail, \
+    EmailMessage
 from protean.services import email
 
 from protean.impl.email.local_mem import EmailBackend
@@ -18,7 +19,7 @@ class TestEmailService:
         with EmailBackend() as connection:
             assert connection is not None
 
-    def test_send_message(self):
+    def test_send_mail(self):
         """ Test sending an email message using default backend """
         # Send the email and check the outbox
         send_mail('Test Subject', 'Test Body', ['jane@domain.com'],
@@ -47,3 +48,14 @@ class TestEmailService:
                                               "['jane@domain.com']\n"
                                               "Test Subject 2\n"
                                               "Test Body 2")
+
+    def test_message_send(self):
+        """ Test sending an email using from the EmailMessage"""
+        message = EmailMessage(
+            'Test Subject 4', 'Test Body 4', to=['jane@domain.com'])
+        message.send()
+
+        assert email.outbox[-1].message() == ("johndoe@domain.com\n"
+                                              "['jane@domain.com']\n"
+                                              "Test Subject 4\n"
+                                              "Test Body 4")
