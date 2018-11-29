@@ -33,19 +33,21 @@ class Config:
         config_module_str = os.environ.get(
             ENVIRONMENT_VARIABLE, config_module_str)
 
+        if not config_module_str:
+            raise ConfigurationError(
+                f"You must define the environment variable {ENVIRONMENT_VARIABLE} "
+                f" before accessing the active_config.")
+
         # If config module is defined then load it and override the attrs
-        if config_module_str:
-            config_module = importlib.import_module(config_module_str)
+        config_module = importlib.import_module(config_module_str)
 
-            # Override the config attrs
-            for setting in dir(config_module):
-                if setting.isupper():
-                    setattr(self, setting, getattr(config_module, setting))
+        # Override the config attrs
+        for setting in dir(config_module):
+            if setting.isupper():
+                setattr(self, setting, getattr(config_module, setting))
 
-            # store the settings module for future use
-            self.CONFIG_MODULE = config_module
-        else:
-            self.CONFIG_MODULE = default_config
+        # store the settings module for future use
+        self.CONFIG_MODULE = config_module
 
         if not getattr(self, 'SECRET_KEY', None):
             raise ConfigurationError(
