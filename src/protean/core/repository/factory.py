@@ -17,7 +17,7 @@ class RepositoryFactory:
 
     def __init__(self):
         """"Initialize repository factory"""
-        self._registry = local()
+        self._registry = {}
         self._connections = local()
         self._repositories = None
 
@@ -63,7 +63,7 @@ class RepositoryFactory:
 
         # Register the schema if it does not exist
         schema_name = schema_cls.__name__
-        if not hasattr(self._registry, schema_name):
+        if not self._registry.get(schema_name):
             # Lookup the connection details for the schema
             try:
                 conn_info = self.repositories[schema_cls.opts_.bind]
@@ -83,17 +83,16 @@ class RepositoryFactory:
 
             # Finally register the schema against the provider repository
             repo_cls = repo_cls or provider.Repository
-            setattr(self._registry, schema_name,
-                    repo_cls(self.connections[schema_cls.opts_.bind],
-                             schema_cls))
+            self._registry[schema_name] = \
+                repo_cls(self.connections[schema_cls.opts_.bind], schema_cls)
             logger.debug(
                 f'Registered schema {schema_name} with repository provider '
                 f'{conn_info["PROVIDER"]}.')
 
     def __getattr__(self, schema):
         try:
-            return getattr(self._registry, schema)
-        except AttributeError:
+            return self._registry[schema]
+        except KeyError:
             raise AssertionError('Unregistered Schema')
 
 
