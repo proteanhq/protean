@@ -1,10 +1,10 @@
 """Context Management Framework"""
 
-from werkzeug import local
+from .utils import local
 
 
 class Context:
-    """Class to create and manage context for UseCase and Celery Worker Execution"""
+    """Class to create and manage context for UseCase"""
 
     def __init__(self, **kwargs):
         """Initialize Context"""

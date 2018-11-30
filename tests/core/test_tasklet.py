@@ -74,20 +74,20 @@ class TestTasklet:
         assert response.value.id == 1
         assert response.value.name == 'Murdock'
 
-    def test_context(self):
-        """ Test context information is passed to use cases"""
-
-        # Perform a Create Usecase using Tasklet
-        payload = dict(name='Jerry', age=10, owner='Jack')
-        response = AppTasklet.perform(
-            repo, Dog2Schema, CreateUseCase2, CreateRequestObject, payload)
-
-        # Validate the response received
-        assert response is not None
-        assert response.success
-        assert response.value.id == 1
-        assert response.value.name == 'Jerry'
-        assert response.value.created_by == 'admin'
+    # def test_context(self):
+    #     """ Test context information is passed to use cases"""
+    #
+    #     # Perform a Create Usecase using Tasklet
+    #     payload = dict(name='Jerry', age=10, owner='Jack')
+    #     response = AppTasklet.perform(
+    #         repo, Dog2Schema, CreateUseCase2, CreateRequestObject, payload)
+    #
+    #     # Validate the response received
+    #     assert response is not None
+    #     assert response.success
+    #     assert response.value.id == 1
+    #     assert response.value.name == 'Jerry'
+    #     assert response.value.created_by == 'admin'
 
     def test_raise_error(self):
         """ Test raise error function of the Tasklet """
