@@ -9,7 +9,10 @@ source =
     protean
     tests
 parallel = true
-omit = */__main__.py
+omit =
+    */__main__.py
+    src/protean/utils/inflection.py
+    src/protean/utils/local.py
 
 [report]
 show_missing = true

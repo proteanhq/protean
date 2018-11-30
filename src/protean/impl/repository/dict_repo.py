@@ -70,8 +70,11 @@ class Repository(BaseRepository):
             items = sorted(items, key=itemgetter(o_key), reverse=reverse)
 
         # Build the pagination results for the filtered items
-        cur_offset = (page - 1) * per_page
-        cur_limit = page * per_page
+        cur_offset, cur_limit = None, None
+        if per_page is not None:
+            cur_offset = (page - 1) * per_page
+            cur_limit = page * per_page
+
         result = Pagination(
             page=page,
             per_page=per_page,
