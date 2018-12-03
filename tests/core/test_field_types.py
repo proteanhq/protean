@@ -51,12 +51,12 @@ class TestStringField:
         assert status is not None
 
         # Test loading of values to the status field
-        assert status.load('PENDING') == 'PENDING'
+        assert status.load('Pending') == 'Pending'
         with pytest.raises(ValidationError) as e_info:
-            status.load('FAILURE')
+            status.load('Failure')
         assert e_info.value.normalized_messages == {
-            '_entity': ["Value `'FAILURE'` is not a valid choice. "
-                        "Must be one of ['PENDING', 'SUCCESS', 'ERROR']"]}
+            '_entity': ["Value `'Failure'` is not a valid choice. "
+                        "Must be one of ['Pending', 'Success', 'Error']"]}
 
 
 class TestIntegerField:
@@ -87,6 +87,26 @@ class TestIntegerField:
         with pytest.raises(ValidationError):
             age = field.Integer(max_value=5)
             age.load(6)
+
+    def test_choice(self):
+        """ Test choices validations for the Integer field """
+
+        class StatusChoices(enum.Enum):
+            """ Set of choices for the status"""
+            PENDING = (0, 'Pending')
+            SUCCESS = (1, 'Success')
+            ERROR = (2, 'Error')
+
+        status = field.Integer(choices=StatusChoices)
+        assert status is not None
+
+        # Test loading of values to the status field
+        assert status.load(0) == 0
+        with pytest.raises(ValidationError) as e_info:
+            status.load(4)
+        assert e_info.value.normalized_messages == {
+            '_entity': ["Value `4` is not a valid choice. "
+                        "Must be one of [0, 1, 2]"]}
 
 
 class TestFloatField:
@@ -166,12 +186,12 @@ class TestListField:
         assert status is not None
 
         # Test loading of values to the status field
-        assert status.load(['PENDING']) == ['PENDING']
+        assert status.load(['Pending']) == ['Pending']
         with pytest.raises(ValidationError) as e_info:
-            status.load(['PENDING', 'FAILURE'])
+            status.load(['Pending', 'Failure'])
         assert e_info.value.normalized_messages == {
-            '_entity': ["Value `'FAILURE'` is not a valid choice. "
-                        "Must be one of ['PENDING', 'SUCCESS', 'ERROR']"]}
+            '_entity': ["Value `'Failure'` is not a valid choice. "
+                        "Must be one of ['Pending', 'Success', 'Error']"]}
 
 
 class TestDictField:

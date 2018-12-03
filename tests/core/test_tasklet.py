@@ -2,15 +2,10 @@
 import pytest
 
 from protean.core.tasklet import Tasklet
-from protean.core.usecase import ShowRequestObject, ShowUseCase, CreateUseCase, \
-    CreateRequestObject
-from protean.core.entity import Entity
+from protean.core.usecase import ShowRequestObject, ShowUseCase
 from protean.core.repository import repo
 from protean.core.exceptions import UsecaseExecutionError
 from protean.core.transport import Status
-from protean.core import field
-
-from protean.impl.repository.dict_repo import DictSchema
 
 from .test_repository import DogSchema
 

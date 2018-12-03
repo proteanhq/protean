@@ -62,7 +62,12 @@ class Field(metaclass=ABCMeta):
         # Set the choices for this field
         self.choices = choices
         if self.choices:
-            self.choice_list = list(self.choices.__members__)
+            self.choice_dict = {}
+            for _, member in self.choices.__members__.items():
+                if isinstance(member.value, (tuple, list)):
+                    self.choice_dict[member.value[0]] = member.value[1]
+                else:
+                    self.choice_dict[member.value] = member.value
 
         self.label = label
         self._validators = validators
@@ -178,9 +183,10 @@ class Field(metaclass=ABCMeta):
             if not isinstance(value, (list, tuple)):
                 value_list = [value]
             for v in value_list:
-                if v not in self.choice_list:
+                if v not in self.choice_dict:
                     self.fail(
-                        'invalid_choice', value=v, choices=self.choice_list)
+                        'invalid_choice', value=v,
+                        choices=list(self.choice_dict))
 
         # Cast and Validate the value for this Field
         value = self._cast_to_type(value)
