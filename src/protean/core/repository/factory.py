@@ -77,7 +77,8 @@ class RepositoryFactory:
 
             # If no connection exists then build it
             if schema_cls.opts_.bind not in self.connections:
-                conn_handler = provider.ConnectionHandler(conn_info)
+                conn_handler = provider.ConnectionHandler(
+                    schema_cls.opts_.bind, conn_info)
                 self._connections.connections[schema_cls.opts_.bind] = \
                     conn_handler.get_connection()
 
@@ -94,6 +95,14 @@ class RepositoryFactory:
             return self._registry[schema]
         except KeyError:
             raise AssertionError('Unregistered Schema')
+
+    def close_connections(self):
+        """ Close all connections registered with the repository """
+        for conn_name, conn_obj in self.connections.items():
+            conn_info = self.repositories[conn_name]
+            provider = importlib.import_module(conn_info['PROVIDER'])
+            conn_handler = provider.ConnectionHandler(conn_name, conn_info)
+            conn_handler.close_connection(conn_obj)
 
 
 repo = RepositoryFactory()

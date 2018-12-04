@@ -6,7 +6,7 @@ from protean.core.entity import Entity
 from protean.core.repository import repo
 from protean.core.exceptions import ValidationError, ObjectNotFoundError
 from protean.core import field
-from protean.impl.repository.dict_repo import DictSchema
+from protean.impl.repository.dict_repo import DictSchema, _databases
 
 
 class Dog(Entity):
@@ -128,3 +128,9 @@ class TestRepository:
 
         with pytest.raises(ObjectNotFoundError):
             repo.DogSchema.get(1)
+
+    def test_close_connections(self):
+        """ Test closing all connections to the repository"""
+        assert 'default' in _databases
+        repo.close_connections()
+        assert _databases == {}

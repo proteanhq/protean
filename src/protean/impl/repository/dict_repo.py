@@ -3,11 +3,19 @@
 from collections import defaultdict
 from itertools import count
 
+from threading import Lock
+
 from operator import itemgetter
 
 from protean.core.field import Auto
 from protean.core.repository import BaseRepository, BaseSchema, \
     Pagination, BaseConnectionHandler
+
+
+# Global in-memory store of dict data. Keyed by name, to provide
+# multiple named local memory caches.
+_databases = {}
+_locks = {}
 
 
 class Repository(BaseRepository):
@@ -35,7 +43,8 @@ class Repository(BaseRepository):
 
         # Add the entity to the repository
         identifier = schema_obj[self.entity_cls.meta_.id_field.field_name]
-        self.conn['data'][self.schema_name][identifier] = schema_obj
+        with self.conn['lock']:
+            self.conn['data'][self.schema_name][identifier] = schema_obj
         return schema_obj
 
     def _filter_objects(self, page: int = 1, per_page: int = 10,
@@ -71,7 +80,7 @@ class Repository(BaseRepository):
 
         # Build the pagination results for the filtered items
         cur_offset, cur_limit = None, None
-        if per_page is not None:
+        if per_page > 0:
             cur_offset = (page - 1) * per_page
             cur_limit = page * per_page
 
@@ -85,7 +94,8 @@ class Repository(BaseRepository):
     def _update_object(self, schema_obj):
         """ Update the entity record in the dictionary """
         identifier = schema_obj[self.entity_cls.meta_.id_field.field_name]
-        self.conn['data'][self.schema_name][identifier] = schema_obj
+        with self.conn['lock']:
+            self.conn['data'][self.schema_name][identifier] = schema_obj
         return schema_obj
 
     def _delete_objects(self, **filters):
@@ -111,7 +121,8 @@ class Repository(BaseRepository):
 
     def delete_all(self):
         """ Delete all objects in this schema """
-        del self.conn['data'][self.schema_name]
+        with self.conn['lock']:
+            del self.conn['data'][self.schema_name]
 
 
 class DictSchema(BaseSchema):
@@ -134,10 +145,20 @@ class DictSchema(BaseSchema):
 class ConnectionHandler(BaseConnectionHandler):
     """ Handle connections to the dict repository """
 
-    def __init__(self, conn_info):
+    def __init__(self, conn_name, conn_info):
         self.conn_info = conn_info
+        self.conn_name = conn_name
 
     def get_connection(self):
         """ Return the dictionary database object """
-        return {'data': defaultdict(dict),
-                'counters': defaultdict(count)}
+        database = {
+            'data': _databases.setdefault(self.conn_name, defaultdict(dict)),
+            'lock': _locks.setdefault(self.conn_name, Lock()),
+            'counters': defaultdict(count)
+        }
+        return database
+
+    def close_connection(self, conn):
+        """ Remove the dictionary database object """
+        del _databases[self.conn_name]
+        del _locks[self.conn_name]

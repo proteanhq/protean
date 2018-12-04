@@ -260,6 +260,11 @@ class BaseSchema(metaclass=OptionsMeta):
 
 class BaseConnectionHandler(metaclass=ABCMeta):
     """ Interface to manage connections to the database """
+
     @abstractmethod
     def get_connection(self):
         """ Get the connection object for the repository"""
+
+    @abstractmethod
+    def close_connection(self, conn):
+        """ Close the connection object for the repository"""
