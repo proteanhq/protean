@@ -133,4 +133,3 @@ class TestRepository:
         """ Test closing all connections to the repository"""
         assert 'default' in _databases
         repo.close_connections()
-        assert _databases == {}

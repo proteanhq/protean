@@ -159,6 +159,5 @@ class ConnectionHandler(BaseConnectionHandler):
         return database
 
     def close_connection(self, conn):
-        """ Remove the dictionary database object """
-        del _databases[self.conn_name]
-        del _locks[self.conn_name]
+        """ Close connection does nothing on the repo """
+        pass
