@@ -28,3 +28,8 @@ Changelog
 ------------------
 
 * Context Class
+
+0.0.6 (2018-12-12)
+------------------
+
+* Repository rewritten from the ground up
