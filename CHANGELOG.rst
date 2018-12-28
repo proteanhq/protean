@@ -33,3 +33,4 @@ Changelog
 ------------------
 
 * Repository rewritten from the ground up
+* First base version for overall Protean functionality
