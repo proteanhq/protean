@@ -24,7 +24,7 @@ Changelog
 * UseCase Utility Classes
 * Repository Abstract Classes
 
-0.0.5 (2018-)
+0.0.5 (2018-07-21)
 ------------------
 
 * Context Class

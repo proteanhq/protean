@@ -43,7 +43,7 @@ default_context:
     requiresio:                'no'
     scrutinizer:               'no'
     sphinx_doctest:            'no'
-    sphinx_theme:              'sphinx-rtd-theme'
+    sphinx_theme:              'alabaster'
     test_matrix_configurator:  'no'
     test_matrix_separate_coverage: 'no'
     test_runner:               'pytest'
