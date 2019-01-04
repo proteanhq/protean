@@ -1,5 +1,5 @@
-Protean: The Clean Architecture Multipurpose Framework
-======================================================
+Protean: Clean Architecture Multi-Purpose (CAMP) Framework
+==========================================================
 
 Release v\ |version|. (:ref:`Installation <install>`)
 
@@ -24,7 +24,7 @@ Release v\ |version|. (:ref:`Installation <install>`)
 .. image:: https://codecov.io/gh/proteanhq/protean/branch/master/graph/badge.svg
     :target: https://codecov.io/gh/proteanhq/protean
 
-**Protean** is a Clean Architecture based Multipurpose Development Framework, built to be customized to your needs, whether you are building a simple web app or a backend ecosystem for your company's product.  
+**Protean** is a Clean Architecture oriented, Multi-Purpose Development Framework. Protean has been built to be customized to your needs, whether you are building a simple web app or an entire backend ecosystem for your company's offering.
 
 
 Beloved Features
@@ -47,6 +47,7 @@ This part of the documentation introduces some background information about prot
 .. toctree::
    :maxdepth: 2
 
+   user/intro
    user/install
 
 
