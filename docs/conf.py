@@ -35,10 +35,13 @@ extlinks = {
     'pr': ('https://github.com/proteanhq/protean/pull/%s', 'PR #'),
 }
 # on_rtd is whether we are on readthedocs.org
-on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
+# on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 
-if not on_rtd:  # only set the theme if we're building docs locally
-    html_theme = 'alabaster'
+# if not on_rtd:  # only set the theme if we're building docs locally
+#     html_theme = 'alabaster'
+
+# Change theme to Alabaster
+html_theme = 'alabaster'
 
 html_use_smartypants = True
 html_last_updated_fmt = '%b %d, %Y'

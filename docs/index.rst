@@ -62,6 +62,17 @@ This part of the documentation details the Protean ecosystem and community.
    community/changelog
 
 
+API
+---
+
+If you are looking for information on a specific function, class, or method, this part of the documentation is for you.
+
+.. toctree::
+   :maxdepth: 2
+
+   api
+
+
 The Contributor Guide
 ---------------------
 

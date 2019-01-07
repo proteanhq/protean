@@ -84,7 +84,20 @@ class EntityMeta:
 
 
 class Entity(metaclass=EntityBase):
-    """Class for defining Domain Entities"""
+    """Base class for Protean-Compliant Domain Entities
+
+    Provides helper methods to custom define entity attributes, and query attribute names 
+    during runtime.
+
+    Basic Usage::
+
+        class Dog(Entity):
+            id = field.Integer(identifier=True)
+            name = field.String(required=True, max_length=50)
+            age = field.Integer(default=5)
+            owner = field.String(required=True, max_length=15)
+
+    """
 
     class Meta:
         """Options object for an Entity"""
@@ -145,6 +158,7 @@ class Entity(metaclass=EntityBase):
     def update(self, data):
         """
         Update the entity with the given set of values
+
         :param data: the dictionary of values to be updated for the entity
         """
 
@@ -160,6 +174,6 @@ class Entity(metaclass=EntityBase):
             raise ValidationError(self.errors)
 
     def to_dict(self):
-        """ Convert the entity to a dictionary """
+        """ Return entity data as a dictionary """
         return {field_name: getattr(self, field_name, None)
                 for field_name in self.meta_.declared_fields}
