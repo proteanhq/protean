@@ -1,7 +1,7 @@
 .. _api:
 
-Developer Interface
-===================
+Developer Interface (WIP)
+=========================
 
 .. module:: protean
 
@@ -15,3 +15,35 @@ The base class for all Protean-compliant entities is the `Entity` class.
 
 .. autoclass:: Entity
    :inherited-members:
+
+
+Fields
+^^^^^^
+**More to come**
+
+Validations
+^^^^^^^^^^^
+**More to come**
+
+
+Use Cases
+---------
+
+**More to come**
+
+Interfaces
+----------
+
+**More to come**
+
+Repository
+^^^^^^^^^^
+**More to come**
+
+Views
+^^^^^^
+**More to come**
+
+Cache
+^^^^^^^^^^^
+**More to come**

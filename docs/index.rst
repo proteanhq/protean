@@ -46,10 +46,32 @@ This part of the documentation introduces some background information about prot
 
 .. toctree::
    :maxdepth: 2
+   :caption: User Guide
 
    user/intro
    user/install
+   user/quickstart
+   user/advanced
+   user/services
+   user/adapters
+   user/implementations
 
+The Philosophy
+--------------
+
+If you want to understand the thought process behind why Protean came into existence and why Protean is strucutured the way it is, this section is for you.
+
+.. toctree::
+    :maxdepth: 1
+    :caption: Philosophy
+
+    philosophy/core
+    philosophy/dependency-rule
+    philosophy/decision-delay
+    philosophy/independence
+    philosophy/testability
+    philosophy/interfaces
+    philosophy/data-transfer-objects
 
 The Community Guide
 -------------------
@@ -58,9 +80,12 @@ This part of the documentation details the Protean ecosystem and community.
 
 .. toctree::
    :maxdepth: 2
+   :caption: Community Guide
 
+   community/adapters
+   community/faq
+   community/support
    community/changelog
-
 
 API
 ---
@@ -69,6 +94,7 @@ If you are looking for information on a specific function, class, or method, thi
 
 .. toctree::
    :maxdepth: 2
+   :caption: API
 
    api
 
@@ -80,6 +106,9 @@ If you want to contribute to the project, this part of the documentation is for 
 
 .. toctree::
    :maxdepth: 3
+   :caption: Contributor Guide
 
+   dev/philosophy
    dev/contributing
+   dev/todo
    dev/authors
