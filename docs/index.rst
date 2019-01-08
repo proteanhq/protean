@@ -26,6 +26,7 @@ Release v\ |version|. (:ref:`Installation <install>`)
 
 **Protean** is a Clean Architecture oriented, Multi-Purpose Development Framework. Protean has been built to be customized to your needs, whether you are building a simple web app or an entire backend ecosystem for your company's offering.
 
+.. warning:: **Protean** is currently under active development. APIs and Interfaces are to be expected to change drastically and newer releases will almost certainly be backward incompatible. If you are interested in using Protean for your project, you may want to wait for the first stable production-ready version 0.1.0. If you want to use the framework *right now*, drop us an `email <subhash@team8solutions.com>`_.
 
 Beloved Features
 ----------------
