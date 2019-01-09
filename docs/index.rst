@@ -84,7 +84,6 @@ This part of the documentation details the Protean ecosystem and community.
    :caption: Community Guide
 
    community/adapters
-   community/faq
    community/support
    community/changelog
 
@@ -106,10 +105,9 @@ The Contributor Guide
 If you want to contribute to the project, this part of the documentation is for you.
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 2
    :caption: Contributor Guide
 
    dev/philosophy
    dev/contributing
-   dev/todo
    dev/authors

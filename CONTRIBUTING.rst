@@ -5,8 +5,49 @@ Contributing
 Contributions are welcome, and they are greatly appreciated! Every
 little bit helps, and credit will always be given.
 
+General Guidelines
+------------------
+
+Be Nice
+^^^^^^^
+
+Protean is a safe community. **All contributions are welcome**, as long as
+everyone involved is treated with respect.
+
+.. _early-feedback:
+
+Get Early Feedback
+^^^^^^^^^^^^^^^^^^
+
+If you are contributing, do not feel the need to sit on your contribution until
+it is perfectly polished and complete. It helps everyone involved for you to
+seek feedback as early as you possibly can. Submitting an early, unfinished
+version of your contribution for feedback in no way prejudices your chances of
+getting that contribution accepted, and can save you from putting a lot of work
+into a contribution that is not suitable for the project.
+
+Contribution Suitability
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Our project maintainers have the last word on whether or not a contribution is
+suitable for Protean. All contributions will be considered carefully, but from
+time to time, contributions will be rejected because they do not suit the
+current goals or needs of the project.
+
+If your contribution is rejected, don't despair! As long as you followed these
+guidelines, you will have a much better chance of getting your next
+contribution accepted.
+
+Code Contributions
+------------------
+
 Bug reports
-===========
+^^^^^^^^^^^
+
+Before you raise one, though, please check through the `GitHub issues`_, 
+**both open and closed**, to confirm that the bug hasn’t been reported before. 
+Duplicate bug reports are a huge drain on the time of other contributors, 
+and should be avoided as much as possible.
 
 When `reporting a bug <https://github.com/proteanhq/protean/issues>`_ please include:
 
@@ -15,16 +56,26 @@ When `reporting a bug <https://github.com/proteanhq/protean/issues>`_ please inc
     * Detailed steps to reproduce the bug.
 
 Documentation improvements
-==========================
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Protean could always use more documentation, whether as part of the
 official Protean docs, in docstrings, or even on the web in blog posts,
-articles, and such.
+articles, and such. The documentation files live in the docs/ directory of the codebase. 
+They’re written in reStructuredText, and use Sphinx to generate the full suite of documentation.
+
+When contributing documentation, please do your best to follow the style of the 
+documentation files. This means a soft-limit of 79 characters wide in your text files 
+and a semi-formal, yet friendly and approachable, prose style.
+
+When presenting Python code, use single-quoted strings ('hello' instead of "hello").
+
+All Documentation changes will need to go through 
+the normal pull request process.
 
 Feature requests and feedback
-=============================
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The best way to send feedback is to file an issue at https://github.com/proteanhq/protean/issues.
+The best way to send feedback is to file an issue at `GitHub issues`_.
 
 If you are proposing a feature:
 
@@ -33,7 +84,7 @@ If you are proposing a feature:
 * Remember that this is a volunteer-driven project, and that code contributions are welcome :)
 
 Development
-===========
+^^^^^^^^^^^
 
 To set up `protean` for local development:
 
@@ -62,7 +113,7 @@ To set up `protean` for local development:
 6. Submit a pull request through the GitHub website.
 
 Pull Request Guidelines
------------------------
+^^^^^^^^^^^^^^^^^^^^^^^
 
 If you need some code review or feedback while you're developing the code just make the pull request.
 
@@ -79,7 +130,7 @@ For merging, you should:
        It will be slower though ...
 
 Tips
-----
+^^^^
 
 To run a subset of tests::
 
@@ -88,3 +139,24 @@ To run a subset of tests::
 To run all the test environments in *parallel* (you need to ``pip install detox``)::
 
     detox
+
+Code Review
+^^^^^^^^^^^
+
+Contributions will not be merged until they've been code reviewed. You should
+implement any code review feedback unless you strongly object to it. In the
+event that you object to the code review feedback, you should make your case
+clearly and calmly. If, after doing so, the feedback is judged to still apply,
+you must either apply the feedback or withdraw your contribution.
+
+New Contributors
+^^^^^^^^^^^^^^^^
+
+If you are new or relatively new to Open Source, welcome! Protean aims to
+be a gentle introduction to the world of Open Source. If you're concerned about
+how best to contribute, please consider mailing a maintainer (listed above) and
+asking for help.
+
+Please also check the :ref:`early-feedback` section.
+
+.. _GitHub issues: https://github.com/proteanhq/protean/issues
