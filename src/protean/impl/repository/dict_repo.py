@@ -8,7 +8,7 @@ from threading import Lock
 from operator import itemgetter
 
 from protean.core.field import Auto
-from protean.core.repository import BaseRepository, BaseSchema, \
+from protean.core.repository import BaseAdapter, BaseModel, \
     Pagination, BaseConnectionHandler
 
 
@@ -18,14 +18,14 @@ _databases = {}
 _locks = {}
 
 
-class Repository(BaseRepository):
+class Repository(BaseAdapter):
     """ A repository for storing data in a dictionary """
 
     def _set_auto_fields(self, schema_obj):
         """ Set the values of the auto field using counter"""
         for field_name, field_obj in \
                 self.entity_cls.meta_.declared_fields.items():
-            counter_key = f'{self.schema_name}_{field_name}'
+            counter_key = f'{self.model_name}_{field_name}'
             if isinstance(field_obj, Auto) and \
                     not getattr(schema_obj, field_name, None):
 
@@ -44,7 +44,7 @@ class Repository(BaseRepository):
         # Add the entity to the repository
         identifier = schema_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
-            self.conn['data'][self.schema_name][identifier] = schema_obj
+            self.conn['data'][self.model_name][identifier] = schema_obj
         return schema_obj
 
     def _filter_objects(self, page: int = 1, per_page: int = 10,
@@ -54,7 +54,7 @@ class Repository(BaseRepository):
         # Filter the dictionary objects based on the filters
         items = []
         excludes = _excludes if _excludes else {}
-        for item in self.conn['data'][self.schema_name].values():
+        for item in self.conn['data'][self.model_name].values():
             match = True
 
             # Add objects that match the given filters
@@ -95,7 +95,7 @@ class Repository(BaseRepository):
         """ Update the entity record in the dictionary """
         identifier = schema_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
-            self.conn['data'][self.schema_name][identifier] = schema_obj
+            self.conn['data'][self.model_name][identifier] = schema_obj
         return schema_obj
 
     def _delete_objects(self, **filters):
@@ -103,7 +103,7 @@ class Repository(BaseRepository):
 
         # Delete the object from the dictionary and return the deletion count
         delete_ids = []
-        for identifier, item in self.conn['data'][self.schema_name].items():
+        for identifier, item in self.conn['data'][self.model_name].items():
             match = True
 
             # Add objects that match the given filters
@@ -115,18 +115,18 @@ class Repository(BaseRepository):
 
         # Delete all the matching identifiers
         for identifier in delete_ids:
-            del self.conn['data'][self.schema_name][identifier]
+            del self.conn['data'][self.model_name][identifier]
 
         return len(delete_ids)
 
     def delete_all(self):
         """ Delete all objects in this schema """
         with self.conn['lock']:
-            del self.conn['data'][self.schema_name]
+            del self.conn['data'][self.model_name]
 
 
-class DictSchema(BaseSchema):
-    """ A schema for the dictionary repository"""
+class DictModel(BaseModel):
+    """ A model for the dictionary repository"""
 
     @classmethod
     def from_entity(cls, entity):

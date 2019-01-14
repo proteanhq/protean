@@ -5,7 +5,7 @@ import logging
 from abc import ABCMeta
 from abc import abstractmethod
 
-from protean.core.repository import BaseRepository
+from protean.core.repository import BaseAdapter
 from protean.core.exceptions import ObjectNotFoundError, ValidationError
 from protean.core.transport import ResponseFailure
 
@@ -15,7 +15,7 @@ logger = logging.getLogger('protean.usecase')
 class UseCase(metaclass=ABCMeta):
     """This is the base class for all UseCases"""
 
-    def __init__(self, repo: BaseRepository):
+    def __init__(self, repo: BaseAdapter):
         """Initialize UseCase with repository factory object
 
         :param repo: The repository associated with the use case

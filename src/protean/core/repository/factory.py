@@ -7,13 +7,13 @@ from threading import local
 from protean.core.exceptions import ConfigurationError
 from protean.conf import active_config
 
-from .base import BaseSchema, BaseRepository
+from .base import BaseModel, BaseAdapter
 
 logger = logging.getLogger('protean.repository')
 
 
 class RepositoryFactory:
-    """Repository Factory interface to retrieve resource repositories"""
+    """Repository Factory interface to retrieve Resource Objects from Repositories"""
 
     def __init__(self):
         """"Initialize repository factory"""
@@ -47,54 +47,54 @@ class RepositoryFactory:
             self._connections.connections = {}
             return self._connections.connections
 
-    def register(self, schema_cls, repo_cls=None):
-        """ Register the given schema with the factory
-        :param schema_cls: class of the schema to be registered
+    def register(self, model_cls, repo_cls=None):
+        """ Register the given model with the factory
+        :param model_cls: class of the model to be registered
         :param repo_cls: Optional repository class to use if not the
         `Repository` defined by the provider is userd
         """
-        if not issubclass(schema_cls, BaseSchema):
+        if not issubclass(model_cls, BaseModel):
             raise AssertionError(
-                f'Schema {schema_cls} must be subclass of `BaseSchema`')
+                f'Model {model_cls} must be subclass of `BaseModel`')
 
-        if repo_cls and not issubclass(repo_cls, BaseRepository):
+        if repo_cls and not issubclass(repo_cls, BaseAdapter):
             raise AssertionError(
-                f'Repository {repo_cls} must be subclass of `BaseRepository`')
+                f'Repository {repo_cls} must be subclass of `BaseAdapter`')
 
-        # Register the schema if it does not exist
-        schema_name = schema_cls.__name__
-        if not self._registry.get(schema_name):
-            # Lookup the connection details for the schema
+        # Register the model if it does not exist
+        model_name = model_cls.__name__
+        if not self._registry.get(model_name):
+            # Lookup the connection details for the model
             try:
-                conn_info = self.repositories[schema_cls.opts_.bind]
+                conn_info = self.repositories[model_cls.opts_.bind]
             except KeyError:
                 raise ConfigurationError(
-                    f"'{schema_cls.opts_.bind}' repository not found in "
+                    f"'{model_cls.opts_.bind}' repository not found in "
                     f"'REPOSITORIES'")
 
             # Load the repository provider
             provider = importlib.import_module(conn_info['PROVIDER'])
 
             # If no connection exists then build it
-            if schema_cls.opts_.bind not in self.connections:
+            if model_cls.opts_.bind not in self.connections:
                 conn_handler = provider.ConnectionHandler(
-                    schema_cls.opts_.bind, conn_info)
-                self._connections.connections[schema_cls.opts_.bind] = \
+                    model_cls.opts_.bind, conn_info)
+                self._connections.connections[model_cls.opts_.bind] = \
                     conn_handler.get_connection()
 
-            # Finally register the schema against the provider repository
+            # Finally register the model against the provider repository
             repo_cls = repo_cls or provider.Repository
-            self._registry[schema_name] = \
-                repo_cls(self.connections[schema_cls.opts_.bind], schema_cls)
+            self._registry[model_name] = \
+                repo_cls(self.connections[model_cls.opts_.bind], model_cls)
             logger.debug(
-                f'Registered schema {schema_name} with repository provider '
+                f'Registered model {model_name} with repository provider '
                 f'{conn_info["PROVIDER"]}.')
 
-    def __getattr__(self, schema):
+    def __getattr__(self, model_name):
         try:
-            return self._registry[schema]
+            return self._registry[model_name]
         except KeyError:
-            raise AssertionError('Unregistered Schema')
+            raise AssertionError('Unregistered Model')
 
     def close_connections(self):
         """ Close all connections registered with the repository """
@@ -105,4 +105,4 @@ class RepositoryFactory:
             conn_handler.close_connection(conn_obj)
 
 
-repo = RepositoryFactory()
+repo_factory = RepositoryFactory()

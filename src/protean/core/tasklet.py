@@ -26,7 +26,7 @@ class Tasklet:
         :type raise_error: bool
         """
 
-        # Get the Repository for the Current Schema
+        # Get the Repository for the Current Model
         repo = getattr(repo_factory, schema_cls.__name__)
 
         # Initialize the use case and request objects

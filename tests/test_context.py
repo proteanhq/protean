@@ -4,12 +4,12 @@ import threading
 import time
 
 from protean.core.usecase import CreateUseCase, CreateRequestObject
-from protean.core.repository import repo
+from protean.core.repository import repo_factory
 from protean.core.entity import Entity
 from protean.core.tasklet import Tasklet
 from protean.context import context
 from protean.core import field
-from protean.impl.repository.dict_repo import DictSchema
+from protean.impl.repository.dict_repo import DictModel
 
 
 class CreateUseCase2(CreateUseCase):
@@ -28,16 +28,16 @@ class ThreadedDog(Entity):
     created_by = field.String(required=True, max_length=15)
 
 
-class ThreadedDogSchema(DictSchema):
-    """ Schema for the ThreadedDog Entity"""
+class ThreadedDogModel(DictModel):
+    """ Model for the ThreadedDog Entity"""
 
     class Meta:
         """ Meta class for schema options"""
         entity = ThreadedDog
-        schema_name = 'threaded_dogs'
+        model_name = 'threaded_dogs'
 
 
-repo.register(ThreadedDogSchema)
+repo_factory.register(ThreadedDogModel)
 
 
 def test_context_with_threads():
@@ -51,7 +51,7 @@ def test_context_with_threads():
         # move forward
         time.sleep(sleep)
         Tasklet.perform(
-            repo, ThreadedDogSchema, CreateUseCase2, CreateRequestObject,
+            repo_factory, ThreadedDogModel, CreateUseCase2, CreateRequestObject,
             {'name': name})
 
     # Run 5 threads and create multiple objects
@@ -76,7 +76,7 @@ def test_context_with_threads():
         t.join()
 
     # Get the list of dogs and validate the results
-    dogs = repo.ThreadedDogSchema.filter(per_page=-1)
+    dogs = repo_factory.ThreadedDogModel.filter(per_page=-1)
     assert dogs.total == 5
     for dog in dogs.items:
         if dog.name == 'Johnny':
@@ -91,4 +91,4 @@ def test_context_with_threads():
             assert dog.created_by == 'thread_5'
 
     # Cleanup the database
-    repo.ThreadedDogSchema.delete_all()
+    repo_factory.ThreadedDogModel.delete_all()
