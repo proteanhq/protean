@@ -28,14 +28,14 @@ class TestCache:
 
         # Set an entity to the cache
         dog = repo_factory.Dog.get(1)
-        cache.provider.set(f'dog:{dog.id}', dog.to_dict(), expiry=5)
+        cache.provider.set(f'dog:{dog.id}', dog.to_dict(), expiry=1)
 
         # Retrieve the entity
         dog_d = cache.provider.get(f'dog:{dog.id}')
         assert dog_d == {'age': 5, 'id': 1, 'name': 'Johnny', 'owner': 'John'}
 
         # Sleep and wait for expiry
-        time.sleep(5)
+        time.sleep(2)
         dog_d = cache.provider.get(f'dog:{dog.id}')
         assert dog_d is None
 
@@ -53,7 +53,7 @@ class TestCache:
 
         # Touch and retrieve the entity again
         cache.provider.touch(f'dog:{dog.id}', expiry=10)
-        time.sleep(2)
+        time.sleep(1)
         dog_d = cache.provider.get(f'dog:{dog.id}')
         assert dog_d is not None
 

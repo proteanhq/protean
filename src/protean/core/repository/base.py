@@ -162,7 +162,7 @@ class BaseAdapter(metaclass=ABCMeta):
 
         # Get the entity and update it
         entity = self.get(identifier)
-        entity.update(data)
+        entity.update_data(data)
 
         # Do unique checks, update the record and return the Entity
         self.validate_unique(entity, create=False)

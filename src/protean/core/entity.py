@@ -155,7 +155,7 @@ class Entity(metaclass=EntityBase):
         except ValidationError as err:
             self.errors[field_name] = err.messages
 
-    def update(self, data):
+    def update_data(self, data):
         """
         Update the entity with the given set of values
 
