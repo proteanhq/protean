@@ -7,13 +7,11 @@ class Tasklet:
     """Utility class to execute UseCases"""
 
     @classmethod
-    def perform(cls, repo_factory, entity_cls, usecase_cls, request_object_cls,
+    def perform(cls, entity_cls, usecase_cls, request_object_cls,
                 payload: dict, raise_error=False):
         """
         This method bundles all essential artifacts and initiates usecase
         execution.
-        :param repo_factory: The repository factory class for fetching the
-        repository
         :param entity_cls: The entity class to be used for running the usecase
         :param usecase_cls: The usecase class that will be executed by
         the tasklet.
@@ -26,13 +24,9 @@ class Tasklet:
         :type raise_error: bool
         """
 
-        # Get the Repository for the Current Model
-        repo = getattr(repo_factory, entity_cls.__name__)
-
         # Initialize the use case and request objects
-        use_case = usecase_cls(repo)
-        request_object = request_object_cls.\
-            from_dict(entity_cls, payload)
+        use_case = usecase_cls()
+        request_object = request_object_cls.from_dict(entity_cls, payload)
 
         # Run the use case and return the response
         resp = use_case.execute(request_object)

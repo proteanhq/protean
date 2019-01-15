@@ -3,7 +3,6 @@ import pytest
 
 from protean.core.tasklet import Tasklet
 from protean.core.usecase import ShowRequestObject, ShowUseCase
-from protean.core.repository import repo_factory
 from protean.core.exceptions import UsecaseExecutionError
 from protean.core.transport import Status
 
@@ -15,12 +14,11 @@ class TestTasklet:
 
     def test_perform(self):
         """Test call to Tasklet's perform method"""
-        repo_factory.Dog.create(id=1, name='Murdock', owner='John')
+        Dog.create(id=1, name='Murdock', owner='John')
 
         # Perform a Show Usecase using Tasklet
         payload = {'identifier': 1}
-        response = Tasklet.perform(
-            repo_factory, Dog, ShowUseCase, ShowRequestObject, payload)
+        response = Tasklet.perform(Dog, ShowUseCase, ShowRequestObject, payload)
 
         # Validate the response received
         assert response is not None
@@ -31,9 +29,7 @@ class TestTasklet:
     def test_raise_error(self):
         """ Test raise error function of the Tasklet """
         with pytest.raises(UsecaseExecutionError) as exc_info:
-            Tasklet.perform(
-                repo_factory, Dog, ShowUseCase, ShowRequestObject, {},
-                raise_error=True)
+            Tasklet.perform(Dog, ShowUseCase, ShowRequestObject, {}, raise_error=True)
         assert exc_info.value.value[0] == Status.UNPROCESSABLE_ENTITY
         assert exc_info.value.value[1] ==  \
                {'code': 422, 'message': {'identifier': 'is required'}}

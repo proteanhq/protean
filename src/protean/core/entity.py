@@ -296,7 +296,7 @@ class Entity(metaclass=EntityBase):
 
         return entity
 
-    def update(self, identifier: Any, data: dict) -> 'Entity':
+    def update(self, data: dict) -> 'Entity':
         """Update a Record in the repository
 
         :param identifier: The id of the record to be updated
@@ -305,29 +305,30 @@ class Entity(metaclass=EntityBase):
         from protean.core.repository import repo_factory  # FIXME
         logger.debug(
             f'Updating existing `{self.__class__.__name__}` object with id '
-            f'{identifier} using data {data}')
+            f'{self.id} using data {data}')
 
         # Fetch Model class and connected-adapter from Repository Factory
         model_cls = repo_factory.get_model(self.__class__.__name__)
         adapter = getattr(repo_factory, self.__class__.__name__)
 
-        # Get the entity and update it
-        entity = self.__class__.get(identifier)
-        entity.update_data(data)
+        # Update entity's data attributes
+        self.update_data(data)
 
         # Do unique checks, update the record and return the Entity
         self.validate_unique(create=False)
-        adapter._update_object(model_cls.from_entity(entity))
-        return entity
+        adapter._update_object(model_cls.from_entity(self))
+
+        return self
 
     def validate_unique(self, create=True):
         """ Validate the unique constraints for the entity """
         from protean.core.repository import repo_factory  # FIXME
         # Fetch Model class and connected-adapter from Repository Factory
         model_cls = repo_factory.get_model(self.__class__.__name__)
-        
+
         # Build the filters from the unique constraints
         filters, excludes = {}, {}
+
         for field_name, field_obj in self.meta_.unique_fields:
             lookup_value = getattr(self, field_name, None)
             # Ignore empty lookup values

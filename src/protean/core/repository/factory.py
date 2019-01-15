@@ -13,7 +13,12 @@ logger = logging.getLogger('protean.repository')
 
 
 class RepositoryFactory:
-    """Repository Factory interface to retrieve Resource Objects from Repositories"""
+    """Repository Factory interface to retrieve Resource Objects from Repositories
+
+    FIXME RepositoryFactory should prepare adapter objects JIT, so that connections
+        are kept open only for the necessary duration. Once the request is handled, it should
+        be let go.
+    """
 
     def __init__(self):
         """"Initialize repository factory"""

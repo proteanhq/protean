@@ -137,13 +137,13 @@ class TestEntity:
         dog = Dog.create(id=11344234, name='Johnny', owner='John')
         dog.delete()
         with pytest.raises(ObjectNotFoundError):
-            dog.update(identifier=11344234, data=dict(age=10))
+            dog.update(data=dict(age=10))
 
     def test_update(self):
         """ Update an existing entity in the repository"""
         dog = Dog.create(id=2, name='Johnny', owner='Carey', age=2)
 
-        dog.update(identifier=2, data=dict(age=10))
+        dog.update(data=dict(age=10))
         u_dog = Dog.get(2)
         assert u_dog is not None
         assert u_dog.age == 10
@@ -153,7 +153,7 @@ class TestEntity:
         dog = Dog.create(id=1, name='Johnny', owner='Carey', age=2)
 
         with pytest.raises(ValidationError):
-            dog.update(identifier=1, data=dict(age='x'))
+            dog.update(data=dict(age='x'))
 
     def test_unique(self):
         """ Test the unique constraints for the entity """

@@ -51,9 +51,7 @@ def test_context_with_threads():
         # move forward
         time.sleep(sleep)
 
-        Tasklet.perform(
-            repo_factory, ThreadedDog, CreateUseCase2, CreateRequestObject,
-            {'name': name})
+        Tasklet.perform(ThreadedDog, CreateUseCase2, CreateRequestObject, {'name': name})
 
     # Run 5 threads and create multiple objects
     threads = [
@@ -77,7 +75,7 @@ def test_context_with_threads():
         t.join()
 
     # Get the list of dogs and validate the results
-    dogs = repo_factory.ThreadedDog.filter(per_page=10)
+    dogs = ThreadedDog.filter(per_page=10)
     assert dogs.total == 5
     for dog in dogs.items:
         if dog.name == 'Johnny':

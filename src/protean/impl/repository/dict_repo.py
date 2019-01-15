@@ -10,6 +10,7 @@ from operator import itemgetter
 from protean.core.field import Auto
 from protean.core.repository import BaseAdapter, BaseModel, \
     Pagination, BaseConnectionHandler
+from protean.core.exceptions import ObjectNotFoundError
 
 
 # Global in-memory store of dict data. Keyed by name, to provide
@@ -96,6 +97,12 @@ class Adapter(BaseAdapter):
         """ Update the entity record in the dictionary """
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
+            # Check if object is present
+            if not identifier in self.conn['data'][self.model_name]:
+                raise ObjectNotFoundError(
+                    f'`{self.__class__.__name__}` object with identifier {identifier} '
+                    f'does not exist.')
+
             self.conn['data'][self.model_name][identifier] = model_obj
         return model_obj
 

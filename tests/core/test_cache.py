@@ -4,6 +4,8 @@ import time
 from protean.core.cache import cache
 from protean.core.repository import repo_factory
 
+from tests.support.dog import Dog
+
 
 class TestCache:
     """This class holds tests for Cache class"""
@@ -15,7 +17,7 @@ class TestCache:
     def test_add(self):
         """ Test adding and retrieving an entry to the cache """
         # Add an entity to the cache
-        dog = repo_factory.Dog.create(id=1, name='Johnny', owner='John')
+        dog = Dog.create(id=1, name='Johnny', owner='John')
         cache.provider.add(f'dog:{dog.id}', dog.to_dict())
 
         # Retrieve the entity
@@ -24,10 +26,10 @@ class TestCache:
 
     def test_set(self):
         """ Test setting an existing key and expiry of keys """
-        dog = repo_factory.Dog.create(id=1, name='Johnny', owner='John')
+        dog = Dog.create(id=1, name='Johnny', owner='John')
 
         # Set an entity to the cache
-        dog = repo_factory.Dog.get(1)
+        dog = Dog.get(1)
         cache.provider.set(f'dog:{dog.id}', dog.to_dict(), expiry=1)
 
         # Retrieve the entity
@@ -41,10 +43,10 @@ class TestCache:
 
     def test_touch(self):
         """ Test updating the expiry of key using touch """
-        dog = repo_factory.Dog.create(id=1, name='Johnny', owner='John')
+        dog = Dog.create(id=1, name='Johnny', owner='John')
 
         # Set an entity to the cache
-        dog = repo_factory.Dog.get(1)
+        dog = Dog.get(1)
         cache.provider.set(f'dog:{dog.id}', dog.to_dict(), expiry=1)
 
         # Retrieve the entity
@@ -59,10 +61,10 @@ class TestCache:
 
     def test_delete(self):
         """ Test deleting a key from the cache """
-        dog = repo_factory.Dog.create(id=1, name='Johnny', owner='John')
+        dog = Dog.create(id=1, name='Johnny', owner='John')
 
         # Set an entity to the cache
-        dog = repo_factory.Dog.get(1)
+        dog = Dog.get(1)
         cache.provider.set(f'dog:{dog.id}', dog.to_dict())
 
         # Retrieve the entity
