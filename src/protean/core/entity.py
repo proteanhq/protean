@@ -207,6 +207,17 @@ class Entity(metaclass=EntityBase):
         return results.first
 
     @classmethod
+    def _retrieve_model(cls):
+        """Retrieve model details associated with this Entity"""
+        from protean.core.repository import repo_factory  # FIXME Move to a better placement
+
+        # Fetch Model class and connected-adapter from Repository Factory
+        model_cls = repo_factory.get_model(cls.__name__)
+        adapter = getattr(repo_factory, cls.__name__)
+
+        return (model_cls, adapter)
+
+    @classmethod
     def filter(cls, page: int = 1, per_page: int = 10, order_by: list = (),
                excludes_: dict = None, **filters) -> 'Pagination':
         """
@@ -223,14 +234,12 @@ class Entity(metaclass=EntityBase):
 
         :return Returns a `Pagination` object that holds the filtered results
         """
-        from protean.core.repository import repo_factory  # FIXME
         logger.debug(
             f'Query `{cls.__name__}` objects with filters {filters} and '
             f'order results by {order_by}')
 
         # Fetch Model class and connected-adapter from Repository Factory
-        model_cls = repo_factory.get_model(cls.__name__)
-        adapter = getattr(repo_factory, cls.__name__)
+        model_cls, adapter = cls._retrieve_model()
 
         # order_by clause must be list of keys
         order_by = model_cls.opts_.order_by if not order_by else order_by
@@ -268,13 +277,10 @@ class Entity(metaclass=EntityBase):
     @classmethod
     def create(cls, *args, **kwargs) -> 'Entity':
         """Create a new record in the repository"""
-        from protean.core.repository import repo_factory  # FIXME
         logger.debug(
             f'Creating new `{cls.__name__}` object using data {kwargs}')
 
-        # Fetch Model class and connected-adapter from Repository Factory
-        model_cls = repo_factory.get_model(cls.__name__)
-        adapter = getattr(repo_factory, cls.__name__)
+        model_cls, adapter = cls._retrieve_model()
 
         # Build the entity from the input arguments
         entity = cls(*args, **kwargs)
@@ -302,14 +308,12 @@ class Entity(metaclass=EntityBase):
         :param identifier: The id of the record to be updated
         :param data: A dictionary of record properties to be updated
         """
-        from protean.core.repository import repo_factory  # FIXME
         logger.debug(
             f'Updating existing `{self.__class__.__name__}` object with id '
             f'{self.id} using data {data}')
 
         # Fetch Model class and connected-adapter from Repository Factory
-        model_cls = repo_factory.get_model(self.__class__.__name__)
-        adapter = getattr(repo_factory, self.__class__.__name__)
+        model_cls, adapter = self.__class__._retrieve_model()
 
         # Update entity's data attributes
         self.update_data(data)
@@ -322,9 +326,8 @@ class Entity(metaclass=EntityBase):
 
     def validate_unique(self, create=True):
         """ Validate the unique constraints for the entity """
-        from protean.core.repository import repo_factory  # FIXME
         # Fetch Model class and connected-adapter from Repository Factory
-        model_cls = repo_factory.get_model(self.__class__.__name__)
+        model_cls, _ = self.__class__._retrieve_model()
 
         # Build the filters from the unique constraints
         filters, excludes = {}, {}
@@ -354,10 +357,8 @@ class Entity(metaclass=EntityBase):
         FIXME: Return True or False to indicate an object was deleted, 
                rather than the count of records deleted
         """
-        from protean.core.repository import repo_factory  # FIXME
-
         # Fetch Model class and connected-adapter from Repository Factory
-        adapter = getattr(repo_factory, self.__class__.__name__)
+        _, adapter = self.__class__._retrieve_model()
 
         filters = {
             self.__class__.meta_.id_field.field_name: self.id
