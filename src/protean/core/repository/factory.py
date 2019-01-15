@@ -63,7 +63,8 @@ class RepositoryFactory:
 
         # Register the model if it does not exist
         model_name = model_cls.__name__
-        if not self._registry.get(model_name):
+        entity_name = model_cls.Meta.entity.__name__
+        if not self._registry.get(entity_name):
             # Lookup the connection details for the model
             try:
                 conn_info = self.repositories[model_cls.opts_.bind]
@@ -83,18 +84,18 @@ class RepositoryFactory:
                     conn_handler.get_connection()
 
             # Finally register the model against the provider repository
-            repo_cls = repo_cls or provider.Repository
-            self._registry[model_name] = \
+            repo_cls = repo_cls or provider.Adapter
+            self._registry[entity_name] = \
                 repo_cls(self.connections[model_cls.opts_.bind], model_cls)
             logger.debug(
-                f'Registered model {model_name} with repository provider '
+                f'Registered model {model_name} for entity {entity_name} with repository provider '
                 f'{conn_info["PROVIDER"]}.')
 
     def __getattr__(self, model_name):
         try:
             return self._registry[model_name]
         except KeyError:
-            raise AssertionError('Unregistered Model')
+            raise AssertionError('Unregistered Model {model_name}')
 
     def close_connections(self):
         """ Close all connections registered with the repository """

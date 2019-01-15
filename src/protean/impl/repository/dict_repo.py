@@ -18,34 +18,35 @@ _databases = {}
 _locks = {}
 
 
-class Repository(BaseAdapter):
+class Adapter(BaseAdapter):
     """ A repository for storing data in a dictionary """
 
-    def _set_auto_fields(self, schema_obj):
+    def _set_auto_fields(self, model_obj):
         """ Set the values of the auto field using counter"""
         for field_name, field_obj in \
                 self.entity_cls.meta_.declared_fields.items():
             counter_key = f'{self.model_name}_{field_name}'
-            if isinstance(field_obj, Auto) and \
-                    not getattr(schema_obj, field_name, None):
-
+            if isinstance(field_obj, Auto) and not (field_name in model_obj
+                                                    and model_obj[field_name] is not None):
                 # Increment the counter and it should start from 1
                 counter = next(self.conn['counters'][counter_key])
                 if not counter:
                     counter = next(self.conn['counters'][counter_key])
-                schema_obj[field_name] = counter
-        return schema_obj
 
-    def _create_object(self, schema_obj):
+                model_obj[field_name] = counter
+        return model_obj
+
+    def _create_object(self, model_obj):
         """ Write a record to the dict repository"""
         # Update the value of the counters
-        schema_obj = self._set_auto_fields(schema_obj)
+        model_obj = self._set_auto_fields(model_obj)
 
         # Add the entity to the repository
-        identifier = schema_obj[self.entity_cls.meta_.id_field.field_name]
+        identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
-            self.conn['data'][self.model_name][identifier] = schema_obj
-        return schema_obj
+            self.conn['data'][self.model_name][identifier] = model_obj
+
+        return model_obj
 
     def _filter_objects(self, page: int = 1, per_page: int = 10,
                         order_by: list = (), _excludes=None, **filters):
@@ -91,12 +92,12 @@ class Repository(BaseAdapter):
             items=items[cur_offset: cur_limit])
         return result
 
-    def _update_object(self, schema_obj):
+    def _update_object(self, model_obj):
         """ Update the entity record in the dictionary """
-        identifier = schema_obj[self.entity_cls.meta_.id_field.field_name]
+        identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
-            self.conn['data'][self.model_name][identifier] = schema_obj
-        return schema_obj
+            self.conn['data'][self.model_name][identifier] = model_obj
+        return model_obj
 
     def _delete_objects(self, **filters):
         """ Delete the dictionary object by its id"""
@@ -122,7 +123,8 @@ class Repository(BaseAdapter):
     def delete_all(self):
         """ Delete all objects in this schema """
         with self.conn['lock']:
-            del self.conn['data'][self.model_name]
+            if self.model_name in self.conn['data']:
+                del self.conn['data'][self.model_name]
 
 
 class DictModel(BaseModel):
