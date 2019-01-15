@@ -18,6 +18,7 @@ class RepositoryFactory:
     def __init__(self):
         """"Initialize repository factory"""
         self._registry = {}
+        self._model_registry = {}
         self._connections = local()
         self._repositories = None
 
@@ -87,15 +88,23 @@ class RepositoryFactory:
             repo_cls = repo_cls or provider.Adapter
             self._registry[entity_name] = \
                 repo_cls(self.connections[model_cls.opts_.bind], model_cls)
+            self._model_registry[entity_name] = model_cls
             logger.debug(
                 f'Registered model {model_name} for entity {entity_name} with repository provider '
                 f'{conn_info["PROVIDER"]}.')
 
-    def __getattr__(self, model_name):
+    def get_model(self, entity_name):
+        """Retrieve Model class connected to Entity"""
         try:
-            return self._registry[model_name]
+            return self._model_registry[entity_name]
         except KeyError:
-            raise AssertionError('Unregistered Model {model_name}')
+            raise AssertionError('No Model registered for {entity_name}')
+
+    def __getattr__(self, entity_name):
+        try:
+            return self._registry[entity_name]
+        except KeyError:
+            raise AssertionError('No Model registered for {entity_name}')
 
     def close_connections(self):
         """ Close all connections registered with the repository """

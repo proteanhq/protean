@@ -2,16 +2,11 @@
 
 import pytest
 
+from tests.support.dog import Dog
+
 from protean.core.entity import Entity
 from protean.core.exceptions import ValidationError
 from protean.core import field
-
-
-class Dog(Entity):
-    """This is a dummy Dog Entity class"""
-    name = field.String(required=True, max_length=50, min_length=5)
-    age = field.Integer(default=5)
-    owner = field.String(required=True, max_length=15)
 
 
 class TestEntity:
@@ -67,14 +62,14 @@ class TestEntity:
 
         # Test single error message
         try:
-            Dog(id=1, name='John Doe')
+            Dog(id=1, name='John Doe', owner='Jimmy')
         except ValidationError as err:
             assert err.normalized_messages == {
                 'owner': [Dog.owner.error_messages['required']]}
 
         # Test multiple error messages
         try:
-            Dog(id=1, name='Joh')
+            Dog(id=1, name='Joh', owner='Jimmy')
         except ValidationError as err:
             assert err.normalized_messages == {
                 'name': ['Ensure value has at least 5 characters.'],
@@ -118,3 +113,10 @@ class TestEntity:
         assert dog is not None
         assert dog.to_dict() == {
             'age': 10, 'id': 1, 'name': 'John Doe', 'owner': 'Jimmy'}
+
+    def test_create(self):
+        """Test create method of Entity"""
+
+        dog = Dog.create(name='John Doe', age=10, owner='Jimmy')
+        assert dog is not None
+        assert dog.id is not None

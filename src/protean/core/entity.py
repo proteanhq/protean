@@ -1,8 +1,12 @@
 """Entity Functionality and Classes"""
+import logging
+
 from collections import OrderedDict
 
 from protean.core.field import Field, Auto
 from protean.core.exceptions import ValidationError
+
+logger = logging.getLogger('protean.core.entity')
 
 
 class EntityBase(type):
@@ -177,3 +181,34 @@ class Entity(metaclass=EntityBase):
         """ Return entity data as a dictionary """
         return {field_name: getattr(self, field_name, None)
                 for field_name in self.meta_.declared_fields}
+
+    @classmethod
+    def create(cls, *args, **kwargs) -> 'Entity':
+        """Create a new record in the repository"""
+        from protean.core.repository import repo_factory  # FIXME
+        logger.debug(
+            f'Creating new `{cls.__name__}` object using data {kwargs}')
+
+        # Fetch Model class and connected-adapter from Repository Factory
+        model_cls = repo_factory.get_model(cls.__name__)
+        adapter = getattr(repo_factory, cls.__name__)
+
+        # Build the entity from the input arguments
+        entity = cls(*args, **kwargs)
+
+        # Do unique checks, create this object and return it
+        # self.validate_unique(entity)  # FIXME
+
+        # Build the model object and create it
+        model_obj = adapter._create_object(model_cls.from_entity(entity))
+
+        # Update the auto fields of the entity
+        for field_name, field_obj in entity.meta_.declared_fields.items():
+            if isinstance(field_obj, Auto):
+                if isinstance(model_obj, dict):
+                    field_val = model_obj[field_name]
+                else:
+                    field_val = getattr(model_obj, field_name)
+                setattr(entity, field_name, field_val)
+
+        return entity

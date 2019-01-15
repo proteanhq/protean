@@ -98,7 +98,7 @@ class TestShowUseCase:
         """Test Show UseCase's `process_request` method"""
 
         # Add an object to the repository
-        repo_factory.Dog.create(name='Johnny', owner='John')
+        repo_factory.Dog.create(id=1, name='Johnny', owner='John')
 
         # Build the request object and run the usecase
         request_obj = ShowRequestObject.from_dict(Dog, {'identifier': 1})
@@ -154,7 +154,6 @@ class TestListUseCase:
         assert response.success
         assert response.value.page == 1
         assert response.value.total == 2
-        assert response.value.first.id == 3
         assert response.value.first.age == 3
 
 
@@ -172,7 +171,6 @@ class TestCreateUseCase:
 
         assert response is not None
         assert response.success
-        assert response.value.id == 5
         assert response.value.name == 'Barry'
 
     def test_unique_validation(self):
