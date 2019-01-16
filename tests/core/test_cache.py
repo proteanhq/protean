@@ -2,15 +2,13 @@
 import time
 
 from protean.core.cache import cache
-from protean.core.repository import repo
+from protean.core.repository import repo_factory
+
+from tests.support.dog import Dog
 
 
 class TestCache:
     """This class holds tests for Cache class"""
-
-    @classmethod
-    def teardown_class(cls):
-        repo.DogSchema.delete_all()
 
     def test_init(self):
         """Test successful access to the Cache Wrapper"""
@@ -19,7 +17,7 @@ class TestCache:
     def test_add(self):
         """ Test adding and retrieving an entry to the cache """
         # Add an entity to the cache
-        dog = repo.DogSchema.create(id=1, name='Johnny', owner='John')
+        dog = Dog.create(id=1, name='Johnny', owner='John')
         cache.provider.add(f'dog:{dog.id}', dog.to_dict())
 
         # Retrieve the entity
@@ -28,23 +26,27 @@ class TestCache:
 
     def test_set(self):
         """ Test setting an existing key and expiry of keys """
+        dog = Dog.create(id=1, name='Johnny', owner='John')
+
         # Set an entity to the cache
-        dog = repo.DogSchema.get(1)
-        cache.provider.set(f'dog:{dog.id}', dog.to_dict(), expiry=5)
+        dog = Dog.get(1)
+        cache.provider.set(f'dog:{dog.id}', dog.to_dict(), expiry=1)
 
         # Retrieve the entity
         dog_d = cache.provider.get(f'dog:{dog.id}')
         assert dog_d == {'age': 5, 'id': 1, 'name': 'Johnny', 'owner': 'John'}
 
         # Sleep and wait for expiry
-        time.sleep(5)
+        time.sleep(2)
         dog_d = cache.provider.get(f'dog:{dog.id}')
         assert dog_d is None
 
     def test_touch(self):
         """ Test updating the expiry of key using touch """
+        dog = Dog.create(id=1, name='Johnny', owner='John')
+
         # Set an entity to the cache
-        dog = repo.DogSchema.get(1)
+        dog = Dog.get(1)
         cache.provider.set(f'dog:{dog.id}', dog.to_dict(), expiry=1)
 
         # Retrieve the entity
@@ -53,14 +55,16 @@ class TestCache:
 
         # Touch and retrieve the entity again
         cache.provider.touch(f'dog:{dog.id}', expiry=10)
-        time.sleep(2)
+        time.sleep(1)
         dog_d = cache.provider.get(f'dog:{dog.id}')
         assert dog_d is not None
 
     def test_delete(self):
         """ Test deleting a key from the cache """
+        dog = Dog.create(id=1, name='Johnny', owner='John')
+
         # Set an entity to the cache
-        dog = repo.DogSchema.get(1)
+        dog = Dog.get(1)
         cache.provider.set(f'dog:{dog.id}', dog.to_dict())
 
         # Retrieve the entity
@@ -95,4 +99,3 @@ class TestCache:
         cache.provider.delete_many(['k1', 'k2', 'k3'])
         values = cache.provider.get_many(['k1', 'k2', 'k3'])
         assert values == {}
-

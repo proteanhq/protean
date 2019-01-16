@@ -46,7 +46,7 @@ class ShowUseCase(UseCase):
         identifier = request_object.identifier
 
         # Look for the object by its ID and return it
-        resource = self.repo.get(identifier)
+        resource = request_object.entity_cls.get(identifier)
         return ResponseSuccess(Status.SUCCESS, resource)
 
 
@@ -98,10 +98,10 @@ class ListUseCase(UseCase):
 
     def process_request(self, request_object):
         """Return a list of resources"""
-        resources = self.repo.filter(request_object.page,
-                                     request_object.per_page,
-                                     request_object.order_by,
-                                     **request_object.filters)
+        resources = request_object.entity_cls.filter(request_object.page,
+                                                     request_object.per_page,
+                                                     request_object.order_by,
+                                                     **request_object.filters)
         return ResponseSuccess(Status.SUCCESS, resources)
 
 
@@ -129,7 +129,7 @@ class CreateUseCase(UseCase):
     def process_request(self, request_object):
         """Process Create Resource Request"""
 
-        resource = self.repo.create(**request_object.data)
+        resource = request_object.entity_cls.create(**request_object.data)
         return ResponseSuccessCreated(resource)
 
 
@@ -169,10 +169,11 @@ class UpdateUseCase(UseCase):
     def process_request(self, request_object):
         """Process Update Resource Request"""
 
-        identifier = request_object.identifier
-
+        # Retrieve the object by its identifier
+        entity = request_object.entity_cls.get(request_object.identifier)
+    
         # Update the object and return the updated data
-        resource = self.repo.update(identifier, request_object.data)
+        resource = entity.update(data=request_object.data)
         return ResponseSuccess(Status.SUCCESS, resource)
 
 
@@ -209,8 +210,10 @@ class DeleteUseCase(UseCase):
         """Process the Delete Resource Request"""
 
         # Delete the object by its identifier
-        identifier = request_object.identifier
-        self.repo.delete(identifier)
+        entity = request_object.entity_cls.get(request_object.identifier)
+        entity.delete()
+
+        # FIXME Check for return value of `delete()`
 
         # We have successfully deleted the object.
         # Sending a 204 Response code.
