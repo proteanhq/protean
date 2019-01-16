@@ -53,6 +53,7 @@ This part of the documentation introduces some background information about prot
    user/install
    user/quickstart
    user/advanced
+   user/testing
    user/services
    user/adapters
    user/implementations
