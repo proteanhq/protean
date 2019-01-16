@@ -11,20 +11,10 @@ This part of the documentation covers all the interfaces of Protean. Wherever Pr
 Entities
 --------
 
-The base class for all Protean-compliant entities is the `Entity` class.
+All domain models in a Protean-compliant application are modeled after the `Entity` class.
 
-.. autoclass:: Entity
-   :inherited-members:
-
-
-Fields
-^^^^^^
-**More to come**
-
-Validations
-^^^^^^^^^^^
-**More to come**
-
+.. autoclass:: protean.core.entity.Entity
+   :members:
 
 Use Cases
 ---------

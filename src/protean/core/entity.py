@@ -16,7 +16,7 @@ class EntityBase(type):
     This base metaclass sets a `_meta` attribute on the Entity to an instance
     of Meta defined in the Entity
 
-    It also sets dictionary named `declared_fields` on the `_meta` attribute.
+    It also sets dictionary named `declared_fields` on the `meta_` attribute.
     Any instances of `Field` included as attributes on either the class
     or on any of its superclasses will be include in this dictionary.
     """
@@ -90,7 +90,7 @@ class EntityMeta:
 
 
 class Entity(metaclass=EntityBase):
-    """Base class for Protean-Compliant Domain Entities
+    """The Base class for Protean-Compliant Domain Entities.
 
     Provides helper methods to custom define entity attributes, and query attribute names
     during runtime.
@@ -103,17 +103,30 @@ class Entity(metaclass=EntityBase):
             age = field.Integer(default=5)
             owner = field.String(required=True, max_length=15)
 
+    During persistence, the model associated with this entity is retrieved dynamically from
+            the repository factory. Model is usually initialized with a live DB connection.
     """
 
     class Meta:
-        """Options object for an Entity"""
+        """Options object for an Entity.
+
+        Acts as a placeholder for generated entity fields like:
+
+            :declared_fields: dict
+                Any instances of `Field` included as attributes on either the class 
+                or on any of its superclasses will be include in this dictionary.
+            :id_field: protean.core.Field
+                An instance of the field that will serve as the unique identifier for the entity
+        """
 
     def __init__(self, *template, **kwargs):
         """
-        Initialise the entity object perform the validations on each of
-        the fields and set its value on passing. This initialization technique
-        supports keyword arguments as well as dictionaries. You can even use
-        a template for initial data.
+        Initialise the entity object.
+        
+        During initialization, set value on fields if vaidation passes.
+        
+        This initialization technique supports keyword arguments as well as dictionaries. You
+            can even use a template for initial data.
         """
 
         self.errors = {}
@@ -221,16 +234,14 @@ class Entity(metaclass=EntityBase):
     def filter(cls, page: int = 1, per_page: int = 10, order_by: list = (),
                excludes_: dict = None, **filters) -> 'Pagination':
         """
-        Read Record(s) from the repository. Method must return a `Pagination`
-        object
+        Read Record(s) from the repository. Method must return a `Pagination` object
 
         :param page: The current page number of the records to be pulled
         :param per_page: The size of each page of the records to be pulled
-        :param order_by: The list of parameters to be used for ordering the
-        results. Use a `-` before the parameter name to sort in descending
-        order and if not ascending order.
-        :param excludes_: Objects with these properties will be excluded
-        from the results
+        :param order_by: The list of parameters to be used for ordering the results.
+            Use a `-` before the parameter name to sort in descending order 
+            and if not ascending order.
+        :param excludes_: Objects with these properties will be excluded from the results
 
         :return Returns a `Pagination` object that holds the filtered results
         """
@@ -265,18 +276,24 @@ class Entity(metaclass=EntityBase):
         """ Return `True` if objects matching the provided filters and excludes
         exist if not return false.
 
-        Call the filter query by default. Can be overridden for better and
-        quicker implementations.
+        Calls the `filter` method by default, but can be overridden for better and
+            quicker implementations that may be supported by a database.
 
         :param excludes_: entities without this combination of field name and
-        values will be returned
+            values will be returned
         """
         results = cls.filter(page=1, per_page=1, excludes_=excludes_, **filters)
         return bool(results)
 
     @classmethod
     def create(cls, *args, **kwargs) -> 'Entity':
-        """Create a new record in the repository"""
+        """Create a new record in the repository.
+
+        Also performs unique validations before creating the entity
+
+        :param args: positional arguments for the entity
+        :param kwargs: keyword arguments for the entity
+        """
         logger.debug(
             f'Creating new `{cls.__name__}` object using data {kwargs}')
 
@@ -286,7 +303,7 @@ class Entity(metaclass=EntityBase):
         entity = cls(*args, **kwargs)
 
         # Do unique checks, create this object and return it
-        entity.validate_unique()
+        entity._validate_unique()
 
         # Build the model object and create it
         model_obj = adapter._create_object(model_cls.from_entity(entity))
@@ -303,9 +320,10 @@ class Entity(metaclass=EntityBase):
         return entity
 
     def update(self, data: dict) -> 'Entity':
-        """Update a Record in the repository
+        """Update a Record in the repository.
 
-        :param identifier: The id of the record to be updated
+        Also performs unique validations before creating the entity.
+
         :param data: A dictionary of record properties to be updated
         """
         logger.debug(
@@ -319,12 +337,12 @@ class Entity(metaclass=EntityBase):
         self.update_data(data)
 
         # Do unique checks, update the record and return the Entity
-        self.validate_unique(create=False)
+        self._validate_unique(create=False)
         adapter._update_object(model_cls.from_entity(self))
 
         return self
 
-    def validate_unique(self, create=True):
+    def _validate_unique(self, create=True):
         """ Validate the unique constraints for the entity """
         # Fetch Model class and connected-adapter from Repository Factory
         model_cls, _ = self.__class__._retrieve_model()
@@ -354,9 +372,13 @@ class Entity(metaclass=EntityBase):
     def delete(self):
         """Delete a Record from the Repository
 
-        FIXME: Return True or False to indicate an object was deleted,
-               rather than the count of records deleted
+        Throws ObjectNotFoundError if the object was not found in the repository
         """
+        # FIXME: Return True or False to indicate an object was deleted, 
+        #   rather than the count of records deleted
+
+        # FIXME: Ensure Adapter throws ObjectNotFoundError
+
         # Fetch Model class and connected-adapter from Repository Factory
         _, adapter = self.__class__._retrieve_model()
 
