@@ -1,12 +1,12 @@
 """Entity Functionality and Classes"""
 import logging
-
 from collections import OrderedDict
-
 from typing import Any
 
-from protean.core.field import Field, Auto
-from protean.core.exceptions import ValidationError, ObjectNotFoundError
+from protean.core.exceptions import ObjectNotFoundError
+from protean.core.exceptions import ValidationError
+from protean.core.field import Auto
+from protean.core.field import Field
 
 logger = logging.getLogger('protean.core.entity')
 
@@ -92,7 +92,7 @@ class EntityMeta:
 class Entity(metaclass=EntityBase):
     """Base class for Protean-Compliant Domain Entities
 
-    Provides helper methods to custom define entity attributes, and query attribute names 
+    Provides helper methods to custom define entity attributes, and query attribute names
     during runtime.
 
     Basic Usage::
@@ -353,8 +353,8 @@ class Entity(metaclass=EntityBase):
 
     def delete(self):
         """Delete a Record from the Repository
-        
-        FIXME: Return True or False to indicate an object was deleted, 
+
+        FIXME: Return True or False to indicate an object was deleted,
                rather than the count of records deleted
         """
         # Fetch Model class and connected-adapter from Repository Factory

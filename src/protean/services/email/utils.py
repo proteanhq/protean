@@ -1,6 +1,6 @@
 """ Email message and email sending related helper functions. """
-from protean.utils.importlib import perform_import
 from protean.conf import active_config
+from protean.utils.importlib import perform_import
 
 from .message import EmailMessage
 
@@ -52,4 +52,3 @@ def send_mass_mail(data_tuple, fail_silently=False, auth_user=None,
         for subject, message, sender, recipient in data_tuple
     ]
     return connection.send_messages(messages)
-

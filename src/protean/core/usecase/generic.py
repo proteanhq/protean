@@ -1,9 +1,12 @@
 """Concrete Implementations of some generic use cases"""
 
 from protean.conf import active_config
-from protean.core.transport import (
-    InvalidRequestObject, ResponseSuccess, Status, ValidRequestObject,
-    ResponseSuccessCreated, ResponseSuccessWithNoContent)
+from protean.core.transport import InvalidRequestObject
+from protean.core.transport import ResponseSuccess
+from protean.core.transport import ResponseSuccessCreated
+from protean.core.transport import ResponseSuccessWithNoContent
+from protean.core.transport import Status
+from protean.core.transport import ValidRequestObject
 
 from .base import UseCase
 
@@ -171,7 +174,7 @@ class UpdateUseCase(UseCase):
 
         # Retrieve the object by its identifier
         entity = request_object.entity_cls.get(request_object.identifier)
-    
+
         # Update the object and return the updated data
         resource = entity.update(data=request_object.data)
         return ResponseSuccess(Status.SUCCESS, resource)

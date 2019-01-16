@@ -1,8 +1,12 @@
 """Tests for Transport Utility Classes"""
 
-from protean.core.transport import ValidRequestObject, InvalidRequestObject
-from protean.core.transport import ResponseSuccess, ResponseFailure, \
-    ResponseSuccessCreated, ResponseSuccessWithNoContent, Status
+from protean.core.transport import InvalidRequestObject
+from protean.core.transport import ResponseFailure
+from protean.core.transport import ResponseSuccess
+from protean.core.transport import ResponseSuccessCreated
+from protean.core.transport import ResponseSuccessWithNoContent
+from protean.core.transport import Status
+from protean.core.transport import ValidRequestObject
 
 
 class DummyValidRequestObject(ValidRequestObject):

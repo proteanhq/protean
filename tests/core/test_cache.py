@@ -1,10 +1,9 @@
 """Tests for Cache Functionality"""
 import time
 
-from protean.core.cache import cache
-from protean.core.repository import repo_factory
-
 from tests.support.dog import Dog
+
+from protean.core.cache import cache
 
 
 class TestCache:

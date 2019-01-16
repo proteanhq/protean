@@ -1,11 +1,12 @@
 """Module for defining base Field class"""
 
 import enum
-from abc import ABCMeta, abstractmethod
-from typing import Iterable, Any
+from abc import ABCMeta
+from abc import abstractmethod
+from typing import Any
+from typing import Iterable
 
 from protean.core import exceptions
-
 
 MISSING_ERROR_MESSAGE = (
     'ValidationError raised by `{class_name}`, but error key `{key}` does '

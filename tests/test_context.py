@@ -3,12 +3,13 @@
 import threading
 import time
 
-from protean.core.usecase import CreateUseCase, CreateRequestObject
-from protean.core.repository import repo_factory
-from protean.core.entity import Entity
-from protean.core.tasklet import Tasklet
 from protean.context import context
 from protean.core import field
+from protean.core.entity import Entity
+from protean.core.repository import repo_factory
+from protean.core.tasklet import Tasklet
+from protean.core.usecase import CreateRequestObject
+from protean.core.usecase import CreateUseCase
 from protean.impl.repository.dict_repo import DictModel
 
 
@@ -40,18 +41,19 @@ class ThreadedDogModel(DictModel):
 repo_factory.register(ThreadedDogModel)
 
 
+def run_create_task(thread_name, name, sleep=0):
+    """Assert on Request URL"""
+    if thread_name:
+        context.set_context({'account': thread_name})
+    # Sleep for some determinate time to allow other threads to
+    # move forward
+    time.sleep(sleep)
+
+    Tasklet.perform(ThreadedDog, CreateUseCase2, CreateRequestObject, {'name': name})
+
+
 def test_context_with_threads():
     """ Test context information is passed to use cases"""
-
-    def run_create_task(thread_name, name, sleep=0):
-        """Assert on Request URL"""
-        if thread_name:
-            context.set_context({'account': thread_name})
-        # Sleep for some determinate time to allow other threads to
-        # move forward
-        time.sleep(sleep)
-
-        Tasklet.perform(ThreadedDog, CreateUseCase2, CreateRequestObject, {'name': name})
 
     # Run 5 threads and create multiple objects
     threads = [

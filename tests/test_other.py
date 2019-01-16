@@ -2,8 +2,8 @@
 
 import pytest
 
-from protean.utils.importlib import perform_import
 from protean.core import entity
+from protean.utils.importlib import perform_import
 
 
 def test_perform_import():

@@ -1,16 +1,13 @@
 """ Define the interfaces for Repository implementations """
 import logging
-
 from abc import ABCMeta
 from abc import abstractmethod
-
 from typing import Any
 
 from protean.core.entity import Entity
-from protean.core.field import Auto
 from protean.core.exceptions import ConfigurationError
-from protean.utils.meta import OptionsMeta
 from protean.utils import inflection
+from protean.utils.meta import OptionsMeta
 
 from .pagination import Pagination
 

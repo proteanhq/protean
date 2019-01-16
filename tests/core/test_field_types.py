@@ -1,8 +1,7 @@
 """ Test cases for all available field type implementations"""
 
-from datetime import datetime
-
 import enum
+from datetime import datetime
 
 import pytest
 

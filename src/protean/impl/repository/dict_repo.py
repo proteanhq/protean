@@ -2,16 +2,15 @@
 
 from collections import defaultdict
 from itertools import count
-
+from operator import itemgetter
 from threading import Lock
 
-from operator import itemgetter
-
-from protean.core.field import Auto
-from protean.core.repository import BaseAdapter, BaseModel, \
-    Pagination, BaseConnectionHandler
 from protean.core.exceptions import ObjectNotFoundError
-
+from protean.core.field import Auto
+from protean.core.repository import BaseAdapter
+from protean.core.repository import BaseConnectionHandler
+from protean.core.repository import BaseModel
+from protean.core.repository import Pagination
 
 # Global in-memory store of dict data. Keyed by name, to provide
 # multiple named local memory caches.
@@ -27,8 +26,8 @@ class Adapter(BaseAdapter):
         for field_name, field_obj in \
                 self.entity_cls.meta_.declared_fields.items():
             counter_key = f'{self.model_name}_{field_name}'
-            if isinstance(field_obj, Auto) and not (field_name in model_obj
-                                                    and model_obj[field_name] is not None):
+            if isinstance(field_obj, Auto) and not (field_name in model_obj and
+                                                    model_obj[field_name] is not None):
                 # Increment the counter and it should start from 1
                 counter = next(self.conn['counters'][counter_key])
                 if not counter:
@@ -98,7 +97,7 @@ class Adapter(BaseAdapter):
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
             # Check if object is present
-            if not identifier in self.conn['data'][self.model_name]:
+            if identifier not in self.conn['data'][self.model_name]:
                 raise ObjectNotFoundError(
                     f'`{self.__class__.__name__}` object with identifier {identifier} '
                     f'does not exist.')

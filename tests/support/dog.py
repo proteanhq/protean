@@ -1,7 +1,7 @@
 """Support Classes for Test Cases"""
 
-from protean.core.entity import Entity
 from protean.core import field
+from protean.core.entity import Entity
 from protean.impl.repository.dict_repo import DictModel
 
 

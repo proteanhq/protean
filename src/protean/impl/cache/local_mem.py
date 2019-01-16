@@ -5,8 +5,8 @@ import time
 from collections import OrderedDict
 from threading import Lock
 
-from protean.core.cache.base import DEFAULT_EXPIRY, BaseCache
-
+from protean.core.cache.base import DEFAULT_EXPIRY
+from protean.core.cache.base import BaseCache
 
 # Global in-memory store of cache data. Keyed by name, to provide
 # multiple named local memory caches.

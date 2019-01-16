@@ -1,6 +1,9 @@
-from protean.core.field import Field
-from protean.core.exceptions import ValidationError
+"""Test Field Types"""
+
 import pytest
+
+from protean.core.exceptions import ValidationError
+from protean.core.field import Field
 
 
 class String(Field):

@@ -21,5 +21,3 @@ class StringLong(String):
 
     def __init__(self, min_length=None, **kwargs):
         super().__init__(max_length=255, min_length=min_length, **kwargs)
-
-

@@ -1,11 +1,11 @@
 """Module for defining base UseCase class"""
 
 import logging
-
 from abc import ABCMeta
 from abc import abstractmethod
 
-from protean.core.exceptions import ObjectNotFoundError, ValidationError
+from protean.core.exceptions import ObjectNotFoundError
+from protean.core.exceptions import ValidationError
 from protean.core.transport import ResponseFailure
 
 logger = logging.getLogger('protean.usecase')
@@ -36,8 +36,8 @@ class UseCase(metaclass=ABCMeta):
 
         except Exception as exc:  # pylint: disable=W0703
             logger.error(
-                f'{self.__class__.__name__} execution failed due to error {exc}'
-                , exc_info=True)
+                f'{self.__class__.__name__} execution failed due to error {exc}',
+                exc_info=True)
             return ResponseFailure.build_system_error(
                 "{}: {}".format(exc.__class__.__name__, exc))
 

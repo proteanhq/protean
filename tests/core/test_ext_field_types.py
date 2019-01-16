@@ -1,9 +1,4 @@
 """ Test cases for extended field type implementations"""
-
-from datetime import datetime
-
-import enum
-
 import pytest
 
 from protean.core import field

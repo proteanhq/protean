@@ -1,6 +1,5 @@
 """Module to test Protean Logger"""
 import logging
-
 from io import StringIO
 
 from protean.utils.log import configure_logging

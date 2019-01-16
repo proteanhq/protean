@@ -4,8 +4,8 @@ import datetime
 
 from dateutil.parser import parse as date_parser
 
-from protean.core.field.base import Field
 from protean.core.field import validators
+from protean.core.field.base import Field
 
 
 class String(Field):
@@ -201,4 +201,3 @@ class DateTime(Field):
             return value
         except ValueError:
             self.fail('invalid', value=value)
-

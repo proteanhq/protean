@@ -28,4 +28,3 @@ def main():
 def echo(names):
     """Simply print input argument `names`"""
     click.echo(repr(names))
-

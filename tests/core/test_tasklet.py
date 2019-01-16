@@ -1,12 +1,12 @@
 """Tests for Tasklet Functionality"""
 import pytest
-
-from protean.core.tasklet import Tasklet
-from protean.core.usecase import ShowRequestObject, ShowUseCase
-from protean.core.exceptions import UsecaseExecutionError
-from protean.core.transport import Status
-
 from tests.support.dog import Dog
+
+from protean.core.exceptions import UsecaseExecutionError
+from protean.core.tasklet import Tasklet
+from protean.core.transport import Status
+from protean.core.usecase import ShowRequestObject
+from protean.core.usecase import ShowUseCase
 
 
 class TestTasklet:
@@ -31,5 +31,4 @@ class TestTasklet:
         with pytest.raises(UsecaseExecutionError) as exc_info:
             Tasklet.perform(Dog, ShowUseCase, ShowRequestObject, {}, raise_error=True)
         assert exc_info.value.value[0] == Status.UNPROCESSABLE_ENTITY
-        assert exc_info.value.value[1] ==  \
-               {'code': 422, 'message': {'identifier': 'is required'}}
+        assert exc_info.value.value[1] == {'code': 422, 'message': {'identifier': 'is required'}}

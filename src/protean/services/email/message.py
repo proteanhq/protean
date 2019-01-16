@@ -54,6 +54,7 @@ class EmailMessage:
         return [email for email in (self.to + self.cc + self.bcc) if email]
 
     def get_connection(self, fail_silently=False):
+        """Retrieve connection to send email"""
         from protean.services.email import get_connection
 
         if not self.connection:
@@ -68,4 +69,3 @@ class EmailMessage:
             # there's nobody to send to.
             return 0
         return self.get_connection(fail_silently).send_messages([self])
-

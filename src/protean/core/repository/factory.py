@@ -1,13 +1,13 @@
 """ Factory class for managing repository connections"""
-import logging
 import importlib
-
+import logging
 from threading import local
 
-from protean.core.exceptions import ConfigurationError
 from protean.conf import active_config
+from protean.core.exceptions import ConfigurationError
 
-from .base import BaseModel, BaseAdapter
+from .base import BaseAdapter
+from .base import BaseModel
 
 logger = logging.getLogger('protean.repository')
 

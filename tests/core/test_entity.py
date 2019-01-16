@@ -1,12 +1,12 @@
 """Tests for Entity Functionality and Base Classes"""
 
 import pytest
-
 from tests.support.dog import Dog
 
-from protean.core.entity import Entity
-from protean.core.exceptions import ValidationError, ObjectNotFoundError
 from protean.core import field
+from protean.core.entity import Entity
+from protean.core.exceptions import ObjectNotFoundError
+from protean.core.exceptions import ValidationError
 
 
 class TestEntity:
