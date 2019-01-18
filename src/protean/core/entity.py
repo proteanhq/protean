@@ -122,9 +122,9 @@ class Entity(metaclass=EntityBase):
     def __init__(self, *template, **kwargs):
         """
         Initialise the entity object.
-        
+
         During initialization, set value on fields if vaidation passes.
-        
+
         This initialization technique supports keyword arguments as well as dictionaries. You
             can even use a template for initial data.
         """
@@ -174,16 +174,31 @@ class Entity(metaclass=EntityBase):
         except ValidationError as err:
             self.errors[field_name] = err.messages
 
-    def update_data(self, data):
+    def _update_data(self, *data_dict, **kwargs):
         """
-        Update the entity with the given set of values
+        A private method to process and update entity values correctly.
 
-        :param data: the dictionary of values to be updated for the entity
+        :param data: A dictionary of values to be updated for the entity
+        :param kwargs: keyword arguments with key-value pairs to be updated
         """
 
         # Load each of the fields given in the data dictionary
         self.errors = {}
-        for field_name, val in data.items():
+
+        for data in data_dict:
+            if not isinstance(data, dict):
+                raise AssertionError(
+                    f'Positional argument "{data}" passed must be a dict.'
+                    f'This argument serves as a template for loading common '
+                    f'values.'
+                )
+            for field_name, val in data.items():
+                field_obj = self.meta_.declared_fields.get(field_name, None)
+                if field_obj:
+                    self._setattr(field_name, field_obj, val)
+
+        # Now load against the keyword arguments
+        for field_name, val in kwargs.items():
             field_obj = self.meta_.declared_fields.get(field_name, None)
             if field_obj:
                 self._setattr(field_name, field_obj, val)
@@ -319,22 +334,27 @@ class Entity(metaclass=EntityBase):
 
         return entity
 
-    def update(self, data: dict) -> 'Entity':
+    def update(self, *data, **kwargs) -> 'Entity':
         """Update a Record in the repository.
 
         Also performs unique validations before creating the entity.
 
-        :param data: A dictionary of record properties to be updated
+        Supports both dictionary and keyword argument updates to the entity::
+
+            Dog.update({'age': 10})
+
+            Dog.update(age=10)
+
+        :param data: Dictionary of values to be updated for the entity
+        :param kwargs: keyword arguments with key-value pairs to be updated
         """
-        logger.debug(
-            f'Updating existing `{self.__class__.__name__}` object with id '
-            f'{self.id} using data {data}')
+        logger.debug(f'Updating existing `{self.__class__.__name__}` object with id {self.id}')
 
         # Fetch Model class and connected-adapter from Repository Factory
         model_cls, adapter = self.__class__._retrieve_model()
 
         # Update entity's data attributes
-        self.update_data(data)
+        self._update_data(*data, **kwargs)
 
         # Do unique checks, update the record and return the Entity
         self._validate_unique(create=False)

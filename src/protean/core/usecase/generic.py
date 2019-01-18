@@ -176,7 +176,7 @@ class UpdateUseCase(UseCase):
         entity = request_object.entity_cls.get(request_object.identifier)
 
         # Update the object and return the updated data
-        resource = entity.update(data=request_object.data)
+        resource = entity.update(request_object.data)
         return ResponseSuccess(Status.SUCCESS, resource)
 
 

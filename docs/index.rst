@@ -45,6 +45,10 @@ The User Guide
 
 This part of the documentation introduces some background information about protean, then focuses on step-by-step instructions for getting the most out of Protean.
 
+.. note:: Protean's test code is littered with usage of a certain `Dog` class. If you find that discomforting, replace `Dog` with `CuteLittlePuppyDog` everywhere.
+
+    **Disclosure**: No real dog was harmed in the process of building this framework.
+
 .. toctree::
    :maxdepth: 2
    :caption: User Guide
