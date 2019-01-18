@@ -157,6 +157,16 @@ class TestEntity:
         assert u_dog is not None
         assert u_dog.age == 10
 
+    def test_update_with_dict_and_kwargs(self):
+        """ Update an existing entity in the repository"""
+        dog = Dog.create(id=2, name='Johnny', owner='Carey', age=2)
+
+        dog.update({'owner': 'Stephen'}, age=10)
+        u_dog = Dog.get(2)
+        assert u_dog is not None
+        assert u_dog.age == 10
+        assert u_dog.owner == 'Stephen'
+
     def test_that_update_runs_validations(self):
         """Try updating with invalid values"""
         dog = Dog.create(id=1, name='Johnny', owner='Carey', age=2)
