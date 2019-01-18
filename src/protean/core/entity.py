@@ -341,9 +341,9 @@ class Entity(metaclass=EntityBase):
 
         Supports both dictionary and keyword argument updates to the entity::
 
-            Dog.update({'age': 10})
+            dog.update({'age': 10})
 
-            Dog.update(age=10)
+            dog.update(age=10)
 
         :param data: Dictionary of values to be updated for the entity
         :param kwargs: keyword arguments with key-value pairs to be updated
