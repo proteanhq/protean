@@ -40,7 +40,7 @@ class TestRepository:
         """ Update an existing entity in the repository"""
         dog = Dog.create(id=2, name='Johnny', owner='Carey', age=2)
 
-        dog.update(data=dict(age=10))
+        dog.update(age=10)
         u_dog = Dog.get(2)
         assert u_dog is not None
         assert u_dog.age == 10
@@ -50,7 +50,7 @@ class TestRepository:
         dog = Dog.create(id=1, name='Johnny', owner='Carey', age=2)
 
         with pytest.raises(ValidationError):
-            dog.update(data=dict(age='x'))
+            dog.update(age='x')
 
     def test_unique(self):
         """ Test the unique constraints for the entity """

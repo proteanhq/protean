@@ -137,23 +137,42 @@ class TestEntity:
         dog = Dog.create(id=11344234, name='Johnny', owner='John')
         dog.delete()
         with pytest.raises(ObjectNotFoundError):
-            dog.update(data=dict(age=10))
+            dog.update({'age': 10})
 
-    def test_update(self):
+    def test_update_with_dict(self):
         """ Update an existing entity in the repository"""
         dog = Dog.create(id=2, name='Johnny', owner='Carey', age=2)
 
-        dog.update(data=dict(age=10))
+        dog.update({'age':10})
         u_dog = Dog.get(2)
         assert u_dog is not None
         assert u_dog.age == 10
+
+    def test_update_with_kwargs(self):
+        """ Update an existing entity in the repository"""
+        dog = Dog.create(id=2, name='Johnny', owner='Carey', age=2)
+
+        dog.update(age=10)
+        u_dog = Dog.get(2)
+        assert u_dog is not None
+        assert u_dog.age == 10
+
+    def test_update_with_dict_and_kwargs(self):
+        """ Update an existing entity in the repository"""
+        dog = Dog.create(id=2, name='Johnny', owner='Carey', age=2)
+
+        dog.update({'owner': 'Stephen'}, age=10)
+        u_dog = Dog.get(2)
+        assert u_dog is not None
+        assert u_dog.age == 10
+        assert u_dog.owner == 'Stephen'
 
     def test_that_update_runs_validations(self):
         """Try updating with invalid values"""
         dog = Dog.create(id=1, name='Johnny', owner='Carey', age=2)
 
         with pytest.raises(ValidationError):
-            dog.update(data=dict(age='x'))
+            dog.update(age='x')
 
     def test_unique(self):
         """ Test the unique constraints for the entity """
