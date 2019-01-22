@@ -241,14 +241,10 @@ class Entity(metaclass=EntityBase):
         :param kwargs: named arguments consisting of attr_name and attr_value pairs to search on
         """
         logger.debug(f'Lookup `{cls.__name__}` object with values '
-                     f'{[item for item in kwargs.items()]}')
-
-        filters = {}
-        for item in kwargs.items():
-            filters[item[0]] = item[1]
+                     f'{kwargs}')
 
         # Find this item in the repository or raise Error
-        results = cls.filter(page=1, per_page=1, **filters)
+        results = cls.filter(page=1, per_page=1, **kwargs)
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with values {[item for item in kwargs.items()]} '
