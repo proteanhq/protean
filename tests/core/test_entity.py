@@ -114,6 +114,57 @@ class TestEntity:
         assert dog.to_dict() == {
             'age': 10, 'id': 1, 'name': 'John Doe', 'owner': 'Jimmy'}
 
+    def test_get(self):
+        """Test Entity Retrieval by its primary key"""
+        Dog.create(id=1234, name='Johnny', owner='John')
+
+        dog = Dog.get(1234)
+        assert dog is not None
+        assert dog.id == 1234
+
+    def test_get_object_not_found_error(self):
+        """Test failed Entity Retrieval by its primary key"""
+        Dog.create(id=1234, name='Johnny', owner='John')
+
+        with pytest.raises(ObjectNotFoundError):
+            Dog.get(1235)
+
+    def test_find_by(self):
+        """Test Entity retrieval by a specific column's value"""
+
+        Dog.create(id=2345, name='Johnny', owner='John')
+
+        dog = Dog.find_by(name='Johnny')
+        assert dog is not None
+        assert dog.id == 2345
+
+    def test_find_by_object_not_found_error(self):
+        """Test Entity retrieval by specific column value(s)"""
+
+        Dog.create(id=2345, name='Johnny', owner='John')
+
+        with pytest.raises(ObjectNotFoundError):
+            Dog.find_by(name='JohnnyChase')
+
+    def test_find_by_multiple_attributes(self):
+        """Test Entity retrieval by multiple column value(s)"""
+
+        Dog.create(id=2346, name='Johnny1', age=8, owner='John')
+        Dog.create(id=2347, name='Johnny2', age=6, owner='John')
+
+        dog = Dog.find_by(name='Johnny1', age=8)
+        assert dog is not None
+        assert dog.id == 2346
+
+    def test_find_by_multiple_attributes_object_not_found_error(self):
+        """Test Entity retrieval by multiple column value(s)"""
+
+        Dog.create(id=2346, name='Johnny1', age=8, owner='John')
+        Dog.create(id=2347, name='Johnny2', age=6, owner='John')
+
+        with pytest.raises(ObjectNotFoundError):
+            Dog.find_by(name='Johnny1', age=6)
+
     def test_create_error(self):
         """ Add an entity to the repository missing a required attribute"""
         with pytest.raises(ValidationError):

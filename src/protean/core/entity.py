@@ -235,6 +235,29 @@ class Entity(metaclass=EntityBase):
         return results.first
 
     @classmethod
+    def find_by(cls, **kwargs) -> 'Entity':
+        """Find a specific entity record that matches one or more criteria.
+
+        :param kwargs: named arguments consisting of attr_name and attr_value pairs to search on
+        """
+        logger.debug(f'Lookup `{cls.__name__}` object with values '
+                     f'{[item for item in kwargs.items()]}')
+
+        filters = {}
+        for item in kwargs.items():
+            filters[item[0]] = item[1]
+
+        # Find this item in the repository or raise Error
+        results = cls.filter(page=1, per_page=1, **filters)
+        if not results:
+            raise ObjectNotFoundError(
+                f'`{cls.__name__}` object with values {[item for item in kwargs.items()]} '
+                f'does not exist.')
+
+        # Return the first result
+        return results.first
+
+    @classmethod
     def _retrieve_model(cls):
         """Retrieve model details associated with this Entity"""
         from protean.core.repository import repo_factory  # FIXME Move to a better placement
