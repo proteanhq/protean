@@ -114,7 +114,7 @@ class TestEntity:
         assert dog.to_dict() == {
             'age': 10, 'id': 1, 'name': 'John Doe', 'owner': 'Jimmy'}
 
-    def test_create_error(self):
+    def test_create_validation_error(self):
         """ Add an entity to the repository missing a required attribute"""
         with pytest.raises(ValidationError):
             Dog.create(owner='John')
@@ -130,6 +130,25 @@ class TestEntity:
 
         dog = Dog.get(11344234)
         assert dog is not None
+
+    def test_save(self):
+        """Initialize an entity and save it to repository"""
+        dog = Dog(name='Johnny', owner='John')
+
+        saved_dog = dog.save()
+        assert saved_dog is not None
+        assert saved_dog.id is not None
+        assert saved_dog.name == 'Johnny'
+        assert saved_dog.age == 5
+        assert saved_dog.owner == 'John'
+
+    def test_save_validation_error(self):
+        """Test failed `save()` because of validation errors"""
+        dog = Dog(name='Johnny', owner='John')
+
+        with pytest.raises(ValidationError):
+            del dog.name  # Simulate an error by force-deleting an attribute
+            dog.save()
 
     def test_update_with_invalid_id(self):
         """Try to update a non-existing entry"""
