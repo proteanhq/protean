@@ -22,11 +22,15 @@ class Status(Enum):
 
 
 class InvalidRequestObject:
-    """This class defines an Invalid Request Object"""
+    """A utility class to represent an Invalid Request Object
+
+    Typically, a ValidRequestObject creates an object of InvalidRequestObject
+    to return to the callee along with information on errors.
+    """
     is_valid = False
 
     def __init__(self):
-        """Initialize a Request object with no errors"""
+        """Initialize a blank Request object with no errors"""
         self.errors = []
 
     def add_error(self, parameter, message):
@@ -40,7 +44,13 @@ class InvalidRequestObject:
 
 
 class ValidRequestObject(metaclass=ABCMeta):
-    """This class defines a Valid Request Object"""
+    """An Abstract Class to define a basic Valid Request Object and its functionality
+
+    Can be initialized from a dictionary.
+
+    Mirroring the REST world, a request object is usually associated with an Entity class, which is
+    referenced when necessary for performing lifecycle funtions, like validations, persistence etc.
+    """
     is_valid = True
 
     @classmethod
@@ -49,14 +59,24 @@ class ValidRequestObject(metaclass=ABCMeta):
         """
         Initialize a Request object from a dictionary.
 
-        It is initialized here as an abstractmethod and
-        should be implemented by a concrete class.
+        This abstract methods should be implemented by a concrete class. Typical tasks executed
+        by the child class would be:
+        * validatin of request object data
+        * deriving of computed attributes
+        * reorganization of data to aid business logic execution
         """
         raise NotImplementedError
 
 
 class ResponseSuccess:
-    """This class defines a successful Response Object"""
+    """A utility class to represent a successful Response
+
+    Attributes:
+        code (integer): HTTP code, for the sake of universal use, to represent
+            differnet kinds of success
+        value (json): Optional data returned with the response
+        message (str): Optional messages returned with the response
+    """
     success = True
 
     def __init__(self, code, value=None, message=None):
@@ -67,7 +87,12 @@ class ResponseSuccess:
 
 
 class ResponseFailure:
-    """This class defines a failure Response Object"""
+    """Class to represent a failed Response Object
+
+    Attributes:
+        code (integer): HTTP code, among 4xx and 5xx errors
+        message (str): Custom message or exception returned with the response
+    """
     success = False
     exception_message = "Something went wrong. Please try later!!"
 
@@ -84,7 +109,7 @@ class ResponseFailure:
 
     @property
     def value(self):
-        """Utility method to return Response Object information"""
+        """Utility method to retrieve Response Object information"""
         # Set the code to the status value
         if isinstance(self.code, Status):
             code = self.code.value
@@ -107,27 +132,27 @@ class ResponseFailure:
 
     @classmethod
     def build_not_found(cls, message=None):
-        """Utility method to build a new Resource Error object"""
+        """Utility method to build a HTTP 404 Resource Error object"""
         return cls(Status.NOT_FOUND, message)
 
     @classmethod
     def build_system_error(cls, message=None):
-        """Utility method to build a new System Error object"""
+        """Utility method to build a HTTP 500 System Error object"""
         return cls(Status.SYSTEM_ERROR, message)
 
     @classmethod
     def build_parameters_error(cls, message=None):
-        """Utility method to build a new Parameter Error object"""
+        """Utility method to build a HTTP 400 Parameter Error object"""
         return cls(Status.PARAMETERS_ERROR, message)
 
     @classmethod
     def build_unprocessable_error(cls, message=None):
-        """Utility method to build a new Parameter Error object"""
+        """Utility method to build a HTTP 422 Parameter Error object"""
         return cls(Status.UNPROCESSABLE_ENTITY, message)
 
 
 class ResponseSuccessCreated(ResponseSuccess):
-    """This class defines a successful created Response Object"""
+    """Helper class to denote a HTTP 201 CREATED response"""
     status_code = Status.SUCCESS_CREATED
 
     def __init__(self, value=None, message=None):
@@ -136,7 +161,7 @@ class ResponseSuccessCreated(ResponseSuccess):
 
 
 class ResponseSuccessWithNoContent(ResponseSuccess):
-    """This class defines a successful created Response Object"""
+    """Helper class to denote a HTTP 204 NO CONTENT response"""
     status_code = Status.SUCCESS_WITH_NO_CONTENT
 
     def __init__(self, value=None, message=None):
