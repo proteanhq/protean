@@ -4,7 +4,7 @@ import pytest
 from tests.support.dog import Dog
 
 from protean.core import field
-from protean.core.entity import Entity
+from protean.core.entity import Entity, FilterSet
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 
@@ -254,6 +254,114 @@ class TestEntity:
         assert err.value.normalized_messages == {
             'name': ['`dogs` with this `name` already exists.']}
 
+    def test_filter_chain_initialization_from_entity(self):
+        """ Test that chaining returns a Filterset for further chaining """
+        filters = [
+            Dog.filter(name='Murdock'),
+            Dog.filter(name='Jean').filter(owner='John'),
+            Dog.page(5),
+            Dog.per_page(25),
+            Dog.order_by('name'),
+            Dog.exclude(name='Murdock')
+        ]
+
+        for filter in filters:
+            assert isinstance(filter, FilterSet)
+
+    def test_filter_chaining(self):
+        """ Test that chaining returns a Filterset for further chaining """
+        dog = Dog.filter(name='Murdock')
+        filters = [
+            dog,
+            dog.filter(name='Jean').filter(owner='John'),
+            dog.page(5),
+            dog.per_page(25),
+            dog.order_by('name'),
+            dog.exclude(name='Murdock')
+        ]
+
+        for filter in filters:
+            assert isinstance(filter, FilterSet)
+
+    def test_filter_stored_value(self):
+        """ Test that chaining constructs filter sets correctly """
+        assert Dog.filter(name='Murdock')._filters == {'name': 'Murdock'}
+        assert Dog.filter(name='Murdock', age=7)._filters == {'name': 'Murdock', 'age': 7}
+        assert Dog.filter(name='Murdock').filter(age=7)._filters == {'name': 'Murdock', 'age': 7}
+        assert Dog.filter(name='Murdock').exclude(owner='John')._excludes == {'owner': 'John'}
+        assert Dog.filter(name='Murdock')._page == 1
+        assert Dog.filter(name='Murdock').page(3)._page == 3
+        assert Dog.filter(name='Murdock')._per_page == 10
+        assert Dog.filter(name='Murdock').per_page(25)._per_page == 25
+        assert Dog.filter(name='Murdock').order_by('name')._order_by == {'name'}
+
+        complex_filter = (Dog.filter(name='Murdock')
+                          .filter(age=7)
+                          .exclude(owner='John')
+                          .order_by('name')
+                          .page(15)
+                          .per_page(25))
+
+        assert complex_filter._filters == {'name': 'Murdock', 'age': 7}
+        assert complex_filter._excludes == {'owner': 'John'}
+        assert complex_filter._page == 15
+        assert complex_filter._per_page == 25
+        assert complex_filter._order_by == {'name'}
+
+    def test_filter_chain_results_1(self):
+        """ Chain filter method invocations to construct a complex filter """
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by Dog attributes
+        filter = Dog.filter(name='Jean').filter(owner='John').filter(age=3)
+        dogs = filter.values()
+
+        assert dogs is not None
+        assert dogs.total == 1
+        assert len(dogs.items) == 1
+
+        dog = dogs.first
+        assert dog.id == 3
+
+    def test_filter_chain_results_2(self):
+        """ Chain filter method invocations to construct a complex filter """
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by Dog attributes
+        filter = Dog.filter(owner='John')
+        dogs = filter.values()
+
+        assert dogs is not None
+        assert dogs.total == 2
+        assert len(dogs.items) == 2
+
+        dog = dogs.first
+        assert dog.id == 2
+
+    def test_filter_chain_results_3(self):
+        """ Chain filter method invocations to construct a complex filter """
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by Dog attributes
+        filter = Dog.filter(owner='John').order_by('age')
+        dogs = filter.values()
+
+        assert dogs is not None
+        assert dogs.total == 2
+        assert len(dogs.items) == 2
+
+        dog = dogs.first
+        assert dog.id == 3
+
     def test_filter(self):
         """ Query the repository using filters """
         # Add multiple entries to the DB
@@ -303,3 +411,123 @@ class TestEntity:
 
         with pytest.raises(ObjectNotFoundError):
             Dog.get(3)
+
+
+class TestFilterSet:
+    """Class that holds Tests for FilterSet"""
+
+    def test_list(self):
+        """Test that filter is evaluted on calling `list()`"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by Dog attributes
+        filter = Dog.filter(owner='John').order_by('age')
+        dogs = list(filter)
+
+        assert dogs is not None
+        assert len(dogs) == 2
+
+    def test_repr(self):
+        """Test that filter is evaluted on calling `list()`"""
+        filter = Dog.filter(owner='John').order_by('age')
+        assert repr(filter) == ("<FilterSet: {'_entity_cls_name': 'Dog', '_page': 1, "
+                                "'_per_page': 10, '_order_by': {'age'}, '_excludes': {}, "
+                                "'_filters': {'owner': 'John'}}>")
+
+    def test_bool_false(self):
+        """Test that `bool` returns `False` on no records"""
+        filter = Dog.filter(owner='John').order_by('age')
+        assert bool(filter) is False
+
+    def test_bool_true(self):
+        """Test that filter is evaluted on calling `list()`"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+
+        # Filter by Dog attributes
+        filter = Dog.filter(owner='John').order_by('age')
+
+        assert bool(filter) is True
+
+    def test_len(self):
+        """Test that filter is evaluted on calling `list()`"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by Dog attributes
+        filter = Dog.filter(owner='John').order_by('age')
+        assert len(filter) == 2
+
+    def test_slice(self):
+        """Test slicing on filter"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+        Dog.create(id=5, name='Fred', age=4, owner='Constantine')
+        Dog.create(id=6, name='Flint', age=2, owner='Steve')
+
+        # Filter by Dog attributes
+        filter = Dog.order_by('age')
+        sliced = filter[1:]
+        assert len(sliced) == 4
+
+    def test_total(self):
+        """Test value of `total` results"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by Dog attributes
+        filter = Dog.filter(owner='John').order_by('age')
+        assert filter.total == 2
+
+    def test_items(self):
+        """Test that items is retrieved from Pagination results"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by Dog attributes
+        filter = Dog.filter(owner='John').order_by('age')
+        assert filter.items[0].id == filter.values().items[0].id
+
+    def test_has_next(self):
+        """Test if there are results after the current set"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by Dog attributes
+        filter = Dog.filter(page=1, per_page=2)
+        assert filter.has_next is True
+
+    def test_has_prev(self):
+        """Test if there are results before the current set"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by Dog attributes
+        filter = Dog.filter(page=2, per_page=2)
+        assert filter.has_prev is True
+
+    def test_first(self):
+        """Test that the first item is retrieved correctly from the resultset"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by Dog attributes
+        filter = Dog.order_by('-age')
+        assert filter.first.id == 2

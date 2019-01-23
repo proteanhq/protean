@@ -104,7 +104,7 @@ class ListUseCase(UseCase):
         resources = request_object.entity_cls.filter(request_object.page,
                                                      request_object.per_page,
                                                      request_object.order_by,
-                                                     **request_object.filters)
+                                                     **request_object.filters).values()
         return ResponseSuccess(Status.SUCCESS, resources)
 
 
