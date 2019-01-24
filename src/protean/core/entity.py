@@ -129,7 +129,7 @@ class QuerySet:
                                **self._filters)
         return clone
 
-    def query(self, **filters):
+    def filter(self, **filters):
         """Merge new filter list with existing filters"""
         clone = self._clone()
         clone._filters.update(filters)
@@ -400,8 +400,8 @@ class Entity(metaclass=EntityBase):
     #################
 
     @classmethod
-    def query(cls, page: int = 1, per_page: int = 10, order_by: set = None,
-              excludes_: dict = None, **filters) -> 'Pagination':
+    def filter(cls, page: int = 1, per_page: int = 10, order_by: set = None,
+               excludes_: dict = None, **filters) -> 'Pagination':
         """
         Read Record(s) from the repository. Method must return a `Pagination` object
 
@@ -409,7 +409,7 @@ class Entity(metaclass=EntityBase):
         This leads to code richness, because you can do this::
 
             Dog.order_by('age')
-            Dog.query(owner='John').order_by('age')
+            Dog.filter(owner='John').order_by('age')
             Dog.order_by('name').per_page(25)
 
         :param page: The current page number of the records to be pulled
@@ -461,7 +461,7 @@ class Entity(metaclass=EntityBase):
         }
 
         # Find this item in the repository or raise Error
-        results = cls.query(page=1, per_page=1, **filters).values()
+        results = cls.filter(page=1, per_page=1, **filters).values()
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with identifier {identifier} '
@@ -480,7 +480,7 @@ class Entity(metaclass=EntityBase):
                      f'{kwargs}')
 
         # Find this item in the repository or raise Error
-        results = cls.query(page=1, per_page=1, **kwargs)
+        results = cls.filter(page=1, per_page=1, **kwargs)
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with values {[item for item in kwargs.items()]} '
@@ -500,7 +500,7 @@ class Entity(metaclass=EntityBase):
         :param excludes_: entities without this combination of field name and
             values will be returned
         """
-        results = cls.query(page=1, per_page=1, excludes_=excludes_, **filters)
+        results = cls.filter(page=1, per_page=1, excludes_=excludes_, **filters)
         return bool(results)
 
     @classmethod

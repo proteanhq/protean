@@ -101,7 +101,7 @@ class ListUseCase(UseCase):
 
     def process_request(self, request_object):
         """Return a list of resources"""
-        resources = request_object.entity_cls.query(request_object.page,
+        resources = request_object.entity_cls.filter(request_object.page,
                                                      request_object.per_page,
                                                      request_object.order_by,
                                                      **request_object.filters).values()

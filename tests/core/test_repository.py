@@ -15,7 +15,7 @@ class TestRepository:
     def test_init(self):
         """Test successful access to the Dog repository"""
 
-        Dog.query().values()
+        Dog.filter().values()
         current_db = dict(repo_factory.Dog.conn)
         assert current_db['data'] == {'dogs': {}}
 
@@ -70,13 +70,13 @@ class TestRepository:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by the Owner
-        dogs = Dog.query(owner='John')
+        dogs = Dog.filter(owner='John')
         assert dogs is not None
         assert dogs.total == 2
         assert len(dogs.items) == 2
 
         # Order the results by age
-        dogs = Dog.query(owner='John', order_by=['-age'])
+        dogs = Dog.filter(owner='John', order_by=['-age'])
         assert dogs is not None
         assert dogs.first.age == 7
         assert dogs.first.name == 'Murdock'
@@ -86,7 +86,7 @@ class TestRepository:
         for counter in range(1, 5):
             Dog.create(id=counter, name=counter, owner='Owner Name')
 
-        dogs = Dog.query(per_page=2, order_by=['id'])
+        dogs = Dog.filter(per_page=2, order_by=['id'])
         assert dogs is not None
         assert dogs.total == 4
         assert len(dogs.items) == 2
@@ -94,7 +94,7 @@ class TestRepository:
         assert dogs.has_next
         assert not dogs.has_prev
 
-        dogs = Dog.query(page=2, per_page=2, order_by=['id'])
+        dogs = Dog.filter(page=2, per_page=2, order_by=['id'])
         assert len(dogs.items) == 2
         assert dogs.first.id == 3
         assert not dogs.has_next

@@ -77,7 +77,7 @@ def test_context_with_threads():
         t.join()
 
     # Get the list of dogs and validate the results
-    dogs = ThreadedDog.query(per_page=10)
+    dogs = ThreadedDog.filter(per_page=10)
     assert dogs.total == 5
     for dog in dogs.items:
         if dog.name == 'Johnny':
