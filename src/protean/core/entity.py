@@ -89,8 +89,9 @@ class EntityMeta:
                     _, field_obj in self.declared_fields.items()])
 
 
-class FilterSet:
-    """A chainable class to gather a bunch of Filters before execution
+class QuerySet:
+    """A chainable class to gather a bunch of criteria and preferences (page size, order etc.)
+    before execution.
 
     Internally, a Filterset can be constructed, filtered, sliced, and generally passed around
     without actually fetching data. No data fetch actually occurs until you do something
@@ -99,8 +100,8 @@ class FilterSet:
 
     def __init__(self, entity_cls_name: str, page: int = 1, per_page: int = 10,
                  order_by: set = None, excludes_: dict = None, **filters):
-        """Initialize either with empty filters (when invoked on an Entity)
-            or carry forward filters when chained
+        """Initialize either with empty preferences (when invoked on an Entity)
+            or carry forward filters and preferences when chained
         """
 
         self._entity_cls_name = entity_cls_name
@@ -118,7 +119,7 @@ class FilterSet:
         self._excludes = excludes_ or {}
         self._filters = filters
 
-    def filter(self, **filters):
+    def query(self, **filters):
         """Merge new filter list with existing filters"""
         self._filters.update(filters)
 
@@ -163,8 +164,8 @@ class FilterSet:
 
     def values(self):
         """Primary method to fetch data based on filters
-        
-        Also trigged when the FilterSet is evaluated by calling one of the following methods:
+
+        Also trigged when the QuerySet is evaluated by calling one of the following methods:
             * len()
             * bool()
             * list()
@@ -386,10 +387,17 @@ class Entity(metaclass=EntityBase):
     ######################
 
     @classmethod
-    def filter(cls, page: int = 1, per_page: int = 10, order_by: set = None,
+    def query(cls, page: int = 1, per_page: int = 10, order_by: set = None,
                excludes_: dict = None, **filters) -> 'Pagination':
         """
         Read Record(s) from the repository. Method must return a `Pagination` object
+
+        `filter()` always returns a QuerySet object that can be used to chain multiple filters.
+        This leads to code richness, because you can do this::
+
+            Dog.order_by('age')
+            Dog.query(owner='John').order_by('age')
+            Dog.order_by('name').per_page(25)
 
         :param page: The current page number of the records to be pulled
         :param per_page: The size of each page of the records to be pulled
@@ -401,27 +409,27 @@ class Entity(metaclass=EntityBase):
         :return Returns a `Pagination` object that holds the filtered results
         """
 
-        return FilterSet(cls.__name__, page, per_page, order_by, excludes_, **filters)
+        return QuerySet(cls.__name__, page, per_page, order_by, excludes_, **filters)
 
     @classmethod
     def page(cls, page: int):
-        """Return FilterSet after assigning page number"""
-        return FilterSet(cls.__name__, page, None, None, None)
+        """Return QuerySet after assigning page number"""
+        return QuerySet(cls.__name__, page, None, None, None)
 
     @classmethod
     def per_page(cls, per_page: int):
-        """Return FilterSet after assigning page number"""
-        return FilterSet(cls.__name__, None, per_page, None, None)
+        """Return QuerySet after assigning page number"""
+        return QuerySet(cls.__name__, None, per_page, None, None)
 
     @classmethod
     def order_by(cls, order_by: set = None):
-        """Return FilterSet after assigning page number"""
-        return FilterSet(cls.__name__, None, None, order_by, None)
+        """Return QuerySet after assigning page number"""
+        return QuerySet(cls.__name__, None, None, order_by, None)
 
     @classmethod
     def exclude(cls, **excludes):
-        """Return FilterSet after assigning page number"""
-        return FilterSet(cls.__name__, None, None, None, excludes)
+        """Return QuerySet after assigning page number"""
+        return QuerySet(cls.__name__, None, None, None, excludes)
 
     ######################
     # Life-cycle methods #
@@ -440,7 +448,7 @@ class Entity(metaclass=EntityBase):
         }
 
         # Find this item in the repository or raise Error
-        results = cls.filter(page=1, per_page=1, **filters).values()
+        results = cls.query(page=1, per_page=1, **filters).values()
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with identifier {identifier} '
@@ -459,7 +467,7 @@ class Entity(metaclass=EntityBase):
                      f'{kwargs}')
 
         # Find this item in the repository or raise Error
-        results = cls.filter(page=1, per_page=1, **kwargs)
+        results = cls.query(page=1, per_page=1, **kwargs)
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with values {[item for item in kwargs.items()]} '
@@ -479,7 +487,7 @@ class Entity(metaclass=EntityBase):
         :param excludes_: entities without this combination of field name and
             values will be returned
         """
-        results = cls.filter(page=1, per_page=1, excludes_=excludes_, **filters)
+        results = cls.query(page=1, per_page=1, excludes_=excludes_, **filters)
         return bool(results)
 
     @classmethod
