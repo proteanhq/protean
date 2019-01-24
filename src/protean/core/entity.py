@@ -93,7 +93,7 @@ class QuerySet:
     """A chainable class to gather a bunch of criteria and preferences (page size, order etc.)
     before execution.
 
-    Internally, a Filterset can be constructed, filtered, sliced, and generally passed around
+    Internally, a QuerySet can be constructed, filtered, sliced, and generally passed around
     without actually fetching data. No data fetch actually occurs until you do something
     to evaluate the queryset.
     """
@@ -119,38 +119,53 @@ class QuerySet:
         self._excludes = excludes_ or {}
         self._filters = filters
 
+    def _clone(self):
+        """
+        Return a copy of the current QuerySet.
+        """
+        clone = self.__class__(self._entity_cls_name,
+                               page=self._page, per_page=self._per_page,
+                               order_by=self._order_by, excludes_=self._excludes,
+                               **self._filters)
+        return clone
+
     def query(self, **filters):
         """Merge new filter list with existing filters"""
-        self._filters.update(filters)
+        clone = self._clone()
+        clone._filters.update(filters)
 
-        return self
+        return clone
 
     def exclude(self, **excludes):
         """Merge new exclude list with existing excludes dictionary"""
-        self._excludes.update(excludes)
+        clone = self._clone()
+        clone._excludes.update(excludes)
 
-        return self
+        return clone
 
     def page(self, page: int):
         """Update page setting for filter set"""
-        self._page = page
+        clone = self._clone()
+        clone._page = page
 
-        return self
+        return clone
 
     def per_page(self, per_page: int):
         """Update per_page setting for filter set"""
-        self._per_page = per_page
+        clone = self._clone()
+        clone._per_page = per_page
 
-        return self
+        return clone
 
     def order_by(self, order_by: Union[set, str]):
         """Update page setting for filter set"""
+        clone = self._clone()
         if isinstance(order_by, str):
             order_by = {order_by}
 
-        self._order_by = self._order_by.union(order_by)
+        clone._order_by = clone._order_by.union(order_by)
 
-        return self
+        return clone
 
     def _retrieve_model(self):
         """Retrieve model details associated with this Entity"""
@@ -172,9 +187,7 @@ class QuerySet:
             * Iteration
             * Slicing
         """
-        logger.debug(
-            f'Query `{self.__class__.__name__}` objects with filters {self._filters} and '
-            f'order results by {self._order_by}')
+        logger.debug(f'Query `{self.__class__.__name__}` objects with filters {self}')
 
         # Fetch Model class and connected-adapter from Repository Factory
         model_cls, adapter = self._retrieve_model()
@@ -207,11 +220,11 @@ class QuerySet:
         return self.values().total
 
     def __bool__(self):
-        """Return True if filter results have items"""
+        """Return True if query results have items"""
         return bool(self.values())
 
     def __repr__(self):
-        """Support friendly print of filter criteria"""
+        """Support friendly print of query criteria"""
         return "<%s: %s>" % (self.__class__.__name__, vars(self))
 
     def __getitem__(self, k):
@@ -382,13 +395,13 @@ class Entity(metaclass=EntityBase):
 
         return (model_cls, adapter)
 
-    ######################
-    # Filter methods #
-    ######################
+    #################
+    # Query methods #
+    #################
 
     @classmethod
     def query(cls, page: int = 1, per_page: int = 10, order_by: set = None,
-               excludes_: dict = None, **filters) -> 'Pagination':
+              excludes_: dict = None, **filters) -> 'Pagination':
         """
         Read Record(s) from the repository. Method must return a `Pagination` object
 
@@ -406,7 +419,7 @@ class Entity(metaclass=EntityBase):
             and if not ascending order.
         :param excludes_: Objects with these properties will be excluded from the results
 
-        :return Returns a `Pagination` object that holds the filtered results
+        :return Returns a `Pagination` object that holds the query results
         """
 
         return QuerySet(cls.__name__, page, per_page, order_by, excludes_, **filters)

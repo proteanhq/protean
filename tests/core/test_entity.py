@@ -255,7 +255,7 @@ class TestEntity:
             'name': ['`dogs` with this `name` already exists.']}
 
     def test_filter_chain_initialization_from_entity(self):
-        """ Test that chaining returns a Filterset for further chaining """
+        """ Test that chaining returns a QuerySet for further chaining """
         filters = [
             Dog.query(name='Murdock'),
             Dog.query(name='Jean').query(owner='John'),
@@ -269,7 +269,7 @@ class TestEntity:
             assert isinstance(filter, QuerySet)
 
     def test_filter_chaining(self):
-        """ Test that chaining returns a Filterset for further chaining """
+        """ Test that chaining returns a QuerySet for further chaining """
         dog = Dog.query(name='Murdock')
         filters = [
             dog,
@@ -295,18 +295,18 @@ class TestEntity:
         assert Dog.query(name='Murdock').per_page(25)._per_page == 25
         assert Dog.query(name='Murdock').order_by('name')._order_by == {'name'}
 
-        complex_filter = (Dog.query(name='Murdock')
-                          .query(age=7)
-                          .exclude(owner='John')
-                          .order_by('name')
-                          .page(15)
-                          .per_page(25))
+        complex_query = (Dog.query(name='Murdock')
+                         .query(age=7)
+                         .exclude(owner='John')
+                         .order_by('name')
+                         .page(15)
+                         .per_page(25))
 
-        assert complex_filter._filters == {'name': 'Murdock', 'age': 7}
-        assert complex_filter._excludes == {'owner': 'John'}
-        assert complex_filter._page == 15
-        assert complex_filter._per_page == 25
-        assert complex_filter._order_by == {'name'}
+        assert complex_query._filters == {'name': 'Murdock', 'age': 7}
+        assert complex_query._excludes == {'owner': 'John'}
+        assert complex_query._page == 15
+        assert complex_query._per_page == 25
+        assert complex_query._order_by == {'name'}
 
     def test_filter_chain_results_1(self):
         """ Chain filter method invocations to construct a complex filter """
@@ -316,8 +316,8 @@ class TestEntity:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        filter = Dog.query(name='Jean').query(owner='John').query(age=3)
-        dogs = filter.values()
+        query = Dog.query(name='Jean').query(owner='John').query(age=3)
+        dogs = query.values()
 
         assert dogs is not None
         assert dogs.total == 1
@@ -334,8 +334,8 @@ class TestEntity:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        filter = Dog.query(owner='John')
-        dogs = filter.values()
+        query = Dog.query(owner='John')
+        dogs = query.values()
 
         assert dogs is not None
         assert dogs.total == 2
@@ -352,8 +352,8 @@ class TestEntity:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        filter = Dog.query(owner='John').order_by('age')
-        dogs = filter.values()
+        query = Dog.query(owner='John').order_by('age')
+        dogs = query.values()
 
         assert dogs is not None
         assert dogs.total == 2
@@ -424,23 +424,23 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        filter = Dog.query(owner='John').order_by('age')
-        dogs = list(filter)
+        query = Dog.query(owner='John').order_by('age')
+        dogs = list(query)
 
         assert dogs is not None
         assert len(dogs) == 2
 
     def test_repr(self):
         """Test that filter is evaluted on calling `list()`"""
-        filter = Dog.query(owner='John').order_by('age')
-        assert repr(filter) == ("<QuerySet: {'_entity_cls_name': 'Dog', '_page': 1, "
+        query = Dog.query(owner='John').order_by('age')
+        assert repr(query) == ("<QuerySet: {'_entity_cls_name': 'Dog', '_page': 1, "
                                 "'_per_page': 10, '_order_by': {'age'}, '_excludes': {}, "
                                 "'_filters': {'owner': 'John'}}>")
 
     def test_bool_false(self):
         """Test that `bool` returns `False` on no records"""
-        filter = Dog.query(owner='John').order_by('age')
-        assert bool(filter) is False
+        query = Dog.query(owner='John').order_by('age')
+        assert bool(query) is False
 
     def test_bool_true(self):
         """Test that filter is evaluted on calling `list()`"""
@@ -448,9 +448,9 @@ class TestQuerySet:
         Dog.create(id=2, name='Murdock', age=7, owner='John')
 
         # Filter by Dog attributes
-        filter = Dog.query(owner='John').order_by('age')
+        query = Dog.query(owner='John').order_by('age')
 
-        assert bool(filter) is True
+        assert bool(query) is True
 
     def test_len(self):
         """Test that filter is evaluted on calling `list()`"""
@@ -460,8 +460,8 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        filter = Dog.query(owner='John').order_by('age')
-        assert len(filter) == 2
+        query = Dog.query(owner='John').order_by('age')
+        assert len(query) == 2
 
     def test_slice(self):
         """Test slicing on filter"""
@@ -473,8 +473,8 @@ class TestQuerySet:
         Dog.create(id=6, name='Flint', age=2, owner='Steve')
 
         # Filter by Dog attributes
-        filter = Dog.order_by('age')
-        sliced = filter[1:]
+        query = Dog.order_by('age')
+        sliced = query[1:]
         assert len(sliced) == 4
 
     def test_total(self):
@@ -485,8 +485,8 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        filter = Dog.query(owner='John').order_by('age')
-        assert filter.total == 2
+        query = Dog.query(owner='John').order_by('age')
+        assert query.total == 2
 
     def test_items(self):
         """Test that items is retrieved from Pagination results"""
@@ -496,8 +496,8 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        filter = Dog.query(owner='John').order_by('age')
-        assert filter.items[0].id == filter.values().items[0].id
+        query = Dog.query(owner='John').order_by('age')
+        assert query.items[0].id == query.values().items[0].id
 
     def test_has_next(self):
         """Test if there are results after the current set"""
@@ -507,8 +507,8 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        filter = Dog.query(page=1, per_page=2)
-        assert filter.has_next is True
+        query = Dog.query(page=1, per_page=2)
+        assert query.has_next is True
 
     def test_has_prev(self):
         """Test if there are results before the current set"""
@@ -518,8 +518,8 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        filter = Dog.query(page=2, per_page=2)
-        assert filter.has_prev is True
+        query = Dog.query(page=2, per_page=2)
+        assert query.has_prev is True
 
     def test_first(self):
         """Test that the first item is retrieved correctly from the resultset"""
@@ -529,5 +529,5 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        filter = Dog.order_by('-age')
-        assert filter.first.id == 2
+        query = Dog.order_by('-age')
+        assert query.first.id == 2
