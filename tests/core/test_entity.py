@@ -416,6 +416,15 @@ class TestEntity:
 class TestQuerySet:
     """Class that holds Tests for QuerySet"""
 
+    def test_clone(self):
+        """Test that clone works as expected... it clones!"""
+        query1 = Dog.filter(owner='John')
+        query2 = query1.filter(age=3)
+        query3 = query2.order_by('name')
+
+        assert query1 != query2
+        assert query2 != query3
+
     def test_list(self):
         """Test that filter is evaluted on calling `list()`"""
         # Add multiple entries to the DB
@@ -434,8 +443,8 @@ class TestQuerySet:
         """Test that filter is evaluted on calling `list()`"""
         query = Dog.filter(owner='John').order_by('age')
         assert repr(query) == ("<QuerySet: {'_entity_cls_name': 'Dog', '_page': 1, "
-                                "'_per_page': 10, '_order_by': {'age'}, '_excludes': {}, "
-                                "'_filters': {'owner': 'John'}}>")
+                               "'_per_page': 10, '_order_by': {'age'}, '_excludes': {}, "
+                               "'_filters': {'owner': 'John'}}>")
 
     def test_bool_false(self):
         """Test that `bool` returns `False` on no records"""
