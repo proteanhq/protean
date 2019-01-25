@@ -259,8 +259,8 @@ class TestEntity:
         filters = [
             Dog.query.filter(name='Murdock'),
             Dog.query.filter(name='Jean').filter(owner='John'),
-            Dog.query.page(5),
-            Dog.query.per_page(25),
+            Dog.query.paginate(page=5),
+            Dog.query.paginate(per_page=25),
             Dog.query.order_by('name'),
             Dog.query.exclude(name='Murdock')
         ]
@@ -274,8 +274,8 @@ class TestEntity:
         filters = [
             dog,
             Dog.query.filter(name='Jean').filter(owner='John'),
-            dog.page(5),
-            dog.per_page(25),
+            dog.paginate(page=5),
+            dog.paginate(per_page=5),
             dog.order_by('name'),
             dog.exclude(name='Murdock')
         ]
@@ -290,17 +290,16 @@ class TestEntity:
         assert Dog.query.filter(name='Murdock').filter(age=7)._filters == {'name': 'Murdock', 'age': 7}
         assert Dog.query.filter(name='Murdock').exclude(owner='John')._excludes == {'owner': 'John'}
         assert Dog.query.filter(name='Murdock')._page == 1
-        assert Dog.query.filter(name='Murdock').page(3)._page == 3
+        assert Dog.query.filter(name='Murdock').paginate(page=3)._page == 3
         assert Dog.query.filter(name='Murdock')._per_page == 10
-        assert Dog.query.filter(name='Murdock').per_page(25)._per_page == 25
+        assert Dog.query.filter(name='Murdock').paginate(per_page=25)._per_page == 25
         assert Dog.query.filter(name='Murdock').order_by('name')._order_by == {'name'}
 
         complex_query = (Dog.query.filter(name='Murdock')
                          .filter(age=7)
                          .exclude(owner='John')
                          .order_by('name')
-                         .page(15)
-                         .per_page(25))
+                         .paginate(page=15, per_page=25))
 
         assert complex_query._filters == {'name': 'Murdock', 'age': 7}
         assert complex_query._excludes == {'owner': 'John'}
@@ -386,7 +385,7 @@ class TestEntity:
         for counter in range(1, 5):
             Dog.create(id=counter, name=counter, owner='Owner Name')
 
-        dogs = Dog.query.per_page(2).order_by('id')
+        dogs = Dog.query.paginate(per_page=2).order_by('id')
         assert dogs is not None
         assert dogs.total == 4
         assert len(dogs.items) == 2
@@ -394,7 +393,7 @@ class TestEntity:
         assert dogs.has_next
         assert not dogs.has_prev
 
-        dogs = Dog.query.page(2).per_page(2).order_by('id')
+        dogs = Dog.query.paginate(page=2, per_page=2).order_by('id')
         assert len(dogs.items) == 2
         assert dogs.first.id == 3
         assert not dogs.has_next
@@ -516,7 +515,7 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.query.page(1).per_page(2)
+        query = Dog.query.paginate(page=1, per_page=2)
         assert query.has_next is True
 
     def test_has_prev(self):
@@ -527,7 +526,7 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.query.page(2).per_page(2)
+        query = Dog.query.paginate(page=2, per_page=2)
         assert query.has_prev is True
 
     def test_first(self):

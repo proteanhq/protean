@@ -157,17 +157,13 @@ class QuerySet:
 
         return clone
 
-    def page(self, page: int):
-        """Update page setting for filter set"""
+    def paginate(self, **page_args):
+        """Update page preferences for query"""
         clone = self._clone()
-        clone._page = page
-
-        return clone
-
-    def per_page(self, per_page: int):
-        """Update per_page setting for filter set"""
-        clone = self._clone()
-        clone._per_page = per_page
+        if 'page' in page_args and isinstance(page_args['page'], int):
+            clone._page = page_args['page']
+        if 'per_page' in page_args and isinstance(page_args['per_page'], int):
+            clone._per_page = page_args['per_page']
 
         return clone
 
@@ -426,7 +422,7 @@ class Entity(metaclass=EntityBase):
         }
 
         # Find this item in the repository or raise Error
-        results = cls.query.filter(**filters).page(1).per_page(1).all()
+        results = cls.query.filter(**filters).paginate(page=1, per_page=1).all()
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with identifier {identifier} '
@@ -445,7 +441,7 @@ class Entity(metaclass=EntityBase):
                      f'{kwargs}')
 
         # Find this item in the repository or raise Error
-        results = cls.query.filter(**kwargs).page(1).per_page(1)
+        results = cls.query.filter(**kwargs).paginate(page=1, per_page=1)
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with values {[item for item in kwargs.items()]} '
