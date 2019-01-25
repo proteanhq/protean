@@ -177,7 +177,7 @@ class QuerySet:
 
         return (model_cls, adapter)
 
-    def values(self):
+    def all(self):
         """Primary method to fetch data based on filters
 
         Also trigged when the QuerySet is evaluated by calling one of the following methods:
@@ -213,15 +213,15 @@ class QuerySet:
 
     def __iter__(self):
         """Return results on iteration"""
-        return iter(self.values())
+        return iter(self.all())
 
     def __len__(self):
         """Return length of results"""
-        return self.values().total
+        return self.all().total
 
     def __bool__(self):
         """Return True if query results have items"""
-        return bool(self.values())
+        return bool(self.all())
 
     def __repr__(self):
         """Support friendly print of query criteria"""
@@ -229,7 +229,7 @@ class QuerySet:
 
     def __getitem__(self, k):
         """Support slicing of results"""
-        return self.values().items[k]
+        return self.all().items[k]
 
     #########################
     # Pagination properties #
@@ -238,27 +238,27 @@ class QuerySet:
     @property
     def total(self):
         """Return the total number of records"""
-        return self.values().total
+        return self.all().total
 
     @property
     def items(self):
         """Return result values"""
-        return self.values().items
+        return self.all().items
 
     @property
     def first(self):
         """Return the first result"""
-        return self.values().first
+        return self.all().first
 
     @property
     def has_next(self):
         """Return True if there are more values present"""
-        return self.values().has_next
+        return self.all().has_next
 
     @property
     def has_prev(self):
         """Return True if there are previous values present"""
-        return self.values().has_prev
+        return self.all().has_prev
 
 
 class Entity(metaclass=EntityBase):
@@ -461,7 +461,7 @@ class Entity(metaclass=EntityBase):
         }
 
         # Find this item in the repository or raise Error
-        results = cls.filter(page=1, per_page=1, **filters).values()
+        results = cls.filter(page=1, per_page=1, **filters).all()
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with identifier {identifier} '

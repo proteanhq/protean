@@ -15,7 +15,7 @@ class TestRepository:
     def test_init(self):
         """Test successful access to the Dog repository"""
 
-        Dog.filter().values()
+        Dog.filter().all()
         current_db = dict(repo_factory.Dog.conn)
         assert current_db['data'] == {'dogs': {}}
 

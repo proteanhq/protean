@@ -317,7 +317,7 @@ class TestEntity:
 
         # Filter by Dog attributes
         query = Dog.filter(name='Jean').filter(owner='John').filter(age=3)
-        dogs = query.values()
+        dogs = query.all()
 
         assert dogs is not None
         assert dogs.total == 1
@@ -335,7 +335,7 @@ class TestEntity:
 
         # Filter by Dog attributes
         query = Dog.filter(owner='John')
-        dogs = query.values()
+        dogs = query.all()
 
         assert dogs is not None
         assert dogs.total == 2
@@ -353,7 +353,7 @@ class TestEntity:
 
         # Filter by Dog attributes
         query = Dog.filter(owner='John').order_by('age')
-        dogs = query.values()
+        dogs = query.all()
 
         assert dogs is not None
         assert dogs.total == 2
@@ -506,7 +506,7 @@ class TestQuerySet:
 
         # Filter by Dog attributes
         query = Dog.filter(owner='John').order_by('age')
-        assert query.items[0].id == query.values().items[0].id
+        assert query.items[0].id == query.all().items[0].id
 
     def test_has_next(self):
         """Test if there are results after the current set"""
