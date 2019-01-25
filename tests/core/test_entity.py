@@ -254,6 +254,14 @@ class TestEntity:
         assert err.value.normalized_messages == {
             'name': ['`dogs` with this `name` already exists.']}
 
+    def test_query_init(self):
+        """Test the initialization of a QuerySet"""
+        query = Dog.query
+
+        assert query is not None
+        assert isinstance(query, QuerySet)
+        assert vars(query) == vars(QuerySet('Dog'))
+
     def test_filter_chain_initialization_from_entity(self):
         """ Test that chaining returns a QuerySet for further chaining """
         filters = [
@@ -361,7 +369,7 @@ class TestEntity:
         dog = dogs.first
         assert dog.id == 3
 
-    def test_filter(self):
+    def test_filter_norm(self):
         """ Query the repository using filters """
         # Add multiple entries to the DB
         Dog.create(id=2, name='Murdock', age=7, owner='John')
@@ -379,6 +387,36 @@ class TestEntity:
         assert dogs is not None
         assert dogs.first.age == 7
         assert dogs.first.name == 'Murdock'
+
+    def test_exclude(self):
+        """Query the resository with exclusion filters"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by the Owner
+        dogs = Dog.query.exclude(owner='John')
+        assert dogs is not None
+        assert dogs.total == 1
+        assert len(dogs.items) == 1
+        assert dogs.first.age == 6
+        assert dogs.first.name == 'Bart'
+
+    def test_exclude_multiple(self):
+        """Query the resository with exclusion filters"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by the Owner
+        dogs = Dog.query.exclude(name=['Murdock', 'Jean'])
+        assert dogs is not None
+        assert dogs.total == 1
+        assert len(dogs.items) == 1
+        assert dogs.first.age == 6
+        assert dogs.first.name == 'Bart'
 
     def test_pagination(self):
         """ Test the pagination of the filter results"""

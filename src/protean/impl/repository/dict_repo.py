@@ -60,13 +60,21 @@ class Adapter(BaseAdapter):
 
             # Add objects that match the given filters
             for fk, fv in filters.items():
-                if item[fk] != fv:
-                    match = False
+                if type(fv) in (list, tuple):
+                    if item[fk] not in fv:
+                        match = False
+                else:
+                    if item[fk] != fv:
+                        match = False
 
             # Add objects that do not match excludes
             for fk, fv in excludes.items():
-                if item[fk] == fv:
-                    match = False
+                if type(fv) in (list, tuple):
+                    if item[fk] in fv:
+                        match = False
+                else:
+                    if item[fk] == fv:
+                        match = False
 
             if match:
                 items.append(item)
