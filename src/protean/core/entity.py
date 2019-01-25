@@ -64,6 +64,9 @@ class EntityBase(type):
                 klass.meta_.id_field.bind_to_entity(klass, 'id')
                 declared_fields['id'] = klass.meta_.id_field
 
+        # Construct an empty QuerySet associated with this Entity class
+        klass.query = QuerySet(name)
+
         return klass
 
 
@@ -96,6 +99,17 @@ class QuerySet:
     Internally, a QuerySet can be constructed, filtered, sliced, and generally passed around
     without actually fetching data. No data fetch actually occurs until you do something
     to evaluate the queryset.
+
+    Attributes:
+        page: The current page number of the records to be pulled
+        per_page: The size of each page of the records to be pulled
+        order_by: The list of parameters to be used for ordering the results.
+            Use a `-` before the parameter name to sort in descending order 
+            and if not ascending order.
+        excludes_: Objects with these properties will be excluded from the results
+        filters: Filter criteria
+
+    :return Returns a `Pagination` object that holds the query results
     """
 
     def __init__(self, entity_cls_name: str, page: int = 1, per_page: int = 10,
@@ -130,7 +144,7 @@ class QuerySet:
         return clone
 
     def filter(self, **filters):
-        """Merge new filter list with existing filters"""
+        """Merge new filter criteria with existing filters"""
         clone = self._clone()
         clone._filters.update(filters)
 
@@ -395,55 +409,6 @@ class Entity(metaclass=EntityBase):
 
         return (model_cls, adapter)
 
-    #################
-    # Query methods #
-    #################
-
-    @classmethod
-    def filter(cls, page: int = 1, per_page: int = 10, order_by: set = None,
-               excludes_: dict = None, **filters) -> 'Pagination':
-        """
-        Read Record(s) from the repository. Method must return a `Pagination` object
-
-        `filter()` always returns a QuerySet object that can be used to chain multiple filters.
-        This leads to code richness, because you can do this::
-
-            Dog.order_by('age')
-            Dog.filter(owner='John').order_by('age')
-            Dog.order_by('name').per_page(25)
-
-        :param page: The current page number of the records to be pulled
-        :param per_page: The size of each page of the records to be pulled
-        :param order_by: The list of parameters to be used for ordering the results.
-            Use a `-` before the parameter name to sort in descending order 
-            and if not ascending order.
-        :param excludes_: Objects with these properties will be excluded from the results
-
-        :return Returns a `Pagination` object that holds the query results
-        """
-
-        return QuerySet(cls.__name__, page, per_page, order_by, excludes_, **filters)
-
-    @classmethod
-    def page(cls, page: int):
-        """Return QuerySet after assigning page number"""
-        return QuerySet(cls.__name__, page, None, None, None)
-
-    @classmethod
-    def per_page(cls, per_page: int):
-        """Return QuerySet after assigning page number"""
-        return QuerySet(cls.__name__, None, per_page, None, None)
-
-    @classmethod
-    def order_by(cls, order_by: set = None):
-        """Return QuerySet after assigning page number"""
-        return QuerySet(cls.__name__, None, None, order_by, None)
-
-    @classmethod
-    def exclude(cls, **excludes):
-        """Return QuerySet after assigning page number"""
-        return QuerySet(cls.__name__, None, None, None, excludes)
-
     ######################
     # Life-cycle methods #
     ######################
@@ -461,7 +426,7 @@ class Entity(metaclass=EntityBase):
         }
 
         # Find this item in the repository or raise Error
-        results = cls.filter(page=1, per_page=1, **filters).all()
+        results = cls.query.filter(**filters).page(1).per_page(1).all()
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with identifier {identifier} '
@@ -480,7 +445,7 @@ class Entity(metaclass=EntityBase):
                      f'{kwargs}')
 
         # Find this item in the repository or raise Error
-        results = cls.filter(page=1, per_page=1, **kwargs)
+        results = cls.query.filter(**kwargs).page(1).per_page(1)
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with values {[item for item in kwargs.items()]} '
@@ -500,7 +465,7 @@ class Entity(metaclass=EntityBase):
         :param excludes_: entities without this combination of field name and
             values will be returned
         """
-        results = cls.filter(page=1, per_page=1, excludes_=excludes_, **filters)
+        results = cls.query.filter(**filters).exclude(**excludes_)
         return bool(results)
 
     @classmethod

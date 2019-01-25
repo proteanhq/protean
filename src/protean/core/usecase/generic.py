@@ -101,10 +101,12 @@ class ListUseCase(UseCase):
 
     def process_request(self, request_object):
         """Return a list of resources"""
-        resources = request_object.entity_cls.filter(request_object.page,
-                                                     request_object.per_page,
-                                                     request_object.order_by,
-                                                     **request_object.filters).all()
+        resources = (request_object.entity_cls.query
+                     .filter(**request_object.filters)
+                     .page(request_object.page)
+                     .per_page(request_object.per_page)
+                     .order_by(request_object.order_by)
+                     .all())
         return ResponseSuccess(Status.SUCCESS, resources)
 
 

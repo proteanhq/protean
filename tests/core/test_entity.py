@@ -257,12 +257,12 @@ class TestEntity:
     def test_filter_chain_initialization_from_entity(self):
         """ Test that chaining returns a QuerySet for further chaining """
         filters = [
-            Dog.filter(name='Murdock'),
-            Dog.filter(name='Jean').filter(owner='John'),
-            Dog.page(5),
-            Dog.per_page(25),
-            Dog.order_by('name'),
-            Dog.exclude(name='Murdock')
+            Dog.query.filter(name='Murdock'),
+            Dog.query.filter(name='Jean').filter(owner='John'),
+            Dog.query.page(5),
+            Dog.query.per_page(25),
+            Dog.query.order_by('name'),
+            Dog.query.exclude(name='Murdock')
         ]
 
         for filter in filters:
@@ -270,10 +270,10 @@ class TestEntity:
 
     def test_filter_chaining(self):
         """ Test that chaining returns a QuerySet for further chaining """
-        dog = Dog.filter(name='Murdock')
+        dog = Dog.query.filter(name='Murdock')
         filters = [
             dog,
-            dog.filter(name='Jean').filter(owner='John'),
+            Dog.query.filter(name='Jean').filter(owner='John'),
             dog.page(5),
             dog.per_page(25),
             dog.order_by('name'),
@@ -285,17 +285,17 @@ class TestEntity:
 
     def test_filter_stored_value(self):
         """ Test that chaining constructs filter sets correctly """
-        assert Dog.filter(name='Murdock')._filters == {'name': 'Murdock'}
-        assert Dog.filter(name='Murdock', age=7)._filters == {'name': 'Murdock', 'age': 7}
-        assert Dog.filter(name='Murdock').filter(age=7)._filters == {'name': 'Murdock', 'age': 7}
-        assert Dog.filter(name='Murdock').exclude(owner='John')._excludes == {'owner': 'John'}
-        assert Dog.filter(name='Murdock')._page == 1
-        assert Dog.filter(name='Murdock').page(3)._page == 3
-        assert Dog.filter(name='Murdock')._per_page == 10
-        assert Dog.filter(name='Murdock').per_page(25)._per_page == 25
-        assert Dog.filter(name='Murdock').order_by('name')._order_by == {'name'}
+        assert Dog.query.filter(name='Murdock')._filters == {'name': 'Murdock'}
+        assert Dog.query.filter(name='Murdock', age=7)._filters == {'name': 'Murdock', 'age': 7}
+        assert Dog.query.filter(name='Murdock').filter(age=7)._filters == {'name': 'Murdock', 'age': 7}
+        assert Dog.query.filter(name='Murdock').exclude(owner='John')._excludes == {'owner': 'John'}
+        assert Dog.query.filter(name='Murdock')._page == 1
+        assert Dog.query.filter(name='Murdock').page(3)._page == 3
+        assert Dog.query.filter(name='Murdock')._per_page == 10
+        assert Dog.query.filter(name='Murdock').per_page(25)._per_page == 25
+        assert Dog.query.filter(name='Murdock').order_by('name')._order_by == {'name'}
 
-        complex_query = (Dog.filter(name='Murdock')
+        complex_query = (Dog.query.filter(name='Murdock')
                          .filter(age=7)
                          .exclude(owner='John')
                          .order_by('name')
@@ -316,7 +316,7 @@ class TestEntity:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.filter(name='Jean').filter(owner='John').filter(age=3)
+        query = Dog.query.filter(name='Jean').filter(owner='John').filter(age=3)
         dogs = query.all()
 
         assert dogs is not None
@@ -334,7 +334,7 @@ class TestEntity:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.filter(owner='John')
+        query = Dog.query.filter(owner='John')
         dogs = query.all()
 
         assert dogs is not None
@@ -352,7 +352,7 @@ class TestEntity:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.filter(owner='John').order_by('age')
+        query = Dog.query.filter(owner='John').order_by('age')
         dogs = query.all()
 
         assert dogs is not None
@@ -370,13 +370,13 @@ class TestEntity:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by the Owner
-        dogs = Dog.filter(owner='John')
+        dogs = Dog.query.filter(owner='John')
         assert dogs is not None
         assert dogs.total == 2
         assert len(dogs.items) == 2
 
         # Order the results by age
-        dogs = Dog.filter(owner='John', order_by=['-age'])
+        dogs = Dog.query.filter(owner='John').order_by('-age')
         assert dogs is not None
         assert dogs.first.age == 7
         assert dogs.first.name == 'Murdock'
@@ -386,7 +386,7 @@ class TestEntity:
         for counter in range(1, 5):
             Dog.create(id=counter, name=counter, owner='Owner Name')
 
-        dogs = Dog.filter(per_page=2, order_by=['id'])
+        dogs = Dog.query.per_page(2).order_by('id')
         assert dogs is not None
         assert dogs.total == 4
         assert len(dogs.items) == 2
@@ -394,7 +394,7 @@ class TestEntity:
         assert dogs.has_next
         assert not dogs.has_prev
 
-        dogs = Dog.filter(page=2, per_page=2, order_by=['id'])
+        dogs = Dog.query.page(2).per_page(2).order_by('id')
         assert len(dogs.items) == 2
         assert dogs.first.id == 3
         assert not dogs.has_next
@@ -418,7 +418,7 @@ class TestQuerySet:
 
     def test_clone(self):
         """Test that clone works as expected... it clones!"""
-        query1 = Dog.filter(owner='John')
+        query1 = Dog.query.filter(owner='John')
         query2 = query1.filter(age=3)
         query3 = query2.order_by('name')
 
@@ -433,7 +433,7 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.filter(owner='John').order_by('age')
+        query = Dog.query.filter(owner='John').order_by('age')
         dogs = list(query)
 
         assert dogs is not None
@@ -441,14 +441,14 @@ class TestQuerySet:
 
     def test_repr(self):
         """Test that filter is evaluted on calling `list()`"""
-        query = Dog.filter(owner='John').order_by('age')
+        query = Dog.query.filter(owner='John').order_by('age')
         assert repr(query) == ("<QuerySet: {'_entity_cls_name': 'Dog', '_page': 1, "
                                "'_per_page': 10, '_order_by': {'age'}, '_excludes': {}, "
                                "'_filters': {'owner': 'John'}}>")
 
     def test_bool_false(self):
         """Test that `bool` returns `False` on no records"""
-        query = Dog.filter(owner='John').order_by('age')
+        query = Dog.query.filter(owner='John').order_by('age')
         assert bool(query) is False
 
     def test_bool_true(self):
@@ -457,7 +457,7 @@ class TestQuerySet:
         Dog.create(id=2, name='Murdock', age=7, owner='John')
 
         # Filter by Dog attributes
-        query = Dog.filter(owner='John').order_by('age')
+        query = Dog.query.filter(owner='John').order_by('age')
 
         assert bool(query) is True
 
@@ -469,7 +469,7 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.filter(owner='John').order_by('age')
+        query = Dog.query.filter(owner='John').order_by('age')
         assert len(query) == 2
 
     def test_slice(self):
@@ -482,7 +482,7 @@ class TestQuerySet:
         Dog.create(id=6, name='Flint', age=2, owner='Steve')
 
         # Filter by Dog attributes
-        query = Dog.order_by('age')
+        query = Dog.query.order_by('age')
         sliced = query[1:]
         assert len(sliced) == 4
 
@@ -494,7 +494,7 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.filter(owner='John').order_by('age')
+        query = Dog.query.filter(owner='John').order_by('age')
         assert query.total == 2
 
     def test_items(self):
@@ -505,7 +505,7 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.filter(owner='John').order_by('age')
+        query = Dog.query.filter(owner='John').order_by('age')
         assert query.items[0].id == query.all().items[0].id
 
     def test_has_next(self):
@@ -516,7 +516,7 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.filter(page=1, per_page=2)
+        query = Dog.query.page(1).per_page(2)
         assert query.has_next is True
 
     def test_has_prev(self):
@@ -527,7 +527,7 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.filter(page=2, per_page=2)
+        query = Dog.query.page(2).per_page(2)
         assert query.has_prev is True
 
     def test_first(self):
@@ -538,5 +538,5 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.order_by('-age')
+        query = Dog.query.order_by('-age')
         assert query.first.id == 2
