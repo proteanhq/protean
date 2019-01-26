@@ -1,7 +1,7 @@
 """Entity Functionality and Classes"""
 import logging
 from collections import OrderedDict
-from typing import Any
+from typing import Any, Union
 
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
@@ -64,6 +64,9 @@ class EntityBase(type):
                 klass.meta_.id_field.bind_to_entity(klass, 'id')
                 declared_fields['id'] = klass.meta_.id_field
 
+        # Construct an empty QuerySet associated with this Entity class
+        klass.query = QuerySet(name)
+
         return klass
 
 
@@ -87,6 +90,185 @@ class EntityMeta:
         """ Check the the id_field for the entity is Auto Type"""
         return any([isinstance(field_obj, Auto) for
                     _, field_obj in self.declared_fields.items()])
+
+
+class QuerySet:
+    """A chainable class to gather a bunch of criteria and preferences (page size, order etc.)
+    before execution.
+
+    Internally, a QuerySet can be constructed, filtered, sliced, and generally passed around
+    without actually fetching data. No data fetch actually occurs until you do something
+    to evaluate the queryset.
+
+    Attributes:
+        page: The current page number of the records to be pulled
+        per_page: The size of each page of the records to be pulled
+        order_by: The list of parameters to be used for ordering the results.
+            Use a `-` before the parameter name to sort in descending order 
+            and if not ascending order.
+        excludes_: Objects with these properties will be excluded from the results
+        filters: Filter criteria
+
+    :return Returns a `Pagination` object that holds the query results
+    """
+
+    def __init__(self, entity_cls_name: str, page: int = 1, per_page: int = 10,
+                 order_by: set = None, excludes_: dict = None, **filters):
+        """Initialize either with empty preferences (when invoked on an Entity)
+            or carry forward filters and preferences when chained
+        """
+
+        self._entity_cls_name = entity_cls_name
+        self._page = page or 1
+        self._per_page = per_page or 10
+
+        # `order_by` could be empty, or a string or a set.
+        #   Intialize empty set if `order_by` is None
+        #   Convert string to set if `order_by` is a String
+        #   Safe-cast set to a set if `order_by` is already a set
+        if order_by:
+            self._order_by = set([order_by]) if isinstance(order_by, str) else set(order_by)
+        else:
+            self._order_by = set()
+        self._excludes = excludes_ or {}
+        self._filters = filters
+
+    def _clone(self):
+        """
+        Return a copy of the current QuerySet.
+        """
+        clone = self.__class__(self._entity_cls_name,
+                               page=self._page, per_page=self._per_page,
+                               order_by=self._order_by, excludes_=self._excludes,
+                               **self._filters)
+        return clone
+
+    def filter(self, **filters):
+        """Merge new filter criteria with existing filters"""
+        clone = self._clone()
+        clone._filters.update(filters)
+
+        return clone
+
+    def exclude(self, **excludes):
+        """Merge new exclude list with existing excludes dictionary"""
+        clone = self._clone()
+        clone._excludes.update(excludes)
+
+        return clone
+
+    def paginate(self, **page_args):
+        """Update page preferences for query"""
+        clone = self._clone()
+        if 'page' in page_args and isinstance(page_args['page'], int):
+            clone._page = page_args['page']
+        if 'per_page' in page_args and isinstance(page_args['per_page'], int):
+            clone._per_page = page_args['per_page']
+
+        return clone
+
+    def order_by(self, order_by: Union[set, str]):
+        """Update page setting for filter set"""
+        clone = self._clone()
+        if isinstance(order_by, str):
+            order_by = {order_by}
+
+        clone._order_by = clone._order_by.union(order_by)
+
+        return clone
+
+    def _retrieve_model(self):
+        """Retrieve model details associated with this Entity"""
+        from protean.core.repository import repo_factory  # FIXME Move to a better placement
+
+        # Fetch Model class and connected-adapter from Repository Factory
+        model_cls = repo_factory.get_model(self._entity_cls_name)
+        adapter = getattr(repo_factory, self._entity_cls_name)
+
+        return (model_cls, adapter)
+
+    def all(self):
+        """Primary method to fetch data based on filters
+
+        Also trigged when the QuerySet is evaluated by calling one of the following methods:
+            * len()
+            * bool()
+            * list()
+            * Iteration
+            * Slicing
+        """
+        logger.debug(f'Query `{self.__class__.__name__}` objects with filters {self}')
+
+        # Fetch Model class and connected-adapter from Repository Factory
+        model_cls, adapter = self._retrieve_model()
+
+        # order_by clause must be list of keys
+        order_by = model_cls.opts_.order_by if not self._order_by else self._order_by
+
+        # Call the read method of the repository
+        results = adapter._filter_objects(self._page, self._per_page, order_by,
+                                          self._excludes, **self._filters)
+
+        # Convert the returned results to entity and return it
+        entity_items = []
+        for item in results.items:
+            entity_items.append(model_cls.to_entity(item))
+        results.items = entity_items
+
+        return results
+
+    ###############################
+    # Python Magic method support #
+    ###############################
+
+    def __iter__(self):
+        """Return results on iteration"""
+        return iter(self.all())
+
+    def __len__(self):
+        """Return length of results"""
+        return self.all().total
+
+    def __bool__(self):
+        """Return True if query results have items"""
+        return bool(self.all())
+
+    def __repr__(self):
+        """Support friendly print of query criteria"""
+        return "<%s: %s>" % (self.__class__.__name__, vars(self))
+
+    def __getitem__(self, k):
+        """Support slicing of results"""
+        return self.all().items[k]
+
+    #########################
+    # Pagination properties #
+    #########################
+
+    @property
+    def total(self):
+        """Return the total number of records"""
+        return self.all().total
+
+    @property
+    def items(self):
+        """Return result values"""
+        return self.all().items
+
+    @property
+    def first(self):
+        """Return the first result"""
+        return self.all().first
+
+    @property
+    def has_next(self):
+        """Return True if there are more values present"""
+        return self.all().has_next
+
+    @property
+    def has_prev(self):
+        """Return True if there are previous values present"""
+        return self.all().has_prev
 
 
 class Entity(metaclass=EntityBase):
@@ -213,6 +395,21 @@ class Entity(metaclass=EntityBase):
                 for field_name in self.meta_.declared_fields}
 
     @classmethod
+    def _retrieve_model(cls):
+        """Retrieve model details associated with this Entity"""
+        from protean.core.repository import repo_factory  # FIXME Move to a better placement
+
+        # Fetch Model class and connected-adapter from Repository Factory
+        model_cls = repo_factory.get_model(cls.__name__)
+        adapter = getattr(repo_factory, cls.__name__)
+
+        return (model_cls, adapter)
+
+    ######################
+    # Life-cycle methods #
+    ######################
+
+    @classmethod
     def get(cls, identifier: Any) -> 'Entity':
         """Get a specific Record from the Repository
 
@@ -225,7 +422,7 @@ class Entity(metaclass=EntityBase):
         }
 
         # Find this item in the repository or raise Error
-        results = cls.filter(page=1, per_page=1, **filters)
+        results = cls.query.filter(**filters).paginate(page=1, per_page=1).all()
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with identifier {identifier} '
@@ -244,7 +441,7 @@ class Entity(metaclass=EntityBase):
                      f'{kwargs}')
 
         # Find this item in the repository or raise Error
-        results = cls.filter(page=1, per_page=1, **kwargs)
+        results = cls.query.filter(**kwargs).paginate(page=1, per_page=1)
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with values {[item for item in kwargs.items()]} '
@@ -252,58 +449,6 @@ class Entity(metaclass=EntityBase):
 
         # Return the first result
         return results.first
-
-    @classmethod
-    def _retrieve_model(cls):
-        """Retrieve model details associated with this Entity"""
-        from protean.core.repository import repo_factory  # FIXME Move to a better placement
-
-        # Fetch Model class and connected-adapter from Repository Factory
-        model_cls = repo_factory.get_model(cls.__name__)
-        adapter = getattr(repo_factory, cls.__name__)
-
-        return (model_cls, adapter)
-
-    @classmethod
-    def filter(cls, page: int = 1, per_page: int = 10, order_by: list = (),
-               excludes_: dict = None, **filters) -> 'Pagination':
-        """
-        Read Record(s) from the repository. Method must return a `Pagination` object
-
-        :param page: The current page number of the records to be pulled
-        :param per_page: The size of each page of the records to be pulled
-        :param order_by: The list of parameters to be used for ordering the results.
-            Use a `-` before the parameter name to sort in descending order 
-            and if not ascending order.
-        :param excludes_: Objects with these properties will be excluded from the results
-
-        :return Returns a `Pagination` object that holds the filtered results
-        """
-        logger.debug(
-            f'Query `{cls.__name__}` objects with filters {filters} and '
-            f'order results by {order_by}')
-
-        # Fetch Model class and connected-adapter from Repository Factory
-        model_cls, adapter = cls._retrieve_model()
-
-        # order_by clause must be list of keys
-        order_by = model_cls.opts_.order_by if not order_by else order_by
-        if not isinstance(order_by, (list, tuple)):
-            order_by = [order_by]
-
-        # default excludes to a dictionary
-        excludes_ = excludes_ or {}
-
-        # Call the read method of the repository
-        results = adapter._filter_objects(page, per_page, order_by, excludes_, **filters)
-
-        # Convert the returned results to entity and return it
-        entity_items = []
-        for item in results.items:
-            entity_items.append(model_cls.to_entity(item))
-        results.items = entity_items
-
-        return results
 
     @classmethod
     def exists(cls, excludes_, **filters):
@@ -316,7 +461,7 @@ class Entity(metaclass=EntityBase):
         :param excludes_: entities without this combination of field name and
             values will be returned
         """
-        results = cls.filter(page=1, per_page=1, excludes_=excludes_, **filters)
+        results = cls.query.filter(**filters).exclude(**excludes_)
         return bool(results)
 
     @classmethod

@@ -51,3 +51,7 @@ class Pagination(object):
             return True
         else:
             return False
+
+    def __iter__(self):
+        """ Return iterable on items """
+        return iter(self.items)
