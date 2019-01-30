@@ -404,19 +404,47 @@ class TestEntity:
         assert dogs.first.name == 'Bart'
 
     def test_exclude_multiple(self):
-        """Query the resository with exclusion filters"""
+        """Query the repository with exclusion filters"""
         # Add multiple entries to the DB
         Dog.create(id=2, name='Murdock', age=7, owner='John')
         Dog.create(id=3, name='Jean', age=3, owner='John')
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by the Owner
-        dogs = Dog.query.exclude(name=['Murdock', 'Jean'])
+        dogs = Dog.query.exclude(name__in=['Murdock', 'Jean'])
         assert dogs is not None
         assert dogs.total == 1
         assert len(dogs.items) == 1
         assert dogs.first.age == 6
         assert dogs.first.name == 'Bart'
+
+    def test_comparisons(self):
+        """Query with greater than operator"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='john')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by the Owner
+        dogs_gte = Dog.query.filter(age__gte=3)
+        dogs_lte = Dog.query.filter(age__lte=6)
+        dogs_gt = Dog.query.filter(age__gt=3)
+        dogs_lt = Dog.query.filter(age__lt=6)
+        dogs_in = Dog.query.filter(name__in=['Jean', 'Bart', 'Nobody'])
+        dogs_exact = Dog.query.filter(owner__exact='John')
+        dogs_iexact = Dog.query.filter(owner__iexact='John')
+        dogs_contains = Dog.query.filter(owner__contains='Joh')
+        dogs_icontains = Dog.query.filter(owner__icontains='Joh')
+
+        assert dogs_gte.total == 3
+        assert dogs_lte.total == 2
+        assert dogs_gt.total == 2
+        assert dogs_lt.total == 1
+        assert dogs_in.total == 2
+        assert dogs_exact.total == 1
+        assert dogs_iexact.total == 2
+        assert dogs_contains.total == 1
+        assert dogs_icontains.total == 2
 
     def test_pagination(self):
         """ Test the pagination of the filter results"""
@@ -479,9 +507,10 @@ class TestQuerySet:
     def test_repr(self):
         """Test that filter is evaluted on calling `list()`"""
         query = Dog.query.filter(owner='John').order_by('age')
-        assert repr(query) == ("<QuerySet: {'_entity_cls_name': 'Dog', '_page': 1, "
-                               "'_per_page': 10, '_order_by': {'age'}, '_excludes': {}, "
-                               "'_filters': {'owner': 'John'}, '_result_cache': None}>")
+        assert repr(query) == ("<QuerySet: entity: Dog, page: 1, "
+                               "per_page: 10, order_by: {'age'}, "
+                               "filters: {'owner': 'John'}, "
+                               "excludes: {}>")
 
     def test_bool_false(self):
         """Test that `bool` returns `False` on no records"""

@@ -138,6 +138,11 @@ class QuerySet:
         self._filters = filters
 
         self._result_cache = None
+        # Set evaluated flag to False on initialization
+        #   Will be changed to True after evaluation
+        self.evaluated = False  # Will be used for caching results
+        self._restructured_filters = {}
+        self._restructured_excludes = {}
 
     def _clone(self):
         """
@@ -214,9 +219,35 @@ class QuerySet:
         # order_by clause must be list of keys
         order_by = model_cls.opts_.order_by if not self._order_by else self._order_by
 
+        # Breakdown filters if not yet evaluated
+
+        if not self.evaluated:
+            for key in self._filters:
+                parts = key.split('__')
+
+                if len(parts) == 1:
+                    self._restructured_filters[key] = (self._filters[key], 'exact')
+                else:
+                    # Ensure that the key structure is sane and contains exactly one operator
+                    assert len(parts) == 2
+                    self._restructured_filters[parts[0]] = (self._filters[key], parts[1])
+
+            for key in self._excludes:
+                parts = key.split('__')
+
+                if len(parts) == 1:
+                    self._restructured_excludes[key] = (self._excludes[key], 'exact')
+                else:
+                    # Ensure that the key structure is sane and contains exactly one operator
+                    assert len(parts) == 2
+                    self._restructured_excludes[parts[0]] = (self._excludes[key], parts[1])
+
+            self.evaluated = True
+
         # Call the read method of the repository
         results = adapter._filter_objects(self._page, self._per_page, order_by,
-                                          self._excludes, **self._filters)
+                                          self._restructured_excludes,
+                                          **self._restructured_filters)
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -256,7 +287,11 @@ class QuerySet:
 
     def __repr__(self):
         """Support friendly print of query criteria"""
-        return "<%s: %s>" % (self.__class__.__name__, vars(self))
+        return ("<%s: entity: %s, page: %s, per_page: %s, order_by: %s, "
+                "filters: %s, excludes: %s>" %
+                 (self.__class__.__name__, self._entity_cls_name,
+                  self._page, self._per_page, self._order_by,
+                  self._filters, self._excludes))
 
     def __getitem__(self, k):
         """Support slicing of results"""

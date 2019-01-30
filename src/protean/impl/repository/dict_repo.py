@@ -48,6 +48,38 @@ class Adapter(BaseAdapter):
 
         return model_obj
 
+    def _matched(self, source, target, op='exact'):
+        """Compare source and target by the given operation"""
+
+        assert op in ('exact', 'iexact', 'contains', 'icontains',
+                      'gte', 'gt', 'lte', 'lt', 'in')
+
+        if op == 'exact':
+            return source == target
+        if op == 'iexact':
+            assert isinstance(source, str)
+            assert isinstance(target, str)
+            return source.lower() == target.lower()
+        if op == 'contains':
+            return target in source
+        if op == 'icontains':
+            assert isinstance(source, str)
+            assert isinstance(target, str)
+            return target.lower() in source.lower()
+        elif op == 'gte':
+            return source >= target
+        elif op == 'gt':
+            return source > target
+        elif op == 'lte':
+            return source <= target
+        elif op == 'lt':
+            return source < target
+        elif op == 'in':
+            assert type(target) in (list, tuple)
+            return source in target
+
+        return False
+
     def _filter_objects(self, page: int = 1, per_page: int = 10,
                         order_by: list = (), _excludes=None, **filters):
         """ Read the repository and return results as per the filer"""
@@ -59,22 +91,14 @@ class Adapter(BaseAdapter):
             match = True
 
             # Add objects that match the given filters
+            filter_values = [self._matched(item[fk], *fv) for fk, fv in filters.items()]
             for fk, fv in filters.items():
-                if type(fv) in (list, tuple):
-                    if item[fk] not in fv:
-                        match = False
-                else:
-                    if item[fk] != fv:
-                        match = False
+                match &= self._matched(item[fk], *fv)
 
             # Add objects that do not match excludes
+            exclude_values = [self._matched(item[fk], *fv) for fk, fv in excludes.items()]
             for fk, fv in excludes.items():
-                if type(fv) in (list, tuple):
-                    if item[fk] in fv:
-                        match = False
-                else:
-                    if item[fk] == fv:
-                        match = False
+                match &= not self._matched(item[fk], *fv)
 
             if match:
                 items.append(item)
