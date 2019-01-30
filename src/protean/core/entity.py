@@ -100,6 +100,10 @@ class QuerySet:
     without actually fetching data. No data fetch actually occurs until you do something
     to evaluate the queryset.
 
+    When being evaluated, a `QuerySet` typically caches its results. If the data in the database
+    might have changed, you can get updated results for the same query by calling `all()` on a
+    previously evaluated `QuerySet`.
+
     Attributes:
         page: The current page number of the records to be pulled
         per_page: The size of each page of the records to be pulled
@@ -132,6 +136,8 @@ class QuerySet:
             self._order_by = set()
         self._excludes = excludes_ or {}
         self._filters = filters
+
+        self._result_cache = None
 
     def _clone(self):
         """
@@ -199,6 +205,9 @@ class QuerySet:
         """
         logger.debug(f'Query `{self.__class__.__name__}` objects with filters {self}')
 
+        # Destroy any cached results
+        self._result_cache = None
+
         # Fetch Model class and connected-adapter from Repository Factory
         model_cls, adapter = self._retrieve_model()
 
@@ -215,6 +224,9 @@ class QuerySet:
             entity_items.append(model_cls.to_entity(item))
         results.items = entity_items
 
+        # Cache results
+        self._result_cache = results
+
         return results
 
     ###############################
@@ -223,14 +235,23 @@ class QuerySet:
 
     def __iter__(self):
         """Return results on iteration"""
+        if self._result_cache:
+            return iter(self._result_cache)
+
         return iter(self.all())
 
     def __len__(self):
         """Return length of results"""
+        if self._result_cache:
+            return self._result_cache.total
+
         return self.all().total
 
     def __bool__(self):
         """Return True if query results have items"""
+        if self._result_cache:
+            return bool(self._result_cache)
+
         return bool(self.all())
 
     def __repr__(self):
@@ -239,6 +260,9 @@ class QuerySet:
 
     def __getitem__(self, k):
         """Support slicing of results"""
+        if self._result_cache:
+            return self._result_cache.items[k]
+
         return self.all().items[k]
 
     #########################
@@ -248,26 +272,41 @@ class QuerySet:
     @property
     def total(self):
         """Return the total number of records"""
+        if self._result_cache:
+            return self._result_cache.total
+
         return self.all().total
 
     @property
     def items(self):
         """Return result values"""
+        if self._result_cache:
+            return self._result_cache.items
+
         return self.all().items
 
     @property
     def first(self):
         """Return the first result"""
+        if self._result_cache:
+            return self._result_cache.first
+
         return self.all().first
 
     @property
     def has_next(self):
         """Return True if there are more values present"""
+        if self._result_cache:
+            return self._result_cache.has_next
+
         return self.all().has_next
 
     @property
     def has_prev(self):
         """Return True if there are previous values present"""
+        if self._result_cache:
+            return self._result_cache.has_prev
+
         return self.all().has_prev
 
 
