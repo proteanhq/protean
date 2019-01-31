@@ -123,6 +123,14 @@ class Lookup(metaclass=ABCMeta):
         """Source is LHS and Target is RHS of a comparsion"""
         self.source, self.target = source, target
 
+    def process_source(self):
+        """Blank implementation; returns source"""
+        return self.source
+
+    def process_target(self):
+        """Blank implementation; returns target"""
+        return self.target
+
     @abstractmethod
     def as_expression(self):
         """To be implemented in each Adapter for its Lookups"""

@@ -116,3 +116,31 @@ class TestRepository:
         """ Test closing all connections to the repository"""
         assert 'default' in _databases
         repo_factory.close_connections()
+
+
+class TestLookup:
+    """This class holds tests for Lookup Class"""
+
+    from protean.core.repository import Lookup
+    from protean.impl.repository.dict_repo import Adapter
+
+    @Adapter.register_lookup
+    class SampleLookup(Lookup):
+        """A simple implementation of lookup class"""
+        lookup_name = "sample"
+        def as_expression(self):
+            return '%s %s %s' % (self.process_source(),
+                                 '<<<>>>',
+                                 self.process_target())
+
+    def test_init(self):
+        """Test initialization of a Lookup Object"""
+
+        lookup = self.SampleLookup("src", "trg")
+        assert lookup.as_expression() == "src <<<>>> trg"
+
+    def test_registration(self):
+        """Test registering a lookup to an adapter"""
+        from protean.impl.repository.dict_repo import Adapter
+
+        assert Adapter.get_lookups().get('sample') == self.SampleLookup
