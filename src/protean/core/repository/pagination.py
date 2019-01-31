@@ -30,7 +30,7 @@ class Pagination(object):
     @property
     def has_prev(self):
         """True if a previous page exists"""
-        return self.page > 1
+        return bool(self.items) and self.page > 1
 
     @property
     def has_next(self):
