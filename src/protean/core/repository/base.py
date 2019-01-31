@@ -8,13 +8,14 @@ from protean.core.entity import Entity
 from protean.core.exceptions import ConfigurationError
 from protean.utils import inflection
 from protean.utils.meta import OptionsMeta
+from protean.utils.query import RegisterLookupMixin
 
 from .pagination import Pagination
 
 logger = logging.getLogger('protean.repository')
 
 
-class BaseAdapter(metaclass=ABCMeta):
+class BaseAdapter(RegisterLookupMixin, metaclass=ABCMeta):
     """Adapter interface to interact with databases
 
     :param conn: A connection/session to the data source of the model
@@ -112,3 +113,17 @@ class BaseConnectionHandler(metaclass=ABCMeta):
     @abstractmethod
     def close_connection(self, conn):
         """ Close the connection object for the repository"""
+
+
+class Lookup(metaclass=ABCMeta):
+    """Base Lookup class to implement in Adapters"""
+    lookup_name = None
+
+    def __init__(self, source, target):
+        """Source is LHS and Target is RHS of a comparsion"""
+        self.source, self.target = source, target
+
+    @abstractmethod
+    def as_expression(self):
+        """To be implemented in each Adapter for its Lookups"""
+        raise NotImplementedError

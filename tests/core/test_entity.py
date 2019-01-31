@@ -446,6 +446,17 @@ class TestEntity:
         assert dogs_contains.total == 1
         assert dogs_icontains.total == 2
 
+    def test_invalid_comparison_on_query_evaluation(self):
+        """Query with an invalid/unimplemented comparison"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='john')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by the Owner
+        with pytest.raises(NotImplementedError):
+            dogs_notexact = Dog.query.filter(age__notexact=3).all()
+
     def test_pagination(self):
         """ Test the pagination of the filter results"""
         for counter in range(1, 5):

@@ -73,7 +73,7 @@ class EntityBase(type):
 class EntityMeta:
     """ Metadata information for the entity including any options defined."""
 
-    def __init__(self, meta, entity_cls):
+    def __init__(self, meta, entity_cls):  # FIXME Remote `meta`?
         self.entity_cls = entity_cls
         self.declared_fields = {}
         self.id_field = None
@@ -226,21 +226,21 @@ class QuerySet:
                 parts = key.split('__')
 
                 if len(parts) == 1:
-                    self._restructured_filters[key] = (self._filters[key], 'exact')
+                    self._restructured_filters[key] = ('exact', self._filters[key])
                 else:
                     # Ensure that the key structure is sane and contains exactly one operator
                     assert len(parts) == 2
-                    self._restructured_filters[parts[0]] = (self._filters[key], parts[1])
+                    self._restructured_filters[parts[0]] = (parts[1], self._filters[key])
 
             for key in self._excludes:
                 parts = key.split('__')
 
                 if len(parts) == 1:
-                    self._restructured_excludes[key] = (self._excludes[key], 'exact')
+                    self._restructured_excludes[key] = ('exact', self._excludes[key])
                 else:
                     # Ensure that the key structure is sane and contains exactly one operator
                     assert len(parts) == 2
-                    self._restructured_excludes[parts[0]] = (self._excludes[key], parts[1])
+                    self._restructured_excludes[parts[0]] = (parts[1], self._excludes[key])
 
             self.evaluated = True
 
@@ -586,7 +586,6 @@ class Entity(metaclass=EntityBase):
             values[item[0]] = getattr(self, item[0])
 
         return self.__class__.create(**values)
-
 
     def update(self, *data, **kwargs) -> 'Entity':
         """Update a Record in the repository.
