@@ -543,6 +543,23 @@ class TestQuerySet:
         assert query._result_cache is not None
         assert query._result_cache.total == 2
 
+    def test_cache_reset(self):
+        """Test that results are cached after query is evaluated"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by Dog attributes
+        query = Dog.query.filter(owner='John').order_by('age')
+
+        # Total invokes an evaluation and a query
+        assert query.total == 2
+        assert query._result_cache.total == 2
+
+        query_dup = query.paginate(per_page=25)
+        assert query_dup._result_cache is None
+
     def test_total(self):
         """Test value of `total` results"""
         # Add multiple entries to the DB
