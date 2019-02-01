@@ -100,7 +100,7 @@ class QuerySet:
     without actually fetching data. No data fetch actually occurs until you do something
     to evaluate the queryset.
 
-    When being evaluated, a `QuerySet` typically caches its results. If the data in the database
+    Once evaluated, a `QuerySet` typically caches its results. If the data in the database
     might have changed, you can get updated results for the same query by calling `all()` on a
     previously evaluated `QuerySet`.
 
@@ -138,9 +138,6 @@ class QuerySet:
         self._filters = filters
 
         self._result_cache = None
-        # Set evaluated flag to False on initialization
-        #   Will be changed to True after evaluation
-        self.evaluated = False  # Will be used for caching results
         self._restructured_filters = {}
         self._restructured_excludes = {}
 
@@ -198,6 +195,22 @@ class QuerySet:
 
         return (model_cls, adapter)
 
+    def _restructure_filters(self, adapter, filters):
+        """Restructure filters and add Lookup classes"""
+        restructured = {}
+        for key in filters:
+            parts = key.split('__')
+
+            # 'exact' is the default lookup if there was no explicit comparison op in `key`
+            #   Assume there is only one `__` in the key.
+            #   FIXME Change for child attribute query support
+            op = 'exact' if len(parts) == 1 else parts[1]
+
+            # Construct and assign the lookup class as a filter criteria
+            restructured[parts[0]] = (adapter.get_lookup(op), filters[key])
+
+        return restructured
+
     def all(self):
         """Primary method to fetch data based on filters
 
@@ -219,30 +232,9 @@ class QuerySet:
         # order_by clause must be list of keys
         order_by = model_cls.opts_.order_by if not self._order_by else self._order_by
 
-        # Breakdown filters if not yet evaluated
-
-        if not self.evaluated:
-            for key in self._filters:
-                parts = key.split('__')
-
-                if len(parts) == 1:
-                    self._restructured_filters[key] = ('exact', self._filters[key])
-                else:
-                    # Ensure that the key structure is sane and contains exactly one operator
-                    assert len(parts) == 2
-                    self._restructured_filters[parts[0]] = (parts[1], self._filters[key])
-
-            for key in self._excludes:
-                parts = key.split('__')
-
-                if len(parts) == 1:
-                    self._restructured_excludes[key] = ('exact', self._excludes[key])
-                else:
-                    # Ensure that the key structure is sane and contains exactly one operator
-                    assert len(parts) == 2
-                    self._restructured_excludes[parts[0]] = (parts[1], self._excludes[key])
-
-            self.evaluated = True
+        # Breakdown filters
+        self._restructured_filters = self._restructure_filters(adapter, self._filters)
+        self._restructured_excludes = self._restructure_filters(adapter, self._excludes)
 
         # Call the read method of the repository
         results = adapter._filter_objects(self._page, self._per_page, order_by,

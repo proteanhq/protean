@@ -60,15 +60,13 @@ class Adapter(BaseAdapter):
             match = True
 
             # Add objects that match the given filters
-            for fk, fv in filters.items():
-                lookup_class = self.get_lookup(fv[0])
-                lookup = lookup_class(item[fk], fv[1])
+            for key, (lookup_class, value) in filters.items():
+                lookup = lookup_class(item[key], value)
                 match &= eval(lookup.as_expression())
 
             # Add objects that do not match excludes
-            for fk, fv in excludes.items():
-                lookup_class = self.get_lookup(fv[0])
-                lookup = lookup_class(item[fk], fv[1])
+            for key, (lookup_class, value) in excludes.items():
+                lookup = lookup_class(item[key], value)
                 match &= not eval(lookup.as_expression())
 
             if match:
