@@ -73,7 +73,7 @@ class EntityBase(type):
 class EntityMeta:
     """ Metadata information for the entity including any options defined."""
 
-    def __init__(self, meta, entity_cls):
+    def __init__(self, meta, entity_cls):  # FIXME Remote `meta`?
         self.entity_cls = entity_cls
         self.declared_fields = {}
         self.id_field = None
@@ -100,7 +100,7 @@ class QuerySet:
     without actually fetching data. No data fetch actually occurs until you do something
     to evaluate the queryset.
 
-    When being evaluated, a `QuerySet` typically caches its results. If the data in the database
+    Once evaluated, a `QuerySet` typically caches its results. If the data in the database
     might have changed, you can get updated results for the same query by calling `all()` on a
     previously evaluated `QuerySet`.
 
@@ -138,6 +138,8 @@ class QuerySet:
         self._filters = filters
 
         self._result_cache = None
+        self._restructured_filters = {}
+        self._restructured_excludes = {}
 
     def _clone(self):
         """
@@ -193,6 +195,22 @@ class QuerySet:
 
         return (model_cls, adapter)
 
+    def _restructure_filters(self, adapter, filters):
+        """Restructure filters and add Lookup classes"""
+        restructured = {}
+        for key in filters:
+            parts = key.split('__')
+
+            # 'exact' is the default lookup if there was no explicit comparison op in `key`
+            #   Assume there is only one `__` in the key.
+            #   FIXME Change for child attribute query support
+            op = 'exact' if len(parts) == 1 else parts[1]
+
+            # Construct and assign the lookup class as a filter criteria
+            restructured[parts[0]] = (adapter.get_lookup(op), filters[key])
+
+        return restructured
+
     def all(self):
         """Primary method to fetch data based on filters
 
@@ -214,9 +232,14 @@ class QuerySet:
         # order_by clause must be list of keys
         order_by = model_cls.opts_.order_by if not self._order_by else self._order_by
 
+        # Breakdown filters
+        self._restructured_filters = self._restructure_filters(adapter, self._filters)
+        self._restructured_excludes = self._restructure_filters(adapter, self._excludes)
+
         # Call the read method of the repository
         results = adapter._filter_objects(self._page, self._per_page, order_by,
-                                          self._excludes, **self._filters)
+                                          self._restructured_excludes,
+                                          **self._restructured_filters)
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -256,7 +279,11 @@ class QuerySet:
 
     def __repr__(self):
         """Support friendly print of query criteria"""
-        return "<%s: %s>" % (self.__class__.__name__, vars(self))
+        return ("<%s: entity: %s, page: %s, per_page: %s, order_by: %s, "
+                "filters: %s, excludes: %s>" %
+                 (self.__class__.__name__, self._entity_cls_name,
+                  self._page, self._per_page, self._order_by,
+                  self._filters, self._excludes))
 
     def __getitem__(self, k):
         """Support slicing of results"""
@@ -551,7 +578,6 @@ class Entity(metaclass=EntityBase):
             values[item[0]] = getattr(self, item[0])
 
         return self.__class__.create(**values)
-
 
     def update(self, *data, **kwargs) -> 'Entity':
         """Update a Record in the repository.

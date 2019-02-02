@@ -10,6 +10,7 @@ from protean.core.field import Auto
 from protean.core.repository import BaseAdapter
 from protean.core.repository import BaseConnectionHandler
 from protean.core.repository import BaseModel
+from protean.core.repository import Lookup
 from protean.core.repository import Pagination
 
 # Global in-memory store of dict data. Keyed by name, to provide
@@ -59,22 +60,14 @@ class Adapter(BaseAdapter):
             match = True
 
             # Add objects that match the given filters
-            for fk, fv in filters.items():
-                if type(fv) in (list, tuple):
-                    if item[fk] not in fv:
-                        match = False
-                else:
-                    if item[fk] != fv:
-                        match = False
+            for key, (lookup_class, value) in filters.items():
+                lookup = lookup_class(item[key], value)
+                match &= eval(lookup.as_expression())
 
             # Add objects that do not match excludes
-            for fk, fv in excludes.items():
-                if type(fv) in (list, tuple):
-                    if item[fk] in fv:
-                        match = False
-                else:
-                    if item[fk] == fv:
-                        match = False
+            for key, (lookup_class, value) in excludes.items():
+                lookup = lookup_class(item[key], value)
+                match &= not eval(lookup.as_expression())
 
             if match:
                 items.append(item)
@@ -139,6 +132,128 @@ class Adapter(BaseAdapter):
         with self.conn['lock']:
             if self.model_name in self.conn['data']:
                 del self.conn['data'][self.model_name]
+
+operators = {
+    'exact': '==',
+    'iexact': '==',
+    'contains': 'in',
+    'icontains': 'in',
+    'gt': '>',
+    'gte': '>= ',
+    'lt': '<',
+    'lte': '<=',
+    'in': 'in'
+}
+
+class DefaultLookup(Lookup):
+    """Base class with default implementation of expression construction"""
+    def process_source(self):
+        """Return source with transformations, if any"""
+        if isinstance(self.source, str):
+            return "'%s'" % self.source
+        return self.source
+
+    def process_target(self):
+        """Return target with transformations, if any"""
+        if isinstance(self.target, str):
+            return "'%s'" % self.target
+        return self.target
+
+    def as_expression(self):
+        return '%s %s %s' % (self.process_source(),
+                             operators[self.lookup_name],
+                             self.process_target())
+
+
+@Adapter.register_lookup
+class Exact(DefaultLookup):
+    """Exact Match Query"""
+    lookup_name = 'exact'
+
+
+@Adapter.register_lookup
+class IExact(DefaultLookup):
+    """Exact Case-Insensitive Match Query"""
+    lookup_name = 'iexact'
+
+    def process_source(self):
+        """Return source in lowercase"""
+        assert isinstance(self.source, str)
+        return "%s.lower()" % super().process_source()
+
+    def process_target(self):
+        """Return target in lowercase"""
+        assert isinstance(self.target, str)
+        return "%s.lower()" % super().process_target()
+
+
+@Adapter.register_lookup
+class Contains(DefaultLookup):
+    """Exact Contains Query"""
+    lookup_name = 'contains'
+
+    def as_expression(self):
+        """Check for Target string to be in Source string"""
+        return '%s %s %s' % (self.process_target(),
+                             operators[self.lookup_name],
+                             self.process_source())
+
+
+@Adapter.register_lookup
+class IContains(DefaultLookup):
+    """Exact Case-Insensitive Contains Query"""
+    lookup_name = 'icontains'
+
+    def process_source(self):
+        """Return source in lowercase"""
+        assert isinstance(self.source, str)
+        return "%s.lower()" % super().process_source()
+
+    def process_target(self):
+        """Return target in lowercase"""
+        assert isinstance(self.target, str)
+        return "%s.lower()" % super().process_target()
+
+    def as_expression(self):
+        """Check for Target string to be in Source string"""
+        return '%s %s %s' % (self.process_target(),
+                             operators[self.lookup_name],
+                             self.process_source())
+
+
+@Adapter.register_lookup
+class GreaterThan(DefaultLookup):
+    """Greater than Query"""
+    lookup_name = 'gt'
+
+
+@Adapter.register_lookup
+class GreaterThanOrEqual(DefaultLookup):
+    """Greater than or Equal Query"""
+    lookup_name = 'gte'
+
+
+@Adapter.register_lookup
+class LessThan(DefaultLookup):
+    """Less than Query"""
+    lookup_name = 'lt'
+
+
+@Adapter.register_lookup
+class LessThanOrEqual(DefaultLookup):
+    """Less than or Equal Query"""
+    lookup_name = 'lte'
+
+
+@Adapter.register_lookup
+class In(DefaultLookup):
+    """In Query"""
+    lookup_name = 'in'
+
+    def process_target(self):
+        """Ensure target is a list or tuple"""
+        assert type(self.target) in (list, tuple)
+        return super().process_target()
 
 
 class DictModel(BaseModel):
