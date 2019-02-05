@@ -222,7 +222,6 @@ class Q(Node):
         elif not self:
             return copy.deepcopy(other)
 
-        import pdb; pdb.set_trace()
         obj = type(self)()
         obj.connector = conn
         obj.add(self, conn)
@@ -230,11 +229,9 @@ class Q(Node):
         return obj
 
     def __or__(self, other):
-        import pdb; pdb.set_trace()
         return self._combine(other, self.OR)
 
     def __and__(self, other):
-        import pdb; pdb.set_trace()
         return self._combine(other, self.AND)
 
     def __invert__(self):
@@ -247,7 +244,7 @@ class Q(Node):
         """Deconstruct a Q Object"""
         path = '%s.%s' % (self.__class__.__module__, self.__class__.__name__)
         args, kwargs = (), {}
-        import pdb; pdb.set_trace()
+
         if len(self.children) == 1 and not isinstance(self.children[0], Q):
             child = self.children[0]
             kwargs = {child[0]: child[1]}

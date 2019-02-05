@@ -755,6 +755,7 @@ class TestQuerySet:
         assert query.first.id == 2
         assert query.all().first.id == 5
 
+
 class TestCriteriaConstruction:
     """Test Conjunction operations on QuerySet"""
 
@@ -942,9 +943,83 @@ class TestCriteriaConstruction:
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
         assert str(decon_args) == "(<Q: (OR: ('owner', 'John'), ('age', 3))>,)"
-        import pdb; pdb.set_trace()
         assert decon_kwargs == {}
-        assert q1._criteria.connector == Q.OR
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_filter_with_multiple_ands(self):
+        """Test query construction with negation"""
+        # Filter by the Owner
+        q1 = Dog.query.filter(Q(owner='John') & Q(age=3) & Q(name='Jean'))
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert str(decon_args) == ("(<Q: (AND: "
+                                   "('owner', 'John'), "
+                                   "('age', 3), "
+                                   "('name', 'Jean'))>,)")
+        assert decon_kwargs == {}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_filter_with_multiple_ors(self):
+        """Test query construction with negation"""
+        # Filter by the Owner
+        q1 = Dog.query.filter(Q(owner='John') | Q(age=3) | Q(name='Jean'))
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert str(decon_args) == ("(<Q: (OR: "
+                                   "('owner', 'John'), "
+                                   "('age', 3), "
+                                   "('name', 'Jean'))>,)")
+        assert decon_kwargs == {}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_filter_with_and_or_1(self):
+        """Test query construction with negation"""
+        # Filter by the Owner
+        q1 = Dog.query.filter(Q(owner='John') | Q(age=3), name='Jean')
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert str(decon_args) == ("(<Q: (OR: ('owner', 'John'), ('age', 3))>, "
+                                   "('name', 'Jean'))")
+        assert decon_kwargs == {}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_filter_with_and_or_2(self):
+        """Test query construction with negation"""
+        # Filter by the Owner
+        q1 = Dog.query.filter((Q(owner='John') | Q(age=3)), Q(name='Jean'))
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert str(decon_args) == ("(<Q: (OR: ('owner', 'John'), ('age', 3))>, "
+                                   "<Q: (AND: ('name', 'Jean'))>)")
+        assert decon_kwargs == {}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_filter_with_and_or_3(self):
+        """Test query construction with negation"""
+        # Filter by the Owner
+        q1 = Dog.query.filter(Q(name='Jean') & (Q(owner='John') | Q(age=3)))
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert str(decon_args) == ("(<Q: (AND: "
+                                   "('name', 'Jean'), "
+                                   "(OR: ('owner', 'John'), ('age', 3)))>,)")
+        assert decon_kwargs == {}
+        assert q1._criteria.connector == Q.AND
         assert q1._criteria.negated is False
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
@@ -971,8 +1046,8 @@ class TestQ:
     def test_deconstruct_or(self):
         q1 = Q(price__gt=10.0)
         q2 = Q(price=11.0)
-        q = q1 | q2
-        path, args, kwargs = q.deconstruct()
+        q3 = q1 | q2
+        path, args, kwargs = q3.deconstruct()
         assert args == (
             ('price__gt', 10.0),
             ('price', 11.0),

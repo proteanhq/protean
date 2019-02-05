@@ -147,19 +147,9 @@ class QuerySet:
                                order_by=self._order_by)
         return clone
 
-    def _add_q(self, q_object, used_aliases, branch_negated=False,
-               current_negated=False, allow_joins=True, split_subq=True,
-               simple_col=False):
+    def _add_q(self, q_object):
         """Add a Q-object to the current filter."""
-        connector = q_object.connector
-        current_negated = current_negated ^ q_object.negated
-        branch_negated = branch_negated or q_object.negated
-        
-        for child in q_object.children:
-            if isinstance(child, Node):
-                child_object = self._add_q(child, used_aliases, branch_negated, current_negated)
-            else:
-                
+        self._criteria = self._criteria._combine(q_object, q_object.connector)
 
     def filter(self, *args, **kwargs):
         """
