@@ -7,6 +7,7 @@ from protean.core import field
 from protean.core.entity import Entity, QuerySet
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
+from protean.utils.query import Q
 
 
 class TestEntity:
@@ -488,6 +489,21 @@ class TestEntity:
         with pytest.raises(ObjectNotFoundError):
             Dog.get(3)
 
+    #####################
+    # Test Conjunctions #
+    #####################
+
+    def test_filter_returns_q_object(self):
+        """Test Negation of a criteria"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by the Owner
+        query = Dog.query.filter(owner='John')
+        assert isinstance(query, Q)
+
 
 class TestQuerySet:
     """Class that holds Tests for QuerySet"""
@@ -738,3 +754,271 @@ class TestQuerySet:
         Dog.create(id=5, name='Berry', age=8, owner='John')
         assert query.first.id == 2
         assert query.all().first.id == 5
+
+class TestCriteriaConstruction:
+    """Test Conjunction operations on QuerySet"""
+
+    def test_empty_query(self):
+        """Test that an empty Q object is initialized with Queryset"""
+        assert isinstance(Dog.query, QuerySet)
+        assert isinstance(Dog.query._criteria, Q)
+
+    def test_simple_filter(self):
+        """Test query construction with simple filter kwargs"""
+        # Filter by the Owner
+        q1 = Dog.query.filter(owner='John')
+        assert q1._criteria is not None
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert decon_args == ()
+        assert decon_kwargs == {'owner': 'John'}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_simple_exclude(self):
+        """Test query construction with simple exclude kwargs"""
+        # Filter by the Owner
+        q1 = Dog.query.exclude(owner='John')
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert decon_args == ()
+        assert decon_kwargs == {'owner': 'John', '_negated': True}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is True
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_multiple_filters(self):
+        """Test query construction with multiple filter criteria"""
+        # Filter by the Owner
+        q1 = Dog.query.filter(owner='John')
+        q2 = q1.filter(age=3)
+
+        _, decon_args, decon_kwargs = q2._criteria.deconstruct()
+
+        assert decon_args == (('owner', 'John'), ('age', 3))
+        assert decon_kwargs == {}
+        assert q2._criteria.connector == Q.AND
+        assert q2._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q2._criteria
+
+    def test_multiple_excludes(self):
+        """Test query construction with multiple exclude criteria"""
+        # Filter by the Owner
+        q1 = Dog.query.exclude(owner='John')
+        q2 = q1.exclude(age=3)
+
+        _, decon_args, decon_kwargs = q2._criteria.deconstruct()
+
+        assert str(decon_args) == ("(<Q: (NOT (AND: ('owner', 'John')))>, "
+                                   "<Q: (NOT (AND: ('age', 3)))>)")
+        assert decon_kwargs == {}
+        assert q2._criteria.connector == Q.AND
+        assert q2._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q2._criteria
+
+    def test_multiple_criteria_in_filter(self):
+        """Test query construction with multiple filter in filter"""
+        # Filter by the Owner
+        q1 = Dog.query.filter(owner='John', age=3)
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert decon_args == (('age', 3), ('owner', 'John'))
+        assert decon_kwargs == {}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_multiple_criteria_in_exclude(self):
+        """Test query construction with multiple filter in exclude"""
+        # Filter by the Owner
+        q1 = Dog.query.exclude(owner='John', age=3)
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert decon_args == (('age', 3), ('owner', 'John'))
+        assert decon_kwargs == {'_negated': True}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is True
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_combined_filter_and_exclude(self):
+        """Test query construction with combined filter/exclude with filter coming first"""
+        # Filter by the Owner
+        q1 = Dog.query.filter(owner='John').exclude(age=3)
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert str(decon_args) == "(('owner', 'John'), <Q: (NOT (AND: ('age', 3)))>)"
+        assert decon_kwargs == {}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_combined_exclude_and_filter(self):
+        """Test query construction with combined filter/exclude with exclude coming first"""
+        # Filter by the Owner
+        q1 = Dog.query.exclude(age=3).filter(owner='John')
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert str(decon_args) == "(<Q: (NOT (AND: ('age', 3)))>, ('owner', 'John'))"
+        assert decon_kwargs == {}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_filter_with_single_q_object(self):
+        """Test query construction with negation"""
+        # Filter by the Owner
+        q1 = Dog.query.filter(Q(owner='John'))
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert str(decon_args) == "(<Q: (AND: ('owner', 'John'))>,)"
+        assert decon_kwargs == {}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_exclude_with_single_q_object(self):
+        """Test query construction with negation"""
+        # Filter by the Owner
+        q1 = Dog.query.exclude(Q(owner='John'))
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert str(decon_args) == "(<Q: (AND: ('owner', 'John'))>,)"
+        assert decon_kwargs == {'_negated': True}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is True
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_filter_with_multiple_q_objects(self):
+        """Test query construction with negation"""
+        # Filter by the Owner
+        q1 = Dog.query.filter(Q(owner='John'), Q(age=3))
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert str(decon_args) == "(<Q: (AND: ('owner', 'John'))>, <Q: (AND: ('age', 3))>)"
+        assert decon_kwargs == {}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_exclude_with_multiple_q_objects(self):
+        """Test query construction with negation"""
+        q1 = Dog.query.exclude(Q(owner='John'), Q(age=3))
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert str(decon_args) == "(<Q: (AND: ('owner', 'John'))>, <Q: (AND: ('age', 3))>)"
+        assert decon_kwargs == {'_negated': True}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is True
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_filter_with_and(self):
+        """Test query construction with negation"""
+        # Filter by the Owner
+        q1 = Dog.query.filter(Q(owner='John') & Q(age=3))
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert str(decon_args) == "(<Q: (AND: ('owner', 'John'), ('age', 3))>,)"
+        assert decon_kwargs == {}
+        assert q1._criteria.connector == Q.AND
+        assert q1._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+    def test_filter_with_or(self):
+        """Test query construction with negation"""
+        # Filter by the Owner
+        q1 = Dog.query.filter(Q(owner='John') | Q(age=3))
+
+        _, decon_args, decon_kwargs = q1._criteria.deconstruct()
+
+        assert str(decon_args) == "(<Q: (OR: ('owner', 'John'), ('age', 3))>,)"
+        import pdb; pdb.set_trace()
+        assert decon_kwargs == {}
+        assert q1._criteria.connector == Q.OR
+        assert q1._criteria.negated is False
+        assert Q(*decon_args, **decon_kwargs) == q1._criteria
+
+
+class TestQ: 
+    """Class that holds tests for Q Objects"""
+
+    def test_deconstruct(self):
+        q = Q(price__gt=10.0)
+        path, args, kwargs = q.deconstruct()
+        assert path == 'protean.utils.query.Q'
+        assert args == ()
+        assert kwargs == {'price__gt': 10.0}
+
+    def test_deconstruct_negated(self):
+        q = ~Q(price__gt=10.0)
+        path, args, kwargs = q.deconstruct()
+        assert args == ()
+        assert kwargs == {
+            'price__gt': 10.0,
+            '_negated': True,
+        }
+
+    def test_deconstruct_or(self):
+        q1 = Q(price__gt=10.0)
+        q2 = Q(price=11.0)
+        q = q1 | q2
+        path, args, kwargs = q.deconstruct()
+        assert args == (
+            ('price__gt', 10.0),
+            ('price', 11.0),
+        )
+        assert kwargs == {'_connector': 'OR'}
+
+    def test_deconstruct_and(self):
+        q1 = Q(price__gt=10.0)
+        q2 = Q(price=11.0)
+        q = q1 & q2
+        path, args, kwargs = q.deconstruct()
+        assert args == (
+            ('price__gt', 10.0),
+            ('price', 11.0),
+        )
+        assert kwargs == {}
+
+    def test_deconstruct_multiple_kwargs(self):
+        q = Q(price__gt=10.0, price=11.0)
+        path, args, kwargs = q.deconstruct()
+        assert args == (
+            ('price', 11.0),
+            ('price__gt', 10.0),
+        )
+        assert kwargs == {}
+
+    def test_reconstruct(self):
+        q = Q(price__gt=10.0)
+        path, args, kwargs = q.deconstruct()
+        assert Q(*args, **kwargs) == q
+
+    def test_reconstruct_negated(self):
+        q = ~Q(price__gt=10.0)
+        path, args, kwargs = q.deconstruct()
+        assert Q(*args, **kwargs) == q
+
+    def test_reconstruct_or(self):
+        q1 = Q(price__gt=10.0)
+        q2 = Q(price=11.0)
+        q = q1 | q2
+        path, args, kwargs = q.deconstruct()
+        assert Q(*args, **kwargs) == q
+
+    def test_reconstruct_and(self):
+        q1 = Q(price__gt=10.0)
+        q2 = Q(price=11.0)
+        q = q1 & q2
+        path, args, kwargs = q.deconstruct()
+        assert Q(*args, **kwargs) == q
