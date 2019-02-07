@@ -50,29 +50,45 @@ class Adapter(BaseAdapter):
 
         return model_obj
 
-    def _filter_objects(self, criteria: Q, page: int = 1, per_page: int = 10, order_by: list = ()):
-        """ Read the repository and return results as per the filer"""
-
-        # Filter the dictionary objects based on the filters
-        items = []
-        _, decon_args, decon_kwargs = criteria.deconstruct()
-
-        for item in self.conn['data'][self.model_name].values():
+    def _extract_confirming_values(self, key, value, negated, db):
+        """Extract values from DB that match the given criteria"""
+        results = []
+        for item in db.values():
             match = True
 
-            for key, value in decon_args:
-                lookup_class = self.get_lookup('exact')
-                lookup = lookup_class(item[key], value)
-                match &= eval(lookup.as_expression())
+            lookup_class = self.get_lookup('exact')
+            lookup = lookup_class(item[key], value)
 
-            # Add objects that match the given filters
-            for key, value in decon_kwargs.items():
-                lookup_class = self.get_lookup('exact')
-                lookup = lookup_class(item[key], value)
+            if negated:
+                match &= not eval(lookup.as_expression())
+            else:
                 match &= eval(lookup.as_expression())
 
             if match:
-                items.append(item)
+                results.append(item)
+
+        return results
+
+    def _filter(self, criteria:Q, db):
+        """Recursive function to filter items from dictionary"""
+        # Filter the dictionary objects based on the filters
+        results = []
+
+        connector = criteria.connector
+        negated = criteria.negated
+
+        for child in criteria.children:
+            if isinstance(child, Q):
+                results.extend(self._filter(child, db))
+            else:
+                results.extend(self._extract_confirming_values(child[0], child[1], negated, db))
+
+        return results
+
+    def _filter_objects(self, criteria: Q, page: int = 1, per_page: int = 10, order_by: list = ()):
+        """ Read the repository and return results as per the filer"""
+
+        items = self._filter(criteria, self.conn['data'][self.model_name])
 
         # Sort the filtered results based on the order_by clause
         for o_key in order_by:
