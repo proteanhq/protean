@@ -5,6 +5,7 @@ from itertools import count
 from operator import itemgetter
 from threading import Lock
 
+from protean.core.entity import Q
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.field import Auto
 from protean.core.repository import BaseAdapter
@@ -49,25 +50,26 @@ class Adapter(BaseAdapter):
 
         return model_obj
 
-    def _filter_objects(self, page: int = 1, per_page: int = 10,
-                        order_by: list = (), _excludes=None, **filters):
+    def _filter_objects(self, criteria: Q, page: int = 1, per_page: int = 10, order_by: list = ()):
         """ Read the repository and return results as per the filer"""
 
         # Filter the dictionary objects based on the filters
         items = []
-        excludes = _excludes if _excludes else {}
+        _, decon_args, decon_kwargs = criteria.deconstruct()
+
         for item in self.conn['data'][self.model_name].values():
             match = True
 
-            # Add objects that match the given filters
-            for key, (lookup_class, value) in filters.items():
+            for key, value in decon_args:
+                lookup_class = self.get_lookup('exact')
                 lookup = lookup_class(item[key], value)
                 match &= eval(lookup.as_expression())
 
-            # Add objects that do not match excludes
-            for key, (lookup_class, value) in excludes.items():
+            # Add objects that match the given filters
+            for key, value in decon_kwargs.items():
+                lookup_class = self.get_lookup('exact')
                 lookup = lookup_class(item[key], value)
-                match &= not eval(lookup.as_expression())
+                match &= eval(lookup.as_expression())
 
             if match:
                 items.append(item)

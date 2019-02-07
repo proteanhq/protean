@@ -492,7 +492,8 @@ class Entity(metaclass=EntityBase):
                      f'{kwargs}')
 
         # Find this item in the repository or raise Error
-        results = cls.query.filter(**kwargs).paginate(page=1, per_page=1)
+        results = cls.query.filter(**kwargs).paginate(page=1, per_page=1).all()
+
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with values {[item for item in kwargs.items()]} '
