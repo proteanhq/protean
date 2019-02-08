@@ -3,8 +3,6 @@ import copy
 import functools
 import inspect
 
-from protean.utils.hashable import make_hashable
-
 
 def subclasses(cls):
     """Iterator utilty to loop and clear registered Lookups against a class"""
@@ -142,9 +140,6 @@ class Node:
             (self.connector, self.negated) == (other.connector, other.negated) and
             self.children == other.children
         )
-
-    def __hash__(self):
-        return hash((self.__class__, self.connector, self.negated, *make_hashable(self.children)))
 
     def add(self, data, conn_type, squash=True):
         """
