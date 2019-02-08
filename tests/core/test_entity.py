@@ -1072,3 +1072,115 @@ class TestQ:
         q = q1 & q2
         path, args, kwargs = q.deconstruct()
         assert Q(*args, **kwargs) == q
+
+
+class TestConjunctions:
+    """Class that holds tests cases for Conjunctions (AND, OR, NeG)"""
+
+    def test_default_AND(self):
+        """Test that kwargs to `filter` are ANDed by default"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        q1 = Dog.query.filter(owner='John', age=3)
+        assert q1.total == 1
+
+    def test_default_NEG_AND(self):
+        """Test that kwargs to `filter` are ANDed by default"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        q1 = Dog.query.exclude(owner='John', age=3)
+        assert q1.total == 1
+
+        q2 = Dog.query.exclude(owner='Carrie', age=10)
+        assert q2.total == 2
+
+    def test_simple_AND(self):
+        """Test straightforward AND of two criteria"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by the Owner
+        q1 = Dog.query.filter(Q(owner='John') & Q(age=3))
+        assert q1.total == 1
+
+    def test_simple_OR(self):
+        """Test straightforward OR of two criteria"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        q1 = Dog.query.filter(Q(owner='John') | Q(age=3))
+        assert q1.total == 2
+
+    def test_AND_with_OR(self):
+        """Test combination of AND and OR"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+        Dog.create(id=5, name='Leslie', age=6, owner='Underwood')
+        Dog.create(id=6, name='Dave', age=6, owner='Carrie')
+
+        q1 = Dog.query.filter(
+            Q(owner='John', name='Jean') |
+            Q(age=6))
+        assert q1.total == 4
+
+        q2 = Dog.query.filter(Q(owner='John') | Q(age=6))
+        assert q2.total == 5
+
+        q3 = Dog.query.filter(
+            (Q(owner='John') & Q(age=7)) |
+            (Q(owner='Carrie') & Q(age=6)))
+        assert q3.total == 3
+
+    def test_OR_with_AND(self):
+        """Test combination of OR and AND"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+        Dog.create(id=5, name='Leslie', age=6, owner='Underwood')
+        Dog.create(id=6, name='Dave', age=6, owner='Carrie')
+
+        q1 = Dog.query.filter((Q(owner='John') | Q(age=7)) & (Q(owner='Carrie') | Q(age=6)))
+        assert q1.total == 0
+
+        q2 = Dog.query.filter(
+            (Q(owner='John') | Q(age__gte=3)) &
+            (Q(name='Jean') | Q(name='Murdock')))
+        assert q2.total == 2
+
+    def test_NEG(self):
+        """Test Negation of a criteria"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+        Dog.create(id=5, name='Leslie', age=6, owner='Underwood')
+        Dog.create(id=6, name='Dave', age=6, owner='Carrie')
+
+        q1 = Dog.query.filter(~Q(owner='John'))
+        assert q1.total == 3
+
+        q2 = Dog.query.filter(~Q(owner='John') | ~Q(age=7))
+        assert q2.total == 4
+
+    def test_empty_resultset(self):
+        """Test that kwargs to `filter` are ANDed by default"""
+        # Add multiple entries to the DB
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        q1 = Dog.query.filter(owner='XYZ', age=100)
+        assert q1.total == 0

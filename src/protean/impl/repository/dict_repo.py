@@ -83,15 +83,29 @@ class Adapter(BaseAdapter):
     def _filter(self, criteria:Q, db):
         """Recursive function to filter items from dictionary"""
         # Filter the dictionary objects based on the filters
-        connector = criteria.connector
         negated = criteria.negated
+        input_db = None
 
-        input_db = db
-        for child in criteria.children:
-            if isinstance(child, Q):
-                input_db = self._filter(child, input_db)
-            else:
-                input_db = self._extract_confirming_values(child[0], child[1], negated, input_db)
+        if criteria.connector == criteria.AND:
+            # Trim database records over successive iterations
+            #   Whatever is left at the end satisfy all criteria (AND)
+            input_db = db
+            for child in criteria.children:
+                if isinstance(child, Q):
+                    input_db = self._filter(child, input_db)
+                else:
+                    input_db = self._extract_confirming_values(child[0], child[1], negated, input_db)
+        else:
+            # Grow database records over successive iterations
+            #   Whatever is left at the end satisfy all criteria (OR)
+            input_db = {}
+            for child in criteria.children:
+                if isinstance(child, Q):
+                    results = self._filter(child, db)
+                else:
+                    results = self._extract_confirming_values(child[0], child[1], negated, db)
+
+                input_db = {**input_db, **results}
 
         return input_db
 
