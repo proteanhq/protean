@@ -292,30 +292,6 @@ class TestEntity:
         for filter in filters:
             assert isinstance(filter, QuerySet)
 
-    def test_filter_stored_value(self):
-        """ Test that chaining constructs filter sets correctly """
-        assert Dog.query.filter(name='Murdock')._filters == {'name': 'Murdock'}
-        assert Dog.query.filter(name='Murdock', age=7)._filters == {'name': 'Murdock', 'age': 7}
-        assert Dog.query.filter(name='Murdock').filter(age=7)._filters == {'name': 'Murdock', 'age': 7}
-        assert Dog.query.filter(name='Murdock').exclude(owner='John')._excludes == {'owner': 'John'}
-        assert Dog.query.filter(name='Murdock')._page == 1
-        assert Dog.query.filter(name='Murdock').paginate(page=3)._page == 3
-        assert Dog.query.filter(name='Murdock')._per_page == 10
-        assert Dog.query.filter(name='Murdock').paginate(per_page=25)._per_page == 25
-        assert Dog.query.filter(name='Murdock').order_by('name')._order_by == {'name'}
-
-        complex_query = (Dog.query.filter(name='Murdock')
-                         .filter(age=7)
-                         .exclude(owner='John')
-                         .order_by('name')
-                         .paginate(page=15, per_page=25))
-
-        assert complex_query._filters == {'name': 'Murdock', 'age': 7}
-        assert complex_query._excludes == {'owner': 'John'}
-        assert complex_query._page == 15
-        assert complex_query._per_page == 25
-        assert complex_query._order_by == {'name'}
-
     def test_filter_chain_results_1(self):
         """ Chain filter method invocations to construct a complex filter """
         # Add multiple entries to the DB
@@ -464,14 +440,13 @@ class TestEntity:
             Dog.create(id=counter, name=counter, owner='Owner Name')
 
         dogs = Dog.query.paginate(per_page=2).order_by('id')
-        assert dogs is not None
         assert dogs.total == 4
         assert len(dogs.items) == 2
         assert dogs.first.id == 1
         assert dogs.has_next
         assert not dogs.has_prev
 
-        dogs = Dog.query.paginate(page=2, per_page=2).order_by('id')
+        dogs = Dog.query.paginate(page=2, per_page=2).order_by('id').all()
         assert len(dogs.items) == 2
         assert dogs.first.id == 3
         assert not dogs.has_next
@@ -502,7 +477,7 @@ class TestEntity:
 
         # Filter by the Owner
         query = Dog.query.filter(owner='John')
-        assert isinstance(query, Q)
+        assert isinstance(query, QuerySet)
 
 
 class TestQuerySet:
@@ -534,10 +509,10 @@ class TestQuerySet:
     def test_repr(self):
         """Test that filter is evaluted on calling `list()`"""
         query = Dog.query.filter(owner='John').order_by('age')
-        assert repr(query) == ("<QuerySet: entity: Dog, page: 1, "
-                               "per_page: 10, order_by: {'age'}, "
-                               "filters: {'owner': 'John'}, "
-                               "excludes: {}>")
+        assert repr(query) == ("<QuerySet: entity: Dog, "
+                               "criteria: ('protean.utils.query.Q', (), {'owner': 'John'}), "
+                               "page: 1, "
+                               "per_page: 10, order_by: {'age'}>")
 
     def test_bool_false(self):
         """Test that `bool` returns `False` on no records"""

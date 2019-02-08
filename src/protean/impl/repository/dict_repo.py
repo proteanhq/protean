@@ -50,14 +50,25 @@ class Adapter(BaseAdapter):
 
         return model_obj
 
+    def _extract_lookup(self, key):
+        """Extract lookup method based on key name format"""
+        parts = key.split('__')
+        # 'exact' is the default lookup if there was no explicit comparison op in `key`
+        #   Assume there is only one `__` in the key.
+        #   FIXME Change for child attribute query support
+        op = 'exact' if len(parts) == 1 else parts[1]
+
+        # Construct and assign the lookup class as a filter criteria
+        return (parts[0], self.get_lookup(op))
+
     def _extract_confirming_values(self, key, value, negated, db):
         """Extract values from DB that match the given criteria"""
-        results = []
-        for item in db.values():
+        results = {}
+        for record_key, record_value in db.items():
             match = True
 
-            lookup_class = self.get_lookup('exact')
-            lookup = lookup_class(item[key], value)
+            stripped_key, lookup_class = self._extract_lookup(key)
+            lookup = lookup_class(record_value[stripped_key], value)
 
             if negated:
                 match &= not eval(lookup.as_expression())
@@ -65,30 +76,32 @@ class Adapter(BaseAdapter):
                 match &= eval(lookup.as_expression())
 
             if match:
-                results.append(item)
+                results[record_key] = record_value
 
         return results
 
     def _filter(self, criteria:Q, db):
         """Recursive function to filter items from dictionary"""
         # Filter the dictionary objects based on the filters
-        results = []
-
         connector = criteria.connector
         negated = criteria.negated
 
+        input_db = db
         for child in criteria.children:
             if isinstance(child, Q):
-                results.extend(self._filter(child, db))
+                input_db = self._filter(child, input_db)
             else:
-                results.extend(self._extract_confirming_values(child[0], child[1], negated, db))
+                input_db = self._extract_confirming_values(child[0], child[1], negated, input_db)
 
-        return results
+        return input_db
 
     def _filter_objects(self, criteria: Q, page: int = 1, per_page: int = 10, order_by: list = ()):
         """ Read the repository and return results as per the filer"""
 
-        items = self._filter(criteria, self.conn['data'][self.model_name])
+        if criteria.children:
+            items = list(self._filter(criteria, self.conn['data'][self.model_name]).values())
+        else:
+            items = list(self.conn['data'][self.model_name].values())
 
         # Sort the filtered results based on the order_by clause
         for o_key in order_by:
