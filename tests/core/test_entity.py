@@ -464,10 +464,6 @@ class TestEntity:
         with pytest.raises(ObjectNotFoundError):
             Dog.get(3)
 
-    #####################
-    # Test Conjunctions #
-    #####################
-
     def test_filter_returns_q_object(self):
         """Test Negation of a criteria"""
         # Add multiple entries to the DB
