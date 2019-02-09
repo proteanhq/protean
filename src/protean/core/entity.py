@@ -7,6 +7,7 @@ from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.field import Auto
 from protean.core.field import Field
+from protean.utils.query import Q
 
 logger = logging.getLogger('protean.core.entity')
 
@@ -116,13 +117,15 @@ class QuerySet:
     :return Returns a `Pagination` object that holds the query results
     """
 
-    def __init__(self, entity_cls_name: str, page: int = 1, per_page: int = 10,
-                 order_by: set = None, excludes_: dict = None, **filters):
+    def __init__(self, entity_cls_name: str, criteria=None, page: int = 1, per_page: int = 10,
+                 order_by: set = None):
         """Initialize either with empty preferences (when invoked on an Entity)
             or carry forward filters and preferences when chained
         """
 
         self._entity_cls_name = entity_cls_name
+        self._criteria = criteria or Q()
+        self._result_cache = None
         self._page = page or 1
         self._per_page = per_page or 10
 
@@ -134,35 +137,40 @@ class QuerySet:
             self._order_by = set([order_by]) if isinstance(order_by, str) else set(order_by)
         else:
             self._order_by = set()
-        self._excludes = excludes_ or {}
-        self._filters = filters
-
-        self._result_cache = None
-        self._restructured_filters = {}
-        self._restructured_excludes = {}
 
     def _clone(self):
         """
         Return a copy of the current QuerySet.
         """
-        clone = self.__class__(self._entity_cls_name,
+        clone = self.__class__(self._entity_cls_name, criteria=self._criteria,
                                page=self._page, per_page=self._per_page,
-                               order_by=self._order_by, excludes_=self._excludes,
-                               **self._filters)
+                               order_by=self._order_by)
         return clone
 
-    def filter(self, **filters):
-        """Merge new filter criteria with existing filters"""
+    def _add_q(self, q_object):
+        """Add a Q-object to the current filter."""
+        self._criteria = self._criteria._combine(q_object, q_object.connector)
+
+    def filter(self, *args, **kwargs):
+        """
+        Return a new QuerySet instance with the args ANDed to the existing
+        set.
+        """
+        return self._filter_or_exclude(False, *args, **kwargs)
+
+    def exclude(self, *args, **kwargs):
+        """
+        Return a new QuerySet instance with NOT (args) ANDed to the existing
+        set.
+        """
+        return self._filter_or_exclude(True, *args, **kwargs)
+
+    def _filter_or_exclude(self, negate, *args, **kwargs):
         clone = self._clone()
-        clone._filters.update(filters)
-
-        return clone
-
-    def exclude(self, **excludes):
-        """Merge new exclude list with existing excludes dictionary"""
-        clone = self._clone()
-        clone._excludes.update(excludes)
-
+        if negate:
+            clone._add_q(~Q(*args, **kwargs))
+        else:
+            clone._add_q(Q(*args, **kwargs))
         return clone
 
     def paginate(self, **page_args):
@@ -195,22 +203,6 @@ class QuerySet:
 
         return (model_cls, adapter)
 
-    def _restructure_filters(self, adapter, filters):
-        """Restructure filters and add Lookup classes"""
-        restructured = {}
-        for key in filters:
-            parts = key.split('__')
-
-            # 'exact' is the default lookup if there was no explicit comparison op in `key`
-            #   Assume there is only one `__` in the key.
-            #   FIXME Change for child attribute query support
-            op = 'exact' if len(parts) == 1 else parts[1]
-
-            # Construct and assign the lookup class as a filter criteria
-            restructured[parts[0]] = (adapter.get_lookup(op), filters[key])
-
-        return restructured
-
     def all(self):
         """Primary method to fetch data based on filters
 
@@ -232,14 +224,8 @@ class QuerySet:
         # order_by clause must be list of keys
         order_by = model_cls.opts_.order_by if not self._order_by else self._order_by
 
-        # Breakdown filters
-        self._restructured_filters = self._restructure_filters(adapter, self._filters)
-        self._restructured_excludes = self._restructure_filters(adapter, self._excludes)
-
         # Call the read method of the repository
-        results = adapter._filter_objects(self._page, self._per_page, order_by,
-                                          self._restructured_excludes,
-                                          **self._restructured_filters)
+        results = adapter._filter_objects(self._criteria, self._page, self._per_page, order_by)
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -279,11 +265,10 @@ class QuerySet:
 
     def __repr__(self):
         """Support friendly print of query criteria"""
-        return ("<%s: entity: %s, page: %s, per_page: %s, order_by: %s, "
-                "filters: %s, excludes: %s>" %
-                 (self.__class__.__name__, self._entity_cls_name,
-                  self._page, self._per_page, self._order_by,
-                  self._filters, self._excludes))
+        return ("<%s: entity: %s, criteria: %s, page: %s, per_page: %s, order_by: %s>" %
+                (self.__class__.__name__, self._entity_cls_name,
+                 self._criteria.deconstruct(),
+                 self._page, self._per_page, self._order_by))
 
     def __getitem__(self, k):
         """Support slicing of results"""
@@ -507,7 +492,8 @@ class Entity(metaclass=EntityBase):
                      f'{kwargs}')
 
         # Find this item in the repository or raise Error
-        results = cls.query.filter(**kwargs).paginate(page=1, per_page=1)
+        results = cls.query.filter(**kwargs).paginate(page=1, per_page=1).all()
+
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with values {[item for item in kwargs.items()]} '

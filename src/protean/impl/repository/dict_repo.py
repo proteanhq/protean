@@ -5,6 +5,7 @@ from itertools import count
 from operator import itemgetter
 from threading import Lock
 
+from protean.core.entity import Q
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.field import Auto
 from protean.core.repository import BaseAdapter
@@ -49,28 +50,61 @@ class Adapter(BaseAdapter):
 
         return model_obj
 
-    def _filter_objects(self, page: int = 1, per_page: int = 10,
-                        order_by: list = (), _excludes=None, **filters):
-        """ Read the repository and return results as per the filer"""
-
-        # Filter the dictionary objects based on the filters
-        items = []
-        excludes = _excludes if _excludes else {}
-        for item in self.conn['data'][self.model_name].values():
+    def _evaluate_lookup(self, key, value, negated, db):
+        """Extract values from DB that match the given criteria"""
+        results = {}
+        for record_key, record_value in db.items():
             match = True
 
-            # Add objects that match the given filters
-            for key, (lookup_class, value) in filters.items():
-                lookup = lookup_class(item[key], value)
+            stripped_key, lookup_class = self._extract_lookup(key)
+            lookup = lookup_class(record_value[stripped_key], value)
+
+            if negated:
+                match &= not eval(lookup.as_expression())
+            else:
                 match &= eval(lookup.as_expression())
 
-            # Add objects that do not match excludes
-            for key, (lookup_class, value) in excludes.items():
-                lookup = lookup_class(item[key], value)
-                match &= not eval(lookup.as_expression())
-
             if match:
-                items.append(item)
+                results[record_key] = record_value
+
+        return results
+
+    def _filter(self, criteria:Q, db):
+        """Recursive function to filter items from dictionary"""
+        # Filter the dictionary objects based on the filters
+        negated = criteria.negated
+        input_db = None
+
+        if criteria.connector == criteria.AND:
+            # Trim database records over successive iterations
+            #   Whatever is left at the end satisfy all criteria (AND)
+            input_db = db
+            for child in criteria.children:
+                if isinstance(child, Q):
+                    input_db = self._filter(child, input_db)
+                else:
+                    input_db = self._evaluate_lookup(child[0], child[1], negated, input_db)
+        else:
+            # Grow database records over successive iterations
+            #   Whatever is left at the end satisfy any criteria (OR)
+            input_db = {}
+            for child in criteria.children:
+                if isinstance(child, Q):
+                    results = self._filter(child, db)
+                else:
+                    results = self._evaluate_lookup(child[0], child[1], negated, db)
+
+                input_db = {**input_db, **results}
+
+        return input_db
+
+    def _filter_objects(self, criteria: Q, page: int = 1, per_page: int = 10, order_by: list = ()):
+        """ Read the repository and return results as per the filer"""
+
+        if criteria.children:
+            items = list(self._filter(criteria, self.conn['data'][self.model_name]).values())
+        else:
+            items = list(self.conn['data'][self.model_name].values())
 
         # Sort the filtered results based on the order_by clause
         for o_key in order_by:
