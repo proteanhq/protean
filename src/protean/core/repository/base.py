@@ -28,6 +28,17 @@ class BaseAdapter(RegisterLookupMixin, metaclass=ABCMeta):
         self.entity_cls = model_cls.opts_.entity_cls
         self.model_name = model_cls.opts_.model_name
 
+    def _extract_lookup(self, key):
+        """Extract lookup method based on key name format"""
+        parts = key.split('__')
+        # 'exact' is the default lookup if there was no explicit comparison op in `key`
+        #   Assume there is only one `__` in the key.
+        #   FIXME Change for child attribute query support
+        op = 'exact' if len(parts) == 1 else parts[1]
+
+        # Construct and assign the lookup class as a filter criteria
+        return (parts[0], self.get_lookup(op))
+
     @abstractmethod
     def _filter_objects(self, page: int = 1, per_page: int = 10,
                         order_by: list = (), excludes_: dict = None,
