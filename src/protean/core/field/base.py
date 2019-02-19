@@ -114,7 +114,7 @@ class Field(metaclass=ABCMeta):
 
         self.entity_cls = entity_cls
         self.set_attributes_from_name(field_name)
-        entity_cls.meta_.add_field(field_name, self)
+        entity_cls._meta.add_field(field_name, self)
 
     def fail(self, key, **kwargs):
         """A helper method that simply raises a `ValidationError`.
