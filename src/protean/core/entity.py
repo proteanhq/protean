@@ -109,7 +109,7 @@ class QuerySet:
         page: The current page number of the records to be pulled
         per_page: The size of each page of the records to be pulled
         order_by: The list of parameters to be used for ordering the results.
-            Use a `-` before the parameter name to sort in descending order 
+            Use a `-` before the parameter name to sort in descending order
             and if not ascending order.
         excludes_: Objects with these properties will be excluded from the results
         filters: Filter criteria
@@ -346,7 +346,7 @@ class Entity(metaclass=EntityBase):
         Acts as a placeholder for generated entity fields like:
 
             :declared_fields: dict
-                Any instances of `Field` included as attributes on either the class 
+                Any instances of `Field` included as attributes on either the class
                 or on any of its superclasses will be include in this dictionary.
             :id_field: protean.core.Field
                 An instance of the field that will serve as the unique identifier for the entity
@@ -625,7 +625,7 @@ class Entity(metaclass=EntityBase):
 
         Throws ObjectNotFoundError if the object was not found in the repository
         """
-        # FIXME: Return True or False to indicate an object was deleted, 
+        # FIXME: Return True or False to indicate an object was deleted,
         #   rather than the count of records deleted
 
         # FIXME: Ensure Adapter throws ObjectNotFoundError

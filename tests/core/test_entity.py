@@ -214,7 +214,7 @@ class TestEntity:
         """ Update an existing entity in the repository"""
         dog = Dog.create(id=2, name='Johnny', owner='Carey', age=2)
 
-        dog.update({'age':10})
+        dog.update({'age': 10})
         u_dog = Dog.get(2)
         assert u_dog is not None
         assert u_dog.age == 10
@@ -432,7 +432,7 @@ class TestEntity:
 
         # Filter by the Owner
         with pytest.raises(NotImplementedError):
-            dogs_notexact = Dog.query.filter(age__notexact=3).all()
+            Dog.query.filter(age__notexact=3).all()
 
     def test_pagination(self):
         """ Test the pagination of the filter results"""
@@ -977,7 +977,7 @@ class TestCriteriaConstruction:
         assert q3._criteria.children[0].connector == Q.AND
 
 
-class TestQ: 
+class TestQ:
     """Class that holds tests for Q Objects"""
 
     def test_deconstruct(self):

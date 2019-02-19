@@ -69,7 +69,7 @@ class Adapter(BaseAdapter):
 
         return results
 
-    def _filter(self, criteria:Q, db):
+    def _filter(self, criteria: Q, db):
         """Recursive function to filter items from dictionary"""
         # Filter the dictionary objects based on the filters
         negated = criteria.negated
@@ -167,6 +167,7 @@ class Adapter(BaseAdapter):
             if self.model_name in self.conn['data']:
                 del self.conn['data'][self.model_name]
 
+
 operators = {
     'exact': '==',
     'iexact': '==',
@@ -178,6 +179,7 @@ operators = {
     'lte': '<=',
     'in': 'in'
 }
+
 
 class DefaultLookup(Lookup):
     """Base class with default implementation of expression construction"""
