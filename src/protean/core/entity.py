@@ -1,6 +1,6 @@
 """Entity Functionality and Classes"""
+import inspect
 import logging
-from collections import OrderedDict
 from typing import Any, Union
 
 from protean.core.exceptions import ObjectNotFoundError
@@ -10,6 +10,8 @@ from protean.core.field import Field
 from protean.utils.query import Q
 
 logger = logging.getLogger('protean.core.entity')
+
+ENTITY_META_ATTRIBUTE_NAMES = ('ordering')
 
 
 class EntityBase(type):
@@ -22,15 +24,37 @@ class EntityBase(type):
     or on any of its superclasses will be include in this dictionary.
     """
 
-    @classmethod
-    def _get_declared_fields(mcs, klass, bases, attrs):
-        # Load all attributes of the class that are instances of `Field`
-        fields = []
+    def __new__(mcs, name, bases, attrs, **kwargs):
+        """Initialize Entity Classes"""
+
+        # Ensure initialization is only performed for subclasses of Entity
+        # (excluding Entity class itself).
+        parents = [b for b in bases if isinstance(b, EntityBase)]
+        if not parents:
+            return super().__new__(mcs, name, bases, attrs)
+
+        # Create the class object
+        module = attrs.pop('__module__')
+        new_attrs = {'__module__': module}
+        # Ensure we pass __classcell__ to type.__new__
+        #   Refer to https://stackoverflow.com/a/41347038/1858466 for more information
+        classcell = attrs.pop('__classcell__', None)
+        if classcell is not None:
+            new_attrs['__classcell__'] = classcell
+
+        new_class = super().__new__(mcs, name, bases, new_attrs, **kwargs)
+
+        # Gather `Meta` class/object if defined
+        attr_meta = attrs.pop('Meta', None)
+        meta = attr_meta or getattr(new_class, 'Meta', None)
+        new_class.add_to_class('meta_', EntityMeta(meta))
+
+        # Add declared fields
+        declared_fields = []
         for attr_name, attr_obj in attrs.items():
             if isinstance(attr_obj, Field):
-                # Bind the field object and append to list
-                attr_obj.bind_to_entity(klass, attr_name)
-                fields.append((attr_name, attr_obj))
+                new_class.add_to_class(attr_name, attr_obj)
+                declared_fields.append((attr_name, attr_obj))
 
         # If this class is subclassing another Entity, add that Entity's
         # fields.  Note that we loop over the bases in *reverse*.
@@ -38,44 +62,49 @@ class EntityBase(type):
         for base in reversed(bases):
             if hasattr(base, 'meta_') and \
                     hasattr(base.meta_, 'declared_fields'):
-                fields = [
-                    (field_name, field_obj) for field_name, field_obj
-                    in base.meta_.declared_fields.items()
-                    if field_name not in attrs and not field_obj.identifier
-                ] + fields
-
-        return OrderedDict(fields)
-
-    def __new__(mcs, name, bases, attrs):
-        klass = super(EntityBase, mcs).__new__(mcs, name, bases, attrs)
-        declared_fields = mcs._get_declared_fields(klass, bases, attrs)
-
-        klass.meta_ = EntityMeta(getattr(klass, 'Meta'), klass)
-        klass.meta_.declared_fields = declared_fields
+                for field_name, field_obj in base.meta_.declared_fields.items():
+                    if field_name not in attrs and not field_obj.identifier:
+                        new_class.add_to_class(field_name, field_obj)
+                        declared_fields.append((field_name, field_obj))
 
         # Lookup the id field for this entity
         if declared_fields:
             try:
-                klass.meta_.id_field = next(
-                    field for _, field in declared_fields.items()
+                new_class.meta_.id_field = next(
+                    field for _, field in declared_fields
                     if field.identifier)
             except StopIteration:
                 # If no id field is declared then create one
-                klass.meta_.id_field = Auto(identifier=True)
-                klass.meta_.id_field.bind_to_entity(klass, 'id')
-                declared_fields['id'] = klass.meta_.id_field
+                id_field = Auto(identifier=True)
+                new_class.add_to_class('id', id_field)
+                new_class.meta_.id_field = id_field
 
         # Construct an empty QuerySet associated with this Entity class
-        klass.query = QuerySet(name)
+        new_class.query = QuerySet(name)
 
-        return klass
+        return new_class
+
+    def add_to_class(cls, name, value):
+        """Add an attribute to the class
+
+           Will check if `bind_to_entity` is defined on the attribute. If defined, it will
+           be used to add the field to the meta class and bind the entity class to the field.
+        """
+        # We should call the contribute_to_class method only if it's bound
+        if not inspect.isclass(value) and hasattr(value, 'bind_to_entity'):
+            value.bind_to_entity(cls, name)
+        else:
+            setattr(cls, name, value)
 
 
 class EntityMeta:
     """ Metadata information for the entity including any options defined."""
 
-    def __init__(self, meta, entity_cls):  # FIXME Remote `meta`?
-        self.entity_cls = entity_cls
+    def __init__(self, meta):
+        self.meta = meta
+
+        # Initialize Options
+        self.entity_cls = None
         self.declared_fields = {}
         self.id_field = None
 
@@ -91,6 +120,34 @@ class EntityMeta:
         """ Check the the id_field for the entity is Auto Type"""
         return any([isinstance(field_obj, Auto) for
                     _, field_obj in self.declared_fields.items()])
+
+    def add_field(self, field_name, field):
+        """Add field to the Entity class' meta attribute"""
+        self.declared_fields[field_name] = field
+
+    def bind_to_entity(self, entity_cls, name):
+        """Placeholder method for additional processing when meta info is added to Entity"""
+        entity_cls.meta_ = self
+        self.entity_cls = entity_cls
+
+        # Next, apply any overridden values from 'class Meta'.
+        if self.meta:
+            meta_attrs = self.meta.__dict__.copy()
+            for name in self.meta.__dict__:
+                # Ignore any private attributes
+                if name.startswith('_'):
+                    del meta_attrs[name]
+            for attr_name in ENTITY_META_ATTRIBUTE_NAMES:
+                if attr_name in meta_attrs:
+                    setattr(self, attr_name, meta_attrs.pop(attr_name))
+                elif hasattr(self.meta, attr_name):
+                    setattr(self, attr_name, getattr(self.meta, attr_name))
+
+            # Any leftover attributes must be invalid.
+            if meta_attrs != {}:
+                raise TypeError("'class Meta' got invalid attribute(s): %s" % ','.join(meta_attrs))
+
+        del self.meta
 
 
 class QuerySet:
