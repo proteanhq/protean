@@ -7,6 +7,7 @@ from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.field import Auto
 from protean.core.field import Field
+from protean.utils.generic import classproperty
 from protean.utils.query import Q
 
 logger = logging.getLogger('protean.core.entity')
@@ -16,12 +17,15 @@ ENTITY_META_ATTRIBUTE_NAMES = ('ordering')
 
 class EntityBase(type):
     """
-    This base metaclass sets a `_meta` attribute on the Entity to an instance
-    of Meta defined in the Entity
+    This base metaclass processes the class declaration and constructs a meta object that can
+    be used to introspect the Entity class later. Specifically, it sets up a `_meta` attribute on
+    the Entity to an instance of Meta, either the default of one that is defined in the
+    Entity class.
 
-    It also sets dictionary named `declared_fields` on the `_meta` attribute.
-    Any instances of `Field` included as attributes on either the class
-    or on any of its superclasses will be include in this dictionary.
+    `_meta` is setup with these attributes:
+        * `declared_fields`: A dictionary that gives a list of any instances of `Field`
+            included as attributes on either the class or on any of its superclasses
+        * `id_field`: The Primary identifier attribute of the Entity
     """
 
     def __new__(mcs, name, bases, attrs, **kwargs):
@@ -52,8 +56,8 @@ class EntityBase(type):
         # Add declared fields
         declared_fields = []
         for attr_name, attr_obj in attrs.items():
+            new_class.add_to_class(attr_name, attr_obj)
             if isinstance(attr_obj, Field):
-                new_class.add_to_class(attr_name, attr_obj)
                 declared_fields.append((attr_name, attr_obj))
 
         # If this class is subclassing another Entity, add that Entity's
@@ -96,6 +100,10 @@ class EntityBase(type):
         else:
             setattr(cls, name, value)
 
+    def add_field(self, field_name, field):
+        """Add field to the Entity class meta attribute"""
+        self._meta.declared_fields[field_name] = field
+
 
 class EntityMeta:
     """ Metadata information for the entity including any options defined."""
@@ -116,14 +124,10 @@ class EntityMeta:
                 if field_obj.unique]
 
     @property
-    def has_auto_field(self):
-        """ Check the the id_field for the entity is Auto Type"""
-        return any([isinstance(field_obj, Auto) for
-                    _, field_obj in self.declared_fields.items()])
-
-    def add_field(self, field_name, field):
-        """Add field to the Entity class' meta attribute"""
-        self.declared_fields[field_name] = field
+    def auto_fields(self):
+        return [(field_name, field_obj)
+                for field_name, field_obj in self.declared_fields.items()
+                if isinstance(field_obj, Auto)]
 
     def bind_to_entity(self, entity_cls, name):
         """Placeholder method for additional processing when meta info is added to Entity"""
@@ -512,6 +516,25 @@ class Entity(metaclass=EntityBase):
         adapter = getattr(repo_factory, cls.__name__)
 
         return (model_cls, adapter)
+
+    ################
+    # Meta methods #
+    ################
+
+    @classproperty
+    def declared_fields(cls):
+        """Pass through method to retrieve declared fields defined for entity"""
+        return cls._meta.declared_fields
+
+    @classproperty
+    def auto_fields(cls):
+        """Pass through method to retrieve `Auto` fields defined for entity"""
+        return cls._meta.auto_fields
+
+    @classproperty
+    def id_field(cls):
+        """Pass through method to retrieve Identifier field defined for entity"""
+        return cls._meta.id_field
 
     ######################
     # Life-cycle methods #

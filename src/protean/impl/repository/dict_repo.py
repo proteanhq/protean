@@ -26,7 +26,7 @@ class Adapter(BaseAdapter):
     def _set_auto_fields(self, model_obj):
         """ Set the values of the auto field using counter"""
         for field_name, field_obj in \
-                self.entity_cls._meta.declared_fields.items():
+                self.entity_cls.auto_fields:
             counter_key = f'{self.model_name}_{field_name}'
             if isinstance(field_obj, Auto) and not (field_name in model_obj and
                                                     model_obj[field_name] is not None):
@@ -44,7 +44,7 @@ class Adapter(BaseAdapter):
         model_obj = self._set_auto_fields(model_obj)
 
         # Add the entity to the repository
-        identifier = model_obj[self.entity_cls._meta.id_field.field_name]
+        identifier = model_obj[self.entity_cls.id_field.field_name]
         with self.conn['lock']:
             self.conn['data'][self.model_name][identifier] = model_obj
 
@@ -129,7 +129,7 @@ class Adapter(BaseAdapter):
 
     def _update_object(self, model_obj):
         """ Update the entity record in the dictionary """
-        identifier = model_obj[self.entity_cls._meta.id_field.field_name]
+        identifier = model_obj[self.entity_cls.id_field.field_name]
         with self.conn['lock']:
             # Check if object is present
             if identifier not in self.conn['data'][self.model_name]:
@@ -297,7 +297,7 @@ class DictModel(BaseModel):
     def from_entity(cls, entity):
         """ Convert the entity to a dictionary record """
         dict_obj = {}
-        for field_name in entity._meta.declared_fields:
+        for field_name in entity.__class__.declared_fields():
             dict_obj[field_name] = getattr(entity, field_name)
         return dict_obj
 
