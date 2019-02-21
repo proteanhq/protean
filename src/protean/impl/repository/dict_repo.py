@@ -28,8 +28,7 @@ class Adapter(BaseAdapter):
         for field_name, field_obj in \
                 self.entity_cls.auto_fields:
             counter_key = f'{self.model_name}_{field_name}'
-            if isinstance(field_obj, Auto) and not (field_name in model_obj and
-                                                    model_obj[field_name] is not None):
+            if not (field_name in model_obj and model_obj[field_name] is not None):
                 # Increment the counter and it should start from 1
                 counter = next(self.conn['counters'][counter_key])
                 if not counter:
@@ -297,7 +296,7 @@ class DictModel(BaseModel):
     def from_entity(cls, entity):
         """ Convert the entity to a dictionary record """
         dict_obj = {}
-        for field_name in entity.__class__.declared_fields():
+        for field_name in entity.__class__.declared_fields:
             dict_obj[field_name] = getattr(entity, field_name)
         return dict_obj
 
