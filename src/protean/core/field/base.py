@@ -77,6 +77,7 @@ class Field(metaclass=ABCMeta):
         # the entity
         self.entity_cls = None
         self.field_name = None
+        self.attribute_name = None
 
         # Collect default error message from self and parent classes
         messages = {}
@@ -84,6 +85,23 @@ class Field(metaclass=ABCMeta):
             messages.update(getattr(cls, 'default_error_messages', {}))
         messages.update(error_messages or {})
         self.error_messages = messages
+
+    def set_attributes_from_name(self, field_name):
+        """Set attributes of field from name"""
+        self.field_name = self.field_name or field_name
+        self.attribute_name = self.get_attribute_name()
+
+        # `self.label` should default to being based on the field name.
+        if self.label is None:
+            self.label = field_name.replace('_', ' ').capitalize()
+
+    def get_attribute_name(self):
+        """Return Attribute name for the attribute.
+
+        Defaults to the field name in this base class, but can be overridden.
+        Handy when defining complex objects with backing attributes, like Foreign keys.
+        """
+        return self.field_name
 
     def bind_to_entity(self, entity_cls, field_name):
         """
@@ -95,11 +113,8 @@ class Field(metaclass=ABCMeta):
         """
 
         self.entity_cls = entity_cls
-        self.field_name = field_name
-
-        # `self.label` should default to being based on the field name.
-        if self.label is None:
-            self.label = field_name.replace('_', ' ').capitalize()
+        self.set_attributes_from_name(field_name)
+        entity_cls.add_field(field_name, self)
 
     def fail(self, key, **kwargs):
         """A helper method that simply raises a `ValidationError`.

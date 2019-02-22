@@ -1,81 +1,118 @@
 """Entity Functionality and Classes"""
+import inspect
 import logging
-from collections import OrderedDict
 from typing import Any, Union
 
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.field import Auto
 from protean.core.field import Field
+from protean.utils.generic import classproperty
 from protean.utils.query import Q
 
 logger = logging.getLogger('protean.core.entity')
 
+ENTITY_META_ATTRIBUTE_NAMES = ('ordering')
+
 
 class EntityBase(type):
     """
-    This base metaclass sets a `_meta` attribute on the Entity to an instance
-    of Meta defined in the Entity
+    This base metaclass processes the class declaration and constructs a meta object that can
+    be used to introspect the Entity class later. Specifically, it sets up a `_meta` attribute on
+    the Entity to an instance of Meta, either the default of one that is defined in the
+    Entity class.
 
-    It also sets dictionary named `declared_fields` on the `meta_` attribute.
-    Any instances of `Field` included as attributes on either the class
-    or on any of its superclasses will be include in this dictionary.
+    `_meta` is setup with these attributes:
+        * `declared_fields`: A dictionary that gives a list of any instances of `Field`
+            included as attributes on either the class or on any of its superclasses
+        * `id_field`: The Primary identifier attribute of the Entity
     """
 
-    @classmethod
-    def _get_declared_fields(mcs, klass, bases, attrs):
-        # Load all attributes of the class that are instances of `Field`
-        fields = []
+    def __new__(mcs, name, bases, attrs, **kwargs):
+        """Initialize Entity Classes"""
+
+        # Ensure initialization is only performed for subclasses of Entity
+        # (excluding Entity class itself).
+        parents = [b for b in bases if isinstance(b, EntityBase)]
+        if not parents:
+            return super().__new__(mcs, name, bases, attrs)
+
+        # Create the class object
+        module = attrs.pop('__module__')
+        new_attrs = {'__module__': module}
+        # Ensure we pass __classcell__ to type.__new__
+        #   Refer to https://stackoverflow.com/a/41347038/1858466 for more information
+        classcell = attrs.pop('__classcell__', None)
+        if classcell is not None:
+            new_attrs['__classcell__'] = classcell
+
+        new_class = super().__new__(mcs, name, bases, new_attrs, **kwargs)
+
+        # Gather `Meta` class/object if defined
+        attr_meta = attrs.pop('Meta', None)
+        meta = attr_meta or getattr(new_class, 'Meta', None)
+        new_class.add_to_class('_meta', EntityMeta(meta))
+
+        # Add declared fields
+        declared_fields = []
         for attr_name, attr_obj in attrs.items():
+            new_class.add_to_class(attr_name, attr_obj)
             if isinstance(attr_obj, Field):
-                # Bind the field object and append to list
-                attr_obj.bind_to_entity(klass, attr_name)
-                fields.append((attr_name, attr_obj))
+                declared_fields.append((attr_name, attr_obj))
 
         # If this class is subclassing another Entity, add that Entity's
         # fields.  Note that we loop over the bases in *reverse*.
         # This is necessary in order to maintain the correct order of fields.
         for base in reversed(bases):
-            if hasattr(base, 'meta_') and \
-                    hasattr(base.meta_, 'declared_fields'):
-                fields = [
-                    (field_name, field_obj) for field_name, field_obj
-                    in base.meta_.declared_fields.items()
-                    if field_name not in attrs and not field_obj.identifier
-                ] + fields
-
-        return OrderedDict(fields)
-
-    def __new__(mcs, name, bases, attrs):
-        klass = super(EntityBase, mcs).__new__(mcs, name, bases, attrs)
-        declared_fields = mcs._get_declared_fields(klass, bases, attrs)
-
-        klass.meta_ = EntityMeta(getattr(klass, 'Meta'), klass)
-        klass.meta_.declared_fields = declared_fields
+            if hasattr(base, '_meta') and \
+                    hasattr(base._meta, 'declared_fields'):
+                for field_name, field_obj in base._meta.declared_fields.items():
+                    if field_name not in attrs and not field_obj.identifier:
+                        new_class.add_to_class(field_name, field_obj)
+                        declared_fields.append((field_name, field_obj))
 
         # Lookup the id field for this entity
         if declared_fields:
             try:
-                klass.meta_.id_field = next(
-                    field for _, field in declared_fields.items()
+                new_class._meta.id_field = next(
+                    field for _, field in declared_fields
                     if field.identifier)
             except StopIteration:
                 # If no id field is declared then create one
-                klass.meta_.id_field = Auto(identifier=True)
-                klass.meta_.id_field.bind_to_entity(klass, 'id')
-                declared_fields['id'] = klass.meta_.id_field
+                id_field = Auto(identifier=True)
+                new_class.add_to_class('id', id_field)
+                new_class._meta.id_field = id_field
 
         # Construct an empty QuerySet associated with this Entity class
-        klass.query = QuerySet(name)
+        new_class.query = QuerySet(name)
 
-        return klass
+        return new_class
+
+    def add_to_class(cls, name, value):
+        """Add an attribute to the class
+
+           Will check if `bind_to_entity` is defined on the attribute. If defined, it will
+           be used to add the field to the meta class and bind the entity class to the field.
+        """
+        # We should call the contribute_to_class method only if it's bound
+        if not inspect.isclass(value) and hasattr(value, 'bind_to_entity'):
+            value.bind_to_entity(cls, name)
+        else:
+            setattr(cls, name, value)
+
+    def add_field(self, field_name, field):
+        """Add field to the Entity class meta attribute"""
+        self._meta.declared_fields[field_name] = field
 
 
 class EntityMeta:
     """ Metadata information for the entity including any options defined."""
 
-    def __init__(self, meta, entity_cls):  # FIXME Remote `meta`?
-        self.entity_cls = entity_cls
+    def __init__(self, meta):
+        self.meta = meta
+
+        # Initialize Options
+        self.entity_cls = None
         self.declared_fields = {}
         self.id_field = None
 
@@ -87,10 +124,34 @@ class EntityMeta:
                 if field_obj.unique]
 
     @property
-    def has_auto_field(self):
-        """ Check the the id_field for the entity is Auto Type"""
-        return any([isinstance(field_obj, Auto) for
-                    _, field_obj in self.declared_fields.items()])
+    def auto_fields(self):
+        return [(field_name, field_obj)
+                for field_name, field_obj in self.declared_fields.items()
+                if isinstance(field_obj, Auto)]
+
+    def bind_to_entity(self, entity_cls, name):
+        """Placeholder method for additional processing when meta info is added to Entity"""
+        entity_cls._meta = self
+        self.entity_cls = entity_cls
+
+        # Next, apply any overridden values from 'class Meta'.
+        if self.meta:
+            meta_attrs = self.meta.__dict__.copy()
+            for name in self.meta.__dict__:
+                # Ignore any private attributes
+                if name.startswith('_'):
+                    del meta_attrs[name]
+            for attr_name in ENTITY_META_ATTRIBUTE_NAMES:
+                if attr_name in meta_attrs:
+                    setattr(self, attr_name, meta_attrs.pop(attr_name))
+                elif hasattr(self.meta, attr_name):
+                    setattr(self, attr_name, getattr(self.meta, attr_name))
+
+            # Any leftover attributes must be invalid.
+            if meta_attrs != {}:
+                raise TypeError("'class Meta' got invalid attribute(s): %s" % ','.join(meta_attrs))
+
+        del self.meta
 
 
 class QuerySet:
@@ -374,21 +435,21 @@ class Entity(metaclass=EntityBase):
                     f'values.'
                 )
             for field_name, val in dictionary.items():
-                field_obj = self.meta_.declared_fields.get(field_name, None)
+                field_obj = self._meta.declared_fields.get(field_name, None)
                 if field_obj:
                     loaded_fields.append(field_name)
                     self._setattr(field_name, field_obj, val)
 
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
-            field_obj = self.meta_.declared_fields.get(field_name, None)
+            field_obj = self._meta.declared_fields.get(field_name, None)
             if field_obj:
                 loaded_fields.append(field_name)
                 self._setattr(field_name, field_obj, val)
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields
-        for field_name, field_obj in self.meta_.declared_fields.items():
+        for field_name, field_obj in self._meta.declared_fields.items():
             if field_name not in loaded_fields:
                 self._setattr(field_name, field_obj, None)
 
@@ -426,13 +487,13 @@ class Entity(metaclass=EntityBase):
                     f'values.'
                 )
             for field_name, val in data.items():
-                field_obj = self.meta_.declared_fields.get(field_name, None)
+                field_obj = self._meta.declared_fields.get(field_name, None)
                 if field_obj:
                     self._setattr(field_name, field_obj, val)
 
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
-            field_obj = self.meta_.declared_fields.get(field_name, None)
+            field_obj = self._meta.declared_fields.get(field_name, None)
             if field_obj:
                 self._setattr(field_name, field_obj, val)
 
@@ -443,7 +504,7 @@ class Entity(metaclass=EntityBase):
     def to_dict(self):
         """ Return entity data as a dictionary """
         return {field_name: getattr(self, field_name, None)
-                for field_name in self.meta_.declared_fields}
+                for field_name in self._meta.declared_fields}
 
     @classmethod
     def _retrieve_model(cls):
@@ -455,6 +516,25 @@ class Entity(metaclass=EntityBase):
         adapter = getattr(repo_factory, cls.__name__)
 
         return (model_cls, adapter)
+
+    ################
+    # Meta methods #
+    ################
+
+    @classproperty
+    def declared_fields(cls):
+        """Pass through method to retrieve declared fields defined for entity"""
+        return cls._meta.declared_fields
+
+    @classproperty
+    def auto_fields(cls):
+        """Pass through method to retrieve `Auto` fields defined for entity"""
+        return cls._meta.auto_fields
+
+    @classproperty
+    def id_field(cls):
+        """Pass through method to retrieve Identifier field defined for entity"""
+        return cls._meta.id_field
 
     ######################
     # Life-cycle methods #
@@ -469,7 +549,7 @@ class Entity(metaclass=EntityBase):
         logger.debug(f'Lookup `{cls.__name__}` object with identifier {identifier}')
         # Get the ID field for the entity
         filters = {
-            cls.meta_.id_field.field_name: identifier
+            cls._meta.id_field.field_name: identifier
         }
 
         # Find this item in the repository or raise Error
@@ -541,7 +621,7 @@ class Entity(metaclass=EntityBase):
         model_obj = adapter._create_object(model_cls.from_entity(entity))
 
         # Update the auto fields of the entity
-        for field_name, field_obj in entity.meta_.declared_fields.items():
+        for field_name, field_obj in entity._meta.declared_fields.items():
             if isinstance(field_obj, Auto):
                 if isinstance(model_obj, dict):
                     field_val = model_obj[field_name]
@@ -560,7 +640,7 @@ class Entity(metaclass=EntityBase):
             f'Creating new `{self.__class__.__name__}` object')
 
         values = {}
-        for item in self.meta_.declared_fields.items():
+        for item in self._meta.declared_fields.items():
             values[item[0]] = getattr(self, item[0])
 
         return self.__class__.create(**values)
@@ -601,7 +681,7 @@ class Entity(metaclass=EntityBase):
         # Build the filters from the unique constraints
         filters, excludes = {}, {}
 
-        for field_name, field_obj in self.meta_.unique_fields:
+        for field_name, field_obj in self._meta.unique_fields:
             lookup_value = getattr(self, field_name, None)
             # Ignore empty lookup values
             if lookup_value in Field.empty_values:
@@ -615,7 +695,7 @@ class Entity(metaclass=EntityBase):
         # Lookup the objects by the filters and raise error on results
         for filter_key, lookup_value in filters.items():
             if self.exists(excludes, **{filter_key: lookup_value}):
-                field_obj = self.meta_.declared_fields[filter_key]
+                field_obj = self._meta.declared_fields[filter_key]
                 field_obj.fail('unique',
                                model_name=model_cls.opts_.model_name,
                                field_name=filter_key)
@@ -634,6 +714,6 @@ class Entity(metaclass=EntityBase):
         _, adapter = self.__class__._retrieve_model()
 
         filters = {
-            self.__class__.meta_.id_field.field_name: self.id
+            self.__class__._meta.id_field.field_name: self.id
         }
         return adapter._delete_objects(**filters)

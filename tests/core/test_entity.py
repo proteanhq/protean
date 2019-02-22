@@ -23,6 +23,18 @@ class TestEntity:
         assert dog.age == 10
         assert dog.owner == 'Jimmy'
 
+    def test_individuality(self):
+        """Test successful Account Entity initialization"""
+
+        dog1 = Dog(id=1, name='John Doe', age=10, owner='Jimmy')
+        dog2 = Dog(id=2, name='Jimmy Kane', age=3, owner='John')
+        assert dog1.name == 'John Doe'
+        assert dog1.age == 10
+        assert dog1.owner == 'Jimmy'
+        assert dog2.name == 'Jimmy Kane'
+        assert dog2.age == 3
+        assert dog2.owner == 'John'
+
     def test_required_fields(self):
         """Test errors if mandatory fields are missing"""
 
@@ -199,7 +211,15 @@ class TestEntity:
         dog = Dog(name='Johnny', owner='John')
 
         with pytest.raises(ValidationError):
-            del dog.name  # Simulate an error by force-deleting an attribute
+            dog.name = ""  # Simulate an error by force-resetting an attribute
+            dog.save()
+
+    def test_save_invalid_value(self):
+        """Initialize an entity and save it to repository"""
+        dog = Dog(name='Johnny', owner='John')
+
+        with pytest.raises(ValidationError):
+            dog.age = 'abcd'
             dog.save()
 
     def test_update_with_invalid_id(self):
