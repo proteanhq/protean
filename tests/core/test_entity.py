@@ -1,12 +1,13 @@
 """Tests for Entity Functionality and Base Classes"""
 
 import pytest
-from tests.support.dog import Dog
+from tests.support.dog import Dog, RelatedDog
+from tests.support.human import Human
 
 from protean.core import field
 from protean.core.entity import Entity, QuerySet
 from protean.core.exceptions import ObjectNotFoundError
-from protean.core.exceptions import ValidationError
+from protean.core.exceptions import ValidationError, ValueError
 from protean.utils.query import Q
 
 
@@ -1182,3 +1183,41 @@ class TestConjunctions:
 
         q1 = Dog.query.filter(owner='XYZ', age=100)
         assert q1.total == 0
+
+
+class TestAssociations:
+    """Class that holds tests cases for Entity Associations"""
+
+    def test_unsaved_init(self):
+        """Test successful RelatedDog initialization"""
+        with pytest.raises(ValueError):
+            human = Human(first_name='Jeff', last_name='Kennedy',
+                          email='jeff.kennedy@presidents.com')
+            RelatedDog(id=1, name='John Doe', age=10, owner=human)
+
+    def test_init(self):
+        """Test successful RelatedDog initialization"""
+        human = Human.create(first_name='Jeff', last_name='Kennedy',
+                             email='jeff.kennedy@presidents.com')
+        dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+        assert dog.owner == human
+
+    def test_save(self):
+        """Test successful RelatedDog initialization"""
+        human = Human.create(first_name='Jeff', last_name='Kennedy',
+                             email='jeff.kennedy@presidents.com')
+        dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+        dog.save()
+        assert dog.id is not None
+
+    class TestReference:
+        """Class to test References (Foreign Key) Association"""
+
+        def test_init(self):
+            """Test identifier backing the association"""
+            human = Human.create(first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(
+                id=1, name='John Doe', age=10, owner=human)
+            assert human.id is not None
+            assert dog.owner_id == human.id

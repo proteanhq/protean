@@ -5,7 +5,7 @@ from typing import Any, Union
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.field import Auto
-from protean.core.field import Field
+from protean.core.field import Field, Reference
 from protean.utils.generic import classproperty
 from protean.utils.query import Q
 
@@ -47,6 +47,9 @@ class EntityBase(type):
         # Load declared fields from Base class, in case this Entity is subclassing another
         new_class._load_base_class_fields(bases, attrs)
 
+        # Set up Relation Fields
+        new_class._set_up_reference_fields()
+
         # Lookup an already defined ID field or create an `Auto` field
         new_class._set_id_field()
 
@@ -73,9 +76,18 @@ class EntityBase(type):
     def _load_fields(new_class, attrs):
         """Load field items into Metaclass"""
         for attr_name, attr_obj in attrs.items():
-            if isinstance(attr_obj, Field):
+            if isinstance(attr_obj, (Field, Reference)):
                 setattr(new_class, attr_name, attr_obj)
                 new_class._meta.declared_fields[attr_name] = attr_obj
+
+    def _set_up_reference_fields(new_class):
+        """Walk through relation fields and setup shadow attributes"""
+        if new_class._meta.declared_fields:
+            for _, field in new_class._meta.declared_fields.items():
+                if isinstance(field, Reference):
+                    related_field_name, related_field = field.get_relation_field()
+                    setattr(new_class, related_field_name, related_field)
+                    related_field.__set_name__(new_class, related_field_name)
 
     def _set_id_field(new_class):
         """Lookup the id field for this entity and assign"""
