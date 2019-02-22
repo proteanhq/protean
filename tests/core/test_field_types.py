@@ -21,21 +21,21 @@ class TestStringField:
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         name = field.String(max_length=10)
-        assert name.load(1) == '1'
+        assert name._load(1) == '1'
 
     def test_min_length(self):
         """ Test minimum length validation for the string field"""
 
         with pytest.raises(ValidationError):
             name = field.String(min_length=5, max_length=10)
-            name.load('Dum')
+            name._load('Dum')
 
     def test_max_length(self):
         """ Test maximum length validation for the string field"""
 
         with pytest.raises(ValidationError):
             name = field.String(max_length=5)
-            name.load('Dummy Dummy')
+            name._load('Dummy Dummy')
 
     def test_choice(self):
         """ Test choices validations for the string field """
@@ -50,9 +50,9 @@ class TestStringField:
         assert status is not None
 
         # Test loading of values to the status field
-        assert status.load('Pending') == 'Pending'
+        assert status._load('Pending') == 'Pending'
         with pytest.raises(ValidationError) as e_info:
-            status.load('Failure')
+            status._load('Failure')
         assert e_info.value.normalized_messages == {
             '_entity': ["Value `'Failure'` is not a valid choice. "
                         "Must be one of ['Pending', 'Success', 'Error']"]}
@@ -71,21 +71,21 @@ class TestIntegerField:
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
             age = field.Integer()
-            age.load('x')
+            age._load('x')
 
     def test_min_value(self):
         """ Test minimum value validation for the integer field"""
 
         with pytest.raises(ValidationError):
             age = field.Integer(min_value=5)
-            age.load(3)
+            age._load(3)
 
     def test_max_value(self):
         """ Test maximum value validation for the integer field"""
 
         with pytest.raises(ValidationError):
             age = field.Integer(max_value=5)
-            age.load(6)
+            age._load(6)
 
     def test_choice(self):
         """ Test choices validations for the Integer field """
@@ -100,9 +100,9 @@ class TestIntegerField:
         assert status is not None
 
         # Test loading of values to the status field
-        assert status.load(0) == 0
+        assert status._load(0) == 0
         with pytest.raises(ValidationError) as e_info:
-            status.load(4)
+            status._load(4)
         assert e_info.value.normalized_messages == {
             '_entity': ["Value `4` is not a valid choice. "
                         "Must be one of [0, 1, 2]"]}
@@ -121,21 +121,21 @@ class TestFloatField:
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
             score = field.Float()
-            score.load('x')
+            score._load('x')
 
     def test_min_value(self):
         """ Test minimum value validation for the float field"""
 
         with pytest.raises(ValidationError):
             score = field.Float(min_value=5.4)
-            score.load(5.3)
+            score._load(5.3)
 
     def test_max_value(self):
         """ Test maximum value validation for the float field"""
 
         with pytest.raises(ValidationError):
             score = field.Float(max_value=5.5)
-            score.load(5.6)
+            score._load(5.6)
 
 
 class TestBooleanField:
@@ -146,13 +146,13 @@ class TestBooleanField:
 
         married = field.Boolean()
         assert married is not None
-        assert married.load(True) is True
+        assert married._load(True) is True
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
             married = field.Boolean()
-            married.load('x')
+            married._load('x')
 
 
 class TestListField:
@@ -164,13 +164,13 @@ class TestListField:
         tags = field.List()
         assert tags is not None
 
-        assert tags.load(['x', 'y', 'z']) == ['x', 'y', 'z']
+        assert tags._load(['x', 'y', 'z']) == ['x', 'y', 'z']
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
             tags = field.Boolean()
-            tags.load('x')
+            tags._load('x')
 
     def test_choice(self):
         """ Test choices validations for the list field """
@@ -185,9 +185,9 @@ class TestListField:
         assert status is not None
 
         # Test loading of values to the status field
-        assert status.load(['Pending']) == ['Pending']
+        assert status._load(['Pending']) == ['Pending']
         with pytest.raises(ValidationError) as e_info:
-            status.load(['Pending', 'Failure'])
+            status._load(['Pending', 'Failure'])
         assert e_info.value.normalized_messages == {
             '_entity': ["Value `'Failure'` is not a valid choice. "
                         "Must be one of ['Pending', 'Success', 'Error']"]}
@@ -202,14 +202,14 @@ class TestDictField:
         add_info = field.Dict()
         assert add_info is not None
 
-        value = add_info.load({'available': 'weekdays'})
+        value = add_info._load({'available': 'weekdays'})
         assert value == {'available': 'weekdays'}
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
             add_info = field.Dict()
-            add_info.load('x')
+            add_info._load('x')
 
 
 class TestAutoField:
@@ -221,13 +221,13 @@ class TestAutoField:
         add_info = field.Auto()
         assert add_info is not None
 
-        value = add_info.load(1)
+        value = add_info._load(1)
         assert value == 1
 
     def test_validation(self):
         """ Test validation for the Auto Field"""
         add_info = field.Auto(required=True)
-        add_info.load(None)
+        add_info._load(None)
 
 
 class TestDateField:
@@ -239,7 +239,7 @@ class TestDateField:
         age = field.Date()
         assert age is not None
 
-        value = age.load(datetime.now().date())
+        value = age._load(datetime.now().date())
         assert value == datetime.now().date()
 
     def test_type_casting(self):
@@ -248,17 +248,17 @@ class TestDateField:
         age = field.Date()
 
         # Test datetime being passed as value
-        assert age.load(datetime.now()) == datetime.now().date()
+        assert age._load(datetime.now()) == datetime.now().date()
 
         # Test string dates being passed as value
         expected = datetime(2018, 3, 16).date()
-        assert age.load('2018-03-16') == expected
-        assert age.load('2018-03-16 10:23:32') == expected
-        assert age.load('16th March 2018') == expected
+        assert age._load('2018-03-16') == expected
+        assert age._load('2018-03-16 10:23:32') == expected
+        assert age._load('16th March 2018') == expected
 
         # Test for invalid date
         with pytest.raises(ValidationError):
-            assert age.load('15 Marchs')
+            assert age._load('15 Marchs')
 
 
 class TestDateTimeField:
@@ -271,7 +271,7 @@ class TestDateTimeField:
         assert created_at is not None
 
         value = datetime.now()
-        assert value == created_at.load(value)
+        assert value == created_at._load(value)
 
     def test_type_casting(self):
         """ Test type casting and validation for the Field"""
@@ -279,17 +279,17 @@ class TestDateTimeField:
         created_at = field.DateTime()
         today = datetime.now()
         # Test date being passed as value
-        assert created_at.load(today.date()) == datetime(
+        assert created_at._load(today.date()) == datetime(
             today.year, today.month, today.day)
 
         # Test string dates being passed as value
-        assert created_at.load('2018-03-16') == datetime(2018, 3, 16)
-        assert created_at.load('2018-03-16 10:23:32') == datetime(
+        assert created_at._load('2018-03-16') == datetime(2018, 3, 16)
+        assert created_at._load('2018-03-16 10:23:32') == datetime(
             2018, 3, 16, 10, 23, 32)
 
         # Test for invalid datetime
         with pytest.raises(ValidationError):
-            assert created_at.load('2018-03-16 10 23 32')
+            assert created_at._load('2018-03-16 10 23 32')
 
 
 class TestTextField:
@@ -304,5 +304,5 @@ class TestTextField:
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         address = field.Text()
-        value = address.load('My home address')
+        value = address._load('My home address')
         assert value == 'My home address'
