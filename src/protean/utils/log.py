@@ -9,4 +9,4 @@ def configure_logging():
     """ Function to configure the logging for the Protean App"""
     # Load the logger using the logging config
     logging.config.dictConfig(
-        active_config.LOGGING_CONFIG)  # pylint: disable=E1101
+        active_config.LOGGING_CONFIG)

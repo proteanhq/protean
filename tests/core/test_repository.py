@@ -128,6 +128,7 @@ class TestLookup:
     class SampleLookup(Lookup):
         """A simple implementation of lookup class"""
         lookup_name = "sample"
+
         def as_expression(self):
             return '%s %s %s' % (self.process_source(),
                                  '<<<>>>',

@@ -34,7 +34,7 @@ class UseCase(metaclass=ABCMeta):
             return ResponseFailure.build_not_found(
                 {'identifier': 'Object with this ID does not exist.'})
 
-        except Exception as exc:  # pylint: disable=W0703
+        except Exception as exc:
             logger.error(
                 f'{self.__class__.__name__} execution failed due to error {exc}',
                 exc_info=True)
