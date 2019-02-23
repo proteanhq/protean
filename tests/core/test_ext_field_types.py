@@ -20,9 +20,9 @@ class TestStringShortField:
 
         # Check that it raises validation
         with pytest.raises(ValidationError):
-            name.load('D' * 16)
+            name._load('D' * 16)
 
-        assert name.load('dummy') == 'dummy'
+        assert name._load('dummy') == 'dummy'
 
 
 class TestStringMediumField:
@@ -40,9 +40,9 @@ class TestStringMediumField:
 
         # Check that it raises validation
         with pytest.raises(ValidationError):
-            name.load('D' * 51)
+            name._load('D' * 51)
 
-        assert name.load('dummy') == 'dummy'
+        assert name._load('dummy') == 'dummy'
 
 
 class TestStringLongField:
@@ -60,6 +60,6 @@ class TestStringLongField:
 
         # Check that it raises validation
         with pytest.raises(ValidationError):
-            name.load('D' * 256)
+            name._load('D' * 256)
 
-        assert name.load('dummy') == 'dummy'
+        assert name._load('dummy') == 'dummy'

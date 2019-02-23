@@ -1,5 +1,4 @@
 """Entity Functionality and Classes"""
-import inspect
 import logging
 from typing import Any, Union
 
@@ -11,8 +10,6 @@ from protean.utils.generic import classproperty
 from protean.utils.query import Q
 
 logger = logging.getLogger('protean.core.entity')
-
-ENTITY_META_ATTRIBUTE_NAMES = ('ordering')
 
 
 class EntityBase(type):
@@ -29,7 +26,7 @@ class EntityBase(type):
     """
 
     def __new__(mcs, name, bases, attrs, **kwargs):
-        """Initialize Entity Classes"""
+        """Initialize Entity MetaClass and load attributes"""
 
         # Ensure initialization is only performed for subclasses of Entity
         # (excluding Entity class itself).
@@ -37,72 +34,72 @@ class EntityBase(type):
         if not parents:
             return super().__new__(mcs, name, bases, attrs)
 
-        # Create the class object
-        module = attrs.pop('__module__')
-        new_attrs = {'__module__': module}
-        # Ensure we pass __classcell__ to type.__new__
-        #   Refer to https://stackoverflow.com/a/41347038/1858466 for more information
-        classcell = attrs.pop('__classcell__', None)
-        if classcell is not None:
-            new_attrs['__classcell__'] = classcell
-
-        new_class = super().__new__(mcs, name, bases, new_attrs, **kwargs)
+        new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
 
         # Gather `Meta` class/object if defined
         attr_meta = attrs.pop('Meta', None)
         meta = attr_meta or getattr(new_class, 'Meta', None)
-        new_class.add_to_class('_meta', EntityMeta(meta))
+        setattr(new_class, '_meta', EntityMeta(meta))
 
-        # Add declared fields
-        declared_fields = []
-        for attr_name, attr_obj in attrs.items():
-            new_class.add_to_class(attr_name, attr_obj)
-            if isinstance(attr_obj, Field):
-                declared_fields.append((attr_name, attr_obj))
+        # Load declared fields
+        new_class._load_fields(attrs)
 
-        # If this class is subclassing another Entity, add that Entity's
-        # fields.  Note that we loop over the bases in *reverse*.
-        # This is necessary in order to maintain the correct order of fields.
-        for base in reversed(bases):
-            if hasattr(base, '_meta') and \
-                    hasattr(base._meta, 'declared_fields'):
-                for field_name, field_obj in base._meta.declared_fields.items():
-                    if field_name not in attrs and not field_obj.identifier:
-                        new_class.add_to_class(field_name, field_obj)
-                        declared_fields.append((field_name, field_obj))
+        # Load declared fields from Base class, in case this Entity is subclassing another
+        new_class._load_base_class_fields(bases, attrs)
 
-        # Lookup the id field for this entity
-        if declared_fields:
-            try:
-                new_class._meta.id_field = next(
-                    field for _, field in declared_fields
-                    if field.identifier)
-            except StopIteration:
-                # If no id field is declared then create one
-                id_field = Auto(identifier=True)
-                new_class.add_to_class('id', id_field)
-                new_class._meta.id_field = id_field
+        # Lookup an already defined ID field or create an `Auto` field
+        new_class._set_id_field()
 
         # Construct an empty QuerySet associated with this Entity class
         new_class.query = QuerySet(name)
 
         return new_class
 
-    def add_to_class(cls, name, value):
-        """Add an attribute to the class
-
-           Will check if `bind_to_entity` is defined on the attribute. If defined, it will
-           be used to add the field to the meta class and bind the entity class to the field.
+    def _load_base_class_fields(new_class, bases, attrs):
+        """If this class is subclassing another Entity, add that Entity's
+        fields.  Note that we loop over the bases in *reverse*.
+        This is necessary in order to maintain the correct order of fields.
         """
-        # We should call the contribute_to_class method only if it's bound
-        if not inspect.isclass(value) and hasattr(value, 'bind_to_entity'):
-            value.bind_to_entity(cls, name)
-        else:
-            setattr(cls, name, value)
+        for base in reversed(bases):
+            if hasattr(base, '_meta') and \
+                    hasattr(base._meta, 'declared_fields'):
+                base_class_fields = {
+                    field_name: field_obj for (field_name, field_obj)
+                    in base._meta.declared_fields.items()
+                    if field_name not in attrs and not field_obj.identifier
+                }
+                new_class._load_fields(base_class_fields)
 
-    def add_field(self, field_name, field):
-        """Add field to the Entity class meta attribute"""
-        self._meta.declared_fields[field_name] = field
+    def _load_fields(new_class, attrs):
+        """Load field items into Metaclass"""
+        for attr_name, attr_obj in attrs.items():
+            if isinstance(attr_obj, Field):
+                setattr(new_class, attr_name, attr_obj)
+                new_class._meta.declared_fields[attr_name] = attr_obj
+
+    def _set_id_field(new_class):
+        """Lookup the id field for this entity and assign"""
+        # FIXME What does it mean when there are no declared fields?
+        #   Does it translate to an abstract entity?
+        if new_class._meta.declared_fields:
+            try:
+                new_class._meta.id_field = next(
+                    field for _, field in new_class._meta.declared_fields.items()
+                    if field.identifier)
+            except StopIteration:
+                # If no id field is declared then create one
+                new_class._create_id_field()
+
+    def _create_id_field(new_class):
+        """Create and return a default ID field that is Auto generated"""
+        id_field = Auto(identifier=True)
+
+        setattr(new_class, 'id', id_field)
+        id_field.__set_name__(new_class, 'id')
+
+        # Ensure ID field is updated properly in Meta attribute
+        new_class._meta.declared_fields['id'] = id_field
+        new_class._meta.id_field = id_field
 
 
 class EntityMeta:
@@ -128,30 +125,6 @@ class EntityMeta:
         return [(field_name, field_obj)
                 for field_name, field_obj in self.declared_fields.items()
                 if isinstance(field_obj, Auto)]
-
-    def bind_to_entity(self, entity_cls, name):
-        """Placeholder method for additional processing when meta info is added to Entity"""
-        entity_cls._meta = self
-        self.entity_cls = entity_cls
-
-        # Next, apply any overridden values from 'class Meta'.
-        if self.meta:
-            meta_attrs = self.meta.__dict__.copy()
-            for name in self.meta.__dict__:
-                # Ignore any private attributes
-                if name.startswith('_'):
-                    del meta_attrs[name]
-            for attr_name in ENTITY_META_ATTRIBUTE_NAMES:
-                if attr_name in meta_attrs:
-                    setattr(self, attr_name, meta_attrs.pop(attr_name))
-                elif hasattr(self.meta, attr_name):
-                    setattr(self, attr_name, getattr(self.meta, attr_name))
-
-            # Any leftover attributes must be invalid.
-            if meta_attrs != {}:
-                raise TypeError("'class Meta' got invalid attribute(s): %s" % ','.join(meta_attrs))
-
-        del self.meta
 
 
 class QuerySet:
@@ -435,38 +408,23 @@ class Entity(metaclass=EntityBase):
                     f'values.'
                 )
             for field_name, val in dictionary.items():
-                field_obj = self._meta.declared_fields.get(field_name, None)
-                if field_obj:
-                    loaded_fields.append(field_name)
-                    self._setattr(field_name, field_obj, val)
+                loaded_fields.append(field_name)
+                setattr(self, field_name, val)
 
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
-            field_obj = self._meta.declared_fields.get(field_name, None)
-            if field_obj:
-                loaded_fields.append(field_name)
-                self._setattr(field_name, field_obj, val)
+            loaded_fields.append(field_name)
+            setattr(self, field_name, val)
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields
         for field_name, field_obj in self._meta.declared_fields.items():
             if field_name not in loaded_fields:
-                self._setattr(field_name, field_obj, None)
+                setattr(self, field_name, None)
 
         # Raise any errors found during load
         if self.errors:
             raise ValidationError(self.errors)
-
-    def _setattr(self, field_name, field_obj, value):
-        """
-        Load the value for the field, set it if passes and if not
-        add to the error list.
-        """
-        try:
-            valid_value = field_obj.load(value)
-            setattr(self, field_name, valid_value)
-        except ValidationError as err:
-            self.errors[field_name] = err.messages
 
     def _update_data(self, *data_dict, **kwargs):
         """
@@ -487,15 +445,11 @@ class Entity(metaclass=EntityBase):
                     f'values.'
                 )
             for field_name, val in data.items():
-                field_obj = self._meta.declared_fields.get(field_name, None)
-                if field_obj:
-                    self._setattr(field_name, field_obj, val)
+                setattr(self, field_name, val)
 
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
-            field_obj = self._meta.declared_fields.get(field_name, None)
-            if field_obj:
-                self._setattr(field_name, field_obj, val)
+            setattr(self, field_name, val)
 
         # Raise any errors found during update
         if self.errors:

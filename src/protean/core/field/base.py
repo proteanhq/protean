@@ -48,7 +48,7 @@ class Field(metaclass=ABCMeta):
     def __init__(self, identifier: bool = False, default: Any = None,
                  required: bool = False, unique: bool = False,
                  label: str = None, choices: enum.Enum = None,
-                 validators: Iterable = (), error_messages: dict = None):
+                 validators: Iterable = (), value=None, error_messages: dict = None):
 
         self.identifier = identifier
         self.default = default
@@ -73,9 +73,11 @@ class Field(metaclass=ABCMeta):
         self.label = label
         self._validators = validators
 
-        # These are set up by `.bind_to_entity()` when the field is added to
-        # the entity
-        self.entity_cls = None
+        # Value holder
+        self._value = value
+
+        # These are set up when the owner (Entity class) adds the field to itself
+        self.name = None
         self.field_name = None
         self.attribute_name = None
 
@@ -86,35 +88,40 @@ class Field(metaclass=ABCMeta):
         messages.update(error_messages or {})
         self.error_messages = messages
 
-    def set_attributes_from_name(self, field_name):
-        """Set attributes of field from name"""
-        self.field_name = self.field_name or field_name
+    def __set_name__(self, entity_cls, name):
+        self.name = name + "__raw"
+        self.field_name = name
         self.attribute_name = self.get_attribute_name()
 
         # `self.label` should default to being based on the field name.
         if self.label is None:
-            self.label = field_name.replace('_', ' ').capitalize()
+            self.label = self.field_name.replace('_', ' ').capitalize()
+
+    def __get__(self, instance, owner):
+        return getattr(instance, self.name, self.value)
+
+    def __set__(self, instance, value):
+        value = self._load(value)
+        setattr(instance, self.name, value)
+
+    def __delete__(self, instance):
+        raise AttributeError("Can't delete attribute")
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, value):
+        self._value = value if value else self.type()
 
     def get_attribute_name(self):
         """Return Attribute name for the attribute.
 
         Defaults to the field name in this base class, but can be overridden.
-        Handy when defining complex objects with backing attributes, like Foreign keys.
+        Handy when defining complex objects with shadow attributes, like Foreign keys.
         """
         return self.field_name
-
-    def bind_to_entity(self, entity_cls, field_name):
-        """
-        Initializes the field name for the field instance.
-        Called when a field is added to the parent entity instance.
-
-        :param entity_cls: Entity class to which there fields are being bound to
-        :param field_name: Name of the field in the binding Entity
-        """
-
-        self.entity_cls = entity_cls
-        self.set_attributes_from_name(field_name)
-        entity_cls.add_field(field_name, self)
 
     def fail(self, key, **kwargs):
         """A helper method that simply raises a `ValidationError`.
@@ -168,7 +175,7 @@ class Field(metaclass=ABCMeta):
         if errors:
             raise exceptions.ValidationError(errors)
 
-    def load(self, value: Any):
+    def _load(self, value: Any):
         """
         Load the value for the field, run validators and return the value.
         Subclasses can override this to provide custom load logic.

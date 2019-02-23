@@ -44,23 +44,23 @@ class TestField:
 
         with pytest.raises(ValidationError):
             name = String(required=True)
-            name.load(None)
+            name._load(None)
 
     def test_defaults(self):
         """ Test default value is set when no value is supplied"""
         # Test with default value as constant
         name = String(default='dummy')
-        assert name.load('') == 'dummy'
+        assert name._load('') == 'dummy'
 
         # Test with default value as callable
         name = String(default=lambda: 'dummy')
-        assert name.load('') == 'dummy'
+        assert name._load('') == 'dummy'
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
             name = String()
-            name.load(1)
+            name._load(1)
 
     def test_validators(self):
         """ Test custom validators defined for the field"""
@@ -68,7 +68,7 @@ class TestField:
         with pytest.raises(ValidationError):
             name = String(
                 validators=[MinLengthValidator(min_length=5)])
-            name.load('Dum')
+            name._load('Dum')
 
     def test_error_message(self):
         """ Test that proper error message is generated"""
@@ -76,7 +76,7 @@ class TestField:
         # Test the basic error message
         try:
             name = String(required=True)
-            name.load(None)
+            name._load(None)
         except ValidationError as err:
             assert err.normalized_messages == {
                 '_entity': [name.error_messages['required']]}
@@ -84,7 +84,7 @@ class TestField:
         # Test overriding of error message
         try:
             name = String()
-            name.load(1)
+            name._load(1)
         except ValidationError as err:
             assert err.normalized_messages == {
                 '_entity': ['Field value must be of str type.']}
@@ -94,7 +94,7 @@ class TestField:
             name = String(
                 validators=[MinLengthValidator(min_length=5),
                             MinLengthValidator(min_length=5)])
-            name.load('Dum')
+            name._load('Dum')
         except ValidationError as err:
             assert err.normalized_messages == {
                 '_entity': ['Ensure this value has at least 5 character.',
@@ -110,4 +110,4 @@ class TestField:
         String.default_validators = [medium_string_validator]
         with pytest.raises(ValidationError):
             name = String()
-            name.load('Dummy Dummy Dummy')
+            name._load('Dummy Dummy Dummy')
