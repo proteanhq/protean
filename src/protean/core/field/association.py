@@ -5,6 +5,27 @@ from .mixins import FieldCacheMixin
 from protean.core import exceptions
 
 
+class ReferenceField(Integer):  # FIXME Can be either Int or Str - should allow in future
+    """Shadow Attribute Field to back References"""
+
+    def __init__(self, reference, **kwargs):
+        self.reference = reference
+        super().__init__(**kwargs)
+
+    def __set__(self, instance, value):
+        value = self._load(value)
+
+        if value:
+            setattr(instance, self.name, value)
+            reference_obj = self.reference.to_cls.get(value)
+            if reference_obj:
+                self.reference.value = reference_obj
+            else:
+                raise exceptions.ValueError(
+                    "Target Object not found",
+                    self.reference.field_name)
+
+
 class Reference(FieldCacheMixin, Field):
     """
     Provide a many-to-one relation by adding a column to the local entity
@@ -14,12 +35,12 @@ class Reference(FieldCacheMixin, Field):
     behavior can be changed by using the ``via`` argument.
     """
 
-    def __init__(self, to, via=None, **kwargs):
+    def __init__(self, to_cls, via=None, **kwargs):
         super().__init__(**kwargs)
-        self.to = to
+        self.to_cls = to_cls
         self.via = via
 
-        self.relation = Integer()
+        self.relation = ReferenceField(self)
 
     def __set_name__(self, entity_cls, name):
         """Set up attributes to identify relation by"""
@@ -53,16 +74,17 @@ class Reference(FieldCacheMixin, Field):
     def __set__(self, instance, value):
         value = self._load(value)
 
-        if value.id is None:
-            raise exceptions.ValueError(
-                "Target Object must be saved before being referenced",
-                self.field_name)
-
-        setattr(instance, self.name, value)
-        setattr(instance, self.attribute_name, value.id)
+        if value:
+            if value.id is None:
+                raise exceptions.ValueError(
+                    "Target Object must be saved before being referenced",
+                    self.field_name)
+            else:
+                setattr(instance, self.name, value)
+                setattr(instance, self.attribute_name, value.id)
 
     def _cast_to_type(self, value):
-        if not isinstance(value, self.to):
+        if not isinstance(value, self.to_cls):
             self.fail('invalid', value=value)
         return value
 
