@@ -74,7 +74,12 @@ class EntityBase(type):
                 new_class._load_fields(base_class_fields)
 
     def _load_fields(new_class, attrs):
-        """Load field items into Metaclass"""
+        """Load field items into Class.
+
+        This method sets up the primary attribute of an association.
+        If Child class has defined an attribute so `parent = field.Reference(Parent)`, then `parent`
+        is set up in this method, while `parent_id` is set up in `_set_up_reference_fields()`.
+        """
         for attr_name, attr_obj in attrs.items():
             if isinstance(attr_obj, (Field, Reference)):
                 setattr(new_class, attr_name, attr_obj)
@@ -85,9 +90,9 @@ class EntityBase(type):
         if new_class._meta.declared_fields:
             for _, field in new_class._meta.declared_fields.items():
                 if isinstance(field, Reference):
-                    related_field_name, related_field = field.get_relation_field()
-                    setattr(new_class, related_field_name, related_field)
-                    related_field.__set_name__(new_class, related_field_name)
+                    shadow_field_name, shadow_field = field.get_shadow_field()
+                    setattr(new_class, shadow_field_name, shadow_field)
+                    shadow_field.__set_name__(new_class, shadow_field_name)
 
     def _set_id_field(new_class):
         """Lookup the id field for this entity and assign"""

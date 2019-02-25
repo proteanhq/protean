@@ -9,18 +9,24 @@ class ReferenceField(Integer):  # FIXME Can be either Int or Str - should allow 
     """Shadow Attribute Field to back References"""
 
     def __init__(self, reference, **kwargs):
+        """Accept reference field as a an attribute, otherwise is a straightforward field"""
         self.reference = reference
         super().__init__(**kwargs)
 
     def __set__(self, instance, value):
+        """Override `__set__` to update relation field"""
         value = self._load(value)
 
         if value:
-            setattr(instance, self.name, value)
+            instance.__dict__[self.field_name] = value
+
+            # Fetch target object and refresh the reference field value
             reference_obj = self.reference.to_cls.get(value)
             if reference_obj:
                 self.reference.value = reference_obj
+                instance.__dict__[self.reference.field_name] = reference_obj
             else:
+                # Object was not found in the database
                 raise exceptions.ValueError(
                     "Target Object not found",
                     self.reference.field_name)
@@ -42,46 +48,28 @@ class Reference(FieldCacheMixin, Field):
 
         self.relation = ReferenceField(self)
 
-    def __set_name__(self, entity_cls, name):
-        """Set up attributes to identify relation by"""
-
-        # Call `Field`'s set_name so that all attributes are initialized
-        super().__set_name__(entity_cls, name)
-
-        self.name = name + "__raw"
-        self.field_name = name
-        self.attribute_name = self.get_attribute_name()
-
-        # `self.label` should default to being based on the field name.
-        if self.label is None:
-            self.label = self.field_name.replace('_', ' ').capitalize()
-
     def get_attribute_name(self):
-        """Return Attribute name for the attribute.
-
-        Defaults to the field name in this base class, but can be overridden.
-        Handy when defining complex objects with shadow attributes, like Foreign keys.
-        """
+        """Return attribute name suffixed with `_id`"""
         return self.field_name + "_id"
 
-    def get_relation_field(self):
-        """Return shadow field"""
+    def get_shadow_field(self):
+        """Return shadow field
+        Primarily used during Entity initialization to register shadow field"""
         return (self.attribute_name, self.relation)
 
-    def __get__(self, instance, owner):
-        return getattr(instance, self.name, self.value)
-
     def __set__(self, instance, value):
+        """Override `__set__` to coordinate between relation field and its shadow attribute"""
         value = self._load(value)
 
         if value:
-            if value.id is None:
+            # Check if the reference object has been saved. Otherwise, throw ValueError
+            if value.id is None:  # FIXME not a comprehensive check. Should refer to state
                 raise exceptions.ValueError(
                     "Target Object must be saved before being referenced",
                     self.field_name)
             else:
-                setattr(instance, self.name, value)
-                setattr(instance, self.attribute_name, value.id)
+                instance.__dict__[self.field_name] = value
+                instance.__dict__[self.attribute_name] = value.id
 
     def _cast_to_type(self, value):
         if not isinstance(value, self.to_cls):

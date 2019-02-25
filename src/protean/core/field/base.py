@@ -77,7 +77,6 @@ class Field(metaclass=ABCMeta):
         self._value = value
 
         # These are set up when the owner (Entity class) adds the field to itself
-        self.name = None
         self.field_name = None
         self.attribute_name = None
 
@@ -89,7 +88,6 @@ class Field(metaclass=ABCMeta):
         self.error_messages = messages
 
     def __set_name__(self, entity_cls, name):
-        self.name = name + "__raw"
         self.field_name = name
         self.attribute_name = self.get_attribute_name()
 
@@ -98,11 +96,11 @@ class Field(metaclass=ABCMeta):
             self.label = self.field_name.replace('_', ' ').capitalize()
 
     def __get__(self, instance, owner):
-        return getattr(instance, self.name, self.value)
+        return instance.__dict__.get(self.field_name, self.value)
 
     def __set__(self, instance, value):
         value = self._load(value)
-        setattr(instance, self.name, value)
+        instance.__dict__[self.field_name] = value
 
     def __delete__(self, instance):
         raise AttributeError("Can't delete attribute")

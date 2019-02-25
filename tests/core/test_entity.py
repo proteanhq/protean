@@ -1241,7 +1241,6 @@ class TestAssociations:
                                  email='jeff.kennedy@presidents.com')
             dog = RelatedDog(id=1, name='John Doe', age=10)
             dog.owner = human
-            dog.save()
             assert dog.owner_id == human.id
 
         def test_shadow_attribute_init(self):
@@ -1262,3 +1261,29 @@ class TestAssociations:
             dog.save()
             assert dog.owner_id == human.id
             assert dog.owner.id == human.id
+
+        @pytest.mark.skip("Temporary")
+        def test_reference_reset_to_None(self):
+            """Test that the reference field and shadow attribute are reset together"""
+            human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+            assert dog.owner_id == human.id
+            assert dog.owner.id == human.id
+
+            dog.owner = None
+            assert dog.owner is None
+            assert dog.owner_id is None
+
+        @pytest.mark.skip("Temporary")
+        def test_reference_reset_by_del(self):
+            """Test that the reference field and shadow attribute are reset together"""
+            human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+            assert dog.owner_id == human.id
+            assert dog.owner.id == human.id
+
+            del dog.owner
+            assert dog.owner is None
+            assert dog.owner_id is None
