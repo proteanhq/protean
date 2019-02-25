@@ -103,7 +103,7 @@ class Field(metaclass=ABCMeta):
         instance.__dict__[self.field_name] = value
 
     def __delete__(self, instance):
-        raise AttributeError("Can't delete attribute")
+        instance.__dict__.pop(self.field_name, None)
 
     @property
     def value(self):
@@ -111,7 +111,7 @@ class Field(metaclass=ABCMeta):
 
     @value.setter
     def value(self, value):
-        self._value = value if value else self.type()
+        self._value = value if value else None
 
     def get_attribute_name(self):
         """Return Attribute name for the attribute.

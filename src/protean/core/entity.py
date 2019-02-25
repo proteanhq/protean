@@ -459,7 +459,10 @@ class Entity(metaclass=EntityBase):
         # for required fields
         for field_name, field_obj in self._meta.declared_fields.items():
             if field_name not in loaded_fields:
-                setattr(self, field_name, None)
+                # Check that the field is not set already, which would happen if we are
+                #   dealing with reference fields
+                if getattr(self, field_name, None) is None:
+                    setattr(self, field_name, None)
 
         # Raise any errors found during load
         if self.errors:

@@ -30,7 +30,18 @@ class ReferenceField(Integer):  # FIXME Can be either Int or Str - should allow 
                 raise exceptions.ValueError(
                     "Target Object not found",
                     self.reference.field_name)
+        else:
+            self._reset_values(instance)
 
+    def __delete__(self, instance):
+        self._reset_values(instance)
+
+    def _reset_values(self, instance):
+        """Reset all associated values and clean up dictionary items"""
+        instance.__dict__.pop(self.field_name)
+        instance.__dict__.pop(self.reference.field_name)
+        self.reference.value = None
+        self.value = None
 
 class Reference(FieldCacheMixin, Field):
     """
@@ -68,8 +79,21 @@ class Reference(FieldCacheMixin, Field):
                     "Target Object must be saved before being referenced",
                     self.field_name)
             else:
+                self.relation.value = value.id
                 instance.__dict__[self.field_name] = value
                 instance.__dict__[self.attribute_name] = value.id
+        else:
+            self._reset_values(instance)
+
+    def __delete__(self, instance):
+        self._reset_values(instance)
+
+    def _reset_values(self, instance):
+        """Reset all associated values and clean up dictionary items"""
+        self.value = None
+        self.relation.value = None
+        instance.__dict__.pop(self.field_name, None)
+        instance.__dict__.pop(self.attribute_name, None)
 
     def _cast_to_type(self, value):
         if not isinstance(value, self.to_cls):

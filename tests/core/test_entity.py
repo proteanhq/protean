@@ -1262,8 +1262,7 @@ class TestAssociations:
             assert dog.owner_id == human.id
             assert dog.owner.id == human.id
 
-        @pytest.mark.skip("Temporary")
-        def test_reference_reset_to_None(self):
+        def test_reference_reset_association_to_None(self):
             """Test that the reference field and shadow attribute are reset together"""
             human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
                                  email='jeff.kennedy@presidents.com')
@@ -1275,8 +1274,19 @@ class TestAssociations:
             assert dog.owner is None
             assert dog.owner_id is None
 
-        @pytest.mark.skip("Temporary")
-        def test_reference_reset_by_del(self):
+        def test_reference_reset_shadow_field_to_None(self):
+            """Test that the reference field and shadow attribute are reset together"""
+            human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+            assert dog.owner_id == human.id
+            assert dog.owner.id == human.id
+
+            dog.owner_id = None
+            assert dog.owner is None
+            assert dog.owner_id is None
+
+        def test_reference_reset_association_by_del(self):
             """Test that the reference field and shadow attribute are reset together"""
             human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
                                  email='jeff.kennedy@presidents.com')
@@ -1285,5 +1295,17 @@ class TestAssociations:
             assert dog.owner.id == human.id
 
             del dog.owner
+            assert dog.owner is None
+            assert dog.owner_id is None
+
+        def test_reference_reset_shadow_field_by_del(self):
+            """Test that the reference field and shadow attribute are reset together"""
+            human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+            assert dog.owner_id == human.id
+            assert dog.owner.id == human.id
+
+            del dog.owner_id
             assert dog.owner is None
             assert dog.owner_id is None
