@@ -7,7 +7,6 @@ from threading import Lock
 
 from protean.core.entity import Q
 from protean.core.exceptions import ObjectNotFoundError
-from protean.core.field import Auto
 from protean.core.repository import BaseAdapter
 from protean.core.repository import BaseConnectionHandler
 from protean.core.repository import BaseModel

@@ -5,7 +5,7 @@ from collections import OrderedDict
 import pytest
 from tests.support.dog import (Dog, RelatedDog, DogRelatedByEmail,
                                HasOneDog1, HasOneDog2, HasOneDog3)
-from tests.support.human import Human, HasOneHuman1, HasOneHuman2
+from tests.support.human import Human, HasOneHuman1, HasOneHuman2, HasOneHuman3
 
 from protean.core import field
 from protean.core.entity import Entity, QuerySet
@@ -1375,4 +1375,23 @@ class TestAssociations:
                 email='jeff.kennedy@presidents.com')
             dog = HasOneDog1.create(id=101, name='John Doe', age=10, has_one_human1=human)
             assert dog.has_one_human1 == human
+            assert human.dog.id == dog.id
+
+        def test_init_with_via(self):
+            """Test successful HasOne initialization with a class containing via"""
+            human = HasOneHuman2.create(
+                first_name='Jeff', last_name='Kennedy',
+                email='jeff.kennedy@presidents.com')
+            dog = HasOneDog2.create(id=101, name='John Doe', age=10, human=human)
+            assert dog.human == human
+            assert human.dog.id == dog.id
+
+        def test_init_with_no_reference(self):
+            """Test successful HasOne initialization with a class containing via"""
+            human = HasOneHuman3.create(
+                first_name='Jeff', last_name='Kennedy',
+                email='jeff.kennedy@presidents.com')
+            dog = HasOneDog3.create(id=101, name='John Doe', age=10, human_id=human.id)
+            assert dog.human_id == human.id
+            assert not hasattr(dog, 'human')
             assert human.dog.id == dog.id

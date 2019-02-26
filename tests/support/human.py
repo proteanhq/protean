@@ -40,7 +40,9 @@ class HasOneHuman1Model(DictModel):
 
 
 class HasOneHuman2(Entity):
-    """This is a dummy Human Entity class to test HasOne association"""
+    """This is a dummy Human Entity class to test HasOne association
+       with a custom attribute defined in `via` argument to field
+    """
     first_name = field.String(required=True, unique=True, max_length=50)
     last_name = field.String(required=True, unique=True, max_length=50)
     email = field.String(required=True, unique=True, max_length=50)
@@ -53,4 +55,23 @@ class HasOneHuman2Model(DictModel):
     class Meta:
         """ Meta class for model options"""
         entity = HasOneHuman2
-        model_name = 'has_one_humans1'
+        model_name = 'has_one_humans2'
+
+
+class HasOneHuman3(Entity):
+    """This is a dummy Human Entity class to test HasOne association
+       when there is no corresponding Reference defined in the target class
+    """
+    first_name = field.String(required=True, unique=True, max_length=50)
+    last_name = field.String(required=True, unique=True, max_length=50)
+    email = field.String(required=True, unique=True, max_length=50)
+    dog = association.HasOne('HasOneDog3', via='human_id')
+
+
+class HasOneHuman3Model(DictModel):
+    """ Model for the HasOneHuman3 Entity"""
+
+    class Meta:
+        """ Meta class for model options"""
+        entity = HasOneHuman3
+        model_name = 'has_one_humans3'
