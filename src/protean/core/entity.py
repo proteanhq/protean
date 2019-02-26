@@ -5,7 +5,7 @@ from typing import Any, Union
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.field import Auto
-from protean.core.field import Field
+from protean.core.field import Field, Reference
 from protean.utils.generic import classproperty
 from protean.utils.query import Q
 
@@ -47,6 +47,9 @@ class EntityBase(type):
         # Load declared fields from Base class, in case this Entity is subclassing another
         new_class._load_base_class_fields(bases, attrs)
 
+        # Set up Relation Fields
+        new_class._set_up_reference_fields()
+
         # Lookup an already defined ID field or create an `Auto` field
         new_class._set_id_field()
 
@@ -71,11 +74,25 @@ class EntityBase(type):
                 new_class._load_fields(base_class_fields)
 
     def _load_fields(new_class, attrs):
-        """Load field items into Metaclass"""
+        """Load field items into Class.
+
+        This method sets up the primary attribute of an association.
+        If Child class has defined an attribute so `parent = field.Reference(Parent)`, then `parent`
+        is set up in this method, while `parent_id` is set up in `_set_up_reference_fields()`.
+        """
         for attr_name, attr_obj in attrs.items():
-            if isinstance(attr_obj, Field):
+            if isinstance(attr_obj, (Field, Reference)):
                 setattr(new_class, attr_name, attr_obj)
                 new_class._meta.declared_fields[attr_name] = attr_obj
+
+    def _set_up_reference_fields(new_class):
+        """Walk through relation fields and setup shadow attributes"""
+        if new_class._meta.declared_fields:
+            for _, field in new_class._meta.declared_fields.items():
+                if isinstance(field, Reference):
+                    shadow_field_name, shadow_field = field.get_shadow_field()
+                    setattr(new_class, shadow_field_name, shadow_field)
+                    shadow_field.__set_name__(new_class, shadow_field_name)
 
     def _set_id_field(new_class):
         """Lookup the id field for this entity and assign"""
@@ -356,6 +373,25 @@ class QuerySet:
         return self.all().has_prev
 
 
+class EntityStateFieldsCacheDescriptor:
+    def __get__(self, instance, cls=None):
+        if instance is None:
+            return self
+        res = instance.fields_cache = {}
+        return res
+
+
+class EntityState:
+    """Store entity instance state."""
+
+    # If true, uniqueness validation checks will consider this a new, unsaved
+    # object. Necessary for correct validation of new instances of objects with
+    # explicit (non-auto) PKs. This impacts validation only; it has no effect
+    # on the actual save.
+    adding = True
+    fields_cache = EntityStateFieldsCacheDescriptor()
+
+
 class Entity(metaclass=EntityBase):
     """The Base class for Protean-Compliant Domain Entities.
 
@@ -398,6 +434,9 @@ class Entity(metaclass=EntityBase):
 
         self.errors = {}
 
+        # Set up the storage for instance state
+        self._state = EntityState()
+
         # Load the attributes based on the template
         loaded_fields = []
         for dictionary in template:
@@ -420,7 +459,10 @@ class Entity(metaclass=EntityBase):
         # for required fields
         for field_name, field_obj in self._meta.declared_fields.items():
             if field_name not in loaded_fields:
-                setattr(self, field_name, None)
+                # Check that the field is not set already, which would happen if we are
+                #   dealing with reference fields
+                if getattr(self, field_name, None) is None:
+                    setattr(self, field_name, None)
 
         # Raise any errors found during load
         if self.errors:

@@ -11,6 +11,10 @@ class ObjectNotFoundError(Exception):
     """Object was not found, can raise 404"""
 
 
+class ValueError(Exception):
+    """Object of incorrect type, or with invalid state was assigned"""
+
+
 class ValidationError(Exception):
     """Raised when validation fails on a field. Validators and custom fields should
     raise this exception.

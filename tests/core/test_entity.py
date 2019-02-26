@@ -1,12 +1,13 @@
 """Tests for Entity Functionality and Base Classes"""
 
 import pytest
-from tests.support.dog import Dog
+from tests.support.dog import Dog, RelatedDog, DogRelatedByEmail
+from tests.support.human import Human
 
 from protean.core import field
 from protean.core.entity import Entity, QuerySet
 from protean.core.exceptions import ObjectNotFoundError
-from protean.core.exceptions import ValidationError
+from protean.core.exceptions import ValidationError, ValueError
 from protean.utils.query import Q
 
 
@@ -1182,3 +1183,147 @@ class TestConjunctions:
 
         q1 = Dog.query.filter(owner='XYZ', age=100)
         assert q1.total == 0
+
+
+class TestAssociations:
+    """Class that holds tests cases for Entity Associations"""
+
+    class TestReference:
+        """Class to test References (Foreign Key) Association"""
+
+        def test_init(self):
+            """Test successful RelatedDog initialization"""
+            human = Human.create(first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+            assert dog.owner == human
+
+        def test_save(self):
+            """Test successful RelatedDog save"""
+            human = Human.create(first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+            dog.save()
+            assert dog.id is not None
+
+        def test_unsaved_entity_init(self):
+            """Test that initialization fails when an unsaved entity is assigned to a relation"""
+            with pytest.raises(ValueError):
+                human = Human(first_name='Jeff', last_name='Kennedy', email='jeff.kennedy@presidents.com')
+                RelatedDog(id=1, name='John Doe', age=10, owner=human)
+
+        def test_unsaved_entity_assign(self):
+            """Test that assignment fails when an unsaved entity is assigned to a relation"""
+            with pytest.raises(ValueError):
+                human = Human(first_name='Jeff', last_name='Kennedy',
+                              email='jeff.kennedy@presidents.com')
+                dog = RelatedDog(id=1, name='John Doe', age=10)
+                dog.owner = human
+
+        def test_invalid_entity_type(self):
+            """Test that assignment fails when an invalid entity type is assigned to a relation"""
+            with pytest.raises(ValidationError):
+                dog = Dog.create(name='Johnny', owner='John')
+                related_dog = RelatedDog(id=1, name='John Doe', age=10)
+                related_dog.owner = dog
+
+        def test_shadow_attribute(self):
+            """Test identifier backing the association"""
+            human = Human.create(first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+            assert human.id is not None
+            assert dog.owner_id == human.id
+
+        def test_save_after_assign(self):
+            """Test identifier backing the association"""
+            human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10)
+            dog.owner = human
+            assert dog.owner_id == human.id
+
+        def test_shadow_attribute_init(self):
+            """Test identifier backing the association"""
+            human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10, owner_id=human.id)
+            dog.save()
+            assert dog.owner_id == human.id
+            assert dog.owner.id == human.id
+
+        def test_shadow_attribute_assign(self):
+            """Test identifier backing the association"""
+            human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10)
+            dog.owner_id = human.id
+            dog.save()
+            assert dog.owner_id == human.id
+            assert dog.owner.id == human.id
+
+        def test_reference_reset_association_to_None(self):
+            """Test that the reference field and shadow attribute are reset together"""
+            human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+            assert dog.owner_id == human.id
+            assert dog.owner.id == human.id
+
+            dog.owner = None
+            assert dog.owner is None
+            assert dog.owner_id is None
+
+        def test_reference_reset_shadow_field_to_None(self):
+            """Test that the reference field and shadow attribute are reset together"""
+            human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+            assert dog.owner_id == human.id
+            assert dog.owner.id == human.id
+
+            dog.owner_id = None
+            assert dog.owner is None
+            assert dog.owner_id is None
+
+        def test_reference_reset_association_by_del(self):
+            """Test that the reference field and shadow attribute are reset together"""
+            human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+            assert dog.owner_id == human.id
+            assert dog.owner.id == human.id
+
+            del dog.owner
+            assert dog.owner is None
+            assert dog.owner_id is None
+
+        def test_reference_reset_shadow_field_by_del(self):
+            """Test that the reference field and shadow attribute are reset together"""
+            human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+            assert dog.owner_id == human.id
+            assert dog.owner.id == human.id
+
+            del dog.owner_id
+            assert dog.owner is None
+            assert dog.owner_id is None
+
+        def test_via(self):
+            """Test successful save with an entity linked by via"""
+            human = Human.create(first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = DogRelatedByEmail.create(id=1, name='John Doe', age=10, owner=human)
+            assert hasattr(dog, 'owner_email')
+            assert dog.owner_email == human.email
+
+        def test_via_with_shadow_attribute_assign(self):
+            """Test successful save with an entity linked by via"""
+            human = Human.create(first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = DogRelatedByEmail(id=1, name='John Doe', age=10)
+            dog.owner_email = human.email
+            dog.save()
+            assert hasattr(dog, 'owner_email')
+            assert dog.owner_email == human.email
