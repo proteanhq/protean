@@ -48,11 +48,11 @@ class EntityBase(type):
         # Load declared fields from Base class, in case this Entity is subclassing another
         new_class._load_base_class_fields(bases, attrs)
 
-        # Set up Relation Fields
-        new_class._set_up_reference_fields()
-
         # Lookup an already defined ID field or create an `Auto` field
         new_class._set_id_field()
+
+        # Set up Relation Fields
+        new_class._set_up_reference_fields()
 
         # Load list of Attributes from declared fields, depending on type of fields
         new_class._load_attributes()

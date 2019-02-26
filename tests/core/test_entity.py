@@ -3,7 +3,7 @@
 from collections import OrderedDict
 
 import pytest
-from tests.support.dog import (Dog, RelatedDog, DogRelatedByEmail,
+from tests.support.dog import (Dog, RelatedDog, RelatedDog2, DogRelatedByEmail,
                                HasOneDog1, HasOneDog2, HasOneDog3)
 from tests.support.human import Human, HasOneHuman1, HasOneHuman2, HasOneHuman3
 
@@ -1233,6 +1233,13 @@ class TestAssociations:
             human = Human.create(first_name='Jeff', last_name='Kennedy',
                                  email='jeff.kennedy@presidents.com')
             dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+            assert dog.owner == human
+
+        def test_init_with_string_reference(self):
+            """Test successful RelatedDog initialization"""
+            human = Human.create(first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog2(id=1, name='John Doe', age=10, owner=human)
             assert dog.owner == human
 
         def test_save(self):

@@ -39,6 +39,24 @@ class RelatedDogModel(DictModel):
         model_name = 'related_dogs'
 
 
+class RelatedDog2(Entity):
+    """This is a dummy RelatedDog2 Entity class with reference definition
+       containing the target class name as string
+    """
+    name = field.String(required=True, unique=True, max_length=50)
+    age = field.Integer(default=5)
+    owner = field.Reference('Human')
+
+
+class RelatedDog2Model(DictModel):
+    """ Model for the RelatedDog2 Entity"""
+
+    class Meta:
+        """ Meta class for model options"""
+        entity = RelatedDog2
+        model_name = 'related_dogs2'
+
+
 class DogRelatedByEmail(Entity):
     """This is a dummy Dog Entity class with an association"""
     name = field.String(required=True, unique=True, max_length=50)

@@ -60,12 +60,10 @@ class Reference(FieldCacheMixin, Field):
     """
 
     def __init__(self, to_cls, via=None, **kwargs):
+        # FIXME ensure `via` argument is of type `str`
         super().__init__(**kwargs)
         self.to_cls = to_cls
         self.via = via
-
-        # Choose the Linkage attribute between `via` and `id`
-        self.linked_attribute = self.via or 'id'
 
         self.relation = ReferenceField(self)
 
@@ -78,8 +76,49 @@ class Reference(FieldCacheMixin, Field):
         Primarily used during Entity initialization to register shadow field"""
         return (self.attribute_name, self.relation)
 
+    @property
+    def linked_attribute(self):
+        """Choose the Linkage attribute between `via` and designated `id_field` of the target class
+
+        This method is initially called from `__set_name__()` -> `get_attribute_name()`
+        at which point, the `to_cls` has not been initialized properly. We simply default
+        the linked attribute to 'id' in that case.
+
+        Eventually, when setting value the first time, the `to_cls` entity is initialized
+        and the attribute name is reset correctly.
+        """
+        if isinstance(self.to_cls, str):
+            return 'id'
+        else:
+            return self.via or self.to_cls.id_field.attribute_name
+
+    def _fetch_to_cls_from_registry(self, entity):
+        """Private Method to fetch an Entity class from an entity's name
+
+           FIXME Move this method into utils
+        """
+        # Defensive check to ensure we only process if `to_cls` is a string
+        if isinstance(entity, str):
+            from protean.core.repository import repo_factory  # FIXME Move to a better placement
+
+            try:
+                return repo_factory.get_entity(self.to_cls)
+            except AssertionError:
+                # Entity has not been registered (yet)
+                # FIXME print a helpful debug message
+                raise
+        else:
+            return self.to_cls
+
     def __set__(self, instance, value):
         """Override `__set__` to coordinate between relation field and its shadow attribute"""
+        if isinstance(self.to_cls, str):
+            self.to_cls = self._fetch_to_cls_from_registry(self.to_cls)
+
+            # Refresh attribute name, now that we know `to_cls` Entity and it has been
+            #   initialized with `id_field`
+            self.attribute_name = self.get_attribute_name()
+
         value = self._load(value)
 
         if value:
@@ -140,10 +179,16 @@ class HasOne(FieldCacheMixin, Field):
         return value
 
     def _linked_attribute(self, owner):
-        """Choose the Linkage attribute between `via` and own `id_field`"""
+        """Choose the Linkage attribute between `via` and own entity's `id_field`
+
+           FIXME Explore converting this method into an attribute, and treating it
+           uniformly at `association` level.
+        """
         return self.via or (inflection.underscore(owner.__name__) + '_id')
 
     def _fetch_to_cls_from_registry(self, entity):
+        """Private Method to fetch an Entity class from an entity's name"""
+        # Defensive check to ensure we only process if `to_cls` is a string
         if isinstance(entity, str):
             from protean.core.repository import repo_factory  # FIXME Move to a better placement
 
@@ -158,6 +203,9 @@ class HasOne(FieldCacheMixin, Field):
 
     def __get__(self, instance, owner):
         """Retrieve associated objects"""
+
+        # If `to_cls` was specified as a string, take this opportunity to fetch
+        #   and update the correct entity class against it, if not already done
         if isinstance(self.to_cls, str):
             self.to_cls = self._fetch_to_cls_from_registry(self.to_cls)
 

@@ -76,6 +76,9 @@ class Field(metaclass=ABCMeta):
         # Value holder
         self._value = value
 
+        # Hold a reference to Entity registering the field
+        self._entity_cls = None
+
         # These are set up when the owner (Entity class) adds the field to itself
         self.field_name = None
         self.attribute_name = None
@@ -90,6 +93,9 @@ class Field(metaclass=ABCMeta):
     def __set_name__(self, entity_cls, name):
         self.field_name = name
         self.attribute_name = self.get_attribute_name()
+
+        # Record Entity setting up the field
+        self._entity_cls = entity_cls
 
         # `self.label` should default to being based on the field name.
         if self.label is None:
