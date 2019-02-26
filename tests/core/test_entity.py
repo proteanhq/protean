@@ -1,13 +1,14 @@
 """Tests for Entity Functionality and Base Classes"""
 
 import pytest
-from tests.support.dog import Dog, RelatedDog, DogRelatedByEmail
-from tests.support.human import Human
+from tests.support.dog import (Dog, RelatedDog, DogRelatedByEmail,
+                               HasOneDog1, HasOneDog2, HasOneDog3)
+from tests.support.human import Human, HasOneHuman1, HasOneHuman2
 
 from protean.core import field
 from protean.core.entity import Entity, QuerySet
 from protean.core.exceptions import ObjectNotFoundError
-from protean.core.exceptions import ValidationError, ValueError
+from protean.core.exceptions import ValidationError
 from protean.utils.query import Q
 
 
@@ -1327,3 +1328,15 @@ class TestAssociations:
             dog.save()
             assert hasattr(dog, 'owner_email')
             assert dog.owner_email == human.email
+
+    class TestHasOne:
+        """Class to test HasOne Association"""
+
+        def test_init(self):
+            """Test successful HasOne initialization"""
+            human = HasOneHuman1.create(
+                first_name='Jeff', last_name='Kennedy',
+                email='jeff.kennedy@presidents.com')
+            dog = HasOneDog1.create(id=1, name='John Doe', age=10, has_one_human1=human)
+            assert dog.has_one_human1 == human
+            assert human.dog == dog

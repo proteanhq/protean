@@ -1,6 +1,6 @@
 """Support Classes for Test Cases"""
 
-from tests.support.human import Human
+from tests.support.human import Human, HasOneHuman1, HasOneHuman2
 
 from protean.core import field
 from protean.core.entity import Entity
@@ -53,3 +53,51 @@ class DogRelatedByEmailModel(DictModel):
         """ Meta class for model options"""
         entity = DogRelatedByEmail
         model_name = 'related_dogs_by_email'
+
+
+class HasOneDog1(Entity):
+    """This is a dummy Dog Entity class to test HasOne Association"""
+    name = field.String(required=True, unique=True, max_length=50)
+    age = field.Integer(default=5)
+    has_one_human1 = field.Reference(HasOneHuman1)
+
+
+class HasOneDog1Model(DictModel):
+    """ Model for the HasOneDog1 Entity"""
+
+    class Meta:
+        """ Meta class for model options"""
+        entity = HasOneDog1
+        model_name = 'has_one_dogs1'
+
+
+class HasOneDog2(Entity):
+    """This is a dummy Dog Entity class to test HasOne Association"""
+    name = field.String(required=True, unique=True, max_length=50)
+    age = field.Integer(default=5)
+    human = field.Reference(HasOneHuman2)
+
+
+class HasOneDog2Model(DictModel):
+    """ Model for the HasOneDog2 Entity"""
+
+    class Meta:
+        """ Meta class for model options"""
+        entity = HasOneDog2
+        model_name = 'has_one_dogs2'
+
+
+class HasOneDog3(Entity):
+    """This is a dummy Dog Entity class to test HasOne Association"""
+    name = field.String(required=True, unique=True, max_length=50)
+    age = field.Integer(default=5)
+    human_id = field.Integer()
+
+
+class HasOneDog3Model(DictModel):
+    """ Model for the HasOneDog3 Entity"""
+
+    class Meta:
+        """ Meta class for model options"""
+        entity = HasOneDog3
+        model_name = 'has_one_dogs3'

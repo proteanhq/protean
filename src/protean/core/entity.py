@@ -6,6 +6,7 @@ from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.field import Auto
 from protean.core.field import Field, Reference
+from protean.core.field.association import HasOne
 from protean.utils.generic import classproperty
 from protean.utils.query import Q
 
@@ -81,7 +82,7 @@ class EntityBase(type):
         is set up in this method, while `parent_id` is set up in `_set_up_reference_fields()`.
         """
         for attr_name, attr_obj in attrs.items():
-            if isinstance(attr_obj, (Field, Reference)):
+            if isinstance(attr_obj, (Field, Reference)) and not isinstance(attr_obj, HasOne):
                 setattr(new_class, attr_name, attr_obj)
                 new_class._meta.declared_fields[attr_name] = attr_obj
 
@@ -458,7 +459,7 @@ class Entity(metaclass=EntityBase):
         # Now load the remaining fields with a None value, which will fail
         # for required fields
         for field_name, field_obj in self._meta.declared_fields.items():
-            if field_name not in loaded_fields:
+            if field_name not in loaded_fields and not isinstance(field_obj, HasOne):
                 # Check that the field is not set already, which would happen if we are
                 #   dealing with reference fields
                 if getattr(self, field_name, None) is None:
