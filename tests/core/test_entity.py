@@ -1,5 +1,7 @@
 """Tests for Entity Functionality and Base Classes"""
 
+from collections import OrderedDict
+
 import pytest
 from tests.support.dog import (Dog, RelatedDog, DogRelatedByEmail,
                                HasOneDog1, HasOneDog2, HasOneDog3)
@@ -496,6 +498,40 @@ class TestEntity:
         # Filter by the Owner
         query = Dog.query.filter(owner='John')
         assert isinstance(query, QuerySet)
+
+
+class TestEntityMetaAttributes:
+    """Class that holds testcases for Entity's meta attributes"""
+
+    def test_meta_on_init(self):
+        """Test that `meta` attribute is available after initialization"""
+        dog = Dog(id=1, name='John Doe', age=10, owner='Jimmy')
+        assert hasattr(dog, '_meta')
+
+    def test_declared_fields_normal(self):
+        """Test declared fields on an entity without references"""
+        dog = Dog(id=1, name='John Doe', age=10, owner='Jimmy')
+
+        attribute_keys = list(OrderedDict(sorted(dog.attributes.items())).keys())
+        assert attribute_keys == ['age', 'id', 'name', 'owner']
+
+    def test_declared_fields_with_reference(self):
+        """Test declared fields on an entity with references"""
+        human = Human.create(first_name='Jeff', last_name='Kennedy',
+                             email='jeff.kennedy@presidents.com')
+        dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
+
+        attribute_keys = list(OrderedDict(sorted(dog.attributes.items())).keys())
+        assert attribute_keys == ['age', 'id', 'name', 'owner_id']
+
+    def test_declared_fields_with_hasone_association(self):
+        """Test declared fields on an entity with a HasOne association"""
+        human = HasOneHuman1.create(first_name='Jeff', last_name='Kennedy',
+                                    email='jeff.kennedy@presidents.com')
+        dog = HasOneDog1.create(id=1, name='John Doe', age=10, has_one_human1=human)
+
+        assert all(key in dog.attributes for key in ['age', 'has_one_human1_id', 'id', 'name'])
+        assert all(key in human.attributes for key in ['first_name', 'id', 'last_name', 'email'])
 
 
 class TestQuerySet:
@@ -1337,6 +1373,6 @@ class TestAssociations:
             human = HasOneHuman1.create(
                 first_name='Jeff', last_name='Kennedy',
                 email='jeff.kennedy@presidents.com')
-            dog = HasOneDog1.create(id=1, name='John Doe', age=10, has_one_human1=human)
+            dog = HasOneDog1.create(id=101, name='John Doe', age=10, has_one_human1=human)
             assert dog.has_one_human1 == human
-            assert human.dog == dog
+            assert human.dog.id == dog.id

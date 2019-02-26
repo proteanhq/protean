@@ -298,7 +298,7 @@ class DictModel(BaseModel):
     def from_entity(cls, entity):
         """ Convert the entity to a dictionary record """
         dict_obj = {}
-        for field_name in entity.__class__.declared_fields:
+        for field_name in entity.__class__.attributes:
             dict_obj[field_name] = getattr(entity, field_name)
         return dict_obj
 

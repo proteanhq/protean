@@ -166,6 +166,7 @@ class HasOne(FieldCacheMixin, Field):
         reference_obj = self.to_cls.find_by(**{self._linked_attribute(owner): id_value})
         if reference_obj:
             self.value = reference_obj
+            return reference_obj
         else:
             # No Objects were found in the remote entity with this Entity's ID
-            pass
+            return None
