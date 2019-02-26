@@ -1,11 +1,10 @@
 from .base import Field
-from .basic import Integer
 from .mixins import FieldCacheMixin
 
 from protean.core import exceptions
 
 
-class ReferenceField(Integer):  # FIXME Can be either Int or Str - should allow in future
+class ReferenceField(Field):
     """Shadow Attribute Field to back References"""
 
     def __init__(self, reference, **kwargs):
@@ -21,7 +20,8 @@ class ReferenceField(Integer):  # FIXME Can be either Int or Str - should allow 
             instance.__dict__[self.field_name] = value
 
             # Fetch target object and refresh the reference field value
-            reference_obj = self.reference.to_cls.get(value)
+            reference_obj = self.reference.to_cls.find_by(
+                **{self.reference.linked_attribute: value})
             if reference_obj:
                 self.reference.value = reference_obj
                 instance.__dict__[self.reference.field_name] = reference_obj
@@ -36,12 +36,18 @@ class ReferenceField(Integer):  # FIXME Can be either Int or Str - should allow 
     def __delete__(self, instance):
         self._reset_values(instance)
 
+    def _cast_to_type(self, value):
+        """Verify type of value assigned to the shadow field"""
+        # FIXME Verify that the value being assigned is compatible with the remote field
+        return value
+
     def _reset_values(self, instance):
         """Reset all associated values and clean up dictionary items"""
         instance.__dict__.pop(self.field_name)
         instance.__dict__.pop(self.reference.field_name)
         self.reference.value = None
         self.value = None
+
 
 class Reference(FieldCacheMixin, Field):
     """
@@ -57,11 +63,14 @@ class Reference(FieldCacheMixin, Field):
         self.to_cls = to_cls
         self.via = via
 
+        # Choose the Linkage attribute between `via` and `id`
+        self.linked_attribute = self.via or 'id'
+
         self.relation = ReferenceField(self)
 
     def get_attribute_name(self):
-        """Return attribute name suffixed with `_id`"""
-        return self.field_name + "_id"
+        """Return attribute name suffixed with via if defined, or `_id`"""
+        return '{}_{}'.format(self.field_name, self.linked_attribute)
 
     def get_shadow_field(self):
         """Return shadow field
@@ -81,7 +90,7 @@ class Reference(FieldCacheMixin, Field):
             else:
                 self.relation.value = value.id
                 instance.__dict__[self.field_name] = value
-                instance.__dict__[self.attribute_name] = value.id
+                instance.__dict__[self.attribute_name] = getattr(value, self.linked_attribute)
         else:
             self._reset_values(instance)
 

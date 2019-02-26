@@ -1,7 +1,7 @@
 """Tests for Entity Functionality and Base Classes"""
 
 import pytest
-from tests.support.dog import Dog, RelatedDog
+from tests.support.dog import Dog, RelatedDog, DogRelatedByEmail
 from tests.support.human import Human
 
 from protean.core import field
@@ -1309,3 +1309,21 @@ class TestAssociations:
             del dog.owner_id
             assert dog.owner is None
             assert dog.owner_id is None
+
+        def test_via(self):
+            """Test successful save with an entity linked by via"""
+            human = Human.create(first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = DogRelatedByEmail.create(id=1, name='John Doe', age=10, owner=human)
+            assert hasattr(dog, 'owner_email')
+            assert dog.owner_email == human.email
+
+        def test_via_with_shadow_attribute_assign(self):
+            """Test successful save with an entity linked by via"""
+            human = Human.create(first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = DogRelatedByEmail(id=1, name='John Doe', age=10)
+            dog.owner_email = human.email
+            dog.save()
+            assert hasattr(dog, 'owner_email')
+            assert dog.owner_email == human.email
