@@ -102,6 +102,9 @@ class Field(metaclass=ABCMeta):
         value = self._load(value)
         instance.__dict__[self.field_name] = value
 
+        # Mark Entity as Dirty
+        instance._state.mark_changed()
+
     def __delete__(self, instance):
         instance.__dict__.pop(self.field_name, None)
 
