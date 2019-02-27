@@ -23,18 +23,6 @@ class ReferenceField(Field):
 
         if value:
             instance.__dict__[self.field_name] = value
-
-            # Fetch target object and refresh the reference field value
-            reference_obj = self.reference.to_cls.find_by(
-                **{self.reference.linked_attribute: value})
-            if reference_obj:
-                self.reference.value = reference_obj
-                instance.__dict__[self.reference.field_name] = reference_obj
-            else:
-                # Object was not found in the database
-                raise exceptions.ValueError(
-                    "Target Object not found",
-                    self.reference.field_name)
         else:
             self._reset_values(instance)
 
@@ -49,10 +37,11 @@ class ReferenceField(Field):
 
     def _reset_values(self, instance):
         """Reset all associated values and clean up dictionary items"""
-        instance.__dict__.pop(self.field_name)
-        instance.__dict__.pop(self.reference.field_name)
-        self.reference.value = None
         self.value = None
+        self.reference.value = None
+        instance.__dict__.pop(self.field_name, None)
+        instance.__dict__.pop(self.reference.field_name, None)
+        self.reference.delete_cached_value(instance)
 
 
 class Reference(FieldCacheMixin, Field):
@@ -80,6 +69,9 @@ class Reference(FieldCacheMixin, Field):
         """Return shadow field
         Primarily used during Entity initialization to register shadow field"""
         return (self.attribute_name, self.relation)
+
+    def get_cache_name(self):
+        return self.field_name
 
     @property
     def linked_attribute(self):
@@ -115,8 +107,11 @@ class Reference(FieldCacheMixin, Field):
         else:
             return self.to_cls
 
-    def __set__(self, instance, value):
-        """Override `__set__` to coordinate between relation field and its shadow attribute"""
+    def __get__(self, instance, owner):
+        """Retrieve associated objects"""
+
+        # If `to_cls` was specified as a string, take this opportunity to fetch
+        #   and update the correct entity class against it, if not already done
         if isinstance(self.to_cls, str):
             self.to_cls = self._fetch_to_cls_from_registry(self.to_cls)
 
@@ -124,30 +119,66 @@ class Reference(FieldCacheMixin, Field):
             #   initialized with `id_field`
             self.attribute_name = self.get_attribute_name()
 
-        value = self._load(value)
+        reference_obj = None
+        if hasattr(instance, '_state'):
+            try:
+                reference_obj = self.get_cached_value(instance)
+            except KeyError:
+                # Fetch target object by own Identifier
+                id_value = getattr(instance, self.get_attribute_name())
+                if id_value:
+                    reference_obj = self._fetch_objects(self.linked_attribute, id_value)
+                    if reference_obj:
+                        self.value = reference_obj
+                        instance.__dict__[self.field_name] = reference_obj
+                        self.set_cached_value(instance, reference_obj)
+                    else:
+                        # No Objects were found in the remote entity with this Entity's ID
+                        pass
 
+        return reference_obj
+
+    def _fetch_objects(self, key, value):
+        """Fetch Multiple linked objects"""
+        return self.to_cls.find_by(**{key: value})
+
+    def __set__(self, instance, value):
+        """Override `__set__` to coordinate between relation field and its shadow attribute"""
         if value:
-            # Check if the reference object has been saved. Otherwise, throw ValueError
-            if value.id is None:  # FIXME not a comprehensive check. Should refer to state
-                raise ValueError(
-                    "Target Object must be saved before being referenced",
-                    self.field_name)
-            else:
-                self.relation.value = value.id
-                instance.__dict__[self.field_name] = value
-                instance.__dict__[self.attribute_name] = getattr(value, self.linked_attribute)
+            if isinstance(self.to_cls, str):
+                self.to_cls = self._fetch_to_cls_from_registry(self.to_cls)
+
+                # Refresh attribute name, now that we know `to_cls` Entity and it has been
+                #   initialized with `id_field`
+                self.attribute_name = self.get_attribute_name()
+
+            value = self._load(value)
+
+            if value:
+                # Check if the reference object has been saved. Otherwise, throw ValueError
+                if value.id is None:  # FIXME not a comprehensive check. Should refer to state
+                    raise ValueError(
+                        "Target Object must be saved before being referenced",
+                        self.field_name)
+                else:
+                    self.value = value
+                    self.relation.value = getattr(value, self.linked_attribute)
+                    instance.__dict__[self.field_name] = value
+                    instance.__dict__[self.attribute_name] = getattr(value, self.linked_attribute)
+                    self.set_cached_value(instance, value)
         else:
-            self._reset_values(instance)
+            self.value = None
+            self.relation.value = None
+            instance.__dict__.pop(self.field_name, None)
+            instance.__dict__.pop(self.attribute_name, None)
+            self.delete_cached_value(instance)
 
     def __delete__(self, instance):
-        self._reset_values(instance)
-
-    def _reset_values(self, instance):
-        """Reset all associated values and clean up dictionary items"""
         self.value = None
         self.relation.value = None
         instance.__dict__.pop(self.field_name, None)
         instance.__dict__.pop(self.attribute_name, None)
+        self.delete_cached_value(instance)
 
     def _cast_to_type(self, value):
         if not isinstance(value, self.to_cls):
@@ -208,6 +239,7 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
             reference_obj = self._fetch_objects(self._linked_attribute(owner), id_value)
             if reference_obj:
                 self.value = reference_obj
+                instance.__dict__[self.field_name] = reference_obj
                 self.set_cached_value(instance, reference_obj)
             else:
                 # No Objects were found in the remote entity with this Entity's ID

@@ -92,7 +92,10 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
         self.error_messages = messages
 
     def __get__(self, instance, owner):
-        return instance.__dict__.get(self.field_name, self.value)
+        if hasattr(instance, '__dict__'):
+            return instance.__dict__.get(self.field_name, self.value)
+        else:
+            return None
 
     def __set__(self, instance, value):
         value = self._load(value)

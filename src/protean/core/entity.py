@@ -6,7 +6,7 @@ from typing import Any, Union
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.field import Auto
-from protean.core.field import Field, Reference
+from protean.core.field import Field, Reference, ReferenceField
 from protean.utils.generic import classproperty
 from protean.utils.query import Q
 
@@ -497,9 +497,7 @@ class Entity(metaclass=EntityBase):
         # for required fields
         for field_name, field_obj in self._meta.declared_fields.items():
             if field_name not in loaded_fields:
-                # Check that the field is not set already, which would happen if we are
-                #   dealing with reference fields
-                if getattr(self, field_name, None) is None:
+                if not isinstance(field_obj, (Reference, ReferenceField)):
                     setattr(self, field_name, None)
 
         # Raise any errors found during load
