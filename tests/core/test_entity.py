@@ -2,6 +2,7 @@
 
 from collections import OrderedDict
 
+import mock
 import pytest
 from tests.support.dog import (Dog, RelatedDog, RelatedDog2, DogRelatedByEmail,
                                HasOneDog1, HasOneDog2, HasOneDog3)
@@ -1241,6 +1242,7 @@ class TestAssociations:
                                  email='jeff.kennedy@presidents.com')
             dog = RelatedDog2(id=1, name='John Doe', age=10, owner=human)
             assert dog.owner == human
+            assert not hasattr(human, 'dog')  # Reverse linkages are not provided by default
 
         def test_save(self):
             """Test successful RelatedDog save"""
@@ -1372,6 +1374,17 @@ class TestAssociations:
             assert hasattr(dog, 'owner_email')
             assert dog.owner_email == human.email
 
+        @mock.patch('protean.core.entity.Entity.find_by')
+        def test_caching(self, find_by_mock):
+            """Test that subsequent accesses after first retrieval don't fetch record again"""
+            human = Human.create(first_name='Jeff', last_name='Kennedy',
+                                 email='jeff.kennedy@presidents.com')
+            dog = RelatedDog(id=1, name='John Doe', age=10, owner_id=human.id)
+
+            for _ in range(3):
+                getattr(dog, 'owner')
+            assert find_by_mock.call_count == 1
+
     class TestHasOne:
         """Class to test HasOne Association"""
 
@@ -1402,3 +1415,15 @@ class TestAssociations:
             assert dog.human_id == human.id
             assert not hasattr(dog, 'human')
             assert human.dog.id == dog.id
+
+        @mock.patch('protean.core.entity.Entity.find_by')
+        def test_caching(self, find_by_mock):
+            """Test that subsequent accesses after first retrieval don't fetch record again"""
+            human = HasOneHuman3.create(
+                first_name='Jeff', last_name='Kennedy',
+                email='jeff.kennedy@presidents.com')
+            HasOneDog3.create(id=101, name='John Doe', age=10, human_id=human.id)
+
+            for _ in range(3):
+                getattr(human, 'dog')
+            assert find_by_mock.call_count == 1

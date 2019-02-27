@@ -14,7 +14,9 @@ class ReferenceField(Field):
         super().__init__(**kwargs)
 
     def __set__(self, instance, value):
-        """Override `__set__` to update relation field"""
+        """Override `__set__` to update relation field and keep it in sync with the shadow
+           attribute's value
+        """
         value = self._load(value)
 
         if value:
@@ -35,6 +37,7 @@ class ReferenceField(Field):
             self._reset_values(instance)
 
     def __delete__(self, instance):
+        """Nullify values and linkages"""
         self._reset_values(instance)
 
     def _cast_to_type(self, value):
@@ -149,9 +152,6 @@ class Reference(FieldCacheMixin, Field):
             self.fail('invalid', value=value)
         return value
 
-    def get_cache_name(self):
-        return self.name
-
 
 class HasOne(FieldCacheMixin, Field):
     """
@@ -165,13 +165,6 @@ class HasOne(FieldCacheMixin, Field):
         super().__init__(**kwargs)
         self.to_cls = to_cls
         self.via = via
-
-    def __set__(self, instance, value):
-        """Cannot set values through the HasOne association"""
-        raise exceptions.NotSupportedError(
-            "Object does not support the operation being performed",
-            self.field_name
-        )
 
     def _cast_to_type(self, value):
         """Verify type of value assigned to the association field"""
@@ -209,12 +202,34 @@ class HasOne(FieldCacheMixin, Field):
         if isinstance(self.to_cls, str):
             self.to_cls = self._fetch_to_cls_from_registry(self.to_cls)
 
-        # Fetch target object by own Identifier
-        id_value = getattr(instance, instance.id_field.field_name)
-        reference_obj = self.to_cls.find_by(**{self._linked_attribute(owner): id_value})
-        if reference_obj:
-            self.value = reference_obj
-            return reference_obj
-        else:
-            # No Objects were found in the remote entity with this Entity's ID
-            return None
+        try:
+            reference_obj = self.get_cached_value(instance)
+        except KeyError:
+            # Fetch target object by own Identifier
+            id_value = getattr(instance, instance.id_field.field_name)
+            reference_obj = self.to_cls.find_by(**{self._linked_attribute(owner): id_value})
+            if reference_obj:
+                self.value = reference_obj
+                self.set_cached_value(instance, reference_obj)
+            else:
+                # No Objects were found in the remote entity with this Entity's ID
+                reference_obj = None
+
+        return reference_obj
+
+    def __set__(self, instance, value):
+        """Cannot set values through the HasOne association"""
+        raise exceptions.NotSupportedError(
+            "Object does not support the operation being performed",
+            self.field_name
+        )
+
+    def __delete__(self, instance):
+        """Cannot pop values for a HasOne association"""
+        raise exceptions.NotSupportedError(
+            "Object does not support the operation being performed",
+            self.field_name
+        )
+
+    def get_cache_name(self):
+        return self.field_name

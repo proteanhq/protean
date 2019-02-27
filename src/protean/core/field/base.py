@@ -222,3 +222,6 @@ class Field(metaclass=ABCMeta):
         self._run_validators(value)
 
         return value
+
+    def get_cache_name(self):
+        return self.field_name
