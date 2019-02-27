@@ -1,7 +1,7 @@
 from abc import abstractmethod
 
 from .base import Field
-from .mixins import FieldCacheMixin
+from .mixins import FieldCacheMixin, FieldDescriptorMixin
 
 from protean.core import exceptions
 from protean.utils import inflection
@@ -155,11 +155,12 @@ class Reference(FieldCacheMixin, Field):
         return value
 
 
-class Association(FieldCacheMixin, Field):
+class Association(FieldDescriptorMixin, FieldCacheMixin):
     """Base class for all association classes"""
 
     def __init__(self, to_cls, via=None, **kwargs):
         super().__init__(**kwargs)
+
         self.to_cls = to_cls
         self.via = via
 
@@ -220,14 +221,14 @@ class Association(FieldCacheMixin, Field):
         raise NotImplementedError
 
     def __set__(self, instance, value):
-        """Cannot set values through the HasOne association"""
+        """Cannot set values through an association"""
         raise exceptions.NotSupportedError(
             "Object does not support the operation being performed",
             self.field_name
         )
 
     def __delete__(self, instance):
-        """Cannot pop values for a HasOne association"""
+        """Cannot pop values for an association"""
         raise exceptions.NotSupportedError(
             "Object does not support the operation being performed",
             self.field_name
