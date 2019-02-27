@@ -129,9 +129,7 @@ class Reference(FieldCacheMixin, Field):
                 if id_value:
                     reference_obj = self._fetch_objects(self.linked_attribute, id_value)
                     if reference_obj:
-                        self.value = reference_obj
-                        instance.__dict__[self.field_name] = reference_obj
-                        self.set_cached_value(instance, reference_obj)
+                        self._set_own_value(instance, reference_obj)
                     else:
                         # No Objects were found in the remote entity with this Entity's ID
                         pass
@@ -161,24 +159,34 @@ class Reference(FieldCacheMixin, Field):
                         "Target Object must be saved before being referenced",
                         self.field_name)
                 else:
-                    self.value = value
-                    self.relation.value = getattr(value, self.linked_attribute)
-                    instance.__dict__[self.field_name] = value
-                    instance.__dict__[self.attribute_name] = getattr(value, self.linked_attribute)
-                    self.set_cached_value(instance, value)
+                    self._set_own_value(instance, value)
+                    self._set_relation_value(instance, getattr(value, self.linked_attribute))
         else:
-            self.value = None
-            self.relation.value = None
+            self._reset_values(instance)
+
+    def _set_own_value(self, instance, value):
+        self.value = value
+        if value is None:
             instance.__dict__.pop(self.field_name, None)
-            instance.__dict__.pop(self.attribute_name, None)
             self.delete_cached_value(instance)
+        else:
+            instance.__dict__[self.field_name] = value
+            self.set_cached_value(instance, value)
+
+    def _set_relation_value(self, instance, value):
+        self.relation.value = value
+        if value is None:
+            instance.__dict__.pop(self.attribute_name, None)
+        else:
+            instance.__dict__[self.attribute_name] = value
 
     def __delete__(self, instance):
-        self.value = None
-        self.relation.value = None
-        instance.__dict__.pop(self.field_name, None)
-        instance.__dict__.pop(self.attribute_name, None)
-        self.delete_cached_value(instance)
+        self._reset_values(instance)
+
+    def _reset_values(self, instance):
+        """Reset all associated values and clean up dictionary items"""
+        self._set_own_value(instance, None)
+        self._set_relation_value(instance, None)
 
     def _cast_to_type(self, value):
         if not isinstance(value, self.to_cls):
@@ -238,14 +246,17 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
             id_value = getattr(instance, instance.id_field.field_name)
             reference_obj = self._fetch_objects(self._linked_attribute(owner), id_value)
             if reference_obj:
-                self.value = reference_obj
-                instance.__dict__[self.field_name] = reference_obj
-                self.set_cached_value(instance, reference_obj)
+                self._set_own_value(instance, reference_obj)
             else:
                 # No Objects were found in the remote entity with this Entity's ID
                 reference_obj = None
 
         return reference_obj
+
+    def _set_own_value(self, instance, value):
+        self.value = value
+        instance.__dict__[self.field_name] = value
+        self.set_cached_value(instance, value)
 
     @abstractmethod
     def _fetch_objects(self, key, value):
