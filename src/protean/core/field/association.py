@@ -4,7 +4,7 @@ from .base import Field
 from .mixins import FieldCacheMixin, FieldDescriptorMixin
 
 from protean.core import exceptions
-from protean.utils import inflection
+from protean import utils
 
 
 class ReferenceField(Field):
@@ -89,31 +89,13 @@ class Reference(FieldCacheMixin, Field):
         else:
             return self.via or self.to_cls.id_field.attribute_name
 
-    def _fetch_to_cls_from_registry(self, entity):
-        """Private Method to fetch an Entity class from an entity's name
-
-           FIXME Move this method into utils
-        """
-        # Defensive check to ensure we only process if `to_cls` is a string
-        if isinstance(entity, str):
-            from protean.core.repository import repo_factory  # FIXME Move to a better placement
-
-            try:
-                return repo_factory.get_entity(self.to_cls)
-            except AssertionError:
-                # Entity has not been registered (yet)
-                # FIXME print a helpful debug message
-                raise
-        else:
-            return self.to_cls
-
     def __get__(self, instance, owner):
         """Retrieve associated objects"""
 
         # If `to_cls` was specified as a string, take this opportunity to fetch
         #   and update the correct entity class against it, if not already done
         if isinstance(self.to_cls, str):
-            self.to_cls = self._fetch_to_cls_from_registry(self.to_cls)
+            self.to_cls = utils.fetch_entity_cls_from_registry(self.to_cls)
 
             # Refresh attribute name, now that we know `to_cls` Entity and it has been
             #   initialized with `id_field`
@@ -144,7 +126,7 @@ class Reference(FieldCacheMixin, Field):
         """Override `__set__` to coordinate between relation field and its shadow attribute"""
         if value:
             if isinstance(self.to_cls, str):
-                self.to_cls = self._fetch_to_cls_from_registry(self.to_cls)
+                self.to_cls = utils.fetch_entity_cls_from_registry(self.to_cls)
 
                 # Refresh attribute name, now that we know `to_cls` Entity and it has been
                 #   initialized with `id_field`
@@ -214,7 +196,7 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
            FIXME Explore converting this method into an attribute, and treating it
            uniformly at `association` level.
         """
-        return self.via or (inflection.underscore(owner.__name__) + '_id')
+        return self.via or (utils.inflection.underscore(owner.__name__) + '_id')
 
     def _fetch_to_cls_from_registry(self, entity):
         """Private Method to fetch an Entity class from an entity's name"""
