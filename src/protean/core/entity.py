@@ -1,4 +1,5 @@
 """Entity Functionality and Classes"""
+import copy
 import logging
 from typing import Any, Union
 
@@ -290,7 +291,9 @@ class QuerySet:
         # Convert the returned results to entity and return it
         entity_items = []
         for item in results.items:
-            entity_items.append(model_cls.to_entity(item))
+            entity = model_cls.to_entity(item)
+            entity._state.mark_retrieved()
+            entity_items.append(entity)
         results.items = entity_items
 
         # Cache results
@@ -393,11 +396,37 @@ class EntityStateFieldsCacheDescriptor:
 class EntityState:
     """Store entity instance state."""
 
-    # If true, uniqueness validation checks will consider this a new, unsaved
-    # object. Necessary for correct validation of new instances of objects with
-    # explicit (non-auto) PKs. This impacts validation only; it has no effect
-    # on the actual save.
-    adding = True
+    def __init__(self):
+        self._new = True
+        self._changed = False
+        self._destroyed = False
+
+    def is_new(self):
+        return self._new
+
+    def is_persisted(self):
+        return not self._new
+
+    def is_changed(self):
+        return self._changed
+
+    def is_destroyed(self):
+        return self._destroyed
+
+    def mark_saved(self):
+        self._new = False
+        self._changed = False
+
+    mark_retrieved = mark_saved  # Alias as placeholder so that future change wont affect interface
+
+    def mark_changed(self):
+        if not (self._new or self._destroyed):
+            self._changed = True
+
+    def mark_destroyed(self):
+        self._destroyed = True
+        self._changed = False
+
     fields_cache = EntityStateFieldsCacheDescriptor()
 
 
@@ -522,6 +551,13 @@ class Entity(metaclass=EntityBase):
 
         return (model_cls, adapter)
 
+    def clone(self):
+        """Deepclone the entity, but reset state"""
+        clone_copy = copy.deepcopy(self)
+        clone_copy._state = EntityState()
+
+        return clone_copy
+
     ################
     # Meta methods #
     ################
@@ -545,6 +581,30 @@ class Entity(metaclass=EntityBase):
     def id_field(cls):
         """Pass through method to retrieve Identifier field defined for entity"""
         return cls._meta.id_field
+
+    #################
+    # State methods #
+    #################
+
+    @property
+    def is_new(self):
+        """Pass through method to check if Entity is not persisted"""
+        return self._state.is_new()
+
+    @property
+    def is_persisted(self):
+        """Pass through method to check if Entity is persisted"""
+        return self._state.is_persisted()
+
+    @property
+    def is_changed(self):
+        """Pass through method to check if Entity has changed since last persistence"""
+        return self._state.is_changed()
+
+    @property
+    def is_destroyed(self):
+        """Pass through method to check if Entity has been destroyed"""
+        return self._state.is_destroyed()
 
     ######################
     # Life-cycle methods #
@@ -620,26 +680,33 @@ class Entity(metaclass=EntityBase):
 
         model_cls, adapter = cls._retrieve_model()
 
-        # Build the entity from the input arguments
-        # Raises validation errors, if any, at this point
-        entity = cls(*args, **kwargs)
+        try:
+            # Build the entity from the input arguments
+            # Raises validation errors, if any, at this point
+            entity = cls(*args, **kwargs)
 
-        # Do unique checks, create this object and return it
-        entity._validate_unique()
+            # Do unique checks, create this object and return it
+            entity._validate_unique()
 
-        # Build the model object and create it
-        model_obj = adapter._create_object(model_cls.from_entity(entity))
+            # Build the model object and create it
+            model_obj = adapter._create_object(model_cls.from_entity(entity))
 
-        # Update the auto fields of the entity
-        for field_name, field_obj in entity._meta.declared_fields.items():
-            if isinstance(field_obj, Auto):
-                if isinstance(model_obj, dict):
-                    field_val = model_obj[field_name]
-                else:
-                    field_val = getattr(model_obj, field_name)
-                setattr(entity, field_name, field_val)
+            # Update the auto fields of the entity
+            for field_name, field_obj in entity._meta.declared_fields.items():
+                if isinstance(field_obj, Auto):
+                    if isinstance(model_obj, dict):
+                        field_val = model_obj[field_name]
+                    else:
+                        field_val = getattr(model_obj, field_name)
+                    setattr(entity, field_name, field_val)
 
-        return entity
+            # Set Entity status to saved
+            entity._state.mark_saved()
+
+            return entity
+        except ValidationError as exc:
+            # FIXME Log Exception
+            raise
 
     def save(self):
         """Save a new Entity into repository.
@@ -647,13 +714,34 @@ class Entity(metaclass=EntityBase):
         Performs unique validations before creating the entity.
         """
         logger.debug(
-            f'Creating new `{self.__class__.__name__}` object')
+            f'Saving `{self.__class__.__name__}` object')
 
-        values = {}
-        for item in self._meta.declared_fields.items():
-            values[item[0]] = getattr(self, item[0])
+        # Fetch Model class and connected-adapter from Repository Factory
+        model_cls, adapter = self.__class__._retrieve_model()
 
-        return self.__class__.create(**values)
+        try:
+            # Do unique checks, update the record and return the Entity
+            self._validate_unique(create=False)
+
+            # Build the model object and create it
+            model_obj = adapter._create_object(model_cls.from_entity(self))
+
+            # Update the auto fields of the entity
+            for field_name, field_obj in self._meta.declared_fields.items():
+                if isinstance(field_obj, Auto):
+                    if isinstance(model_obj, dict):
+                        field_val = model_obj[field_name]
+                    else:
+                        field_val = getattr(model_obj, field_name)
+                    setattr(self, field_name, field_val)
+
+            # Set Entity status to saved
+            self._state.mark_saved()
+
+            return self
+        except Exception as exc:
+            # FIXME Log Exception
+            raise
 
     def update(self, *data, **kwargs) -> 'Entity':
         """Update a Record in the repository.
@@ -674,14 +762,21 @@ class Entity(metaclass=EntityBase):
         # Fetch Model class and connected-adapter from Repository Factory
         model_cls, adapter = self.__class__._retrieve_model()
 
-        # Update entity's data attributes
-        self._update_data(*data, **kwargs)
+        try:
+            # Update entity's data attributes
+            self._update_data(*data, **kwargs)
 
-        # Do unique checks, update the record and return the Entity
-        self._validate_unique(create=False)
-        adapter._update_object(model_cls.from_entity(self))
+            # Do unique checks, update the record and return the Entity
+            self._validate_unique(create=False)
+            adapter._update_object(model_cls.from_entity(self))
 
-        return self
+            # Set Entity status to saved
+            self._state.mark_saved()
+
+            return self
+        except Exception as exc:
+            # FIXME Log Exception
+            raise
 
     def _validate_unique(self, create=True):
         """ Validate the unique constraints for the entity """
@@ -715,9 +810,6 @@ class Entity(metaclass=EntityBase):
 
         Throws ObjectNotFoundError if the object was not found in the repository
         """
-        # FIXME: Return True or False to indicate an object was deleted,
-        #   rather than the count of records deleted
-
         # FIXME: Ensure Adapter throws ObjectNotFoundError
 
         # Fetch Model class and connected-adapter from Repository Factory
@@ -726,4 +818,13 @@ class Entity(metaclass=EntityBase):
         filters = {
             self.__class__._meta.id_field.field_name: self.id
         }
-        return adapter._delete_objects(**filters)
+        try:
+            count_deleted = adapter._delete_objects(**filters)
+
+            # Mark as Destroyed
+            self._state.mark_destroyed()
+
+            return count_deleted
+        except Exception as exc:
+            # FIXME Log Exception
+            raise
