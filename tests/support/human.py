@@ -75,3 +75,58 @@ class HasOneHuman3Model(DictModel):
         """ Meta class for model options"""
         entity = HasOneHuman3
         model_name = 'has_one_humans3'
+
+
+class HasManyHuman1(Entity):
+    """This is a dummy Human Entity class to test HasMany association"""
+    first_name = field.String(required=True, unique=True, max_length=50)
+    last_name = field.String(required=True, unique=True, max_length=50)
+    email = field.String(required=True, unique=True, max_length=50)
+    dogs = association.HasMany('HasManyDog1')
+
+
+class HasManyHuman1Model(DictModel):
+    """ Model for the HasManyHuman1 Entity"""
+
+    class Meta:
+        """ Meta class for model options"""
+        entity = HasManyHuman1
+        model_name = 'has_many_humans1'
+
+
+class HasManyHuman2(Entity):
+    """This is a dummy Human Entity class to test HasMany association
+       with a custom attribute defined in `via` argument to field
+    """
+    first_name = field.String(required=True, unique=True, max_length=50)
+    last_name = field.String(required=True, unique=True, max_length=50)
+    email = field.String(required=True, unique=True, max_length=50)
+    dogs = association.HasMany('HasManyDog2', via='human_id')
+
+
+class HasManyHuman2Model(DictModel):
+    """ Model for the HasManyHuman2 Entity"""
+
+    class Meta:
+        """ Meta class for model options"""
+        entity = HasManyHuman2
+        model_name = 'has_many_humans2'
+
+
+class HasManyHuman3(Entity):
+    """This is a dummy Human Entity class to test HasMany association
+       when there is no corresponding Reference defined in the target class
+    """
+    first_name = field.String(required=True, unique=True, max_length=50)
+    last_name = field.String(required=True, unique=True, max_length=50)
+    email = field.String(required=True, unique=True, max_length=50)
+    dogs = association.HasMany('HasManyDog3', via='human_id')
+
+
+class HasManyHuman3Model(DictModel):
+    """ Model for the HasManyHuman3 Entity"""
+
+    class Meta:
+        """ Meta class for model options"""
+        entity = HasManyHuman3
+        model_name = 'has_many_humans3'

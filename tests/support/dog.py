@@ -1,6 +1,6 @@
 """Support Classes for Test Cases"""
 
-from tests.support.human import Human, HasOneHuman1, HasOneHuman2
+from tests.support.human import Human, HasOneHuman1, HasOneHuman2, HasManyHuman1, HasManyHuman2
 
 from protean.core import field
 from protean.core.entity import Entity
@@ -90,7 +90,9 @@ class HasOneDog1Model(DictModel):
 
 
 class HasOneDog2(Entity):
-    """This is a dummy Dog Entity class to test HasOne Association"""
+    """This is a dummy Dog Entity class to test HasOne Association, where the associated
+       has defined a `via` attribute to finetune linkage
+    """
     name = field.String(required=True, unique=True, max_length=50)
     age = field.Integer(default=5)
     human = field.Reference(HasOneHuman2)
@@ -119,3 +121,53 @@ class HasOneDog3Model(DictModel):
         """ Meta class for model options"""
         entity = HasOneDog3
         model_name = 'has_one_dogs3'
+
+
+class HasManyDog1(Entity):
+    """This is a dummy Dog Entity class to test HasMany Association"""
+    name = field.String(required=True, unique=True, max_length=50)
+    age = field.Integer(default=5)
+    has_many_human1 = field.Reference(HasManyHuman1)
+
+
+class HasManyDog1Model(DictModel):
+    """ Model for the HasManyDog1 Entity"""
+
+    class Meta:
+        """ Meta class for model options"""
+        entity = HasManyDog1
+        model_name = 'has_many_dogs1'
+
+
+class HasManyDog2(Entity):
+    """This is a dummy Dog Entity class to test HasMany Association, where the associated
+       has defined a `via` attribute to finetune linkage
+    """
+    name = field.String(required=True, unique=True, max_length=50)
+    age = field.Integer(default=5)
+    human = field.Reference(HasManyHuman2)
+
+
+class HasManyDog2Model(DictModel):
+    """ Model for the HasManyDog2 Entity"""
+
+    class Meta:
+        """ Meta class for model options"""
+        entity = HasManyDog2
+        model_name = 'has_many_dogs2'
+
+
+class HasManyDog3(Entity):
+    """This is a dummy Dog Entity class to test HasMany Association"""
+    name = field.String(required=True, unique=True, max_length=50)
+    age = field.Integer(default=5)
+    human_id = field.Integer()
+
+
+class HasManyDog3Model(DictModel):
+    """ Model for the HasManyDog3 Entity"""
+
+    class Meta:
+        """ Meta class for model options"""
+        entity = HasManyDog3
+        model_name = 'has_many_dogs3'

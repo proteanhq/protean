@@ -139,7 +139,6 @@ class Field(metaclass=ABCMeta):
             raise AssertionError(msg)
         if isinstance(msg, str):
             msg = msg.format(**kwargs)
-
         raise exceptions.ValidationError(msg, self.field_name)
 
     @property

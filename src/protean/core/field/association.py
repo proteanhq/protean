@@ -233,3 +233,85 @@ class HasOne(FieldCacheMixin, Field):
 
     def get_cache_name(self):
         return self.field_name
+
+
+class HasMany(FieldCacheMixin, Field):
+    """
+    Provide a HasMany relation to a remote entity.
+
+    By default, the query will lookup an attribute of the form `<current_entity>_id`
+    to fetch and populate. This behavior can be changed by using the `via` argument.
+    """
+
+    def __init__(self, to_cls, via=None, **kwargs):
+        super().__init__(**kwargs)
+        self.to_cls = to_cls
+        self.via = via
+
+    def _cast_to_type(self, value):
+        """Verify type of value assigned to the association field"""
+        # FIXME Verify that the value being assigned is compatible with the associated Entity
+        return value
+
+    def _linked_attribute(self, owner):
+        """Choose the Linkage attribute between `via` and own entity's `id_field`
+
+           FIXME Explore converting this method into an attribute, and treating it
+           uniformly at `association` level.
+        """
+        return self.via or (inflection.underscore(owner.__name__) + '_id')
+
+    def _fetch_to_cls_from_registry(self, entity):
+        """Private Method to fetch an Entity class from an entity's name"""
+        # Defensive check to ensure we only process if `to_cls` is a string
+        if isinstance(entity, str):
+            from protean.core.repository import repo_factory  # FIXME Move to a better placement
+
+            try:
+                return repo_factory.get_entity(self.to_cls)
+            except AssertionError:
+                # Entity has not been registered (yet)
+                # FIXME print a helpful debug message
+                raise
+        else:
+            return self.to_cls
+
+    def __get__(self, instance, owner):
+        """Retrieve associated objects"""
+
+        # If `to_cls` was specified as a string, take this opportunity to fetch
+        #   and update the correct entity class against it, if not already done
+        if isinstance(self.to_cls, str):
+            self.to_cls = self._fetch_to_cls_from_registry(self.to_cls)
+
+        try:
+            reference_obj = self.get_cached_value(instance)
+        except KeyError:
+            # Fetch target object by own Identifier
+            id_value = getattr(instance, instance.id_field.field_name)
+            reference_obj = self.to_cls.query.filter(**{self._linked_attribute(owner): id_value})
+            if reference_obj:
+                self.value = reference_obj
+                self.set_cached_value(instance, reference_obj)
+            else:
+                # No Objects were found in the remote entity with this Entity's ID
+                reference_obj = None
+
+        return reference_obj
+
+    def __set__(self, instance, value):
+        """Cannot set values through the HasMany association"""
+        raise exceptions.NotSupportedError(
+            "Object does not support the operation being performed",
+            self.field_name
+        )
+
+    def __delete__(self, instance):
+        """Cannot pop values for a HasMany association"""
+        raise exceptions.NotSupportedError(
+            "Object does not support the operation being performed",
+            self.field_name
+        )
+
+    def get_cache_name(self):
+        return self.field_name

@@ -5,8 +5,11 @@ from collections import OrderedDict
 import mock
 import pytest
 from tests.support.dog import (Dog, RelatedDog, RelatedDog2, DogRelatedByEmail,
-                               HasOneDog1, HasOneDog2, HasOneDog3)
-from tests.support.human import Human, HasOneHuman1, HasOneHuman2, HasOneHuman3
+                               HasOneDog1, HasOneDog2, HasOneDog3,
+                               HasManyDog1, HasManyDog2, HasManyDog3)
+from tests.support.human import (Human, HasOneHuman1, HasOneHuman2, HasOneHuman3,
+                                 HasManyHuman1, HasManyHuman2, HasManyHuman3)
+
 
 from protean.core import field
 from protean.core.entity import Entity, QuerySet
@@ -1427,3 +1430,57 @@ class TestAssociations:
             for _ in range(3):
                 getattr(human, 'dog')
             assert find_by_mock.call_count == 1
+
+    class TestHasMany:
+        """Class to test HasMany Association"""
+
+        def test_init(self):
+            """Test successful HasOne initialization"""
+            human = HasManyHuman1.create(
+                first_name='Jeff', last_name='Kennedy',
+                email='jeff.kennedy@presidents.com')
+            dog1 = HasManyDog1.create(id=101, name='John Doe', age=10, has_many_human1=human)
+            dog2 = HasManyDog1.create(id=102, name='Jane Doe', age=10, has_many_human1=human)
+
+            assert dog1.has_many_human1.id == human.id
+            assert dog2.has_many_human1.id == human.id
+            assert len(human.dogs) == 2
+
+        def test_init_with_via(self):
+            """Test successful HasMany initialization with a class containing via"""
+            human = HasManyHuman2.create(
+                first_name='Jeff', last_name='Kennedy',
+                email='jeff.kennedy@presidents.com')
+            dog1 = HasManyDog2.create(id=101, name='John Doe', age=10, human=human)
+            dog2 = HasManyDog2.create(id=102, name='Jane Doe', age=10, human=human)
+
+            assert dog1.human.id == human.id
+            assert dog2.human.id == human.id
+
+            assert len(human.dogs) == 2
+
+        def test_init_with_no_reference(self):
+            """Test successful HasOne initialization with a class containing via"""
+            human = HasManyHuman3.create(
+                first_name='Jeff', last_name='Kennedy',
+                email='jeff.kennedy@presidents.com')
+            dog1 = HasManyDog3.create(id=101, name='John Doe', age=10, human_id=human.id)
+
+            assert dog1.human_id == human.id
+            assert not hasattr(dog1, 'human')
+
+        @mock.patch('protean.core.entity.QuerySet.filter')
+        @mock.patch('protean.core.entity.Entity.exists')
+        def test_caching(self, exists_mock, filter_mock):
+            """Test that subsequent accesses after first retrieval don't fetch record again"""
+            exists_mock.return_value = False
+            human = HasManyHuman3.create(
+                first_name='Jeff', last_name='Kennedy',
+                email='jeff.kennedy@presidents.com')
+            HasManyDog3.create(id=101, name='John Doe', human_id=human.id)
+            HasManyDog3.create(id=102, name='Jane Doe', human_id=human.id)
+            HasManyDog3.create(id=103, name='Jinny Doe', human_id=human.id)
+
+            for _ in range(3):
+                getattr(human, 'dogs')
+            assert filter_mock.call_count == 1
