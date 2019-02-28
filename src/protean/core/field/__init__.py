@@ -1,6 +1,7 @@
 """Package for defining Field type and its implementations"""
 
-from .association import Reference, ReferenceField
+from .association import Reference
+from .association import ReferenceField
 from .base import Field
 from .basic import Auto
 from .basic import Boolean

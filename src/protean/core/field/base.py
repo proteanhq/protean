@@ -6,9 +6,9 @@ from abc import abstractmethod
 from typing import Any
 from typing import Iterable
 
-from .mixins import FieldDescriptorMixin
-
 from protean.core import exceptions
+
+from .mixins import FieldDescriptorMixin
 
 MISSING_ERROR_MESSAGE = (
     'ValidationError raised by `{class_name}`, but error key `{key}` does '

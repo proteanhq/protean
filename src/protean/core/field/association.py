@@ -1,10 +1,11 @@
 from abc import abstractmethod
 
-from .base import Field
-from .mixins import FieldCacheMixin, FieldDescriptorMixin
-
-from protean.core import exceptions
 from protean import utils
+from protean.core import exceptions
+
+from .base import Field
+from .mixins import FieldCacheMixin
+from .mixins import FieldDescriptorMixin
 
 
 class ReferenceField(Field):
@@ -24,6 +25,7 @@ class ReferenceField(Field):
         if value:
             instance.__dict__[self.field_name] = value
         else:
+            # Important to handle None assignment, and interpret it to mean resetting values
             self._reset_values(instance)
 
     def __delete__(self, instance):

@@ -1,12 +1,15 @@
 """Entity Functionality and Classes"""
 import copy
 import logging
-from typing import Any, Union
+from typing import Any
+from typing import Union
 
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.field import Auto
-from protean.core.field import Field, Reference, ReferenceField
+from protean.core.field import Field
+from protean.core.field import Reference
+from protean.core.field import ReferenceField
 from protean.utils.generic import classproperty
 from protean.utils.query import Q
 

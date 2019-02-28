@@ -1,8 +1,8 @@
 """Human Support Class for Test Cases"""
 
 from protean.core import field
-from protean.core.field import association
 from protean.core.entity import Entity
+from protean.core.field import association
 from protean.impl.repository.dict_repo import DictModel
 
 

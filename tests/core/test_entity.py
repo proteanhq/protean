@@ -4,15 +4,27 @@ from collections import OrderedDict
 
 import mock
 import pytest
-from tests.support.dog import (Dog, RelatedDog, RelatedDog2, DogRelatedByEmail,
-                               HasOneDog1, HasOneDog2, HasOneDog3,
-                               HasManyDog1, HasManyDog2, HasManyDog3)
-from tests.support.human import (Human, HasOneHuman1, HasOneHuman2, HasOneHuman3,
-                                 HasManyHuman1, HasManyHuman2, HasManyHuman3)
-
+from tests.support.dog import Dog
+from tests.support.dog import DogRelatedByEmail
+from tests.support.dog import HasManyDog1
+from tests.support.dog import HasManyDog2
+from tests.support.dog import HasManyDog3
+from tests.support.dog import HasOneDog1
+from tests.support.dog import HasOneDog2
+from tests.support.dog import HasOneDog3
+from tests.support.dog import RelatedDog
+from tests.support.dog import RelatedDog2
+from tests.support.human import HasManyHuman1
+from tests.support.human import HasManyHuman2
+from tests.support.human import HasManyHuman3
+from tests.support.human import HasOneHuman1
+from tests.support.human import HasOneHuman2
+from tests.support.human import HasOneHuman3
+from tests.support.human import Human
 
 from protean.core import field
-from protean.core.entity import Entity, QuerySet
+from protean.core.entity import Entity
+from protean.core.entity import QuerySet
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.utils.query import Q

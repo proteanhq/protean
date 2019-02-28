@@ -1,6 +1,10 @@
 """Support Classes for Test Cases"""
 
-from tests.support.human import Human, HasOneHuman1, HasOneHuman2, HasManyHuman1, HasManyHuman2
+from tests.support.human import HasManyHuman1
+from tests.support.human import HasManyHuman2
+from tests.support.human import HasOneHuman1
+from tests.support.human import HasOneHuman2
+from tests.support.human import Human
 
 from protean.core import field
 from protean.core.entity import Entity
