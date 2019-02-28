@@ -11,8 +11,8 @@ class ObjectNotFoundError(Exception):
     """Object was not found, can raise 404"""
 
 
-class ValueError(Exception):
-    """Object of incorrect type, or with invalid state was assigned"""
+class NotSupportedError(Exception):
+    """Object does not support the operation being performed"""
 
 
 class ValidationError(Exception):

@@ -7,7 +7,6 @@ from threading import Lock
 
 from protean.core.entity import Q
 from protean.core.exceptions import ObjectNotFoundError
-from protean.core.field import Auto
 from protean.core.repository import BaseAdapter
 from protean.core.repository import BaseConnectionHandler
 from protean.core.repository import BaseModel
@@ -298,7 +297,7 @@ class DictModel(BaseModel):
     def from_entity(cls, entity):
         """ Convert the entity to a dictionary record """
         dict_obj = {}
-        for field_name in entity.__class__.declared_fields:
+        for field_name in entity.__class__.attributes:
             dict_obj[field_name] = getattr(entity, field_name)
         return dict_obj
 

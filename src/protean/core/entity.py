@@ -6,7 +6,7 @@ from typing import Any, Union
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.field import Auto
-from protean.core.field import Field, Reference
+from protean.core.field import Field, Reference, ReferenceField
 from protean.utils.generic import classproperty
 from protean.utils.query import Q
 
@@ -48,11 +48,14 @@ class EntityBase(type):
         # Load declared fields from Base class, in case this Entity is subclassing another
         new_class._load_base_class_fields(bases, attrs)
 
+        # Lookup an already defined ID field or create an `Auto` field
+        new_class._set_id_field()
+
         # Set up Relation Fields
         new_class._set_up_reference_fields()
 
-        # Lookup an already defined ID field or create an `Auto` field
-        new_class._set_id_field()
+        # Load list of Attributes from declared fields, depending on type of fields
+        new_class._load_attributes()
 
         # Construct an empty QuerySet associated with this Entity class
         new_class.query = QuerySet(name)
@@ -119,6 +122,11 @@ class EntityBase(type):
         new_class._meta.declared_fields['id'] = id_field
         new_class._meta.id_field = id_field
 
+    def _load_attributes(new_class):
+        """Load list of attributes from declared fields"""
+        for field_name, field_obj in new_class._meta.declared_fields.items():
+            new_class._meta.attributes[field_obj.get_attribute_name()] = field_obj
+
 
 class EntityMeta:
     """ Metadata information for the entity including any options defined."""
@@ -129,6 +137,7 @@ class EntityMeta:
         # Initialize Options
         self.entity_cls = None
         self.declared_fields = {}
+        self.attributes = {}
         self.id_field = None
 
     @property
@@ -488,9 +497,7 @@ class Entity(metaclass=EntityBase):
         # for required fields
         for field_name, field_obj in self._meta.declared_fields.items():
             if field_name not in loaded_fields:
-                # Check that the field is not set already, which would happen if we are
-                #   dealing with reference fields
-                if getattr(self, field_name, None) is None:
+                if not isinstance(field_obj, (Reference, ReferenceField)):
                     setattr(self, field_name, None)
 
         # Raise any errors found during load
@@ -557,6 +564,11 @@ class Entity(metaclass=EntityBase):
     def declared_fields(cls):
         """Pass through method to retrieve declared fields defined for entity"""
         return cls._meta.declared_fields
+
+    @classproperty
+    def attributes(cls):
+        """Pass through method to retrieve attributes defined for entity"""
+        return cls._meta.attributes
 
     @classproperty
     def auto_fields(cls):

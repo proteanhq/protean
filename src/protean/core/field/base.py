@@ -6,6 +6,8 @@ from abc import abstractmethod
 from typing import Any
 from typing import Iterable
 
+from .mixins import FieldDescriptorMixin
+
 from protean.core import exceptions
 
 MISSING_ERROR_MESSAGE = (
@@ -14,7 +16,7 @@ MISSING_ERROR_MESSAGE = (
 )
 
 
-class Field(metaclass=ABCMeta):
+class Field(FieldDescriptorMixin, metaclass=ABCMeta):
     """Abstract field from which other fields should extend.
 
     :param default: If set, this value will be used during entity loading
@@ -50,6 +52,9 @@ class Field(metaclass=ABCMeta):
                  label: str = None, choices: enum.Enum = None,
                  validators: Iterable = (), value=None, error_messages: dict = None):
 
+        # Nothing to be passed into FieldCacheMixin for initialization
+        super().__init__(**{})
+
         self.identifier = identifier
         self.default = default
 
@@ -76,9 +81,8 @@ class Field(metaclass=ABCMeta):
         # Value holder
         self._value = value
 
-        # These are set up when the owner (Entity class) adds the field to itself
-        self.field_name = None
-        self.attribute_name = None
+        # Hold a reference to Entity registering the field
+        self._entity_cls = None
 
         # Collect default error message from self and parent classes
         messages = {}
@@ -87,16 +91,11 @@ class Field(metaclass=ABCMeta):
         messages.update(error_messages or {})
         self.error_messages = messages
 
-    def __set_name__(self, entity_cls, name):
-        self.field_name = name
-        self.attribute_name = self.get_attribute_name()
-
-        # `self.label` should default to being based on the field name.
-        if self.label is None:
-            self.label = self.field_name.replace('_', ' ').capitalize()
-
     def __get__(self, instance, owner):
-        return instance.__dict__.get(self.field_name, self.value)
+        if hasattr(instance, '__dict__'):
+            return instance.__dict__.get(self.field_name, self.value)
+        else:
+            return None
 
     def __set__(self, instance, value):
         value = self._load(value)
@@ -116,14 +115,6 @@ class Field(metaclass=ABCMeta):
     def value(self, value):
         self._value = value if value else None
 
-    def get_attribute_name(self):
-        """Return Attribute name for the attribute.
-
-        Defaults to the field name in this base class, but can be overridden.
-        Handy when defining complex objects with shadow attributes, like Foreign keys.
-        """
-        return self.field_name
-
     def fail(self, key, **kwargs):
         """A helper method that simply raises a `ValidationError`.
         """
@@ -136,7 +127,6 @@ class Field(metaclass=ABCMeta):
             raise AssertionError(msg)
         if isinstance(msg, str):
             msg = msg.format(**kwargs)
-
         raise exceptions.ValidationError(msg, self.field_name)
 
     @property
@@ -219,3 +209,6 @@ class Field(metaclass=ABCMeta):
         self._run_validators(value)
 
         return value
+
+    def get_cache_name(self):
+        return self.field_name

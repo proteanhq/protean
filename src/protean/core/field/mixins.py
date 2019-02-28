@@ -2,7 +2,7 @@ NOT_PROVIDED = object()
 
 
 class FieldCacheMixin:
-    """Provide an API for working with the model's fields value cache."""
+    """Provide an API for working with the entity's fields value cache."""
 
     def get_cache_name(self):
         raise NotImplementedError
@@ -23,4 +23,47 @@ class FieldCacheMixin:
         instance._state.fields_cache[self.get_cache_name()] = value
 
     def delete_cached_value(self, instance):
-        del instance._state.fields_cache[self.get_cache_name()]
+        if self.get_cache_name() in instance._state.fields_cache:
+            del instance._state.fields_cache[self.get_cache_name()]
+
+
+class FieldDescriptorMixin:
+    """Provide basic implementation to treat the Field as a descriptor"""
+
+    def __init__(self, *args, **kwargs):
+        """Initialize common Field Attributes"""
+        # These are set up when the owner (Entity class) adds the field to itself
+        self.field_name = None
+        self.attribute_name = None
+        self.label = None
+
+    def __set_name__(self, entity_cls, name):
+        self.field_name = name
+        self.attribute_name = self.get_attribute_name()
+
+        # Record Entity setting up the field
+        self._entity_cls = entity_cls
+
+        # `self.label` should default to being based on the field name.
+        if self.label is None:
+            self.label = self.field_name.replace('_', ' ').capitalize()
+
+    def get_attribute_name(self):
+        """Return Attribute name for the attribute.
+
+        Defaults to the field name in this base class, but can be overridden.
+        Handy when defining complex objects with shadow attributes, like Foreign keys.
+        """
+        return self.field_name
+
+    def __get__(self, instance, owner):
+        """Placeholder for handling `getattr` operations on attributes"""
+        raise NotImplementedError
+
+    def __set__(self, instance, value):
+        """Placeholder for handling `setattr` operations on attributes"""
+        raise NotImplementedError
+
+    def __delete__(self, instance):
+        """Placeholder for handling `del` operations on attributes"""
+        raise NotImplementedError
