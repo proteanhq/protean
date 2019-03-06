@@ -4,7 +4,6 @@ from abc import ABCMeta
 from abc import abstractmethod
 from typing import Any
 
-from protean.core.entity import Entity
 from protean.core.exceptions import ConfigurationError
 from protean.utils import inflection
 from protean.utils.query import RegisterLookupMixin, Q
@@ -65,6 +64,9 @@ class ModelOptions(object):
 
     def __init__(self, meta, model_cls):
         self.entity_cls = getattr(meta, 'entity', None)
+
+        # Import here to avoid cyclic deps
+        from protean.core.entity import Entity
         if not self.entity_cls or not issubclass(self.entity_cls, Entity):
             raise ConfigurationError(
                 '`entity` option must be set and be a subclass of `Entity`.')
