@@ -10,30 +10,6 @@ os.environ['PROTEAN_CONFIG'] = 'tests.support.sample_config'
 def run_around_tests():
     """Initialize DogModel with Dict Repo"""
     from protean.core.repository import repo_factory
-    from tests.support.dog import (DogModel, RelatedDogModel, DogRelatedByEmailModel,
-                                   HasOneDog1Model, HasOneDog2Model, HasOneDog3Model,
-                                   HasManyDog1Model, HasManyDog2Model, HasManyDog3Model)
-    from tests.support.human import (HumanModel, HasOneHuman1Model,
-                                     HasOneHuman2Model, HasOneHuman3Model,
-                                     HasManyHuman1Model, HasManyHuman2Model,
-                                     HasManyHuman3Model)
-
-    repo_factory.register(DogModel)
-    repo_factory.register(RelatedDogModel)
-    repo_factory.register(DogRelatedByEmailModel)
-    repo_factory.register(HasOneDog1Model)
-    repo_factory.register(HasOneDog2Model)
-    repo_factory.register(HasOneDog3Model)
-    repo_factory.register(HasManyDog1Model)
-    repo_factory.register(HasManyDog2Model)
-    repo_factory.register(HasManyDog3Model)
-    repo_factory.register(HumanModel)
-    repo_factory.register(HasOneHuman1Model)
-    repo_factory.register(HasOneHuman2Model)
-    repo_factory.register(HasOneHuman3Model)
-    repo_factory.register(HasManyHuman1Model)
-    repo_factory.register(HasManyHuman2Model)
-    repo_factory.register(HasManyHuman3Model)
 
     # A test function will be run at this point
     yield

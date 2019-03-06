@@ -10,6 +10,7 @@ from protean.core.field import Auto
 from protean.core.field import Field
 from protean.core.field import Reference
 from protean.core.field import ReferenceField
+from protean.core.repository import repo_factory
 from protean.utils.generic import classproperty
 from protean.utils.query import Q
 
@@ -259,7 +260,7 @@ class QuerySet:
 
     def _retrieve_model(self):
         """Retrieve model details associated with this Entity"""
-        from protean.core.repository import repo_factory  # FIXME Move to a better placement
+          # FIXME Move to a better placement
 
         # Fetch Model class and connected-adapter from Repository Factory
         model_cls = repo_factory.get_model(self._entity_cls_name)

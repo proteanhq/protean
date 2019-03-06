@@ -6,8 +6,6 @@ from threading import local
 from protean.conf import active_config
 from protean.core.exceptions import ConfigurationError
 
-from .base import BaseAdapter
-from .base import BaseModel
 
 logger = logging.getLogger('protean.repository')
 
@@ -54,23 +52,28 @@ class RepositoryFactory:
             self._connections.connections = {}
             return self._connections.connections
 
-    def register(self, model_cls, repo_cls=None):
+    def register(self, model_cls, adapter_cls=None):
         """ Register the given model with the factory
         :param model_cls: class of the model to be registered
-        :param repo_cls: Optional repository class to use if not the
-        `Repository` defined by the provider is userd
+        :param adapter_cls: Optional adapter class to use if not the
+        `Adapter` defined by the provider is user
         """
+        # Import here to avoid cyclic dependency
+        from .base import BaseModel
+        from .base import BaseAdapter
+
         if not issubclass(model_cls, BaseModel):
             raise AssertionError(
                 f'Model {model_cls} must be subclass of `BaseModel`')
 
-        if repo_cls and not issubclass(repo_cls, BaseAdapter):
+        if adapter_cls and not issubclass(adapter_cls, BaseAdapter):
             raise AssertionError(
-                f'Repository {repo_cls} must be subclass of `BaseAdapter`')
+                f'Repository {adapter_cls} must be subclass of `BaseAdapter`')
 
         # Register the model if it does not exist
         model_name = model_cls.__name__
-        entity_name = model_cls.Meta.entity.__name__
+        entity_name = model_cls.opts_.entity_cls.__name__
+
         if not self._registry.get(entity_name):
             # Lookup the connection details for the model
             try:
@@ -91,11 +94,11 @@ class RepositoryFactory:
                     conn_handler.get_connection()
 
             # Finally register the model against the provider repository
-            repo_cls = repo_cls or provider.Adapter
+            adapter_cls = adapter_cls or provider.Adapter
             self._registry[entity_name] = \
-                repo_cls(self.connections[model_cls.opts_.bind], model_cls)
+                adapter_cls(self.connections[model_cls.opts_.bind], model_cls)
             self._model_registry[entity_name] = model_cls
-            self._entity_registry[entity_name] = model_cls.Meta.entity
+            self._entity_registry[entity_name] = model_cls.opts_.entity_cls
             logger.debug(
                 f'Registered model {model_name} for entity {entity_name} with repository provider '
                 f'{conn_info["PROVIDER"]}.')
@@ -105,20 +108,20 @@ class RepositoryFactory:
         try:
             return self._model_registry[entity_name]
         except KeyError:
-            raise AssertionError('No Model registered for {entity_name}'.format(entity_name))
+            raise AssertionError(f'No Model registered for {entity_name}')
 
     def get_entity(self, entity_name):
         """Retrieve Entity class registered by `entity_name`"""
         try:
             return self._entity_registry[entity_name]
         except KeyError:
-            raise AssertionError('No Entity registered with name {entity_name}'.format(entity_name))
+            raise AssertionError(f'No Entity registered with name {entity_name}')
 
     def __getattr__(self, entity_name):
         try:
             return self._registry[entity_name]
         except KeyError:
-            raise AssertionError('No Model registered for {entity_name}'.format(entity_name))
+            raise AssertionError(f'No Model registered for {entity_name}')
 
     def close_connections(self):
         """ Close all connections registered with the repository """

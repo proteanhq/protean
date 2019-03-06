@@ -96,7 +96,8 @@ class Adapter(BaseAdapter):
 
         return input_db
 
-    def _filter_objects(self, criteria: Q, page: int = 1, per_page: int = 10, order_by: list = ()):
+    def _filter_objects(self, criteria: Q, page: int = 1, per_page: int = 10,
+                        order_by: list = ()):
         """ Read the repository and return results as per the filer"""
 
         if criteria.children:
