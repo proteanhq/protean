@@ -7,8 +7,7 @@ from typing import Any
 from protean.core.entity import Entity
 from protean.core.exceptions import ConfigurationError
 from protean.utils import inflection
-from protean.utils.meta import OptionsMeta
-from protean.utils.query import RegisterLookupMixin
+from protean.utils.query import RegisterLookupMixin, Q
 
 from .factory import repo_factory
 from .pagination import Pagination
@@ -41,9 +40,8 @@ class BaseAdapter(RegisterLookupMixin, metaclass=ABCMeta):
         return parts[0], self.get_lookup(op)
 
     @abstractmethod
-    def _filter_objects(self, page: int = 1, per_page: int = 10,
-                        order_by: list = (), excludes_: dict = None,
-                        **filters) -> Pagination:
+    def _filter_objects(self, criteria: Q, page: int = 1, per_page: int = 10,
+                        order_by: list = ()) -> Pagination:
         """
         Filter objects from the repository. Method must return a `Pagination`
         object
