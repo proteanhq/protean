@@ -10,6 +10,7 @@ from protean.utils import inflection
 from protean.utils.meta import OptionsMeta
 from protean.utils.query import RegisterLookupMixin
 
+from .factory import repo_factory
 from .pagination import Pagination
 
 logger = logging.getLogger('protean.repository')
@@ -37,7 +38,7 @@ class BaseAdapter(RegisterLookupMixin, metaclass=ABCMeta):
         op = 'exact' if len(parts) == 1 else parts[1]
 
         # Construct and assign the lookup class as a filter criteria
-        return (parts[0], self.get_lookup(op))
+        return parts[0], self.get_lookup(op)
 
     @abstractmethod
     def _filter_objects(self, page: int = 1, per_page: int = 10,
@@ -82,7 +83,26 @@ class ModelOptions(object):
         self.order_by = getattr(meta, 'order_by', ())
 
 
-class BaseModel(metaclass=OptionsMeta):
+class BaseModelMeta(ABCMeta):
+    """ Metaclass for the BaseModel, sets options and registers the model """
+    def __new__(mcs, name, bases, attrs):
+        klass = super().__new__(mcs, name, bases, attrs)
+
+        # Get the Meta class attribute defined for the base class
+        meta = getattr(klass, 'Meta', None)
+
+        # Load the meta class attributes for non base schemas
+        is_base = getattr(meta, 'base', False)
+        if not is_base:
+            # Set klass.opts by initializing the `options_cls` with the meta
+            klass.opts_ = klass.options_cls(meta, klass)
+            # Register this model with the factory
+            repo_factory.register(klass)
+
+        return klass
+
+
+class BaseModel(metaclass=BaseModelMeta):
     """Model that defines an index/table in the repository"""
     options_cls = ModelOptions
     opts_ = None
