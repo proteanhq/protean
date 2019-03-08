@@ -13,7 +13,7 @@ class String(Field):
         'invalid_type': 'Field value must be of str type.',
     }
 
-    def _cast_to_type(self, value: str):
+    def validate(self, value: str):
         """ Value must me a string type"""
         if type(value) != str:
             self.fail('invalid_type')

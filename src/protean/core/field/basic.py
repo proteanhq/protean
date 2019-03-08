@@ -28,7 +28,7 @@ class String(Field):
         ]
         super().__init__(**kwargs)
 
-    def _cast_to_type(self, value):
+    def validate(self, value):
         """ Convert the value to its string representation"""
         if isinstance(value, str) or value is None:
             return value
@@ -42,7 +42,7 @@ class Text(Field):
         'invalid': '{value}" value must be a string.',
     }
 
-    def _cast_to_type(self, value):
+    def validate(self, value):
         """ Convert the value to its string representation"""
         if isinstance(value, str) or value is None:
             return value
@@ -69,7 +69,7 @@ class Integer(Field):
         ]
         super().__init__(**kwargs)
 
-    def _cast_to_type(self, value):
+    def validate(self, value):
         """ Convert the value to an int and raise error on failures"""
         try:
             return int(value)
@@ -97,7 +97,7 @@ class Float(Field):
         ]
         super().__init__(**kwargs)
 
-    def _cast_to_type(self, value):
+    def validate(self, value):
         """ Convert the value to a float and raise error on failures"""
         try:
             return float(value)
@@ -112,7 +112,7 @@ class Boolean(Field):
         'invalid': '"{value}" value must be either True or False.',
     }
 
-    def _cast_to_type(self, value):
+    def validate(self, value):
         """ Convert the value to a boolean and raise error on failures"""
         if value in (True, False):
             return bool(value)
@@ -130,7 +130,7 @@ class List(Field):
         'invalid': '"{value}" value must be of list type.',
     }
 
-    def _cast_to_type(self, value):
+    def validate(self, value):
         """ Raise error if the value is not a list """
         if not isinstance(value, list):
             self.fail('invalid', value=value)
@@ -144,7 +144,7 @@ class Dict(Field):
         'invalid': '"{value}" value must be of dict type.',
     }
 
-    def _cast_to_type(self, value):
+    def validate(self, value):
         """ Raise error if the value is not a dict """
         if not isinstance(value, dict):
             self.fail('invalid', value=value)
@@ -160,7 +160,7 @@ class Auto(Field):
         super().__init__(*args, **kwargs)
         self.required = False
 
-    def _cast_to_type(self, value):
+    def validate(self, value):
         """ Perform no validation for auto fields. Return the value as is"""
         return value
 
@@ -172,7 +172,7 @@ class Date(Field):
         'invalid': '"{value}" has an invalid date format.',
     }
 
-    def _cast_to_type(self, value):
+    def validate(self, value):
         """ Convert the value to a date and raise error on failures"""
         if isinstance(value, datetime.datetime):
             return value.date()
@@ -189,7 +189,7 @@ class DateTime(Field):
     """ Concrete field implementation for the Datetime/Timestamp type.
     """
 
-    def _cast_to_type(self, value):
+    def validate(self, value):
         """ Convert the value to a datetime and raise error on failures"""
         if isinstance(value, datetime.datetime):
             return value

@@ -33,7 +33,7 @@ class ReferenceField(Field):
         """Nullify values and linkages"""
         self._reset_values(instance)
 
-    def _cast_to_type(self, value):
+    def validate(self, value):
         """Verify type of value assigned to the shadow field"""
         # FIXME Verify that the value being assigned is compatible with the remote field
         return value
@@ -173,7 +173,7 @@ class Reference(FieldCacheMixin, Field):
         self._set_own_value(instance, None)
         self._set_relation_value(instance, None)
 
-    def _cast_to_type(self, value):
+    def validate(self, value):
         if not isinstance(value, self.to_cls):
             self.fail('invalid', value=value)
         return value

@@ -17,7 +17,10 @@ MISSING_ERROR_MESSAGE = (
 
 
 class Field(FieldDescriptorMixin, metaclass=ABCMeta):
-    """Abstract field from which other fields should extend.
+    """Abstract Base Class from which other fields should extend.
+
+    `Field` is an overriding descriptor, and expects inheriting classes to override the implementation
+    of `validate` method.
 
     :param default: If set, this value will be used during entity loading
     if the field value is missing.
@@ -92,10 +95,18 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
         self.error_messages = messages
 
     def __get__(self, instance, owner):
-        if hasattr(instance, '__dict__'):
-            return instance.__dict__.get(self.field_name, self.value)
+        """Retrieve managed attribute values.
+
+        To support introspection and other metaprogramming tricks by the user, it’s a good practice
+        to make __get__ return the descriptor instance when the managed attribute is accessed through the class.
+
+        If the call was not through an instance, return the Field class itself.
+        Otherwise, return the managed attribute value, as usual.
+        """
+        if instance is None:
+            return self
         else:
-            return None
+            return instance.__dict__.get(self.field_name, self.value)
 
     def __set__(self, instance, value):
         value = self._load(value)
@@ -138,7 +149,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
         return [*self.default_validators, *self._validators]
 
     @abstractmethod
-    def _cast_to_type(self, value: Any):
+    def validate(self, value: Any):
         """
         Abstract method to validate and convert the value passed to native type.
         All subclasses must implement this method.
@@ -203,7 +214,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
                         choices=list(self.choice_dict))
 
         # Cast and Validate the value for this Field
-        value = self._cast_to_type(value)
+        value = self.validate(value)
 
         # Call the rest of the validators defined for this Field
         self._run_validators(value)
