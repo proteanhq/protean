@@ -260,7 +260,7 @@ class QuerySet:
 
     def _retrieve_model(self):
         """Retrieve model details associated with this Entity"""
-          # FIXME Move to a better placement
+        # FIXME Move to a better placement
 
         # Fetch Model class and connected-adapter from Repository Factory
         model_cls = repo_factory.get_model(self._entity_cls_name)

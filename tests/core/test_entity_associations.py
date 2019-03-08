@@ -1,9 +1,6 @@
 """ Test cases for Entity Reference field and association types """
 import mock
 import pytest
-
-from protean.core.exceptions import ValidationError
-
 from tests.support.dog import Dog
 from tests.support.dog import DogRelatedByEmail
 from tests.support.dog import HasManyDog1
@@ -21,6 +18,8 @@ from tests.support.human import HasOneHuman1
 from tests.support.human import HasOneHuman2
 from tests.support.human import HasOneHuman3
 from tests.support.human import Human
+
+from protean.core.exceptions import ValidationError
 
 
 class TestReference:

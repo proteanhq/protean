@@ -6,7 +6,8 @@ from typing import Any
 
 from protean.core.exceptions import ConfigurationError
 from protean.utils import inflection
-from protean.utils.query import RegisterLookupMixin, Q
+from protean.utils.query import Q
+from protean.utils.query import RegisterLookupMixin
 
 from .factory import repo_factory
 from .pagination import Pagination

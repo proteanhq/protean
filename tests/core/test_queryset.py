@@ -251,4 +251,3 @@ class TestQuerySet:
         Dog.create(id=5, name='Berry', age=8, owner='John')
         assert query.first.id == 2
         assert query.all().first.id == 5
-
