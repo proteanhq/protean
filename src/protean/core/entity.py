@@ -818,7 +818,7 @@ class Entity(metaclass=EntityBase):
         _, adapter = self.__class__._retrieve_model()
 
         filters = {
-            self.__class__._meta.id_field.field_name: self.id
+            self.id_field.field_name: getattr(self, self.id_field.field_name)
         }
         try:
             count_deleted = adapter._delete_objects(**filters)
