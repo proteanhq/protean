@@ -271,6 +271,28 @@ class TestEntity:
         with pytest.raises(ValidationError):
             dog.update(age='x')
 
+    def test_update_by(self):
+        """Test that update by query updates only correct records"""
+        Dog.create(id=1, name='Athos', owner='John', age=2)
+        Dog.create(id=2, name='Porthos', owner='John', age=3)
+        Dog.create(id=3, name='Aramis', owner='John', age=4)
+        Dog.create(id=4, name='dArtagnan', owner='John', age=5)
+
+        # Perform update
+        updated_count = Dog.query.filter(age__gt=3).update(owner='Jane')
+
+        # Query and check if only the relevant records have been updated
+        assert updated_count == 2
+
+        u_dog1 = Dog.get(1)
+        u_dog2 = Dog.get(2)
+        u_dog3 = Dog.get(3)
+        u_dog4 = Dog.get(4)
+        assert u_dog1.owner == 'John'
+        assert u_dog2.owner == 'John'
+        assert u_dog3.owner == 'Jane'
+        assert u_dog4.owner == 'Jane'
+
     def test_unique(self):
         """ Test the unique constraints for the entity """
         Dog.create(id=2, name='Johnny', owner='Carey')
@@ -489,6 +511,28 @@ class TestEntity:
 
         with pytest.raises(ObjectNotFoundError):
             Dog.get(3)
+
+    def test_delete_by(self):
+        """Test that update by query updates only correct records"""
+        Dog.create(id=1, name='Athos', owner='John', age=2)
+        Dog.create(id=2, name='Porthos', owner='John', age=3)
+        Dog.create(id=3, name='Aramis', owner='John', age=4)
+        Dog.create(id=4, name='dArtagnan', owner='John', age=5)
+
+        # Perform update
+        deleted_count = Dog.query.filter(age__gt=3).delete()
+
+        # Query and check if only the relevant records have been updated
+        assert deleted_count == 2
+        assert Dog.query.all().total == 2
+
+        assert Dog.get(1) is not None
+        assert Dog.get(2) is not None
+        with pytest.raises(ObjectNotFoundError):
+            Dog.get(3)
+
+        with pytest.raises(ObjectNotFoundError):
+            Dog.get(4)
 
     def test_filter_returns_q_object(self):
         """Test Negation of a criteria"""

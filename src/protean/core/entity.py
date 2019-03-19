@@ -61,10 +61,18 @@ class EntityBase(type):
         # Load list of Attributes from declared fields, depending on type of fields
         new_class._load_attributes()
 
-        # Construct an empty QuerySet associated with this Entity class
-        new_class.query = QuerySet(name)
-
         return new_class
+
+    @property
+    def query(cls):
+        """Construct an empty QuerySet associated with an Entity class
+            everytime a new `query` object is created
+
+        This is required so as not to corrupt the query object associated with the metaclass
+        when invoked like `Dog.query.all()` directly. A new query, and a corresponding `Pagination`
+        result would be created every time.
+        """
+        return QuerySet(cls.__name__)
 
     def _load_base_class_fields(new_class, bases, attrs):
         """If this class is subclassing another Entity, add that Entity's
@@ -304,6 +312,48 @@ class QuerySet:
         self._result_cache = results
 
         return results
+
+    def update(self, *data, **kwargs):
+        """Updates all objects with details given if they match a set of conditions supplied.
+
+        Returns the number of objects matched (which may not be equal to the number of objects
+            updated if objects rows already have the new value).
+        """
+        updated_item_count = 0
+        try:
+            items = self.all()
+
+            for item in items:
+                item.update(*data, **kwargs)
+                updated_item_count += 1
+        except Exception as exc:
+            # FIXME Log Exception
+            raise
+
+        return updated_item_count
+
+    def delete(self):
+        """Deletes matching objects from the Repository
+
+        Does not throw error if no objects are matched.
+        Throws ObjectNotFoundError if the object was not found in the repository
+
+        Returns the number of objects matched (which may not be equal to the number of objects
+            deleted if objects rows already have the new value).
+        """
+        # Fetch Model class and connected-adapter from Repository Factory
+        deleted_item_count = 0
+        try:
+            items = self.all()
+
+            for item in items:
+                item.delete()
+                deleted_item_count += 1
+        except Exception as exc:
+            # FIXME Log Exception
+            raise
+
+        return deleted_item_count
 
     ###############################
     # Python Magic method support #
