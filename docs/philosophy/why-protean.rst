@@ -1,7 +1,31 @@
-.. _philosophy-core:
+.. _why-protean:
 
-The Heart of Protean
-====================
+Why Protean?
+============
+
+Most of us have developed applications, for everything from weekend projects to SaaS software, using popular frameworks meant to ease our development effort and reduce our go-live time. And the frameworks do deliver, and sometimes wonderously, on the promise of shortening the timeframe and providing constructs to do almost everything. But when we attempt to take the same knowledge and build an application to address the needs of a complex domain, things tend to break down. Such applications tend to have long product cycles, usually over multiple years, and also evolve over time as we go deeper and deeper into the domain. To our chagrin, we discover that while we were able to get the first version of the product out of the door relatively quickly, things tend to become complicated over time. And instead of speeding up as we disover and understand more about the business, development tends to slow down and get costlier. In extreme cases, the product can literally come to a stand still with developers just to trying to fight entropy and keep the product running.
+
+Protean was built with the vision of providing a clear path to creating and maintaining such complex applications. In that sense, it is a Thought framework rather than a technology framework. It advocates a domain-centric thought process, usage of well-thought design patterns, code organization, separation of concerns and adopting a common language spoken by all stakeholders of a project. The technology constructs offered are a means to and end, to make the above facets possible.
+
+Protean has two flavors to it:
+* It can be used to develop Domain Centric Applications, backed by a Ubiquitous language shared among Developers and Business Experts
+* It can be used as a Clean Architecture Framework, to create Technology/Infrastructure agnostic applications
+
+Irrespective of which option you use Protean for, you end up with cutting-edge practices that will help you develop long-term complex software, like:
+
+* Independence from underlying Technologies like Database, API Frameworks and Message brokers
+* Established Design Patterns to organize your code for maintainability
+* 100% Testability of your business logic
+
+As a Domain-Driven Design Framework
+-----------------------------------
+
+**WIP**
+
+Protean is also pragmatic at the same time. It does not ignore or skirt-around realities of performance or technology limitations, and tries to provide a wide variety of options to address realworld, production-site issues.
+
+As a Clean Architecture Framework
+---------------------------------
 
 Much of what follows has been outlined in |uncle-bob-article|, but I will reiterate the core philosophy for everyone's benefit.
 

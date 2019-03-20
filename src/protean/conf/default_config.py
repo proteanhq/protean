@@ -11,7 +11,7 @@ DEBUG = False
 
 # A secret key for this particular Protean installation. Used in secret-key
 # hashing algorithms.
-SECRET_KEY = ''
+SECRET_KEY = 'wR5yJVF!PVA3&bBaFK%e3#MQna%DJfyT'
 
 ####################
 # GENERIC REPOSITORY #

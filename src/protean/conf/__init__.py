@@ -8,6 +8,7 @@ for a list of all possible variables.
 
 import importlib
 import os
+import warnings
 
 from protean.conf import default_config
 from protean.core.exceptions import ConfigurationError
@@ -34,9 +35,10 @@ class Config:
             ENVIRONMENT_VARIABLE, config_module_str)
 
         if not config_module_str:
-            raise ConfigurationError(
-                f"You must define the environment variable {ENVIRONMENT_VARIABLE} "
-                f" before accessing the active_config.")
+            config_module_str = 'protean.conf.default_config'
+            warnings.warn(
+                f"No Config Module defined. Using the default config module "
+                f"available at {config_module_str}.")
 
         # If config module is defined then load it and override the attrs
         config_module = importlib.import_module(config_module_str)
