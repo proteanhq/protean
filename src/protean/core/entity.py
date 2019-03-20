@@ -316,6 +316,9 @@ class QuerySet:
     def update(self, *data, **kwargs):
         """Updates all objects with details given if they match a set of conditions supplied.
 
+        This method updates each object individually, to fire callback methods and ensure
+        validations are run.
+
         Returns the number of objects matched (which may not be equal to the number of objects
             updated if objects rows already have the new value).
         """
@@ -336,7 +339,6 @@ class QuerySet:
         """Deletes matching objects from the Repository
 
         Does not throw error if no objects are matched.
-        Throws ObjectNotFoundError if the object was not found in the repository
 
         Returns the number of objects matched (which may not be equal to the number of objects
             deleted if objects rows already have the new value).
@@ -354,6 +356,27 @@ class QuerySet:
             raise
 
         return deleted_item_count
+
+    def update_all(self, *args, **kwargs):
+        """Updates all objects with details given if they match a set of conditions supplied.
+
+        This method forwards filters and updates directly to the adapter. It does not instantiate
+        models and it does not trigger Entity callbacks or validations.
+
+        Update values can be specified either as a dict, or keyword arguments.
+
+        Returns the number of objects matched (which may not be equal to the number of objects
+            updated if objects rows already have the new value).
+        """
+        updated_item_count = 0
+        _, adapter = self._retrieve_model()
+        try:
+            updated_item_count = adapter._update_all_objects(self._criteria, *args, **kwargs)
+        except Exception as exc:
+            # FIXME Log Exception
+            raise
+
+        return updated_item_count
 
     ###############################
     # Python Magic method support #
