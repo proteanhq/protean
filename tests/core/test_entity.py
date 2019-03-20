@@ -293,6 +293,50 @@ class TestEntity:
         assert u_dog3.owner == 'Jane'
         assert u_dog4.owner == 'Jane'
 
+    def test_update_all_with_args(self):
+        """Try updating all records satisfying filter in one step, passing a dict"""
+        Dog.create(id=1, name='Athos', owner='John', age=2)
+        Dog.create(id=2, name='Porthos', owner='John', age=3)
+        Dog.create(id=3, name='Aramis', owner='John', age=4)
+        Dog.create(id=4, name='dArtagnan', owner='John', age=5)
+
+        # Perform update
+        updated_count = Dog.query.filter(age__gt=3).update_all({'owner': 'Jane'})
+
+        # Query and check if only the relevant records have been updated
+        assert updated_count == 2
+
+        u_dog1 = Dog.get(1)
+        u_dog2 = Dog.get(2)
+        u_dog3 = Dog.get(3)
+        u_dog4 = Dog.get(4)
+        assert u_dog1.owner == 'John'
+        assert u_dog2.owner == 'John'
+        assert u_dog3.owner == 'Jane'
+        assert u_dog4.owner == 'Jane'
+
+    def test_update_all_with_kwargs(self):
+        """Try updating all records satisfying filter in one step"""
+        Dog.create(id=1, name='Athos', owner='John', age=2)
+        Dog.create(id=2, name='Porthos', owner='John', age=3)
+        Dog.create(id=3, name='Aramis', owner='John', age=4)
+        Dog.create(id=4, name='dArtagnan', owner='John', age=5)
+
+        # Perform update
+        updated_count = Dog.query.filter(age__gt=3).update_all(owner='Jane')
+
+        # Query and check if only the relevant records have been updated
+        assert updated_count == 2
+
+        u_dog1 = Dog.get(1)
+        u_dog2 = Dog.get(2)
+        u_dog3 = Dog.get(3)
+        u_dog4 = Dog.get(4)
+        assert u_dog1.owner == 'John'
+        assert u_dog2.owner == 'John'
+        assert u_dog3.owner == 'Jane'
+        assert u_dog4.owner == 'Jane'
+
     def test_unique(self):
         """ Test the unique constraints for the entity """
         Dog.create(id=2, name='Johnny', owner='Carey')

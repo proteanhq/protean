@@ -139,6 +139,21 @@ class Adapter(BaseAdapter):
             self.conn['data'][self.model_name][identifier] = model_obj
         return model_obj
 
+    def _update_all_objects(self, criteria: Q, *args, **kwargs):
+        """ Update all objects satisfying the criteria """
+        items = self._filter(criteria, self.conn['data'][self.model_name])
+
+        update_count = 0
+        for key in items:
+            item = items[key]
+            item.update(*args)
+            item.update(kwargs)
+            self.conn['data'][self.model_name][key] = item
+
+            update_count += 1
+
+        return update_count
+
     def _delete_objects(self, **filters):
         """ Delete the dictionary object by its id"""
 
