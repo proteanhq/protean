@@ -30,29 +30,30 @@ Release v\ |version|. (:ref:`Installation <install>`)
 
 It is a great fit for you if you are:
 
-- Building robust, mission-critical applications for complex domains
+- Building robust, mission-critical applications for complex and uncharted domains
 - Porting complicated Legacy applications onto newer technology stacks
-- Creating products to adapt and evolve over long cycles
+- Creating innovative products that will adapt and evolve over long cycles
 
 *Protean is free, open source, and always will be.*
 
 .. warning:: **Protean** is currently under active development. APIs and Interfaces are to be expected to change drastically and newer releases will almost certainly be backward incompatible. If you are interested in using Protean for your project, you may want to wait for the first stable production-ready version 0.1.0. If you want to use the framework *right now*, drop us an `email <subhash@team8solutions.com>`_.
 
-Beloved Features
-----------------
+Key Features
+------------
 
-Protean is ready for today's diverse software stack requirements.
+Protean is ready for today's diverse and layered software stack requirements:
 
-- Out-of-the-box database support for Elasticsearch and everything that is accessible through SQLAlchemy.
 - Lightweight APIs
-- Helper packages like Authentic that take care of end-to-end authentication
+- Non-opinionated and non-enforcing Application Code organization
+- Abstract implementations for well-understood design patterns
+- Expressive Domain Language for both developers as well as Business Users
+- Full support for Domain-Driven Design
+- Out-of-the-box database support for SQL and NoSQL Databases
+- Ready to use plugins for popular API frameworks like Flask and Pyramid
+- Extendable interfaces to build your own plugins
+- Concrete Implementations for typical Business requirements like Authentication and Notifications
 
 Protean officially supports Python 3.6+.
-
-Why we built Protean
---------------------
-
-This reason why we built Protean and the thought-process behind its choices is explained here.
 
 .. toctree::
     :maxdepth: 1
@@ -62,20 +63,10 @@ This reason why we built Protean and the thought-process behind its choices is e
     philosophy/decision-delay
     philosophy/architecture/dependency-rule
 
-The User Guide
---------------
-
-This part of the documentation introduces some background information about protean, then focuses on step-by-step instructions for getting the most out of Protean.
-
-.. note:: Protean's test code is littered with usage of a certain `Dog` class. If you find that discomforting, replace `Dog` with `CuteLittlePuppyDog` everywhere.
-
-    **Disclosure**: No real dog was harmed in the process of building this framework.
-
 .. toctree::
    :maxdepth: 2
    :caption: User Guide
 
-   user/intro
    user/install
    user/quickstart
    user/entities
