@@ -23,7 +23,7 @@ if os.getenv('SPELLCHECK'):
 source_suffix = '.rst'
 master_doc = 'index'
 project = 'Protean'
-year = '2018'
+year = '2019'
 author = 'Subhash Bhushan C'
 copyright = '{0}, {1}'.format(year, author)
 version = release = '0.0.9'
@@ -41,7 +41,7 @@ extlinks = {
 #     html_theme = 'alabaster'
 
 # Change theme to Alabaster
-html_theme = 'alabaster'
+html_theme = 'sphinx_rtd_theme'
 
 html_use_smartypants = True
 html_last_updated_fmt = '%b %d, %Y'
