@@ -60,7 +60,11 @@ class BaseAdapter(RegisterLookupMixin, metaclass=ABCMeta):
         """Updates object directly in the repository and returns update count"""
 
     @abstractmethod
-    def _delete_objects(self, **filters):
+    def _delete_object(self):
+        """Delete a Record from the Repository"""
+
+    @abstractmethod
+    def _delete_all_objects(self, criteria: Q):
         """Delete a Record from the Repository"""
 
 

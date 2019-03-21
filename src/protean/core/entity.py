@@ -361,7 +361,7 @@ class QuerySet:
         """Updates all objects with details given if they match a set of conditions supplied.
 
         This method forwards filters and updates directly to the adapter. It does not instantiate
-        models and it does not trigger Entity callbacks or validations.
+        entities and it does not trigger Entity callbacks or validations.
 
         Update values can be specified either as a dict, or keyword arguments.
 
@@ -377,6 +377,24 @@ class QuerySet:
             raise
 
         return updated_item_count
+
+    def delete_all(self, *args, **kwargs):
+        """Deletes objects that match a set of conditions supplied.
+
+        This method forwards filters directly to the adapter. It does not instantiate entities and
+        it does not trigger Entity callbacks or validations.
+
+        Returns the number of objects matched and deleted.
+        """
+        deleted_item_count = 0
+        _, adapter = self._retrieve_model()
+        try:
+            deleted_item_count = adapter._delete_all_objects(self._criteria)
+        except Exception as exc:
+            # FIXME Log Exception
+            raise
+
+        return deleted_item_count
 
     ###############################
     # Python Magic method support #
@@ -883,23 +901,22 @@ class Entity(metaclass=EntityBase):
     def delete(self):
         """Delete a Record from the Repository
 
-        Throws ObjectNotFoundError if the object was not found in the repository
+        will perform callbacks and run validations before deletion.
+
+        Throws ObjectNotFoundError if the object was not found in the repository.
         """
-        # FIXME: Ensure Adapter throws ObjectNotFoundError
-
         # Fetch Model class and connected-adapter from Repository Factory
-        _, adapter = self.__class__._retrieve_model()
+        model_cls, adapter = self.__class__._retrieve_model()
 
-        filters = {
-            self.id_field.field_name: getattr(self, self.id_field.field_name)
-        }
         try:
-            count_deleted = adapter._delete_objects(**filters)
+            if not self.is_destroyed:
+                # Update entity's data attributes
+                adapter._delete_object(model_cls.from_entity(self))
 
-            # Mark as Destroyed
-            self._state.mark_destroyed()
+                # Set Entity status to saved
+                self._state.mark_destroyed()
 
-            return count_deleted
+            return self
         except Exception as exc:
             # FIXME Log Exception
             raise
