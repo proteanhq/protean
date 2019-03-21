@@ -154,26 +154,30 @@ class Adapter(BaseAdapter):
 
         return update_count
 
-    def _delete_objects(self, **filters):
-        """ Delete the dictionary object by its id"""
+    def _delete_object(self, model_obj):
+        """ Delete the entity record in the dictionary """
+        identifier = model_obj[self.entity_cls.id_field.field_name]
+        with self.conn['lock']:
+            # Check if object is present
+            if identifier not in self.conn['data'][self.model_name]:
+                raise ObjectNotFoundError(
+                    f'`{self.__class__.__name__}` object with identifier {identifier} '
+                    f'does not exist.')
+
+            del self.conn['data'][self.model_name][identifier]
+        return model_obj
+
+    def _delete_all_objects(self, criteria: Q):
+        """ Delete the dictionary object by its criteria"""
 
         # Delete the object from the dictionary and return the deletion count
-        delete_ids = []
-        for identifier, item in self.conn['data'][self.model_name].items():
-            match = True
-
-            # Add objects that match the given filters
-            for fk, fv in filters.items():
-                if item[fk] != fv:
-                    match = False
-            if match:
-                delete_ids.append(identifier)
+        items = self._filter(criteria, self.conn['data'][self.model_name])
 
         # Delete all the matching identifiers
-        for identifier in delete_ids:
-            del self.conn['data'][self.model_name][identifier]
+        for identifier in items:
+            self.conn['data'][self.model_name].pop(identifier, None)
 
-        return len(delete_ids)
+        return len(items)
 
     def delete_all(self):
         """ Delete all objects in this schema """
