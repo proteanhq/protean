@@ -3,7 +3,7 @@ Protean
 
 *The Pragmatic Framework for Ever-evolving Applications*
 
-Release v\ |version|. (:ref:`Installation <install>`)
+Release v\ |version|. (:ref:`Changelog <changelog>`)
 
 .. image:: https://readthedocs.org/projects/protean/badge/?style=flat
     :target: https://readthedocs.org/projects/protean
@@ -76,3 +76,11 @@ Protean officially supports Python 3.6+.
    :caption: User Guide
 
    user/entities/index
+
+.. toctree::
+   :maxdepth: 1
+   :glob:
+   :reversed:
+   :caption: Community
+
+   community/changelog

@@ -1,46 +1,20 @@
 
-Changelog
-=========
+Release History
+===============
 
-0.0.1 (2018-07-15)
+dev
+---
+
+* Support for chained `update` and `delete` methods on Queryset
+* Support for `update_all` method for mass updates on objects
+* Support for `delete_all` method for mass deletion of objects
+* Documentation Structure refinement
+
+0.0.9 (2019-03-08)
 ------------------
 
-* First release on PyPI.
-
-0.0.2 (2018-07-19)
-------------------
-
-* Entity Base Class
-
-0.0.3 (2018-07-20)
-------------------
-
-* Add `bleach` as a setup requirement
-* Add GeoPoint and Decimal Data Types to Entities
-
-0.0.4 (2018-07-20)
-------------------
-
-* Add UseCase Utility Classes
-* Add Repository Abstract Classes
-
-0.0.5 (2018-07-21)
-------------------
-
-* Add Context Class
-
-0.0.6 (2018-12-14)
-------------------
-
-* Repository rewritten from the ground up
-* First base version for overall Protean functionality
-
-0.0.7 (2019-01-16)
-------------------
-
-* Rename `Repository` to `Adapter`
-* Rename `Schema` to `Model`
-* Enhance Entity class to perform CRUD methods instead of relying on a separate Repo Factory
+* Minor fixes for issues found while migrating SQLAlchemy plugin to 0.0.8 version
+* `delete` method should query by value of `id_field` instead of hardcoded `id`
 
 0.0.8 (2019-02-27)
 ------------------
@@ -53,16 +27,42 @@ Changelog
 * Introduction of Support for References and Associations (HasOne and HasMany)
 * Remove Pylint from static code analysis and use Flake8
 
-0.0.9 (2019-03-08)
+0.0.7 (2019-01-16)
 ------------------
 
-* Minor fixes for issues found while migrating SQLAlchemy plugin to 0.0.8 version
-* `delete` method should query by value of `id_field` instead of hardcoded `id`
+* Rename `Repository` to `Adapter`
+* Rename `Schema` to `Model`
+* Enhance Entity class to perform CRUD methods instead of relying on a separate Repo Factory
 
-0.0.10 (2019-)
---------------
+0.0.6 (2018-12-14)
+------------------
 
-* Support for chained `update` and `delete` methods on Queryset
-* Support for `update_all` method for mass updates on objects
-* Support for `delete_all` method for mass deletion of objects
-* Documentation Structure refinement
+* Repository rewritten from the ground up
+* First base version for overall Protean functionality
+
+0.0.5 (2018-07-21)
+------------------
+
+* Add Context Class
+
+0.0.4 (2018-07-20)
+------------------
+
+* Add UseCase Utility Classes
+* Add Repository Abstract Classes
+
+0.0.3 (2018-07-20)
+------------------
+
+* Add `bleach` as a setup requirement
+* Add GeoPoint and Decimal Data Types to Entities
+
+0.0.2 (2018-07-19)
+------------------
+
+* Entity Base Class
+
+0.0.1 (2018-07-15)
+------------------
+
+* First release on PyPI.
