@@ -20,9 +20,6 @@ Release v\ |version|. (:ref:`Changelog <changelog>`)
 .. image:: https://img.shields.io/pypi/pyversions/protean.svg
     :target: https://pypi.org/project/protean/
 
-.. image:: https://img.shields.io/pypi/implementation/protean.svg
-    :target: https://pypi.org/project/protean/
-
 .. image:: https://codecov.io/gh/proteanhq/protean/branch/master/graph/badge.svg
     :target: https://codecov.io/gh/proteanhq/protean
 

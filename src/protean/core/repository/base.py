@@ -105,8 +105,6 @@ class BaseModelMeta(ABCMeta):
         if not is_base:
             # Set klass.opts by initializing the `options_cls` with the meta
             klass.opts_ = klass.options_cls(meta, klass)
-            # Register this model with the factory
-            repo_factory.register(klass)
 
         return klass
 
