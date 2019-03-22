@@ -1,7 +1,7 @@
 .. _install:
 
-Installation of Protean
-========================
+Installation
+============
 
 This part of the documentation covers the installation of Protean.
 

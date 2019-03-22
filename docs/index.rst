@@ -63,54 +63,16 @@ Protean officially supports Python 3.6+.
     philosophy/decision-delay
     philosophy/architecture/dependency-rule
 
+
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
+   :caption: Introduction
+
+   intro/index
+
+
+.. toctree::
+   :maxdepth: 1
    :caption: User Guide
 
-   user/install
-   user/quickstart
-   user/entities
-   user/data-transfer-objects
-   user/advanced
-   user/testing
-   user/services
-   user/adapters
-   user/implementations
-
-The Community Guide
--------------------
-
-This part of the documentation details the Protean ecosystem and community.
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Community Guide
-
-   community/adapters
-   community/support
-   community/changelog
-
-API
----
-
-If you are looking for information on a specific function, class, or method, this part of the documentation is for you.
-
-.. toctree::
-   :maxdepth: 2
-   :caption: API
-
-   api
-
-
-The Contributor Guide
----------------------
-
-If you want to contribute to the project, this part of the documentation is for you.
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Contributor Guide
-
-   dev/philosophy
-   dev/contributing
-   dev/authors
+   user/entities/index
