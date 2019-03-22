@@ -79,8 +79,7 @@ Protean officially supports Python 3.6+.
 
 .. toctree::
    :maxdepth: 1
-   :glob:
-   :reversed:
    :caption: Community
 
    community/changelog
+   Code of Conduct <community/code-of-conduct>
