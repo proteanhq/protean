@@ -547,14 +547,37 @@ class TestEntity:
     def test_delete(self):
         """ Delete an object in the reposoitory by ID"""
         dog = Dog.create(id=3, name='Johnny', owner='Carey')
-        del_count = dog.delete()
-        assert del_count == 1
-
-        del_count = dog.delete()
-        assert del_count == 0
+        deleted_dog = dog.delete()
+        assert deleted_dog is not None
+        assert deleted_dog.is_destroyed is True
 
         with pytest.raises(ObjectNotFoundError):
             Dog.get(3)
+
+    def test_delete_all(self):
+        """Try updating all records satisfying filter in one step, passing a dict"""
+        Dog.create(id=1, name='Athos', owner='John', age=2)
+        Dog.create(id=2, name='Porthos', owner='John', age=3)
+        Dog.create(id=3, name='Aramis', owner='John', age=4)
+        Dog.create(id=4, name='dArtagnan', owner='John', age=5)
+
+        # Perform update
+        deleted_count = Dog.query.filter(age__gt=3).delete_all()
+
+        # Query and check if only the relevant records have been deleted
+        assert deleted_count == 2
+
+        dog1 = Dog.get(1)
+        dog2 = Dog.get(2)
+
+        assert dog1 is not None
+        assert dog2 is not None
+
+        with pytest.raises(ObjectNotFoundError):
+            Dog.get(3)
+
+        with pytest.raises(ObjectNotFoundError):
+            Dog.get(4)
 
     def test_delete_by(self):
         """Test that update by query updates only correct records"""

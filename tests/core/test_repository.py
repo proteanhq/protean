@@ -103,11 +103,9 @@ class TestRepository:
     def test_delete(self):
         """ Delete an object in the reposoitory by ID"""
         dog = Dog.create(id=3, name='Johnny', owner='Carey')
-        del_count = dog.delete()
-        assert del_count == 1
-
-        del_count = dog.delete()
-        assert del_count == 0
+        deleted_dog = dog.delete()
+        assert deleted_dog is not None
+        assert deleted_dog.is_destroyed is True
 
         with pytest.raises(ObjectNotFoundError):
             Dog.get(3)
