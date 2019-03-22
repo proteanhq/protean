@@ -90,7 +90,7 @@ class Reference(FieldCacheMixin, Field):
         if isinstance(self.to_cls, str):
             return 'id'
         else:
-            return self.via or self.to_cls.id_field.attribute_name
+            return self.via or self.to_cls.meta_.id_field.attribute_name
 
     def __get__(self, instance, owner):
         """Retrieve associated objects"""
@@ -213,7 +213,7 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
             reference_obj = self.get_cached_value(instance)
         except KeyError:
             # Fetch target object by own Identifier
-            id_value = getattr(instance, instance.id_field.field_name)
+            id_value = getattr(instance, instance.meta_.id_field.field_name)
             reference_obj = self._fetch_objects(self._linked_attribute(owner), id_value)
             if reference_obj:
                 self._set_own_value(instance, reference_obj)
