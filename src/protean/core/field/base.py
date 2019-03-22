@@ -102,7 +102,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
         instance.__dict__[self.field_name] = value
 
         # Mark Entity as Dirty
-        instance._state.mark_changed()
+        instance.state_.mark_changed()
 
     def __delete__(self, instance):
         instance.__dict__.pop(self.field_name, None)

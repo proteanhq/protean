@@ -20,11 +20,11 @@ logger = logging.getLogger('protean.core.entity')
 class EntityBase(type):
     """
     This base metaclass processes the class declaration and constructs a meta object that can
-    be used to introspect the Entity class later. Specifically, it sets up a `_meta` attribute on
+    be used to introspect the Entity class later. Specifically, it sets up a `meta_` attribute on
     the Entity to an instance of Meta, either the default of one that is defined in the
     Entity class.
 
-    `_meta` is setup with these attributes:
+    `meta_` is setup with these attributes:
         * `declared_fields`: A dictionary that gives a list of any instances of `Field`
             included as attributes on either the class or on any of its superclasses
         * `id_field`: The Primary identifier attribute of the Entity
@@ -44,7 +44,7 @@ class EntityBase(type):
         # Gather `Meta` class/object if defined
         attr_meta = attrs.pop('Meta', None)
         meta = attr_meta or getattr(new_class, 'Meta', None)
-        setattr(new_class, '_meta', EntityMeta(meta))
+        setattr(new_class, 'meta_', EntityMeta(meta))
 
         # Load declared fields
         new_class._load_fields(attrs)
@@ -80,11 +80,11 @@ class EntityBase(type):
         This is necessary in order to maintain the correct order of fields.
         """
         for base in reversed(bases):
-            if hasattr(base, '_meta') and \
-                    hasattr(base._meta, 'declared_fields'):
+            if hasattr(base, 'meta_') and \
+                    hasattr(base.meta_, 'declared_fields'):
                 base_class_fields = {
                     field_name: field_obj for (field_name, field_obj)
-                    in base._meta.declared_fields.items()
+                    in base.meta_.declared_fields.items()
                     if field_name not in attrs and not field_obj.identifier
                 }
                 new_class._load_fields(base_class_fields)
@@ -99,12 +99,12 @@ class EntityBase(type):
         for attr_name, attr_obj in attrs.items():
             if isinstance(attr_obj, (Field, Reference)):
                 setattr(new_class, attr_name, attr_obj)
-                new_class._meta.declared_fields[attr_name] = attr_obj
+                new_class.meta_.declared_fields[attr_name] = attr_obj
 
     def _set_up_reference_fields(new_class):
         """Walk through relation fields and setup shadow attributes"""
-        if new_class._meta.declared_fields:
-            for _, field in new_class._meta.declared_fields.items():
+        if new_class.meta_.declared_fields:
+            for _, field in new_class.meta_.declared_fields.items():
                 if isinstance(field, Reference):
                     shadow_field_name, shadow_field = field.get_shadow_field()
                     setattr(new_class, shadow_field_name, shadow_field)
@@ -114,10 +114,10 @@ class EntityBase(type):
         """Lookup the id field for this entity and assign"""
         # FIXME What does it mean when there are no declared fields?
         #   Does it translate to an abstract entity?
-        if new_class._meta.declared_fields:
+        if new_class.meta_.declared_fields:
             try:
-                new_class._meta.id_field = next(
-                    field for _, field in new_class._meta.declared_fields.items()
+                new_class.meta_.id_field = next(
+                    field for _, field in new_class.meta_.declared_fields.items()
                     if field.identifier)
             except StopIteration:
                 # If no id field is declared then create one
@@ -131,13 +131,13 @@ class EntityBase(type):
         id_field.__set_name__(new_class, 'id')
 
         # Ensure ID field is updated properly in Meta attribute
-        new_class._meta.declared_fields['id'] = id_field
-        new_class._meta.id_field = id_field
+        new_class.meta_.declared_fields['id'] = id_field
+        new_class.meta_.id_field = id_field
 
     def _load_attributes(new_class):
         """Load list of attributes from declared fields"""
-        for field_name, field_obj in new_class._meta.declared_fields.items():
-            new_class._meta.attributes[field_obj.get_attribute_name()] = field_obj
+        for field_name, field_obj in new_class.meta_.declared_fields.items():
+            new_class.meta_.attributes[field_obj.get_attribute_name()] = field_obj
 
 
 class EntityMeta:
@@ -304,7 +304,7 @@ class QuerySet:
         entity_items = []
         for item in results.items:
             entity = model_cls.to_entity(item)
-            entity._state.mark_retrieved()
+            entity.state_.mark_retrieved()
             entity_items.append(entity)
         results.items = entity_items
 
@@ -496,15 +496,19 @@ class EntityState:
         self._changed = False
         self._destroyed = False
 
+    @property
     def is_new(self):
         return self._new
 
+    @property
     def is_persisted(self):
         return not self._new
 
+    @property
     def is_changed(self):
         return self._changed
 
+    @property
     def is_destroyed(self):
         return self._destroyed
 
@@ -568,7 +572,7 @@ class Entity(metaclass=EntityBase):
         self.errors = {}
 
         # Set up the storage for instance state
-        self._state = EntityState()
+        self.state_ = EntityState()
 
         # Load the attributes based on the template
         loaded_fields = []
@@ -590,7 +594,7 @@ class Entity(metaclass=EntityBase):
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields
-        for field_name, field_obj in self._meta.declared_fields.items():
+        for field_name, field_obj in self.meta_.declared_fields.items():
             if field_name not in loaded_fields:
                 if not isinstance(field_obj, (Reference, ReferenceField)):
                     setattr(self, field_name, None)
@@ -631,7 +635,7 @@ class Entity(metaclass=EntityBase):
     def to_dict(self):
         """ Return entity data as a dictionary """
         return {field_name: getattr(self, field_name, None)
-                for field_name in self._meta.declared_fields}
+                for field_name in self.meta_.declared_fields}
 
     @classmethod
     def _retrieve_model(cls):
@@ -647,57 +651,9 @@ class Entity(metaclass=EntityBase):
     def clone(self):
         """Deepclone the entity, but reset state"""
         clone_copy = copy.deepcopy(self)
-        clone_copy._state = EntityState()
+        clone_copy.state_ = EntityState()
 
         return clone_copy
-
-    ################
-    # Meta methods #
-    ################
-
-    @classproperty
-    def declared_fields(cls):
-        """Pass through method to retrieve declared fields defined for entity"""
-        return cls._meta.declared_fields
-
-    @classproperty
-    def attributes(cls):
-        """Pass through method to retrieve attributes defined for entity"""
-        return cls._meta.attributes
-
-    @classproperty
-    def auto_fields(cls):
-        """Pass through method to retrieve `Auto` fields defined for entity"""
-        return cls._meta.auto_fields
-
-    @classproperty
-    def id_field(cls):
-        """Pass through method to retrieve Identifier field defined for entity"""
-        return cls._meta.id_field
-
-    #################
-    # State methods #
-    #################
-
-    @property
-    def is_new(self):
-        """Pass through method to check if Entity is not persisted"""
-        return self._state.is_new()
-
-    @property
-    def is_persisted(self):
-        """Pass through method to check if Entity is persisted"""
-        return self._state.is_persisted()
-
-    @property
-    def is_changed(self):
-        """Pass through method to check if Entity has changed since last persistence"""
-        return self._state.is_changed()
-
-    @property
-    def is_destroyed(self):
-        """Pass through method to check if Entity has been destroyed"""
-        return self._state.is_destroyed()
 
     ######################
     # Life-cycle methods #
@@ -712,7 +668,7 @@ class Entity(metaclass=EntityBase):
         logger.debug(f'Lookup `{cls.__name__}` object with identifier {identifier}')
         # Get the ID field for the entity
         filters = {
-            cls._meta.id_field.field_name: identifier
+            cls.meta_.id_field.field_name: identifier
         }
 
         # Find this item in the repository or raise Error
@@ -785,7 +741,7 @@ class Entity(metaclass=EntityBase):
             model_obj = adapter._create_object(model_cls.from_entity(entity))
 
             # Update the auto fields of the entity
-            for field_name, field_obj in entity._meta.declared_fields.items():
+            for field_name, field_obj in entity.meta_.declared_fields.items():
                 if isinstance(field_obj, Auto):
                     if isinstance(model_obj, dict):
                         field_val = model_obj[field_name]
@@ -794,7 +750,7 @@ class Entity(metaclass=EntityBase):
                     setattr(entity, field_name, field_val)
 
             # Set Entity status to saved
-            entity._state.mark_saved()
+            entity.state_.mark_saved()
 
             return entity
         except ValidationError as exc:
@@ -820,7 +776,7 @@ class Entity(metaclass=EntityBase):
             model_obj = adapter._create_object(model_cls.from_entity(self))
 
             # Update the auto fields of the entity
-            for field_name, field_obj in self._meta.declared_fields.items():
+            for field_name, field_obj in self.meta_.declared_fields.items():
                 if isinstance(field_obj, Auto):
                     if isinstance(model_obj, dict):
                         field_val = model_obj[field_name]
@@ -829,7 +785,7 @@ class Entity(metaclass=EntityBase):
                     setattr(self, field_name, field_val)
 
             # Set Entity status to saved
-            self._state.mark_saved()
+            self.state_.mark_saved()
 
             return self
         except Exception as exc:
@@ -864,7 +820,7 @@ class Entity(metaclass=EntityBase):
             adapter._update_object(model_cls.from_entity(self))
 
             # Set Entity status to saved
-            self._state.mark_saved()
+            self.state_.mark_saved()
 
             return self
         except Exception as exc:
@@ -879,7 +835,7 @@ class Entity(metaclass=EntityBase):
         # Build the filters from the unique constraints
         filters, excludes = {}, {}
 
-        for field_name, field_obj in self._meta.unique_fields:
+        for field_name, field_obj in self.meta_.unique_fields:
             lookup_value = getattr(self, field_name, None)
             # Ignore empty lookup values
             if lookup_value in Field.empty_values:
@@ -893,7 +849,7 @@ class Entity(metaclass=EntityBase):
         # Lookup the objects by the filters and raise error on results
         for filter_key, lookup_value in filters.items():
             if self.exists(excludes, **{filter_key: lookup_value}):
-                field_obj = self._meta.declared_fields[filter_key]
+                field_obj = self.meta_.declared_fields[filter_key]
                 field_obj.fail('unique',
                                model_name=model_cls.opts_.model_name,
                                field_name=filter_key)
@@ -909,12 +865,12 @@ class Entity(metaclass=EntityBase):
         model_cls, adapter = self.__class__._retrieve_model()
 
         try:
-            if not self.is_destroyed:
+            if not self.state_.is_destroyed:
                 # Update entity's data attributes
                 adapter._delete_object(model_cls.from_entity(self))
 
                 # Set Entity status to saved
-                self._state.mark_destroyed()
+                self.state_.mark_destroyed()
 
             return self
         except Exception as exc:

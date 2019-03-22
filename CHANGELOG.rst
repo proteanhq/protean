@@ -52,3 +52,17 @@ Changelog
 * Change Fields to be full-fledged Descriptors to control getting/setting values
 * Introduction of Support for References and Associations (HasOne and HasMany)
 * Remove Pylint from static code analysis and use Flake8
+
+0.0.9 (2019-03-08)
+------------------
+
+* Minor fixes for issues found while migrating SQLAlchemy plugin to 0.0.8 version
+* `delete` method should query by value of `id_field` instead of hardcoded `id`
+
+0.0.10 (2019-)
+--------------
+
+* Support for chained `update` and `delete` methods on Queryset
+* Support for `update_all` method for mass updates on objects
+* Support for `delete_all` method for mass deletion of objects
+* Documentation Structure refinement
