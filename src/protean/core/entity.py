@@ -304,7 +304,7 @@ class QuerySet:
         entity_items = []
         for item in results.items:
             entity = model_cls.to_entity(item)
-            entity._state.mark_retrieved()
+            entity.state_.mark_retrieved()
             entity_items.append(entity)
         results.items = entity_items
 
@@ -496,15 +496,19 @@ class EntityState:
         self._changed = False
         self._destroyed = False
 
+    @property
     def is_new(self):
         return self._new
 
+    @property
     def is_persisted(self):
         return not self._new
 
+    @property
     def is_changed(self):
         return self._changed
 
+    @property
     def is_destroyed(self):
         return self._destroyed
 
@@ -568,7 +572,7 @@ class Entity(metaclass=EntityBase):
         self.errors = {}
 
         # Set up the storage for instance state
-        self._state = EntityState()
+        self.state_ = EntityState()
 
         # Load the attributes based on the template
         loaded_fields = []
@@ -647,7 +651,7 @@ class Entity(metaclass=EntityBase):
     def clone(self):
         """Deepclone the entity, but reset state"""
         clone_copy = copy.deepcopy(self)
-        clone_copy._state = EntityState()
+        clone_copy.state_ = EntityState()
 
         return clone_copy
 
@@ -674,30 +678,6 @@ class Entity(metaclass=EntityBase):
     def id_field(cls):
         """Pass through method to retrieve Identifier field defined for entity"""
         return cls._meta.id_field
-
-    #################
-    # State methods #
-    #################
-
-    @property
-    def is_new(self):
-        """Pass through method to check if Entity is not persisted"""
-        return self._state.is_new()
-
-    @property
-    def is_persisted(self):
-        """Pass through method to check if Entity is persisted"""
-        return self._state.is_persisted()
-
-    @property
-    def is_changed(self):
-        """Pass through method to check if Entity has changed since last persistence"""
-        return self._state.is_changed()
-
-    @property
-    def is_destroyed(self):
-        """Pass through method to check if Entity has been destroyed"""
-        return self._state.is_destroyed()
 
     ######################
     # Life-cycle methods #
@@ -794,7 +774,7 @@ class Entity(metaclass=EntityBase):
                     setattr(entity, field_name, field_val)
 
             # Set Entity status to saved
-            entity._state.mark_saved()
+            entity.state_.mark_saved()
 
             return entity
         except ValidationError as exc:
@@ -829,7 +809,7 @@ class Entity(metaclass=EntityBase):
                     setattr(self, field_name, field_val)
 
             # Set Entity status to saved
-            self._state.mark_saved()
+            self.state_.mark_saved()
 
             return self
         except Exception as exc:
@@ -864,7 +844,7 @@ class Entity(metaclass=EntityBase):
             adapter._update_object(model_cls.from_entity(self))
 
             # Set Entity status to saved
-            self._state.mark_saved()
+            self.state_.mark_saved()
 
             return self
         except Exception as exc:
@@ -909,12 +889,12 @@ class Entity(metaclass=EntityBase):
         model_cls, adapter = self.__class__._retrieve_model()
 
         try:
-            if not self.is_destroyed:
+            if not self.state_.is_destroyed:
                 # Update entity's data attributes
                 adapter._delete_object(model_cls.from_entity(self))
 
                 # Set Entity status to saved
-                self._state.mark_destroyed()
+                self.state_.mark_destroyed()
 
             return self
         except Exception as exc:

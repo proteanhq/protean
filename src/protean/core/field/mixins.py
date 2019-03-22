@@ -10,21 +10,21 @@ class FieldCacheMixin:
     def get_cached_value(self, instance, default=NOT_PROVIDED):
         cache_name = self.get_cache_name()
         try:
-            return instance._state.fields_cache[cache_name]
+            return instance.state_.fields_cache[cache_name]
         except KeyError:
             if default is NOT_PROVIDED:
                 raise
             return default
 
     def is_cached(self, instance):
-        return self.get_cache_name() in instance._state.fields_cache
+        return self.get_cache_name() in instance.state_.fields_cache
 
     def set_cached_value(self, instance, value):
-        instance._state.fields_cache[self.get_cache_name()] = value
+        instance.state_.fields_cache[self.get_cache_name()] = value
 
     def delete_cached_value(self, instance):
-        if self.get_cache_name() in instance._state.fields_cache:
-            del instance._state.fields_cache[self.get_cache_name()]
+        if self.get_cache_name() in instance.state_.fields_cache:
+            del instance.state_.fields_cache[self.get_cache_name()]
 
 
 class FieldDescriptorMixin:

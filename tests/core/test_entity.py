@@ -549,7 +549,7 @@ class TestEntity:
         dog = Dog.create(id=3, name='Johnny', owner='Carey')
         deleted_dog = dog.delete()
         assert deleted_dog is not None
-        assert deleted_dog.is_destroyed is True
+        assert deleted_dog.state_.is_destroyed is True
 
         with pytest.raises(ObjectNotFoundError):
             Dog.get(3)

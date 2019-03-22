@@ -105,7 +105,7 @@ class Reference(FieldCacheMixin, Field):
             self.attribute_name = self.get_attribute_name()
 
         reference_obj = None
-        if hasattr(instance, '_state'):
+        if hasattr(instance, 'state_'):
             try:
                 reference_obj = self.get_cached_value(instance)
             except KeyError:
