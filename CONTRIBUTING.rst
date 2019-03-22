@@ -1,9 +1,15 @@
-============
-Contributing
-============
+=======================
+Contributing to Protean
+=======================
 
-Contributions are welcome, and they are greatly appreciated! Every
-little bit helps, and credit will always be given.
+You are awesome! Thanks for taking the time to contribute!
+
+What follows is a set of guidelines for contributing to Protean and its related packages, which are hosted in the Protean Organization on GitHub. These are mostly guidelines, not rules. Use your best judgment, and feel free to propose changes to this document in a pull request.
+
+Code of Conduct
+---------------
+
+This project and everyone participating in it is governed by the :ref:`Code of Conduct <code-of-conduct>`. By participating, you are expected to uphold this code. Please report unacceptable behavior to <subhash.bhushan@gmail.com>.
 
 General Guidelines
 ------------------
@@ -154,8 +160,7 @@ New Contributors
 
 If you are new or relatively new to Open Source, welcome! Protean aims to
 be a gentle introduction to the world of Open Source. If you're concerned about
-how best to contribute, please consider mailing a maintainer (listed above) and
-asking for help.
+how best to contribute, please drop a mail to <subhash.bhushan@gmail.com> asking for help.
 
 Please also check the :ref:`early-feedback` section.
 

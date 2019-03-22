@@ -36,7 +36,7 @@ It is a great fit for you if you are:
 
 *Protean is free, open source, and always will be.*
 
-.. warning:: **Protean** is currently under active development. APIs and Interfaces are to be expected to change drastically and newer releases will almost certainly be backward incompatible. If you are interested in using Protean for your project, you may want to wait for the first stable production-ready version 0.1.0. If you want to use the framework *right now*, drop us an `email <subhash@team8solutions.com>`_.
+.. warning:: **Protean** is currently under active development. APIs and Interfaces are to be expected to change drastically and newer releases will almost certainly be backward incompatible. If you are interested in using Protean for your project, you may want to wait for the first stable production-ready version 0.1.0. If you want to use the framework *right now*, drop us an `email <subhash.bhushan@gmail.com>`_.
 
 Key Features
 ------------
@@ -83,3 +83,4 @@ Protean officially supports Python 3.6+.
 
    community/changelog
    Code of Conduct <community/code-of-conduct>
+   community/contributing
