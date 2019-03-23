@@ -1,7 +1,7 @@
 .. _entities:
 
-Entity Class
-============
+Defining Entities
+=================
 
 Entities, or Reference Objects, are Domain representations.
 

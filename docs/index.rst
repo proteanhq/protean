@@ -38,6 +38,21 @@ It is a great fit for you if you are:
 
 .. warning:: **Protean** is currently under active development. APIs and Interfaces are to be expected to change drastically and newer releases will almost certainly be backward incompatible. If you are interested in using Protean for your project, you may want to wait for the first stable production-ready version 0.1.0. If you want to use the framework *right now*, drop us an `email <subhash.bhushan@gmail.com>`_.
 
+Goals
+-----
+
+Protean has two broad goals in mind:
+
+**1. Isolated Business logic closely modeled after the Domain**
+
+Developers should be able to express infrastructure-free domain logic in a clear and concise way, without worrying about underlying technology implementation. The framework should be pragmatic enough, though, and allow incorporatoin of special technology features for performance or aesthetics.
+
+**2. Technology-agnostic and Framework independent applications**
+
+Developers should be able to develop applications detached from the underlying infrastructure, like databases, API frameworks, message brokers and so on.
+
+Developers can then delay critical decisions until the last possible moment. Also, If and when the time comes, it enables them to switch between technologies painlessly.
+
 Key Features
 ------------
 
