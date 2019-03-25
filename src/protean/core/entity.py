@@ -11,7 +11,6 @@ from protean.core.field import Field
 from protean.core.field import Reference
 from protean.core.field import ReferenceField
 from protean.core.repository import repo_factory
-from protean.utils.generic import classproperty
 from protean.utils.query import Q
 
 logger = logging.getLogger('protean.core.entity')

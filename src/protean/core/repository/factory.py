@@ -73,7 +73,12 @@ class RepositoryFactory:
         model_name = model_cls.__name__
         entity_name = model_cls.opts_.entity_cls.__name__
 
-        if not self._registry.get(entity_name):
+        if self._registry.get(entity_name):
+            # This probably is an accidental re-registration of the entity
+            #   and we should warn the user of a possible repository confusion
+            raise ConfigurationError(
+                f'Entity {entity_name} has already been registered')
+        else:
             # Lookup the connection details for the model
             try:
                 conn_info = self.repositories[model_cls.opts_.bind]

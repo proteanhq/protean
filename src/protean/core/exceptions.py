@@ -4,7 +4,11 @@ Custom Protean exception classes
 
 
 class ConfigurationError(Exception):
-    """An important configuration variable is missing"""
+    """Improper Configuration encountered like:
+        * An important configuration variable is missing
+        * Re-registration of Models
+        * Incorrect associations
+    """
 
 
 class ObjectNotFoundError(Exception):
