@@ -1,2 +1,2 @@
-Supported Field Types
-=====================
+Field Types
+-----------
