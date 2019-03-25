@@ -6,13 +6,21 @@ python:
     - "3.7"
     - "3.7-dev"
 matrix:
+    include:
+        - os: windows
+          language: sh
+          python: "3.7"
+          before_install:
+            - choco install python3
+            - export PATH="/c/Python37:/c/Python37/Scripts:$PATH"
+            - python -m pip install --upgrade pip wheel
     allow_failures:
         - python: 3.7-dev
 install:
-  - pip install -r requirements/test.txt
-  - python setup.py install
+    - pip install -r requirements/test.txt
+    - python setup.py install
 script:
-  - pytest --cov=protean --cov-config .coveragerc tests
+    - pytest --cov=protean --cov-config .coveragerc tests
 after_success:
-  - pip install codecov
-  - codecov
+    - pip install codecov
+    - codecov
