@@ -33,5 +33,7 @@ Quick Example
 
 .. include:: definition.rst
 .. include:: field-types.rst
+.. include:: associations.rst
 .. include:: lifecycle.rst
 .. include:: querying.rst
+.. include:: persistence.rst
