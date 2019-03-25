@@ -18,7 +18,7 @@ matrix:
           language: sh
           python: "3.6.8"
           before_install:
-            - choco install python3
+            - choco install python --version 3.6.8
             - export PATH="/c/Python36:/c/Python36/Scripts:$PATH"
             - python -m pip install --upgrade pip wheel
     allow_failures:
