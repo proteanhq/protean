@@ -1,4 +1,7 @@
-"""Utility classes and methods for Repository"""
+"""Utility classes and methods for Repository
+
+FIXME Should this be part of the domain, or be a part of Request/Response infrastructure?
+"""
 from math import ceil
 
 

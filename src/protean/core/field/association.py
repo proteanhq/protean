@@ -59,10 +59,25 @@ class Reference(FieldCacheMixin, Field):
     def __init__(self, to_cls, via=None, **kwargs):
         # FIXME ensure `via` argument is of type `str`
         super().__init__(**kwargs)
-        self.to_cls = to_cls
+        self._to_cls = to_cls
         self.via = via
 
         self.relation = ReferenceField(self)
+
+    @property
+    def to_cls(self):
+        """Property to retrieve to_cls as an entity when possible"""
+        # Checks if ``to_cls`` is a string
+        #   If it is, checks if the entity is imported and available
+        #   If it is, register the class
+        try:
+            if isinstance(self._to_cls, str):
+                self._to_cls = fetch_entity_cls_from_registry(self._to_cls)
+        except AssertionError:
+            # Preserve ``to_cls`` as a string and we will hook up the entity later
+            pass
+
+        return self._to_cls
 
     def get_attribute_name(self):
         """Return attribute name suffixed with via if defined, or `_id`"""

@@ -15,7 +15,8 @@ def register_models():
     from protean.core.repository import repo_factory
     from tests.support.dog import (DogModel, RelatedDogModel, DogRelatedByEmailModel,
                                    HasOneDog1Model, HasOneDog2Model, HasOneDog3Model,
-                                   HasManyDog1Model, HasManyDog2Model, HasManyDog3Model)
+                                   HasManyDog1Model, HasManyDog2Model, HasManyDog3Model,
+                                   ThreadedDogModel)
     from tests.support.human import (HumanModel, HasOneHuman1Model,
                                      HasOneHuman2Model, HasOneHuman3Model,
                                      HasManyHuman1Model, HasManyHuman2Model,
@@ -37,12 +38,12 @@ def register_models():
     repo_factory.register(HasManyHuman1Model)
     repo_factory.register(HasManyHuman2Model)
     repo_factory.register(HasManyHuman3Model)
-
+    repo_factory.register(ThreadedDogModel)
 
 
 @pytest.fixture(autouse=True)
 def run_around_tests():
-    """Initialize DogModel with Dict Repo"""
+    """Cleanup Database after each test run"""
     from protean.core.repository import repo_factory
 
     # A test function will be run at this point
@@ -64,3 +65,4 @@ def run_around_tests():
     repo_factory.HasManyHuman1.delete_all()
     repo_factory.HasManyHuman2.delete_all()
     repo_factory.HasManyHuman3.delete_all()
+    repo_factory.ThreadedDog.delete_all()

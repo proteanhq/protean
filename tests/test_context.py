@@ -3,14 +3,12 @@
 import threading
 import time
 
+from tests.support.dog import ThreadedDog
+
 from protean.context import context
-from protean.core import field
-from protean.core.entity import Entity
-from protean.core.repository import repo_factory
 from protean.core.tasklet import Tasklet
 from protean.core.usecase import CreateRequestObject
 from protean.core.usecase import CreateUseCase
-from protean.impl.repository.dict_repo import DictModel
 
 
 class CreateUseCase2(CreateUseCase):
@@ -21,24 +19,6 @@ class CreateUseCase2(CreateUseCase):
         request_object.data['created_by'] = getattr(
             context, 'account', 'anonymous')
         return super().process_request(request_object)
-
-
-class ThreadedDog(Entity):
-    """This is a dummy Dog Entity class"""
-    name = field.String(required=True, max_length=50)
-    created_by = field.String(required=True, max_length=15)
-
-
-class ThreadedDogModel(DictModel):
-    """ Model for the ThreadedDog Entity"""
-
-    class Meta:
-        """ Meta class for schema options"""
-        entity = ThreadedDog
-        model_name = 'threaded_dogs'
-
-
-repo_factory.register(ThreadedDogModel)
 
 
 def run_create_task(thread_name, name, sleep=0):
@@ -90,6 +70,3 @@ def test_context_with_threads():
             assert dog.created_by == 'thread_4'
         if dog.name == 'Price':
             assert dog.created_by == 'thread_5'
-
-    # Cleanup the database
-    repo_factory.ThreadedDog.delete_all()

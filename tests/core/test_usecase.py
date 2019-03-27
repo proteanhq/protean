@@ -139,15 +139,12 @@ class TestShowUseCase:
 class TestListUseCase:
     """Tests for the generic ListUseCase Class"""
 
-    @classmethod
-    def setup_class(cls):
-        """ Setup instructions for this case """
+    def test_process_request(self):
+        """Test List UseCase's `process_request` method"""
         Dog.create(name='Murdock', owner='John', age=7)
         Dog.create(name='Jean', owner='John', age=3)
         Dog.create(name='Bart', owner='Carrie', age=6)
 
-    def test_process_request(self):
-        """Test List UseCase's `process_request` method"""
         # Build the request object and run the usecase
         request_obj = ListRequestObject.from_dict(
             Dog, dict(order_by=['age'], owner='John'))

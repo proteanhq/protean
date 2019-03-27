@@ -8,7 +8,14 @@ dev
 * Support for chained `update` and `delete` methods on Queryset
 * Support for `update_all` method for mass updates on objects
 * Support for `delete_all` method for mass deletion of objects
-* Documentation Structure refinement
+* Rename databases configuration key in Config file from ``REPOSITORIES`` to ``DATABASES``
+* Fully expand the Provider class in configuration file, to avoid assuming a Provider class name
+* Split ``Adapter`` class into ``Provider`` and ``Repository``, separating the concern of managing the database connection from performing CRUD operations on Entity data
+* Expose configured databases as ``providers`` global variable
+* Allow fetching new connection on demand of a new repository object via ``get_connection`` in ``providers``
+* Rename ``Lookup`` class to ``BaseLookup``
+* Associate Lookups with Concrete Provider classes
+* Provide option to fully bake a model class in case it needs to be decorated for a specific database, via the ``get_model`` method in concrete Provider class
 
 0.0.9 (2019-03-08)
 ------------------

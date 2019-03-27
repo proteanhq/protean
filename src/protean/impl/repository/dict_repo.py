@@ -7,19 +7,49 @@ from threading import Lock
 
 from protean.core.entity import Q
 from protean.core.exceptions import ObjectNotFoundError
-from protean.core.repository import BaseAdapter
-from protean.core.repository import BaseConnectionHandler
+from protean.core.provider.base import BaseProvider
+from protean.core.repository import BaseLookup
 from protean.core.repository import BaseModel
-from protean.core.repository import Lookup
+from protean.core.repository import BaseRepository
 from protean.core.repository import Pagination
 
 # Global in-memory store of dict data. Keyed by name, to provide
 # multiple named local memory caches.
 _databases = {}
 _locks = {}
+_counters = defaultdict(count)
 
 
-class Adapter(BaseAdapter):
+class DictProvider(BaseProvider):
+    """Provider class for Dict Repositories"""
+
+    def get_session(self):
+        """Return a session object
+
+        FIXME Is it possible to simulate transactions with Dict Repo?
+        Maybe we should to be able to simulate Unit of Work transactions
+        """
+        pass
+
+    def get_connection(self):
+        """ Return the dictionary database object """
+        database = {
+            'data': _databases.setdefault(self.identifier, defaultdict(dict)),
+            'lock': _locks.setdefault(self.identifier, Lock()),
+            'counters': _counters
+        }
+        return database
+
+    def close_connection(self, conn):
+        """ Close connection does nothing on the repo """
+        pass
+
+    def get_repository(self, model_cls):
+        """ Return a repository object configured with a live connection"""
+        return DictRepository(self, model_cls)
+
+
+class DictRepository(BaseRepository):
     """ A repository for storing data in a dictionary """
 
     def _set_auto_fields(self, model_obj):
@@ -54,7 +84,7 @@ class Adapter(BaseAdapter):
         for record_key, record_value in db.items():
             match = True
 
-            stripped_key, lookup_class = self._extract_lookup(key)
+            stripped_key, lookup_class = self.provider._extract_lookup(key)
             lookup = lookup_class(record_value[stripped_key], value)
 
             if negated:
@@ -199,7 +229,7 @@ operators = {
 }
 
 
-class DefaultLookup(Lookup):
+class DefaultDictLookup(BaseLookup):
     """Base class with default implementation of expression construction"""
     def process_source(self):
         """Return source with transformations, if any"""
@@ -219,14 +249,14 @@ class DefaultLookup(Lookup):
                              self.process_target())
 
 
-@Adapter.register_lookup
-class Exact(DefaultLookup):
+@DictProvider.register_lookup
+class Exact(DefaultDictLookup):
     """Exact Match Query"""
     lookup_name = 'exact'
 
 
-@Adapter.register_lookup
-class IExact(DefaultLookup):
+@DictProvider.register_lookup
+class IExact(DefaultDictLookup):
     """Exact Case-Insensitive Match Query"""
     lookup_name = 'iexact'
 
@@ -241,8 +271,8 @@ class IExact(DefaultLookup):
         return "%s.lower()" % super().process_target()
 
 
-@Adapter.register_lookup
-class Contains(DefaultLookup):
+@DictProvider.register_lookup
+class Contains(DefaultDictLookup):
     """Exact Contains Query"""
     lookup_name = 'contains'
 
@@ -253,8 +283,8 @@ class Contains(DefaultLookup):
                              self.process_source())
 
 
-@Adapter.register_lookup
-class IContains(DefaultLookup):
+@DictProvider.register_lookup
+class IContains(DefaultDictLookup):
     """Exact Case-Insensitive Contains Query"""
     lookup_name = 'icontains'
 
@@ -275,32 +305,32 @@ class IContains(DefaultLookup):
                              self.process_source())
 
 
-@Adapter.register_lookup
-class GreaterThan(DefaultLookup):
+@DictProvider.register_lookup
+class GreaterThan(DefaultDictLookup):
     """Greater than Query"""
     lookup_name = 'gt'
 
 
-@Adapter.register_lookup
-class GreaterThanOrEqual(DefaultLookup):
+@DictProvider.register_lookup
+class GreaterThanOrEqual(DefaultDictLookup):
     """Greater than or Equal Query"""
     lookup_name = 'gte'
 
 
-@Adapter.register_lookup
-class LessThan(DefaultLookup):
+@DictProvider.register_lookup
+class LessThan(DefaultDictLookup):
     """Less than Query"""
     lookup_name = 'lt'
 
 
-@Adapter.register_lookup
-class LessThanOrEqual(DefaultLookup):
+@DictProvider.register_lookup
+class LessThanOrEqual(DefaultDictLookup):
     """Less than or Equal Query"""
     lookup_name = 'lte'
 
 
-@Adapter.register_lookup
-class In(DefaultLookup):
+@DictProvider.register_lookup
+class In(DefaultDictLookup):
     """In Query"""
     lookup_name = 'in'
 
@@ -325,24 +355,3 @@ class DictModel(BaseModel):
     def to_entity(cls, item):
         """ Convert the dictionary record to an entity """
         return cls.opts_.entity_cls(item)
-
-
-class ConnectionHandler(BaseConnectionHandler):
-    """ Handle connections to the dict repository """
-
-    def __init__(self, conn_name, conn_info):
-        self.conn_info = conn_info
-        self.conn_name = conn_name
-
-    def get_connection(self):
-        """ Return the dictionary database object """
-        database = {
-            'data': _databases.setdefault(self.conn_name, defaultdict(dict)),
-            'lock': _locks.setdefault(self.conn_name, Lock()),
-            'counters': defaultdict(count)
-        }
-        return database
-
-    def close_connection(self, conn):
-        """ Close connection does nothing on the repo """
-        pass

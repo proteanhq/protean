@@ -267,13 +267,11 @@ class QuerySet:
 
     def _retrieve_model(self):
         """Retrieve model details associated with this Entity"""
-        # FIXME Move to a better placement
-
-        # Fetch Model class and connected-adapter from Repository Factory
+        # Fetch Model class and connected repository from Repository Factory
         model_cls = repo_factory.get_model(self._entity_cls_name)
-        adapter = getattr(repo_factory, self._entity_cls_name)
+        repository = getattr(repo_factory, self._entity_cls_name)
 
-        return (model_cls, adapter)
+        return (model_cls, repository)
 
     def all(self):
         """Primary method to fetch data based on filters
@@ -290,14 +288,14 @@ class QuerySet:
         # Destroy any cached results
         self._result_cache = None
 
-        # Fetch Model class and connected-adapter from Repository Factory
-        model_cls, adapter = self._retrieve_model()
+        # Fetch Model class and connected repository from Repository Factory
+        model_cls, repository = self._retrieve_model()
 
         # order_by clause must be list of keys
         order_by = model_cls.opts_.order_by if not self._order_by else self._order_by
 
         # Call the read method of the repository
-        results = adapter._filter_objects(self._criteria, self._page, self._per_page, order_by)
+        results = repository._filter_objects(self._criteria, self._page, self._per_page, order_by)
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -342,7 +340,7 @@ class QuerySet:
         Returns the number of objects matched (which may not be equal to the number of objects
             deleted if objects rows already have the new value).
         """
-        # Fetch Model class and connected-adapter from Repository Factory
+        # Fetch Model class and connected repository from Repository Factory
         deleted_item_count = 0
         try:
             items = self.all()
@@ -359,8 +357,8 @@ class QuerySet:
     def update_all(self, *args, **kwargs):
         """Updates all objects with details given if they match a set of conditions supplied.
 
-        This method forwards filters and updates directly to the adapter. It does not instantiate
-        entities and it does not trigger Entity callbacks or validations.
+        This method forwards filters and updates directly to the repository. It does not
+        instantiate entities and it does not trigger Entity callbacks or validations.
 
         Update values can be specified either as a dict, or keyword arguments.
 
@@ -368,9 +366,9 @@ class QuerySet:
             updated if objects rows already have the new value).
         """
         updated_item_count = 0
-        _, adapter = self._retrieve_model()
+        _, repository = self._retrieve_model()
         try:
-            updated_item_count = adapter._update_all_objects(self._criteria, *args, **kwargs)
+            updated_item_count = repository._update_all_objects(self._criteria, *args, **kwargs)
         except Exception as exc:
             # FIXME Log Exception
             raise
@@ -380,15 +378,15 @@ class QuerySet:
     def delete_all(self, *args, **kwargs):
         """Deletes objects that match a set of conditions supplied.
 
-        This method forwards filters directly to the adapter. It does not instantiate entities and
+        This method forwards filters directly to the repository. It does not instantiate entities and
         it does not trigger Entity callbacks or validations.
 
         Returns the number of objects matched and deleted.
         """
         deleted_item_count = 0
-        _, adapter = self._retrieve_model()
+        _, repository = self._retrieve_model()
         try:
-            deleted_item_count = adapter._delete_all_objects(self._criteria)
+            deleted_item_count = repository._delete_all_objects(self._criteria)
         except Exception as exc:
             # FIXME Log Exception
             raise
@@ -641,11 +639,11 @@ class Entity(metaclass=EntityBase):
         """Retrieve model details associated with this Entity"""
         from protean.core.repository import repo_factory  # FIXME Move to a better placement
 
-        # Fetch Model class and connected-adapter from Repository Factory
+        # Fetch Model class and connected repository from Repository Factory
         model_cls = repo_factory.get_model(cls.__name__)
-        adapter = getattr(repo_factory, cls.__name__)
+        repository = getattr(repo_factory, cls.__name__)
 
-        return (model_cls, adapter)
+        return (model_cls, repository)
 
     def clone(self):
         """Deepclone the entity, but reset state"""
@@ -726,7 +724,7 @@ class Entity(metaclass=EntityBase):
         logger.debug(
             f'Creating new `{cls.__name__}` object using data {kwargs}')
 
-        model_cls, adapter = cls._retrieve_model()
+        model_cls, repository = cls._retrieve_model()
 
         try:
             # Build the entity from the input arguments
@@ -737,7 +735,7 @@ class Entity(metaclass=EntityBase):
             entity._validate_unique()
 
             # Build the model object and create it
-            model_obj = adapter._create_object(model_cls.from_entity(entity))
+            model_obj = repository._create_object(model_cls.from_entity(entity))
 
             # Update the auto fields of the entity
             for field_name, field_obj in entity.meta_.declared_fields.items():
@@ -764,15 +762,15 @@ class Entity(metaclass=EntityBase):
         logger.debug(
             f'Saving `{self.__class__.__name__}` object')
 
-        # Fetch Model class and connected-adapter from Repository Factory
-        model_cls, adapter = self.__class__._retrieve_model()
+        # Fetch Model class and connected repository from Repository Factory
+        model_cls, repository = self.__class__._retrieve_model()
 
         try:
             # Do unique checks, update the record and return the Entity
             self._validate_unique(create=False)
 
             # Build the model object and create it
-            model_obj = adapter._create_object(model_cls.from_entity(self))
+            model_obj = repository._create_object(model_cls.from_entity(self))
 
             # Update the auto fields of the entity
             for field_name, field_obj in self.meta_.declared_fields.items():
@@ -807,8 +805,8 @@ class Entity(metaclass=EntityBase):
         """
         logger.debug(f'Updating existing `{self.__class__.__name__}` object with id {self.id}')
 
-        # Fetch Model class and connected-adapter from Repository Factory
-        model_cls, adapter = self.__class__._retrieve_model()
+        # Fetch Model class and connected repository from Repository Factory
+        model_cls, repository = self.__class__._retrieve_model()
 
         try:
             # Update entity's data attributes
@@ -816,7 +814,7 @@ class Entity(metaclass=EntityBase):
 
             # Do unique checks, update the record and return the Entity
             self._validate_unique(create=False)
-            adapter._update_object(model_cls.from_entity(self))
+            repository._update_object(model_cls.from_entity(self))
 
             # Set Entity status to saved
             self.state_.mark_saved()
@@ -828,7 +826,7 @@ class Entity(metaclass=EntityBase):
 
     def _validate_unique(self, create=True):
         """ Validate the unique constraints for the entity """
-        # Fetch Model class and connected-adapter from Repository Factory
+        # Fetch Model class and connected-repository from Repository Factory
         model_cls, _ = self.__class__._retrieve_model()
 
         # Build the filters from the unique constraints
@@ -860,13 +858,13 @@ class Entity(metaclass=EntityBase):
 
         Throws ObjectNotFoundError if the object was not found in the repository.
         """
-        # Fetch Model class and connected-adapter from Repository Factory
-        model_cls, adapter = self.__class__._retrieve_model()
+        # Fetch Model class and connected repository from Repository Factory
+        model_cls, repository = self.__class__._retrieve_model()
 
         try:
             if not self.state_.is_destroyed:
                 # Update entity's data attributes
-                adapter._delete_object(model_cls.from_entity(self))
+                repository._delete_object(model_cls.from_entity(self))
 
                 # Set Entity status to saved
                 self.state_.mark_destroyed()
