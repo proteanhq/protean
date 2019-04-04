@@ -45,24 +45,29 @@ def register_models():
 def run_around_tests():
     """Cleanup Database after each test run"""
     from protean.core.repository import repo_factory
+    from tests.support.dog import (Dog, RelatedDog, DogRelatedByEmail, HasOneDog1,
+                                   HasOneDog2, HasOneDog3, HasManyDog1, HasManyDog2,
+                                   HasManyDog3, ThreadedDog)
+    from tests.support.human import (Human, HasOneHuman1, HasOneHuman2, HasOneHuman3,
+                                     HasManyHuman1, HasManyHuman2, HasManyHuman3)
 
     # A test function will be run at this point
     yield
 
-    repo_factory.Dog.delete_all()
-    repo_factory.RelatedDog.delete_all()
-    repo_factory.DogRelatedByEmail.delete_all()
-    repo_factory.HasOneDog1.delete_all()
-    repo_factory.HasOneDog2.delete_all()
-    repo_factory.HasOneDog3.delete_all()
-    repo_factory.HasManyDog1.delete_all()
-    repo_factory.HasManyDog2.delete_all()
-    repo_factory.HasManyDog3.delete_all()
-    repo_factory.Human.delete_all()
-    repo_factory.HasOneHuman1.delete_all()
-    repo_factory.HasOneHuman2.delete_all()
-    repo_factory.HasOneHuman3.delete_all()
-    repo_factory.HasManyHuman1.delete_all()
-    repo_factory.HasManyHuman2.delete_all()
-    repo_factory.HasManyHuman3.delete_all()
-    repo_factory.ThreadedDog.delete_all()
+    repo_factory.get_repository(Dog).delete_all()
+    repo_factory.get_repository(RelatedDog).delete_all()
+    repo_factory.get_repository(DogRelatedByEmail).delete_all()
+    repo_factory.get_repository(HasOneDog1).delete_all()
+    repo_factory.get_repository(HasOneDog2).delete_all()
+    repo_factory.get_repository(HasOneDog3).delete_all()
+    repo_factory.get_repository(HasManyDog1).delete_all()
+    repo_factory.get_repository(HasManyDog2).delete_all()
+    repo_factory.get_repository(HasManyDog3).delete_all()
+    repo_factory.get_repository(Human).delete_all()
+    repo_factory.get_repository(HasOneHuman1).delete_all()
+    repo_factory.get_repository(HasOneHuman2).delete_all()
+    repo_factory.get_repository(HasOneHuman3).delete_all()
+    repo_factory.get_repository(HasManyHuman1).delete_all()
+    repo_factory.get_repository(HasManyHuman2).delete_all()
+    repo_factory.get_repository(HasManyHuman3).delete_all()
+    repo_factory.get_repository(ThreadedDog).delete_all()

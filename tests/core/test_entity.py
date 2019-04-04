@@ -353,7 +353,7 @@ class TestEntity:
 
         assert query is not None
         assert isinstance(query, QuerySet)
-        assert vars(query) == vars(QuerySet('Dog'))
+        assert vars(query) == vars(QuerySet(Dog))
 
     def test_filter_chain_initialization_from_entity(self):
         """ Test that chaining returns a QuerySet for further chaining """
