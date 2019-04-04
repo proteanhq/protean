@@ -54,3 +54,9 @@ html_short_title = '%s-%s' % (project, version)
 napoleon_use_ivar = True
 napoleon_use_rtype = False
 napoleon_use_param = False
+
+html_theme_options = {
+    'style_nav_header_background': '#CF5400'
+}
+html_static_path = ['_static']
+html_css_files = ['css/custom.css']

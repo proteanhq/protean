@@ -31,9 +31,29 @@ Quick Example
 
 `username`, `email` and `password` are attributes of the `Account` entity. Each field is specified as a class attribute, and each attribute maps to a corresponding field in the database.
 
-.. include:: definition.rst
-.. include:: field-types.rst
-.. include:: associations.rst
-.. include:: lifecycle.rst
-.. include:: querying.rst
-.. include:: persistence.rst
+Defining Entities
+-----------------
+
+.. toctree::
+   :maxdepth: 1
+
+   definition
+   field-reference
+   associations
+
+Entity lifecycle
+----------------
+
+.. toctree::
+   :maxdepth: 1
+
+   lifecycle
+
+Persistence and Querying
+------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   persistence
+   querying
