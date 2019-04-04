@@ -1,4 +1,4 @@
-"""Utility classes and methods for DB Adapters and Query Constructors"""
+"""Utility classes and methods for DB Adapters, Repositories and Query Constructors"""
 import copy
 import functools
 import inspect
@@ -26,11 +26,11 @@ class RegisterLookupMixin:
 
     def get_lookup(self, lookup_name):
         """Fetch Lookup by name"""
-        from protean.core.repository import Lookup
+        from protean.core.repository import BaseLookup
         lookup = self._get_lookup(lookup_name)
 
         # If unable to find Lookup, or if Lookup is the wrong class, raise Error
-        if lookup is None or (lookup is not None and not issubclass(lookup, Lookup)):
+        if lookup is None or (lookup is not None and not issubclass(lookup, BaseLookup)):
             raise NotImplementedError
 
         return lookup

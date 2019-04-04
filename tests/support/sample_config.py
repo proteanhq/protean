@@ -8,10 +8,10 @@ SECRET_KEY = 'abcdefghijklmn'
 # Flag indicates that we are testing
 TESTING = True
 
-# Define the repositories
-REPOSITORIES = {
+# Database Configuration
+DATABASES = {
     'default': {
-        'PROVIDER': 'protean.impl.repository.dict_repo'
+        'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'
     }
 }
 

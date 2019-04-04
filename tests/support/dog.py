@@ -175,3 +175,18 @@ class HasManyDog3Model(DictModel):
         """ Meta class for model options"""
         entity = HasManyDog3
         model_name = 'has_many_dogs3'
+
+
+class ThreadedDog(Entity):
+    """This is a dummy Dog Entity class"""
+    name = field.String(required=True, max_length=50)
+    created_by = field.String(required=True, max_length=15)
+
+
+class ThreadedDogModel(DictModel):
+    """ Model for the ThreadedDog Entity"""
+
+    class Meta:
+        """ Meta class for schema options"""
+        entity = ThreadedDog
+        model_name = 'threaded_dogs'

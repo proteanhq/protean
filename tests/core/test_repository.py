@@ -6,7 +6,6 @@ from tests.support.dog import Dog
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.repository import repo_factory
-from protean.impl.repository.dict_repo import _databases
 
 
 class TestRepository:
@@ -110,20 +109,15 @@ class TestRepository:
         with pytest.raises(ObjectNotFoundError):
             Dog.get(3)
 
-    def test_close_connections(self):
-        """ Test closing all connections to the repository"""
-        assert 'default' in _databases
-        repo_factory.close_connections()
-
 
 class TestLookup:
     """This class holds tests for Lookup Class"""
 
-    from protean.core.repository import Lookup
-    from protean.impl.repository.dict_repo import Adapter
+    from protean.core.repository import BaseLookup
+    from protean.impl.repository.dict_repo import DictProvider
 
-    @Adapter.register_lookup
-    class SampleLookup(Lookup):
+    @DictProvider.register_lookup
+    class SampleLookup(BaseLookup):
         """A simple implementation of lookup class"""
         lookup_name = "sample"
 
@@ -140,6 +134,6 @@ class TestLookup:
 
     def test_registration(self):
         """Test registering a lookup to an adapter"""
-        from protean.impl.repository.dict_repo import Adapter
+        from protean.impl.repository.dict_repo import DictProvider
 
-        assert Adapter.get_lookups().get('sample') == self.SampleLookup
+        assert DictProvider.get_lookups().get('sample') == self.SampleLookup

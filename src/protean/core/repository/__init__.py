@@ -1,14 +1,13 @@
 """Package for defining interfaces for Repository Implementations"""
 
-from .base import BaseAdapter
-from .base import BaseConnectionHandler
-from .base import BaseModel
-from .base import Lookup
-from .base import ModelOptions
+from .base import BaseRepository
 from .factory import RepositoryFactory
 from .factory import repo_factory
+from .lookup import BaseLookup
+from .model import BaseModel
+from .model import BaseModelMeta
+from .model import ModelOptions
 from .pagination import Pagination
 
-__all__ = ('BaseAdapter', 'BaseModel', 'Lookup', 'ModelOptions',
-           'BaseConnectionHandler', 'RepositoryFactory', 'repo_factory',
-           'Pagination')
+__all__ = ('BaseRepository', 'BaseModel', 'BaseModelMeta', 'BaseLookup', 'ModelOptions',
+           'RepositoryFactory', 'repo_factory', 'Pagination')
