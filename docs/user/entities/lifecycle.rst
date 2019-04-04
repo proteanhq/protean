@@ -65,6 +65,14 @@ If you want to update an object that's already in the database, it's as simple a
     >>> old_customer.firstname = 'Jane'
     >>> old_customer.save()
 
+You can also do this operation in one step, by supplying the details to be updated to the :ref:`api-entity-update` method:
+
+.. code-block:: python
+
+    >>> old_customer.update(firstname='Jane')
+
+:ref:`api-entity-update` can accept either keyword arguments containing attribute-value pairs, or a dictionary of key-values.
+
 Deleting objects
 ~~~~~~~~~~~~~~~~
 

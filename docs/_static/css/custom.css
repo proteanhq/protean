@@ -1,3 +1,19 @@
 a {
     color: #FC6600;
 }
+
+a:hover {
+    color: #E65D00;
+}
+
+.caption-text {
+    color: #CF5400;
+}
+
+.rst-content .note .admonition-title {
+    background: #FD9D5C;
+}
+
+.note.admonition {
+    background: #FED5B9;
+}

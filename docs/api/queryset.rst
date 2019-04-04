@@ -1,11 +1,11 @@
 .. _api-queryset:
 
-QuerySet API
-----------
+QuerySet
+--------
 
 .. _api-queryset-all:
 
 ``all()``
-^^^^^^^^^^
+^^^^^^^^^
 
 .. automethod:: protean.core.entity.QuerySet.all

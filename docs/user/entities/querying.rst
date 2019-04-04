@@ -25,7 +25,7 @@ You get a QuerySet by using your Entity class, like so:
 In the above example, you get an error if you try to access a QuerySet on an instance, because queries make sense only at the Entity level, where there are multiple items and you are filtering among them. To reiterate, a QuerySet is accessible only via the Entity class.
 
 Retrieving all objects
-~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
 
 The simplest way to retrieve all items of an Entity is to get all of them. To do this, use the all() method on a QuerySet:
 

@@ -28,7 +28,7 @@ author = 'Subhash Bhushan C'
 copyright = '{0}, {1}'.format(year, author)
 version = release = '0.0.9'
 
-pygments_style = 'trac'
+pygments_style = 'autumn'
 templates_path = ['.']
 extlinks = {
     'issue': ('https://github.com/proteanhq/protean/issues/%s', '#'),
