@@ -8,6 +8,7 @@ Throughout this guide, we will refer to the following models as example:
 .. code-block:: python
 
     from protean.core.entity import Entity
+    from protean.core import field
 
     class Customer(Entity):
         firstname = field.String(required=True, max_length=50)
@@ -40,3 +41,37 @@ Assuming your entities have been defined in app/flight/entities.py, here's an ex
     >>> cust.save()
 
 .. seealso:: Refer to :ref:`documentation of save<api-entity-save>` for a list of advanced options that ``save()`` supports.
+
+Once saved, an entity instance will be associated with a unique primary identifier that can be used to retrieve it later.
+
+Retrieving objects
+~~~~~~~~~~~~~~~~~~
+
+To retrieve an entity by its primary key, you can use the :ref:`api-entity-get` method on the Entity class. Assuming that customer object above was saved with an identifier say 1, you can retrieve the customer object like so:
+
+.. code-block:: python
+
+    >>> old_customer = Customer.get(1)
+
+It is also possible to specify filter criteria to retreive specific sections of items. Refer to :ref:`queryset` documentation for detailed information on constructing such criteria and fetching items.
+
+Updating objects
+~~~~~~~~~~~~~~~~
+
+If you want to update an object that's already in the database, it's as simple as changing its attributes and calling :ref:`api-entity-save` on the object:
+
+.. code-block:: python
+
+    >>> old_customer.firstname = 'Jane'
+    >>> old_customer.save()
+
+Deleting objects
+~~~~~~~~~~~~~~~~
+
+To remove items from the database, you can simply call :ref:`api-entity-delete` on the entity instance:
+
+.. code-block:: python
+
+    >>> old_customer.delete()
+
+A call to :ref:`api-entity-delete` returns the deleted entity.
