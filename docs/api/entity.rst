@@ -33,3 +33,21 @@ Lifecycle Methods:
 ^^^^^^^^^^^^
 
 .. automethod:: protean.core.entity.Entity.delete
+
+Other Methods:
+~~~~~~~~~~~~~~
+
+.. _api-entity-exists:
+
+``exists()``
+^^^^^^^^^^^^
+
+.. automethod:: protean.core.entity.Entity.exists
+
+.. _api-entity-find-by:
+
+``find_by()``
+^^^^^^^^^^^^^
+
+.. automethod:: protean.core.entity.Entity.find_by
+

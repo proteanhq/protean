@@ -49,11 +49,13 @@ Entity lifecycle
 
    lifecycle
 
-Persistence and Querying
-------------------------
+Querying
+--------
 
 .. toctree::
    :maxdepth: 1
 
-   persistence
    querying
+   field-lookups
+   q-objects
+   caching

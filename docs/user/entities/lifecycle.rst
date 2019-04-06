@@ -1,5 +1,7 @@
-Entity LifeCycle
-----------------
+.. _entity-lifecycle:
+
+CRUD
+----
 
 Once the entities are defined, you can use a database-agnostic API to create, query, update, and delete objects. Let us explore the different options to manage the lifecycle of an Entity.
 
@@ -15,6 +17,7 @@ Throughout this guide, we will refer to the following models as example:
         lastname = field.String(required=True, max_length=50)
         date_of_birth = field.Date()
         ssn = field.String(max_length=50)
+        countrycode = field.String(max_length=3)
 
     class Airline(Entity):
         name = field.String(required=True, max_length=50)
@@ -25,8 +28,8 @@ Throughout this guide, we will refer to the following models as example:
         departure = field.DateTime()
         arrival = field.DateTime()
 
-Creating objects
-~~~~~~~~~~~~~~~~
+Creating Entities
+~~~~~~~~~~~~~~~~~
 
 An Entity typically maps to a database schema, and an instance of the entity represents a particular item in the database. The item could be a row in a table if an RDBMS such as MySQL and Postgresql is being used, or a document if its a document-oriented like MongoDB, or a key value pair in a data structure store like Redis.
 
@@ -44,8 +47,8 @@ Assuming your entities have been defined in app/flight/entities.py, here's an ex
 
 Once saved, an entity instance will be associated with a unique primary identifier that can be used to retrieve it later.
 
-Retrieving objects
-~~~~~~~~~~~~~~~~~~
+Retrieving Entities
+~~~~~~~~~~~~~~~~~~~
 
 To retrieve an entity by its primary key, you can use the :ref:`api-entity-get` method on the Entity class. Assuming that customer object above was saved with an identifier say 1, you can retrieve the customer object like so:
 
@@ -53,10 +56,10 @@ To retrieve an entity by its primary key, you can use the :ref:`api-entity-get` 
 
     >>> old_customer = Customer.get(1)
 
-It is also possible to specify filter criteria to retreive specific sections of items. Refer to :ref:`queryset` documentation for detailed information on constructing such criteria and fetching items.
+It is also possible to specify filter criteria to retreive specific sections of items. Refer to :ref:`entity-queryset` documentation for detailed information on constructing such criteria and fetching items.
 
-Updating objects
-~~~~~~~~~~~~~~~~
+Updating Entities
+~~~~~~~~~~~~~~~~~
 
 If you want to update an object that's already in the database, it's as simple as changing its attributes and calling :ref:`api-entity-save` on the object:
 
@@ -73,8 +76,20 @@ You can also do this operation in one step, by supplying the details to be updat
 
 :ref:`api-entity-update` can accept either keyword arguments containing attribute-value pairs, or a dictionary of key-values.
 
-Deleting objects
-~~~~~~~~~~~~~~~~
+If you want to mass update entities matching a set of criteria, you can call :ref:`api-queryset-update` on a queryset:
+
+.. code-block:: python
+
+    >>> Customer.filter(firstname='John').update(firstname='Jane')
+
+If you wanted to do the same update but without running validations, you can use :ref:`api-queryset-update-all`:
+
+.. code-block:: python
+
+    >>> Customer.filter(firstname='John').update_all(firstname='Jane')
+
+Deleting Entities
+~~~~~~~~~~~~~~~~~
 
 To remove items from the database, you can simply call :ref:`api-entity-delete` on the entity instance:
 
@@ -83,3 +98,15 @@ To remove items from the database, you can simply call :ref:`api-entity-delete` 
     >>> old_customer.delete()
 
 A call to :ref:`api-entity-delete` returns the deleted entity.
+
+You can also delete entities matching a specific criteria by calling :ref:`api-queryset-delete`:
+
+.. code-block:: python
+
+    >>> Customer.filter(firstname='John').delete()
+
+Note that :ref:`api-queryset-delete` above loops through each entity and calls the ``delete()`` method in each object in order to trigger all validations and callbacks. If you wanted to delete entities without running validations or cascades, you can use :ref:`api-queryset-delete-all`:
+
+.. code-block:: python
+
+    >>> Customer.filter(firstname='John').delete_all()
