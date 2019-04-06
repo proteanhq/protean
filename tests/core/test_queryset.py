@@ -31,7 +31,7 @@ class TestQuerySet:
     def test_repr(self):
         """Test that filter is evaluted on calling `list()`"""
         query = Dog.query.filter(owner='John').order_by('age')
-        assert repr(query) == ("<QuerySet: entity: Dog, "
+        assert repr(query) == ("<QuerySet: entity: <class 'tests.support.dog.Dog'>, "
                                "criteria: ('protean.utils.query.Q', (), {'owner': 'John'}), "
                                "page: 1, "
                                "per_page: 10, order_by: {'age'}>")
