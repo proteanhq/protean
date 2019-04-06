@@ -2,8 +2,8 @@
 Release History
 ===============
 
-dev
----
+0.0.10 (2019-04-05)
+-------------------
 
 * Support for chained `update` and `delete` methods on Queryset
 * Support for `update_all` method for mass updates on objects
@@ -16,6 +16,8 @@ dev
 * Rename ``Lookup`` class to ``BaseLookup``
 * Associate Lookups with Concrete Provider classes
 * Provide option to fully bake a model class in case it needs to be decorated for a specific database, via the ``get_model`` method in concrete Provider class
+* Add support for Entity Namespacing
+* Refactor Repository Factory for better consistency of registry
 
 0.0.9 (2019-03-08)
 ------------------
