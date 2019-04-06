@@ -49,7 +49,7 @@ class RelatedDog2(Entity):
     """
     name = field.String(required=True, unique=True, max_length=50)
     age = field.Integer(default=5)
-    owner = field.Reference('Human')
+    owner = field.Reference('tests.support.human.Human')
 
 
 class RelatedDog2Model(DictModel):

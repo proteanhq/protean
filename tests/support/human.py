@@ -27,7 +27,7 @@ class HasOneHuman1(Entity):
     first_name = field.String(required=True, unique=True, max_length=50)
     last_name = field.String(required=True, unique=True, max_length=50)
     email = field.String(required=True, unique=True, max_length=50)
-    dog = association.HasOne('HasOneDog1')
+    dog = association.HasOne('tests.support.dog.HasOneDog1')
 
 
 class HasOneHuman1Model(DictModel):
@@ -46,7 +46,7 @@ class HasOneHuman2(Entity):
     first_name = field.String(required=True, unique=True, max_length=50)
     last_name = field.String(required=True, unique=True, max_length=50)
     email = field.String(required=True, unique=True, max_length=50)
-    dog = association.HasOne('HasOneDog2', via='human_id')
+    dog = association.HasOne('tests.support.dog.HasOneDog2', via='human_id')
 
 
 class HasOneHuman2Model(DictModel):
@@ -65,7 +65,7 @@ class HasOneHuman3(Entity):
     first_name = field.String(required=True, unique=True, max_length=50)
     last_name = field.String(required=True, unique=True, max_length=50)
     email = field.String(required=True, unique=True, max_length=50)
-    dog = association.HasOne('HasOneDog3', via='human_id')
+    dog = association.HasOne('tests.support.dog.HasOneDog3', via='human_id')
 
 
 class HasOneHuman3Model(DictModel):
@@ -82,7 +82,7 @@ class HasManyHuman1(Entity):
     first_name = field.String(required=True, unique=True, max_length=50)
     last_name = field.String(required=True, unique=True, max_length=50)
     email = field.String(required=True, unique=True, max_length=50)
-    dogs = association.HasMany('HasManyDog1')
+    dogs = association.HasMany('tests.support.dog.HasManyDog1')
 
 
 class HasManyHuman1Model(DictModel):
@@ -120,7 +120,7 @@ class HasManyHuman3(Entity):
     first_name = field.String(required=True, unique=True, max_length=50)
     last_name = field.String(required=True, unique=True, max_length=50)
     email = field.String(required=True, unique=True, max_length=50)
-    dogs = association.HasMany('HasManyDog3', via='human_id')
+    dogs = association.HasMany('tests.support.dog.HasManyDog3', via='human_id')
 
 
 class HasManyHuman3Model(DictModel):

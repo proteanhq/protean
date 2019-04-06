@@ -1,9 +1,11 @@
 """ Factory class for managing repository connections"""
 import logging
+from collections import namedtuple
 from threading import local
 
 from protean.core.exceptions import ConfigurationError
 from protean.core.provider import providers
+from protean.utils.generic import fully_qualified_name
 
 logger = logging.getLogger('protean.repository')
 
@@ -16,12 +18,16 @@ class RepositoryFactory:
         be let go.
     """
 
+    # EntityRecord Inner Class, implemented as a namedtuple for ease of use.
+    #   This class will store attributes related to Entity and Models, and will be objects
+    #   in the registry dictionary.
+    EntityRecord = namedtuple(
+        'EntityRecord',
+        'name, qualname, entity_cls, provider_name, model_cls, fully_baked_model')
+
     def __init__(self):
         """"Initialize repository factory"""
-        self._provider_registry = {}
-        self._entity_registry = {}
-        self._model_registry = {}
-        self._fully_baked_models = {}
+        self._registry = {}
         self._connections = local()
 
     def register(self, model_cls, provider_name=None):
@@ -34,20 +40,65 @@ class RepositoryFactory:
 
         # Register the model if it does not exist
         model_name = model_cls.__name__
-        entity_name = model_cls.opts_.entity_cls.__name__
+        entity_name = fully_qualified_name(model_cls.opts_.entity_cls)
+        provider_name = provider_name or model_cls.opts_.bind or 'default'
 
-        if self._provider_registry.get(entity_name):
-            # This probably is an accidental re-registration of the entity
-            #   and we should warn the user of a possible repository confusion
-            raise ConfigurationError(
-                f'Entity {entity_name} has already been registered')
-        else:
-            self._provider_registry[entity_name] = provider_name or model_cls.opts_.bind or 'default'
-            self._model_registry[entity_name] = model_cls
-            self._entity_registry[entity_name] = model_cls.opts_.entity_cls
+        try:
+            entity = self._get_entity_by_class(model_cls.opts_.entity_cls)
+
+            if entity:
+                # This probably is an accidental re-registration of the entity
+                #   and we should warn the user of a possible repository confusion
+                raise ConfigurationError(
+                    f'Entity {entity_name} has already been registered')
+        except AssertionError:
+            # Entity has not been registered yet. Let's go ahead and add it to the registry.
+            entity_record = RepositoryFactory.EntityRecord(
+                name=model_cls.opts_.entity_cls.__name__,
+                qualname=entity_name,
+                entity_cls=model_cls.opts_.entity_cls,
+                provider_name=provider_name,
+                model_cls=model_cls,
+                fully_baked_model=False
+            )
+            self._registry[entity_name] = entity_record
             logger.debug(
                 f'Registered model {model_name} for entity {entity_name} with provider'
                 f' {provider_name}.')
+
+    def _find_entity_in_records_by_class_name(self, entity_name):
+        """Fetch by Entity Name in values"""
+        records = {
+            key: value for (key, value)
+            in self._registry.items()
+            if value.name == entity_name
+        }
+        # If more than one record was found, we are dealing with the case of
+        #   an Entity name present in multiple places (packages or plugins). Throw an error
+        #   and ask for a fully qualified Entity name to be specified
+        if len(records) > 1:
+            raise ConfigurationError(
+                f'Entity with name {entity_name} has been registered twice. '
+                f'Please use fully qualified Entity name to specify the exact Entity.')
+        elif len(records) == 1:
+            return next(iter(records.values()))
+        else:
+            raise AssertionError(f'No Entity registered with name {entity_name}')
+
+    def _get_entity_by_class(self, entity_cls):
+        """Fetch Entity record with Entity class details"""
+        entity_qualname = fully_qualified_name(entity_cls)
+        if entity_qualname in self._registry:
+            return self._registry[entity_qualname]
+        else:
+            return self._find_entity_in_records_by_class_name(entity_cls.__name__)
+
+    def _get_entity_by_name(self, entity_name):
+        """Fetch Entity record with an Entity name"""
+        if entity_name in self._registry:
+            return self._registry[entity_name]
+        else:
+            return self._find_entity_in_records_by_class_name(entity_name)
 
     def _validate_model_cls(self, model_cls):
         """Validate that Model is a valid class"""
@@ -58,45 +109,40 @@ class RepositoryFactory:
             raise AssertionError(
                 f'Model {model_cls} must be subclass of `BaseModel`')
 
-    def get_model(self, entity_name):
+    def get_model(self, entity_cls):
         """Retrieve Model class connected to Entity"""
-        if entity_name in self._fully_baked_models:
-            return self._fully_baked_models[entity_name]
+        entity_record = self._get_entity_by_class(entity_cls)
 
-        try:
-            # This will trigger ``AssertionError`` if entity is not registered
-            model_cls = self._model_registry[entity_name]
-
-            provider = self.get_provider(entity_name)
-            fully_baked_model = provider.get_model(model_cls)
+        model_cls = None
+        if entity_record.fully_baked_model:
+            model_cls = entity_record.model_cls
+        else:
+            provider = self.get_provider(entity_record.provider_name)
+            baked_model_cls = provider.get_model(entity_record.model_cls)
 
             # Record for future reference
-            self._fully_baked_models['entity_name'] = fully_baked_model
+            new_entity_record = entity_record._replace(model_cls=baked_model_cls,
+                                                       fully_baked_model=True)
+            self._registry[entity_record.qualname] = new_entity_record
 
-            return fully_baked_model
-        except KeyError:
-            raise AssertionError(f'No Model registered for {entity_name}')
+            model_cls = baked_model_cls
+
+        return model_cls
 
     def get_entity(self, entity_name):
         """Retrieve Entity class registered by `entity_name`"""
-        try:
-            return self._entity_registry[entity_name]
-        except KeyError:
-            raise AssertionError(f'No Entity registered with name {entity_name}')
+        return self._get_entity_by_name(entity_name).entity_cls
 
-    def get_provider(self, entity_name):
-        """Retrieve the provider name registered for the entity"""
-        provider_name = self._provider_registry[entity_name]
+    def get_provider(self, provider_name):
+        """Retrieve the provider object with a given provider name"""
         return providers.get_provider(provider_name)
 
-    def __getattr__(self, entity_name):
-        try:
-            provider = self.get_provider(entity_name)
+    def get_repository(self, entity_cls):
+        """Retrieve a Repository for the Model with a live connection"""
+        entity_record = self._get_entity_by_class(entity_cls)
+        provider = self.get_provider(entity_record.provider_name)
 
-            # Fetch a repository object with live connection
-            return provider.get_repository(self._model_registry[entity_name])
-        except KeyError:
-            raise AssertionError(f'No Model registered for {entity_name}')
+        return provider.get_repository(entity_record.model_cls)
 
 
 repo_factory = RepositoryFactory()
