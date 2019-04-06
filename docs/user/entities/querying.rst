@@ -130,4 +130,4 @@ You get the same effect if you were calling :ref:`api-entity-exists` on the Enti
 Raw Queries
 ~~~~~~~~~~~
 
-*<TO BE DOCUMENTED>*
+.. // TODO Add documentation on performing Raw Queries

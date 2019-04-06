@@ -1,3 +1,5 @@
+.. _entity-field:
+
 Field Reference
 ---------------
 
@@ -87,6 +89,7 @@ Each field in your entity should be an instance of the appropriate Field class. 
 
 Protean is packaged with many built-in field types; you can find the complete list in the **Fields Types** section. You can also easily write your own fields when none of the existing types fit your need; see **Writing custom fields** section.
 
+.. _entity-field-custom:
 
 Writing custom fields
 ~~~~~~~~~~~~~~~~~~~~~
