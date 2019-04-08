@@ -3,6 +3,8 @@
 Field Reference
 ---------------
 
+.. _entity-field-options:
+
 Field options
 ~~~~~~~~~~~~~
 
@@ -60,6 +62,8 @@ A choices list looks like this:
         name = field.String(max_length=50)
         non_alcoholic = field.String(choices=NON_ALCOHOLIC_DRINKS)
 
+.. _entity-field-auto-identity:
+
 Automatic Identity Field
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -81,6 +85,7 @@ The identity field can be introspected later from the Entity through the ``id_fi
 
 An identity attribute, whether generated automatically or set explicitly, is always marked ``required=True`` and ``unique=True``.
 
+.. _entity-field-types:
 
 Field types
 ~~~~~~~~~~~
@@ -89,7 +94,104 @@ Each field in your entity should be an instance of the appropriate Field class. 
 
 Protean is packaged with many built-in field types; you can find the complete list in the **Fields Types** section. You can also easily write your own fields when none of the existing types fit your need; see **Writing custom fields** section.
 
+
+.. _entity-field-auto:
+
+Auto
+^^^^
+
+.. class:: Auto(*args, **kwargs)
+
+A field that holds automatically incrementing values. The ID value itself could be an integer (like in the case of most RDBMSs) or a string (like in the case of NoSQL databases), or a string in a specific format (like in the case of UUID/GUID). You usually won't need to access this field directly. If you don't specify an ``Auto`` field explicitly, a primary key field will automatically be added to your entity. See :ref:`entity-field-auto-identity`.
+
+.. _entity-field-date:
+
+Date
+^^^^
+
+.. class:: Date(*args, **kwargs)
+
+A date represented in Python by a datetime.date instance.
+
+.. _entity-field-datetime:
+
+DateTime
+^^^^^^^^
+
+.. class:: DateTime(*args, **kwargs)
+
+A date and time represented in Python by a datetime.datetime instance.
+
+.. _entity-field-float:
+
+Float
+^^^^^
+
+.. class:: Float(*args, **kwargs)
+
+A floating-point number represented in Python by a float instance.
+
+.. _entity-field-integer:
+
+Integer
+^^^^^^^
+
+.. class:: Integer(*args, **kwargs)
+
+An integer. Values typically range from-2147483648 to 2147483647.
+
+.. _entity-field-boolean:
+
+Boolean
+^^^^^^^
+
+.. class:: Boolean(*args, **kwargs)
+
+A true/false field.
+
+.. _entity-field-string:
+
+String
+^^^^^^
+
+.. class:: String(*args, **kwargs)
+
+A string field, for small- to large-sized strings.
+
+For large amounts of text, use Text.
+
+.. _entity-field-text:
+
+Text
+^^^^
+
+.. class:: Text(*args, **kwargs)
+
+A large text field.
+
+.. _entity-field-list:
+
+List
+^^^^
+
+.. class:: List(*args, **kwargs)
+
+A special field capable of holding List values of one single type.
+
+.. _entity-field-dict:
+
+Dict
+^^^^
+
+.. class:: Dict(*args, **kwargs)
+
+A special field capable of holding a dictionary of key-values.
+
 .. _entity-field-custom:
 
 Writing custom fields
 ~~~~~~~~~~~~~~~~~~~~~
+
+.. // TODO Add Custom Field Documentation
+
+<TO BE DOCUMENTED>
