@@ -51,3 +51,9 @@ Other Methods:
 
 .. automethod:: protean.core.entity.Entity.find_by
 
+.. _api-entity-delete-all:
+
+``delete_all()``
+^^^^^^^^^^^^^^^^
+
+.. automethod:: protean.core.entity.Entity.delete_all

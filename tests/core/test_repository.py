@@ -6,10 +6,14 @@ from tests.support.dog import Dog
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.repository import repo_factory
+from protean.utils.query import Q
 
 
 class TestRepository:
-    """This class holds tests for Repository class"""
+    """This class holds tests for Repository class
+
+    FIXME Move test cases to directly test Repository class functionality and not via Entity
+    """
 
     def test_init(self):
         """Test successful access to the Dog repository"""
@@ -108,6 +112,24 @@ class TestRepository:
 
         with pytest.raises(ObjectNotFoundError):
             Dog.get(3)
+
+    def test_delete_all(self):
+        """Delete all objects in a repository"""
+
+        Dog.create(id=1, name='Athos', owner='John', age=2)
+        Dog.create(id=2, name='Porthos', owner='John', age=3)
+        Dog.create(id=3, name='Aramis', owner='John', age=4)
+        Dog.create(id=4, name='dArtagnan', owner='John', age=5)
+
+        repo = repo_factory.get_repository(Dog)
+
+        dog_records = repo.filter(Q())
+        assert dog_records.total == 4
+
+        repo.delete_all()
+
+        dog_records = repo.filter(Q())
+        assert dog_records.total == 0
 
 
 class TestLookup:

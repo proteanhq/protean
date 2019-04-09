@@ -66,7 +66,7 @@ class DictRepository(BaseRepository):
                 model_obj[field_name] = counter
         return model_obj
 
-    def _create_object(self, model_obj):
+    def create(self, model_obj):
         """ Write a record to the dict repository"""
         # Update the value of the counters
         model_obj = self._set_auto_fields(model_obj)
@@ -126,8 +126,7 @@ class DictRepository(BaseRepository):
 
         return input_db
 
-    def _filter_objects(self, criteria: Q, page: int = 1, per_page: int = 10,
-                        order_by: list = ()):
+    def filter(self, criteria: Q, page: int = 1, per_page: int = 10, order_by: list = ()):
         """ Read the repository and return results as per the filer"""
 
         if criteria.children:
@@ -156,7 +155,7 @@ class DictRepository(BaseRepository):
             items=items[cur_offset: cur_limit])
         return result
 
-    def _update_object(self, model_obj):
+    def update(self, model_obj):
         """ Update the entity record in the dictionary """
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
@@ -169,7 +168,7 @@ class DictRepository(BaseRepository):
             self.conn['data'][self.model_name][identifier] = model_obj
         return model_obj
 
-    def _update_all_objects(self, criteria: Q, *args, **kwargs):
+    def update_all(self, criteria: Q, *args, **kwargs):
         """ Update all objects satisfying the criteria """
         items = self._filter(criteria, self.conn['data'][self.model_name])
 
@@ -184,7 +183,7 @@ class DictRepository(BaseRepository):
 
         return update_count
 
-    def _delete_object(self, model_obj):
+    def delete(self, model_obj):
         """ Delete the entity record in the dictionary """
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
@@ -197,23 +196,22 @@ class DictRepository(BaseRepository):
             del self.conn['data'][self.model_name][identifier]
         return model_obj
 
-    def _delete_all_objects(self, criteria: Q):
+    def delete_all(self, criteria: Q = None):
         """ Delete the dictionary object by its criteria"""
+        if criteria:
+            # Delete the object from the dictionary and return the deletion count
+            items = self._filter(criteria, self.conn['data'][self.model_name])
 
-        # Delete the object from the dictionary and return the deletion count
-        items = self._filter(criteria, self.conn['data'][self.model_name])
+            # Delete all the matching identifiers
+            with self.conn['lock']:
+                for identifier in items:
+                    self.conn['data'][self.model_name].pop(identifier, None)
 
-        # Delete all the matching identifiers
-        for identifier in items:
-            self.conn['data'][self.model_name].pop(identifier, None)
-
-        return len(items)
-
-    def delete_all(self):
-        """ Delete all objects in this schema """
-        with self.conn['lock']:
-            if self.model_name in self.conn['data']:
-                del self.conn['data'][self.model_name]
+            return len(items)
+        else:
+            with self.conn['lock']:
+                if self.model_name in self.conn['data']:
+                    del self.conn['data'][self.model_name]
 
 
 operators = {
