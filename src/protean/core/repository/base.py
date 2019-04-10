@@ -26,29 +26,29 @@ class BaseRepository(metaclass=ABCMeta):
         self.model_name = model_cls.opts_.model_name
 
     @abstractmethod
-    def _filter_objects(self, criteria: Q, page: int = 1, per_page: int = 10,
-                        order_by: list = ()) -> Pagination:
+    def filter(self, criteria: Q, page: int = 1, per_page: int = 10,
+               order_by: list = ()) -> Pagination:
         """
         Filter objects from the repository. Method must return a `Pagination`
         object
         """
 
     @abstractmethod
-    def _create_object(self, model_obj: Any):
+    def create(self, model_obj: Any):
         """Create a new model object from the entity"""
 
     @abstractmethod
-    def _update_object(self, model_obj: Any):
+    def update(self, model_obj: Any):
         """Update a model object in the repository and return it"""
 
     @abstractmethod
-    def _update_all_objects(self, criteria: Q, *args, **kwargs):
+    def update_all(self, criteria: Q, *args, **kwargs):
         """Updates object directly in the repository and returns update count"""
 
     @abstractmethod
-    def _delete_object(self):
+    def delete(self):
         """Delete a Record from the Repository"""
 
     @abstractmethod
-    def _delete_all_objects(self, criteria: Q):
+    def delete_all(self, criteria: Q):
         """Delete a Record from the Repository"""

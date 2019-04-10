@@ -555,6 +555,21 @@ class TestEntity:
             Dog.get(3)
 
     def test_delete_all(self):
+        """Clean up repository and delete all records"""
+        Dog.create(id=1, name='Athos', owner='John', age=2)
+        Dog.create(id=2, name='Porthos', owner='John', age=3)
+        Dog.create(id=3, name='Aramis', owner='John', age=4)
+        Dog.create(id=4, name='dArtagnan', owner='John', age=5)
+
+        dogs = Dog.query.all()
+        assert dogs.total == 4
+
+        Dog.delete_all()
+
+        dogs = Dog.query.all()
+        assert dogs.total == 0
+
+    def test_delete_all_by_filter(self):
         """Try updating all records satisfying filter in one step, passing a dict"""
         Dog.create(id=1, name='Athos', owner='John', age=2)
         Dog.create(id=2, name='Porthos', owner='John', age=3)

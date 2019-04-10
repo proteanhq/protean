@@ -423,7 +423,7 @@ class Entity(metaclass=EntityBase):
             entity._validate_unique()
 
             # Build the model object and create it
-            model_obj = repository._create_object(model_cls.from_entity(entity))
+            model_obj = repository.create(model_cls.from_entity(entity))
 
             # Update the auto fields of the entity
             for field_name, field_obj in entity.meta_.declared_fields.items():
@@ -458,7 +458,7 @@ class Entity(metaclass=EntityBase):
             self._validate_unique(create=False)
 
             # Build the model object and create it
-            model_obj = repository._create_object(model_cls.from_entity(self))
+            model_obj = repository.create(model_cls.from_entity(self))
 
             # Update the auto fields of the entity
             for field_name, field_obj in self.meta_.declared_fields.items():
@@ -502,7 +502,7 @@ class Entity(metaclass=EntityBase):
 
             # Do unique checks, update the record and return the Entity
             self._validate_unique(create=False)
-            repository._update_object(model_cls.from_entity(self))
+            repository.update(model_cls.from_entity(self))
 
             # Set Entity status to saved
             self.state_.mark_saved()
@@ -552,12 +552,27 @@ class Entity(metaclass=EntityBase):
         try:
             if not self.state_.is_destroyed:
                 # Update entity's data attributes
-                repository._delete_object(model_cls.from_entity(self))
+                repository.delete(model_cls.from_entity(self))
 
                 # Set Entity status to saved
                 self.state_.mark_destroyed()
 
             return self
+        except Exception as exc:
+            # FIXME Log Exception
+            raise
+
+    @classmethod
+    def delete_all(cls):
+        """Delete all Records in a Repository
+
+        Will skip callbacks and validations.
+        """
+        # Fetch connected repository from Repository Factory
+        _, repository = cls._retrieve_model()
+
+        try:
+            repository.delete_all()
         except Exception as exc:
             # FIXME Log Exception
             raise
@@ -693,7 +708,7 @@ class QuerySet:
         order_by = model_cls.opts_.order_by if not self._order_by else self._order_by
 
         # Call the read method of the repository
-        results = repository._filter_objects(self._criteria, self._page, self._per_page, order_by)
+        results = repository.filter(self._criteria, self._page, self._per_page, order_by)
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -766,7 +781,7 @@ class QuerySet:
         updated_item_count = 0
         _, repository = self._retrieve_model()
         try:
-            updated_item_count = repository._update_all_objects(self._criteria, *args, **kwargs)
+            updated_item_count = repository.update_all(self._criteria, *args, **kwargs)
         except Exception as exc:
             # FIXME Log Exception
             raise
@@ -784,7 +799,7 @@ class QuerySet:
         deleted_item_count = 0
         _, repository = self._retrieve_model()
         try:
-            deleted_item_count = repository._delete_all_objects(self._criteria)
+            deleted_item_count = repository.delete_all(self._criteria)
         except Exception as exc:
             # FIXME Log Exception
             raise
