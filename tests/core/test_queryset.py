@@ -251,3 +251,25 @@ class TestQuerySet:
         Dog.create(id=5, name='Berry', age=8, owner='John')
         assert query.first.id == 2
         assert query.all().first.id == 5
+
+    def test_raw(self):
+        """Test raw queries"""
+        Dog.create(id=2, name='Murdock', age=7, owner='John')
+        Dog.create(id=3, name='Jean', age=3, owner='John')
+        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+
+        # Filter by Dog attributes
+        results = Dog.query.raw('{"owner":"John"}')
+        assert results.total == 2
+
+        results = Dog.query.raw("{'owner':'John'}")
+        assert results.total == 2
+
+        results = Dog.query.raw('{"owner":"John", "age":3}')
+        assert results.total == 1
+
+        results = Dog.query.raw('{"owner":"John", "age__in":[6,7]}')
+        assert results.total == 1
+
+        results = Dog.query.raw('{"owner":"John", "age__in":[3,7]}')
+        assert results.total == 2

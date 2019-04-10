@@ -7,6 +7,7 @@ dev
 
 * Rename Repository abstract methods to be public (Ex. `_create_object` → `create`)
 * Add `delete_all()` method to Entity to support Repository cleanup
+* Add support for `raw` queries on Entity repositories
 
 0.0.10 (2019-04-05)
 -------------------

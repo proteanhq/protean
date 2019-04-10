@@ -176,6 +176,46 @@ class QuerySet:
 
         return updated_item_count
 
+    def raw(self, query_string: str):
+        """Runs raw query directly on the database and returns Entity objects
+
+        Note that this method will raise an exception if the returned objects
+            are not of the Entity type.
+
+        `query_string` is not checked for correctness or validity, and any errors thrown
+            by the plugin or database are passed as-is.
+
+        All other query options like `order_by`, `page` and `per_page` are ignored for this action.
+        """
+        logger.debug(f'Query `{self.__class__.__name__}` objects with raw query {query_string}')
+
+        # Destroy any cached results
+        self._result_cache = None
+
+        # Fetch Model class and connected repository from Repository Factory
+        model_cls, repository = self._retrieve_model()
+
+        try:
+            # Call the read method of the repository
+            # Ensures that the string contains double quotes around keys and values
+            results = repository.raw(query_string.replace("'", "\""))
+
+            # Convert the returned results to entity and return it
+            entity_items = []
+            for item in results.items:
+                entity = model_cls.to_entity(item)
+                entity.state_.mark_retrieved()
+                entity_items.append(entity)
+            results.items = entity_items
+
+            # Cache results
+            self._result_cache = results
+        except Exception as exc:
+            # FIXME Log Exception
+            raise
+
+        return results
+
     def delete(self):
         """Deletes matching objects from the Repository
 
