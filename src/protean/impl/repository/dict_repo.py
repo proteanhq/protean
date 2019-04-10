@@ -5,13 +5,13 @@ from itertools import count
 from operator import itemgetter
 from threading import Lock
 
-from protean.core.entity import Q
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.provider.base import BaseProvider
 from protean.core.repository import BaseLookup
 from protean.core.repository import BaseModel
 from protean.core.repository import BaseRepository
 from protean.core.repository import Pagination
+from protean.utils.query import Q
 
 # Global in-memory store of dict data. Keyed by name, to provide
 # multiple named local memory caches.
