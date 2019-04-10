@@ -11,7 +11,7 @@ from tests.support.human import Human
 
 from protean.core import field
 from protean.core.entity import Entity
-from protean.core.entity import QuerySet
+from protean.core.queryset import QuerySet
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 

@@ -8,47 +8,47 @@ QuerySet
 ``all()``
 ^^^^^^^^^
 
-.. automethod:: protean.core.entity.QuerySet.all
+.. automethod:: protean.core.queryset.QuerySet.all
 
 .. _api-queryset-filter:
 
 ``filter``
 ^^^^^^^^^^
 
-.. automethod:: protean.core.entity.QuerySet.filter
+.. automethod:: protean.core.queryset.QuerySet.filter
 
 .. _api-queryset-exclude:
 
 ``exclude``
 ^^^^^^^^^^^
 
-.. automethod:: protean.core.entity.QuerySet.exclude
+.. automethod:: protean.core.queryset.QuerySet.exclude
 
 .. _api-queryset-update:
 
 ``update``
 ^^^^^^^^^^
 
-.. automethod:: protean.core.entity.QuerySet.update
+.. automethod:: protean.core.queryset.QuerySet.update
 
 .. _api-queryset-delete:
 
 ``delete``
 ^^^^^^^^^^^^^^^^
 
-.. automethod:: protean.core.entity.QuerySet.delete
+.. automethod:: protean.core.queryset.QuerySet.delete
 
 .. _api-queryset-update-all:
 
 ``update_all``
 ^^^^^^^^^^^^^^
 
-.. automethod:: protean.core.entity.QuerySet.update_all
+.. automethod:: protean.core.queryset.QuerySet.update_all
 
 .. _api-queryset-delete-all:
 
 ``delete_all``
 ^^^^^^^^^^^^^^
 
-.. automethod:: protean.core.entity.QuerySet.delete_all
+.. automethod:: protean.core.queryset.QuerySet.delete_all
 

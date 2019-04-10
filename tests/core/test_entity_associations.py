@@ -323,7 +323,7 @@ class TestHasMany:
         assert dog1.human_id == human.id
         assert not hasattr(dog1, 'human')
 
-    @mock.patch('protean.core.entity.QuerySet.filter')
+    @mock.patch('protean.core.queryset.QuerySet.filter')
     @mock.patch('protean.core.entity.Entity.exists')
     def test_caching(self, exists_mock, filter_mock):
         """Test that subsequent accesses after first retrieval don't fetch record again"""
