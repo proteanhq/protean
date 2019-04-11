@@ -11,9 +11,9 @@ from tests.support.human import Human
 
 from protean.core import field
 from protean.core.entity import Entity
-from protean.core.queryset import QuerySet
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
+from protean.core.queryset import QuerySet
 
 
 class TestEntity:
@@ -345,7 +345,7 @@ class TestEntity:
             Dog.create(
                 id=2, name='Johnny', owner='Carey')
         assert err.value.normalized_messages == {
-            'name': ['`dogs` with this `name` already exists.']}
+            'name': ['`Dog` with this `name` already exists.']}
 
     def test_query_init(self):
         """Test the initialization of a QuerySet"""
@@ -629,8 +629,85 @@ class TestEntity:
 
 
 class TestEntityMetaAttributes:
-
     """Class that holds testcases for Entity's meta attributes"""
+
+    def test_entity_structure(self):
+        """Test the meta structure of an Entity class"""
+        # Test that an entity has Meta information
+        assert hasattr(Dog, 'meta_')
+
+        meta = getattr(Dog, 'meta_')
+        assert hasattr(meta, 'abstract')
+        # Test that meta has correct defaults
+
+    def test_meta_overriding_abstract(self):
+        """Test that `abstract` flag can be overridden"""
+
+        # Class with overridden meta info
+        class Foo(Entity):
+            bar = field.String(max_length=25)
+
+            class Meta:
+                abstract = True
+
+        # Test that `abstract` is False by default
+        assert getattr(Dog.meta_, 'abstract') is False
+
+        # Test that the option in meta is overridden
+        assert hasattr(Foo.meta_, 'abstract')
+        assert getattr(Foo.meta_, 'abstract') is True
+
+    def test_meta_overriding_schema_name(self):
+        """Test that `schema_name` can be overridden"""
+
+        # Class with overridden meta info
+        class Foo(Entity):
+            bar = field.String(max_length=25)
+
+            class Meta:
+                schema_name = 'foosball'
+
+        # Test that `schema_name` is False by default
+        assert getattr(Dog.meta_, 'schema_name') == 'dog'
+        assert getattr(HasOneHuman1.meta_, 'schema_name') == 'has_one_human1'
+
+        # Test that the option in meta is overridden
+        assert hasattr(Foo.meta_, 'schema_name')
+        assert getattr(Foo.meta_, 'schema_name') == 'foosball'
+
+    def test_meta_overriding_provider(self):
+        """Test that `provider` can be overridden"""
+
+        # Class with overridden meta info
+        class Foo(Entity):
+            bar = field.String(max_length=25)
+
+            class Meta:
+                provider = 'non-default'
+
+        # Test that `provider` is set to `default` by default
+        assert getattr(Dog.meta_, 'provider') == 'default'
+
+        # Test that the option in meta is overridden
+        assert hasattr(Foo.meta_, 'provider')
+        assert getattr(Foo.meta_, 'provider') == 'non-default'
+
+    def test_meta_overriding_order_by(self):
+        """Test that `order_by` can be overridden"""
+
+        # Class with overridden meta info
+        class Foo(Entity):
+            bar = field.String(max_length=25)
+
+            class Meta:
+                order_by = 'bar'
+
+        # Test that `order_by` is an empty tuple by default
+        assert getattr(Dog.meta_, 'order_by') == ()
+
+        # Test that the option in meta is overridden
+        assert hasattr(Foo.meta_, 'order_by')
+        assert getattr(Foo.meta_, 'order_by') == ('bar', )
 
     def test_meta_on_init(self):
         """Test that `meta` attribute is available after initialization"""

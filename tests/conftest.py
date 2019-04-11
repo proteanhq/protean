@@ -13,32 +13,29 @@ def register_models():
        Run only once for the entire test suite
     """
     from protean.core.repository import repo_factory
-    from tests.support.dog import (DogModel, RelatedDogModel, DogRelatedByEmailModel,
-                                   HasOneDog1Model, HasOneDog2Model, HasOneDog3Model,
-                                   HasManyDog1Model, HasManyDog2Model, HasManyDog3Model,
-                                   ThreadedDogModel)
-    from tests.support.human import (HumanModel, HasOneHuman1Model,
-                                     HasOneHuman2Model, HasOneHuman3Model,
-                                     HasManyHuman1Model, HasManyHuman2Model,
-                                     HasManyHuman3Model)
+    from tests.support.dog import (Dog, RelatedDog, DogRelatedByEmail, HasOneDog1,
+                                   HasOneDog2, HasOneDog3, HasManyDog1, HasManyDog2,
+                                   HasManyDog3, ThreadedDog)
+    from tests.support.human import (Human, HasOneHuman1, HasOneHuman2, HasOneHuman3,
+                                     HasManyHuman1, HasManyHuman2, HasManyHuman3)
 
-    repo_factory.register(DogModel)
-    repo_factory.register(RelatedDogModel)
-    repo_factory.register(DogRelatedByEmailModel)
-    repo_factory.register(HasOneDog1Model)
-    repo_factory.register(HasOneDog2Model)
-    repo_factory.register(HasOneDog3Model)
-    repo_factory.register(HasManyDog1Model)
-    repo_factory.register(HasManyDog2Model)
-    repo_factory.register(HasManyDog3Model)
-    repo_factory.register(HumanModel)
-    repo_factory.register(HasOneHuman1Model)
-    repo_factory.register(HasOneHuman2Model)
-    repo_factory.register(HasOneHuman3Model)
-    repo_factory.register(HasManyHuman1Model)
-    repo_factory.register(HasManyHuman2Model)
-    repo_factory.register(HasManyHuman3Model)
-    repo_factory.register(ThreadedDogModel)
+    repo_factory.register(Dog)
+    repo_factory.register(RelatedDog)
+    repo_factory.register(DogRelatedByEmail)
+    repo_factory.register(HasOneDog1)
+    repo_factory.register(HasOneDog2)
+    repo_factory.register(HasOneDog3)
+    repo_factory.register(HasManyDog1)
+    repo_factory.register(HasManyDog2)
+    repo_factory.register(HasManyDog3)
+    repo_factory.register(Human)
+    repo_factory.register(HasOneHuman1)
+    repo_factory.register(HasOneHuman2)
+    repo_factory.register(HasOneHuman3)
+    repo_factory.register(HasManyHuman1)
+    repo_factory.register(HasManyHuman2)
+    repo_factory.register(HasManyHuman3)
+    repo_factory.register(ThreadedDog)
 
 
 @pytest.fixture(autouse=True)

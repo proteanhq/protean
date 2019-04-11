@@ -5,6 +5,7 @@ from itertools import count
 from operator import itemgetter
 from threading import Lock
 
+from protean.core.entity import Entity
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.provider.base import BaseProvider
 from protean.core.repository import BaseLookup
@@ -18,6 +19,23 @@ from protean.utils.query import Q
 _databases = {}
 _locks = {}
 _counters = defaultdict(count)
+
+
+class DictModel(BaseModel):
+    """ A model for the dictionary repository"""
+
+    @classmethod
+    def from_entity(cls, entity: Entity) -> 'DictModel':
+        """ Convert the entity to a dictionary record """
+        dict_obj = {}
+        for field_name in entity.meta_.attributes:
+            dict_obj[field_name] = getattr(entity, field_name)
+        return dict_obj
+
+    @classmethod
+    def to_entity(cls, item: 'DictModel') -> Entity:
+        """ Convert the dictionary record to an entity """
+        return cls.entity_cls(item)
 
 
 class DictProvider(BaseProvider):
@@ -44,9 +62,17 @@ class DictProvider(BaseProvider):
         """ Close connection does nothing on the repo """
         pass
 
-    def get_repository(self, model_cls):
+    def get_model(self, entity_cls):
+        """ Return associated, fully-baked Model class"""
+        cls = DictModel
+        cls.entity_cls = entity_cls
+
+        return cls
+
+    def get_repository(self, entity_cls):
         """ Return a repository object configured with a live connection"""
-        return DictRepository(self, model_cls)
+        model_cls = self.get_model(entity_cls)
+        return DictRepository(self, entity_cls, model_cls)
 
 
 class DictRepository(BaseRepository):
@@ -56,7 +82,7 @@ class DictRepository(BaseRepository):
         """ Set the values of the auto field using counter"""
         for field_name, field_obj in \
                 self.entity_cls.meta_.auto_fields:
-            counter_key = f'{self.model_name}_{field_name}'
+            counter_key = f'{self.schema_name}_{field_name}'
             if not (field_name in model_obj and model_obj[field_name] is not None):
                 # Increment the counter and it should start from 1
                 counter = next(self.conn['counters'][counter_key])
@@ -74,7 +100,7 @@ class DictRepository(BaseRepository):
         # Add the entity to the repository
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
-            self.conn['data'][self.model_name][identifier] = model_obj
+            self.conn['data'][self.schema_name][identifier] = model_obj
 
         return model_obj
 
@@ -130,9 +156,9 @@ class DictRepository(BaseRepository):
         """ Read the repository and return results as per the filer"""
 
         if criteria.children:
-            items = list(self._filter(criteria, self.conn['data'][self.model_name]).values())
+            items = list(self._filter(criteria, self.conn['data'][self.schema_name]).values())
         else:
-            items = list(self.conn['data'][self.model_name].values())
+            items = list(self.conn['data'][self.schema_name].values())
 
         # Sort the filtered results based on the order_by clause
         for o_key in order_by:
@@ -160,24 +186,24 @@ class DictRepository(BaseRepository):
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
             # Check if object is present
-            if identifier not in self.conn['data'][self.model_name]:
+            if identifier not in self.conn['data'][self.schema_name]:
                 raise ObjectNotFoundError(
                     f'`{self.__class__.__name__}` object with identifier {identifier} '
                     f'does not exist.')
 
-            self.conn['data'][self.model_name][identifier] = model_obj
+            self.conn['data'][self.schema_name][identifier] = model_obj
         return model_obj
 
     def update_all(self, criteria: Q, *args, **kwargs):
         """ Update all objects satisfying the criteria """
-        items = self._filter(criteria, self.conn['data'][self.model_name])
+        items = self._filter(criteria, self.conn['data'][self.schema_name])
 
         update_count = 0
         for key in items:
             item = items[key]
             item.update(*args)
             item.update(kwargs)
-            self.conn['data'][self.model_name][key] = item
+            self.conn['data'][self.schema_name][key] = item
 
             update_count += 1
 
@@ -188,30 +214,30 @@ class DictRepository(BaseRepository):
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
             # Check if object is present
-            if identifier not in self.conn['data'][self.model_name]:
+            if identifier not in self.conn['data'][self.schema_name]:
                 raise ObjectNotFoundError(
                     f'`{self.__class__.__name__}` object with identifier {identifier} '
                     f'does not exist.')
 
-            del self.conn['data'][self.model_name][identifier]
+            del self.conn['data'][self.schema_name][identifier]
         return model_obj
 
     def delete_all(self, criteria: Q = None):
         """ Delete the dictionary object by its criteria"""
         if criteria:
             # Delete the object from the dictionary and return the deletion count
-            items = self._filter(criteria, self.conn['data'][self.model_name])
+            items = self._filter(criteria, self.conn['data'][self.schema_name])
 
             # Delete all the matching identifiers
             with self.conn['lock']:
                 for identifier in items:
-                    self.conn['data'][self.model_name].pop(identifier, None)
+                    self.conn['data'][self.schema_name].pop(identifier, None)
 
             return len(items)
         else:
             with self.conn['lock']:
-                if self.model_name in self.conn['data']:
-                    del self.conn['data'][self.model_name]
+                if self.schema_name in self.conn['data']:
+                    del self.conn['data'][self.schema_name]
 
 
 operators = {
@@ -336,20 +362,3 @@ class In(DefaultDictLookup):
         """Ensure target is a list or tuple"""
         assert type(self.target) in (list, tuple)
         return super().process_target()
-
-
-class DictModel(BaseModel):
-    """ A model for the dictionary repository"""
-
-    @classmethod
-    def from_entity(cls, entity):
-        """ Convert the entity to a dictionary record """
-        dict_obj = {}
-        for field_name in entity.__class__.meta_.attributes:
-            dict_obj[field_name] = getattr(entity, field_name)
-        return dict_obj
-
-    @classmethod
-    def to_entity(cls, item):
-        """ Convert the dictionary record to an entity """
-        return cls.opts_.entity_cls(item)

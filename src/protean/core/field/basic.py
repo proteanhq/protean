@@ -14,6 +14,7 @@ class String(Field):
     :param max_length: The maximum allowed length for the field.
     :param min_length: The minimum allowed length for the field.
 
+    FIXME Should max_length be optional?
     """
     default_error_messages = {
         'invalid': '{value}" value must be a string.',
