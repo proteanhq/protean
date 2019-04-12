@@ -186,7 +186,8 @@ class QuerySet:
         self._result_cache = None
 
         # Fetch Model class and connected repository from Repository Factory
-        model_cls, repository = self._retrieve_model()
+        model_cls = repo_factory.get_model(self._entity_cls)
+        repository = repo_factory.get_repository(self._entity_cls)
 
         try:
             # Call the read method of the repository

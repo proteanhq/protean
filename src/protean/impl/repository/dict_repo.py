@@ -248,7 +248,7 @@ class DictRepository(BaseRepository):
         criteria with straigh-forward equality checks. Individual criteria are always ANDed
         and the result is always a subset of the full repository.
         """
-        input_db = self.conn['data'][self.model_name]
+        input_db = self.conn['data'][self.schema_name]
         result = None
 
         try:
