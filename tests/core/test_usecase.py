@@ -194,7 +194,7 @@ class TestCreateUseCase:
         assert not response.success
         assert response.value == {
             'code': 422,
-            'message': {'id': ['`dogs` with this `id` already exists.']}}
+            'message': {'id': ['`Dog` with this `id` already exists.']}}
 
 
 class TestUpdateUseCase:
@@ -252,7 +252,7 @@ class TestUpdateUseCase:
         assert response.value == {
             'code': 422,
             'message': {
-                'name': ['`dogs` with this `name` already exists.']}}
+                'name': ['`Dog` with this `name` already exists.']}}
 
 
 class TestDeleteUseCase:

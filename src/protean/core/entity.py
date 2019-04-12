@@ -10,6 +10,8 @@ from protean.core.field import Field
 from protean.core.field import Reference
 from protean.core.field import ReferenceField
 from protean.core.queryset import QuerySet
+from protean.core.repository import repo_factory
+from protean.utils import inflection
 
 logger = logging.getLogger('protean.core.entity')
 
@@ -41,7 +43,7 @@ class EntityBase(type):
         # Gather `Meta` class/object if defined
         attr_meta = attrs.pop('Meta', None)
         meta = attr_meta or getattr(new_class, 'Meta', None)
-        setattr(new_class, 'meta_', EntityMeta(meta))
+        setattr(new_class, 'meta_', EntityMeta(name, meta))
 
         # Load declared fields
         new_class._load_fields(attrs)
@@ -138,13 +140,31 @@ class EntityBase(type):
 
 
 class EntityMeta:
-    """ Metadata information for the entity including any options defined."""
+    """ Metadata info for the entity.
 
-    def __init__(self, meta):
-        self.meta = meta
+    Options:
+    - ``abstract``: Indicates that this is an abstract entity (Ignores all other meta options)
+    - ``schema_name``: name of the schema (table/index/doc) used for persistence of this entity
+        defaults to underscore version of the Entity name.
+    - ``provider``: the name of the datasource associated with this
+        entity, default value is `default`.
+    - ``order_by``: default ordering of objects returned by filter queries.
+    """
+
+    def __init__(self, entity_name, meta):
+        self.abstract = getattr(meta, 'abstract', None) or False
+        self.schema_name = (getattr(meta, 'schema_name', None) or
+                            inflection.underscore(entity_name))
+        self.provider = getattr(meta, 'provider', None) or 'default'
+
+        # `order_by` can be provided either as a string or a tuple
+        ordering = getattr(meta, 'order_by', ())
+        if isinstance(ordering, str):
+            self.order_by = ordering,
+        else:
+            self.order_by = tuple(ordering)
 
         # Initialize Options
-        self.entity_cls = None
         self.declared_fields = {}
         self.attributes = {}
         self.id_field = None
@@ -320,17 +340,6 @@ class Entity(metaclass=EntityBase):
         return {field_name: getattr(self, field_name, None)
                 for field_name in self.meta_.declared_fields}
 
-    @classmethod
-    def _retrieve_model(cls):
-        """Retrieve model details associated with this Entity"""
-        from protean.core.repository import repo_factory  # FIXME Move to a better placement
-
-        # Fetch Model class and connected repository from Repository Factory
-        model_cls = repo_factory.get_model(cls)
-        repository = repo_factory.get_repository(cls)
-
-        return (model_cls, repository)
-
     def clone(self):
         """Deepclone the entity, but reset state"""
         clone_copy = copy.deepcopy(self)
@@ -410,7 +419,8 @@ class Entity(metaclass=EntityBase):
         logger.debug(
             f'Creating new `{cls.__name__}` object using data {kwargs}')
 
-        model_cls, repository = cls._retrieve_model()
+        model_cls = repo_factory.get_model(cls)
+        repository = repo_factory.get_repository(cls)
 
         try:
             # Build the entity from the input arguments
@@ -436,7 +446,7 @@ class Entity(metaclass=EntityBase):
             entity.state_.mark_saved()
 
             return entity
-        except ValidationError as exc:
+        except ValidationError:
             # FIXME Log Exception
             raise
 
@@ -449,7 +459,8 @@ class Entity(metaclass=EntityBase):
             f'Saving `{self.__class__.__name__}` object')
 
         # Fetch Model class and connected repository from Repository Factory
-        model_cls, repository = self.__class__._retrieve_model()
+        model_cls = repo_factory.get_model(self.__class__)
+        repository = repo_factory.get_repository(self.__class__)
 
         try:
             # Do unique checks, update the record and return the Entity
@@ -471,7 +482,7 @@ class Entity(metaclass=EntityBase):
             self.state_.mark_saved()
 
             return self
-        except Exception as exc:
+        except Exception:
             # FIXME Log Exception
             raise
 
@@ -492,7 +503,8 @@ class Entity(metaclass=EntityBase):
         logger.debug(f'Updating existing `{self.__class__.__name__}` object with id {self.id}')
 
         # Fetch Model class and connected repository from Repository Factory
-        model_cls, repository = self.__class__._retrieve_model()
+        model_cls = repo_factory.get_model(self.__class__)
+        repository = repo_factory.get_repository(self.__class__)
 
         try:
             # Update entity's data attributes
@@ -506,15 +518,12 @@ class Entity(metaclass=EntityBase):
             self.state_.mark_saved()
 
             return self
-        except Exception as exc:
+        except Exception:
             # FIXME Log Exception
             raise
 
     def _validate_unique(self, create=True):
         """ Validate the unique constraints for the entity """
-        # Fetch Model class and connected-repository from Repository Factory
-        model_cls, _ = self.__class__._retrieve_model()
-
         # Build the filters from the unique constraints
         filters, excludes = {}, {}
 
@@ -534,7 +543,7 @@ class Entity(metaclass=EntityBase):
             if self.exists(excludes, **{filter_key: lookup_value}):
                 field_obj = self.meta_.declared_fields[filter_key]
                 field_obj.fail('unique',
-                               model_name=model_cls.opts_.model_name,
+                               entity_name=self.__class__.__name__,
                                field_name=filter_key)
 
     def delete(self):
@@ -545,7 +554,8 @@ class Entity(metaclass=EntityBase):
         Throws ObjectNotFoundError if the object was not found in the repository.
         """
         # Fetch Model class and connected repository from Repository Factory
-        model_cls, repository = self.__class__._retrieve_model()
+        model_cls = repo_factory.get_model(self.__class__)
+        repository = repo_factory.get_repository(self.__class__)
 
         try:
             if not self.state_.is_destroyed:
@@ -556,7 +566,7 @@ class Entity(metaclass=EntityBase):
                 self.state_.mark_destroyed()
 
             return self
-        except Exception as exc:
+        except Exception:
             # FIXME Log Exception
             raise
 
@@ -567,10 +577,10 @@ class Entity(metaclass=EntityBase):
         Will skip callbacks and validations.
         """
         # Fetch connected repository from Repository Factory
-        _, repository = cls._retrieve_model()
+        repository = repo_factory.get_repository(cls)
 
         try:
             repository.delete_all()
-        except Exception as exc:
+        except Exception:
             # FIXME Log Exception
             raise

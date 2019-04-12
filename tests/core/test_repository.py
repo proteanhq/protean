@@ -20,7 +20,7 @@ class TestRepository:
 
         Dog.query.all()
         current_db = dict(repo_factory.get_repository(Dog).conn)
-        assert current_db['data'] == {'dogs': {}}
+        assert current_db['data'] == {'dog': {}}
 
     def test_create_error(self):
         """ Add an entity to the repository missing a required attribute"""
@@ -63,7 +63,7 @@ class TestRepository:
             Dog.create(
                 id=2, name='Johnny', owner='Carey')
         assert err.value.normalized_messages == {
-            'name': ['`dogs` with this `name` already exists.']}
+            'name': ['`Dog` with this `name` already exists.']}
 
     def test_filter(self):
         """ Query the repository using filters """

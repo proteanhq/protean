@@ -56,9 +56,6 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     def get_repository(self, model_cls):
         """ Return a repository object configured with a live connection"""
 
-    def get_model(self, model_cls):
-        """ Return the fully baked model, with any additions necessary
-
-        This is a placeholder method that can be overridden in each provider
-        """
-        return model_cls
+    @abstractmethod
+    def get_model(self, entity_cls):
+        """ Return associated Model Class"""

@@ -33,7 +33,7 @@ class QuerySet:
     :return Returns a `Pagination` object that holds the query results
     """
 
-    def __init__(self, entity_cls: 'Entity', criteria=None, page: int = 1, per_page: int = 10,
+    def __init__(self, entity_cls, criteria=None, page: int = 1, per_page: int = 10,
                  order_by: set = None):
         """Initialize either with empty preferences (when invoked on an Entity)
             or carry forward filters and preferences when chained
@@ -109,14 +109,6 @@ class QuerySet:
 
         return clone
 
-    def _retrieve_model(self):
-        """Retrieve model details associated with this Entity"""
-        # Fetch Model class and connected repository from Repository Factory
-        model_cls = repo_factory.get_model(self._entity_cls)
-        repository = repo_factory.get_repository(self._entity_cls)
-
-        return (model_cls, repository)
-
     def all(self):
         """Primary method to fetch data based on filters
 
@@ -133,10 +125,11 @@ class QuerySet:
         self._result_cache = None
 
         # Fetch Model class and connected repository from Repository Factory
-        model_cls, repository = self._retrieve_model()
+        model_cls = repo_factory.get_model(self._entity_cls)
+        repository = repo_factory.get_repository(self._entity_cls)
 
         # order_by clause must be list of keys
-        order_by = model_cls.opts_.order_by if not self._order_by else self._order_by
+        order_by = self._entity_cls.meta_.order_by if not self._order_by else self._order_by
 
         # Call the read method of the repository
         results = repository.filter(self._criteria, self._page, self._per_page, order_by)
@@ -170,7 +163,7 @@ class QuerySet:
             for item in items:
                 item.update(*data, **kwargs)
                 updated_item_count += 1
-        except Exception as exc:
+        except Exception:
             # FIXME Log Exception
             raise
 
@@ -193,7 +186,8 @@ class QuerySet:
         self._result_cache = None
 
         # Fetch Model class and connected repository from Repository Factory
-        model_cls, repository = self._retrieve_model()
+        model_cls = repo_factory.get_model(self._entity_cls)
+        repository = repo_factory.get_repository(self._entity_cls)
 
         try:
             # Call the read method of the repository
@@ -232,7 +226,7 @@ class QuerySet:
             for item in items:
                 item.delete()
                 deleted_item_count += 1
-        except Exception as exc:
+        except Exception:
             # FIXME Log Exception
             raise
 
@@ -250,10 +244,12 @@ class QuerySet:
             updated if objects rows already have the new value).
         """
         updated_item_count = 0
-        _, repository = self._retrieve_model()
+
+        repository = repo_factory.get_repository(self._entity_cls)
+
         try:
             updated_item_count = repository.update_all(self._criteria, *args, **kwargs)
-        except Exception as exc:
+        except Exception:
             # FIXME Log Exception
             raise
 
@@ -268,10 +264,10 @@ class QuerySet:
         Returns the number of objects matched and deleted.
         """
         deleted_item_count = 0
-        _, repository = self._retrieve_model()
+        repository = repo_factory.get_repository(self._entity_cls)
         try:
             deleted_item_count = repository.delete_all(self._criteria)
-        except Exception as exc:
+        except Exception:
             # FIXME Log Exception
             raise
 

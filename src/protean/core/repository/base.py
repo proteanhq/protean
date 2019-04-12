@@ -18,12 +18,12 @@ class BaseRepository(metaclass=ABCMeta):
     :param model_cls: The model class registered with this repository
     """
 
-    def __init__(self, provider, model_cls):
+    def __init__(self, provider, entity_cls, model_cls):
         self.provider = provider
         self.conn = self.provider.get_connection()
         self.model_cls = model_cls
-        self.entity_cls = model_cls.opts_.entity_cls
-        self.model_name = model_cls.opts_.model_name
+        self.entity_cls = entity_cls
+        self.schema_name = entity_cls.meta_.schema_name
 
     @abstractmethod
     def filter(self, criteria: Q, page: int = 1, per_page: int = 10,
@@ -50,7 +50,7 @@ class BaseRepository(metaclass=ABCMeta):
         """Delete a Record from the Repository"""
 
     @abstractmethod
-    def delete_all(self, criteria: Q):
+    def delete_all(self, criteria: Q = None):
         """Delete a Record from the Repository"""
 
     @abstractmethod

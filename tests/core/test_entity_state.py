@@ -35,7 +35,7 @@ class TestState:
         try:
             del dog.name
             dog.save()
-        except ValidationError as exc:
+        except ValidationError:
             assert dog.state_.is_new
 
     def test_persisted_after_create(self):
