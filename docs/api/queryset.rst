@@ -52,3 +52,9 @@ QuerySet
 
 .. automethod:: protean.core.queryset.QuerySet.delete_all
 
+.. _api-queryset-raw:
+
+``raw``
+^^^^^^^^^^^^^^
+
+.. automethod:: protean.core.queryset.QuerySet.raw

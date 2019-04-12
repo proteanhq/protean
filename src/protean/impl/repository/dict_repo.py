@@ -1,5 +1,7 @@
 """ Implementation of a dictionary based repository """
 
+import json
+
 from collections import defaultdict
 from itertools import count
 from operator import itemgetter
@@ -238,6 +240,35 @@ class DictRepository(BaseRepository):
             with self.conn['lock']:
                 if self.schema_name in self.conn['data']:
                     del self.conn['data'][self.schema_name]
+
+    def raw(self, query_string: str):
+        """Run raw query on Repository.
+
+        For this stand-in repository, the query string is a json string that contains kwargs
+        criteria with straigh-forward equality checks. Individual criteria are always ANDed
+        and the result is always a subset of the full repository.
+        """
+        input_db = self.conn['data'][self.model_name]
+        result = None
+
+        try:
+            criteria = json.loads(query_string)
+
+            for key, value in criteria.items():
+                input_db = self._evaluate_lookup(key, value, False, input_db)
+
+            items = list(input_db.values())
+            result = Pagination(
+                page=1,
+                per_page=len(items),
+                total=len(items),
+                items=items)
+
+        except json.JSONDecodeError as exc:
+            # FIXME Log Exception
+            raise Exception("Query Malformed")
+
+        return result
 
 
 operators = {
