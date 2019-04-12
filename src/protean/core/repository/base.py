@@ -52,3 +52,7 @@ class BaseRepository(metaclass=ABCMeta):
     @abstractmethod
     def delete_all(self, criteria: Q):
         """Delete a Record from the Repository"""
+
+    @abstractmethod
+    def raw(self, query_string: str):
+        """Run raw query on Repository"""
