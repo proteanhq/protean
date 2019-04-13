@@ -1,6 +1,7 @@
 """Tests for Cache Functionality"""
 import time
 
+import pytest
 from tests.support.dog import Dog
 
 from protean.core.cache import cache
@@ -23,6 +24,7 @@ class TestCache:
         dog_d = cache.provider.get(f'dog:{dog.id}')
         assert dog_d == {'age': 5, 'id': 1, 'name': 'Johnny', 'owner': 'John'}
 
+    @pytest.mark.slow
     def test_set(self):
         """ Test setting an existing key and expiry of keys """
         dog = Dog.create(id=1, name='Johnny', owner='John')
@@ -40,6 +42,7 @@ class TestCache:
         dog_d = cache.provider.get(f'dog:{dog.id}')
         assert dog_d is None
 
+    @pytest.mark.slow
     def test_touch(self):
         """ Test updating the expiry of key using touch """
         dog = Dog.create(id=1, name='Johnny', owner='John')

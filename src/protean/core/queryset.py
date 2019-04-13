@@ -204,7 +204,7 @@ class QuerySet:
 
             # Cache results
             self._result_cache = results
-        except Exception as exc:
+        except Exception:
             # FIXME Log Exception
             raise
 

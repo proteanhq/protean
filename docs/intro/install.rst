@@ -25,7 +25,7 @@ You can either clone the public repository::
 
     $ git clone git://github.com/proteanhq/protean.git
 
-Or, download the `tarball <https://github.com/proteanhq/protean/tarball/master>`_::
+Or, download the `tarball <https://codeload.github.com/proteanhq/protean/legacy.tar.gz/master>`_::
 
     $ curl -OL https://github.com/proteanhq/protean/tarball/master
     # optionally, zipball is also available (for Windows users).

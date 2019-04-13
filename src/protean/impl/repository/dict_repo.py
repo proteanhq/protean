@@ -1,7 +1,6 @@
 """ Implementation of a dictionary based repository """
 
 import json
-
 from collections import defaultdict
 from itertools import count
 from operator import itemgetter
@@ -264,7 +263,7 @@ class DictRepository(BaseRepository):
                 total=len(items),
                 items=items)
 
-        except json.JSONDecodeError as exc:
+        except json.JSONDecodeError:
             # FIXME Log Exception
             raise Exception("Query Malformed")
 

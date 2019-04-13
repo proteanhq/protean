@@ -7,13 +7,14 @@ for a list of all possible variables.
 """
 
 import importlib
+import logging
 import os
-import warnings
 
 from protean.conf import default_config
 from protean.core.exceptions import ConfigurationError
 
 ENVIRONMENT_VARIABLE = "PROTEAN_CONFIG"
+logger = logging.getLogger('protean.conf')
 
 
 class Config:
@@ -36,7 +37,7 @@ class Config:
 
         if not config_module_str:
             config_module_str = 'protean.conf.default_config'
-            warnings.warn(
+            logger.debug(
                 f"No Config Module defined. Using the default config module "
                 f"available at {config_module_str}.")
 
