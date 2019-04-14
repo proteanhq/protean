@@ -288,13 +288,13 @@ class DefaultDictLookup(BaseLookup):
     def process_source(self):
         """Return source with transformations, if any"""
         if isinstance(self.source, str):
-            return "'%s'" % self.source
+            return "\"%s\"" % self.source.replace("'", "\'").replace('"', "\'")
         return self.source
 
     def process_target(self):
         """Return target with transformations, if any"""
         if isinstance(self.target, str):
-            return "'%s'" % self.target
+            return "\"%s\"" % self.target.replace("'", "\'").replace('"', "\'")
         return self.target
 
     def as_expression(self):

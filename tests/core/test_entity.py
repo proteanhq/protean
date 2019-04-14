@@ -276,7 +276,7 @@ class TestEntity:
         Dog.create(id=1, name='Athos', owner='John', age=2)
         Dog.create(id=2, name='Porthos', owner='John', age=3)
         Dog.create(id=3, name='Aramis', owner='John', age=4)
-        Dog.create(id=4, name='dArtagnan', owner='John', age=5)
+        Dog.create(id=4, name='d\'Artagnan', owner='John', age=5)
 
         # Perform update
         updated_count = Dog.query.filter(age__gt=3).update(owner='Jane')
@@ -298,7 +298,7 @@ class TestEntity:
         Dog.create(id=1, name='Athos', owner='John', age=2)
         Dog.create(id=2, name='Porthos', owner='John', age=3)
         Dog.create(id=3, name='Aramis', owner='John', age=4)
-        Dog.create(id=4, name='dArtagnan', owner='John', age=5)
+        Dog.create(id=4, name='d\'Artagnan', owner='John', age=5)
 
         # Perform update
         updated_count = Dog.query.filter(age__gt=3).update_all({'owner': 'Jane'})
@@ -320,7 +320,7 @@ class TestEntity:
         Dog.create(id=1, name='Athos', owner='John', age=2)
         Dog.create(id=2, name='Porthos', owner='John', age=3)
         Dog.create(id=3, name='Aramis', owner='John', age=4)
-        Dog.create(id=4, name='dArtagnan', owner='John', age=5)
+        Dog.create(id=4, name='d\'Artagnan', owner='John', age=5)
 
         # Perform update
         updated_count = Dog.query.filter(age__gt=3).update_all(owner='Jane')
@@ -559,7 +559,7 @@ class TestEntity:
         Dog.create(id=1, name='Athos', owner='John', age=2)
         Dog.create(id=2, name='Porthos', owner='John', age=3)
         Dog.create(id=3, name='Aramis', owner='John', age=4)
-        Dog.create(id=4, name='dArtagnan', owner='John', age=5)
+        Dog.create(id=4, name='d\'Artagnan', owner='John', age=5)
 
         dogs = Dog.query.all()
         assert dogs.total == 4
@@ -574,7 +574,7 @@ class TestEntity:
         Dog.create(id=1, name='Athos', owner='John', age=2)
         Dog.create(id=2, name='Porthos', owner='John', age=3)
         Dog.create(id=3, name='Aramis', owner='John', age=4)
-        Dog.create(id=4, name='dArtagnan', owner='John', age=5)
+        Dog.create(id=4, name='d\'Artagnan', owner='John', age=5)
 
         # Perform update
         deleted_count = Dog.query.filter(age__gt=3).delete_all()
@@ -599,7 +599,7 @@ class TestEntity:
         Dog.create(id=1, name='Athos', owner='John', age=2)
         Dog.create(id=2, name='Porthos', owner='John', age=3)
         Dog.create(id=3, name='Aramis', owner='John', age=4)
-        Dog.create(id=4, name='dArtagnan', owner='John', age=5)
+        Dog.create(id=4, name='d\'Artagnan', owner='John', age=5)
 
         # Perform update
         deleted_count = Dog.query.filter(age__gt=3).delete()
@@ -626,6 +626,20 @@ class TestEntity:
         # Filter by the Owner
         query = Dog.query.filter(owner='John')
         assert isinstance(query, QuerySet)
+
+    def test_escaped_quotes_in_values(self):
+        """Test that escaped quotes in values are handled properly"""
+
+        Dog.create(name='Athos', owner='John', age=2)
+        Dog.create(name='Porthos', owner='John', age=3)
+        Dog.create(name='Aramis', owner='John', age=4)
+
+        dog1 = Dog.create(name="d'Artagnan1", owner='John', age=5)
+        dog2 = Dog.create(name="d\'Artagnan2", owner='John', age=5)
+        dog3 = Dog.create(name="d\"Artagnan3", owner='John', age=5)
+        dog4 = Dog.create(name='d\"Artagnan4', owner='John', age=5)
+
+        assert all(dog is not None for dog in [dog1, dog2, dog3, dog4])
 
 
 class TestEntityMetaAttributes:
