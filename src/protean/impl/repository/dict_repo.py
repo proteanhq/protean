@@ -5,6 +5,7 @@ from collections import defaultdict
 from itertools import count
 from operator import itemgetter
 from threading import Lock
+from typing import Any
 
 from protean.core.entity import Entity
 from protean.core.exceptions import ObjectNotFoundError
@@ -240,18 +241,25 @@ class DictRepository(BaseRepository):
                 if self.schema_name in self.conn['data']:
                     del self.conn['data'][self.schema_name]
 
-    def raw(self, query_string: str):
+    def raw(self, query: Any, data: Any = None):
         """Run raw query on Repository.
 
         For this stand-in repository, the query string is a json string that contains kwargs
         criteria with straigh-forward equality checks. Individual criteria are always ANDed
         and the result is always a subset of the full repository.
+
+        We will ignore the `data` parameter for this kind of repository.
         """
+        # Ensure that we are dealing with a string, for this repository
+        assert isinstance(query, str)
+
         input_db = self.conn['data'][self.schema_name]
         result = None
 
         try:
-            criteria = json.loads(query_string)
+            # Ensures that the string contains double quotes around keys and values
+            query = query.replace("'", "\"")
+            criteria = json.loads(query)
 
             for key, value in criteria.items():
                 input_db = self._evaluate_lookup(key, value, False, input_db)
