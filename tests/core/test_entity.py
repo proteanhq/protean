@@ -627,6 +627,26 @@ class TestEntity:
         query = Dog.query.filter(owner='John')
         assert isinstance(query, QuerySet)
 
+    def test_override(self):
+        """Test overriding methods from Entity"""
+        class ImmortalDog(Entity):
+            """A Dog who lives forever"""
+
+            name = field.String(required=True, unique=True, max_length=50)
+            age = field.Integer(default=5)
+            owner = field.String(required=True, max_length=15)
+
+            def delete(self):
+                """You can't delete me!!"""
+                raise SystemError("Deletion Prohibited!")
+
+        from protean.core.repository import repo_factory
+        repo_factory.register(ImmortalDog)
+
+        immortal_dog = ImmortalDog(name='Titan', age=10001, owner='God')
+        with pytest.raises(SystemError):
+            immortal_dog.delete()
+
 
 class TestEntityMetaAttributes:
     """Class that holds testcases for Entity's meta attributes"""

@@ -110,3 +110,57 @@ Note that :ref:`api-queryset-delete` above loops through each entity and calls t
 .. code-block:: python
 
     >>> Customer.filter(firstname='John').delete_all()
+
+
+Overriding predefined entity methods
+------------------------------------
+
+You may sometimes want to customize the lifecycle behavior of an entity. You may want to redefine how an entity is saved, for example, or prevent specific operations on it, like deletion.
+
+You’re free to override the above lifecycle methods (or any other entity method) to alter behavior.
+
+Let's define a hypothetical ImmortalDog class, for dogs that live forever:
+
+.. code-block:: python
+
+    from protean.core.entity import Entity
+    from protean.core import field
+
+    class ImmortalDog(Entity):
+            """A Dog who lives forever"""
+
+            name = field.String(required=True, unique=True, max_length=50)
+            age = field.Integer(default=5)
+            owner = field.String(required=True, max_length=15)
+
+            def delete(self):
+                """You can't delete me!!"""
+                raise SystemError("Deletion Prohibited!")
+
+And then create an actual ImmortalDog:
+
+.. code-block:: python
+
+    >>> from immortal_dog import ImmortalDog
+    >>> from protean.core.repository import repo_factory
+    >>> repo_factory.register(ImmortalDog)
+    >>> immortal_dog = ImmortalDog(name='Titan', age=10001, owner='God')
+    >>> immortal_dog.delete()
+
+If you now try to retire it, you are in for a surprise:
+
+.. code-block:: none
+
+    Traceback (most recent call last):
+    File "<stdin>", line 1, in <module>
+    File "/Users/proteanhq/protean/immortal_dog.py", line 14, in delete
+        raise SystemError("Deletion Prohibited!")
+    SystemError: Deletion Prohibited!
+
+To customize and still use the default behavior, ensure you call the related superclass method. For :ref:`api-entity-save` for example, you would call **super().save()**, to ensure that the object gets saved into the database properly. If you forget to call the superclass method, the default behavior won’t happen and the database won’t get touched.
+
+It’s also important that you pass through the arguments that can be passed to the entity method. That way, when the functioanlity is changed or extended in the future and new arguments are added, your code will be guaranteed to be compatible.
+
+.. note::
+
+    Beware that methods like :ref:`api-entity-update` and :ref:`api-entity-delete` may not be called, when bulk deleting objects.
