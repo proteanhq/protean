@@ -1,4 +1,4 @@
-""" Implementation of a dictionary based repository """
+"""Implementation of a dictionary based repository """
 
 import json
 from collections import defaultdict
@@ -24,11 +24,11 @@ _counters = defaultdict(count)
 
 
 class DictModel(BaseModel):
-    """ A model for the dictionary repository"""
+    """A model for the dictionary repository"""
 
     @classmethod
     def from_entity(cls, entity: Entity) -> 'DictModel':
-        """ Convert the entity to a dictionary record """
+        """Convert the entity to a dictionary record """
         dict_obj = {}
         for field_name in entity.meta_.attributes:
             dict_obj[field_name] = getattr(entity, field_name)
@@ -36,7 +36,7 @@ class DictModel(BaseModel):
 
     @classmethod
     def to_entity(cls, item: 'DictModel') -> Entity:
-        """ Convert the dictionary record to an entity """
+        """Convert the dictionary record to an entity """
         return cls.entity_cls(item)
 
 
@@ -52,7 +52,7 @@ class DictProvider(BaseProvider):
         pass
 
     def get_connection(self):
-        """ Return the dictionary database object """
+        """Return the dictionary database object """
         database = {
             'data': _databases.setdefault(self.identifier, defaultdict(dict)),
             'lock': _locks.setdefault(self.identifier, Lock()),
@@ -61,27 +61,78 @@ class DictProvider(BaseProvider):
         return database
 
     def close_connection(self, conn):
-        """ Close connection does nothing on the repo """
+        """Close connection does nothing on the repo """
         pass
 
     def get_model(self, entity_cls):
-        """ Return associated, fully-baked Model class"""
+        """Return associated, fully-baked Model class"""
         cls = DictModel
         cls.entity_cls = entity_cls
 
         return cls
 
     def get_repository(self, entity_cls):
-        """ Return a repository object configured with a live connection"""
+        """Return a repository object configured with a live connection"""
         model_cls = self.get_model(entity_cls)
         return DictRepository(self, entity_cls, model_cls)
 
+    def _evaluate_lookup(self, key, value, negated, db):
+        """Extract values from DB that match the given criteria"""
+        results = {}
+        for record_key, record_value in db.items():
+            match = True
+
+            stripped_key, lookup_class = self._extract_lookup(key)
+            lookup = lookup_class(record_value[stripped_key], value)
+
+            if negated:
+                match &= not eval(lookup.as_expression())
+            else:
+                match &= eval(lookup.as_expression())
+
+            if match:
+                results[record_key] = record_value
+
+        return results
+
+    def raw(self, query: Any, data: Any = None):
+        """Run raw queries on the database
+
+        As an example of running ``raw`` queries on a Dict repository, we will run the query
+        on all possible schemas, and return all results.
+        """
+        assert isinstance(query, str)
+
+        conn = self.get_connection()
+        items = []
+
+        for schema_name in conn['data']:
+            input_db = conn['data'][schema_name]
+            try:
+                # Ensures that the string contains double quotes around keys and values
+                query = query.replace("'", "\"")
+                criteria = json.loads(query)
+
+                for key, value in criteria.items():
+                    input_db = self._evaluate_lookup(key, value, False, input_db)
+
+                items.extend(list(input_db.values()))
+
+            except json.JSONDecodeError:
+                # FIXME Log Exception
+                raise Exception("Query Malformed")
+            except KeyError:
+                # We encountered a repository where the key was not found
+                pass
+
+        return items
+
 
 class DictRepository(BaseRepository):
-    """ A repository for storing data in a dictionary """
+    """A repository for storing data in a dictionary """
 
     def _set_auto_fields(self, model_obj):
-        """ Set the values of the auto field using counter"""
+        """Set the values of the auto field using counter"""
         for field_name, field_obj in \
                 self.entity_cls.meta_.auto_fields:
             counter_key = f'{self.schema_name}_{field_name}'
@@ -95,7 +146,7 @@ class DictRepository(BaseRepository):
         return model_obj
 
     def create(self, model_obj):
-        """ Write a record to the dict repository"""
+        """Write a record to the dict repository"""
         # Update the value of the counters
         model_obj = self._set_auto_fields(model_obj)
 
@@ -105,25 +156,6 @@ class DictRepository(BaseRepository):
             self.conn['data'][self.schema_name][identifier] = model_obj
 
         return model_obj
-
-    def _evaluate_lookup(self, key, value, negated, db):
-        """Extract values from DB that match the given criteria"""
-        results = {}
-        for record_key, record_value in db.items():
-            match = True
-
-            stripped_key, lookup_class = self.provider._extract_lookup(key)
-            lookup = lookup_class(record_value[stripped_key], value)
-
-            if negated:
-                match &= not eval(lookup.as_expression())
-            else:
-                match &= eval(lookup.as_expression())
-
-            if match:
-                results[record_key] = record_value
-
-        return results
 
     def _filter(self, criteria: Q, db):
         """Recursive function to filter items from dictionary"""
@@ -139,7 +171,8 @@ class DictRepository(BaseRepository):
                 if isinstance(child, Q):
                     input_db = self._filter(child, input_db)
                 else:
-                    input_db = self._evaluate_lookup(child[0], child[1], negated, input_db)
+                    input_db = self.provider._evaluate_lookup(child[0], child[1],
+                                                              negated, input_db)
         else:
             # Grow database records over successive iterations
             #   Whatever is left at the end satisfy any criteria (OR)
@@ -148,14 +181,14 @@ class DictRepository(BaseRepository):
                 if isinstance(child, Q):
                     results = self._filter(child, db)
                 else:
-                    results = self._evaluate_lookup(child[0], child[1], negated, db)
+                    results = self.provider._evaluate_lookup(child[0], child[1], negated, db)
 
                 input_db = {**input_db, **results}
 
         return input_db
 
     def filter(self, criteria: Q, page: int = 1, per_page: int = 10, order_by: list = ()):
-        """ Read the repository and return results as per the filer"""
+        """Read the repository and return results as per the filer"""
 
         if criteria.children:
             items = list(self._filter(criteria, self.conn['data'][self.schema_name]).values())
@@ -184,7 +217,7 @@ class DictRepository(BaseRepository):
         return result
 
     def update(self, model_obj):
-        """ Update the entity record in the dictionary """
+        """Update the entity record in the dictionary """
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
             # Check if object is present
@@ -197,7 +230,7 @@ class DictRepository(BaseRepository):
         return model_obj
 
     def update_all(self, criteria: Q, *args, **kwargs):
-        """ Update all objects satisfying the criteria """
+        """Update all objects satisfying the criteria """
         items = self._filter(criteria, self.conn['data'][self.schema_name])
 
         update_count = 0
@@ -212,7 +245,7 @@ class DictRepository(BaseRepository):
         return update_count
 
     def delete(self, model_obj):
-        """ Delete the entity record in the dictionary """
+        """Delete the entity record in the dictionary """
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
             # Check if object is present
@@ -225,7 +258,7 @@ class DictRepository(BaseRepository):
         return model_obj
 
     def delete_all(self, criteria: Q = None):
-        """ Delete the dictionary object by its criteria"""
+        """Delete the dictionary object by its criteria"""
         if criteria:
             # Delete the object from the dictionary and return the deletion count
             items = self._filter(criteria, self.conn['data'][self.schema_name])
@@ -262,7 +295,7 @@ class DictRepository(BaseRepository):
             criteria = json.loads(query)
 
             for key, value in criteria.items():
-                input_db = self._evaluate_lookup(key, value, False, input_db)
+                input_db = self.provider._evaluate_lookup(key, value, False, input_db)
 
             items = list(input_db.values())
             result = Pagination(
