@@ -54,5 +54,9 @@ class BaseRepository(metaclass=ABCMeta):
         """Delete a Record from the Repository"""
 
     @abstractmethod
-    def raw(self, query_string: str):
-        """Run raw query on Repository"""
+    def raw(self, query: Any, data: Any = None):
+        """Run raw query on Data source.
+
+        Running a raw query on the repository should always returns entity instance objects. If
+        the results were not synthesizable back into entity objects, an exception should be thrown.
+        """

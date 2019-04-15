@@ -1,7 +1,7 @@
 """QuerySet Implementation"""
 
 import logging
-from typing import Union
+from typing import Union, Any
 
 from protean.core.repository import repo_factory
 from protean.utils.query import Q
@@ -169,18 +169,18 @@ class QuerySet:
 
         return updated_item_count
 
-    def raw(self, query_string: str):
+    def raw(self, query: Any, data: Any = None):
         """Runs raw query directly on the database and returns Entity objects
 
         Note that this method will raise an exception if the returned objects
             are not of the Entity type.
 
-        `query_string` is not checked for correctness or validity, and any errors thrown
-            by the plugin or database are passed as-is.
+        `query` is not checked for correctness or validity, and any errors thrown by the plugin or
+            database are passed as-is. Data passed will be transferred as-is to the plugin.
 
         All other query options like `order_by`, `page` and `per_page` are ignored for this action.
         """
-        logger.debug(f'Query `{self.__class__.__name__}` objects with raw query {query_string}')
+        logger.debug(f'Query `{self.__class__.__name__}` objects with raw query {query}')
 
         # Destroy any cached results
         self._result_cache = None
@@ -190,9 +190,8 @@ class QuerySet:
         repository = repo_factory.get_repository(self._entity_cls)
 
         try:
-            # Call the read method of the repository
-            # Ensures that the string contains double quotes around keys and values
-            results = repository.raw(query_string.replace("'", "\""))
+            # Call the raw method of the repository
+            results = repository.raw(query, data)
 
             # Convert the returned results to entity and return it
             entity_items = []
