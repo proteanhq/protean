@@ -329,19 +329,23 @@ class DefaultDictLookup(BaseLookup):
     def process_source(self):
         """Return source with transformations, if any"""
         if isinstance(self.source, str):
-            return "'%s'" % self.source
+            # Replace single and double quotes with escaped single-quote
+            self.source = self.source.replace("'", "\'").replace('"', "\'")
+            return "\"{source}\"".format(source=self.source)
         return self.source
 
     def process_target(self):
         """Return target with transformations, if any"""
         if isinstance(self.target, str):
-            return "'%s'" % self.target
+            # Replace single and double quotes with escaped single-quote
+            self.target = self.target.replace("'", "\'").replace('"', "\'")
+            return "\"{target}\"".format(target=self.target)
         return self.target
 
     def as_expression(self):
-        return '%s %s %s' % (self.process_source(),
-                             operators[self.lookup_name],
-                             self.process_target())
+        return '{source} {op} {target}'.format(source=self.process_source(),
+                                               op=operators[self.lookup_name],
+                                               target=self.process_target())
 
 
 @DictProvider.register_lookup
