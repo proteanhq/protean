@@ -23,19 +23,18 @@ from . import __version__
 def get_version():
     message = (
         'Python %(python)s\n'
-        'Flask %(flask)s'
+        'Protean %(protean)s'
     )
     click.echo(message % {
         'python': platform.python_version(),
-        'flask': __version__
+        'protean': __version__
     })
 
 
 @click.group(invoke_without_command=True)
 @click.option('-v', '--version', is_flag=True)
-@click.option('--help', is_flag=True, default=True)
 @click.pass_context
-def main(ctx, help, version):
+def main(ctx, version):
     """CLI utilities for the Protean"""
     if version:
         get_version()
