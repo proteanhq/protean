@@ -8,9 +8,7 @@ def test_main():
     runner = CliRunner()
     result = runner.invoke(main, ['--version'])
 
-    import platform
     from protean import __version__
 
-    assert result.output == 'Python {python_version}\nProtean {protean_version}\n'.format(
-        python_version=platform.python_version(), protean_version=__version__)
+    assert result.output == 'main, version {protean_version}\n'.format(protean_version=__version__)
     assert result.exit_code == 0

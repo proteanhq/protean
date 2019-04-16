@@ -15,31 +15,14 @@ Why does this file exist, and why not put this in __main__?
   Also see (1) from http://click.pocoo.org/5/setuptools/#setuptools-integration
 """
 import click
-import platform
-
-from . import __version__
-
-
-def get_version():
-    message = (
-        'Python %(python)s\n'
-        'Protean %(protean)s'
-    )
-    click.echo(message % {
-        'python': platform.python_version(),
-        'protean': __version__
-    })
 
 
 @click.group(invoke_without_command=True)
-@click.option('-v', '--version', is_flag=True)
+@click.version_option()
 @click.pass_context
-def main(ctx, version):
+def main(ctx):
     """CLI utilities for the Protean"""
-    if version:
-        get_version()
-
-    if not version and ctx.invoked_subcommand is None:
+    if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 
 
