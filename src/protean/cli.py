@@ -15,16 +15,40 @@ Why does this file exist, and why not put this in __main__?
   Also see (1) from http://click.pocoo.org/5/setuptools/#setuptools-integration
 """
 import click
+import platform
+
+from . import __version__
 
 
-@click.group()
-def main():
-    """ CLI utilities for the protean package """
-    pass
+def get_version():
+    message = (
+        'Python %(python)s\n'
+        'Flask %(flask)s'
+    )
+    click.echo(message % {
+        'python': platform.python_version(),
+        'flask': __version__
+    })
+
+
+@click.group(invoke_without_command=True)
+@click.option('-v', '--version', is_flag=True)
+@click.option('--help', is_flag=True, default=True)
+@click.pass_context
+def main(ctx, help, version):
+    """CLI utilities for the Protean"""
+    if version:
+        get_version()
+
+    if not version and ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
 
 
 @main.command()
-@click.argument('names', nargs=-1)
-def echo(names):
-    """Simply print input argument `names`"""
-    click.echo(repr(names))
+def test():
+    import pytest
+    import sys
+
+    errno = pytest.main(['-v', '--flake8'])
+
+    sys.exit(errno)

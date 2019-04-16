@@ -640,7 +640,7 @@ class TestEntity:
         dog4 = Dog.create(name='d\"Artagnan4', owner='John', age=5)
 
         assert all(dog is not None for dog in [dog1, dog2, dog3, dog4])
-    
+
     def test_override(self):
         """Test overriding methods from Entity"""
         class ImmortalDog(Entity):
