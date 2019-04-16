@@ -17,14 +17,20 @@ Why does this file exist, and why not put this in __main__?
 import click
 
 
-@click.group()
-def main():
-    """ CLI utilities for the protean package """
-    pass
+@click.group(invoke_without_command=True)
+@click.version_option()
+@click.pass_context
+def main(ctx):
+    """CLI utilities for the Protean"""
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
 
 
 @main.command()
-@click.argument('names', nargs=-1)
-def echo(names):
-    """Simply print input argument `names`"""
-    click.echo(repr(names))
+def test():
+    import pytest
+    import sys
+
+    errno = pytest.main(['-v', '--flake8'])
+
+    sys.exit(errno)
