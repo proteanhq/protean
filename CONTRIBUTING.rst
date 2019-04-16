@@ -118,6 +118,13 @@ To set up `protean` for local development:
 
 6. Submit a pull request through the GitHub website.
 
+Testing
+^^^^^^^
+
+Protean tests have been written to work with **Pytest**, and you can run tests with the command ``pytest``.
+
+By default, tests that are marked as ``slow`` are skipped. If you want to run the slow tests, use ``pytest --slow``.
+
 Pull Request Guidelines
 ^^^^^^^^^^^^^^^^^^^^^^^
 

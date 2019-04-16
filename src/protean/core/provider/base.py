@@ -3,6 +3,7 @@
 import uuid
 from abc import ABCMeta
 from abc import abstractmethod
+from typing import Any
 
 from protean.utils.query import RegisterLookupMixin
 
@@ -46,16 +47,26 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
 
     @abstractmethod
     def get_connection(self):
-        """ Get the connection object for the repository"""
+        """Get the connection object for the repository"""
 
     @abstractmethod
     def close_connection(self, conn):
-        """ Close the connection object for the repository"""
+        """Close the connection object for the repository"""
 
     @abstractmethod
     def get_repository(self, model_cls):
-        """ Return a repository object configured with a live connection"""
+        """Return a repository object configured with a live connection"""
 
     @abstractmethod
     def get_model(self, entity_cls):
-        """ Return associated Model Class"""
+        """Return associated Model Class"""
+
+    @abstractmethod
+    def raw(self, query: Any, data: Any = None):
+        """Run raw query directly on the database
+
+        Query should be executed immediately on the database as a separate unit of work
+            (in a different transaction context). The results should be returned as returned by
+            the database without any intervention. It is left to the consumer to interpret and
+            organize the results correctly.
+        """

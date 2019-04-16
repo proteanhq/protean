@@ -7,12 +7,14 @@ os.environ['PROTEAN_CONFIG'] = 'tests.support.sample_config'
 
 
 def pytest_addoption(parser):
+    """Additional options for running tests with pytest"""
     parser.addoption(
         "--slow", action="store_true", default=False, help="run slow tests"
     )
 
 
 def pytest_collection_modifyitems(config, items):
+    """Configure special markers on tests, so as to control execution"""
     if config.getoption("--slow"):
         # --slow given in cli: do not skip slow tests
         return
