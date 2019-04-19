@@ -68,8 +68,8 @@ class EntityBase(type):
             everytime a new `query` object is created
 
         This is required so as not to corrupt the query object associated with the metaclass
-        when invoked like `Dog.query.all()` directly. A new query, and a corresponding `Pagination`
-        result would be created every time.
+        when invoked like `Dog.query.all()` directly. A new query, and a corresponding `ResultSet`
+        would be created every time.
         """
         return QuerySet(cls)
 
@@ -364,7 +364,7 @@ class Entity(metaclass=EntityBase):
         }
 
         # Find this item in the repository or raise Error
-        results = cls.query.filter(**filters).paginate(page=1, per_page=1).all()
+        results = cls.query.filter(**filters).limit(1).all()
         if not results:
             raise ObjectNotFoundError(
                 f'`{cls.__name__}` object with identifier {identifier} '
@@ -383,7 +383,7 @@ class Entity(metaclass=EntityBase):
                      f'{kwargs}')
 
         # Find this item in the repository or raise Error
-        results = cls.query.filter(**kwargs).paginate(page=1, per_page=1).all()
+        results = cls.query.filter(**kwargs).limit(1).all()
 
         if not results:
             raise ObjectNotFoundError(

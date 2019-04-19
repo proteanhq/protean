@@ -10,7 +10,7 @@ logger = logging.getLogger('protean.core.entity')
 
 
 class QuerySet:
-    """A chainable class to gather a bunch of criteria and preferences (page size, order etc.)
+    """A chainable class to gather a bunch of criteria and preferences (resultset size, order etc.)
     before execution.
 
     Internally, a QuerySet can be constructed, filtered, sliced, and generally passed around
@@ -22,18 +22,18 @@ class QuerySet:
     previously evaluated `QuerySet`.
 
     Attributes:
-        page: The current page number of the records to be pulled
-        per_page: The size of each page of the records to be pulled
+        offset: Number of records after which Results are fetched
+        limit: The size the recordset to be pulled from database
         order_by: The list of parameters to be used for ordering the results.
             Use a `-` before the parameter name to sort in descending order
             and if not ascending order.
         excludes_: Objects with these properties will be excluded from the results
         filters: Filter criteria
 
-    :return Returns a `Pagination` object that holds the query results
+    :return Returns a `ResultSet` object that holds the query results
     """
 
-    def __init__(self, entity_cls, criteria=None, page: int = 1, per_page: int = 10,
+    def __init__(self, entity_cls, criteria=None, offset: int = 0, limit: int = 10,
                  order_by: set = None):
         """Initialize either with empty preferences (when invoked on an Entity)
             or carry forward filters and preferences when chained
@@ -42,8 +42,8 @@ class QuerySet:
         self._entity_cls = entity_cls
         self._criteria = criteria or Q()
         self._result_cache = None
-        self._page = page or 1
-        self._per_page = per_page or 10
+        self._offset = offset or 0
+        self._limit = limit or 10
 
         # `order_by` could be empty, or a string or a set.
         #   Intialize empty set if `order_by` is None
@@ -59,7 +59,7 @@ class QuerySet:
         Return a copy of the current QuerySet.
         """
         clone = self.__class__(self._entity_cls, criteria=self._criteria,
-                               page=self._page, per_page=self._per_page,
+                               offset=self._offset, limit=self._limit,
                                order_by=self._order_by)
         return clone
 
@@ -89,18 +89,26 @@ class QuerySet:
             clone._add_q(Q(*args, **kwargs))
         return clone
 
-    def paginate(self, **page_args):
-        """Update page preferences for query"""
+    def limit(self, limit):
+        """Limit number of records"""
         clone = self._clone()
-        if 'page' in page_args and isinstance(page_args['page'], int):
-            clone._page = page_args['page']
-        if 'per_page' in page_args and isinstance(page_args['per_page'], int):
-            clone._per_page = page_args['per_page']
+
+        if isinstance(limit, int):
+            clone._limit = limit
+
+        return clone
+
+    def offset(self, offset):
+        """Fetch results after `offset` value"""
+        clone = self._clone()
+
+        if isinstance(offset, int):
+            clone._offset = offset
 
         return clone
 
     def order_by(self, order_by: Union[set, str]):
-        """Update page setting for filter set"""
+        """Update order_by setting for filter set"""
         clone = self._clone()
         if isinstance(order_by, str):
             order_by = {order_by}
@@ -132,7 +140,7 @@ class QuerySet:
         order_by = self._entity_cls.meta_.order_by if not self._order_by else self._order_by
 
         # Call the read method of the repository
-        results = repository.filter(self._criteria, self._page, self._per_page, order_by)
+        results = repository.filter(self._criteria, self._offset, self._limit, order_by)
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -178,7 +186,7 @@ class QuerySet:
         `query` is not checked for correctness or validity, and any errors thrown by the plugin or
             database are passed as-is. Data passed will be transferred as-is to the plugin.
 
-        All other query options like `order_by`, `page` and `per_page` are ignored for this action.
+        All other query options like `order_by`, `offset` and `limit` are ignored for this action.
         """
         logger.debug(f'Query `{self.__class__.__name__}` objects with raw query {query}')
 
@@ -299,10 +307,10 @@ class QuerySet:
 
     def __repr__(self):
         """Support friendly print of query criteria"""
-        return ("<%s: entity: %s, criteria: %s, page: %s, per_page: %s, order_by: %s>" %
+        return ("<%s: entity: %s, criteria: %s, offset: %s, limit: %s, order_by: %s>" %
                 (self.__class__.__name__, self._entity_cls,
                  self._criteria.deconstruct(),
-                 self._page, self._per_page, self._order_by))
+                 self._offset, self._limit, self._order_by))
 
     def __getitem__(self, k):
         """Support slicing of results"""
@@ -312,7 +320,7 @@ class QuerySet:
         return self.all().items[k]
 
     #########################
-    # Pagination properties #
+    # Result properties #
     #########################
 
     @property

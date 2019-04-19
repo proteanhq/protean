@@ -33,8 +33,8 @@ class TestQuerySet:
         query = Dog.query.filter(owner='John').order_by('age')
         assert repr(query) == ("<QuerySet: entity: <class 'tests.support.dog.Dog'>, "
                                "criteria: ('protean.utils.query.Q', (), {'owner': 'John'}), "
-                               "page: 1, "
-                               "per_page: 10, order_by: {'age'}>")
+                               "offset: 0, "
+                               "limit: 10, order_by: {'age'}>")
 
     def test_bool_false(self):
         """Test that `bool` returns `False` on no records"""
@@ -110,7 +110,7 @@ class TestQuerySet:
         assert query.total == 2
         assert query._result_cache.total == 2
 
-        query_dup = query.paginate(per_page=25)
+        query_dup = query.limit(25)
         assert query_dup._result_cache is None
 
     def test_total(self):
@@ -146,7 +146,7 @@ class TestQuerySet:
         assert query._result_cache.total == 3
 
     def test_items(self):
-        """Test that items is retrieved from Pagination results"""
+        """Test that items is retrieved from ResultSet"""
         # Add multiple entries to the DB
         Dog.create(id=2, name='Murdock', age=7, owner='John')
         Dog.create(id=3, name='Jean', age=3, owner='John')
@@ -157,7 +157,7 @@ class TestQuerySet:
         assert query.items[0].id == query.all().items[0].id
 
     def test_items_with_cache(self):
-        """Test that items is retrieved from Pagination results"""
+        """Test that items is retrieved from ResultSet"""
         # Add multiple entries to the DB
         Dog.create(id=2, name='Murdock', age=7, owner='John')
         Dog.create(id=3, name='Jean', age=3, owner='John')
@@ -180,7 +180,7 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.query.paginate(page=1, per_page=2)
+        query = Dog.query.limit(2)
         assert query.has_next is True
 
     def test_has_next_with_cache(self):
@@ -191,7 +191,7 @@ class TestQuerySet:
         dog = Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.query.paginate(page=1, per_page=2)
+        query = Dog.query.limit(2)
         assert query.has_next is True
 
         dog.delete()
@@ -207,7 +207,7 @@ class TestQuerySet:
         Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.query.paginate(page=2, per_page=2)
+        query = Dog.query.offset(2).limit(2)
         assert query.has_prev is True
 
     def test_has_prev_with_cache(self):
@@ -218,7 +218,7 @@ class TestQuerySet:
         dog = Dog.create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by Dog attributes
-        query = Dog.query.paginate(page=2, per_page=2)
+        query = Dog.query.offset(2).limit(2)
         assert query.has_prev is True
 
         dog.delete()

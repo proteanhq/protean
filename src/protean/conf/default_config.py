@@ -21,7 +21,7 @@ SECRET_KEY = 'wR5yJVF!PVA3&bBaFK%e3#MQna%DJfyT'
 DATABASES = {}
 
 # Default no. of records to fetch per query
-PER_PAGE = 10
+RESULTS_LIMIT = 10
 
 ####################
 # GENERIC CACHE    #

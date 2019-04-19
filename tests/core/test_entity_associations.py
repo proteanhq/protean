@@ -21,7 +21,7 @@ from tests.support.human import Human
 
 from protean.core.exceptions import ValidationError
 from protean.core.queryset import QuerySet
-from protean.core.repository import Pagination
+from protean.core.repository import ResultSet
 
 
 class TestReference:
@@ -302,7 +302,7 @@ class TestHasMany:
         assert 'dogs' in human.__dict__  # Avaiable after access
 
         assert isinstance(human.dogs, QuerySet)
-        assert isinstance(human.dogs.all(), Pagination)
+        assert isinstance(human.dogs.all(), ResultSet)
         assert all(dog.id in [101, 102] for dog in human.dogs)  # `__iter__` magic here
 
     def test_init_with_via(self):
