@@ -154,7 +154,7 @@ class TestListUseCase:
         # Validate the response received
         assert response is not None
         assert response.success
-        assert response.value.page == 1
+        assert response.value.offset == 0
         assert response.value.total == 2
         assert response.value.first.age == 3
 

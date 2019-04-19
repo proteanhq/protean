@@ -387,8 +387,8 @@ class TestConjunctions:
         Dog.create(id=6, name='Dave', age=6, owner='Carrie')
 
         q1 = Dog.query.filter(
-            Q(owner='John', name='Jean') |
-            Q(age=6))
+            Q(owner='John', name='Jean')
+            | Q(age=6))
         assert q1.total == 4
 
         q2 = Dog.query.filter(Q(owner='John') | Q(age=6))

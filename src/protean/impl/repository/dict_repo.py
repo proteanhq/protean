@@ -13,7 +13,7 @@ from protean.core.provider.base import BaseProvider
 from protean.core.repository import BaseLookup
 from protean.core.repository import BaseModel
 from protean.core.repository import BaseRepository
-from protean.core.repository import Pagination
+from protean.core.repository import ResultSet
 from protean.utils.query import Q
 
 # Global in-memory store of dict data. Keyed by name, to provide
@@ -187,7 +187,7 @@ class DictRepository(BaseRepository):
 
         return input_db
 
-    def filter(self, criteria: Q, page: int = 1, per_page: int = 10, order_by: list = ()):
+    def filter(self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()):
         """Read the repository and return results as per the filer"""
 
         if criteria.children:
@@ -203,17 +203,11 @@ class DictRepository(BaseRepository):
                 o_key = o_key[1:]
             items = sorted(items, key=itemgetter(o_key), reverse=reverse)
 
-        # Build the pagination results for the filtered items
-        cur_offset, cur_limit = None, None
-        if per_page > 0:
-            cur_offset = (page - 1) * per_page
-            cur_limit = page * per_page
-
-        result = Pagination(
-            page=page,
-            per_page=per_page,
+        result = ResultSet(
+            offset=offset,
+            limit=limit,
             total=len(items),
-            items=items[cur_offset: cur_limit])
+            items=items[offset: offset + limit])
         return result
 
     def update(self, model_obj):
@@ -298,9 +292,9 @@ class DictRepository(BaseRepository):
                 input_db = self.provider._evaluate_lookup(key, value, False, input_db)
 
             items = list(input_db.values())
-            result = Pagination(
-                page=1,
-                per_page=len(items),
+            result = ResultSet(
+                offset=1,
+                limit=len(items),
                 total=len(items),
                 items=items)
 

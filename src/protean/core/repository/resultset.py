@@ -1,44 +1,29 @@
-"""Utility classes and methods for Repository
-
-FIXME Should this be part of the domain, or be a part of Request/Response infrastructure?
-"""
-from math import ceil
+"""ResultSet Utility class and traversal methods for Repository results"""
 
 
-class Pagination(object):
+class ResultSet(object):
     """Internal helper class returned by :meth:`Repository._read`
     """
 
-    def __init__(self, page: int, per_page: int, total: int,
-                 items: list):
-        # the current page number (1 indexed)
-        self.page = page
+    def __init__(self, offset: int, limit: int, total: int, items: list):
+        # the current offset (zero indexed)
+        self.offset = offset
         # the number of items to be displayed on a page.
-        self.per_page = per_page
+        self.limit = limit
         # the total number of items matching the query
         self.total = total
         # the items for the current page
         self.items = items
 
     @property
-    def pages(self):
-        """The total number of pages"""
-        if self.per_page == 0 or self.total is None:
-            pages = 0
-        else:
-            pages = int(ceil(self.total / float(self.per_page)))
-
-        return pages
-
-    @property
     def has_prev(self):
         """True if a previous page exists"""
-        return bool(self.items) and self.page > 1
+        return bool(self.items) and self.offset > 0
 
     @property
     def has_next(self):
         """True if a next page exists."""
-        return self.page < self.pages
+        return (self.offset + self.limit) < self.total
 
     @property
     def first(self):

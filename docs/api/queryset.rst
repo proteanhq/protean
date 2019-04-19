@@ -3,6 +3,9 @@
 QuerySet
 --------
 
+Fetching Results
+~~~~~~~~~~~~~~~~
+
 .. _api-queryset-all:
 
 ``all()``
@@ -58,3 +61,27 @@ QuerySet
 ^^^^^^^^^^^^^^
 
 .. automethod:: protean.core.queryset.QuerySet.raw
+
+Fetch Options
+~~~~~~~~~~~~~
+
+.. _api-queryset-order-by:
+
+``order_by``
+^^^^^^^^^^^^^^
+
+.. automethod:: protean.core.queryset.QuerySet.order_by
+
+.. _api-queryset-limit:
+
+``limit``
+^^^^^^^^^
+
+.. automethod:: protean.core.queryset.QuerySet.limit
+
+.. _api-queryset-offset:
+
+``offset``
+^^^^^^^^^^
+
+.. automethod:: protean.core.queryset.QuerySet.offset

@@ -84,12 +84,12 @@ class TestRepository:
         assert dogs.first.age == 7
         assert dogs.first.name == 'Murdock'
 
-    def test_pagination(self):
-        """ Test the pagination of the filter results"""
+    def test_result_traversal(self):
+        """ Test the traversal of the filter results"""
         for counter in range(1, 5):
             Dog.create(id=counter, name=counter, owner='Owner Name')
 
-        dogs = Dog.query.paginate(per_page=2).order_by('id')
+        dogs = Dog.query.limit(2).order_by('id')
         assert dogs is not None
         assert dogs.total == 4
         assert len(dogs.items) == 2
@@ -97,7 +97,7 @@ class TestRepository:
         assert dogs.has_next
         assert not dogs.has_prev
 
-        dogs = Dog.query.paginate(page=2, per_page=2).order_by('id')
+        dogs = Dog.query.offset(2).limit(2).order_by('id').all()
         assert len(dogs.items) == 2
         assert dogs.first.id == 3
         assert not dogs.has_next

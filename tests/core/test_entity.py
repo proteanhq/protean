@@ -360,8 +360,8 @@ class TestEntity:
         filters = [
             Dog.query.filter(name='Murdock'),
             Dog.query.filter(name='Jean').filter(owner='John'),
-            Dog.query.paginate(page=5),
-            Dog.query.paginate(per_page=25),
+            Dog.query.offset(1),
+            Dog.query.limit(25),
             Dog.query.order_by('name'),
             Dog.query.exclude(name='Murdock')
         ]
@@ -375,8 +375,8 @@ class TestEntity:
         filters = [
             dog,
             Dog.query.filter(name='Jean').filter(owner='John'),
-            dog.paginate(page=5),
-            dog.paginate(per_page=5),
+            dog.offset(5 * 5),
+            dog.limit(5),
             dog.order_by('name'),
             dog.exclude(name='Murdock')
         ]
@@ -526,19 +526,19 @@ class TestEntity:
         with pytest.raises(NotImplementedError):
             Dog.query.filter(age__notexact=3).all()
 
-    def test_pagination(self):
-        """ Test the pagination of the filter results"""
+    def test_result_traversal(self):
+        """ Test the traversal of the filter results"""
         for counter in range(1, 5):
             Dog.create(id=counter, name=counter, owner='Owner Name')
 
-        dogs = Dog.query.paginate(per_page=2).order_by('id')
+        dogs = Dog.query.limit(2).order_by('id')
         assert dogs.total == 4
         assert len(dogs.items) == 2
         assert dogs.first.id == 1
         assert dogs.has_next
         assert not dogs.has_prev
 
-        dogs = Dog.query.paginate(page=2, per_page=2).order_by('id').all()
+        dogs = Dog.query.offset(2).limit(2).order_by('id').all()
         assert len(dogs.items) == 2
         assert dogs.first.id == 3
         assert not dogs.has_next

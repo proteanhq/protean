@@ -20,6 +20,8 @@ from tests.support.human import HasOneHuman3
 from tests.support.human import Human
 
 from protean.core.exceptions import ValidationError
+from protean.core.queryset import QuerySet
+from protean.core.repository import ResultSet
 
 
 class TestReference:
@@ -298,6 +300,10 @@ class TestHasMany:
         assert 'dogs' not in human.__dict__
         assert len(human.dogs) == 2
         assert 'dogs' in human.__dict__  # Avaiable after access
+
+        assert isinstance(human.dogs, QuerySet)
+        assert isinstance(human.dogs.all(), ResultSet)
+        assert all(dog.id in [101, 102] for dog in human.dogs)  # `__iter__` magic here
 
     def test_init_with_via(self):
         """Test successful HasMany initialization with a class containing via"""
