@@ -3,6 +3,7 @@ import copy
 import logging
 from typing import Any
 
+from protean.core.exceptions import NotSupportedError
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.field import Auto
@@ -37,6 +38,11 @@ class EntityBase(type):
         parents = [b for b in bases if isinstance(b, EntityBase)]
         if not parents:
             return super().__new__(mcs, name, bases, attrs)
+
+        # Remove `abstract` in base classes if defined
+        for base in bases:
+            if hasattr(base.Meta, 'abstract'):
+                delattr(base.Meta, 'abstract')
 
         new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
 
@@ -149,6 +155,14 @@ class EntityMeta:
     - ``provider``: the name of the datasource associated with this
         entity, default value is `default`.
     - ``order_by``: default ordering of objects returned by filter queries.
+
+    Also acts as a placeholder for generated entity fields like:
+
+        :declared_fields: dict
+            Any instances of `Field` included as attributes on either the class
+            or on any of its superclasses will be include in this dictionary.
+        :id_field: protean.core.Field
+            An instance of the field that will serve as the unique identifier for the entity
     """
 
     def __init__(self, entity_name, meta):
@@ -253,13 +267,7 @@ class Entity(metaclass=EntityBase):
     class Meta:
         """Options object for an Entity.
 
-        Acts as a placeholder for generated entity fields like:
-
-            :declared_fields: dict
-                Any instances of `Field` included as attributes on either the class
-                or on any of its superclasses will be include in this dictionary.
-            :id_field: protean.core.Field
-                An instance of the field that will serve as the unique identifier for the entity
+        Check ``EntityMeta`` class for full documentation.
         """
 
     def __init__(self, *template, **kwargs):
@@ -271,6 +279,11 @@ class Entity(metaclass=EntityBase):
         This initialization technique supports keyword arguments as well as dictionaries. You
             can even use a template for initial data.
         """
+
+        if self.meta_.abstract is True:
+            raise NotSupportedError(
+                f'{self.__class__.__name__} class has been marked abstract'
+                f' and cannot be instantiated')
 
         self.errors = {}
 

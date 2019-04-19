@@ -4,6 +4,7 @@ from collections import namedtuple
 from threading import local
 
 from protean.core.exceptions import ConfigurationError
+from protean.core.exceptions import NotSupportedError
 from protean.core.provider import providers
 from protean.utils.generic import fully_qualified_name
 
@@ -32,9 +33,8 @@ class RepositoryFactory:
 
     def register(self, entity_cls, provider_name=None):
         """ Register the given model with the factory
-        :param model_cls: class of the model to be registered
-        :param adapter_cls: Optional adapter class to use if not the
-        `Adapter` defined by the provider is user
+        :param entity_cls: Entity class to be registered
+        :param provider: Optional provider to associate with Entity class
         """
         self._validate_entity_cls(entity_cls)
 
@@ -104,7 +104,12 @@ class RepositoryFactory:
 
         if not issubclass(entity_cls, Entity):
             raise AssertionError(
-                f'Entity {entity_cls} must be subclass of `Entity`')
+                f'Entity {entity_cls.__name__} must be subclass of `Entity`')
+
+        if entity_cls.meta_.abstract is True:
+            raise NotSupportedError(
+                f'{entity_cls.__name__} class has been marked abstract'
+                f' and cannot be instantiated')
 
     def get_model(self, entity_cls):
         """Retrieve Model class connected to Entity"""
