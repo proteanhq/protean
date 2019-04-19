@@ -103,7 +103,8 @@ class ListUseCase(UseCase):
         """Return a list of resources"""
         resources = (request_object.entity_cls.query
                      .filter(**request_object.filters)
-                     .paginate(page=request_object.page, per_page=request_object.per_page)
+                     .offset((request_object.page - 1) * request_object.per_page)
+                     .limit(request_object.per_page)
                      .order_by(request_object.order_by)
                      .all())
         return ResponseSuccess(Status.SUCCESS, resources)

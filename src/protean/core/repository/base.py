@@ -6,7 +6,7 @@ from typing import Any
 
 from protean.utils.query import Q
 
-from .pagination import Pagination
+from .resultset import ResultSet
 
 logger = logging.getLogger('protean.repository')
 
@@ -26,10 +26,10 @@ class BaseRepository(metaclass=ABCMeta):
         self.schema_name = entity_cls.meta_.schema_name
 
     @abstractmethod
-    def filter(self, criteria: Q, page: int = 1, per_page: int = 10,
-               order_by: list = ()) -> Pagination:
+    def filter(self, criteria: Q, offset: int = 0, limit: int = 10,
+               order_by: list = ()) -> ResultSet:
         """
-        Filter objects from the repository. Method must return a `Pagination`
+        Filter objects from the repository. Method must return a `ResultSet`
         object
         """
 

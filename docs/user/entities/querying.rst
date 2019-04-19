@@ -69,6 +69,31 @@ Returns a new :ref:`api-queryset` object containing items that do **NOT** match 
 
 The criteria supplied to these methods should be in the format described in :ref:`entity-queryset-field-lookups`.
 
+Controlling size and order of results
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can order the results by specifying one or more attributes to order by in the :ref:`api-queryset-order-by` call:
+
+.. code-block:: python
+
+    >>> Customer.query.filter(lastname='Doe').order_by('firstname')
+
+By default, results will be sorted the primary identifier of the objects.
+
+You can limit the number of results to be retrieved with the help of :ref:`api-queryset-limit` method:
+
+.. code-block:: python
+
+    >>> Customer.query.filter(lastname='Doe').limit(5)
+
+This query returns the first 5 objects. To offset and fetch results from a certain mark, use :ref:`api-queryset-offset` method:
+
+.. code-block:: python
+
+    >>> Customer.query.filter(lastname='Doe').offset(25).limit(5)
+
+The about resultset will contain 5 objects, present after the first 25 objects.
+
 QuerySet Properties
 ~~~~~~~~~~~~~~~~~~~
 
