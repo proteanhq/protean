@@ -42,15 +42,13 @@ Goals
 
 Protean has two broad goals in mind:
 
-**1. Isolated Business logic closely modeled after the Domain**
+**1. Isolate Business logic from the underlying technology and closely model it after the Domain**
 
-Developers should be able to express infrastructure-free domain logic in a clear and concise way, without worrying about underlying technology implementation. The framework should be pragmatic enough, though, and allow incorporatoin of special technology features for performance or aesthetics.
+Developers should be able to express infrastructure-free domain logic in a clear and concise way, without worrying about underlying technology implementation. The framework should be pragmatic enough, though, and allow usage of exclusive technology features where possible for performance or aesthetics. Developers can delay critical decisions until the last possible moment and switch between technologies painlessly if and when the time does come.
 
-**2. Technology-agnostic and Framework independent applications**
+**2. Support Operations and Infrastructure maintenance**
 
-Developers should be able to develop applications detached from the underlying infrastructure, like databases, API frameworks, message brokers and so on.
-
-Developers can then delay critical decisions until the last possible moment. Also, If and when the time comes, it enables them to switch between technologies painlessly.
+Developers should be able to deploy and scale applications in realtime on most popular IaaS platforms as well as private data centers. All infrastructure components, like databases, API frameworks, message brokers and cache, are maintained outside the application and plugged into the framework during runtime.
 
 Key Features
 ------------
@@ -58,16 +56,19 @@ Key Features
 Protean is ready for today's diverse and layered software stack requirements:
 
 - Lightweight APIs
-- Non-opinionated and non-enforcing Application Code organization
+- Non-opinionated and non-enforcing Application Code structure
 - Abstract implementations for well-understood design patterns
 - Expressive Domain Language for both developers as well as Business Users
 - Full support for Domain-Driven Design
-- Out-of-the-box database support for SQL and NoSQL Databases
+- Support for a variety of SQL and NoSQL Databases
 - Ready to use plugins for popular API frameworks like Flask and Pyramid
-- Extendable interfaces to build your own plugins
+- Extendable interfaces to build custom plugins
 - Concrete Implementations for typical Business requirements like Authentication and Notifications
+- Container support for Docker
+- Kubernetes driven deployment mechanisms
+- Out-of-the-box support for deploying into AWS, Azure and GCP
 
-Protean officially supports Python 3.6+.
+*Protean officially supports Python 3.6+.*
 
 .. toctree::
     :maxdepth: 1
