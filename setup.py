@@ -63,6 +63,7 @@ setup(
     ],
     install_requires=[
         'click==7.0',
+        'cookiecutter==1.6.0',
         'python-dateutil==2.7.3'
     ],
     extras_require={

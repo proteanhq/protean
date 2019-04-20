@@ -34,3 +34,11 @@ def test():
     errno = pytest.main(['-v', '--flake8'])
 
     sys.exit(errno)
+
+
+@main.command()
+def new():
+    from cookiecutter.main import cookiecutter
+
+    # Create project from the cookiecutter-protean.git repo template
+    cookiecutter('gh:proteanhq/cookiecutter-protean')
