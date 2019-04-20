@@ -1,6 +1,7 @@
 """Tests for Entity Functionality and Base Classes"""
 
 from collections import OrderedDict
+from datetime import datetime
 
 import pytest
 from tests.support.dog import Dog
@@ -11,6 +12,7 @@ from tests.support.human import Human
 
 from protean.core import field
 from protean.core.entity import Entity
+from protean.core.exceptions import NotSupportedError
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.queryset import QuerySet
@@ -660,6 +662,78 @@ class TestEntity:
         immortal_dog = ImmortalDog(name='Titan', age=10001, owner='God')
         with pytest.raises(SystemError):
             immortal_dog.delete()
+
+    def test_abstract(self):
+        """Test that abstract entities cannot be initialized"""
+        class AbstractDog(Entity):
+            """A Dog that cannot Live!"""
+            name = field.String(required=True, unique=True, max_length=50)
+            age = field.Integer(default=5)
+            owner = field.String(required=True, max_length=15)
+
+            class Meta:
+                abstract = True
+
+        with pytest.raises(NotSupportedError) as exc1:
+            from protean.core.repository import repo_factory
+            repo_factory.register(AbstractDog)
+        assert exc1.value.args[0] == ('AbstractDog class has been marked abstract'
+                                      ' and cannot be instantiated')
+
+        with pytest.raises(NotSupportedError) as exc2:
+            AbstractDog(name='Titan', age=10001, owner='God')
+        assert exc2.value.args[0] == ('AbstractDog class has been marked abstract'
+                                      ' and cannot be instantiated')
+
+    def test_abstract_inheritance(self):
+        """Test that abstract entities cannot be initialized"""
+        class AbstractDog(Entity):
+            """A Dog that cannot Live!"""
+            age = field.Integer(default=5)
+
+            class Meta:
+                abstract = True
+
+        class ConcreteDog(AbstractDog):
+            """A Dog that inherits aging and death"""
+            name = field.String(required=True, unique=True, max_length=50)
+            owner = field.String(required=True, max_length=15)
+
+        immortal_dog = ConcreteDog(name='Titan', owner='God')
+        assert immortal_dog is not None
+        assert immortal_dog.age == 5
+
+    def test_two_level_abstract_inheritance(self):
+        """Test that abstract entities cannot be initialized"""
+        class AbstractDog(Entity):
+            """A Dog that cannot Live!"""
+            age = field.Integer(default=5)
+
+            class Meta:
+                abstract = True
+
+        class DogWithRecords(AbstractDog):
+            """A Dog that has medical records"""
+            born_at = field.DateTime(default=datetime.now())
+
+            class Meta:
+                abstract = True
+
+        class ConcreteDog(DogWithRecords):
+            """A Dog that inherits aging and death, with medical records"""
+            name = field.String(required=True, unique=True, max_length=50)
+            owner = field.String(required=True, max_length=15)
+
+        ordinary_dog = ConcreteDog(name='Titan', owner='God')
+        assert ordinary_dog is not None
+        assert ordinary_dog.age == 5
+        assert ordinary_dog.born_at is not None
+
+        with pytest.raises(NotSupportedError) as exc1:
+            from protean.core.repository import repo_factory
+            repo_factory.register(DogWithRecords)
+        assert exc1.value.args[0] == ('DogWithRecords class has been marked abstract'
+                                      ' and cannot be instantiated')
 
 
 class TestEntityMetaAttributes:
