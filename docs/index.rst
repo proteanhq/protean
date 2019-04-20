@@ -1,7 +1,7 @@
 Protean
 =======
 
-*The Pragmatic Framework for Ever-evolving Applications*
+*The Pragmatic Framework for Ambitious Applications*
 
 Release v\ |version|. (:ref:`Changelog <changelog>`)
 
@@ -23,13 +23,15 @@ Release v\ |version|. (:ref:`Changelog <changelog>`)
 .. image:: https://codecov.io/gh/proteanhq/protean/branch/master/graph/badge.svg
     :target: https://codecov.io/gh/proteanhq/protean
 
-**Protean** is a Python Framework that encourages domain driven design, providing the tools necessary to express your business logic succinctly and precisely while remaining agnostic to underlying technology.
+**Protean** Framework helps you build ever-evolving applications that can scale and adapt to growing requirements without significant refactoring.
 
-It is a great fit for you if you are:
+Protean at its core is a programming model that encourages domain driven design, with tools necessary to express your business logic succinctly and precisely while remaining agnostic to the underlying technology. It also provides operational tools to build and maintain a sophisticated infrastructure that allows you to scale and distribute robust, mission-critical applications, through cutting-edge DevOps utilities.
+
+Protean is a great fit for you if you are:
 
 - Building robust, mission-critical applications for complex and uncharted domains
-- Porting complicated Legacy applications onto newer technology stacks
 - Creating innovative products that will adapt and evolve over long cycles
+- Porting complicated Legacy applications onto newer technology stacks
 
 *Protean is free, open source, and always will be.*
 
