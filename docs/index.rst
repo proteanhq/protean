@@ -53,7 +53,7 @@ Developers should be able to deploy and scale applications in realtime on most p
 Key Features
 ------------
 
-Protean is ready for today's diverse and layered software stack requirements:
+Protean is ready for today's diverse and multilayered software stack requirements:
 
 - Lightweight APIs
 - Non-opinionated and non-enforcing Application Code structure
