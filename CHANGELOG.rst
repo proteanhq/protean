@@ -5,11 +5,23 @@ Release History
 dev
 ---
 
+
+0.0.11 (2019-04-23)
+-------------------
+
 * Rename Repository abstract methods to be public (Ex. `_create_object` → `create`)
 * Add `delete_all()` method to Entity to support Repository cleanup
 * Add support for `raw` queries on Entity repositories
 * Remove requirement for explicit Model definitions for Entities
 * Move Model options into Entity `Meta` class
+* Support for `pre_save` and `post_save` entity callbacks
+* Replace `Pagination` with `ResultSet` because it is at Entity and Use Case level
+* Replace `page` and `per_page` with `limit` and `offset`
+* Add Command utility to generate Protean project template
+* Provide command line utilities for `--version` and `test` 
+* Bugfix: Handled quotes and escape properly in string values in Dictionary repository
+* Add documentation for Overriding Entity Lifecycle methods
+* Add ability to mark tests as slow and run slow tests in travis
 
 0.0.10 (2019-04-05)
 -------------------
