@@ -1,7 +1,8 @@
 """QuerySet Implementation"""
 
 import logging
-from typing import Union, Any
+from typing import Any
+from typing import Union
 
 from protean.core.repository import repo_factory
 from protean.utils.query import Q
