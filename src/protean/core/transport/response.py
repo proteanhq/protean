@@ -1,7 +1,6 @@
-"""Module for Data Transport Utility Classes"""
+"""Module for Response related Classes"""
 import sys
-from abc import ABCMeta
-from abc import abstractmethod
+
 from enum import Enum
 
 
@@ -19,53 +18,6 @@ class Status(Enum):
     RESOURCE_CONFLICT = 409
     UNPROCESSABLE_ENTITY = 422
     SYSTEM_ERROR = 500
-
-
-class InvalidRequestObject:
-    """A utility class to represent an Invalid Request Object
-
-    Typically, a ValidRequestObject creates an object of InvalidRequestObject
-    to return to the callee along with information on errors.
-    """
-    is_valid = False
-
-    def __init__(self):
-        """Initialize a blank Request object with no errors"""
-        self.errors = []
-
-    def add_error(self, parameter, message):
-        """Utility method to append an error message"""
-        self.errors.append({'parameter': parameter, 'message': message})
-
-    @property
-    def has_errors(self):
-        """Indicates if there are errors"""
-        return len(self.errors) > 0
-
-
-class ValidRequestObject(metaclass=ABCMeta):
-    """An Abstract Class to define a basic Valid Request Object and its functionality
-
-    Can be initialized from a dictionary.
-
-    Mirroring the REST world, a request object is usually associated with an Entity class, which is
-    referenced when necessary for performing lifecycle funtions, like validations, persistence etc.
-    """
-    is_valid = True
-
-    @classmethod
-    @abstractmethod
-    def from_dict(cls, entity_cls, adict):
-        """
-        Initialize a Request object from a dictionary.
-
-        This abstract methods should be implemented by a concrete class. Typical tasks executed
-        by the child class would be:
-        * validatin of request object data
-        * deriving of computed attributes
-        * reorganization of data to aid business logic execution
-        """
-        raise NotImplementedError
 
 
 class ResponseSuccess:

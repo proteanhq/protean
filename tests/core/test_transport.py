@@ -1,4 +1,5 @@
 """Tests for Transport Utility Classes"""
+from dataclasses import fields
 
 from protean.core.transport import InvalidRequestObject
 from protean.core.transport import ResponseFailure
@@ -6,10 +7,11 @@ from protean.core.transport import ResponseSuccess
 from protean.core.transport import ResponseSuccessCreated
 from protean.core.transport import ResponseSuccessWithNoContent
 from protean.core.transport import Status
-from protean.core.transport import ValidRequestObject
+from protean.core.transport import RequestObject
+from protean.core.transport import RequestObjectFactory
 
 
-class DummyValidRequestObject(ValidRequestObject):
+class DummyValidRequestObject(RequestObject):
     """ Dummy Request object for testing"""
     @classmethod
     def from_dict(cls, entity, adict):
@@ -18,18 +20,104 @@ class DummyValidRequestObject(ValidRequestObject):
 
 
 class TestValidRequestObject:
-    """Tests for ValidRequestObject class"""
+    """Tests for RequestObject class"""
 
     def test_init(self):
-        """Test that a ValidRequestObject instance can be initialized"""
+        """Test that a RequestObject instance can be initialized"""
 
         request_obj = DummyValidRequestObject()
         assert request_obj is not None
 
     def test_validity(self):
-        """Test that ValidRequestObject is valid"""
+        """Test that RequestObject is valid"""
         request_obj = DummyValidRequestObject()
         assert request_obj.is_valid
+
+
+class TestRequestObjectFactory:
+    """Tests for RequestObjectFactory"""
+
+    def test_init(self):
+        """Test construction of a Request Object class"""
+        ROClass = RequestObjectFactory.construct('ROClass', ['identifier'])
+        assert hasattr(ROClass, 'from_dict')
+        assert hasattr(ROClass, 'identifier')
+
+        request_object = ROClass.from_dict({'identifier': 12345})
+        assert request_object.identifier == 12345
+        assert request_object.is_valid
+
+    def test_name_only(self):
+        """Test field definition with name alone"""
+        ROClass = RequestObjectFactory.construct('ROClass', ['identifier', 'name'])
+        assert hasattr(ROClass, 'name')
+
+        request_object = ROClass.from_dict({'identifier': 12345, 'name': 'John'})
+        assert request_object.identifier == 12345
+        assert request_object.name == 'John'
+        assert request_object.is_valid
+
+    def test_name_and_type(self):
+        """Test field definition with name and type"""
+        ROClass = RequestObjectFactory.construct('ROClass', [('identifier', int), ('name', str)])
+
+        request_object1 = ROClass.from_dict({'identifier': 12345, 'name': 'John'})
+        assert request_object1.identifier == 12345
+        assert request_object1.name == 'John'
+        assert request_object1.is_valid
+
+        request_object2 = ROClass.from_dict({'identifier': 'abcd', 'name': 'John'})
+        assert request_object2.is_valid is False
+
+        request_object2 = ROClass.from_dict({'identifier': 12345, 'name': 56789})
+        assert request_object2.is_valid
+
+    def test_name_type_and_params(self):
+        """Test field definition with name, type and parameters"""
+        ROClass = RequestObjectFactory.construct(
+            'ROClass',
+            [('identifier', int), ('name', str, {'required': True})])
+
+        declared_fields = fields(ROClass)
+        identifier_field = next(item for item in declared_fields if item.name == "identifier")
+        assert identifier_field.metadata.get('required', False) is False
+        name_field = next(item for item in declared_fields if item.name == "name")
+        assert name_field.metadata['required'] is True
+
+    def test_required(self):
+        """Test required validation"""
+        ROClass = RequestObjectFactory.construct(
+            'ROClass',
+            [('identifier', int), ('name', str, {'required': True})])
+
+        request_object1 = ROClass.from_dict({'identifier': 12345, 'name': 'John'})
+        assert request_object1.identifier == 12345
+        assert request_object1.name == 'John'
+        assert request_object1.is_valid
+
+        request_object2 = ROClass.from_dict({'identifier': 'abcd'})
+        assert request_object2.is_valid is False
+
+    def test_defaulting(self):
+        """Test defaulting of values"""
+        ROClass = RequestObjectFactory.construct(
+            'ROClass',
+            [
+                ('identifier', int),
+                ('name', str, {'required': True}),
+                ('age', int, {'default': 35})])
+
+        request_object1 = ROClass.from_dict({'identifier': 12345, 'name': 'John'})
+        assert request_object1.is_valid
+        assert request_object1.age == 35
+
+        request_object1 = ROClass.from_dict({'identifier': 12345, 'name': 'John', 'age': 10})
+        assert request_object1.is_valid
+        assert request_object1.age == 10
+
+        request_object1 = ROClass.from_dict({'name': 'John', 'age': 10})
+        assert request_object1.is_valid
+        assert request_object1.identifier is None
 
 
 class TestInvalidRequestObject:
