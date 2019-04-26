@@ -68,7 +68,7 @@ Protean is ready for today's diverse and multilayered software stack requirement
 - Kubernetes driven deployment mechanisms
 - Out-of-the-box support for deploying into AWS, Azure and GCP
 
-*Protean officially supports Python 3.6+.*
+*Protean officially supports Python 3.7+.*
 
 .. toctree::
     :maxdepth: 1

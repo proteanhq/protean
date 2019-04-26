@@ -1,6 +1,5 @@
 """Module for Response related Classes"""
 import sys
-
 from enum import Enum
 
 

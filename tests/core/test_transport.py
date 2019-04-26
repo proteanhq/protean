@@ -2,13 +2,13 @@
 from dataclasses import fields
 
 from protean.core.transport import InvalidRequestObject
+from protean.core.transport import RequestObject
+from protean.core.transport import RequestObjectFactory
 from protean.core.transport import ResponseFailure
 from protean.core.transport import ResponseSuccess
 from protean.core.transport import ResponseSuccessCreated
 from protean.core.transport import ResponseSuccessWithNoContent
 from protean.core.transport import Status
-from protean.core.transport import RequestObject
-from protean.core.transport import RequestObjectFactory
 
 
 class DummyValidRequestObject(RequestObject):

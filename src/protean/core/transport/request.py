@@ -1,11 +1,11 @@
 """Module for Request related Classes"""
+import datetime
 import typing
 from abc import ABCMeta
 from abc import abstractmethod
 from dataclasses import field
 from dataclasses import fields
 from dataclasses import make_dataclass
-import datetime
 
 
 class RequestObject(metaclass=ABCMeta):
