@@ -22,7 +22,7 @@ class TestTasklet:
 
         # Validate the response received
         assert response is not None
-        assert response.success
+        assert response.is_successful
         assert response.value.id == 1
         assert response.value.name == 'Murdock'
 

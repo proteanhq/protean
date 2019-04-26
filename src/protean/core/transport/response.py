@@ -28,7 +28,7 @@ class ResponseSuccess:
         value (json): Optional data returned with the response
         message (str): Optional messages returned with the response
     """
-    success = True
+    is_successful = True
 
     def __init__(self, code, value=None, message=None):
         """Initialize Successful Response Object"""
@@ -44,7 +44,7 @@ class ResponseFailure:
         code (integer): HTTP code, among 4xx and 5xx errors
         message (str): Custom message or exception returned with the response
     """
-    success = False
+    is_successful = False
     exception_message = "Something went wrong. Please try later!!"
 
     def __init__(self, code, message):

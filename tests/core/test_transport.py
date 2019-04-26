@@ -161,7 +161,7 @@ class TestResponseObject:
     def test_success(self):
         """Test that a ResponseObject is success"""
         response = ResponseSuccess(Status.SUCCESS)
-        assert response.success
+        assert response.is_successful
 
 
 class TestResponseSuccessCreated:
@@ -176,7 +176,7 @@ class TestResponseSuccessCreated:
     def test_success(self):
         """Test that a ResponseSuccessCreated is success"""
         response = ResponseSuccessCreated()
-        assert response.success
+        assert response.is_successful
 
 
 class TestResponseSuccessWithNoContent:
@@ -193,7 +193,7 @@ class TestResponseSuccessWithNoContent:
     def test_success(self):
         """Test that a ResponseSuccessWithNoContent is success"""
         response = ResponseSuccessWithNoContent()
-        assert response.success
+        assert response.is_successful
 
 
 class TestResponseFailure:
@@ -211,7 +211,7 @@ class TestResponseFailure:
         """Test that a ResponseFailure is not success"""
         response = ResponseFailure(
             Status.PARAMETERS_ERROR, 'Failed to process')
-        assert not response.success
+        assert not response.is_successful
 
     def test_value(self):
         """Test retrieval of ResponseFailure information"""

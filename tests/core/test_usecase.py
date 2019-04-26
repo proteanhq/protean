@@ -111,7 +111,7 @@ class TestShowUseCase:
         use_case = ShowUseCase()
         response = use_case.execute(request_obj)
         assert response is not None
-        assert response.success
+        assert response.is_successful
         assert response.value.id == 1
         assert response.value.name == 'Johnny'
         assert response.value.age == 5
@@ -124,7 +124,7 @@ class TestShowUseCase:
         use_case = ShowUseCase()
         response = use_case.execute(request_obj)
         assert response is not None
-        assert not response.success
+        assert not response.is_successful
 
     def test_object_not_found(self):
         """Test Show Usecase for non existent object"""
@@ -134,7 +134,7 @@ class TestShowUseCase:
         use_case = ShowUseCase()
         response = use_case.execute(request_obj)
         assert response is not None
-        assert not response.success
+        assert not response.is_successful
 
 
 class TestListUseCase:
@@ -154,7 +154,7 @@ class TestListUseCase:
 
         # Validate the response received
         assert response is not None
-        assert response.success
+        assert response.is_successful
         assert response.value.offset == 0
         assert response.value.total == 2
         assert response.value.first.age == 3
@@ -173,7 +173,7 @@ class TestCreateUseCase:
         response = use_case.execute(request_obj)
 
         assert response is not None
-        assert response.success
+        assert response.is_successful
         assert response.value.name == 'Barry'
 
     def test_unique_validation(self):
@@ -192,7 +192,7 @@ class TestCreateUseCase:
 
         # Validate the response received
         assert response is not None
-        assert not response.success
+        assert not response.is_successful
         assert response.value == {
             'code': 422,
             'message': {'id': ['`Dog` with this `id` already exists.']}}
@@ -218,7 +218,7 @@ class TestUpdateUseCase:
 
         # Validate the response received
         assert response is not None
-        assert response.success
+        assert response.is_successful
         assert response.value.id == dog_to_update.id
         assert response.value.age == 13
 
@@ -232,7 +232,7 @@ class TestUpdateUseCase:
 
         # Validate the response received
         assert response is not None
-        assert not response.success
+        assert not response.is_successful
         assert response.value == {
             'code': 422, 'message': {'age': ['"x" value must be an integer.']}}
 
@@ -249,7 +249,7 @@ class TestUpdateUseCase:
 
         # Validate the response received
         assert response is not None
-        assert not response.success
+        assert not response.is_successful
         assert response.value == {
             'code': 422,
             'message': {
@@ -275,7 +275,7 @@ class TestDeleteUseCase:
 
         # Validate the response received
         assert response is not None
-        assert response.success
+        assert response.is_successful
         assert response.value is None
 
         # Try to lookup the object again
@@ -283,4 +283,4 @@ class TestDeleteUseCase:
         use_case = ShowUseCase()
         response = use_case.execute(request_obj)
         assert response is not None
-        assert not response.success
+        assert not response.is_successful
