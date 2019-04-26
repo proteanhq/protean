@@ -40,27 +40,35 @@ class RequestObjectFactory:
     def construct(cls, name: str, declared_fields: typing.List[tuple]):
         """
         Utility method packaged along with the factory to be able to construct Request Object
-          classes on the fly.
+        classes on the fly.
 
         Example:
-        `UserShowRequestObject = Factory.create_request_object(
-          'CreateRequestObject',
-          [('identifier', int, {'required': True}),
-           ('name', str, {'required': True}),
-           ('desc', str, {'default': 'Blah'})])`
+
+        .. code-block:: python
+
+            UserShowRequestObject = Factory.create_request_object(
+                'CreateRequestObject',
+                [('identifier', int, {'required': True}),
+                ('name', str, {'required': True}),
+                ('desc', str, {'default': 'Blah'})])
 
         And then create a request object like so:
-        `request_object = UserShowRequestObject.from_dict({'identifier': 112,
-                                                          'name': 'Jane',
-                                                          'desc': "Doer is not Doe"})`
+
+        .. code-block:: python
+
+            request_object = UserShowRequestObject.from_dict(
+                {'identifier': 112,
+                'name': 'Jane',
+                'desc': "Doer is not Doe"})
 
         The third tuple element is a `dict` of the form: {'required': True, 'default': 'John'}
-        * `required` is False by default, so `{required: False, default: 'John'}` and
-          `{default: 'John'}` evaluate to the same field definition
-        * `default` is a concrete value of the correct type
 
-        # FIXME Refactor this method to make it simpler
+        * ``required`` is False by default, so ``{required: False, default: 'John'}`` and \
+            ``{default: 'John'}`` evaluate to the same field definition
+        * ``default`` is a *concrete* value of the correct type
         """
+        # FIXME Refactor this method to make it simpler
+
         @classmethod
         def from_dict(cls, adict):
             """Validate and initialize a Request Object"""
