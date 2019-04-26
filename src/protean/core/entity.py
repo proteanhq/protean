@@ -3,6 +3,7 @@ import copy
 import logging
 from typing import Any
 
+from protean.core.exceptions import InvalidStateError
 from protean.core.exceptions import NotSupportedError
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
@@ -385,6 +386,23 @@ class Entity(metaclass=EntityBase):
 
         # Return the first result
         return results.first
+
+    def reload(self) -> None:
+        """Reload Entity from the repository"""
+        if not self.state_.is_persisted or self.state_.is_changed:
+            raise InvalidStateError(f'`{self.__class__.__name__}` object is in invalid state')
+
+        # Retrieve the entity's ID by the configured Identifier field
+        identifier = getattr(self, self.meta_.id_field.field_name)
+        logger.debug(f'Lookup `{self.__class__.__name__}` object with '
+                     f'identifier {self.meta_.id_field}')
+
+        # Fetch the entity data from db by its identifier
+        db_value = self.get(identifier)
+
+        # Update own data from fetched entity data
+        # This allows us to ``dog.reload()`` instead of ``dog = dog.reload()``
+        self._update_data(db_value.to_dict())
 
     @classmethod
     def find_by(cls, **kwargs) -> 'Entity':

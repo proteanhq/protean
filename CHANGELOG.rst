@@ -5,6 +5,8 @@ Release History
 dev
 ---
 
+* Add Request Object Factory to construct Request Object classes on the fly
+* Add `reload` method to refresh an entity's data from database
 
 0.0.11 (2019-04-23)
 -------------------
