@@ -195,7 +195,7 @@ class TestCreateUseCase:
         assert not response.is_successful
         assert response.value == {
             'code': 422,
-            'message': {'id': ['`Dog` with this `id` already exists.']}}
+            'errors': [{'id': ['`Dog` with this `id` already exists.']}]}
 
 
 class TestUpdateUseCase:
@@ -234,7 +234,7 @@ class TestUpdateUseCase:
         assert response is not None
         assert not response.is_successful
         assert response.value == {
-            'code': 422, 'message': {'age': ['"x" value must be an integer.']}}
+            'code': 422, 'errors': [{'age': ['"x" value must be an integer.']}]}
 
     def test_unique_validation(self, dog_to_update):
         """Test Update Usecase for unique validation"""
@@ -252,8 +252,8 @@ class TestUpdateUseCase:
         assert not response.is_successful
         assert response.value == {
             'code': 422,
-            'message': {
-                'name': ['`Dog` with this `name` already exists.']}}
+            'errors': [{
+                'name': ['`Dog` with this `name` already exists.']}]}
 
 
 class TestDeleteUseCase:

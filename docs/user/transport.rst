@@ -86,3 +86,70 @@ If the request object is not valid, it's ``is_valid`` flag will evaluate to fals
     False
     >>> type(request_object)
     InvalidRequestObject
+
+Response Objects
+----------------
+
+A Response Transfer Object is constructed and returned as output from a Service object. Response objects contain success codes and/or values given by the service if they are successful, and errors if the service call failed.
+
+Consider a simply retrieval case of an entity that is already persisted:
+
+.. code-block:: python
+
+    from protean.core.usecase import ShowRequestObject
+    from protean.core.usecase import ShowUseCase
+
+    # Build the request object and run the usecase
+    request_obj = ShowRequestObject.from_dict({'entity_cls': Dog, 'identifier': 1})
+    use_case = ShowUseCase()
+    response = use_case.execute(request_obj)
+
+The ``response`` object contains all necessary information returned from the service call, and ``is_successful`` flag helps you check if the processing was successful .
+
+.. code-block:: python
+
+    >>> response.is_successful
+    True
+
+ResponseSuccess
+^^^^^^^^^^^^^^^
+
+On successfully processing a request, a ``ResponseSuccess`` object is returned. A ``ResponseSuccess`` object usually carries three attributes:
+
+* ``code``: A HTTP 2xx success status code
+* ``value``: The value returned by the service - Can be ``None`` for code 204 (Success Response with no content)
+* ``message``: An optional message sent by the service
+
+.. code-block:: python
+
+    >>> type(response)
+    <class 'protean.core.transport.response.ResponseSuccess'>
+    >>> response.is_successful
+    True
+    >>> response.code
+    <Status.SUCCESS: 200>
+    >>> type(response.value)
+    <class 'Dog'>
+    >>> response.value.to_dict()
+    {'age': 5, 'id': 1, 'name': 'Johnny', 'owner': 'John'}
+
+ResponseFailure
+^^^^^^^^^^^^^^^
+
+If the service call failed, a ``ResponseFailure`` object is returned, containing:
+
+* ``code``: A HTTP 4xx/5xx failure status code
+* ``errors``: A list of key-value errors, with key being the `parameter` or `argument` that triggered the error and `value` being a helpful message
+
+.. code-block:: python
+
+    >>> type(response)
+    <class 'protean.core.transport.response.ResponseFailure'>
+    >>> response.is_successful
+    False
+    >>> response.code
+    <Status.NOT_FOUND: 404>
+    >>> response.errors
+    [{'identifier': 'Object with this ID does not exist.'}]
+
+``ResponseFailure`` class provides many helper methods to construct HTTP style errors. Refer to :ref:`api-response-failure` for full documentation.

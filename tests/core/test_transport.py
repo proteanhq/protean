@@ -205,7 +205,7 @@ class TestResponseFailure:
             Status.PARAMETERS_ERROR, 'Failed to process')
         assert response is not None
         assert response.code == Status.PARAMETERS_ERROR
-        assert response.message == ResponseFailure.exception_message
+        assert response.errors == ResponseFailure.exception_message
 
     def test_success(self):
         """Test that a ResponseFailure is not success"""
@@ -221,7 +221,7 @@ class TestResponseFailure:
 
         expected_value = {
             'code': 400,
-            'message': 'Something went wrong. Please try later!!'
+            'errors': [{'exception': 'Something went wrong. Please try later!!'}]
         }
         assert response.value == expected_value
 
@@ -248,6 +248,6 @@ class TestResponseFailure:
         assert response is not None
         assert response.code == Status.UNPROCESSABLE_ENTITY
         expected_value = {
-            'code': 422, 'message': {'field': 'is required'}
+            'code': 422, 'errors': [{'field': 'is required'}]
         }
         assert response.value == expected_value
