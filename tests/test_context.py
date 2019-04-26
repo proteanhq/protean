@@ -29,7 +29,7 @@ def run_create_task(thread_name, name, sleep=0):
     # move forward
     time.sleep(sleep)
 
-    Tasklet.perform(ThreadedDog, CreateUseCase2, CreateRequestObject, {'name': name})
+    Tasklet.perform(ThreadedDog, CreateUseCase2, CreateRequestObject, {'data': {'name': name}})
 
 
 def test_context_with_threads():

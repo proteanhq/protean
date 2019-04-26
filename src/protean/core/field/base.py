@@ -36,7 +36,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
     default_error_messages = {
         'invalid': 'Value is not a valid type for this field.',
         'unique': '`{entity_name:s}` with this `{field_name:s}` already exists.',
-        'required': 'This field is required.',
+        'required': 'is required',
         'invalid_choice': 'Value `{value!r}` is not a valid choice. '
                           'Must be one of {choices!r}',
     }

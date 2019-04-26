@@ -26,7 +26,8 @@ class Tasklet:
 
         # Initialize the use case and request objects
         use_case = usecase_cls()
-        request_object = request_object_cls.from_dict(entity_cls, payload)
+        payload.update({'entity_cls': entity_cls})
+        request_object = request_object_cls.from_dict(payload)
 
         # Run the use case and return the response
         resp = use_case.execute(request_object)

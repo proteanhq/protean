@@ -44,7 +44,7 @@ class TestEntity:
         assert dog2.owner == 'John'
 
     def test_required_fields(self):
-        """Test errors if mandatory fields are missing"""
+        """Test errors if required fields are missing"""
 
         with pytest.raises(ValidationError):
             Dog(id=2, name='John Doe')

@@ -1,41 +1,21 @@
 """Concrete Implementations of some generic use cases"""
 
 from protean.conf import active_config
+from protean.core.entity import Entity
 from protean.core.transport import InvalidRequestObject
+from protean.core.transport import RequestObject
+from protean.core.transport import RequestObjectFactory
 from protean.core.transport import ResponseSuccess
 from protean.core.transport import ResponseSuccessCreated
 from protean.core.transport import ResponseSuccessWithNoContent
 from protean.core.transport import Status
-from protean.core.transport import ValidRequestObject
 
 from .base import UseCase
 
-
-class ShowRequestObject(ValidRequestObject):
-    """
-    This class encapsulates the Request Object for retrieving a resource
-    """
-
-    def __init__(self, entity_cls, identifier=None):
-        """Initialize Request Object with ID"""
-        self.entity_cls = entity_cls
-        self.identifier = identifier
-
-    @classmethod
-    def from_dict(cls, entity_cls, adict):
-        """Initialize a ShowRequestObject object from a dictionary."""
-        invalid_req = InvalidRequestObject()
-
-        identifier = None
-        if 'identifier' in adict:
-            identifier = adict['identifier']
-        else:
-            invalid_req.add_error('identifier', 'is required')
-
-        if invalid_req.has_errors:
-            return invalid_req
-
-        return cls(entity_cls, identifier)
+ShowRequestObject = RequestObjectFactory.construct(
+    'ShowRequestObject',
+    [('entity_cls', Entity, {'required': True}),
+     ('identifier', int, {'required': True})])
 
 
 class ShowUseCase(UseCase):
@@ -53,9 +33,24 @@ class ShowUseCase(UseCase):
         return ResponseSuccess(Status.SUCCESS, resource)
 
 
-class ListRequestObject(ValidRequestObject):
+class ListRequestObject(RequestObject):
     """
     This class encapsulates the Request Object for Listing a resource
+
+    Possible Factory implementation:
+
+        ListRequestObject = RequestObjectFactory.construct(
+            'ListRequestObject',
+            [('entity_cls', Entity, {'required': True}),
+            ('page', int, {'default': 1}),
+            ('per_page', int),
+            ('order_by', tuple),
+            ('filters', dict)
+            ])
+
+    Two aspects prevent us from factory-generating this request object:
+    * `filters` is usually what remains from the `dict` passed to from_dict
+    * Validation - `page` cannot be less than 0
     """
 
     def __init__(self, entity_cls, page=1, per_page=None, order_by=(),
@@ -110,20 +105,10 @@ class ListUseCase(UseCase):
         return ResponseSuccess(Status.SUCCESS, resources)
 
 
-class CreateRequestObject(ValidRequestObject):
-    """
-    This class encapsulates the Request Object for Creating New Resource
-    """
-
-    def __init__(self, entity_cls, data=None):
-        """Initialize Request Object with form data"""
-        self.entity_cls = entity_cls
-        self.data = data
-
-    @classmethod
-    def from_dict(cls, entity_cls, adict):
-        """Initialize a CreateRequestObject object from a dictionary."""
-        return cls(entity_cls, adict)
+CreateRequestObject = RequestObjectFactory.construct(
+    'CreateRequestObject',
+    [('entity_cls', Entity, {'required': True}),
+     ('data', dict, {'required': True})])
 
 
 class CreateUseCase(UseCase):
@@ -138,32 +123,11 @@ class CreateUseCase(UseCase):
         return ResponseSuccessCreated(resource)
 
 
-class UpdateRequestObject(ValidRequestObject):
-    """
-    This class encapsulates the Request Object for Updating a Resource
-    """
-
-    def __init__(self, entity_cls, identifier, data=None):
-        """Initialize Request Object with form data"""
-        self.entity_cls = entity_cls
-        self.identifier = identifier
-        self.data = data
-
-    @classmethod
-    def from_dict(cls, entity_cls, adict):
-        """Initialize a UpdateRequestObject object from a dictionary."""
-        invalid_req = InvalidRequestObject()
-
-        if 'identifier' not in adict:
-            invalid_req.add_error('identifier', 'Identifier is required')
-
-        if 'data' not in adict:
-            invalid_req.add_error('data', 'Data dict is required')
-
-        if invalid_req.has_errors:
-            return invalid_req
-
-        return cls(entity_cls, adict['identifier'], adict['data'])
+UpdateRequestObject = RequestObjectFactory.construct(
+    'UpdateRequestObject',
+    [('entity_cls', Entity, {'required': True}),
+     ('identifier', int, {'required': True}),
+     ('data', dict, {'required': True})])
 
 
 class UpdateUseCase(UseCase):
@@ -182,28 +146,7 @@ class UpdateUseCase(UseCase):
         return ResponseSuccess(Status.SUCCESS, resource)
 
 
-class DeleteRequestObject(ValidRequestObject):
-    """This class encapsulates the Request Object for Deleting a resource"""
-
-    def __init__(self, entity_cls, identifier=None):
-        self.entity_cls = entity_cls
-        self.identifier = identifier
-
-    @classmethod
-    def from_dict(cls, entity_cls, adict):
-        """Initialize a DeleteRequestObject object from a dictionary."""
-        invalid_req = InvalidRequestObject()
-
-        identifier = None
-        if 'identifier' in adict:
-            identifier = adict['identifier']
-        else:
-            invalid_req.add_error('identifier', 'is required')
-
-        if invalid_req.has_errors:
-            return invalid_req
-
-        return cls(entity_cls, identifier)
+DeleteRequestObject = ShowRequestObject
 
 
 class DeleteUseCase(UseCase):
