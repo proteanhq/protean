@@ -735,6 +735,22 @@ class TestEntity:
         assert exc1.value.args[0] == ('DogWithRecords class has been marked abstract'
                                       ' and cannot be instantiated')
 
+    def test_reload(self):
+        """Test that entities can be reloaded"""
+        dog = Dog.create(id=1234, name='Johnny', owner='John')
+
+        dog_dup = Dog.get(1234)
+        assert dog_dup is not None
+        assert dog_dup.id == 1234
+        dog_dup.owner = 'Jane'
+        dog_dup.save()
+
+        assert dog_dup.owner == 'Jane'
+        assert dog.owner == 'John'
+
+        dog.reload()
+        assert dog.owner == 'Jane'
+
 
 class TestEntityMetaAttributes:
     """Class that holds testcases for Entity's meta attributes"""
