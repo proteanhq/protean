@@ -161,7 +161,7 @@ class TestResponseObject:
     def test_success(self):
         """Test that a ResponseObject is success"""
         response = ResponseSuccess(Status.SUCCESS)
-        assert response.success
+        assert response.is_successful
 
 
 class TestResponseSuccessCreated:
@@ -176,7 +176,7 @@ class TestResponseSuccessCreated:
     def test_success(self):
         """Test that a ResponseSuccessCreated is success"""
         response = ResponseSuccessCreated()
-        assert response.success
+        assert response.is_successful
 
 
 class TestResponseSuccessWithNoContent:
@@ -193,7 +193,7 @@ class TestResponseSuccessWithNoContent:
     def test_success(self):
         """Test that a ResponseSuccessWithNoContent is success"""
         response = ResponseSuccessWithNoContent()
-        assert response.success
+        assert response.is_successful
 
 
 class TestResponseFailure:
@@ -205,13 +205,13 @@ class TestResponseFailure:
             Status.PARAMETERS_ERROR, 'Failed to process')
         assert response is not None
         assert response.code == Status.PARAMETERS_ERROR
-        assert response.message == ResponseFailure.exception_message
+        assert response.errors == ResponseFailure.exception_message
 
     def test_success(self):
         """Test that a ResponseFailure is not success"""
         response = ResponseFailure(
             Status.PARAMETERS_ERROR, 'Failed to process')
-        assert not response.success
+        assert not response.is_successful
 
     def test_value(self):
         """Test retrieval of ResponseFailure information"""
@@ -221,7 +221,7 @@ class TestResponseFailure:
 
         expected_value = {
             'code': 400,
-            'message': 'Something went wrong. Please try later!!'
+            'errors': [{'exception': 'Something went wrong. Please try later!!'}]
         }
         assert response.value == expected_value
 
@@ -248,6 +248,6 @@ class TestResponseFailure:
         assert response is not None
         assert response.code == Status.UNPROCESSABLE_ENTITY
         expected_value = {
-            'code': 422, 'message': {'field': 'is required'}
+            'code': 422, 'errors': [{'field': 'is required'}]
         }
         assert response.value == expected_value

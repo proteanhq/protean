@@ -27,19 +27,17 @@ class UseCase(metaclass=ABCMeta):
             return self.process_request(request_object)
 
         except ValidationError as err:
-            return ResponseFailure.build_unprocessable_error(
-                err.normalized_messages)
+            return ResponseFailure.build_unprocessable_error(err.normalized_messages)
 
         except ObjectNotFoundError:
             return ResponseFailure.build_not_found(
-                {'identifier': 'Object with this ID does not exist.'})
+                [{'identifier': 'Object with this ID does not exist.'}])
 
         except Exception as exc:
             logger.error(
                 f'{self.__class__.__name__} execution failed due to error {exc}',
                 exc_info=True)
-            return ResponseFailure.build_system_error(
-                "{}: {}".format(exc.__class__.__name__, exc))
+            return ResponseFailure.build_system_error([{exc.__class__.__name__: exc}])
 
     @abstractmethod
     def process_request(self, request_object):
