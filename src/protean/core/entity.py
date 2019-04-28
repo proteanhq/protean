@@ -10,10 +10,11 @@ from protean.core.exceptions import ValidationError
 from protean.core.field import Auto
 from protean.core.field import Field
 from protean.core.field import Reference
-from protean.core.field import ReferenceField
 from protean.core.queryset import QuerySet
 from protean.core.repository import repo_factory
 from protean.utils import inflection
+
+from ..core.field.association import _ReferenceField  # Relative path to private class
 
 logger = logging.getLogger('protean.core.entity')
 
@@ -313,7 +314,7 @@ class Entity(metaclass=EntityBase):
         # for required fields
         for field_name, field_obj in self.meta_.declared_fields.items():
             if field_name not in loaded_fields:
-                if not isinstance(field_obj, (Reference, ReferenceField)):
+                if not isinstance(field_obj, (Reference, _ReferenceField)):
                     setattr(self, field_name, None)
 
         # Raise any errors found during load

@@ -9,7 +9,7 @@ from .mixins import FieldDescriptorMixin
 from .utils import fetch_entity_cls_from_registry
 
 
-class ReferenceField(Field):
+class _ReferenceField(Field):
     """Shadow Attribute Field to back References"""
 
     def __init__(self, reference, **kwargs):
@@ -62,7 +62,7 @@ class Reference(FieldCacheMixin, Field):
         self._to_cls = to_cls
         self.via = via
 
-        self.relation = ReferenceField(self)
+        self.relation = _ReferenceField(self)
 
     @property
     def to_cls(self):
