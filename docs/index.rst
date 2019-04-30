@@ -92,6 +92,7 @@ Protean is ready for today's diverse and multilayered software stack requirement
 
    user/entities/index
    user/transport
+   user/persistence
 
 .. toctree::
    :maxdepth: 1
