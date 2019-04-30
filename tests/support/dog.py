@@ -90,3 +90,8 @@ class ThreadedDog(Entity):
     """This is a dummy Dog Entity class"""
     name = field.String(required=True, max_length=50)
     created_by = field.String(required=True, max_length=15)
+
+
+class SubDog(Dog):
+    """Subclassed Dog Entity Class"""
+    pass

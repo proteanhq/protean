@@ -7,6 +7,7 @@ import pytest
 from tests.support.dog import Dog
 from tests.support.dog import HasOneDog1
 from tests.support.dog import RelatedDog
+from tests.support.dog import SubDog
 from tests.support.human import HasOneHuman1
 from tests.support.human import Human
 
@@ -42,6 +43,46 @@ class TestEntity:
         assert dog2.name == 'Jimmy Kane'
         assert dog2.age == 3
         assert dog2.owner == 'John'
+
+    def test_equality_of_entities_1(self):
+        """Test that two entities are considered equal based on their ID"""
+        dog1 = Dog.create(name='Slobber 1', age=6, owner='Jason')
+        dog2 = Dog.create(name='Slobber 2', age=6, owner='Jason')
+
+        assert dog1 != dog2  # Because their identities are different
+        assert dog2 != dog1  # Because their identities are different
+
+        db_dog = Dog.get(1)
+        assert dog1 == db_dog  # Because it's the same record but reloaded from db
+        assert db_dog == dog1  # Because it's the same record but reloaded from db
+
+    def test_equality_of_entities_2(self):
+        """Test that two entities are not considered equal even if they have the same ID
+            and one belongs to a different Entity class
+        """
+        dog = Dog.create(id=1, name='Slobber 1', age=6, owner='Jason')
+        human = Human.create(id=1, first_name='Jeff', last_name='Kennedy',
+                             email='jeff.kennedy@presidents.com')
+
+        assert dog != human  # Even though their identities are the same
+        assert human != dog  # Even though their identities are the same
+
+    def test_equality_of_entities_3(self):
+        """Test that two entities are not considered equal even if they have the same ID
+            and one is subclassed from the other
+        """
+        dog = Dog.create(id=1, name='Slobber 1', age=6, owner='Jason')
+        subdog = SubDog.create(id=1, name='Slobber 1', age=6, owner='Jason')
+
+        assert dog != subdog  # Even though their identities are the same
+        assert subdog != dog  # Even though their identities are the same
+
+    def test_entity_hash(self):
+        """Test that the entity's hash is based on its identity"""
+        hashed_id = hash(1)
+
+        dog = Dog.create(id=1, name='Slobber 1', age=6, owner='Jason')
+        assert hashed_id == hash(dog)
 
     def test_required_fields(self):
         """Test errors if required fields are missing"""
@@ -113,6 +154,15 @@ class TestEntity:
             id=3, name='John Doe', owner='Jimmy')
         assert dog2 is not None
         assert dog2.age == 5
+
+    def test_inhertied_entity_schema(self):
+        """ Test that subclasses of `Entity` can be inherited"""
+
+        class Dog2(Dog):
+            """This is a dummy Dog Entity class with a mixin"""
+            pass
+
+        assert Dog.meta_.schema_name != Dog2.meta_.schema_name
 
     def test_default_id(self):
         """ Test that default id field is assigned when not defined"""
