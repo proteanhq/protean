@@ -355,6 +355,17 @@ class Entity(metaclass=EntityBase):
         return {field_name: getattr(self, field_name, None)
                 for field_name in self.meta_.declared_fields}
 
+    def __repr__(self):
+        """Friendly repr for Entity"""
+        return '<%s: %s>' % (self.__class__.__name__, self)
+
+    def __str__(self):
+        identifier = getattr(self, self.meta_.id_field.field_name)
+        return '%s object (%s)' % (
+            self.__class__.__name__,
+            '{}: {}'.format(self.meta_.id_field.field_name, identifier)
+        )
+
     def clone(self):
         """Deepclone the entity, but reset state"""
         clone_copy = copy.deepcopy(self)
