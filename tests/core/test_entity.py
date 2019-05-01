@@ -12,6 +12,7 @@ from tests.support.human import Human
 
 from protean.core import field
 from protean.core.entity import Entity
+from protean.core.exceptions import InvalidOperationError
 from protean.core.exceptions import NotSupportedError
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
@@ -126,6 +127,16 @@ class TestEntity:
         assert dog2 is not None
         assert dog2.id == 3
 
+    def test_id_immutability(self):
+        """Test that `id` cannot be changed once assigned"""
+        dog = Dog(id=4, name='Chucky', owner='John Doe')
+        dog.save()
+
+        assert dog.state_.is_persisted is True
+
+        with pytest.raises(InvalidOperationError):
+            dog.update(id=5)
+
     def test_to_dict(self):
         """Test conversion of the entity to dict"""
 
@@ -229,6 +240,17 @@ class TestEntity:
         with pytest.raises(ValidationError):
             dog.age = 'abcd'
             dog.save()
+
+    def test_save_again(self):
+        """Test that save can be invoked again on an already existing entity, to update values"""
+        dog = Dog(name='Johnny', owner='John')
+        dog.save()
+
+        dog.name = 'Janey'
+        dog.save()
+
+        dog.reload()
+        assert dog.name == 'Janey'
 
     def test_update_with_invalid_id(self):
         """Try to update a non-existing entry"""
