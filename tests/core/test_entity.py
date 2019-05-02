@@ -196,6 +196,16 @@ class TestEntity:
         assert dog.to_dict() == {
             'age': 10, 'id': 1, 'name': 'John Doe', 'owner': 'Jimmy'}
 
+    def test_repr(self):
+        """Test that a meaningful repr is printed for entities"""
+        dog1 = Dog(name='John Doe', age=10, owner='Jimmy')
+        assert str(dog1) == 'Dog object (id: None)'
+        assert repr(dog1) == '<Dog: Dog object (id: None)>'
+
+        dog2 = Dog.create(id=1, name='Jimmy', age=10, owner='John Doe')
+        assert str(dog2) == 'Dog object (id: 1)'
+        assert repr(dog2) == '<Dog: Dog object (id: 1)>'
+
     def test_get(self):
         """Test Entity Retrieval by its primary key"""
         Dog.create(id=1234, name='Johnny', owner='John')
