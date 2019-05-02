@@ -108,5 +108,6 @@ Protean is ready for today's diverse and multilayered software stack requirement
    :caption: Community
 
    community/changelog
+   community/styleguide
    Code of Conduct <community/code-of-conduct>
    community/contributing

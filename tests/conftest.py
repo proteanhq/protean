@@ -46,7 +46,7 @@ def register_models():
     from protean.core.repository import repo_factory
     from tests.support.dog import (Dog, RelatedDog, DogRelatedByEmail, HasOneDog1,
                                    HasOneDog2, HasOneDog3, HasManyDog1, HasManyDog2,
-                                   HasManyDog3, ThreadedDog)
+                                   HasManyDog3, ThreadedDog, SubDog)
     from tests.support.human import (Human, HasOneHuman1, HasOneHuman2, HasOneHuman3,
                                      HasManyHuman1, HasManyHuman2, HasManyHuman3)
 
@@ -67,6 +67,7 @@ def register_models():
     repo_factory.register(HasManyHuman2)
     repo_factory.register(HasManyHuman3)
     repo_factory.register(ThreadedDog)
+    repo_factory.register(SubDog)
 
 
 @pytest.fixture(autouse=True)
@@ -75,7 +76,7 @@ def run_around_tests():
     from protean.core.repository import repo_factory
     from tests.support.dog import (Dog, RelatedDog, DogRelatedByEmail, HasOneDog1,
                                    HasOneDog2, HasOneDog3, HasManyDog1, HasManyDog2,
-                                   HasManyDog3, ThreadedDog)
+                                   HasManyDog3, ThreadedDog, SubDog)
     from tests.support.human import (Human, HasOneHuman1, HasOneHuman2, HasOneHuman3,
                                      HasManyHuman1, HasManyHuman2, HasManyHuman3)
 
@@ -99,3 +100,4 @@ def run_around_tests():
     repo_factory.get_repository(HasManyHuman2).delete_all()
     repo_factory.get_repository(HasManyHuman3).delete_all()
     repo_factory.get_repository(ThreadedDog).delete_all()
+    repo_factory.get_repository(SubDog).delete_all()

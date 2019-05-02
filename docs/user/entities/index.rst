@@ -48,6 +48,7 @@ Entity lifecycle
    :maxdepth: 1
 
    lifecycle
+   equality
 
 Querying
 --------

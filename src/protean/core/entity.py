@@ -321,6 +321,20 @@ class Entity(metaclass=EntityBase):
         if self.errors:
             raise ValidationError(self.errors)
 
+    def __eq__(self, other):
+        """Equaivalence check to be based only on Identity"""
+        if type(other) is type(self):
+            self_id = getattr(self, self.meta_.id_field.field_name)
+            other_id = getattr(other, other.meta_.id_field.field_name)
+
+            return self_id == other_id
+
+        return False
+
+    def __hash__(self):
+        """Overrides the default implementation and bases hashing on identity"""
+        return hash(getattr(self, self.meta_.id_field.field_name))
+
     def _update_data(self, *data_dict, **kwargs):
         """
         A private method to process and update entity values correctly.
@@ -354,6 +368,17 @@ class Entity(metaclass=EntityBase):
         """ Return entity data as a dictionary """
         return {field_name: getattr(self, field_name, None)
                 for field_name in self.meta_.declared_fields}
+
+    def __repr__(self):
+        """Friendly repr for Entity"""
+        return '<%s: %s>' % (self.__class__.__name__, self)
+
+    def __str__(self):
+        identifier = getattr(self, self.meta_.id_field.field_name)
+        return '%s object (%s)' % (
+            self.__class__.__name__,
+            '{}: {}'.format(self.meta_.id_field.field_name, identifier)
+        )
 
     def clone(self):
         """Deepclone the entity, but reset state"""

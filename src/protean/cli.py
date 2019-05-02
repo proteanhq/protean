@@ -31,7 +31,7 @@ def test():
     import pytest
     import sys
 
-    errno = pytest.main(['-v', '--flake8'])
+    errno = pytest.main(['-vv', '--cache-clear', '--flake8'])
 
     sys.exit(errno)
 

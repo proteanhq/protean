@@ -19,6 +19,10 @@ class InvalidStateError(Exception):
     """Object is in invalid state for the given operation"""
 
 
+class InvalidOperationError(Exception):
+    """Operation being performed is not permitted"""
+
+
 class NotSupportedError(Exception):
     """Object does not support the operation being performed"""
 
