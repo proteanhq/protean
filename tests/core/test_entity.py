@@ -36,8 +36,8 @@ class TestEntity:
     def test_individuality(self):
         """Test successful Account Entity initialization"""
 
-        dog1 = Dog(id=1, name='John Doe', age=10, owner='Jimmy')
-        dog2 = Dog(id=2, name='Jimmy Kane', age=3, owner='John')
+        dog1 = Dog(name='John Doe', age=10, owner='Jimmy')
+        dog2 = Dog(name='Jimmy Kane', age=3, owner='John')
         assert dog1.name == 'John Doe'
         assert dog1.age == 10
         assert dog1.owner == 'Jimmy'
@@ -89,12 +89,11 @@ class TestEntity:
         """Test errors if required fields are missing"""
 
         with pytest.raises(ValidationError):
-            Dog(id=2, name='John Doe')
+            Dog(name='John Doe')
 
     def test_defaults(self):
         """Test that values are defaulted properly"""
-        dog = Dog(
-            id=1, name='John Doe', owner='Jimmy')
+        dog = Dog(name='John Doe', owner='Jimmy')
         assert dog.age == 5
 
     def test_validate_string_length(self):
@@ -115,8 +114,7 @@ class TestEntity:
         with pytest.raises(AssertionError):
             Dog('Dummy')
 
-        dog = Dog(
-            dict(id=1, name='John Doe', owner='Jimmy'))
+        dog = Dog(dict(name='John Doe', owner='Jimmy'))
         assert dog.name == 'John Doe'
         assert dog.owner == 'Jimmy'
 
@@ -147,7 +145,6 @@ class TestEntity:
 
         class Dog2(SharedEntity):
             """This is a dummy Dog Entity class with a mixin"""
-            id = field.Integer(identifier=True)
             name = field.String(required=True, max_length=50, min_length=5)
             owner = field.String(required=True, max_length=15)
 
@@ -832,6 +829,56 @@ class TestEntity:
 
         dog.reload()
         assert dog.owner == 'Jane'
+
+
+class TestIdentity:
+    """Grouping of Identity related test cases"""
+
+    def test_default_id(self):
+        """ Test that default id field is assigned when not defined"""
+
+        class Dog2(Entity):
+            """This is a dummy Dog Entity class without an id"""
+            name = field.String(required=True, max_length=50, min_length=5)
+
+        dog2 = Dog2(id=3, name='John Doe')
+        assert dog2 is not None
+        assert dog2.id == 3
+
+    def test_non_id_identity_1(self):
+        """Test that any field can be named as a primary key"""
+
+        class Person(Entity):
+            """This is a dummy Person Entity class with a unique SSN"""
+            ssn = field.String(identifier=True, max_length=10)
+            name = field.String(max_length=50)
+
+        person = Person(ssn='134223442', name='John Doe')
+        assert person.meta_.id_field.field_name == 'ssn'
+        assert getattr(person, person.meta_.id_field.field_name) == '134223442'
+
+        with pytest.raises(ValidationError):
+            person = Person(name='John Doe')
+
+    def test_non_id_identity_2(self):
+        """Test that any integer field can be named as a primary key
+        and is generated automatically if not specified
+        """
+
+        class Person(Entity):
+            """This is a dummy Person Entity class with a unique SSN"""
+            ssn = field.Auto(identifier=True)
+            name = field.String(max_length=50)
+
+        from protean.core.repository import repo_factory
+        repo_factory.register(Person)
+
+        person = Person.create(name='John Doe')
+        assert person.meta_.id_field.field_name == 'ssn'
+        assert person.ssn is not None
+
+        repo_factory.get_repository(Person).delete_all()
+        repo_factory.unregister(Person)
 
 
 class TestEntityMetaAttributes:

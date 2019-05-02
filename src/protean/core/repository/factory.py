@@ -63,6 +63,16 @@ class RepositoryFactory:
             logger.debug(
                 f'Registered entity {entity_name} with provider {provider_name}')
 
+    def unregister(self, entity_cls):
+        """Unregister an entity"""
+        self._validate_entity_cls(entity_cls)
+
+        # This will throw AssertionError if entity was not found
+        entity = self._get_entity_by_class(entity_cls)
+
+        if entity:
+            self._registry.pop(fully_qualified_name(entity_cls))
+
     def _find_entity_in_records_by_class_name(self, entity_name):
         """Fetch by Entity Name in values"""
         records = {
