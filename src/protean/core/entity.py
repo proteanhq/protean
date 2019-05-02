@@ -321,6 +321,20 @@ class Entity(metaclass=EntityBase):
         if self.errors:
             raise ValidationError(self.errors)
 
+    def __eq__(self, other):
+        """Equaivalence check to be based only on Identity"""
+        if type(other) is type(self):
+            self_id = getattr(self, self.meta_.id_field.field_name)
+            other_id = getattr(other, other.meta_.id_field.field_name)
+
+            return self_id == other_id
+
+        return False
+
+    def __hash__(self):
+        """Overrides the default implementation and bases hashing on identity"""
+        return hash(getattr(self, self.meta_.id_field.field_name))
+
     def _update_data(self, *data_dict, **kwargs):
         """
         A private method to process and update entity values correctly.
