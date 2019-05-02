@@ -783,6 +783,9 @@ class TestIdentity:
         assert person.meta_.id_field.field_name == 'ssn'
         assert person.ssn is not None
 
+        repo_factory.get_repository(Person).delete_all()
+        repo_factory.unregister(Person)
+
 
 class TestEntityMetaAttributes:
     """Class that holds testcases for Entity's meta attributes"""
