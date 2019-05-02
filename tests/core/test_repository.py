@@ -3,6 +3,7 @@
 import pytest
 from tests.support.dog import Dog
 
+from protean.core.entity import Entity
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.repository import repo_factory
@@ -159,3 +160,30 @@ class TestLookup:
         from protean.impl.repository.dict_repo import DictProvider
 
         assert DictProvider.get_lookups().get('sample') == self.SampleLookup
+
+
+class TestFactory:
+    """Tests for Repository Factory"""
+
+    class TempEntity(Entity):
+        """Temporary Entity to test registration"""
+        pass
+
+    def test_register(self):
+        """Test registering an entity to the repository factory"""
+        repo_factory.register(self.__class__.TempEntity)
+
+        assert repo_factory.get_entity(self.__class__.TempEntity.__name__) is not None
+
+        repo_factory.unregister(self.__class__.TempEntity)
+
+    def test_unregister(self):
+        """Test unregistering an entity from the repository factory"""
+        repo_factory.register(self.__class__.TempEntity)
+
+        assert repo_factory.get_entity(self.__class__.TempEntity.__name__) is not None
+
+        repo_factory.unregister(self.__class__.TempEntity)
+
+        with pytest.raises(AssertionError):
+            repo_factory.get_entity(self.__class__.TempEntity.__name__)
