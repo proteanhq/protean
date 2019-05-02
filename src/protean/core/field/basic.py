@@ -4,6 +4,7 @@ import datetime
 
 from dateutil.parser import parse as date_parser
 
+from protean.core.exceptions import InvalidOperationError
 from protean.core.field import validators
 from protean.core.field.base import Field
 
@@ -157,9 +158,25 @@ class Auto(Field):
     """
 
     def __init__(self, *args, **kwargs):
+        """Initialize an Auto Field"""
         # Force set required to false
         super().__init__(*args, **kwargs)
         self.required = False
+
+    def __set__(self, instance, value):
+        """An Identifier Field once set cannot be reset or changed.
+        We override the ``__set__`` method and prevent setting of new value if one was
+        already set and is different from the new value
+        """
+        existing_value = getattr(instance, self.field_name)
+        if existing_value is not None and value != existing_value:
+            raise InvalidOperationError('Identifiers cannot be changed once set')
+
+        value = self._load(value)
+        instance.__dict__[self.field_name] = value
+
+        # Mark Entity as Dirty
+        instance.state_.mark_changed()
 
     def _cast_to_type(self, value):
         """ Perform no validation for auto fields. Return the value as is"""
