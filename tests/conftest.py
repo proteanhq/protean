@@ -101,3 +101,14 @@ def run_around_tests():
     repo_factory.get_repository(HasManyHuman3).delete_all()
     repo_factory.get_repository(ThreadedDog).delete_all()
     repo_factory.get_repository(SubDog).delete_all()
+
+
+@pytest.yield_fixture
+def intact_registry():
+    from protean.domain import _domain_registry
+
+    entities = _domain_registry.entities.copy()
+
+    yield
+
+    _domain_registry.entities = entities
