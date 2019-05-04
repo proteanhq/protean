@@ -3,7 +3,6 @@ from protean import Domain
 from protean import DomainElement
 from protean.domain import _DomainRegistry
 from protean.core.entity import Entity
-from protean.core.entity import EntityBase
 from protean.core import field
 
 
@@ -26,7 +25,7 @@ class TestDomain:
         domain = Domain(__name__)
         assert domain is not None
 
-    def test_register(self, intact_registry):
+    def test_register(self):
         @DomainElement
         class DummyDog(Entity):
             """Test class to check Domain Registration"""
@@ -34,8 +33,7 @@ class TestDomain:
 
         domain = Domain(__name__)
         assert domain.registry is not None
-        assert len(domain.registry.entities) == 1
-        assert isinstance(domain.registry.entities[0], EntityBase)
+        assert DummyDog in domain.registry.entities
 
     def test_init2(self):
         """Test that Domain object can be initialized successfully"""

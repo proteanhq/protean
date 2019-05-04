@@ -15,7 +15,7 @@ class _DomainRegistry:
     entities: List[Entity] = field(default_factory=list)
 
 
-# Singleton Registry, populated with @DomainElement decorators
+# Singleton Registry, populated with the help of @DomainElement decorators
 _domain_registry = _DomainRegistry()
 
 
@@ -72,3 +72,16 @@ class Domain:
     @property
     def registry(self):
         return _domain_registry
+
+    def register_elements(self) -> None:
+        from protean.core.repository import repo_factory
+        for entity in _domain_registry.entities:
+            repo_factory.register(entity)
+
+    def register_element(self, element) -> None:
+        from protean.core.repository import repo_factory
+        repo_factory.register(element)
+
+    def unregister_element(self, element) -> None:
+        from protean.core.repository import repo_factory
+        repo_factory.unregister(element)

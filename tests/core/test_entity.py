@@ -138,7 +138,6 @@ class TestEntity:
 
     def test_entity_inheritance(self):
         """ Test that subclasses of `Entity` can be inherited"""
-
         class SharedEntity(Entity):
             """ Class that provides the default fields """
             age = field.Integer(default=5)
@@ -148,8 +147,7 @@ class TestEntity:
             name = field.String(required=True, max_length=50, min_length=5)
             owner = field.String(required=True, max_length=15)
 
-        dog2 = Dog2(
-            id=3, name='John Doe', owner='Jimmy')
+        dog2 = Dog2(id=3, name='John Doe', owner='Jimmy')
         assert dog2 is not None
         assert dog2.age == 5
 
@@ -169,8 +167,7 @@ class TestEntity:
             """This is a dummy Dog Entity class without an id"""
             name = field.String(required=True, max_length=50, min_length=5)
 
-        dog2 = Dog2(
-            id=3, name='John Doe')
+        dog2 = Dog2(id=3, name='John Doe')
         assert dog2 is not None
         assert dog2.id == 3
 
@@ -722,8 +719,9 @@ class TestEntity:
 
         assert all(dog is not None for dog in [dog1, dog2, dog3, dog4])
 
-    def test_override(self):
+    def test_override(self, test_domain):
         """Test overriding methods from Entity"""
+
         class ImmortalDog(Entity):
             """A Dog who lives forever"""
 
@@ -735,10 +733,9 @@ class TestEntity:
                 """You can't delete me!!"""
                 raise SystemError("Deletion Prohibited!")
 
-        from protean.core.repository import repo_factory
-        repo_factory.register(ImmortalDog)
+        test_domain.register_element(ImmortalDog)
 
-        immortal_dog = ImmortalDog(name='Titan', age=10001, owner='God')
+        immortal_dog = ImmortalDog.create(name='Titan', age=10001, owner='God')
         with pytest.raises(SystemError):
             immortal_dog.delete()
 
@@ -860,25 +857,20 @@ class TestIdentity:
         with pytest.raises(ValidationError):
             person = Person(name='John Doe')
 
-    def test_non_id_identity_2(self):
+    def test_non_id_identity_2(self, test_domain):
         """Test that any integer field can be named as a primary key
         and is generated automatically if not specified
         """
-
         class Person(Entity):
             """This is a dummy Person Entity class with a unique SSN"""
             ssn = field.Auto(identifier=True)
             name = field.String(max_length=50)
 
-        from protean.core.repository import repo_factory
-        repo_factory.register(Person)
+        test_domain.register_element(Person)
 
         person = Person.create(name='John Doe')
         assert person.meta_.id_field.field_name == 'ssn'
         assert person.ssn is not None
-
-        repo_factory.get_repository(Person).delete_all()
-        repo_factory.unregister(Person)
 
 
 class TestEntityMetaAttributes:
@@ -996,7 +988,7 @@ class TestEntityMetaAttributes:
 class TestEntityHooks:
     """Test pre-save and post-save hooks defined in Entity"""
 
-    def test_pre_save(self):
+    def test_pre_save(self, test_domain):
         """Test Pre-Save Hook"""
         class PreSavedDog(Entity):
             """A Dog with a unique code in the universe"""
@@ -1010,8 +1002,7 @@ class TestEntityHooks:
                 import uuid
                 self.unique_code = uuid.uuid4()
 
-        from protean.core.repository import repo_factory
-        repo_factory.register(PreSavedDog)
+        test_domain.register_element(PreSavedDog)
 
         presaved_dog1 = PreSavedDog.create(name='Chucky1', owner='John')
         assert presaved_dog1.unique_code is not None
@@ -1025,9 +1016,7 @@ class TestEntityHooks:
         presaved_dog3_updated.update(unique_code=None)
         assert presaved_dog3_updated.unique_code is not None
 
-        repo_factory.get_repository(PreSavedDog).delete_all()
-
-    def test_post_save(self):
+    def test_post_save(self, test_domain):
         """Test Post-Save Hook"""
         class PostSavedDog(Entity):
             """A Dog with a unique code in the universe"""
@@ -1041,8 +1030,7 @@ class TestEntityHooks:
                 import uuid
                 self.unique_code = uuid.uuid4()
 
-        from protean.core.repository import repo_factory
-        repo_factory.register(PostSavedDog)
+        test_domain.register_element(PostSavedDog)
 
         postsaved_dog1 = PostSavedDog.create(name='Chucky1', owner='John')
         assert postsaved_dog1.unique_code is not None
@@ -1058,5 +1046,3 @@ class TestEntityHooks:
         postsaved_dog3_updated.update(unique_code=None)
         assert postsaved_dog3_updated.unique_code is not None
         assert postsaved_dog3_updated.state_.is_changed is True
-
-        repo_factory.get_repository(PostSavedDog).delete_all()

@@ -64,6 +64,13 @@ class DictProvider(BaseProvider):
         """Close connection does nothing on the repo """
         pass
 
+    def _data_reset(self):
+        """Reset data"""
+        global _databases, _locks, _counters
+        _databases = {}
+        _locks = {}
+        _counters = defaultdict(count)
+
     def get_model(self, entity_cls):
         """Return associated, fully-baked Model class"""
         cls = DictModel
