@@ -1,6 +1,5 @@
 """Module to test Repository extended functionality """
 import pytest
-
 from tests.support.sqlalchemy.dog import SqlRelatedDog as RelatedDog
 from tests.support.sqlalchemy.human import SqlRelatedHuman as RelatedHuman
 

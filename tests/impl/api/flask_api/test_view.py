@@ -3,9 +3,10 @@
 import json
 
 import pytest
-from protean.core.exceptions import ObjectNotFoundError
-from tests.support.sample_flask_app import app
 from tests.support.dog import Dog
+from tests.support.sample_flask_app import app
+
+from protean.core.exceptions import ObjectNotFoundError
 
 
 class TestGenericAPIResource:

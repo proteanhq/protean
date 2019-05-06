@@ -1,6 +1,8 @@
 """ Views of the sample app"""
-from protean.context import context
+from tests.support.dog import Dog
+from tests.support.human import Human
 
+from protean.context import context
 from protean.impl.api.flask.views import APIResource
 from protean.impl.api.flask.views import CreateAPIResource
 from protean.impl.api.flask.views import DeleteAPIResource
@@ -9,8 +11,6 @@ from protean.impl.api.flask.views import ShowAPIResource
 from protean.impl.api.flask.views import UpdateAPIResource
 from protean.impl.api.flask.viewsets import GenericAPIResourceSet
 
-from tests.support.dog import Dog
-from tests.support.human import Human
 from .serializers import DogSerializer
 from .serializers import HumanSerializer
 from .usecases import ListMyDogsRequestObject

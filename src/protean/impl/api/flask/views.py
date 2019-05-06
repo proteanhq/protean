@@ -5,6 +5,8 @@ from flask import Response
 from flask import current_app
 from flask import request
 from flask.views import MethodView
+from werkzeug.http import parse_options_header
+
 from protean.conf import active_config
 from protean.core.tasklet import Tasklet
 from protean.core.transport import Status
@@ -18,11 +20,9 @@ from protean.core.usecase import ShowRequestObject
 from protean.core.usecase import ShowUseCase
 from protean.core.usecase import UpdateRequestObject
 from protean.core.usecase import UpdateUseCase
+from protean.impl.api.flask.utils import immutable_dict_2_dict
 from protean.utils import inflection
 from protean.utils.importlib import perform_import
-from werkzeug.http import parse_options_header
-
-from protean.impl.api.flask.utils import immutable_dict_2_dict
 
 INFLECTOR = inflect.engine()
 

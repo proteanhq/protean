@@ -3,13 +3,14 @@
 from abc import ABCMeta
 from typing import Any
 
+from sqlalchemy import Column
+from sqlalchemy import MetaData
 from sqlalchemy import and_
 from sqlalchemy import create_engine
 from sqlalchemy import or_
 from sqlalchemy import orm
+from sqlalchemy import types as sa_types
 from sqlalchemy.engine.url import make_url
-from sqlalchemy import MetaData
-from sqlalchemy import types as sa_types, Column
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext import declarative as sa_dec
 from sqlalchemy.ext.declarative import as_declarative

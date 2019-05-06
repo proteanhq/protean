@@ -3,6 +3,7 @@
 from collections import OrderedDict
 
 import marshmallow as ma
+
 from protean.core import field
 from protean.core.entity import Entity
 from protean.core.exceptions import ConfigurationError

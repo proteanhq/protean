@@ -1,12 +1,11 @@
 """ Serializers used by the sample app """
-from protean.impl.api.flask.serializers import EntitySerializer
-from protean.impl.api.flask.serializers import ma
-
 from tests.support.dog import Dog
 from tests.support.dog import RelatedDog
-from tests.support.dog import HasManyDog1
-from tests.support.human import Human
 from tests.support.human import HasManyHuman1
+from tests.support.human import Human
+
+from protean.impl.api.flask.serializers import EntitySerializer
+from protean.impl.api.flask.serializers import ma
 
 
 class DogSerializer(EntitySerializer):

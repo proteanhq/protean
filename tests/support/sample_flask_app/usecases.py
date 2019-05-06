@@ -1,13 +1,12 @@
 """ Usecases of the sample application """
+from tests.support.dog import Dog
+from tests.support.dog import Human
 
 from protean.core.tasklet import Tasklet
 from protean.core.usecase import ListRequestObject
 from protean.core.usecase import ListUseCase
 from protean.core.usecase import ShowRequestObject
 from protean.core.usecase import UseCase
-
-from tests.support.dog import Dog
-from tests.support.dog import Human
 
 
 class ListMyDogsRequestObject(ShowRequestObject):

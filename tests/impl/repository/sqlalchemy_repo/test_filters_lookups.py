@@ -2,9 +2,9 @@
 from datetime import datetime
 
 import pytest
-from protean.utils.query import Q
-
 from tests.support.sqlalchemy.human import SqlHuman as Human
+
+from protean.utils.query import Q
 
 
 class TestFiltersLookups:

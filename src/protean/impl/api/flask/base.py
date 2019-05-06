@@ -5,6 +5,7 @@ from flask import Blueprint
 from flask import Request
 from flask import current_app
 from flask import request
+
 from protean.conf import active_config
 from protean.context import context
 from protean.core.exceptions import UsecaseExecutionError

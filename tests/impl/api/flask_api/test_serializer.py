@@ -2,16 +2,14 @@
 
 import marshmallow as ma
 import pytest
-from protean.core.exceptions import ConfigurationError
-
-from protean.impl.api.flask.serializers import EntitySerializer
-
 from tests.support.dog import Dog
 from tests.support.dog import HasManyDog1
 from tests.support.human import HasManyHuman1
-
 from tests.support.sample_flask_app.serializers import HasManyDog1Serializer
 from tests.support.sample_flask_app.serializers import HasManyHuman1DetailSerializer
+
+from protean.core.exceptions import ConfigurationError
+from protean.impl.api.flask.serializers import EntitySerializer
 
 
 class DogSerializer(EntitySerializer):
@@ -124,7 +122,9 @@ class TestEntitySerializer2:
         s_result = s.dump(dog)
         expected_data = {
             'name': 'Johnny',
-            'has_many_human1':  {'first_name': 'Jeff', 'id': 1, 'last_name': 'Kennedy', 'email': 'jeff.kennedy@presidents.com'},
+            'has_many_human1':  {
+                'first_name': 'Jeff', 'id': 1,
+                'last_name': 'Kennedy', 'email': 'jeff.kennedy@presidents.com'},
             'age': 5,
             'id': 5,
         }
