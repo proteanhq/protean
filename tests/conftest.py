@@ -1,9 +1,12 @@
 """Module to setup Factories and other required artifacts for tests"""
 import os
+os.environ['PROTEAN_CONFIG'] = 'tests.support.sample_config'
 
 import pytest
-
-os.environ['PROTEAN_CONFIG'] = 'tests.support.sample_config'
+from tests.support.dog import *
+from tests.support.human import *
+from tests.support.sqlalchemy.dog import *
+from tests.support.sqlalchemy.human import *
 
 
 def pytest_addoption(parser):
@@ -51,6 +54,7 @@ def register_domain_elements(test_domain):
 
     Run only once for the entire test suite
     """
+
     test_domain.register_elements()
 
     from protean.core.repository import repo_factory

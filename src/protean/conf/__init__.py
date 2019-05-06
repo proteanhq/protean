@@ -32,8 +32,8 @@ class Config:
                 setattr(self, setting, getattr(default_config, setting))
 
         # Fetch Config module string from environment
-        config_module_str = os.environ.get(
-            ENVIRONMENT_VARIABLE, config_module_str)
+        if config_module_str is None:
+            config_module_str = os.environ.get(ENVIRONMENT_VARIABLE, None)
 
         if not config_module_str:
             config_module_str = 'protean.conf.default_config'

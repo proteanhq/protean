@@ -64,14 +64,12 @@ class RepositoryFactory:
                 f'Registered entity {entity_name} with provider {provider_name}')
 
     def unregister(self, entity_cls):
-        """Unregister an entity"""
-        self._validate_entity_cls(entity_cls)
+        """Unregister an entity
 
-        # This will throw AssertionError if entity was not found
-        entity = self._get_entity_by_class(entity_cls)
-
-        if entity:
-            self._registry.pop(fully_qualified_name(entity_cls))
+        This method will result in a no-op if the entity class was not found
+        in the registry for whatever reason.
+        """
+        self._registry.pop(fully_qualified_name(entity_cls), None)
 
     def _find_entity_in_records_by_class_name(self, entity_name):
         """Fetch by Entity Name in values"""
@@ -110,11 +108,11 @@ class RepositoryFactory:
     def _validate_entity_cls(self, entity_cls):
         """Validate that Entity is a valid class"""
         # Import here to avoid cyclic dependency
-        from protean.core.entity import Entity
+        from protean.core.entity import BaseEntity
 
-        if not issubclass(entity_cls, Entity):
+        if not issubclass(entity_cls, BaseEntity):
             raise AssertionError(
-                f'Entity {entity_cls.__name__} must be subclass of `Entity`')
+                f'Entity {entity_cls.__name__} must be subclass of `BaseEntity`')
 
         if entity_cls.meta_.abstract is True:
             raise NotSupportedError(

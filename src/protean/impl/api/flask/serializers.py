@@ -5,7 +5,7 @@ from collections import OrderedDict
 import marshmallow as ma
 
 from protean.core import field
-from protean.core.entity import Entity
+from protean.core.entity import BaseEntity
 from protean.core.exceptions import ConfigurationError
 
 
@@ -40,9 +40,9 @@ class EntitySerializer(BaseSerializer):
 
         # Updates the declared fields with the fields of the Entity class
         if not self.opts.entity_cls or not \
-                issubclass(self.opts.entity_cls, Entity):
+                issubclass(self.opts.entity_cls, BaseEntity):
             raise ConfigurationError(
-                '`Meta.entity` option must be set and a subclass of `Entity`.')
+                '`Meta.entity` option must be set and a subclass of `BaseEntity`.')
 
         entity_fields = OrderedDict()
         for field_name, field_obj in \

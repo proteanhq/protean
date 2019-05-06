@@ -7,7 +7,7 @@ from operator import itemgetter
 from threading import Lock
 from typing import Any
 
-from protean.core.entity import Entity
+from protean.core.entity import BaseEntity
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.provider.base import BaseProvider
 from protean.core.repository import BaseLookup
@@ -27,7 +27,7 @@ class DictModel(BaseModel):
     """A model for the dictionary repository"""
 
     @classmethod
-    def from_entity(cls, entity: Entity) -> 'DictModel':
+    def from_entity(cls, entity: BaseEntity) -> 'DictModel':
         """Convert the entity to a dictionary record """
         dict_obj = {}
         for field_name in entity.meta_.attributes:
@@ -35,7 +35,7 @@ class DictModel(BaseModel):
         return dict_obj
 
     @classmethod
-    def to_entity(cls, item: 'DictModel') -> Entity:
+    def to_entity(cls, item: 'DictModel') -> BaseEntity:
         """Convert the dictionary record to an entity """
         return cls.entity_cls(item)
 

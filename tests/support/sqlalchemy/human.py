@@ -1,14 +1,13 @@
 """ Define entities of the Human Type """
 from datetime import datetime
 
-from protean import DomainElement
+from protean import Entity
 from protean.core import field
-from protean.core.entity import Entity
 from protean.core.field import association
 
 
-@DomainElement
-class SqlHuman(Entity):
+@Entity
+class SqlHuman:
     """This is a dummy Dog Entity class"""
     name = field.StringMedium(required=True, unique=True)
     age = field.Integer()
@@ -24,8 +23,8 @@ class SqlHuman(Entity):
         provider = 'sql_another_db'
 
 
-@DomainElement
-class SqlRelatedHuman(Entity):
+@Entity
+class SqlRelatedHuman:
     """This is a dummy Dog Entity class"""
     name = field.StringMedium(required=True, unique=True)
     age = field.Integer()

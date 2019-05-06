@@ -1,5 +1,4 @@
-"""Support @DomainElement
-classes for Test Cases"""
+"""Support Entity classes for Test Cases"""
 
 from tests.support.human import HasManyHuman1
 from tests.support.human import HasManyHuman2
@@ -7,29 +6,28 @@ from tests.support.human import HasOneHuman1
 from tests.support.human import HasOneHuman2
 from tests.support.human import Human
 
-from protean import DomainElement
+from protean import Entity
 from protean.core import field
-from protean.core.entity import Entity
 
 
-@DomainElement
-class Dog(Entity):
+@Entity
+class Dog:
     """This is a dummy Dog Entity class"""
     name = field.String(required=True, unique=True, max_length=50)
     age = field.Integer(default=5)
     owner = field.String(required=True, max_length=15)
 
 
-@DomainElement
-class RelatedDog(Entity):
+@Entity
+class RelatedDog:
     """This is a dummy Dog Entity class with an association"""
     name = field.String(required=True, unique=True, max_length=50)
     age = field.Integer(default=5)
     owner = field.Reference(Human)
 
 
-@DomainElement
-class RelatedDog2(Entity):
+@Entity
+class RelatedDog2:
     """This is a dummy RelatedDog2 Entity class with reference definition
        containing the target class name as string
     """
@@ -38,24 +36,24 @@ class RelatedDog2(Entity):
     owner = field.Reference('tests.support.human.Human')
 
 
-@DomainElement
-class DogRelatedByEmail(Entity):
+@Entity
+class DogRelatedByEmail:
     """This is a dummy Dog Entity class with an association"""
     name = field.String(required=True, unique=True, max_length=50)
     age = field.Integer(default=5)
     owner = field.Reference(Human, via='email')
 
 
-@DomainElement
-class HasOneDog1(Entity):
+@Entity
+class HasOneDog1:
     """This is a dummy Dog Entity class to test HasOne Association"""
     name = field.String(required=True, unique=True, max_length=50)
     age = field.Integer(default=5)
     has_one_human1 = field.Reference(HasOneHuman1)
 
 
-@DomainElement
-class HasOneDog2(Entity):
+@Entity
+class HasOneDog2:
     """This is a dummy Dog Entity class to test HasOne Association, where the associated
        has defined a `via` attribute to finetune linkage
     """
@@ -64,24 +62,24 @@ class HasOneDog2(Entity):
     human = field.Reference(HasOneHuman2)
 
 
-@DomainElement
-class HasOneDog3(Entity):
+@Entity
+class HasOneDog3:
     """This is a dummy Dog Entity class to test HasOne Association"""
     name = field.String(required=True, unique=True, max_length=50)
     age = field.Integer(default=5)
     human_id = field.Integer()
 
 
-@DomainElement
-class HasManyDog1(Entity):
+@Entity
+class HasManyDog1:
     """This is a dummy Dog Entity class to test HasMany Association"""
     name = field.String(required=True, unique=True, max_length=50)
     age = field.Integer(default=5)
     has_many_human1 = field.Reference(HasManyHuman1)
 
 
-@DomainElement
-class HasManyDog2(Entity):
+@Entity
+class HasManyDog2:
     """This is a dummy Dog Entity class to test HasMany Association, where the associated
        has defined a `via` attribute to finetune linkage
     """
@@ -90,22 +88,22 @@ class HasManyDog2(Entity):
     human = field.Reference(HasManyHuman2)
 
 
-@DomainElement
-class HasManyDog3(Entity):
+@Entity
+class HasManyDog3:
     """This is a dummy Dog Entity class to test HasMany Association"""
     name = field.String(required=True, unique=True, max_length=50)
     age = field.Integer(default=5)
     human_id = field.Integer()
 
 
-@DomainElement
-class ThreadedDog(Entity):
+@Entity
+class ThreadedDog:
     """This is a dummy Dog Entity class"""
     name = field.String(required=True, max_length=50)
     created_by = field.String(required=True, max_length=15)
 
 
-@DomainElement
+@Entity
 class SubDog(Dog):
     """Subclassed Dog Entity class"""
     pass

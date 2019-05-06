@@ -221,7 +221,7 @@ class TestReference:
         assert hasattr(dog, 'owner_email')
         assert dog.owner_email == human.email
 
-    @mock.patch('protean.core.entity.Entity.find_by')
+    @mock.patch('protean.core.entity.BaseEntity.find_by')
     def test_caching(self, find_by_mock):
         """Test that subsequent accesses after first retrieval don't fetch record again"""
         human = Human.create(first_name='Jeff', last_name='Kennedy',
@@ -269,7 +269,7 @@ class TestHasOne:
         assert 'human' not in dog.__dict__
         assert human.dog.id == dog.id
 
-    @mock.patch('protean.core.entity.Entity.find_by')
+    @mock.patch('protean.core.entity.BaseEntity.find_by')
     def test_caching(self, find_by_mock):
         """Test that subsequent accesses after first retrieval don't fetch record again"""
         human = HasOneHuman3.create(
@@ -330,7 +330,7 @@ class TestHasMany:
         assert not hasattr(dog1, 'human')
 
     @mock.patch('protean.core.queryset.QuerySet.filter')
-    @mock.patch('protean.core.entity.Entity.exists')
+    @mock.patch('protean.core.entity.BaseEntity.exists')
     def test_caching(self, exists_mock, filter_mock):
         """Test that subsequent accesses after first retrieval don't fetch record again"""
         exists_mock.return_value = False

@@ -1,7 +1,7 @@
 """Concrete Implementations of some generic use cases"""
 
 from protean.conf import active_config
-from protean.core.entity import Entity
+from protean.core.entity import BaseEntity
 from protean.core.transport import InvalidRequestObject
 from protean.core.transport import RequestObject
 from protean.core.transport import RequestObjectFactory
@@ -14,7 +14,7 @@ from .base import UseCase
 
 ShowRequestObject = RequestObjectFactory.construct(
     'ShowRequestObject',
-    [('entity_cls', Entity, {'required': True}),
+    [('entity_cls', BaseEntity, {'required': True}),
      ('identifier', int, {'required': True})])
 
 
@@ -41,7 +41,7 @@ class ListRequestObject(RequestObject):
 
         ListRequestObject = RequestObjectFactory.construct(
             'ListRequestObject',
-            [('entity_cls', Entity, {'required': True}),
+            [('entity_cls', BaseEntity, {'required': True}),
             ('page', int, {'default': 1}),
             ('per_page', int),
             ('order_by', tuple),
@@ -112,7 +112,7 @@ class ListUseCase(UseCase):
 
 CreateRequestObject = RequestObjectFactory.construct(
     'CreateRequestObject',
-    [('entity_cls', Entity, {'required': True}),
+    [('entity_cls', BaseEntity, {'required': True}),
      ('data', dict, {'required': True})])
 
 
@@ -130,7 +130,7 @@ class CreateUseCase(UseCase):
 
 UpdateRequestObject = RequestObjectFactory.construct(
     'UpdateRequestObject',
-    [('entity_cls', Entity, {'required': True}),
+    [('entity_cls', BaseEntity, {'required': True}),
      ('identifier', int, {'required': True}),
      ('data', dict, {'required': True})])
 

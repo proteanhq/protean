@@ -5,44 +5,49 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import List
 
-from protean.core.entity import Entity
+from protean.core.entity import BaseEntity
 from protean.utils.generic import singleton
 
 
 @singleton
 @dataclass
 class _DomainRegistry:
-    entities: List[Entity] = field(default_factory=list)
+    entities: List[BaseEntity] = field(default_factory=list)
 
 
-# Singleton Registry, populated with the help of @DomainElement decorators
+# Singleton Registry, populated with the help of @<DomainElement> decorators
 _domain_registry = _DomainRegistry()
 
 
-def _process_class(cls, aggregate, context):
+def _process_entity(cls, aggregate, context):
     """Register class into the domain"""
+    # Dynamically subclass from BaseEntity
+    new_dict = cls.__dict__.copy()
+    new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
+    new_cls = type(cls.__name__, (BaseEntity, ), new_dict)
+
     # Enrich element with domain information
-    cls.meta_.aggregate = aggregate
-    cls.meta_.context = context
+    new_cls.meta_.aggregate = aggregate
+    new_cls.meta_.context = context
 
     # Register element with domain
-    _domain_registry.entities.append(cls)
+    _domain_registry.entities.append(new_cls)
 
-    return cls
+    return new_cls
 
 
 # _cls should never be specified by keyword, so start it with an
 # underscore.  The presence of _cls is used to detect if this
 # decorator is being called with parameters or not.
-def DomainElement(_cls=None, *, aggregate=None, context=None):
+def Entity(_cls=None, *, aggregate=None, context=None):
     """Returns the same class that was passed in,
     after recording its presence in the domain
     """
 
     def wrap(cls):
-        return _process_class(cls, aggregate, context)
+        return _process_entity(cls, aggregate, context)
 
-    # See if we're being called as @DomainElement or @DomainElement().
+    # See if we're being called as @Entity or @Entity().
     if _cls is None:
         # We're called with parens.
         return wrap

@@ -3,7 +3,7 @@
 import pytest
 from tests.support.dog import Dog
 
-from protean.core.entity import Entity
+from protean import Entity
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.exceptions import ValidationError
 from protean.core.repository import repo_factory
@@ -165,25 +165,31 @@ class TestLookup:
 class TestFactory:
     """Tests for Repository Factory"""
 
-    class TempEntity(Entity):
-        """Temporary Entity to test registration"""
-        pass
-
     def test_register(self):
         """Test registering an entity to the repository factory"""
-        repo_factory.register(self.__class__.TempEntity)
+        @Entity
+        class TempEntity:
+            """Temporary Entity to test registration"""
+            pass
 
-        assert repo_factory.get_entity(self.__class__.TempEntity.__name__) is not None
+        repo_factory.register(TempEntity)
 
-        repo_factory.unregister(self.__class__.TempEntity)
+        assert repo_factory.get_entity(TempEntity.__name__) is not None
+
+        repo_factory.unregister(TempEntity)
 
     def test_unregister(self):
         """Test unregistering an entity from the repository factory"""
-        repo_factory.register(self.__class__.TempEntity)
+        @Entity
+        class TempEntity:
+            """Temporary Entity to test registration"""
+            pass
 
-        assert repo_factory.get_entity(self.__class__.TempEntity.__name__) is not None
+        repo_factory.register(TempEntity)
 
-        repo_factory.unregister(self.__class__.TempEntity)
+        assert repo_factory.get_entity(TempEntity.__name__) is not None
+
+        repo_factory.unregister(TempEntity)
 
         with pytest.raises(AssertionError):
-            repo_factory.get_entity(self.__class__.TempEntity.__name__)
+            repo_factory.get_entity(TempEntity.__name__)

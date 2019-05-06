@@ -19,7 +19,7 @@ from ..core.field.association import _ReferenceField  # Relative path to private
 logger = logging.getLogger('protean.core.entity')
 
 
-class EntityBase(type):
+class _EntityMetaclass(type):
     """
     This base metaclass processes the class declaration and constructs a meta object that can
     be used to introspect the Entity class later. Specifically, it sets up a `meta_` attribute on
@@ -37,7 +37,7 @@ class EntityBase(type):
 
         # Ensure initialization is only performed for subclasses of Entity
         # (excluding Entity class itself).
-        parents = [b for b in bases if isinstance(b, EntityBase)]
+        parents = [b for b in bases if isinstance(b, _EntityMetaclass)]
         if not parents:
             return super().__new__(mcs, name, bases, attrs)
 
@@ -199,7 +199,7 @@ class EntityMeta:
                 if isinstance(field_obj, Auto)]
 
 
-class EntityStateFieldsCacheDescriptor:
+class _FieldsCacheDescriptor:
     def __get__(self, instance, cls=None):
         if instance is None:
             return self
@@ -207,7 +207,7 @@ class EntityStateFieldsCacheDescriptor:
         return res
 
 
-class EntityState:
+class _EntityState:
     """Store entity instance state."""
 
     def __init__(self):
@@ -245,10 +245,10 @@ class EntityState:
         self._destroyed = True
         self._changed = False
 
-    fields_cache = EntityStateFieldsCacheDescriptor()
+    fields_cache = _FieldsCacheDescriptor()
 
 
-class Entity(metaclass=EntityBase):
+class BaseEntity(metaclass=_EntityMetaclass):
     """The Base class for Protean-Compliant Domain Entities.
 
     Provides helper methods to custom define entity attributes, and query attribute names
@@ -256,7 +256,7 @@ class Entity(metaclass=EntityBase):
 
     Basic Usage::
 
-        class Dog(Entity):
+        class Dog:
             id = field.Integer(identifier=True)
             name = field.String(required=True, max_length=50)
             age = field.Integer(default=5)
@@ -290,7 +290,7 @@ class Entity(metaclass=EntityBase):
         self.errors = {}
 
         # Set up the storage for instance state
-        self.state_ = EntityState()
+        self.state_ = _EntityState()
 
         # Load the attributes based on the template
         loaded_fields = []
@@ -383,7 +383,7 @@ class Entity(metaclass=EntityBase):
     def clone(self):
         """Deepclone the entity, but reset state"""
         clone_copy = copy.deepcopy(self)
-        clone_copy.state_ = EntityState()
+        clone_copy.state_ = _EntityState()
 
         return clone_copy
 
@@ -392,7 +392,7 @@ class Entity(metaclass=EntityBase):
     ######################
 
     @classmethod
-    def get(cls, identifier: Any) -> 'Entity':
+    def get(cls, identifier: Any) -> 'BaseEntity':
         """Get a specific Record from the Repository
 
         :param identifier: id of the record to be fetched from the repository.
@@ -431,7 +431,7 @@ class Entity(metaclass=EntityBase):
         self._update_data(db_value.to_dict())
 
     @classmethod
-    def find_by(cls, **kwargs) -> 'Entity':
+    def find_by(cls, **kwargs) -> 'BaseEntity':
         """Find a specific entity record that matches one or more criteria.
 
         :param kwargs: named arguments consisting of attr_name and attr_value pairs to search on
@@ -465,7 +465,7 @@ class Entity(metaclass=EntityBase):
         return bool(results)
 
     @classmethod
-    def create(cls, *args, **kwargs) -> 'Entity':
+    def create(cls, *args, **kwargs) -> 'BaseEntity':
         """Create a new record in the repository.
 
         Also performs unique validations before creating the entity
@@ -555,7 +555,7 @@ class Entity(metaclass=EntityBase):
             # FIXME Log Exception
             raise
 
-    def update(self, *data, **kwargs) -> 'Entity':
+    def update(self, *data, **kwargs) -> 'BaseEntity':
         """Update a Record in the repository.
 
         Also performs unique validations before creating the entity.
