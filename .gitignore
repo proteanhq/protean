@@ -138,3 +138,6 @@ docs/.doctrees
 
 # TODOs
 TODO
+
+# SQLite DBs
+*.db
