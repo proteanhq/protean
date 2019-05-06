@@ -1,13 +1,13 @@
 """Tests for Repository Functionality"""
 
+# Protean
 import pytest
-from tests.support.dog import Dog
 
 from protean import Entity
-from protean.core.exceptions import ObjectNotFoundError
-from protean.core.exceptions import ValidationError
+from protean.core.exceptions import ObjectNotFoundError, ValidationError
 from protean.core.repository import repo_factory
 from protean.utils.query import Q
+from tests.support.dog import Dog
 
 
 class TestRepository:

@@ -1,10 +1,12 @@
 """Tests for Cache Functionality"""
+# Standard Library Imports
 import time
 
+# Protean
 import pytest
-from tests.support.dog import Dog
 
 from protean.core.cache import cache
+from tests.support.dog import Dog
 
 
 class TestCache:

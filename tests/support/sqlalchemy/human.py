@@ -1,6 +1,8 @@
 """ Define entities of the Human Type """
+# Standard Library Imports
 from datetime import datetime
 
+# Protean
 from protean import Entity
 from protean.core import field
 from protean.core.field import association

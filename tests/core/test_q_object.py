@@ -1,8 +1,8 @@
 """ Test the Q object used for managing filter criteria """
-from tests.support.dog import Dog
-
+# Protean
 from protean.core.queryset import QuerySet
 from protean.utils.query import Q
+from tests.support.dog import Dog
 
 
 class TestCriteriaConstruction:

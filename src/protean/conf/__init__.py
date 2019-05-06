@@ -6,10 +6,12 @@ variable, and then from protean.conf.global_config; see the global_config.py
 for a list of all possible variables.
 """
 
+# Standard Library Imports
 import importlib
 import logging
 import os
 
+# Protean
 from protean.conf import default_config
 from protean.core.exceptions import ConfigurationError
 

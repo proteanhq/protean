@@ -1,19 +1,19 @@
 """Implementation of a dictionary based repository """
 
+# Standard Library Imports
 import json
+
 from collections import defaultdict
 from itertools import count
 from operator import itemgetter
 from threading import Lock
 from typing import Any
 
+# Protean
 from protean.core.entity import BaseEntity
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.provider.base import BaseProvider
-from protean.core.repository import BaseLookup
-from protean.core.repository import BaseModel
-from protean.core.repository import BaseRepository
-from protean.core.repository import ResultSet
+from protean.core.repository import BaseLookup, BaseModel, BaseRepository, ResultSet
 from protean.utils.query import Q
 
 # Global in-memory store of dict data. Keyed by name, to provide

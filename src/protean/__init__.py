@@ -2,7 +2,7 @@
 
 __version__ = '0.0.11'
 
-from .domain import Domain
-from .domain import Entity
+# Local/Relative Imports
+from .domain import Domain, Entity
 
 __all__ = ('Domain', 'Entity')

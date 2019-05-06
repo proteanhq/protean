@@ -1,12 +1,14 @@
 """Module to test View functionality and features"""
 
+# Standard Library Imports
 import json
 
+# Protean
 import pytest
-from tests.support.dog import Dog
-from tests.support.sample_flask_app import app
 
 from protean.core.exceptions import ObjectNotFoundError
+from tests.support.dog import Dog
+from tests.support.sample_flask_app import app
 
 
 class TestGenericAPIResource:

@@ -1,6 +1,6 @@
 """Classes and Functions for Lookup methods for Query translation"""
-from abc import ABCMeta
-from abc import abstractmethod
+# Standard Library Imports
+from abc import ABCMeta, abstractmethod
 
 
 class BaseLookup(metaclass=ABCMeta):

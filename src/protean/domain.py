@@ -1,10 +1,11 @@
 """This module implements the central domain object, along with decorators
 to register Domain Elements.
 """
-from dataclasses import dataclass
-from dataclasses import field
+# Standard Library Imports
+from dataclasses import dataclass, field
 from typing import List
 
+# Protean
 from protean.core.entity import BaseEntity
 from protean.utils.generic import singleton
 

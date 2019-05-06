@@ -1,6 +1,8 @@
 """ Module to test Config functionality """
+# Standard Library Imports
 import os
 
+# Protean
 from protean.conf import Config
 
 

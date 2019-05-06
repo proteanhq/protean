@@ -1,4 +1,5 @@
 """ Define entities of the Dog Type """
+# Protean
 from protean import Entity
 from protean.core import field
 

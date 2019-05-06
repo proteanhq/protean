@@ -1,15 +1,12 @@
 """Concrete Implementations of some generic use cases"""
 
+# Protean
 from protean.conf import active_config
 from protean.core.entity import BaseEntity
-from protean.core.transport import InvalidRequestObject
-from protean.core.transport import RequestObject
-from protean.core.transport import RequestObjectFactory
-from protean.core.transport import ResponseSuccess
-from protean.core.transport import ResponseSuccessCreated
-from protean.core.transport import ResponseSuccessWithNoContent
-from protean.core.transport import Status
+from protean.core.transport import (InvalidRequestObject, RequestObject, RequestObjectFactory, ResponseSuccess,
+                                    ResponseSuccessCreated, ResponseSuccessWithNoContent, Status)
 
+# Local/Relative Imports
 from .base import UseCase
 
 ShowRequestObject = RequestObjectFactory.construct(

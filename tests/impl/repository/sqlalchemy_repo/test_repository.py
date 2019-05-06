@@ -1,8 +1,9 @@
 """Module to test Repository Classes and Functionality"""
+# Protean
 import pytest
-from tests.support.sqlalchemy.dog import SqlDog as Dog
 
 from protean.core.exceptions import ValidationError
+from tests.support.sqlalchemy.dog import SqlDog as Dog
 
 
 class TestSqlalchemyRepository:

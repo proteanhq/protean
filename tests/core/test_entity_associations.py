@@ -1,27 +1,15 @@
 """ Test cases for Entity Reference field and association types """
+# Protean
 import mock
 import pytest
-from tests.support.dog import Dog
-from tests.support.dog import DogRelatedByEmail
-from tests.support.dog import HasManyDog1
-from tests.support.dog import HasManyDog2
-from tests.support.dog import HasManyDog3
-from tests.support.dog import HasOneDog1
-from tests.support.dog import HasOneDog2
-from tests.support.dog import HasOneDog3
-from tests.support.dog import RelatedDog
-from tests.support.dog import RelatedDog2
-from tests.support.human import HasManyHuman1
-from tests.support.human import HasManyHuman2
-from tests.support.human import HasManyHuman3
-from tests.support.human import HasOneHuman1
-from tests.support.human import HasOneHuman2
-from tests.support.human import HasOneHuman3
-from tests.support.human import Human
 
 from protean.core.exceptions import ValidationError
 from protean.core.queryset import QuerySet
 from protean.core.repository import ResultSet
+from tests.support.dog import (Dog, DogRelatedByEmail, HasManyDog1, HasManyDog2, HasManyDog3,
+                               HasOneDog1, HasOneDog2, HasOneDog3, RelatedDog, RelatedDog2)
+from tests.support.human import (HasManyHuman1, HasManyHuman2, HasManyHuman3,
+                                 HasOneHuman1, HasOneHuman2, HasOneHuman3, Human)
 
 
 class TestReference:

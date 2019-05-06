@@ -1,7 +1,10 @@
 """Module to test Protean Logger"""
+# Standard Library Imports
 import logging
+
 from io import StringIO
 
+# Protean
 from protean.utils.log import configure_logging
 
 

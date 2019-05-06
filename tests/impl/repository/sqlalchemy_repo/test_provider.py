@@ -1,13 +1,14 @@
 """Module to test Provider Class"""
+# Standard Library Imports
 from datetime import datetime
 
+# Protean
+from protean.conf import active_config
+from protean.impl.repository.sqlalchemy_repo import SAProvider
 from sqlalchemy.engine import ResultProxy
 from tests.support.sqlalchemy.dog import SqlDog as Dog
 from tests.support.sqlalchemy.dog import SqlRelatedDog as RelatedDog
 from tests.support.sqlalchemy.human import SqlRelatedHuman as RelatedHuman
-
-from protean.conf import active_config
-from protean.impl.repository.sqlalchemy_repo import SAProvider
 
 
 class TestSAProvider:

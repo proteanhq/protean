@@ -2,13 +2,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, unicode_literals
 
+# Standard Library Imports
 import os
 import sys
-from os.path import abspath
-from os.path import dirname
-from os.path import exists
-from os.path import join
 
+from os.path import abspath, dirname, exists, join
 
 if __name__ == "__main__":
     base_path = dirname(dirname(abspath(__file__)))

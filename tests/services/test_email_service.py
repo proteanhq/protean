@@ -1,11 +1,9 @@
 """ Test the Email Service using the Local Mem Backend """
 
+# Protean
 from protean.impl.email.local_mem import EmailBackend
 from protean.services import email
-from protean.services.email import EmailMessage
-from protean.services.email import get_connection
-from protean.services.email import send_mail
-from protean.services.email import send_mass_mail
+from protean.services.email import EmailMessage, get_connection, send_mail, send_mass_mail
 
 
 class TestEmailService:

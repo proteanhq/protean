@@ -1,6 +1,6 @@
 """ Module for defining the response Renderers """
-from flask import jsonify
-from flask import make_response
+# Protean
+from flask import jsonify, make_response
 
 
 def render_json(data, code, headers):

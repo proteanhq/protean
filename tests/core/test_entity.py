@@ -1,23 +1,18 @@
 """Tests for Entity Functionality and Base Classes"""
 
+# Standard Library Imports
 from collections import OrderedDict
 from datetime import datetime
 
+# Protean
 import pytest
-from tests.support.dog import Dog
-from tests.support.dog import HasOneDog1
-from tests.support.dog import RelatedDog
-from tests.support.dog import SubDog
-from tests.support.human import HasOneHuman1
-from tests.support.human import Human
 
 from protean import Entity
 from protean.core import field
-from protean.core.exceptions import InvalidOperationError
-from protean.core.exceptions import NotSupportedError
-from protean.core.exceptions import ObjectNotFoundError
-from protean.core.exceptions import ValidationError
+from protean.core.exceptions import InvalidOperationError, NotSupportedError, ObjectNotFoundError, ValidationError
 from protean.core.queryset import QuerySet
+from tests.support.dog import Dog, HasOneDog1, RelatedDog, SubDog
+from tests.support.human import HasOneHuman1, Human
 
 
 class TestEntity:

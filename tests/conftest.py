@@ -1,6 +1,9 @@
-"""Module to setup Factories and other required artifacts for tests"""
+"""Module to setup Factories and other required artifacts for tests
+
+    isort:skip_file
+"""
 import os
-os.environ['PROTEAN_CONFIG'] = 'tests.support.sample_config'
+os.environ['PROTEAN_CONFIG'] = 'tests.support.sample_config'  # isort:skip
 
 import pytest
 from tests.support.dog import *

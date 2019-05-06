@@ -1,10 +1,12 @@
 """Module to test Repository extended functionality """
+# Standard Library Imports
 from datetime import datetime
 
+# Protean
 import pytest
-from tests.support.sqlalchemy.human import SqlHuman as Human
 
 from protean.utils.query import Q
+from tests.support.sqlalchemy.human import SqlHuman as Human
 
 
 class TestFiltersLookups:

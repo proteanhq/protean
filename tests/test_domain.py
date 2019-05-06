@@ -1,6 +1,6 @@
 """"Module to test Domain object functionality"""
-from protean import Domain
-from protean import Entity
+# Protean
+from protean import Domain, Entity
 from protean.core import field
 from protean.core.entity import _EntityMetaclass
 from protean.domain import _DomainRegistry

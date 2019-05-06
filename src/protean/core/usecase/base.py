@@ -1,11 +1,12 @@
 """Module for defining base UseCase class"""
 
+# Standard Library Imports
 import logging
-from abc import ABCMeta
-from abc import abstractmethod
 
-from protean.core.exceptions import ObjectNotFoundError
-from protean.core.exceptions import ValidationError
+from abc import ABCMeta, abstractmethod
+
+# Protean
+from protean.core.exceptions import ObjectNotFoundError, ValidationError
 from protean.core.transport import ResponseFailure
 
 logger = logging.getLogger('protean.usecase')

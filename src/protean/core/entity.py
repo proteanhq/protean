@@ -1,19 +1,18 @@
 """Entity Functionality and Classes"""
+# Standard Library Imports
 import copy
 import logging
+
 from typing import Any
 
-from protean.core.exceptions import InvalidStateError
-from protean.core.exceptions import NotSupportedError
-from protean.core.exceptions import ObjectNotFoundError
-from protean.core.exceptions import ValidationError
-from protean.core.field import Auto
-from protean.core.field import Field
-from protean.core.field import Reference
+# Protean
+from protean.core.exceptions import InvalidStateError, NotSupportedError, ObjectNotFoundError, ValidationError
+from protean.core.field import Auto, Field, Reference
 from protean.core.queryset import QuerySet
 from protean.core.repository import repo_factory
 from protean.utils import inflection
 
+# Local/Relative Imports
 from ..core.field.association import _ReferenceField  # Relative path to private class
 
 logger = logging.getLogger('protean.core.entity')

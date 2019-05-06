@@ -1,7 +1,9 @@
 """ Email message and email sending related helper functions. """
+# Protean
 from protean.conf import active_config
 from protean.utils.importlib import perform_import
 
+# Local/Relative Imports
 from .message import EmailMessage
 
 

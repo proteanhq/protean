@@ -1,10 +1,12 @@
 """ Factory class for managing repository connections"""
+# Standard Library Imports
 import logging
+
 from collections import namedtuple
 from threading import local
 
-from protean.core.exceptions import ConfigurationError
-from protean.core.exceptions import NotSupportedError
+# Protean
+from protean.core.exceptions import ConfigurationError, NotSupportedError
 from protean.core.provider import providers
 from protean.utils.generic import fully_qualified_name
 
