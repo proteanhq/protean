@@ -1,9 +1,9 @@
 """Human Support Class for Test Cases"""
 
+from protean import DomainElement
 from protean.core import field
 from protean.core.entity import Entity
 from protean.core.field import association
-from protean import DomainElement
 
 
 @DomainElement

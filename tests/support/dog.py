@@ -7,9 +7,9 @@ from tests.support.human import HasOneHuman1
 from tests.support.human import HasOneHuman2
 from tests.support.human import Human
 
+from protean import DomainElement
 from protean.core import field
 from protean.core.entity import Entity
-from protean import DomainElement
 
 
 @DomainElement

@@ -1,7 +1,7 @@
 """ Define entities of the Dog Type """
+from protean import DomainElement
 from protean.core import field
 from protean.core.entity import Entity
-from protean import DomainElement
 
 
 @DomainElement

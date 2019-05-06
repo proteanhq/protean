@@ -1,10 +1,10 @@
 """ Define entities of the Human Type """
 from datetime import datetime
 
+from protean import DomainElement
 from protean.core import field
 from protean.core.entity import Entity
 from protean.core.field import association
-from protean import DomainElement
 
 
 @DomainElement
