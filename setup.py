@@ -64,7 +64,12 @@ setup(
     install_requires=[
         'click==7.0',
         'cookiecutter==1.6.0',
-        'python-dateutil==2.7.3'
+        'flask==1.0.2',
+        'inflect==1.0.1',
+        'marshmallow==2.19.2',
+        'python-dateutil==2.7.3',
+        'sqlalchemy==1.3.3',
+        'werkzeug==0.15.2'
     ],
     extras_require={
         # eg:

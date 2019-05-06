@@ -12,6 +12,14 @@ TESTING = True
 DATABASES = {
     'default': {
         'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'
+    },
+    'sql_db': {
+        'PROVIDER': 'protean.impl.repository.sqlalchemy_repo.SAProvider',
+        'DATABASE_URI': 'sqlite:///test.db'
+    },
+    'sql_another_db': {
+        'PROVIDER': 'protean.impl.repository.sqlalchemy_repo.SAProvider',
+        'DATABASE_URI': 'sqlite:///another_test.db'
     }
 }
 

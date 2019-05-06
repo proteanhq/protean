@@ -62,3 +62,16 @@ LOGGING_CONFIG = {
         }
     }
 }
+
+####################
+# APIs             #
+####################
+
+# Default content type of the input data if none provided
+DEFAULT_CONTENT_TYPE = 'application/json'
+
+# Custom exception handler for the app
+EXCEPTION_HANDLER = None
+
+# Default output renderer for the app
+DEFAULT_RENDERER = 'protean.impl.api.flask.renderers.render_json'

@@ -7,6 +7,7 @@ dev
 
 * Add Request Object Factory to construct Request Object classes on the fly
 * Add `reload` method to refresh an entity's data from database
+* Collapse SQLAlchemy and Flask implementations in Protean itself temporarily, until API stabilizes
 
 0.0.11 (2019-04-23)
 -------------------
@@ -20,7 +21,7 @@ dev
 * Replace `Pagination` with `ResultSet` because it is at Entity and Use Case level
 * Replace `page` and `per_page` with `limit` and `offset`
 * Add Command utility to generate Protean project template
-* Provide command line utilities for `--version` and `test` 
+* Provide command line utilities for `--version` and `test`
 * Bugfix: Handled quotes and escape properly in string values in Dictionary repository
 * Add documentation for Overriding Entity Lifecycle methods
 * Add ability to mark tests as slow and run slow tests in travis
