@@ -43,8 +43,11 @@ class TestListRequestObject:
 
     def test_init(self):
         """Test Initialization of the generic ListRequest class"""
-        request_obj = ListRequestObject.from_dict(
-            Dog, dict(page=2, order_by=['age'], owner='John'))
+        request_obj = ListRequestObject.from_dict({
+            'entity_cls': Dog,
+            'page': 2,
+            'order_by': ['age'],
+            'owner': 'John'})
         assert request_obj.is_valid
         assert request_obj.page == 2
         assert request_obj.per_page == 10
@@ -147,8 +150,10 @@ class TestListUseCase:
         Dog.create(name='Bart', owner='Carrie', age=6)
 
         # Build the request object and run the usecase
-        request_obj = ListRequestObject.from_dict(
-            Dog, dict(order_by=['age'], owner='John'))
+        request_obj = ListRequestObject.from_dict({
+            'entity_cls': Dog,
+            'order_by': ['age'],
+            'owner': 'John'})
         use_case = ListUseCase()
         response = use_case.execute(request_obj)
 

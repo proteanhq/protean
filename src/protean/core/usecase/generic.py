@@ -66,9 +66,14 @@ class ListRequestObject(RequestObject):
         self.filters = filters
 
     @classmethod
-    def from_dict(cls, entity_cls, adict):
+    def from_dict(cls, adict):
         """Initialize a ListRequestObject object from a dictionary."""
         invalid_req = InvalidRequestObject()
+
+        if 'entity_cls' not in adict:
+            invalid_req.add_error('entity_cls', 'is required')
+
+        entity_cls = adict.pop('entity_cls', None)
 
         # Extract the pagination parameters from the input
         page = int(adict.pop('page', 1))
