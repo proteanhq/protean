@@ -1,12 +1,12 @@
 """Tests for Tasklet Functionality"""
+# Protean
 import pytest
-from tests.support.dog import Dog
 
 from protean.core.exceptions import UsecaseExecutionError
 from protean.core.tasklet import Tasklet
 from protean.core.transport import Status
-from protean.core.usecase import ShowRequestObject
-from protean.core.usecase import ShowUseCase
+from protean.core.usecase import ShowRequestObject, ShowUseCase
+from tests.support.dog import Dog
 
 
 class TestTasklet:

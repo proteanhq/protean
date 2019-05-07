@@ -1,12 +1,15 @@
 """ Define entities of the Human Type """
+# Standard Library Imports
 from datetime import datetime
 
+# Protean
+from protean import Entity
 from protean.core import field
-from protean.core.entity import Entity
 from protean.core.field import association
 
 
-class SqlHuman(Entity):
+@Entity
+class SqlHuman:
     """This is a dummy Dog Entity class"""
     name = field.StringMedium(required=True, unique=True)
     age = field.Integer()
@@ -22,7 +25,8 @@ class SqlHuman(Entity):
         provider = 'sql_another_db'
 
 
-class SqlRelatedHuman(Entity):
+@Entity
+class SqlRelatedHuman:
     """This is a dummy Dog Entity class"""
     name = field.StringMedium(required=True, unique=True)
     age = field.Integer()

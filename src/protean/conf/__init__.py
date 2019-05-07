@@ -6,10 +6,12 @@ variable, and then from protean.conf.global_config; see the global_config.py
 for a list of all possible variables.
 """
 
+# Standard Library Imports
 import importlib
 import logging
 import os
 
+# Protean
 from protean.conf import default_config
 from protean.core.exceptions import ConfigurationError
 
@@ -32,8 +34,8 @@ class Config:
                 setattr(self, setting, getattr(default_config, setting))
 
         # Fetch Config module string from environment
-        config_module_str = os.environ.get(
-            ENVIRONMENT_VARIABLE, config_module_str)
+        if config_module_str is None:
+            config_module_str = os.environ.get(ENVIRONMENT_VARIABLE, None)
 
         if not config_module_str:
             config_module_str = 'protean.conf.default_config'

@@ -1,5 +1,6 @@
 """ Module defines a in-memory email backend."""
 
+# Protean
 from protean.services import email
 from protean.services.email.base import BaseEmailBackend
 

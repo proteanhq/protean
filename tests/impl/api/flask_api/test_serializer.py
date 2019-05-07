@@ -1,15 +1,14 @@
 """Module to test Serializer functionality"""
 
+# Protean
 import marshmallow as ma
 import pytest
-from tests.support.dog import Dog
-from tests.support.dog import HasManyDog1
-from tests.support.human import HasManyHuman1
-from tests.support.sample_flask_app.serializers import HasManyDog1Serializer
-from tests.support.sample_flask_app.serializers import HasManyHuman1DetailSerializer
 
 from protean.core.exceptions import ConfigurationError
 from protean.impl.api.flask.serializers import EntitySerializer
+from tests.support.dog import Dog, HasManyDog1
+from tests.support.human import HasManyHuman1
+from tests.support.sample_flask_app.serializers import HasManyDog1Serializer, HasManyHuman1DetailSerializer
 
 
 class DogSerializer(EntitySerializer):

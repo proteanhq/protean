@@ -1,11 +1,14 @@
 """ Define the interfaces for Repository implementations """
+# Standard Library Imports
 import logging
-from abc import ABCMeta
-from abc import abstractmethod
+
+from abc import ABCMeta, abstractmethod
 from typing import Any
 
+# Protean
 from protean.utils.query import Q
 
+# Local/Relative Imports
 from .resultset import ResultSet
 
 logger = logging.getLogger('protean.repository')

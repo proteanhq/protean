@@ -1,16 +1,15 @@
 """Module that defines entry point to the Protean Flask Application"""
+# Standard Library Imports
 import hashlib
 
-from flask import Blueprint
-from flask import Request
-from flask import current_app
-from flask import request
-
+# Protean
+from flask import Blueprint, Request, current_app, request
 from protean.conf import active_config
 from protean.context import context
 from protean.core.exceptions import UsecaseExecutionError
 from protean.utils.importlib import perform_import
 
+# Local/Relative Imports
 from .utils import derive_tenant
 from .views import APIResource
 

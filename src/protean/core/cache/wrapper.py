@@ -1,4 +1,5 @@
 """ Module defines the handler for managing a cache connection """
+# Protean
 from protean.conf import active_config
 from protean.core.exceptions import ConfigurationError
 from protean.utils.importlib import perform_import

@@ -1,14 +1,14 @@
 """Module to test Context functionality"""
 
+# Standard Library Imports
 import threading
 import time
 
-from tests.support.dog import ThreadedDog
-
+# Protean
 from protean.context import context
 from protean.core.tasklet import Tasklet
-from protean.core.usecase import CreateRequestObject
-from protean.core.usecase import CreateUseCase
+from protean.core.usecase import CreateRequestObject, CreateUseCase
+from tests.support.dog import ThreadedDog
 
 
 class CreateUseCase2(CreateUseCase):

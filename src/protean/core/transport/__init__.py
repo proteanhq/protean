@@ -1,13 +1,8 @@
 """Package for defining interfaces for Repository Implementations"""
 
-from .request import InvalidRequestObject
-from .request import RequestObject
-from .request import RequestObjectFactory
-from .response import ResponseFailure
-from .response import ResponseSuccess
-from .response import ResponseSuccessCreated
-from .response import ResponseSuccessWithNoContent
-from .response import Status
+# Local/Relative Imports
+from .request import InvalidRequestObject, RequestObject, RequestObjectFactory
+from .response import ResponseFailure, ResponseSuccess, ResponseSuccessCreated, ResponseSuccessWithNoContent, Status
 
 __all__ = ('InvalidRequestObject', 'RequestObject', 'RequestObjectFactory',
            'ResponseSuccess', 'ResponseFailure', 'ResponseSuccessCreated',

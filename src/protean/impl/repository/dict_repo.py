@@ -1,19 +1,19 @@
 """Implementation of a dictionary based repository """
 
+# Standard Library Imports
 import json
+
 from collections import defaultdict
 from itertools import count
 from operator import itemgetter
 from threading import Lock
 from typing import Any
 
-from protean.core.entity import Entity
+# Protean
+from protean.core.entity import BaseEntity
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.provider.base import BaseProvider
-from protean.core.repository import BaseLookup
-from protean.core.repository import BaseModel
-from protean.core.repository import BaseRepository
-from protean.core.repository import ResultSet
+from protean.core.repository import BaseLookup, BaseModel, BaseRepository, ResultSet
 from protean.utils.query import Q
 
 # Global in-memory store of dict data. Keyed by name, to provide
@@ -27,7 +27,7 @@ class DictModel(BaseModel):
     """A model for the dictionary repository"""
 
     @classmethod
-    def from_entity(cls, entity: Entity) -> 'DictModel':
+    def from_entity(cls, entity: BaseEntity) -> 'DictModel':
         """Convert the entity to a dictionary record """
         dict_obj = {}
         for field_name in entity.meta_.attributes:
@@ -35,7 +35,7 @@ class DictModel(BaseModel):
         return dict_obj
 
     @classmethod
-    def to_entity(cls, item: 'DictModel') -> Entity:
+    def to_entity(cls, item: 'DictModel') -> BaseEntity:
         """Convert the dictionary record to an entity """
         return cls.entity_cls(item)
 
@@ -63,6 +63,13 @@ class DictProvider(BaseProvider):
     def close_connection(self, conn):
         """Close connection does nothing on the repo """
         pass
+
+    def _data_reset(self):
+        """Reset data"""
+        global _databases, _locks, _counters
+        _databases = {}
+        _locks = {}
+        _counters = defaultdict(count)
 
     def get_model(self, entity_cls):
         """Return associated, fully-baked Model class"""

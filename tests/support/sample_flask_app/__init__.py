@@ -1,17 +1,12 @@
 """ Sample Protean Flask app for testing"""
+# Protean
 from flask import Flask
-
 from protean.impl.api.flask.base import Protean
 
+# Local/Relative Imports
 from .blueprint import blueprint
-from .views import CreateDogResource
-from .views import CurrentContextResource
-from .views import DeleteDogResource
-from .views import HumanResourceSet
-from .views import ListDogResource
-from .views import ShowDogResource
-from .views import UpdateDogResource
-from .views import flask_view
+from .views import (CreateDogResource, CurrentContextResource, DeleteDogResource, HumanResourceSet,
+                    ListDogResource, ShowDogResource, UpdateDogResource, flask_view)
 
 app = Flask(__name__)
 api = Protean(app)

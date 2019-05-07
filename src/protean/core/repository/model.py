@@ -1,7 +1,7 @@
 """ Module containing Model related Class Definitions """
 
-from abc import ABCMeta
-from abc import abstractmethod
+# Standard Library Imports
+from abc import ABCMeta, abstractmethod
 
 
 class BaseModel(metaclass=ABCMeta):

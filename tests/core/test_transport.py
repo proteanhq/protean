@@ -1,14 +1,10 @@
 """Tests for Transport Utility Classes"""
+# Standard Library Imports
 from dataclasses import fields
 
-from protean.core.transport import InvalidRequestObject
-from protean.core.transport import RequestObject
-from protean.core.transport import RequestObjectFactory
-from protean.core.transport import ResponseFailure
-from protean.core.transport import ResponseSuccess
-from protean.core.transport import ResponseSuccessCreated
-from protean.core.transport import ResponseSuccessWithNoContent
-from protean.core.transport import Status
+# Protean
+from protean.core.transport import (InvalidRequestObject, RequestObject, RequestObjectFactory, ResponseFailure,
+                                    ResponseSuccess, ResponseSuccessCreated, ResponseSuccessWithNoContent, Status)
 
 
 class DummyValidRequestObject(RequestObject):

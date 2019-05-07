@@ -1,6 +1,8 @@
 """Module to test Repository extended functionality """
+# Standard Library Imports
 from datetime import datetime
 
+# Protean
 from tests.support.sqlalchemy.dog import SqlDog as Dog
 from tests.support.sqlalchemy.human import SqlHuman as Human
 

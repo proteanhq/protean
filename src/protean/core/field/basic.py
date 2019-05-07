@@ -1,9 +1,10 @@
 """ Module for defining basic Field types of Entity """
 
+# Standard Library Imports
 import datetime
 
+# Protean
 from dateutil.parser import parse as date_parser
-
 from protean.core.exceptions import InvalidOperationError
 from protean.core.field import validators
 from protean.core.field.base import Field

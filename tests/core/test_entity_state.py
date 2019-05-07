@@ -1,7 +1,7 @@
 """ Tests for the entity state class"""
-from tests.support.dog import Dog
-
+# Protean
 from protean.core.exceptions import ValidationError
+from tests.support.dog import Dog
 
 
 class TestState:

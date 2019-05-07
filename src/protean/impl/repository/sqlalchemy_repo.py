@@ -1,30 +1,21 @@
 """Module with repository implementation for SQLAlchemy
 """
+# Standard Library Imports
 from abc import ABCMeta
 from typing import Any
 
-from sqlalchemy import Column
-from sqlalchemy import MetaData
-from sqlalchemy import and_
-from sqlalchemy import create_engine
-from sqlalchemy import or_
-from sqlalchemy import orm
+# Protean
+from protean.core import field
+from protean.core.entity import BaseEntity
+from protean.core.provider.base import BaseProvider
+from protean.core.repository import BaseLookup, BaseModel, BaseRepository, ResultSet, repo_factory
+from protean.utils.query import Q
+from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
 from sqlalchemy import types as sa_types
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext import declarative as sa_dec
-from sqlalchemy.ext.declarative import as_declarative
-from sqlalchemy.ext.declarative import declared_attr
-
-from protean.core import field
-from protean.core.entity import Entity
-from protean.core.provider.base import BaseProvider
-from protean.core.repository import BaseLookup
-from protean.core.repository import BaseModel
-from protean.core.repository import BaseRepository
-from protean.core.repository import ResultSet
-from protean.core.repository import repo_factory
-from protean.utils.query import Q
+from sqlalchemy.ext.declarative import as_declarative, declared_attr
 
 
 class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
@@ -94,7 +85,7 @@ class SqlalchemyModel(BaseModel):
         return cls.entity_cls.meta_.schema_name
 
     @classmethod
-    def from_entity(cls, entity: Entity):
+    def from_entity(cls, entity: BaseEntity):
         """ Convert the entity to a model object """
         item_dict = {}
         for field_obj in cls.entity_cls.meta_.attributes.values():

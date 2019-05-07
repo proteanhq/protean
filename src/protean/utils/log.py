@@ -1,7 +1,9 @@
 """Module defines logging related utilities """
 
+# Standard Library Imports
 import logging.config
 
+# Protean
 from protean.conf import active_config
 
 

@@ -1,5 +1,6 @@
 """Module to test other Protean Functions and Utilities"""
 
+# Protean
 import pytest
 
 from protean.core import entity
@@ -18,9 +19,9 @@ def test_perform_import():
     assert mod == entity
 
     # Test import list
-    mod = perform_import(['protean.core.entity.Entity',
-                          'protean.core.entity.EntityBase'])
-    assert mod == [entity.Entity, entity.EntityBase]
+    mod = perform_import(['protean.core.entity.BaseEntity',
+                          'protean.core.entity._EntityMetaclass'])
+    assert mod == [entity.BaseEntity, entity._EntityMetaclass]
 
     # Test Failed import
     with pytest.raises(ImportError):

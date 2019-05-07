@@ -1,10 +1,9 @@
 """Tests for Provider Functionality"""
-from tests.support.dog import Dog
-from tests.support.dog import RelatedDog
-from tests.support.human import Human
-
+# Protean
 from protean.core.provider import providers
 from protean.impl.repository.dict_repo import DictProvider
+from tests.support.dog import Dog, RelatedDog
+from tests.support.human import Human
 
 
 class TestProviders:
