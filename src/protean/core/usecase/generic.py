@@ -1,5 +1,7 @@
 """Concrete Implementations of some generic use cases"""
 
+from typing import Any
+
 # Protean
 from protean.conf import active_config
 from protean.core.entity import BaseEntity
@@ -12,7 +14,7 @@ from .base import UseCase
 ShowRequestObject = RequestObjectFactory.construct(
     'ShowRequestObject',
     [('entity_cls', BaseEntity, {'required': True}),
-     ('identifier', int, {'required': True})])
+     ('identifier', Any, {'required': True})])
 
 
 class ShowUseCase(UseCase):

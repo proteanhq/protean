@@ -21,7 +21,7 @@ from sqlalchemy.ext.declarative import as_declarative, declared_attr
 class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
     """ Metaclass for the Sqlalchemy declarative schema """
     field_mapping = {
-        field.Auto: sa_types.Integer,
+        field.Auto: sa_types.String,
         field.String: sa_types.String,
         field.Text: sa_types.Text,
         field.Boolean: sa_types.Boolean,

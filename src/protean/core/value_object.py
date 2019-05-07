@@ -1,31 +1,25 @@
-"""Entity Functionality and Classes"""
+"""Value Object Functionality and Classes"""
 # Standard Library Imports
 import copy
 import logging
 
 from typing import Any
-from uuid import uuid4
 
 # Protean
-from protean.conf import active_config
 from protean.core.exceptions import InvalidStateError, NotSupportedError, ObjectNotFoundError, ValidationError
-from protean.core.field import Auto, Field, Reference
-from protean.core.queryset import QuerySet
+from protean.core.field import Auto, Field
 from protean.core.repository import repo_factory
-from protean.utils import inflection, IdentityStrategy
+from protean.utils import inflection
 
-# Local/Relative Imports
-from ..core.field.association import _ReferenceField  # Relative path to private class
-
-logger = logging.getLogger('protean.core.entity')
+logger = logging.getLogger('protean.core.value_object')
 
 
-class _EntityMetaclass(type):
+class _ValueObjectMetaclass(type):
     """
     This base metaclass processes the class declaration and constructs a meta object that can
-    be used to introspect the Entity class later. Specifically, it sets up a `meta_` attribute on
-    the Entity to an instance of Meta, either the default of one that is defined in the
-    Entity class.
+    be used to introspect the ValueObject class later. Specifically, it sets up a `meta_` attribute on
+    the ValueObject to an instance of Meta, either the default of one that is defined in the
+    ValueObject class.
 
     `meta_` is setup with these attributes:
         * `declared_fields`: A dictionary that gives a list of any instances of `Field`
@@ -34,11 +28,11 @@ class _EntityMetaclass(type):
     """
 
     def __new__(mcs, name, bases, attrs, **kwargs):
-        """Initialize Entity MetaClass and load attributes"""
+        """Initialize ValueObject MetaClass and load attributes"""
 
-        # Ensure initialization is only performed for subclasses of Entity
-        # (excluding Entity class itself).
-        parents = [b for b in bases if isinstance(b, _EntityMetaclass)]
+        # Ensure initialization is only performed for subclasses of ValueObject
+        # (excluding ValueObject class itself).
+        parents = [b for b in bases if isinstance(b, _ValueObjectMetaclass)]
         if not parents:
             return super().__new__(mcs, name, bases, attrs)
 
@@ -52,7 +46,7 @@ class _EntityMetaclass(type):
         # Gather `Meta` class/object if defined
         attr_meta = attrs.pop('Meta', None)
         meta = attr_meta or getattr(new_class, 'Meta', None)
-        setattr(new_class, 'meta_', EntityMeta(name, meta))
+        setattr(new_class, 'meta_', ValueObjectMeta(name, meta))
 
         # Load declared fields
         new_class._load_fields(attrs)
@@ -60,30 +54,13 @@ class _EntityMetaclass(type):
         # Load declared fields from Base class, in case this Entity is subclassing another
         new_class._load_base_class_fields(bases, attrs)
 
-        # Lookup an already defined ID field or create an `Auto` field
-        new_class._set_id_field()
-
-        # Set up Relation Fields
-        new_class._set_up_reference_fields()
-
         # Load list of Attributes from declared fields, depending on type of fields
         new_class._load_attributes()
 
         return new_class
 
-    @property
-    def query(cls):
-        """Construct an empty QuerySet associated with an Entity class
-            everytime a new `query` object is created
-
-        This is required so as not to corrupt the query object associated with the metaclass
-        when invoked like `Dog.query.all()` directly. A new query, and a corresponding `ResultSet`
-        would be created every time.
-        """
-        return QuerySet(cls)
-
     def _load_base_class_fields(new_class, bases, attrs):
-        """If this class is subclassing another Entity, add that Entity's
+        """If this class is subclassing another ValueObject, add that ValueObject's
         fields.  Note that we loop over the bases in *reverse*.
         This is necessary in order to maintain the correct order of fields.
         """
@@ -98,49 +75,11 @@ class _EntityMetaclass(type):
                 new_class._load_fields(base_class_fields)
 
     def _load_fields(new_class, attrs):
-        """Load field items into Class.
-
-        This method sets up the primary attribute of an association.
-        If Child class has defined an attribute so `parent = field.Reference(Parent)`, then `parent`
-        is set up in this method, while `parent_id` is set up in `_set_up_reference_fields()`.
-        """
+        """Load field items into Class"""
         for attr_name, attr_obj in attrs.items():
-            if isinstance(attr_obj, (Field, Reference)):
+            if isinstance(attr_obj, Field):
                 setattr(new_class, attr_name, attr_obj)
                 new_class.meta_.declared_fields[attr_name] = attr_obj
-
-    def _set_up_reference_fields(new_class):
-        """Walk through relation fields and setup shadow attributes"""
-        if new_class.meta_.declared_fields:
-            for _, field in new_class.meta_.declared_fields.items():
-                if isinstance(field, Reference):
-                    shadow_field_name, shadow_field = field.get_shadow_field()
-                    setattr(new_class, shadow_field_name, shadow_field)
-                    shadow_field.__set_name__(new_class, shadow_field_name)
-
-    def _set_id_field(new_class):
-        """Lookup the id field for this entity and assign"""
-        # FIXME What does it mean when there are no declared fields?
-        #   Does it translate to an abstract entity?
-        if new_class.meta_.declared_fields:
-            try:
-                new_class.meta_.id_field = next(
-                    field for _, field in new_class.meta_.declared_fields.items()
-                    if field.identifier)
-            except StopIteration:
-                # If no id field is declared then create one
-                new_class._create_id_field()
-
-    def _create_id_field(new_class):
-        """Create and return a default ID field that is Auto generated"""
-        id_field = Auto(identifier=True)
-
-        setattr(new_class, 'id', id_field)
-        id_field.__set_name__(new_class, 'id')
-
-        # Ensure ID field is updated properly in Meta attribute
-        new_class.meta_.declared_fields['id'] = id_field
-        new_class.meta_.id_field = id_field
 
     def _load_attributes(new_class):
         """Load list of attributes from declared fields"""
@@ -148,24 +87,21 @@ class _EntityMetaclass(type):
             new_class.meta_.attributes[field_obj.get_attribute_name()] = field_obj
 
 
-class EntityMeta:
-    """ Metadata info for the entity.
+class ValueObjectMeta:
+    """ Metadata info for the ValueObject.
 
     Options:
     - ``abstract``: Indicates that this is an abstract entity (Ignores all other meta options)
     - ``schema_name``: name of the schema (table/index/doc) used for persistence of this entity
-        defaults to underscore version of the Entity name.
+        defaults to underscore version of the Entity name. Only considered if the ValueObject is to be persisted.
     - ``provider``: the name of the datasource associated with this
-        entity, default value is `default`.
-    - ``order_by``: default ordering of objects returned by filter queries.
+        ValueObject, default value is `default`. Only considered if the ValueObject is to be persisted.
 
     Also acts as a placeholder for generated entity fields like:
 
         :declared_fields: dict
             Any instances of `Field` included as attributes on either the class
             or on any of its superclasses will be include in this dictionary.
-        :id_field: protean.core.Field
-            An instance of the field that will serve as the unique identifier for the entity
     """
 
     def __init__(self, entity_name, meta):
@@ -174,17 +110,9 @@ class EntityMeta:
                             inflection.underscore(entity_name))
         self.provider = getattr(meta, 'provider', None) or 'default'
 
-        # `order_by` can be provided either as a string or a tuple
-        ordering = getattr(meta, 'order_by', ())
-        if isinstance(ordering, str):
-            self.order_by = ordering,
-        else:
-            self.order_by = tuple(ordering)
-
         # Initialize Options
         self.declared_fields = {}
         self.attributes = {}
-        self.id_field = None
 
     @property
     def unique_fields(self):
@@ -208,85 +136,47 @@ class _FieldsCacheDescriptor:
         return res
 
 
-class _EntityState:
-    """Store entity instance state."""
+class BaseValueObject(metaclass=_ValueObjectMetaclass):
+    """The Base class for Protean-Compliant Domain Value Objects.
 
-    def __init__(self):
-        self._new = True
-        self._changed = False
-        self._destroyed = False
-
-    @property
-    def is_new(self):
-        return self._new
-
-    @property
-    def is_persisted(self):
-        return not self._new
-
-    @property
-    def is_changed(self):
-        return self._changed
-
-    @property
-    def is_destroyed(self):
-        return self._destroyed
-
-    def mark_saved(self):
-        self._new = False
-        self._changed = False
-
-    mark_retrieved = mark_saved  # Alias as placeholder so that future change wont affect interface
-
-    def mark_changed(self):
-        if not (self._new or self._destroyed):
-            self._changed = True
-
-    def mark_destroyed(self):
-        self._destroyed = True
-        self._changed = False
-
-    fields_cache = _FieldsCacheDescriptor()
-
-
-class BaseEntity(metaclass=_EntityMetaclass):
-    """The Base class for Protean-Compliant Domain Entities.
-
-    Provides helper methods to custom define entity attributes, and query attribute names
+    Provides helper methods to custom define attributes, and find attribute names
     during runtime.
 
     Basic Usage::
 
-        @Entity
-        class Dog:
-            id = field.Integer(identifier=True)
-            name = field.String(required=True, max_length=50)
-            age = field.Integer(default=5)
-            owner = field.String(required=True, max_length=15)
+        @ValueObject
+        class Address:
+            unit = field.String()
+            address = field.String(required=True, max_length=255)
+            city = field.String(max_length=50)
+            province = field.String(max_length=2)
+            pincode = field.String(max_length=6)
 
     (or)
 
-        class Dog(BaseEntity):
-            id = field.Integer(identifier=True)
-            name = field.String(required=True, max_length=50)
-            age = field.Integer(default=5)
-            owner = field.String(required=True, max_length=15)
+        class Address(BaseValueObject):
+            unit = field.String()
+            address = field.String(required=True, max_length=255)
+            city = field.String(max_length=50)
+            province = field.String(max_length=2)
+            pincode = field.String(max_length=6)
 
-        domain.register_element(Dog)
+        domain.register_element(Address)
 
-    During persistence, the model associated with this entity is retrieved dynamically from
-            the repository factory. Model is usually initialized with a live DB connection.
+    If persistence is required, the model associated with this value object is retrieved dynamically.
+    The value object may be persisted along with its related entity, or separately in which case its model is
+    retrieved from the repository factory. Model is usually initialized with a live DB connection.
     """
 
     class Meta:
-        """Options object for an Entity.
+        """Options object for a ValueObject.
 
-        Check ``EntityMeta`` class for full documentation.
+        Check ``_ValueObjectMeta`` class for full documentation.
         """
 
     def __init__(self, *template, **kwargs):
         """
-        Initialise the entity object.
+        Initialise the value object.
 
         During initialization, set value on fields if vaidation passes.
 
@@ -300,9 +190,6 @@ class BaseEntity(metaclass=_EntityMetaclass):
                 f' and cannot be instantiated')
 
         self.errors = {}
-
-        # Set up the storage for instance state
-        self.state_ = _EntityState()
 
         # Load the attributes based on the template
         loaded_fields = []
@@ -326,30 +213,11 @@ class BaseEntity(metaclass=_EntityMetaclass):
         # for required fields
         for field_name, field_obj in self.meta_.declared_fields.items():
             if field_name not in loaded_fields:
-                if not isinstance(field_obj, (Reference, _ReferenceField)):
-                    setattr(self, field_name, None)
+                setattr(self, field_name, None)
 
         # Raise any errors found during load
         if self.errors:
             raise ValidationError(self.errors)
-
-    @classmethod
-    def _generate_identity(cls):
-        """Generate Unique Identifier, based on strategy"""
-        if active_config.IDENTITY_STRATEGY == IdentityStrategy.UUID:
-            return uuid4()
-
-        return None  # Database will generate the identity
-
-    @classmethod
-    def build(cls, *template, **kwargs):
-        """Factory method to initialize an Entity object"""
-        instance = cls(*template, **kwargs)
-
-        if not getattr(instance, cls.meta_.id_field.field_name, None):
-            setattr(instance, cls.meta_.id_field.field_name, cls._generate_identity())
-
-        return instance
 
     def __eq__(self, other):
         """Equaivalence check to be based only on Identity"""
@@ -367,9 +235,9 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
     def _update_data(self, *data_dict, **kwargs):
         """
-        A private method to process and update entity values correctly.
+        A private method to process and update values correctly.
 
-        :param data: A dictionary of values to be updated for the entity
+        :param data: A dictionary of values to be updated for the value object
         :param kwargs: keyword arguments with key-value pairs to be updated
         """
 
@@ -395,12 +263,12 @@ class BaseEntity(metaclass=_EntityMetaclass):
             raise ValidationError(self.errors)
 
     def to_dict(self):
-        """ Return entity data as a dictionary """
+        """ Return data as a dictionary """
         return {field_name: getattr(self, field_name, None)
                 for field_name in self.meta_.declared_fields}
 
     def __repr__(self):
-        """Friendly repr for Entity"""
+        """Friendly repr for Value Object"""
         return '<%s: %s>' % (self.__class__.__name__, self)
 
     def __str__(self):
@@ -411,9 +279,8 @@ class BaseEntity(metaclass=_EntityMetaclass):
         )
 
     def clone(self):
-        """Deepclone the entity, but reset state"""
+        """Deepclone the value object"""
         clone_copy = copy.deepcopy(self)
-        clone_copy.state_ = _EntityState()
 
         return clone_copy
 
@@ -422,7 +289,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
     ######################
 
     @classmethod
-    def get(cls, identifier: Any) -> 'BaseEntity':
+    def get(cls, identifier: Any) -> 'BaseValueObject':
         """Get a specific Record from the Repository
 
         :param identifier: id of the record to be fetched from the repository.
@@ -461,7 +328,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         self._update_data(db_value.to_dict())
 
     @classmethod
-    def find_by(cls, **kwargs) -> 'BaseEntity':
+    def find_by(cls, **kwargs) -> 'BaseValueObject':
         """Find a specific entity record that matches one or more criteria.
 
         :param kwargs: named arguments consisting of attr_name and attr_value pairs to search on
@@ -495,7 +362,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         return bool(results)
 
     @classmethod
-    def create(cls, *args, **kwargs) -> 'BaseEntity':
+    def create(cls, *args, **kwargs) -> 'BaseValueObject':
         """Create a new record in the repository.
 
         Also performs unique validations before creating the entity
@@ -512,7 +379,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         try:
             # Build the entity from the input arguments
             # Raises validation errors, if any, at this point
-            entity = cls.build(*args, **kwargs)
+            entity = cls(*args, **kwargs)
 
             # Do unique checks, create this object and return it
             entity._validate_unique()
@@ -556,11 +423,6 @@ class BaseEntity(metaclass=_EntityMetaclass):
         repository = repo_factory.get_repository(self.__class__)
 
         try:
-            # If this is a new entity, generate ID
-            if self.state_.is_new:
-                if not getattr(self, self.meta_.id_field.field_name, None):
-                    setattr(self, self.meta_.id_field.field_name, self.__class__._generate_identity())
-
             # Do unique checks, update the record and return the Entity
             self._validate_unique(create=False)
 
@@ -590,7 +452,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
             # FIXME Log Exception
             raise
 
-    def update(self, *data, **kwargs) -> 'BaseEntity':
+    def update(self, *data, **kwargs) -> 'BaseValueObject':
         """Update a Record in the repository.
 
         Also performs unique validations before creating the entity.

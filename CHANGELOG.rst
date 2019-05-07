@@ -8,6 +8,10 @@ dev
 * Add Request Object Factory to construct Request Object classes on the fly
 * Add `reload` method to refresh an entity's data from database
 * Collapse SQLAlchemy and Flask implementations in Protean itself temporarily, until API stabilizes
+* Rename `success` flag on Reponse to `is_successful`
+* Rename `message` attribute in Response object to `errors` with uniform structure in all error cases
+* Introduce `Domain` composition root
+* Introduce `Entity` Decorator to subclass and register entities with the domain
 
 0.0.11 (2019-04-23)
 -------------------

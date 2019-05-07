@@ -47,7 +47,7 @@ class TestEntity:
         assert dog1 != dog2  # Because their identities are different
         assert dog2 != dog1  # Because their identities are different
 
-        db_dog = Dog.get(1)
+        db_dog = Dog.get(dog1.id)
         assert dog1 == db_dog  # Because it's the same record but reloaded from db
         assert db_dog == dog1  # Because it's the same record but reloaded from db
 

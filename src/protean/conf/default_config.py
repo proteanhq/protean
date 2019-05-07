@@ -3,6 +3,8 @@ Default settings. Override these with settings in the module pointed to
 by the PROTEAN_CONFIG environment variable.
 """
 
+from protean.utils import IdentityStrategy
+
 ####################
 # CORE             #
 ####################
@@ -13,9 +15,23 @@ DEBUG = False
 # hashing algorithms.
 SECRET_KEY = 'wR5yJVF!PVA3&bBaFK%e3#MQna%DJfyT'
 
-####################
-# GENERIC REPOSITORY #
-####################
+##########
+# DOMAIN #
+##########
+
+# Identity strategy to use when persisting Entities/Aggregates.
+#
+# Options:
+#
+#   * IdentityStrategy.UUID: Default option, and preferred. Identity is a UUID and generated during `build` time.
+#       Persisted along with other details into the data store.
+#   * IdentityStrategy.DATABASE: Let the database generate unique identity during persistence
+#   * IdentityStrategy.FUNCTION: Special function that returns a unique identifier
+IDENTITY_STRATEGY = IdentityStrategy.UUID
+
+###############
+#  REPOSITORY #
+###############
 
 # Repository connection information
 DATABASES = {}

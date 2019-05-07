@@ -22,7 +22,7 @@ class TestSqlalchemyRepositoryExt:
             profile={'phone': '90233143112', 'email': 'johndoe@domain.com'})
         assert human is not None
         expected = {
-            'id': 1,
+            'id': human.id,
             'name': 'John Doe',
             'weight': 13.45,
             'age': 30,
@@ -37,9 +37,9 @@ class TestSqlalchemyRepositoryExt:
         assert human.to_dict() == expected
 
         # Check if the object is in the repo
-        human = Human.get(1)
-        assert human is not None
-        assert human.to_dict() == expected
+        reloaded_human = Human.get(human.id)
+        assert reloaded_human is not None
+        assert reloaded_human.to_dict() == expected
 
     def test_multiple_dbs(self):
         """ Test repository connections to multiple databases"""

@@ -7,7 +7,7 @@ from typing import List
 
 # Protean
 from protean.core.entity import BaseEntity
-from protean.utils.generic import singleton
+from protean.utils import singleton
 
 
 @singleton

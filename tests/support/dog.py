@@ -63,7 +63,7 @@ class HasOneDog3:
     """This is a dummy Dog Entity class to test HasOne Association"""
     name = field.String(required=True, unique=True, max_length=50)
     age = field.Integer(default=5)
-    human_id = field.Integer()
+    human_id = field.Identifier()
 
 
 @Entity
@@ -89,7 +89,7 @@ class HasManyDog3:
     """This is a dummy Dog Entity class to test HasMany Association"""
     name = field.String(required=True, unique=True, max_length=50)
     age = field.Integer(default=5)
-    human_id = field.Integer()
+    human_id = field.Identifier()
 
 
 @Entity
