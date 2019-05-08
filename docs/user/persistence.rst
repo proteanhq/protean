@@ -22,7 +22,7 @@ Protean comes with built-in for RDBMS databases supported by the venerable SQLAl
 
     DATABASES = {
         'default': {
-            'PROVIDER': 'protean_sqlalchemy.repository.SARepository'
+            'PROVIDER': 'protean_sqlalchemy.provider.SAProvider'
         }
     }
 
@@ -37,7 +37,7 @@ You can also specify multiple repositories, when you are persisting your data in
             'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'
         },
         'postgres': {
-            'PROVIDER': 'protean_sqlalchemy.repository.SARepository'
+            'PROVIDER': 'protean_sqlalchemy.provider.SAProvider'
         }
     }
 
@@ -47,7 +47,7 @@ Connection details specific to each type of repository provider can be provided 
 
     DATABASES = {
         'default': {
-            'PROVIDER': 'protean_sqlalchemy.repository.SARepository',
+            'PROVIDER': 'protean_sqlalchemy.provider.SAProvider',
             'DATABASE_URI': 'postgresql://master:password@localhost:5432/custom_app'
         }
     }
@@ -83,7 +83,7 @@ To specify a specific provider, pass the key that it has been defined with:
             'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'
         },
         'postgres': {
-            'PROVIDER': 'protean_sqlalchemy.repository.SARepository',
+            'PROVIDER': 'protean_sqlalchemy.provider.SAProvider',
             'DATABASE_URI': 'postgresql://master:password@localhost:5432/custom_app'
         }
     }
@@ -103,11 +103,11 @@ To specify a specific provider, pass the key that it has been defined with:
             'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'
         },
         'primary': {
-            'PROVIDER': 'protean_sqlalchemy.repository.SARepository',
+            'PROVIDER': 'protean_sqlalchemy.provider.SAProvider',
             'DATABASE_URI': 'postgresql://master:password@primary.com:5432/custom_app'
         },
         'secondary': {
-            'PROVIDER': 'protean_sqlalchemy.repository.SARepository',
+            'PROVIDER': 'protean_sqlalchemy.provider.SAProvider',
             'DATABASE_URI': 'postgresql://master:password@secondary.com:5432/reporting'
         }
     }
