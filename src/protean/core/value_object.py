@@ -221,13 +221,10 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
 
     def __eq__(self, other):
         """Equaivalence check to be based only on Identity"""
-        if type(other) is type(self):
-            self_id = getattr(self, self.meta_.id_field.field_name)
-            other_id = getattr(other, other.meta_.id_field.field_name)
+        if type(other) is not type(self):
+            return False
 
-            return self_id == other_id
-
-        return False
+        return self.to_dict() == other.to_dict()
 
     def __hash__(self):
         """Overrides the default implementation and bases hashing on identity"""
@@ -265,7 +262,7 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
     def to_dict(self):
         """ Return data as a dictionary """
         return {field_name: getattr(self, field_name, None)
-                for field_name in self.meta_.declared_fields}
+                for field_name in self.meta_.attributes}
 
     def __repr__(self):
         """Friendly repr for Value Object"""

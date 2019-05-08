@@ -7,6 +7,7 @@ from typing import List
 
 # Protean
 from protean.core.entity import BaseEntity
+from protean.core.value_object import BaseValueObject
 from protean.utils import singleton
 
 
@@ -14,6 +15,7 @@ from protean.utils import singleton
 @dataclass
 class _DomainRegistry:
     entities: List[BaseEntity] = field(default_factory=list)
+    value_objects: List[BaseValueObject] = field(default_factory=list)
 
 
 # Singleton Registry, populated with the help of @<DomainElement> decorators
@@ -47,6 +49,40 @@ def Entity(_cls=None, *, aggregate=None, context=None):
 
     def wrap(cls):
         return _process_entity(cls, aggregate, context)
+
+    # See if we're being called as @Entity or @Entity().
+    if _cls is None:
+        # We're called with parens.
+        return wrap
+
+    # We're called as @dataclass without parens.
+    return wrap(_cls)
+
+
+def _process_value_object(cls, aggregate, context):
+    """Register class into the domain"""
+    # Dynamically subclass from BaseValueObject
+    new_dict = cls.__dict__.copy()
+    new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
+    new_cls = type(cls.__name__, (BaseValueObject, ), new_dict)
+
+    # Enrich element with domain information
+    new_cls.meta_.aggregate = aggregate
+    new_cls.meta_.context = context
+
+    # Register element with domain
+    _domain_registry.value_objects.append(new_cls)
+
+    return new_cls
+
+
+def ValueObject(_cls=None, *, aggregate=None, context=None):
+    """Returns the same class that was passed in,
+    after recording its presence in the domain
+    """
+
+    def wrap(cls):
+        return _process_value_object(cls, aggregate, context)
 
     # See if we're being called as @Entity or @Entity().
     if _cls is None:

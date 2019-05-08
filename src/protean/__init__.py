@@ -3,10 +3,10 @@
 __version__ = '0.0.11'
 
 # Local/Relative Imports
-from .domain import Domain, Entity
+from .domain import Domain, Entity, ValueObject
 
 # Temporary - Implementation pending
 # Support Aggregate annotation as an equivalent of Entity
 Aggregate = Entity
 
-__all__ = ('Domain', 'Entity', 'Aggregate')
+__all__ = ('Domain', 'Entity', 'Aggregate', 'ValueObject')
