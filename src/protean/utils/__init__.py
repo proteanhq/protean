@@ -3,9 +3,10 @@
 Definitions/declaractions in this module should be independent of other modules,
 to the maximum extent possible.
 """
+# Standard Library Imports
 import functools
 
-from enum import auto, Enum
+from enum import Enum, auto
 
 
 class IdentityStrategy(Enum):
@@ -15,7 +16,6 @@ class IdentityStrategy(Enum):
 
 
 class classproperty(object):
-
     def __init__(self, fget):
         self.fget = fget
 

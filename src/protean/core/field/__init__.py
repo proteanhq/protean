@@ -4,8 +4,9 @@
 from .association import Reference
 from .base import Field
 from .basic import Auto, Boolean, Date, DateTime, Dict, Float, Identifier, Integer, List, String, Text
+from .embedded import ValueObject
 from .ext import StringLong, StringMedium, StringShort
 
 __all__ = ('Field', 'String', 'Boolean', 'Integer', 'Float', 'List', 'Dict',
            'Auto', 'Date', 'DateTime', 'Text', 'StringShort', 'StringMedium',
-           'StringLong', 'Reference', 'Identifier')
+           'StringLong', 'Reference', 'Identifier', 'ValueObject')

@@ -6,9 +6,8 @@ import logging
 from typing import Any
 
 # Protean
-from protean.core.exceptions import InvalidStateError, NotSupportedError, ObjectNotFoundError, ValidationError
+from protean.core.exceptions import NotSupportedError, ValidationError
 from protean.core.field import Auto, Field
-from protean.core.repository import repo_factory
 from protean.utils import inflection
 
 logger = logging.getLogger('protean.core.value_object')
@@ -24,7 +23,6 @@ class _ValueObjectMetaclass(type):
     `meta_` is setup with these attributes:
         * `declared_fields`: A dictionary that gives a list of any instances of `Field`
             included as attributes on either the class or on any of its superclasses
-        * `id_field`: The Primary identifier attribute of the Entity
     """
 
     def __new__(mcs, name, bases, attrs, **kwargs):
@@ -174,7 +172,7 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
         Check ``_ValueObjectMeta`` class for full documentation.
         """
 
-    def __init__(self, *template, **kwargs):
+    def __init__(self, *template, owner=None, **kwargs):
         """
         Initialise the value object.
 
@@ -190,6 +188,9 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
                 f' and cannot be instantiated')
 
         self.errors = {}
+
+        # Entity/Aggregate to which this Value Object is connected to
+        self.owner = owner
 
         # Load the attributes based on the template
         loaded_fields = []
@@ -230,6 +231,21 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
         """Overrides the default implementation and bases hashing on identity"""
         return hash(getattr(self, self.meta_.id_field.field_name))
 
+    def __repr__(self):
+        """Friendly repr for Value Object"""
+        return '<%s: %s>' % (self.__class__.__name__, self)
+
+    def __str__(self):
+        return '%s object (%s)' % (
+            self.__class__.__name__,
+            '{}'.format(self.to_dict())
+        )
+
+    @classmethod
+    def build(cls, value: Any):
+        """Simply return a new instance of the ValueObject, initialized with value"""
+        return cls(value)
+
     def _update_data(self, *data_dict, **kwargs):
         """
         A private method to process and update values correctly.
@@ -264,301 +280,12 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
         return {field_name: getattr(self, field_name, None)
                 for field_name in self.meta_.attributes}
 
-    def __repr__(self):
-        """Friendly repr for Value Object"""
-        return '<%s: %s>' % (self.__class__.__name__, self)
-
-    def __str__(self):
-        identifier = getattr(self, self.meta_.id_field.field_name)
-        return '%s object (%s)' % (
-            self.__class__.__name__,
-            '{}: {}'.format(self.meta_.id_field.field_name, identifier)
-        )
-
     def clone(self):
         """Deepclone the value object"""
         clone_copy = copy.deepcopy(self)
 
         return clone_copy
 
-    ######################
-    # Life-cycle methods #
-    ######################
-
-    @classmethod
-    def get(cls, identifier: Any) -> 'BaseValueObject':
-        """Get a specific Record from the Repository
-
-        :param identifier: id of the record to be fetched from the repository.
-        """
-        logger.debug(f'Lookup `{cls.__name__}` object with identifier {identifier}')
-        # Get the ID field for the entity
-        filters = {
-            cls.meta_.id_field.field_name: identifier
-        }
-
-        # Find this item in the repository or raise Error
-        results = cls.query.filter(**filters).limit(1).all()
-        if not results:
-            raise ObjectNotFoundError(
-                f'`{cls.__name__}` object with identifier {identifier} '
-                f'does not exist.')
-
-        # Return the first result
-        return results.first
-
-    def reload(self) -> None:
-        """Reload Entity from the repository"""
-        if not self.state_.is_persisted or self.state_.is_changed:
-            raise InvalidStateError(f'`{self.__class__.__name__}` object is in invalid state')
-
-        # Retrieve the entity's ID by the configured Identifier field
-        identifier = getattr(self, self.meta_.id_field.field_name)
-        logger.debug(f'Lookup `{self.__class__.__name__}` object with '
-                     f'identifier {self.meta_.id_field}')
-
-        # Fetch the entity data from db by its identifier
-        db_value = self.get(identifier)
-
-        # Update own data from fetched entity data
-        # This allows us to ``dog.reload()`` instead of ``dog = dog.reload()``
-        self._update_data(db_value.to_dict())
-
-    @classmethod
-    def find_by(cls, **kwargs) -> 'BaseValueObject':
-        """Find a specific entity record that matches one or more criteria.
-
-        :param kwargs: named arguments consisting of attr_name and attr_value pairs to search on
-        """
-        logger.debug(f'Lookup `{cls.__name__}` object with values '
-                     f'{kwargs}')
-
-        # Find this item in the repository or raise Error
-        results = cls.query.filter(**kwargs).limit(1).all()
-
-        if not results:
-            raise ObjectNotFoundError(
-                f'`{cls.__name__}` object with values {[item for item in kwargs.items()]} '
-                f'does not exist.')
-
-        # Return the first result
-        return results.first
-
-    @classmethod
-    def exists(cls, excludes_, **filters):
-        """ Return `True` if objects matching the provided filters and excludes
-        exist if not return false.
-
-        Calls the `filter` method by default, but can be overridden for better and
-            quicker implementations that may be supported by a database.
-
-        :param excludes_: entities without this combination of field name and
-            values will be returned
-        """
-        results = cls.query.filter(**filters).exclude(**excludes_)
-        return bool(results)
-
-    @classmethod
-    def create(cls, *args, **kwargs) -> 'BaseValueObject':
-        """Create a new record in the repository.
-
-        Also performs unique validations before creating the entity
-
-        :param args: positional arguments for the entity
-        :param kwargs: keyword arguments for the entity
-        """
-        logger.debug(
-            f'Creating new `{cls.__name__}` object using data {kwargs}')
-
-        model_cls = repo_factory.get_model(cls)
-        repository = repo_factory.get_repository(cls)
-
-        try:
-            # Build the entity from the input arguments
-            # Raises validation errors, if any, at this point
-            entity = cls(*args, **kwargs)
-
-            # Do unique checks, create this object and return it
-            entity._validate_unique()
-
-            # Perform Pre-Save Actions
-            entity.pre_save()
-
-            # Build the model object and create it
-            model_obj = repository.create(model_cls.from_entity(entity))
-
-            # Update the auto fields of the entity
-            for field_name, field_obj in entity.meta_.declared_fields.items():
-                if isinstance(field_obj, Auto):
-                    if isinstance(model_obj, dict):
-                        field_val = model_obj[field_name]
-                    else:
-                        field_val = getattr(model_obj, field_name)
-                    setattr(entity, field_name, field_val)
-
-            # Set Entity status to saved
-            entity.state_.mark_saved()
-
-            # Perform Post-Save Actions
-            entity.post_save()
-
-            return entity
-        except ValidationError:
-            # FIXME Log Exception
-            raise
-
-    def save(self):
-        """Save a new Entity into repository.
-
-        Performs unique validations before creating the entity.
-        """
-        logger.debug(
-            f'Saving `{self.__class__.__name__}` object')
-
-        # Fetch Model class and connected repository from Repository Factory
-        model_cls = repo_factory.get_model(self.__class__)
-        repository = repo_factory.get_repository(self.__class__)
-
-        try:
-            # Do unique checks, update the record and return the Entity
-            self._validate_unique(create=False)
-
-            # Perform Pre-Save Actions
-            self.pre_save()
-
-            # Build the model object and create it
-            model_obj = repository.create(model_cls.from_entity(self))
-
-            # Update the auto fields of the entity
-            for field_name, field_obj in self.meta_.declared_fields.items():
-                if isinstance(field_obj, Auto):
-                    if isinstance(model_obj, dict):
-                        field_val = model_obj[field_name]
-                    else:
-                        field_val = getattr(model_obj, field_name)
-                    setattr(self, field_name, field_val)
-
-            # Set Entity status to saved
-            self.state_.mark_saved()
-
-            # Perform Post-Save Actions
-            self.post_save()
-
-            return self
-        except Exception:
-            # FIXME Log Exception
-            raise
-
-    def update(self, *data, **kwargs) -> 'BaseValueObject':
-        """Update a Record in the repository.
-
-        Also performs unique validations before creating the entity.
-
-        Supports both dictionary and keyword argument updates to the entity::
-
-            dog.update({'age': 10})
-
-            dog.update(age=10)
-
-        :param data: Dictionary of values to be updated for the entity
-        :param kwargs: keyword arguments with key-value pairs to be updated
-        """
-        logger.debug(f'Updating existing `{self.__class__.__name__}` object with id {self.id}')
-
-        # Fetch Model class and connected repository from Repository Factory
-        model_cls = repo_factory.get_model(self.__class__)
-        repository = repo_factory.get_repository(self.__class__)
-
-        try:
-            # Update entity's data attributes
-            self._update_data(*data, **kwargs)
-
-            # Do unique checks, update the record and return the Entity
-            self._validate_unique(create=False)
-
-            # Perform Pre-Save Actions
-            self.pre_save()
-
-            repository.update(model_cls.from_entity(self))
-
-            # Set Entity status to saved
-            self.state_.mark_saved()
-
-            # Perform Post-Save Actions
-            self.post_save()
-
-            return self
-        except Exception:
-            # FIXME Log Exception
-            raise
-
-    def _validate_unique(self, create=True):
-        """ Validate the unique constraints for the entity """
-        # Build the filters from the unique constraints
-        filters, excludes = {}, {}
-
-        for field_name, field_obj in self.meta_.unique_fields:
-            lookup_value = getattr(self, field_name, None)
-            # Ignore empty lookup values
-            if lookup_value in Field.empty_values:
-                continue
-            # Ignore identifiers on updates
-            if not create and field_obj.identifier:
-                excludes[field_name] = lookup_value
-                continue
-            filters[field_name] = lookup_value
-
-        # Lookup the objects by the filters and raise error on results
-        for filter_key, lookup_value in filters.items():
-            if self.exists(excludes, **{filter_key: lookup_value}):
-                field_obj = self.meta_.declared_fields[filter_key]
-                field_obj.fail('unique',
-                               entity_name=self.__class__.__name__,
-                               field_name=filter_key)
-
-    def delete(self):
-        """Delete a Record from the Repository
-
-        will perform callbacks and run validations before deletion.
-
-        Throws ObjectNotFoundError if the object was not found in the repository.
-        """
-        # Fetch Model class and connected repository from Repository Factory
-        model_cls = repo_factory.get_model(self.__class__)
-        repository = repo_factory.get_repository(self.__class__)
-
-        try:
-            if not self.state_.is_destroyed:
-                # Update entity's data attributes
-                repository.delete(model_cls.from_entity(self))
-
-                # Set Entity status to saved
-                self.state_.mark_destroyed()
-
-            return self
-        except Exception:
-            # FIXME Log Exception
-            raise
-
-    @classmethod
-    def delete_all(cls):
-        """Delete all Records in a Repository
-
-        Will skip callbacks and validations.
-        """
-        # Fetch connected repository from Repository Factory
-        repository = repo_factory.get_repository(cls)
-
-        try:
-            repository.delete_all()
-        except Exception:
-            # FIXME Log Exception
-            raise
-
-    def pre_save(self):
-        """Pre-Save Hook"""
-        pass
-
-    def post_save(self):
-        """Post-Save Hook"""
-        pass
+    def _clone_with_values(self, **kwargs):
+        """To be implemented in each value object"""
+        raise NotImplementedError

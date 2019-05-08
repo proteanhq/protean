@@ -9,10 +9,10 @@ from uuid import uuid4
 # Protean
 from protean.conf import active_config
 from protean.core.exceptions import InvalidStateError, NotSupportedError, ObjectNotFoundError, ValidationError
-from protean.core.field import Auto, Field, Reference
+from protean.core.field import Auto, Field, Reference, ValueObject
 from protean.core.queryset import QuerySet
 from protean.core.repository import repo_factory
-from protean.utils import inflection, IdentityStrategy
+from protean.utils import IdentityStrategy, inflection
 
 # Local/Relative Imports
 from ..core.field.association import _ReferenceField  # Relative path to private class
@@ -66,6 +66,9 @@ class _EntityMetaclass(type):
         # Set up Relation Fields
         new_class._set_up_reference_fields()
 
+        # Set up ValueObject Fields
+        new_class._set_up_value_object_fields()
+
         # Load list of Attributes from declared fields, depending on type of fields
         new_class._load_attributes()
 
@@ -118,6 +121,15 @@ class _EntityMetaclass(type):
                     setattr(new_class, shadow_field_name, shadow_field)
                     shadow_field.__set_name__(new_class, shadow_field_name)
 
+    def _set_up_value_object_fields(new_class):
+        """Walk through value object fields and setup shadow attributes"""
+        if new_class.meta_.declared_fields:
+            for _, field in new_class.meta_.declared_fields.items():
+                if isinstance(field, ValueObject):
+                    shadow_fields = field.get_shadow_fields()
+                    for shadow_field_name, shadow_field in shadow_fields:
+                        setattr(new_class, shadow_field_name, shadow_field)
+
     def _set_id_field(new_class):
         """Lookup the id field for this entity and assign"""
         # FIXME What does it mean when there are no declared fields?
@@ -144,8 +156,13 @@ class _EntityMetaclass(type):
 
     def _load_attributes(new_class):
         """Load list of attributes from declared fields"""
-        for field_name, field_obj in new_class.meta_.declared_fields.items():
-            new_class.meta_.attributes[field_obj.get_attribute_name()] = field_obj
+        for _, field_obj in new_class.meta_.declared_fields.items():
+            if isinstance(field_obj, ValueObject):
+                shadow_fields = field_obj.get_shadow_fields()
+                for _, shadow_field in shadow_fields:
+                    new_class.meta_.attributes[shadow_field.attribute_name] = shadow_field
+            else:
+                new_class.meta_.attributes[field_obj.get_attribute_name()] = field_obj
 
 
 class EntityMeta:
@@ -166,6 +183,8 @@ class EntityMeta:
             or on any of its superclasses will be include in this dictionary.
         :id_field: protean.core.Field
             An instance of the field that will serve as the unique identifier for the entity
+
+    FIXME Make `EntityMeta` immutable
     """
 
     def __init__(self, entity_name, meta):
@@ -185,6 +204,10 @@ class EntityMeta:
         self.declared_fields = {}
         self.attributes = {}
         self.id_field = None
+
+        # Domain Attributes
+        self.aggregate = None
+        self.bounded_context = None
 
     @property
     def unique_fields(self):
@@ -284,7 +307,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         Check ``EntityMeta`` class for full documentation.
         """
 
-    def __init__(self, *template, **kwargs):
+    def __init__(self, *template, **kwargs):  # noqa: C901
         """
         Initialise the entity object.
 
@@ -321,6 +344,22 @@ class BaseEntity(metaclass=_EntityMetaclass):
         for field_name, val in kwargs.items():
             loaded_fields.append(field_name)
             setattr(self, field_name, val)
+
+        # Load Value Objects
+        for field_name, field_obj in self.meta_.declared_fields.items():
+            if isinstance(field_obj, (ValueObject)):
+                attributes = [
+                    (embedded_field.field_name, embedded_field.attribute_name)
+                    for embedded_field
+                    in field_obj.embedded_fields.values()
+                    ]
+                vals = {
+                    name: getattr(self, attr)
+                    for name, attr in attributes
+                }
+                value_object = field_obj.value_object_cls.build(**vals)
+                setattr(self, field_name, value_object)
+                loaded_fields.append(field_name)
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields
@@ -396,8 +435,28 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
     def to_dict(self):
         """ Return entity data as a dictionary """
-        return {field_name: getattr(self, field_name, None)
-                for field_name in self.meta_.declared_fields}
+        field_values = {}
+        field_values = {
+            field_name: getattr(self, field_name, None)
+            for field_name, field_obj in self.meta_.declared_fields.items()
+            if not isinstance(field_obj, ValueObject)
+            }
+
+        # FIXME Simplify fetching and appending Value Object dict values
+        vo_fields = {
+            field_name: getattr(self, field_name, None)
+            for field_name, field_obj in self.meta_.declared_fields.items()
+            if isinstance(field_obj, ValueObject)
+            }
+
+        vo_field_values = {}
+        for vo_field_name, vo_field_obj in vo_fields.items():
+            vo_field_values = {
+                vo_field_name + '_' + field_name: getattr(vo_field_obj, field_name, None)
+                for field_name, field_obj in vo_field_obj.meta_.declared_fields.items()
+            }
+
+        return {**field_values, **vo_field_values}
 
     def __repr__(self):
         """Friendly repr for Entity"""
