@@ -8,7 +8,7 @@ from uuid import UUID
 import pytest
 
 from protean.core.field import ValueObject
-from tests.support.sample_domain.customer.domain.model.account import Account, AccountType, Balance, Currency
+from tests.support.domains.banking.customer.domain.model.account import Account, AccountType, Balance, Currency
 
 
 class TestAccountAggregate:

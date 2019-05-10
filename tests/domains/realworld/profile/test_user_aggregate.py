@@ -9,7 +9,7 @@ import pytest
 
 from passlib.hash import pbkdf2_sha256
 from protean.core.field import ValueObject
-from tests.support.sample_domain.profile.domain.model.user import Email, User
+from tests.support.domains.realworld.profile.domain.model.user import Email, User
 
 
 class TestUserAggregate:

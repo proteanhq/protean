@@ -1,7 +1,7 @@
 """Test VO functionality with Balance Value Object"""
 
 # Protean
-from tests.support.sample_domain.customer.domain.model.account import Balance, Currency
+from tests.support.domains.banking.customer.domain.model.account import Balance, Currency
 
 
 class TestBalanceVO:

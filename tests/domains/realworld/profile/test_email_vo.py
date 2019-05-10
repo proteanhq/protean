@@ -1,7 +1,7 @@
 """Test Value Object functionality with Sample Domain Artifacts"""
 
 # Protean
-from tests.support.sample_domain.profile.domain.model.user import Email
+from tests.support.domains.realworld.profile.domain.model.user import Email
 
 
 class TestEmailVO:
