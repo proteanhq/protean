@@ -181,6 +181,21 @@ class Auto(Field):
 
     def _cast_to_type(self, value):
         """ Perform no validation for auto fields. Return the value as is"""
+        from uuid import UUID
+        if isinstance(value, UUID):
+            value = str(value)
+
+        return value
+
+
+class Identifier(Field):
+    """ Concrete field implementation for Identifiers.
+
+    Values can be Integers or Strings.
+    """
+
+    def _cast_to_type(self, value):
+        """ Perform no validation for identifier fields. Return the value as is"""
         return value
 
 

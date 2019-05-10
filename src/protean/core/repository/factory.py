@@ -8,7 +8,7 @@ from threading import local
 # Protean
 from protean.core.exceptions import ConfigurationError, NotSupportedError
 from protean.core.provider import providers
-from protean.utils.generic import fully_qualified_name
+from protean.utils import fully_qualified_name
 
 logger = logging.getLogger('protean.repository')
 

@@ -33,7 +33,7 @@ class TestDomain:
 
         domain = Domain(__name__)
         assert domain.registry is not None
-        assert DummyDog in domain.registry.entities
+        assert 'DummyDog' in domain.registry._entities
 
     def test_init2(self):
         """Test that Domain object can be initialized successfully"""

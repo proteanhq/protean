@@ -8,6 +8,7 @@ from itertools import count
 from operator import itemgetter
 from threading import Lock
 from typing import Any
+from uuid import UUID
 
 # Protean
 from protean.core.entity import BaseEntity
@@ -329,6 +330,9 @@ class DefaultDictLookup(BaseLookup):
     """Base class with default implementation of expression construction"""
     def process_source(self):
         """Return source with transformations, if any"""
+        if isinstance(self.source, UUID):
+            self.source = str(self.source)
+
         if isinstance(self.source, str):
             # Replace single and double quotes with escaped single-quote
             self.source = self.source.replace("'", "\'").replace('"', "\'")
@@ -337,6 +341,9 @@ class DefaultDictLookup(BaseLookup):
 
     def process_target(self):
         """Return target with transformations, if any"""
+        if isinstance(self.target, UUID):
+            self.target = str(self.target)
+
         if isinstance(self.target, str):
             # Replace single and double quotes with escaped single-quote
             self.target = self.target.replace("'", "\'").replace('"', "\'")

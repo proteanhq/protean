@@ -47,7 +47,7 @@ class TestEntity:
         assert dog1 != dog2  # Because their identities are different
         assert dog2 != dog1  # Because their identities are different
 
-        db_dog = Dog.get(1)
+        db_dog = Dog.get(dog1.id)
         assert dog1 == db_dog  # Because it's the same record but reloaded from db
         assert db_dog == dog1  # Because it's the same record but reloaded from db
 
@@ -138,35 +138,35 @@ class TestEntity:
             age = field.Integer(default=5)
 
         @Entity
-        class Dog2(SharedEntity):
+        class Dog3(SharedEntity):
             """This is a dummy Dog Entity class with a mixin"""
             name = field.String(required=True, max_length=50, min_length=5)
             owner = field.String(required=True, max_length=15)
 
-        dog2 = Dog2(id=3, name='John Doe', owner='Jimmy')
-        assert dog2 is not None
-        assert dog2.age == 5
+        dog3 = Dog3(id=3, name='John Doe', owner='Jimmy')
+        assert dog3 is not None
+        assert dog3.age == 5
 
     def test_inhertied_entity_schema(self):
         """ Test that subclasses of `Entity` can be inherited"""
 
-        class Dog2(Dog):
+        class Dog4(Dog):
             """This is a dummy Dog Entity class with a mixin"""
             pass
 
-        assert Dog.meta_.schema_name != Dog2.meta_.schema_name
+        assert Dog.meta_.schema_name != Dog4.meta_.schema_name
 
     def test_default_id(self):
         """ Test that default id field is assigned when not defined"""
 
         @Entity
-        class Dog2:
+        class Dog5:
             """This is a dummy Dog Entity class without an id"""
             name = field.String(required=True, max_length=50, min_length=5)
 
-        dog2 = Dog2(id=3, name='John Doe')
-        assert dog2 is not None
-        assert dog2.id == 3
+        dog5 = Dog5(id=3, name='John Doe')
+        assert dog5 is not None
+        assert dog5.id == 3
 
     def test_id_immutability(self):
         """Test that `id` cannot be changed once assigned"""
@@ -742,7 +742,7 @@ class TestEntity:
     def test_abstract(self):
         """Test that abstract entities cannot be initialized"""
         @Entity
-        class AbstractDog:
+        class AbstractDog2:
             """A Dog that cannot Live!"""
             name = field.String(required=True, unique=True, max_length=50)
             age = field.Integer(default=5)
@@ -753,19 +753,19 @@ class TestEntity:
 
         with pytest.raises(NotSupportedError) as exc1:
             from protean.core.repository import repo_factory
-            repo_factory.register(AbstractDog)
-        assert exc1.value.args[0] == ('AbstractDog class has been marked abstract'
+            repo_factory.register(AbstractDog2)
+        assert exc1.value.args[0] == ('AbstractDog2 class has been marked abstract'
                                       ' and cannot be instantiated')
 
         with pytest.raises(NotSupportedError) as exc2:
-            AbstractDog(name='Titan', age=10001, owner='God')
-        assert exc2.value.args[0] == ('AbstractDog class has been marked abstract'
+            AbstractDog2(name='Titan', age=10001, owner='God')
+        assert exc2.value.args[0] == ('AbstractDog2 class has been marked abstract'
                                       ' and cannot be instantiated')
 
     def test_abstract_inheritance(self):
         """Test that abstract entities cannot be initialized"""
         @Entity
-        class AbstractDog:
+        class AbstractDog3:
             """A Dog that cannot Live!"""
             age = field.Integer(default=5)
 
@@ -773,12 +773,12 @@ class TestEntity:
                 abstract = True
 
         @Entity
-        class ConcreteDog(AbstractDog):
+        class ConcreteDog1(AbstractDog3):
             """A Dog that inherits aging and death"""
             name = field.String(required=True, unique=True, max_length=50)
             owner = field.String(required=True, max_length=15)
 
-        immortal_dog = ConcreteDog(name='Titan', owner='God')
+        immortal_dog = ConcreteDog1(name='Titan', owner='God')
         assert immortal_dog is not None
         assert immortal_dog.age == 5
 
@@ -801,12 +801,12 @@ class TestEntity:
                 abstract = True
 
         @Entity
-        class ConcreteDog(DogWithRecords):
+        class ConcreteDog2(DogWithRecords):
             """A Dog that inherits aging and death, with medical records"""
             name = field.String(required=True, unique=True, max_length=50)
             owner = field.String(required=True, max_length=15)
 
-        ordinary_dog = ConcreteDog(name='Titan', owner='God')
+        ordinary_dog = ConcreteDog2(name='Titan', owner='God')
         assert ordinary_dog is not None
         assert ordinary_dog.age == 5
         assert ordinary_dog.born_at is not None
@@ -851,35 +851,35 @@ class TestIdentity:
     def test_non_id_identity_1(self):
         """Test that any field can be named as a primary key"""
         @Entity
-        class Person:
+        class Person1:
             """This is a dummy Person Entity class with a unique SSN"""
             ssn = field.String(identifier=True, max_length=10)
             name = field.String(max_length=50)
 
-        person = Person(ssn='134223442', name='John Doe')
+        person = Person1(ssn='134223442', name='John Doe')
         assert person.meta_.id_field.field_name == 'ssn'
         assert getattr(person, person.meta_.id_field.field_name) == '134223442'
 
         with pytest.raises(ValidationError):
-            person = Person(name='John Doe')
+            person = Person1(name='John Doe')
 
     def test_non_id_identity_2(self, test_domain):
         """Test that any integer field can be named as a primary key
         and is generated automatically if not specified
         """
         @Entity
-        class Person:
+        class Person2:
             """This is a dummy Person Entity class with a unique SSN"""
             ssn = field.Auto(identifier=True)
             name = field.String(max_length=50)
 
-        test_domain.register_element(Person)
+        test_domain.register_element(Person2)
 
-        person = Person.create(name='John Doe')
+        person = Person2.create(name='John Doe')
         assert person.meta_.id_field.field_name == 'ssn'
         assert person.ssn is not None
 
-        test_domain.unregister_element(Person)
+        test_domain.unregister_element(Person2)
 
 
 class TestEntityMetaAttributes:
@@ -899,7 +899,7 @@ class TestEntityMetaAttributes:
 
         # Class with overridden meta info
         @Entity
-        class Foo:
+        class Foo1:
             bar = field.String(max_length=25)
 
             class Meta:
@@ -909,15 +909,15 @@ class TestEntityMetaAttributes:
         assert getattr(Dog.meta_, 'abstract') is False
 
         # Test that the option in meta is overridden
-        assert hasattr(Foo.meta_, 'abstract')
-        assert getattr(Foo.meta_, 'abstract') is True
+        assert hasattr(Foo1.meta_, 'abstract')
+        assert getattr(Foo1.meta_, 'abstract') is True
 
     def test_meta_overriding_schema_name(self):
         """Test that `schema_name` can be overridden"""
 
         # Class with overridden meta info
         @Entity
-        class Foo:
+        class Foo2:
             bar = field.String(max_length=25)
 
             class Meta:
@@ -928,15 +928,15 @@ class TestEntityMetaAttributes:
         assert getattr(HasOneHuman1.meta_, 'schema_name') == 'has_one_human1'
 
         # Test that the option in meta is overridden
-        assert hasattr(Foo.meta_, 'schema_name')
-        assert getattr(Foo.meta_, 'schema_name') == 'foosball'
+        assert hasattr(Foo2.meta_, 'schema_name')
+        assert getattr(Foo2.meta_, 'schema_name') == 'foosball'
 
     def test_meta_overriding_provider(self):
         """Test that `provider` can be overridden"""
 
         # Class with overridden meta info
         @Entity
-        class Foo:
+        class Foo3:
             bar = field.String(max_length=25)
 
             class Meta:
@@ -946,15 +946,15 @@ class TestEntityMetaAttributes:
         assert getattr(Dog.meta_, 'provider') == 'default'
 
         # Test that the option in meta is overridden
-        assert hasattr(Foo.meta_, 'provider')
-        assert getattr(Foo.meta_, 'provider') == 'non-default'
+        assert hasattr(Foo3.meta_, 'provider')
+        assert getattr(Foo3.meta_, 'provider') == 'non-default'
 
     def test_meta_overriding_order_by(self):
         """Test that `order_by` can be overridden"""
 
         # Class with overridden meta info
         @Entity
-        class Foo:
+        class Foo4:
             bar = field.String(max_length=25)
 
             class Meta:
@@ -964,8 +964,8 @@ class TestEntityMetaAttributes:
         assert getattr(Dog.meta_, 'order_by') == ()
 
         # Test that the option in meta is overridden
-        assert hasattr(Foo.meta_, 'order_by')
-        assert getattr(Foo.meta_, 'order_by') == ('bar', )
+        assert hasattr(Foo4.meta_, 'order_by')
+        assert getattr(Foo4.meta_, 'order_by') == ('bar', )
 
     def test_meta_on_init(self):
         """Test that `meta` attribute is available after initialization"""

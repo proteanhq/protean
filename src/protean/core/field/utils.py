@@ -15,3 +15,18 @@ def fetch_entity_cls_from_registry(entity):
             raise
     else:
         return entity
+
+
+def fetch_value_object_cls_from_domain(value_object_name):
+    """Util Method to fetch an Value Object class from a name string"""
+    # Defensive check to ensure we only process if `value_object_cls` is a string
+    if isinstance(value_object_name, str):
+        try:
+            from protean import domain_registry
+            return domain_registry.get_value_object_by_name(value_object_name)
+        except AssertionError:
+            # Value Object has not been registered (yet)
+            # FIXME print a helpful debug message
+            raise
+    else:
+        return value_object_name

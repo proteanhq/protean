@@ -116,9 +116,8 @@ class TestFiltersLookups:
         # Filter the entity and validate the results
         filtered_humans = Human.query.filter(id__in=[humans[1].id,
                                                      humans[3].id])
-        assert filtered_humans is not None
         assert filtered_humans.total == 2
-        assert filtered_humans[0].id == humans[1].id
+        assert filtered_humans[0].id in [humans[1].id, humans[3].id]
 
     def test_date_lookup(self, humans):
         """ Test the lookup of date fields for the Adapter """

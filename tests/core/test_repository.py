@@ -3,7 +3,7 @@
 # Protean
 import pytest
 
-from protean import Entity
+from protean.core.entity import BaseEntity
 from protean.core.exceptions import ObjectNotFoundError, ValidationError
 from protean.core.repository import repo_factory
 from protean.utils.query import Q
@@ -167,8 +167,7 @@ class TestFactory:
 
     def test_register(self):
         """Test registering an entity to the repository factory"""
-        @Entity
-        class TempEntity:
+        class TempEntity(BaseEntity):
             """Temporary Entity to test registration"""
             pass
 
@@ -180,8 +179,7 @@ class TestFactory:
 
     def test_unregister(self):
         """Test unregistering an entity from the repository factory"""
-        @Entity
-        class TempEntity:
+        class TempEntity(BaseEntity):
             """Temporary Entity to test registration"""
             pass
 

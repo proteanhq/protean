@@ -25,15 +25,15 @@ class TestSqlalchemyRepository:
         # Create the entity and validate the results
         dog = Dog.create(name='Johnny', owner='John')
         assert dog is not None
-        assert dog.id == 1
+        assert dog.id is not None
         assert dog.name == 'Johnny'
         assert dog.age == 5
 
         # Check if the object is in the repo
         dog_model_cls = default_provider.get_model(Dog)
-        dog_db = conn.query(dog_model_cls).get(1)
+        dog_db = conn.query(dog_model_cls).get(dog.id)
         assert dog_db is not None
-        assert dog_db.id == 1
+        assert dog_db.id == dog.id
         assert dog_db.name == 'Johnny'
 
         # Check for unique validation
@@ -47,18 +47,17 @@ class TestSqlalchemyRepository:
         # Update the entity and validate the results
         dog = Dog.create(name='Johnny', owner='John')
 
-        dog = Dog.get(1)
-        dog.update(age=7)
-        assert dog is not None
-        assert dog.age == 7
+        dog_reloaded = Dog.get(dog.id)
+        dog_reloaded.update(age=7)
+        assert dog_reloaded.age == 7
 
         # Check if the object is in the repo
         dog_model_cls = default_provider.get_model(Dog)
-        dog_db = conn.query(dog_model_cls).get(1)
+        dog_db = conn.query(dog_model_cls).get(dog.id)
         assert dog_db is not None
-        assert dog_db.id == 1
+        assert dog_db.id == dog.id
         assert dog_db.name == 'Johnny'
-        assert dog.age == 7
+        assert dog_db.age == 7
 
     def test_filter(self):
         """Test reading entities from the repository"""
@@ -86,9 +85,9 @@ class TestSqlalchemyRepository:
     def test_delete(self, conn, default_provider):
         """Test deleting an entity from the repository"""
         # Delete the entity and validate the results
-        Dog.create(name='Johnny', owner='John')
+        dog_predelete = Dog.create(name='Johnny', owner='John')
 
-        dog = Dog.get(1)
+        dog = Dog.get(dog_predelete.id)
         dog_deleted = dog.delete()
         assert dog_deleted.state_.is_destroyed is True
 
