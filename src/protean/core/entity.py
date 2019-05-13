@@ -392,6 +392,15 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
     def __eq__(self, other):
         """Equaivalence check to be based only on Identity"""
+
+        # FIXME Enhanced Equality Checks
+        #   * Ensure IDs have values and both of them are not null
+        #   * Ensure that the ID is of the right type
+        #   * Ensure that Objects belong to the same `type`
+        #   * Check Reference equality
+
+        # FIXME Check if `==` and `in` operator work with __eq__
+
         if type(other) is type(self):
             self_id = getattr(self, self.meta_.id_field.field_name)
             other_id = getattr(other, other.meta_.id_field.field_name)
@@ -402,6 +411,8 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
     def __hash__(self):
         """Overrides the default implementation and bases hashing on identity"""
+
+        # FIXME Add Object Class Type to hash
         return hash(getattr(self, self.meta_.id_field.field_name))
 
     def _update_data(self, *data_dict, **kwargs):

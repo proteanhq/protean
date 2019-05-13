@@ -3,8 +3,6 @@
 import copy
 import logging
 
-from typing import Any
-
 # Protean
 from protean.core.exceptions import NotSupportedError, ValidationError
 from protean.core.field import Auto, Field
@@ -220,6 +218,13 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
         if self.errors:
             raise ValidationError(self.errors)
 
+    @classmethod
+    def build(cls, **values):
+        assert all(attr in values
+                   for attr in cls.meta_.declared_fields.keys())
+
+        return cls(**values)
+
     def __eq__(self, other):
         """Equaivalence check to be based only on Identity"""
         if type(other) is not type(self):
@@ -240,40 +245,6 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
             self.__class__.__name__,
             '{}'.format(self.to_dict())
         )
-
-    @classmethod
-    def build(cls, value: Any):
-        """Simply return a new instance of the ValueObject, initialized with value"""
-        return cls(value)
-
-    def _update_data(self, *data_dict, **kwargs):
-        """
-        A private method to process and update values correctly.
-
-        :param data: A dictionary of values to be updated for the value object
-        :param kwargs: keyword arguments with key-value pairs to be updated
-        """
-
-        # Load each of the fields given in the data dictionary
-        self.errors = {}
-
-        for data in data_dict:
-            if not isinstance(data, dict):
-                raise AssertionError(
-                    f'Positional argument "{data}" passed must be a dict.'
-                    f'This argument serves as a template for loading common '
-                    f'values.'
-                )
-            for field_name, val in data.items():
-                setattr(self, field_name, val)
-
-        # Now load against the keyword arguments
-        for field_name, val in kwargs.items():
-            setattr(self, field_name, val)
-
-        # Raise any errors found during update
-        if self.errors:
-            raise ValidationError(self.errors)
 
     def to_dict(self):
         """ Return data as a dictionary """
