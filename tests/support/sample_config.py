@@ -1,4 +1,6 @@
 """Sample Config Module for testing purposes"""
+import datetime
+
 DEBUG = False
 
 # A secret key for this particular Protean installation. Used in secret-key
@@ -30,3 +32,8 @@ CACHE = {
 
 # Email Configuration
 DEFAULT_FROM_EMAIL = 'johndoe@domain.com'
+
+# JWT Backend related configuration
+JWT_ACCESS_TOKEN_EXPIRES = datetime.timedelta(minutes=60)
+JWT_ALGORITHM = 'HS256'
+JWT_IDENTITY_CLAIM = 'identity'

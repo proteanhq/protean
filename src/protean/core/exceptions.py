@@ -27,6 +27,10 @@ class NotSupportedError(Exception):
     """Object does not support the operation being performed"""
 
 
+class IncorrectUsageError(Exception):
+    """Usage of a Domain Element violates principles"""
+
+
 class ValidationError(Exception):
     """Raised when validation fails on a field. Validators and custom fields should
     raise this exception.

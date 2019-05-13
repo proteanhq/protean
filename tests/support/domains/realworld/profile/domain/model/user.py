@@ -1,13 +1,15 @@
 """User Aggregate"""
 from __future__ import annotations
 
+from datetime import datetime
+
 # Protean
 from passlib.hash import pbkdf2_sha256
-from protean import Aggregate, ValueObject
+from protean import Aggregate, Entity, ValueObject
 from protean.core import field
 
 
-@ValueObject(aggregate='user', bounded_context='identity')
+@ValueObject(aggregate='user')
 class Email:
     """An email address, with two clearly identified parts:
         * local_part
@@ -48,12 +50,14 @@ class Email:
                      domain_part=domain or self.domain_part)
 
 
-@Aggregate(aggregate='user', bounded_context='identity', root=True)
+@Aggregate(bounded_context='identity', root=True)
 class User:
+    bio = field.Text()
     email = field.ValueObject(Email)
+    image = field.String(max_length=1024)  # FIXME File VO/URL?
+    password = field.String(max_length=255)  # FIXME Hide this from appearing in to_dict or other attr loops
     token = field.String(max_length=1024)
     username = field.String(max_length=50)
-    password = field.String(max_length=255)
 
     @classmethod
     def build(cls, *template, **kwargs):
@@ -64,4 +68,50 @@ class User:
 
         instance.password = pbkdf2_sha256.hash(instance.password)
 
+        if not instance.token:
+            import uuid
+            instance.token = uuid.uuid4()
+
         return instance
+
+    follows = field.association.HasMany('Follower', via='follower_id')
+    followed_by = field.association.HasMany('Follower')
+
+    favorites = field.association.HasMany('Favorite')
+
+    def follow(self, profile):
+        Follower.create(user_id=profile.id, follower_id=self.id)
+        return self
+
+    def unfollow(self, profile):
+        follower = Follower.find_by(user_id=profile.id, follower_id=self.id)
+        follower.delete()
+        return self
+
+    # FIXME Should we expect an article here, or just an identifier
+    def favorite(self, article):
+        Favorite.create(user=self, article_id=article.id)
+        return self
+
+    def unfavorite(self, article):  # FIXME Should we expect an Identifier here, or an article object
+        favorite = Favorite.find_by(user_id=self.id, article_id=article.id)
+        favorite.delete()
+        return self
+
+
+@Entity(aggregate='user')
+class Follower:
+    """Follower Entity"""
+
+    user = field.Reference(User)
+    follower = field.Reference(User)
+    followed_on = field.DateTime(default=datetime.now())
+
+
+@Entity(aggregate='user')
+class Favorite:
+    """Favorite Entity"""
+
+    user = field.Reference(User, required=True)
+    article = field.Reference('Article', required=True)
+    favorited_at = field.DateTime(default=datetime.now(), required=True)

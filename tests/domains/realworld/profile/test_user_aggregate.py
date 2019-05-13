@@ -1,4 +1,5 @@
 """Test Aggregates functionality with Sample Domain Artifacts"""
+import datetime
 
 # Standard Library Imports
 from collections import OrderedDict
@@ -8,8 +9,10 @@ from uuid import UUID
 import pytest
 
 from passlib.hash import pbkdf2_sha256
+from protean.core.exceptions import IncorrectUsageError
 from protean.core.field import ValueObject
-from tests.support.domains.realworld.profile.domain.model.user import Email, User
+from tests.support.domains.realworld.profile.domain.model.user import Email, User, Follower, Favorite
+from tests.support.domains.realworld.article.domain.model.article import Article
 
 
 class TestUserAggregate:
@@ -18,10 +21,10 @@ class TestUserAggregate:
     def test_user_fields(self):
         """Test User Aggregate structure"""
         declared_fields_keys = list(OrderedDict(sorted(User.meta_.declared_fields.items())).keys())
-        assert declared_fields_keys == ['email', 'id', 'password', 'token', 'username']
+        assert declared_fields_keys == ['bio', 'email', 'id', 'image', 'password', 'token', 'username']
 
         attribute_keys = list(OrderedDict(sorted(User.meta_.attributes.items())).keys())
-        assert attribute_keys == ['email_address', 'id', 'password', 'token', 'username']
+        assert attribute_keys == ['bio', 'email_address', 'id', 'image', 'password', 'token', 'username']
 
         assert isinstance(User.meta_.declared_fields['email'], ValueObject)
 
@@ -114,3 +117,52 @@ class TestUserAggregate:
         """Test that passwords are hashed as part of entity initialization"""
         user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='a1b2c3d4e5')
         assert pbkdf2_sha256.verify('a1b2c3d4e5', user.password)
+
+
+class TestFollower:
+    """Tests for Follower Entity"""
+
+    @pytest.mark.skip(reason="DDD Implementation Pending")
+    def test_direct_init(self):
+        """Test that a Follower Entity cannot be instantiated on its own"""
+        user1 = User(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        user2 = User(email='jane.doe@gmail.com', username='janedoe', password='secret')
+
+        with pytest.raises(IncorrectUsageError):
+            Follower.create(user_id=user1.id, follower_id=user2.id, followed_on=datetime.utcnow())
+
+    def test_follow(self):
+        """Test initialization of Follower Entity under User Aggregate"""
+
+        user1 = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        user2 = User.create(email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret')
+
+        user1.follow(user2)
+
+        assert user2.id in [follower.user.id for follower in user1.follows]
+        assert user1.id in [follower.follower.id for follower in user2.followed_by]
+
+
+class TestFavorite:
+    """Tests for Favorite Entity"""
+
+    def test_init(self):
+        """Test initialization of Favorite Entity"""
+        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        article = Article.create(
+            slug='how-to-train-your-dragon',
+            title='How to train your dragon', description='Ever wonder how?',
+            body='It takes a Jacobian', author=user)
+
+        # FIXME This is a much more elegant method of handling entities under aggregates
+        # favorite = user.favorites.add(article=article)
+        favorite = Favorite.create(user=user, article=article)
+        assert favorite is not None
+        assert favorite.id is not None
+        assert favorite.article == article
+        assert favorite.user == user
+
+        required_fields = [field_name for field_name in Favorite.meta_.declared_fields
+                           if Favorite.meta_.declared_fields[field_name].required]
+        assert len(required_fields) == 3
+        assert all(field in required_fields for field in ['article', 'user', 'favorited_at'])
