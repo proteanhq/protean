@@ -6,7 +6,7 @@ from typing import Any
 # Protean
 from protean.conf import active_config
 from protean.core.entity import BaseEntity
-from protean.core.transport import (InvalidRequestObject, RequestObject, RequestObjectFactory, ResponseSuccess,
+from protean.core.transport import (InvalidRequestObject, BaseRequestObject, RequestObjectFactory, ResponseSuccess,
                                     ResponseSuccessCreated, ResponseSuccessWithNoContent, Status)
 
 # Local/Relative Imports
@@ -33,7 +33,7 @@ class ShowUseCase(UseCase):
         return ResponseSuccess(Status.SUCCESS, resource)
 
 
-class ListRequestObject(RequestObject):
+class ListRequestObject(BaseRequestObject):
     """
     This class encapsulates the Request Object for Listing a resource
 

@@ -7,7 +7,7 @@ from protean.core.transport import InvalidRequestObject
 from protean.core.transport import ResponseFailure
 from protean.core.transport import ResponseSuccess
 from protean.core.transport import Status
-from protean.core.transport import RequestObject
+from protean.core.transport import BaseRequestObject
 from protean.core.transport import RequestObjectFactory
 from protean.core.usecase import UseCase
 
@@ -46,7 +46,7 @@ class AddCommentUseCase(UseCase):
         return ResponseSuccess(Status.SUCCESS, comment)
 
 
-class GetCommentsRequestObject(RequestObject):
+class GetCommentsRequestObject(BaseRequestObject):
     """
     This class encapsulates the Request Object for Listing Articles
     """

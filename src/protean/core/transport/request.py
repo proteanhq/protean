@@ -7,7 +7,7 @@ from abc import ABCMeta, abstractmethod
 from dataclasses import field, fields, make_dataclass
 
 
-class RequestObject(metaclass=ABCMeta):
+class BaseRequestObject(metaclass=ABCMeta):
     """An Abstract Class to define a basic Valid Request Object and its functionality
 
     Can be initialized from a dictionary.
@@ -113,6 +113,11 @@ class RequestObjectFactory:
         formatted_fields = cls._format_fields(declared_fields)
         dc = make_dataclass(name, formatted_fields,
                             namespace={'from_dict': from_dict, 'is_valid': True})
+
+        # Register element with domain
+        from protean import domain_registry
+        domain_registry.register_request_object(dc)
+
         return dc
 
     @classmethod
