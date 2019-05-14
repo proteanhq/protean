@@ -11,6 +11,7 @@ from typing import Any, Dict
 # Protean
 from protean.core.entity import BaseEntity
 from protean.core.exceptions import ConfigurationError
+from protean.core.transport.request import BaseRequestObject
 from protean.core.value_object import BaseValueObject
 from protean.utils import fully_qualified_name, singleton
 
@@ -20,6 +21,7 @@ logger = logging.getLogger('protean.repository')
 class DomainObjects(Enum):
     ENTITY = auto()
     VALUE_OBJECT = auto()
+    REQUEST_OBJECT = auto()
 
 
 @singleton
@@ -27,6 +29,7 @@ class DomainObjects(Enum):
 class _DomainRegistry:
     _entities: Dict[str, BaseEntity] = field(default_factory=dict)
     _value_objects: Dict[str, BaseValueObject] = field(default_factory=dict)
+    _request_objects: Dict[str, BaseRequestObject] = field(default_factory=dict)
 
     @dataclass
     class DomainRecord:
@@ -145,6 +148,63 @@ class _DomainRegistry:
         else:
             return self._find_value_object_in_records_by_class_name(value_object_name).cls
 
+    def register_request_object(self, request_object_cls):
+        """Register a Request Object"""
+        request_object_name = fully_qualified_name(request_object_cls)
+
+        try:
+            ro = self._get_request_object_by_class(request_object_cls)
+
+            if ro:
+                # We are going to ignore repetitive registrations of request objects
+                #   as they are usually declared along with a service and used only for the
+                #   lifetime of the service
+                #
+                # FIXME Ensure that ignoring repetitive RO registrations is fine
+                pass
+        except AssertionError:
+            self._request_objects[request_object_cls.__name__] = _DomainRegistry.DomainRecord(
+                name=request_object_cls.__name__,
+                qualname=request_object_name,
+                class_type=DomainObjects.REQUEST_OBJECT,
+                cls=request_object_cls
+            )
+            logger.debug(f'Registered Request Object {request_object_name} with Domain')
+
+    def _find_request_object_in_records_by_class_name(self, request_object_name):
+        """Fetch by Request Object Name in values"""
+        records = {
+            key: value for (key, value)
+            in self._request_objects.items()
+            if value.name == request_object_name
+        }
+        # If more than one record was found, we are dealing with the case of
+        #   an Request Object name present in multiple places (packages or plugins). Throw an error
+        #   and ask for a fully qualified Entity name to be specified
+        if len(records) > 1:
+            raise ConfigurationError(
+                f'Request Object with name {request_object_name} has been registered twice. '
+                f'Please use fully qualified Request Object Class name to specify the exact class.')
+        elif len(records) == 1:
+            return next(iter(records.values()))
+        else:
+            raise AssertionError(f'No Request Object registered with name {request_object_name}')
+
+    def _get_request_object_by_class(self, request_object_cls):
+        """Fetch Request Object record with Request Object class details"""
+        request_object_qualname = fully_qualified_name(request_object_cls)
+        if request_object_qualname in self._request_objects:
+            return self._request_objects[request_object_qualname]
+        else:
+            return self._find_request_object_in_records_by_class_name(request_object_cls.__name__).cls
+
+    def get_request_object_by_name(self, request_object_name):
+        """Retrieve Request Object class registered by `request_object_name`"""
+        if request_object_name in self._request_objects:
+            return self._request_objects[request_object_name].cls
+        else:
+            return self._find_request_object_in_records_by_class_name(request_object_name).cls
+
 
 # Singleton Registry, populated with the help of @<DomainElement> decorators
 domain_registry = _DomainRegistry()
@@ -212,6 +272,41 @@ def ValueObject(_cls=None, *, aggregate=None, bounded_context=None):
 
     def wrap(cls):
         return _process_value_object(cls, aggregate, bounded_context)
+
+    # See if we're being called as @Entity or @Entity().
+    if _cls is None:
+        # We're called with parens.
+        return wrap
+
+    # We're called as @dataclass without parens.
+    return wrap(_cls)
+
+
+def _process_request_object(cls, aggregate, bounded_context):
+    """Register class into the domain"""
+    # Dynamically subclass from BaseRequestObject
+    new_dict = cls.__dict__.copy()
+    new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
+    new_cls = type(cls.__name__, (BaseRequestObject, ), new_dict)
+
+    # Enrich element with domain information
+    # FIXME Add `meta_` attributes to Request Object
+    # new_cls.meta_.aggregate = aggregate
+    # new_cls.meta_.bounded_context = bounded_context
+
+    # Register element with domain
+    domain_registry.register_request_object(new_cls)
+
+    return new_cls
+
+
+def RequestObject(_cls=None, *, aggregate=None, bounded_context=None):
+    """Returns the same class that was passed in,
+    after recording its presence in the domain
+    """
+
+    def wrap(cls):
+        return _process_request_object(cls, aggregate, bounded_context)
 
     # See if we're being called as @Entity or @Entity().
     if _cls is None:
