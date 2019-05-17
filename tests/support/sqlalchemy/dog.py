@@ -1,15 +1,16 @@
 """ Define entities of the Dog Type """
 # Protean
 from protean import Entity
-from protean.core import field
+from protean.core.field.basic import String, Integer
+from protean.core.field.association import Reference
 
 
 @Entity
 class SqlDog:
     """This is a dummy Dog Entity class"""
-    name = field.String(required=True, max_length=50, unique=True)
-    owner = field.String(required=True, max_length=15)
-    age = field.Integer(default=5)
+    name = String(required=True, max_length=50, unique=True)
+    owner = String(required=True, max_length=15)
+    age = Integer(default=5)
 
     class Meta:
         provider = 'sql_db'
@@ -18,9 +19,9 @@ class SqlDog:
 @Entity
 class SqlRelatedDog:
     """This is a dummy Dog Entity class"""
-    name = field.String(required=True, max_length=50, unique=True)
-    owner = field.Reference('SqlRelatedHuman')
-    age = field.Integer(default=5)
+    name = String(required=True, max_length=50, unique=True)
+    owner = Reference('SqlRelatedHuman')
+    age = Integer(default=5)
 
     class Meta:
         provider = 'sql_db'

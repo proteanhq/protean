@@ -151,7 +151,10 @@ class UpdateUseCase(UseCase):
         return ResponseSuccess(Status.SUCCESS, resource)
 
 
-DeleteRequestObject = ShowRequestObject
+DeleteRequestObject = RequestObjectFactory.construct(
+    'DeleteRequestObject',
+    [('entity_cls', BaseEntity, {'required': True}),
+     ('identifier', Any, {'required': True})])
 
 
 class DeleteUseCase(UseCase):

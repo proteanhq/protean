@@ -5,7 +5,7 @@ import pytest
 from protean.core.exceptions import UsecaseExecutionError
 from protean.core.tasklet import Tasklet
 from protean.core.transport import Status
-from protean.core.usecase import ShowRequestObject, ShowUseCase
+from protean.core.usecase.generic import ShowRequestObject, ShowUseCase
 from tests.support.dog import Dog
 
 

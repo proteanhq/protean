@@ -9,9 +9,11 @@ from uuid import uuid4
 # Protean
 from protean.conf import active_config
 from protean.core.exceptions import InvalidStateError, NotSupportedError, ObjectNotFoundError, ValidationError
-from protean.core.field import Auto, Field, Reference, ValueObject
+from protean.core.field.basic import Auto, Field
+from protean.core.field.association import Reference
+from protean.core.field.embedded import ValueObjectField
 from protean.core.queryset import QuerySet
-from protean.core.repository import repo_factory
+from protean.core.repository.factory import repo_factory
 from protean.utils import IdentityStrategy, inflection
 
 # Local/Relative Imports
@@ -125,7 +127,7 @@ class _EntityMetaclass(type):
         """Walk through value object fields and setup shadow attributes"""
         if new_class.meta_.declared_fields:
             for _, field in new_class.meta_.declared_fields.items():
-                if isinstance(field, ValueObject):
+                if isinstance(field, ValueObjectField):
                     shadow_fields = field.get_shadow_fields()
                     for shadow_field_name, shadow_field in shadow_fields:
                         setattr(new_class, shadow_field_name, shadow_field)
@@ -157,7 +159,7 @@ class _EntityMetaclass(type):
     def _load_attributes(new_class):
         """Load list of attributes from declared fields"""
         for _, field_obj in new_class.meta_.declared_fields.items():
-            if isinstance(field_obj, ValueObject):
+            if isinstance(field_obj, ValueObjectField):
                 shadow_fields = field_obj.get_shadow_fields()
                 for _, shadow_field in shadow_fields:
                     new_class.meta_.attributes[shadow_field.attribute_name] = shadow_field
@@ -347,7 +349,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
         # Load Value Objects
         for field_name, field_obj in self.meta_.declared_fields.items():
-            if isinstance(field_obj, (ValueObject)):
+            if isinstance(field_obj, (ValueObjectField)):
                 attributes = [
                     (embedded_field.field_name, embedded_field.attribute_name)
                     for embedded_field
@@ -450,14 +452,14 @@ class BaseEntity(metaclass=_EntityMetaclass):
         field_values = {
             field_name: getattr(self, field_name, None)
             for field_name, field_obj in self.meta_.declared_fields.items()
-            if not isinstance(field_obj, ValueObject)
+            if not isinstance(field_obj, ValueObjectField)
             }
 
         # FIXME Simplify fetching and appending Value Object dict values
         vo_fields = {
             field_name: getattr(self, field_name, None)
             for field_name, field_obj in self.meta_.declared_fields.items()
-            if isinstance(field_obj, ValueObject)
+            if isinstance(field_obj, ValueObjectField)
             }
 
         vo_field_values = {}

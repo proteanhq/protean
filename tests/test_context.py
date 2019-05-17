@@ -7,7 +7,7 @@ import time
 # Protean
 from protean.context import context
 from protean.core.tasklet import Tasklet
-from protean.core.usecase import CreateRequestObject, CreateUseCase
+from protean.core.usecase.generic import CreateRequestObject, CreateUseCase
 from tests.support.dog import ThreadedDog
 
 

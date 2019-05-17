@@ -3,7 +3,8 @@
 from enum import Enum
 
 from protean import Aggregate, ValueObject
-from protean.core import field
+from protean.core.field.basic import String, Float
+from protean.core.field.embedded import ValueObjectField
 
 
 class Currency(Enum):
@@ -25,8 +26,8 @@ class Balance:
         * amount - a float value
     """
 
-    currency = field.String(max_length=3, choices=Currency)
-    amount = field.Float()
+    currency = String(max_length=3, choices=Currency)
+    amount = Float()
 
     def _clone_with_values(self, **kwargs):
         # FIXME Find a way to do this generically and move method to `BaseValueObject`
@@ -36,10 +37,10 @@ class Balance:
                        amount=amount or self.amount)
 
 
-@Aggregate(aggregate='account', bounded_context='customer', root=True)
+@Aggregate(aggregate='account', bounded_context='customer')
 class Account:
-    name = field.String(max_length=50)
-    account_type = field.String(
+    name = String(max_length=50)
+    account_type = String(
         max_length=15,
         choices=AccountType)
-    balance = field.ValueObject(Balance)
+    balance = ValueObjectField(Balance)

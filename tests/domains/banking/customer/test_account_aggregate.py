@@ -7,7 +7,7 @@ from uuid import UUID
 # Protean
 import pytest
 
-from protean.core.field import ValueObject
+from protean.core.field.embedded import ValueObjectField
 from tests.support.domains.banking.customer.domain.model.account import Account, AccountType, Balance, Currency
 
 
@@ -22,7 +22,7 @@ class TestAccountAggregate:
         attribute_keys = list(OrderedDict(sorted(Account.meta_.attributes.items())).keys())
         assert attribute_keys == ['account_type', 'balance_amount', 'balance_currency', 'id', 'name']
 
-        assert isinstance(Account.meta_.declared_fields['balance'], ValueObject)
+        assert isinstance(Account.meta_.declared_fields['balance'], ValueObjectField)
 
     def test_init(self):
         """Test that Account Aggregate can be initialized successfully"""

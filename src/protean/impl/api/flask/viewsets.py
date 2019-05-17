@@ -1,9 +1,10 @@
 """This module exposes a generic Viewset class"""
 # Protean
 from flask import request
-from protean.core.usecase import (CreateRequestObject, CreateUseCase, DeleteRequestObject,
-                                  DeleteUseCase, ListRequestObject, ListUseCase, ShowRequestObject,
-                                  ShowUseCase, UpdateRequestObject, UpdateUseCase)
+from protean.core.usecase.generic import (
+    CreateRequestObject, CreateUseCase, DeleteRequestObject,
+    DeleteUseCase, ListRequestObject, ListUseCase, ShowRequestObject,
+    ShowUseCase, UpdateRequestObject, UpdateUseCase)
 from protean.impl.api.flask.views import GenericAPIResource
 
 

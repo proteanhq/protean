@@ -5,10 +5,13 @@ from abc import ABCMeta
 from typing import Any
 
 # Protean
-from protean.core import field
-from protean.core.entity import BaseEntity
+from protean.core.field.basic import Auto, String, Text, Boolean, Integer, Float, List, Dict, Date, DateTime
+from protean.core.field.association import Reference
 from protean.core.provider.base import BaseProvider
-from protean.core.repository import BaseLookup, BaseModel, BaseRepository, ResultSet, repo_factory
+from protean.core.repository.lookup import BaseLookup
+from protean.core.repository.model import BaseModel
+from protean.core.repository.base import BaseRepository
+from protean.core.repository.resultset import ResultSet
 from protean.utils.query import Q
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
 from sqlalchemy import types as sa_types
@@ -21,20 +24,22 @@ from sqlalchemy.ext.declarative import as_declarative, declared_attr
 class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
     """ Metaclass for the Sqlalchemy declarative schema """
     field_mapping = {
-        field.Auto: sa_types.String,
-        field.String: sa_types.String,
-        field.Text: sa_types.Text,
-        field.Boolean: sa_types.Boolean,
-        field.Integer: sa_types.Integer,
-        field.Float: sa_types.Float,
-        field.List: sa_types.PickleType,
-        field.Dict: sa_types.PickleType,
-        field.Date: sa_types.Date,
-        field.DateTime: sa_types.DateTime,
+        Auto: sa_types.String,
+        String: sa_types.String,
+        Text: sa_types.Text,
+        Boolean: sa_types.Boolean,
+        Integer: sa_types.Integer,
+        Float: sa_types.Float,
+        List: sa_types.PickleType,
+        Dict: sa_types.PickleType,
+        Date: sa_types.Date,
+        DateTime: sa_types.DateTime,
     }
 
     def __init__(cls, classname, bases, dict_):
         # Update the class attrs with the entity attributes
+        from protean.core.repository.factory import repo_factory
+
         if hasattr(cls, 'entity_cls'):
             entity_cls = cls.entity_cls
             for field_name, field_obj in entity_cls.meta_.declared_fields.items():
@@ -42,7 +47,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                 # Map the field if not in attributes
                 if field_name not in cls.__dict__:
                     field_cls = type(field_obj)
-                    if field_cls == field.Reference:
+                    if field_cls == Reference:
                         related_ent = repo_factory.get_entity(field_obj.to_cls.__name__)
                         if field_obj.via:
                             related_attr = getattr(
@@ -67,7 +72,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
 
                     # Update the arguments based on the field type
                     type_args = {}
-                    if issubclass(field_cls, field.String):
+                    if issubclass(field_cls, String):
                         type_args['length'] = field_obj.max_length
 
                     # Update the attributes of the class
@@ -85,11 +90,11 @@ class SqlalchemyModel(BaseModel):
         return cls.entity_cls.meta_.schema_name
 
     @classmethod
-    def from_entity(cls, entity: BaseEntity):
+    def from_entity(cls, entity):
         """ Convert the entity to a model object """
         item_dict = {}
         for field_obj in cls.entity_cls.meta_.attributes.values():
-            if isinstance(field_obj, field.Reference):
+            if isinstance(field_obj, Reference):
                 item_dict[field_obj.relation.field_name] = \
                     field_obj.relation.value
             else:
@@ -190,7 +195,7 @@ class SARepository(BaseRepository):
                     field_name: getattr(model_obj, field_name)
                 }
             else:
-                if isinstance(field_obj, field.Reference):
+                if isinstance(field_obj, Reference):
                     data[field_obj.relation.field_name] = \
                         field_obj.relation.value
                 else:

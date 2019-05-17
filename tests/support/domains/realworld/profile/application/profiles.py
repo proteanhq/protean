@@ -6,7 +6,7 @@ from protean.core.transport import ResponseFailure
 from protean.core.transport import ResponseSuccess
 from protean.core.transport import Status
 from protean.core.transport import RequestObjectFactory
-from protean.core.usecase import UseCase
+from protean.core.usecase.generic import UseCase
 
 
 GetProfileRequestObject = RequestObjectFactory.construct(

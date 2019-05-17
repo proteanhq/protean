@@ -10,10 +10,9 @@ class TestSqlalchemyRepository:
     """Class to test Sqlalchemy Repository"""
 
     @pytest.fixture(scope='function', autouse=True)
-    def default_provider(self):
+    def default_provider(self, test_domain):
         """Construct dummy Human objects for queries"""
-        from protean.core.provider import providers
-        return providers.get_provider('sql_db')
+        return test_domain.providers.get_provider('sql_db')
 
     @pytest.fixture(scope='function', autouse=True)
     def conn(self, default_provider):

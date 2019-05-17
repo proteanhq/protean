@@ -5,7 +5,7 @@ from dataclasses import fields
 # Protean
 from protean.core.transport import (BaseRequestObject, InvalidRequestObject, RequestObjectFactory, ResponseFailure,
                                     ResponseSuccess, ResponseSuccessCreated, ResponseSuccessWithNoContent, Status)
-from protean.domain import RequestObject
+from protean.domain import RequestObject, DomainObjects
 
 
 class DummyValidRequestObject(BaseRequestObject):
@@ -59,8 +59,7 @@ class TestRequestObjectFactory:
     def test_that_a_request_object_is_registered_with_the_domain_on_construction(self, test_domain):
         RequestObjectFactory.construct('ROClass1', ['identifier'])
 
-        from protean import domain_registry
-        assert 'ROClass1' in domain_registry._request_objects
+        assert 'ROClass1' in test_domain.registry._elements[DomainObjects.REQUEST_OBJECT.value]
         # FIXME Unregister request object here
 
     def test_name_only(self):

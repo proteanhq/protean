@@ -11,10 +11,12 @@ from typing import Any
 from uuid import UUID
 
 # Protean
-from protean.core.entity import BaseEntity
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.provider.base import BaseProvider
-from protean.core.repository import BaseLookup, BaseModel, BaseRepository, ResultSet
+from protean.core.repository.lookup import BaseLookup
+from protean.core.repository.model import BaseModel
+from protean.core.repository.base import BaseRepository
+from protean.core.repository.resultset import ResultSet
 from protean.utils.query import Q
 
 # Global in-memory store of dict data. Keyed by name, to provide
@@ -28,7 +30,7 @@ class DictModel(BaseModel):
     """A model for the dictionary repository"""
 
     @classmethod
-    def from_entity(cls, entity: BaseEntity) -> 'DictModel':
+    def from_entity(cls, entity) -> 'DictModel':
         """Convert the entity to a dictionary record """
         dict_obj = {}
         for field_name in entity.meta_.attributes:
@@ -36,7 +38,7 @@ class DictModel(BaseModel):
         return dict_obj
 
     @classmethod
-    def to_entity(cls, item: 'DictModel') -> BaseEntity:
+    def to_entity(cls, item: 'DictModel'):
         """Convert the dictionary record to an entity """
         return cls.entity_cls(item)
 

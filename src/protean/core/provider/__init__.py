@@ -5,13 +5,16 @@ import importlib
 # Protean
 from protean.conf import active_config
 from protean.core.exceptions import ConfigurationError
+from protean.utils import singleton
 
 
+@singleton
 class Providers:
     """Application Singleton to configure and manage database connections
     """
     def __init__(self):
-        self._providers = None
+        """Read config file and initialize providers"""
+        self._providers = self._initialize_providers()
 
     def _initialize_providers(self):
         """Read config file and initialize providers"""
@@ -39,8 +42,6 @@ class Providers:
     def get_provider(self, provider_name='default'):
         """Fetch provider with the name specified in Configuration file"""
         try:
-            if self._providers is None:
-                self._providers = self._initialize_providers()
             return self._providers[provider_name]
         except KeyError:
             raise AssertionError(f'No Provider registered with name {provider_name}')
@@ -51,6 +52,3 @@ class Providers:
             return self._providers[provider_name].get_connection()
         except KeyError:
             raise AssertionError(f'No Provider registered with name {provider_name}')
-
-
-providers = Providers()

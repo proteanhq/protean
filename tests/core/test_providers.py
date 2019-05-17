@@ -1,6 +1,5 @@
 """Tests for Provider Functionality"""
 # Protean
-from protean.core.provider import providers
 from protean.impl.repository.dict_repo import DictProvider
 from tests.support.dog import Dog, RelatedDog
 from tests.support.human import Human
@@ -9,23 +8,23 @@ from tests.support.human import Human
 class TestProviders:
     """This class holds tests for Providers Singleton"""
 
-    def test_init(self):
+    def test_init(self, test_domain):
         """Test that ``providers`` object is available"""
-        assert providers is not None
+        assert test_domain.providers is not None
 
-    def test_provider_detail(self):
+    def test_provider_detail(self, test_domain):
         """Test provider info loaded for tests"""
 
-        provider1 = providers.get_provider('default')
+        provider1 = test_domain.providers.get_provider('default')
         assert isinstance(provider1, DictProvider)
 
-    def test_provider_get_connection(self):
+    def test_provider_get_connection(self, test_domain):
         """Test ``get_connection`` method and check for connection details"""
 
-        conn = providers.get_provider('default').get_connection()
+        conn = test_domain.providers.get_provider('default').get_connection()
         assert all(key in conn for key in ['data', 'lock', 'counters'])
 
-    def test_provider_raw(self):
+    def test_provider_raw(self, test_domain):
         """Test raw queries"""
         Dog.create(name='Murdock', age=7, owner='John')
         Dog.create(name='Jean', age=3, owner='John')
@@ -35,7 +34,7 @@ class TestProviders:
         human = Human.create(first_name='John', last_name='Doe', email='john.doe@gmail.com')
         RelatedDog.create(name='RelMurdock', age=2, owner=human)
 
-        provider = providers.get_provider('default')
+        provider = test_domain.providers.get_provider('default')
 
         # Filter by Dog attributes
         results = provider.raw('{"owner":"John"}')

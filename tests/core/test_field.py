@@ -4,7 +4,7 @@
 import pytest
 
 from protean.core.exceptions import ValidationError
-from protean.core.field import Field
+from protean.core.field.base import Field
 
 
 class String(Field):
