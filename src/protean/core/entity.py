@@ -46,7 +46,7 @@ class _EntityMetaclass(type):
 
         # Remove `abstract` in base classes if defined
         for base in bases:
-            if hasattr(base.Meta, 'abstract'):
+            if hasattr(base, 'Meta') and hasattr(base.Meta, 'abstract'):
                 delattr(base.Meta, 'abstract')
 
         new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
@@ -302,12 +302,6 @@ class BaseEntity(metaclass=_EntityMetaclass):
     During persistence, the model associated with this entity is retrieved dynamically from
             the repository factory. Model is usually initialized with a live DB connection.
     """
-
-    class Meta:
-        """Options object for an Entity.
-
-        Check ``EntityMeta`` class for full documentation.
-        """
 
     def __init__(self, *template, **kwargs):  # noqa: C901
         """
