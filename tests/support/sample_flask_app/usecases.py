@@ -1,7 +1,8 @@
 """ Usecases of the sample application """
 # Protean
 from protean.core.tasklet import Tasklet
-from protean.core.usecase import ListRequestObject, ListUseCase, ShowRequestObject, UseCase
+from protean.core.usecase.base import UseCase
+from protean.core.usecase.generic import ListRequestObject, ListUseCase, ShowRequestObject
 from tests.support.dog import Dog, Human
 
 

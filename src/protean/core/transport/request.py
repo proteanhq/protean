@@ -116,7 +116,8 @@ class RequestObjectFactory:
 
         # Register element with domain
         from protean import domain_registry
-        domain_registry.register_request_object(dc)
+        from protean.domain import DomainObjects
+        domain_registry.register_element(DomainObjects.REQUEST_OBJECT, dc)
 
         return dc
 

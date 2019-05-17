@@ -10,7 +10,7 @@ import pytest
 
 from passlib.hash import pbkdf2_sha256
 from protean.core.exceptions import IncorrectUsageError
-from protean.core.field import ValueObject
+from protean.core.field.embedded import ValueObjectField
 from tests.support.domains.realworld.profile.domain.model.user import Email, User, Follower, Favorite
 from tests.support.domains.realworld.article.domain.model.article import Article
 
@@ -26,7 +26,7 @@ class TestUserAggregate:
         attribute_keys = list(OrderedDict(sorted(User.meta_.attributes.items())).keys())
         assert attribute_keys == ['bio', 'email_address', 'id', 'image', 'password', 'token', 'username']
 
-        assert isinstance(User.meta_.declared_fields['email'], ValueObject)
+        assert isinstance(User.meta_.declared_fields['email'], ValueObjectField)
 
     def test_init(self):
         """Test that User Aggregate can be initialized successfully"""

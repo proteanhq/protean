@@ -5,7 +5,7 @@ import pytest
 
 from protean.core.exceptions import ValidationError
 from protean.core.queryset import QuerySet
-from protean.core.repository import ResultSet
+from protean.core.repository.resultset import ResultSet
 from tests.support.dog import (Dog, DogRelatedByEmail, HasManyDog1, HasManyDog2, HasManyDog3,
                                HasOneDog1, HasOneDog2, HasOneDog3, RelatedDog, RelatedDog2)
 from tests.support.human import (HasManyHuman1, HasManyHuman2, HasManyHuman3,

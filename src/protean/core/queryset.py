@@ -6,7 +6,7 @@ import logging
 from typing import Any, Union
 
 # Protean
-from protean.core.repository import repo_factory
+from protean.core.repository.factory import repo_factory
 from protean.utils.query import Q
 
 logger = logging.getLogger('protean.core.entity')

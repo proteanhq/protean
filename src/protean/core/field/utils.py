@@ -1,10 +1,10 @@
 """ Utility functions for the Field Module """
-# Protean
-from protean.core.repository import repo_factory
 
 
 def fetch_entity_cls_from_registry(entity):
     """Util Method to fetch an Entity class from an entity's name"""
+    from protean.core.repository.factory import repo_factory
+
     # Defensive check to ensure we only process if `to_cls` is a string
     if isinstance(entity, str):
         try:

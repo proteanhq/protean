@@ -2,8 +2,8 @@
 # Protean
 import pytest
 
-from protean.core import field
 from protean.core.exceptions import ValidationError
+from protean.core.field.ext import StringShort, StringLong, StringMedium
 
 
 class TestStringShortField:
@@ -12,12 +12,12 @@ class TestStringShortField:
     def test_init(self):
         """Test successful StringShort Field initialization"""
 
-        name = field.StringShort()
+        name = StringShort()
         assert name is not None
 
     def test_loading(self):
         """ Test loading the value for the StringShort Field"""
-        name = field.StringShort()
+        name = StringShort()
 
         # Check that it raises validation
         with pytest.raises(ValidationError):
@@ -32,12 +32,12 @@ class TestStringMediumField:
     def test_init(self):
         """Test successful StringMedium Field initialization"""
 
-        name = field.StringMedium()
+        name = StringMedium()
         assert name is not None
 
     def test_loading(self):
         """ Test loading the value for the StringMedium Field"""
-        name = field.StringMedium()
+        name = StringMedium()
 
         # Check that it raises validation
         with pytest.raises(ValidationError):
@@ -52,12 +52,12 @@ class TestStringLongField:
     def test_init(self):
         """Test successful StringLong Field initialization"""
 
-        name = field.StringLong()
+        name = StringLong()
         assert name is not None
 
     def test_loading(self):
         """ Test loading the value for the StringLong Field"""
-        name = field.StringLong()
+        name = StringLong()
 
         # Check that it raises validation
         with pytest.raises(ValidationError):

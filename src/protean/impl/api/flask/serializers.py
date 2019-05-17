@@ -6,9 +6,10 @@ from collections import OrderedDict
 # Protean
 import marshmallow as ma
 
-from protean.core import field
 from protean.core.entity import BaseEntity
 from protean.core.exceptions import ConfigurationError
+from protean.core.field.basic import String, Boolean, Integer, Float, List, Dict, Auto
+from protean.core.field.association import Reference
 
 
 class BaseSerializer(ma.Schema):
@@ -28,13 +29,13 @@ class EntitySerializer(BaseSerializer):
     OPTIONS_CLASS = EntitySerializerOpts
 
     field_mapping = {
-        field.String: ma.fields.String,
-        field.Boolean: ma.fields.Boolean,
-        field.Integer: ma.fields.Integer,
-        field.Float: ma.fields.Float,
-        field.List: ma.fields.List,
-        field.Dict: ma.fields.Dict,
-        field.Auto: ma.fields.Integer
+        String: ma.fields.String,
+        Boolean: ma.fields.Boolean,
+        Integer: ma.fields.Integer,
+        Float: ma.fields.Float,
+        List: ma.fields.List,
+        Dict: ma.fields.Dict,
+        Auto: ma.fields.Integer
     }
 
     def __init__(self, *args, **kwargs):
@@ -53,7 +54,7 @@ class EntitySerializer(BaseSerializer):
                 continue
             elif self.opts.exclude and field_name in self.opts.exclude:
                 continue
-            elif isinstance(field_obj, field.Reference):
+            elif isinstance(field_obj, Reference):
                 continue
             elif field_name not in self.declared_fields:
                 entity_fields[field_name] = self.build_field(field_obj)
@@ -67,7 +68,7 @@ class EntitySerializer(BaseSerializer):
         e_field_type = type(field_obj)
         if e_field_type in self.field_mapping:
             field_opts = {}
-            if e_field_type == field.List:
+            if e_field_type == List:
                 field_opts['cls_or_instance'] = ma.fields.String
             return self.field_mapping[e_field_type](**field_opts)
         else:

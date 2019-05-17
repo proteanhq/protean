@@ -7,7 +7,7 @@ from threading import local
 
 # Protean
 from protean.core.exceptions import ConfigurationError, NotSupportedError
-from protean.core.provider import providers
+from protean.domain import Domain
 from protean.utils import fully_qualified_name
 
 logger = logging.getLogger('protean.repository')
@@ -148,7 +148,8 @@ class RepositoryFactory:
 
     def get_provider(self, provider_name):
         """Retrieve the provider object with a given provider name"""
-        return providers.get_provider(provider_name)
+        # FIXME Should domain be derived from "context"?
+        return Domain().providers.get_provider(provider_name)
 
     def get_repository(self, entity_cls):
         """Retrieve a Repository for the Model with a live connection"""

@@ -8,9 +8,10 @@ from flask.views import MethodView
 from protean.conf import active_config
 from protean.core.tasklet import Tasklet
 from protean.core.transport import Status
-from protean.core.usecase import (CreateRequestObject, CreateUseCase, DeleteRequestObject,
-                                  DeleteUseCase, ListRequestObject, ListUseCase, ShowRequestObject,
-                                  ShowUseCase, UpdateRequestObject, UpdateUseCase)
+from protean.core.usecase.generic import (
+    CreateRequestObject, CreateUseCase, DeleteRequestObject,
+    DeleteUseCase, ListRequestObject, ListUseCase, ShowRequestObject,
+    ShowUseCase, UpdateRequestObject, UpdateUseCase)
 from protean.impl.api.flask.utils import immutable_dict_2_dict
 from protean.utils import inflection
 from protean.utils.importlib import perform_import

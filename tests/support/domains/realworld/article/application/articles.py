@@ -8,7 +8,7 @@ from protean.core.transport import ResponseFailure
 from protean.core.transport import ResponseSuccess
 from protean.core.transport import Status
 from protean.core.transport import RequestObjectFactory
-from protean.core.usecase import UseCase
+from protean.core.usecase.base import UseCase
 from protean.domain import RequestObject
 
 from tests.support.domains.realworld.profile.domain.model.user import User, Favorite

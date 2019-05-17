@@ -8,8 +8,8 @@ from datetime import datetime
 # Protean
 import pytest
 
-from protean.core import field
 from protean.core.exceptions import ValidationError
+from protean.core.field.basic import String, Integer, Float, Boolean, Dict, List, Auto, DateTime, Date, Text
 
 
 class TestStringField:
@@ -18,26 +18,26 @@ class TestStringField:
     def test_init(self):
         """Test successful String Field initialization"""
 
-        name = field.String(max_length=10)
+        name = String(max_length=10)
         assert name is not None
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
-        name = field.String(max_length=10)
+        name = String(max_length=10)
         assert name._load(1) == '1'
 
     def test_min_length(self):
         """ Test minimum length validation for the string field"""
 
         with pytest.raises(ValidationError):
-            name = field.String(min_length=5, max_length=10)
+            name = String(min_length=5, max_length=10)
             name._load('Dum')
 
     def test_max_length(self):
         """ Test maximum length validation for the string field"""
 
         with pytest.raises(ValidationError):
-            name = field.String(max_length=5)
+            name = String(max_length=5)
             name._load('Dummy Dummy')
 
     def test_choice(self):
@@ -49,7 +49,7 @@ class TestStringField:
             SUCCESS = 'Success'
             ERROR = 'Error'
 
-        status = field.String(max_length=10, choices=StatusChoices)
+        status = String(max_length=10, choices=StatusChoices)
         assert status is not None
 
         # Test loading of values to the status field
@@ -67,27 +67,27 @@ class TestIntegerField:
     def test_init(self):
         """Test successful Integer Field initialization"""
 
-        age = field.Integer()
+        age = Integer()
         assert age is not None
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
-            age = field.Integer()
+            age = Integer()
             age._load('x')
 
     def test_min_value(self):
         """ Test minimum value validation for the integer field"""
 
         with pytest.raises(ValidationError):
-            age = field.Integer(min_value=5)
+            age = Integer(min_value=5)
             age._load(3)
 
     def test_max_value(self):
         """ Test maximum value validation for the integer field"""
 
         with pytest.raises(ValidationError):
-            age = field.Integer(max_value=5)
+            age = Integer(max_value=5)
             age._load(6)
 
     def test_choice(self):
@@ -99,7 +99,7 @@ class TestIntegerField:
             SUCCESS = (1, 'Success')
             ERROR = (2, 'Error')
 
-        status = field.Integer(choices=StatusChoices)
+        status = Integer(choices=StatusChoices)
         assert status is not None
 
         # Test loading of values to the status field
@@ -117,27 +117,27 @@ class TestFloatField:
     def test_init(self):
         """Test successful Float Field initialization"""
 
-        score = field.Float()
+        score = Float()
         assert score is not None
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
-            score = field.Float()
+            score = Float()
             score._load('x')
 
     def test_min_value(self):
         """ Test minimum value validation for the float field"""
 
         with pytest.raises(ValidationError):
-            score = field.Float(min_value=5.4)
+            score = Float(min_value=5.4)
             score._load(5.3)
 
     def test_max_value(self):
         """ Test maximum value validation for the float field"""
 
         with pytest.raises(ValidationError):
-            score = field.Float(max_value=5.5)
+            score = Float(max_value=5.5)
             score._load(5.6)
 
 
@@ -147,14 +147,14 @@ class TestBooleanField:
     def test_init(self):
         """Test successful Boolean Field initialization"""
 
-        married = field.Boolean()
+        married = Boolean()
         assert married is not None
         assert married._load(True) is True
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
-            married = field.Boolean()
+            married = Boolean()
             married._load('x')
 
 
@@ -164,7 +164,7 @@ class TestListField:
     def test_init(self):
         """Test successful List Field initialization"""
 
-        tags = field.List()
+        tags = List()
         assert tags is not None
 
         assert tags._load(['x', 'y', 'z']) == ['x', 'y', 'z']
@@ -172,7 +172,7 @@ class TestListField:
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
-            tags = field.Boolean()
+            tags = Boolean()
             tags._load('x')
 
     def test_choice(self):
@@ -184,7 +184,7 @@ class TestListField:
             SUCCESS = 'Success'
             ERROR = 'Error'
 
-        status = field.List(choices=StatusChoices)
+        status = List(choices=StatusChoices)
         assert status is not None
 
         # Test loading of values to the status field
@@ -202,7 +202,7 @@ class TestDictField:
     def test_init(self):
         """Test successful Dict Field initialization"""
 
-        add_info = field.Dict()
+        add_info = Dict()
         assert add_info is not None
 
         value = add_info._load({'available': 'weekdays'})
@@ -211,7 +211,7 @@ class TestDictField:
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
-            add_info = field.Dict()
+            add_info = Dict()
             add_info._load('x')
 
 
@@ -221,7 +221,7 @@ class TestAutoField:
     def test_init(self):
         """Test successful Dict Field initialization"""
 
-        add_info = field.Auto()
+        add_info = Auto()
         assert add_info is not None
 
         value = add_info._load(1)
@@ -229,7 +229,7 @@ class TestAutoField:
 
     def test_validation(self):
         """ Test validation for the Auto Field"""
-        add_info = field.Auto(required=True)
+        add_info = Auto(required=True)
         add_info._load(None)
 
 
@@ -239,7 +239,7 @@ class TestDateField:
     def test_init(self):
         """Test successful Date Field initialization"""
 
-        age = field.Date()
+        age = Date()
         assert age is not None
 
         value = age._load(datetime.now().date())
@@ -248,7 +248,7 @@ class TestDateField:
     def test_type_casting(self):
         """ Test type casting and validation for the Field"""
 
-        age = field.Date()
+        age = Date()
 
         # Test datetime being passed as value
         assert age._load(datetime.now()) == datetime.now().date()
@@ -270,7 +270,7 @@ class TestDateTimeField:
     def test_init(self):
         """Test successful DateTime Field initialization"""
 
-        created_at = field.DateTime()
+        created_at = DateTime()
         assert created_at is not None
 
         value = datetime.now()
@@ -279,7 +279,7 @@ class TestDateTimeField:
     def test_type_casting(self):
         """ Test type casting and validation for the Field"""
 
-        created_at = field.DateTime()
+        created_at = DateTime()
         today = datetime.now()
         # Test date being passed as value
         assert created_at._load(today.date()) == datetime(
@@ -301,11 +301,11 @@ class TestTextField:
     def test_init(self):
         """Test successful Text Field initialization"""
 
-        address = field.Text()
+        address = Text()
         assert address is not None
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
-        address = field.Text()
+        address = Text()
         value = address._load('My home address')
         assert value == 'My home address'

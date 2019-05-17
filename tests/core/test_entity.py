@@ -8,7 +8,7 @@ from datetime import datetime
 import pytest
 
 from protean import Entity
-from protean.core import field
+from protean.core.field.basic import String, Integer, DateTime, Auto
 from protean.core.exceptions import InvalidOperationError, NotSupportedError, ObjectNotFoundError, ValidationError
 from protean.core.queryset import QuerySet
 from tests.support.dog import Dog, HasOneDog1, RelatedDog, SubDog
@@ -135,13 +135,13 @@ class TestEntity:
         @Entity
         class SharedEntity:
             """ Class that provides the default fields """
-            age = field.Integer(default=5)
+            age = Integer(default=5)
 
         @Entity
         class Dog3(SharedEntity):
             """This is a dummy Dog Entity class with a mixin"""
-            name = field.String(required=True, max_length=50, min_length=5)
-            owner = field.String(required=True, max_length=15)
+            name = String(required=True, max_length=50, min_length=5)
+            owner = String(required=True, max_length=15)
 
         dog3 = Dog3(id=3, name='John Doe', owner='Jimmy')
         assert dog3 is not None
@@ -162,7 +162,7 @@ class TestEntity:
         @Entity
         class Dog5:
             """This is a dummy Dog Entity class without an id"""
-            name = field.String(required=True, max_length=50, min_length=5)
+            name = String(required=True, max_length=50, min_length=5)
 
         dog5 = Dog5(id=3, name='John Doe')
         assert dog5 is not None
@@ -723,9 +723,9 @@ class TestEntity:
         class ImmortalDog:
             """A Dog who lives forever"""
 
-            name = field.String(required=True, unique=True, max_length=50)
-            age = field.Integer(default=5)
-            owner = field.String(required=True, max_length=15)
+            name = String(required=True, unique=True, max_length=50)
+            age = Integer(default=5)
+            owner = String(required=True, max_length=15)
 
             def delete(self):
                 """You can't delete me!!"""
@@ -744,15 +744,15 @@ class TestEntity:
         @Entity
         class AbstractDog2:
             """A Dog that cannot Live!"""
-            name = field.String(required=True, unique=True, max_length=50)
-            age = field.Integer(default=5)
-            owner = field.String(required=True, max_length=15)
+            name = String(required=True, unique=True, max_length=50)
+            age = Integer(default=5)
+            owner = String(required=True, max_length=15)
 
             class Meta:
                 abstract = True
 
         with pytest.raises(NotSupportedError) as exc1:
-            from protean.core.repository import repo_factory
+            from protean.core.repository.factory import repo_factory
             repo_factory.register(AbstractDog2)
         assert exc1.value.args[0] == ('AbstractDog2 class has been marked abstract'
                                       ' and cannot be instantiated')
@@ -767,7 +767,7 @@ class TestEntity:
         @Entity
         class AbstractDog3:
             """A Dog that cannot Live!"""
-            age = field.Integer(default=5)
+            age = Integer(default=5)
 
             class Meta:
                 abstract = True
@@ -775,8 +775,8 @@ class TestEntity:
         @Entity
         class ConcreteDog1(AbstractDog3):
             """A Dog that inherits aging and death"""
-            name = field.String(required=True, unique=True, max_length=50)
-            owner = field.String(required=True, max_length=15)
+            name = String(required=True, unique=True, max_length=50)
+            owner = String(required=True, max_length=15)
 
         immortal_dog = ConcreteDog1(name='Titan', owner='God')
         assert immortal_dog is not None
@@ -787,7 +787,7 @@ class TestEntity:
         @Entity
         class AbstractDog:
             """A Dog that cannot Live!"""
-            age = field.Integer(default=5)
+            age = Integer(default=5)
 
             class Meta:
                 abstract = True
@@ -795,7 +795,7 @@ class TestEntity:
         @Entity
         class DogWithRecords(AbstractDog):
             """A Dog that has medical records"""
-            born_at = field.DateTime(default=datetime.now())
+            born_at = DateTime(default=datetime.now())
 
             class Meta:
                 abstract = True
@@ -803,8 +803,8 @@ class TestEntity:
         @Entity
         class ConcreteDog2(DogWithRecords):
             """A Dog that inherits aging and death, with medical records"""
-            name = field.String(required=True, unique=True, max_length=50)
-            owner = field.String(required=True, max_length=15)
+            name = String(required=True, unique=True, max_length=50)
+            owner = String(required=True, max_length=15)
 
         ordinary_dog = ConcreteDog2(name='Titan', owner='God')
         assert ordinary_dog is not None
@@ -812,7 +812,7 @@ class TestEntity:
         assert ordinary_dog.born_at is not None
 
         with pytest.raises(NotSupportedError) as exc1:
-            from protean.core.repository import repo_factory
+            from protean.core.repository.factory import repo_factory
             repo_factory.register(DogWithRecords)
         assert exc1.value.args[0] == ('DogWithRecords class has been marked abstract'
                                       ' and cannot be instantiated')
@@ -842,7 +842,7 @@ class TestIdentity:
         @Entity
         class Dog2:
             """This is a dummy Dog Entity class without an id"""
-            name = field.String(required=True, max_length=50, min_length=5)
+            name = String(required=True, max_length=50, min_length=5)
 
         dog2 = Dog2(id=3, name='John Doe')
         assert dog2 is not None
@@ -853,8 +853,8 @@ class TestIdentity:
         @Entity
         class Person1:
             """This is a dummy Person Entity class with a unique SSN"""
-            ssn = field.String(identifier=True, max_length=10)
-            name = field.String(max_length=50)
+            ssn = String(identifier=True, max_length=10)
+            name = String(max_length=50)
 
         person = Person1(ssn='134223442', name='John Doe')
         assert person.meta_.id_field.field_name == 'ssn'
@@ -870,8 +870,8 @@ class TestIdentity:
         @Entity
         class Person2:
             """This is a dummy Person Entity class with a unique SSN"""
-            ssn = field.Auto(identifier=True)
-            name = field.String(max_length=50)
+            ssn = Auto(identifier=True)
+            name = String(max_length=50)
 
         test_domain.register_element(Person2)
 
@@ -900,7 +900,7 @@ class TestEntityMetaAttributes:
         # Class with overridden meta info
         @Entity
         class Foo1:
-            bar = field.String(max_length=25)
+            bar = String(max_length=25)
 
             class Meta:
                 abstract = True
@@ -918,7 +918,7 @@ class TestEntityMetaAttributes:
         # Class with overridden meta info
         @Entity
         class Foo2:
-            bar = field.String(max_length=25)
+            bar = String(max_length=25)
 
             class Meta:
                 schema_name = 'foosball'
@@ -937,7 +937,7 @@ class TestEntityMetaAttributes:
         # Class with overridden meta info
         @Entity
         class Foo3:
-            bar = field.String(max_length=25)
+            bar = String(max_length=25)
 
             class Meta:
                 provider = 'non-default'
@@ -955,7 +955,7 @@ class TestEntityMetaAttributes:
         # Class with overridden meta info
         @Entity
         class Foo4:
-            bar = field.String(max_length=25)
+            bar = String(max_length=25)
 
             class Meta:
                 order_by = 'bar'
@@ -1006,10 +1006,10 @@ class TestEntityHooks:
         @Entity
         class PreSavedDog:
             """A Dog with a unique code in the universe"""
-            name = field.String(required=True, unique=True, max_length=50)
-            age = field.Integer(default=5)
-            owner = field.String(required=True, max_length=15)
-            unique_code = field.String(max_length=255)
+            name = String(required=True, unique=True, max_length=50)
+            age = Integer(default=5)
+            owner = String(required=True, max_length=15)
+            unique_code = String(max_length=255)
 
             def pre_save(self):
                 """Perform actions before save"""
@@ -1035,10 +1035,10 @@ class TestEntityHooks:
         @Entity
         class PostSavedDog:
             """A Dog with a unique code in the universe"""
-            name = field.String(required=True, unique=True, max_length=50)
-            age = field.Integer(default=5)
-            owner = field.String(required=True, max_length=15)
-            unique_code = field.String(max_length=255)
+            name = String(required=True, unique=True, max_length=50)
+            age = Integer(default=5)
+            owner = String(required=True, max_length=15)
+            unique_code = String(max_length=255)
 
             def post_save(self):
                 """Perform actions before save"""

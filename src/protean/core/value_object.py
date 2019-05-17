@@ -5,7 +5,7 @@ import logging
 
 # Protean
 from protean.core.exceptions import NotSupportedError, ValidationError
-from protean.core.field import Auto, Field
+from protean.core.field.basic import Auto, Field
 from protean.utils import inflection
 
 logger = logging.getLogger('protean.core.value_object')

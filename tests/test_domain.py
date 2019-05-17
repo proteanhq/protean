@@ -1,9 +1,9 @@
 """"Module to test Domain object functionality"""
 # Protean
 from protean import Domain, Entity
-from protean.core import field
 from protean.core.entity import _EntityMetaclass
-from protean.domain import _DomainRegistry
+from protean.core.field.basic import String, Integer
+from protean.domain import _DomainRegistry, DomainObjects
 
 
 class TestDomainRegistry:
@@ -29,11 +29,11 @@ class TestDomain:
         @Entity
         class DummyDog:
             """Test class to check Domain Registration"""
-            name = field.String(max_length=50)
+            name = String(max_length=50)
 
         domain = Domain(__name__)
         assert domain.registry is not None
-        assert 'DummyDog' in domain.registry._entities
+        assert 'DummyDog' in domain.registry._elements[DomainObjects.ENTITY.value]
 
     def test_init2(self):
         """Test that Domain object can be initialized successfully"""
@@ -48,8 +48,8 @@ class TestEntityDecorator:
         """Test basic decorator"""
         @Entity
         class TheDog:
-            name = field.String(required=True, unique=True, max_length=50)
-            age = field.Integer(default=5)
-            owner = field.String(required=True, max_length=15)
+            name = String(required=True, unique=True, max_length=50)
+            age = Integer(default=5)
+            owner = String(required=True, max_length=15)
 
         assert type(TheDog) == _EntityMetaclass

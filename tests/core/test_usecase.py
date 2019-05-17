@@ -3,9 +3,10 @@
 # Protean
 import pytest
 
-from protean.core.usecase import (CreateRequestObject, CreateUseCase, DeleteRequestObject,
-                                  DeleteUseCase, ListRequestObject, ListUseCase, ShowRequestObject,
-                                  ShowUseCase, UpdateRequestObject, UpdateUseCase, UseCase)
+from protean.core.usecase.generic import (
+    CreateRequestObject, CreateUseCase, DeleteRequestObject,
+    DeleteUseCase, ListRequestObject, ListUseCase, ShowRequestObject,
+    ShowUseCase, UpdateRequestObject, UpdateUseCase, UseCase)
 from tests.support.dog import Dog
 
 

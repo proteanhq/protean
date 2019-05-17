@@ -27,7 +27,7 @@ class RegisterLookupMixin:
 
     def get_lookup(self, lookup_name):
         """Fetch Lookup by name"""
-        from protean.core.repository import BaseLookup
+        from protean.core.repository.lookup import BaseLookup
         lookup = self._get_lookup(lookup_name)
 
         # If unable to find Lookup, or if Lookup is the wrong class, raise Error
