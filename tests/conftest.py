@@ -93,7 +93,7 @@ def run_around_tests(test_domain):
     from tests.support.sqlalchemy.dog import (SqlDog, SqlRelatedDog)
     from tests.support.sqlalchemy.human import (SqlHuman, SqlRelatedHuman)
 
-    repo_factory.get_repository(SqlDog).delete_all()
-    repo_factory.get_repository(SqlRelatedDog).delete_all()
-    repo_factory.get_repository(SqlHuman).delete_all()
-    repo_factory.get_repository(SqlRelatedHuman).delete_all()
+    repo_factory.get_repository(SqlDog)._delete_all()
+    repo_factory.get_repository(SqlRelatedDog)._delete_all()
+    repo_factory.get_repository(SqlHuman)._delete_all()
+    repo_factory.get_repository(SqlRelatedHuman)._delete_all()

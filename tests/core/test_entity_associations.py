@@ -15,19 +15,21 @@ from tests.support.human import (HasManyHuman1, HasManyHuman2, HasManyHuman3,
 class TestReference:
     """Class to test References (Foreign Key) Association"""
 
-    def test_init(self):
+    def test_init(self, test_domain):
         """Test successful RelatedDog initialization"""
-        human = Human.create(first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
         assert all(key in dog.__dict__ for key in ['owner', 'owner_id'])
         assert dog.owner.id == human.id
         assert dog.owner_id == human.id
 
-    def test_init_with_string_reference(self):
+    def test_init_with_string_reference(self, test_domain):
         """Test successful RelatedDog initialization"""
-        human = Human.create(first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog2(id=1, name='John Doe', age=10, owner=human)
         assert all(key in dog.__dict__ for key in ['owner', 'owner_id'])
         assert dog.owner.id == human.id
@@ -35,13 +37,14 @@ class TestReference:
         assert not hasattr(human,
                            'dog')  # Reverse linkages are not provided by default
 
-    def test_save(self):
+    def test_save(self, test_domain):
         """Test successful RelatedDog save"""
-        human = Human.create(first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
         assert all(key in dog.__dict__ for key in ['owner', 'owner_id'])
-        dog.save()
+        test_domain.get_repository(RelatedDog).save(dog)
         assert dog.id is not None
         assert all(key in dog.__dict__ for key in ['owner', 'owner_id'])
 
@@ -63,43 +66,46 @@ class TestReference:
                 key in dog.__dict__ for key in ['owner', 'owner_id']) is False
             dog.owner = human
 
-    def test_invalid_entity_type(self):
+    def test_invalid_entity_type(self, test_domain):
         """Test that assignment fails when an invalid entity type is assigned to a relation"""
         with pytest.raises(ValidationError):
-            dog = Dog.create(name='Johnny', owner='John')
+            dog = test_domain.get_repository(Dog).create(name='Johnny', owner='John')
             related_dog = RelatedDog(id=1, name='John Doe', age=10)
             related_dog.owner = dog
 
-    def test_shadow_attribute(self):
+    def test_shadow_attribute(self, test_domain):
         """Test identifier backing the association"""
-        human = Human.create(first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
         assert all(key in dog.__dict__ for key in ['owner', 'owner_id'])
         assert human.id is not None
         assert dog.owner_id == human.id
 
-    def test_save_after_assign(self):
+    def test_save_after_assign(self, test_domain):
         """Test saving after assignment (post init)"""
-        human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            id=101, first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog(id=1, name='John Doe', age=10)
         assert any(
             key in dog.__dict__ for key in ['owner', 'owner_id']) is False
         dog.owner = human
-        dog.save()
+        test_domain.get_repository(RelatedDog).save(dog)
         assert all(key in dog.__dict__ for key in ['owner', 'owner_id'])
         assert dog.owner_id == human.id
 
-    def test_fetch_after_save(self):
+    def test_fetch_after_save(self, test_domain):
         """Test fetch after save and ensure reference is not auto-loaded"""
-        human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            id=101, first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog(id=1, name='John Doe', age=10)
         dog.owner = human
-        dog.save()
+        test_domain.get_repository(RelatedDog).save(dog)
 
-        dog2 = RelatedDog.get(dog.id)
+        dog2 = test_domain.get_repository(RelatedDog).get(dog.id)
         # Reference attribute is not loaded automatically
         assert 'owner' not in dog2.__dict__
         assert dog2.owner_id == human.id
@@ -108,34 +114,37 @@ class TestReference:
         getattr(dog2, 'owner')
         assert 'owner' in dog2.__dict__
 
-    def test_shadow_attribute_init(self):
+    def test_shadow_attribute_init(self, test_domain):
         """Test identifier backing the association"""
-        human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            id=101, first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog(id=1, name='John Doe', age=10, owner_id=human.id)
         assert 'owner_id' in dog.__dict__
         assert 'owner' not in dog.__dict__
-        dog.save()
+        test_domain.get_repository(RelatedDog).save(dog)
         assert dog.owner_id == human.id
         assert dog.owner.id == human.id
         assert all(key in dog.__dict__ for key in ['owner', 'owner_id'])
 
-    def test_shadow_attribute_assign(self):
+    def test_shadow_attribute_assign(self, test_domain):
         """Test identifier backing the association"""
-        human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            id=101, first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog(id=1, name='John Doe', age=10)
         dog.owner_id = human.id
         assert 'owner' not in dog.__dict__
-        dog.save()
+        test_domain.get_repository(RelatedDog).save(dog)
         assert dog.owner_id == human.id
         assert dog.owner.id == human.id
         assert 'owner' in dog.__dict__
 
-    def test_reference_reset_association_to_None(self):
+    def test_reference_reset_association_to_None(self, test_domain):
         """Test that the reference field and shadow attribute are reset together"""
-        human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            id=101, first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
         assert dog.owner_id == human.id
         assert dog.owner.id == human.id
@@ -146,10 +155,11 @@ class TestReference:
         assert dog.owner is None
         assert dog.owner_id is None
 
-    def test_reference_reset_shadow_field_to_None(self):
+    def test_reference_reset_shadow_field_to_None(self, test_domain):
         """Test that the reference field and shadow attribute are reset together"""
-        human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            id=101, first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
         assert dog.owner_id == human.id
         assert dog.owner.id == human.id
@@ -160,10 +170,11 @@ class TestReference:
         assert dog.owner is None
         assert dog.owner_id is None
 
-    def test_reference_reset_association_by_del(self):
+    def test_reference_reset_association_by_del(self, test_domain):
         """Test that the reference field and shadow attribute are reset together"""
-        human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            id=101, first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
         assert dog.owner_id == human.id
         assert dog.owner.id == human.id
@@ -174,10 +185,11 @@ class TestReference:
         assert dog.owner is None
         assert dog.owner_id is None
 
-    def test_reference_reset_shadow_field_by_del(self):
+    def test_reference_reset_shadow_field_by_del(self, test_domain):
         """Test that the reference field and shadow attribute are reset together"""
-        human = Human.create(id=101, first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            id=101, first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
         assert dog.owner_id == human.id
         assert dog.owner.id == human.id
@@ -188,32 +200,35 @@ class TestReference:
         assert dog.owner is None
         assert dog.owner_id is None
 
-    def test_via(self):
+    def test_via(self, test_domain):
         """Test successful save with an entity linked by via"""
-        human = Human.create(first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
-        dog = DogRelatedByEmail.create(id=1, name='John Doe', age=10,
-                                       owner=human)
+        human = test_domain.get_repository(Human).create(
+            first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
+        dog = test_domain.get_repository(DogRelatedByEmail).create(
+            id=1, name='John Doe', age=10, owner=human)
         assert all(key in dog.__dict__ for key in ['owner', 'owner_email'])
         assert hasattr(dog, 'owner_email')
         assert dog.owner_email == human.email
 
-    def test_via_with_shadow_attribute_assign(self):
+    def test_via_with_shadow_attribute_assign(self, test_domain):
         """Test successful save with an entity linked by via"""
-        human = Human.create(first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = DogRelatedByEmail(id=1, name='John Doe', age=10)
         dog.owner_email = human.email
         assert 'owner' not in dog.__dict__
-        dog.save()
+        test_domain.get_repository(DogRelatedByEmail).save(dog)
         assert hasattr(dog, 'owner_email')
         assert dog.owner_email == human.email
 
-    @mock.patch('protean.core.entity.BaseEntity.find_by')
-    def test_caching(self, find_by_mock):
+    @mock.patch('protean.core.repository.base.BaseRepository.find_by')
+    def test_caching(self, find_by_mock, test_domain):
         """Test that subsequent accesses after first retrieval don't fetch record again"""
-        human = Human.create(first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog(id=1, name='John Doe', age=10, owner_id=human.id)
 
         for _ in range(3):
@@ -224,46 +239,47 @@ class TestReference:
 class TestHasOne:
     """Class to test HasOne Association"""
 
-    def test_init(self):
+    def test_init(self, test_domain):
         """Test successful HasOne initialization"""
-        human = HasOneHuman1.create(
+        human = test_domain.get_repository(HasOneHuman1).create(
             first_name='Jeff', last_name='Kennedy',
             email='jeff.kennedy@presidents.com')
-        dog = HasOneDog1.create(id=101, name='John Doe', age=10,
-                                has_one_human1=human)
+        dog = test_domain.get_repository(HasOneDog1).create(
+            id=101, name='John Doe', age=10,
+            has_one_human1=human)
         assert dog.has_one_human1 == human
         assert human.dog.id == dog.id
 
-    def test_init_with_via(self):
+    def test_init_with_via(self, test_domain):
         """Test successful HasOne initialization with a class containing via"""
-        human = HasOneHuman2.create(
+        human = test_domain.get_repository(HasOneHuman2).create(
             first_name='Jeff', last_name='Kennedy',
             email='jeff.kennedy@presidents.com')
-        dog = HasOneDog2.create(id=101, name='John Doe', age=10, human=human)
+        dog = test_domain.get_repository(HasOneDog2).create(id=101, name='John Doe', age=10, human=human)
         assert dog.human == human
         assert 'dog' not in human.__dict__
         assert human.dog.id == dog.id
         assert 'dog' in human.__dict__
 
-    def test_init_with_no_reference(self):
+    def test_init_with_no_reference(self, test_domain):
         """Test successful HasOne initialization with a class containing via"""
-        human = HasOneHuman3.create(
+        human = test_domain.get_repository(HasOneHuman3).create(
             first_name='Jeff', last_name='Kennedy',
             email='jeff.kennedy@presidents.com')
-        dog = HasOneDog3.create(id=101, name='John Doe', age=10,
-                                human_id=human.id)
+        dog = test_domain.get_repository(HasOneDog3).create(
+            id=101, name='John Doe', age=10, human_id=human.id)
         assert dog.human_id == human.id
         assert not hasattr(dog, 'human')
         assert 'human' not in dog.__dict__
         assert human.dog.id == dog.id
 
-    @mock.patch('protean.core.entity.BaseEntity.find_by')
-    def test_caching(self, find_by_mock):
+    @mock.patch('protean.core.repository.base.BaseRepository.find_by')
+    def test_caching(self, find_by_mock, test_domain):
         """Test that subsequent accesses after first retrieval don't fetch record again"""
-        human = HasOneHuman3.create(
+        human = test_domain.get_repository(HasOneHuman3).create(
             first_name='Jeff', last_name='Kennedy',
             email='jeff.kennedy@presidents.com')
-        HasOneDog3.create(id=101, name='John Doe', age=10, human_id=human.id)
+        test_domain.get_repository(HasOneDog3).create(id=101, name='John Doe', age=10, human_id=human.id)
 
         for _ in range(3):
             getattr(human, 'dog')
@@ -273,15 +289,15 @@ class TestHasOne:
 class TestHasMany:
     """Class to test HasMany Association"""
 
-    def test_init(self):
+    def test_init(self, test_domain):
         """Test successful HasOne initialization"""
-        human = HasManyHuman1.create(
+        human = test_domain.get_repository(HasManyHuman1).create(
             first_name='Jeff', last_name='Kennedy',
             email='jeff.kennedy@presidents.com')
-        dog1 = HasManyDog1.create(id=101, name='John Doe', age=10,
-                                  has_many_human1=human)
-        dog2 = HasManyDog1.create(id=102, name='Jane Doe', age=10,
-                                  has_many_human1=human)
+        dog1 = test_domain.get_repository(HasManyDog1).create(
+            id=101, name='John Doe', age=10, has_many_human1=human)
+        dog2 = test_domain.get_repository(HasManyDog1).create(
+            id=102, name='Jane Doe', age=10, has_many_human1=human)
 
         assert dog1.has_many_human1.id == human.id
         assert dog2.has_many_human1.id == human.id
@@ -293,41 +309,41 @@ class TestHasMany:
         assert isinstance(human.dogs.all(), ResultSet)
         assert all(dog.id in [101, 102] for dog in human.dogs)  # `__iter__` magic here
 
-    def test_init_with_via(self):
+    def test_init_with_via(self, test_domain):
         """Test successful HasMany initialization with a class containing via"""
-        human = HasManyHuman2.create(
+        human = test_domain.get_repository(HasManyHuman2).create(
             first_name='Jeff', last_name='Kennedy',
             email='jeff.kennedy@presidents.com')
-        dog1 = HasManyDog2.create(id=101, name='John Doe', age=10, human=human)
-        dog2 = HasManyDog2.create(id=102, name='Jane Doe', age=10, human=human)
+        dog1 = test_domain.get_repository(HasManyDog2).create(id=101, name='John Doe', age=10, human=human)
+        dog2 = test_domain.get_repository(HasManyDog2).create(id=102, name='Jane Doe', age=10, human=human)
 
         assert dog1.human.id == human.id
         assert dog2.human.id == human.id
 
         assert len(human.dogs) == 2
 
-    def test_init_with_no_reference(self):
+    def test_init_with_no_reference(self, test_domain):
         """Test successful HasOne initialization with a class containing via"""
-        human = HasManyHuman3.create(
+        human = test_domain.get_repository(HasManyHuman3).create(
             first_name='Jeff', last_name='Kennedy',
             email='jeff.kennedy@presidents.com')
-        dog1 = HasManyDog3.create(id=101, name='John Doe', age=10,
-                                  human_id=human.id)
+        dog1 = test_domain.get_repository(HasManyDog3).create(
+            id=101, name='John Doe', age=10, human_id=human.id)
 
         assert dog1.human_id == human.id
         assert not hasattr(dog1, 'human')
 
     @mock.patch('protean.core.queryset.QuerySet.filter')
-    @mock.patch('protean.core.entity.BaseEntity.exists')
-    def test_caching(self, exists_mock, filter_mock):
+    @mock.patch('protean.core.repository.base.BaseRepository.exists')
+    def test_caching(self, exists_mock, filter_mock, test_domain):
         """Test that subsequent accesses after first retrieval don't fetch record again"""
         exists_mock.return_value = False
-        human = HasManyHuman3.create(
+        human = test_domain.get_repository(HasManyHuman3).create(
             first_name='Jeff', last_name='Kennedy',
             email='jeff.kennedy@presidents.com')
-        HasManyDog3.create(id=101, name='John Doe', human_id=human.id)
-        HasManyDog3.create(id=102, name='Jane Doe', human_id=human.id)
-        HasManyDog3.create(id=103, name='Jinny Doe', human_id=human.id)
+        test_domain.get_repository(HasManyDog3).create(id=101, name='John Doe', human_id=human.id)
+        test_domain.get_repository(HasManyDog3).create(id=102, name='Jane Doe', human_id=human.id)
+        test_domain.get_repository(HasManyDog3).create(id=103, name='Jinny Doe', human_id=human.id)
 
         for _ in range(3):
             getattr(human, 'dogs')

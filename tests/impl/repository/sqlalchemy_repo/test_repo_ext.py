@@ -10,11 +10,11 @@ from tests.support.sqlalchemy.human import SqlHuman as Human
 class TestSqlalchemyRepositoryExt:
     """Class to test Sqlalchemy Repository"""
 
-    def test_create(self):
+    def test_create(self, test_domain):
         """ Test creating an entity with all field types"""
 
         # Create the entity and validate the results
-        human = Human.create(
+        human = test_domain.get_repository(Human).create(
             name='John Doe', age='30', weight='13.45',
             date_of_birth='01-01-2000',
             hobbies=['swimming'],
@@ -37,14 +37,14 @@ class TestSqlalchemyRepositoryExt:
         assert human.to_dict() == expected
 
         # Check if the object is in the repo
-        reloaded_human = Human.get(human.id)
+        reloaded_human = test_domain.get_repository(Human).get(human.id)
         assert reloaded_human is not None
         assert reloaded_human.to_dict() == expected
 
-    def test_multiple_dbs(self):
+    def test_multiple_dbs(self, test_domain):
         """ Test repository connections to multiple databases"""
-        humans = Human.query.filter().all()
+        humans = test_domain.get_repository(Human).query.filter().all()
         assert humans is not None
 
-        dogs = Dog.query.filter().all()
+        dogs = test_domain.get_repository(Dog).query.filter().all()
         assert dogs is not None

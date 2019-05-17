@@ -1,6 +1,7 @@
 """Entities for Articles Aggregate"""
 from datetime import datetime
 
+from protean import Domain
 from protean import Aggregate, Entity
 from protean.core.field.basic import DateTime, Text, String, List
 from protean.core.field.association import Reference, HasMany
@@ -52,9 +53,11 @@ class Article:
 
     def add_comment(self, body, user):
         """Add a comment under this article"""
-        return Comment.create(body=body, user=user, article=self)
+        repo = Domain().get_repository(Comment)
+        return repo.create(body=body, user=user, article=self)
 
     def delete_comment(self, comment_id):
         """Add a comment under this article"""
-        comment = Comment.get(comment_id)
-        comment.delete()
+        repo = Domain().get_repository(Comment)
+        comment = repo.get(comment_id)
+        repo.delete(comment)

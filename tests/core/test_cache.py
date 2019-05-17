@@ -16,10 +16,10 @@ class TestCache:
         """Test successful access to the Cache Wrapper"""
         assert cache.provider is not None
 
-    def test_add(self):
+    def test_add(self, test_domain):
         """ Test adding and retrieving an entry to the cache """
         # Add an entity to the cache
-        dog = Dog.create(id=1, name='Johnny', owner='John')
+        dog = test_domain.get_repository(Dog).create(id=1, name='Johnny', owner='John')
         cache.provider.add(f'dog:{dog.id}', dog.to_dict())
 
         # Retrieve the entity
@@ -27,12 +27,12 @@ class TestCache:
         assert dog_d == {'age': 5, 'id': 1, 'name': 'Johnny', 'owner': 'John'}
 
     @pytest.mark.slow
-    def test_set(self):
+    def test_set(self, test_domain):
         """ Test setting an existing key and expiry of keys """
-        dog = Dog.create(id=1, name='Johnny', owner='John')
+        dog = test_domain.get_repository(Dog).create(id=1, name='Johnny', owner='John')
 
         # Set an entity to the cache
-        dog = Dog.get(1)
+        dog = test_domain.get_repository(Dog).get(1)
         cache.provider.set(f'dog:{dog.id}', dog.to_dict(), expiry=1)
 
         # Retrieve the entity
@@ -47,10 +47,10 @@ class TestCache:
     @pytest.mark.slow
     def test_touch(self):
         """ Test updating the expiry of key using touch """
-        dog = Dog.create(id=1, name='Johnny', owner='John')
+        dog = test_domain.get_repository(Dog).create(id=1, name='Johnny', owner='John')
 
         # Set an entity to the cache
-        dog = Dog.get(1)
+        dog = test_domain.get_repository(Dog).get(1)
         cache.provider.set(f'dog:{dog.id}', dog.to_dict(), expiry=1)
 
         # Retrieve the entity
@@ -63,12 +63,12 @@ class TestCache:
         dog_d = cache.provider.get(f'dog:{dog.id}')
         assert dog_d is not None
 
-    def test_delete(self):
+    def test_delete(self, test_domain):
         """ Test deleting a key from the cache """
-        dog = Dog.create(id=1, name='Johnny', owner='John')
+        dog = test_domain.get_repository(Dog).create(id=1, name='Johnny', owner='John')
 
         # Set an entity to the cache
-        dog = Dog.get(1)
+        dog = test_domain.get_repository(Dog).get(1)
         cache.provider.set(f'dog:{dog.id}', dog.to_dict())
 
         # Retrieve the entity

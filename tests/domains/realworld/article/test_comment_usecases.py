@@ -14,12 +14,13 @@ from tests.support.domains.realworld.profile.domain.model.user import User, Emai
 class TestAddComment:
     """Test Add Comment UseCase"""
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful Comment Addition"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
-                           bio='I work at Webmart', image='https://234ssll.xfg')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
+            bio='I work at Webmart', image='https://234ssll.xfg')
+        article = test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
 
@@ -31,13 +32,13 @@ class TestAddComment:
         assert isinstance(response.value, Comment)
         assert response.value.id in [comment.id for comment in article.comments]
 
-    def test_failure(self):
+    def test_failure(self, test_domain):
         """Test Failure in profile follow"""
 
-        user = User.create(
+        user = test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
             bio='I work at Webmart', image='https://234ssll.xfg')
-        article = Article.create(
+        article = test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
 
@@ -53,17 +54,17 @@ class TestAddComment:
 class TestGetComments:
     """Test Retrieval of an article's comments"""
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test that articles can be listed"""
 
-        user = User.create(
+        user = test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
             bio='I work at Webmart', image='https://234ssll.xfg')
-        article = Article.create(
+        article = test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
-        Comment.create(body='Really!?', user=user, article=article)
-        Comment.create(body='No, it doesn\'t!', user=user, article=article)
+        test_domain.get_repository(Comment).create(body='Really!?', user=user, article=article)
+        test_domain.get_repository(Comment).create(body='No, it doesn\'t!', user=user, article=article)
 
         payload = {'slug': article.slug}
         response = Tasklet.perform(Comment, GetCommentsUseCase, GetCommentsRequestObject,
@@ -75,18 +76,19 @@ class TestGetComments:
         assert response.value.total == 2
         assert response.value.first.body == 'Really!?'
 
-    def test_paginated(self):
+    def test_paginated(self, test_domain):
         """Test that articles can be paginated"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
-                           bio='I work at Webmart', image='https://234ssll.xfg')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
+            bio='I work at Webmart', image='https://234ssll.xfg')
+        article = test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
-        Comment.create(body='Really!?', user=user, article=article)
-        Comment.create(body='No, it doesn\'t!', user=user, article=article)
-        Comment.create(body='For sure, it does!', user=user, article=article)
-        Comment.create(body='And how would YOU know?', user=user, article=article)
+        test_domain.get_repository(Comment).create(body='Really!?', user=user, article=article)
+        test_domain.get_repository(Comment).create(body='No, it doesn\'t!', user=user, article=article)
+        test_domain.get_repository(Comment).create(body='For sure, it does!', user=user, article=article)
+        test_domain.get_repository(Comment).create(body='And how would YOU know?', user=user, article=article)
 
         payload = {'slug': article.slug, 'page': 2, 'per_page': 2}
         response = Tasklet.perform(Comment, GetCommentsUseCase, GetCommentsRequestObject,
@@ -98,11 +100,12 @@ class TestGetComments:
         assert response.value.total == 4
         assert response.value.first.body == 'For sure, it does!'
 
-    def test_no_results(self):
+    def test_no_results(self, test_domain):
         """Test that no articles are returned when there are none"""
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
-                           bio='I work at Webmart', image='https://234ssll.xfg')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
+            bio='I work at Webmart', image='https://234ssll.xfg')
+        article = test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
         payload = {'slug': article.slug}
@@ -121,12 +124,13 @@ class TestDeleteComment:
     # FIXME Test that Comments exist before attempting delete
     # FIXME Test that only the user who created the comment can delete them
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful Comment Deletion"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
-                           bio='I work at Webmart', image='https://234ssll.xfg')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
+            bio='I work at Webmart', image='https://234ssll.xfg')
+        article = test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
 
@@ -141,15 +145,16 @@ class TestDeleteComment:
         payload = {'token': user.token, 'slug': article.slug, 'comment_id': response.value.id}
         response = Tasklet.perform(Article, DeleteCommentUseCase, DeleteCommentRequestObject,
                                    payload=payload)
-        refreshed_article = Article.get(article.id)
+        refreshed_article = test_domain.get_repository(Article).get(article.id)
         assert refreshed_article.comments is None
 
-    def test_failure(self):
+    def test_failure(self, test_domain):
         """Test Failure in profile follow"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
-                           bio='I work at Webmart', image='https://234ssll.xfg')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
+            bio='I work at Webmart', image='https://234ssll.xfg')
+        article = test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
 
@@ -168,7 +173,7 @@ class TestDeleteComment:
         assert not response.is_successful
         assert response.code.value == 404
 
-        refreshed_article = Article.get(article.id)
+        refreshed_article = test_domain.get_repository(Article).get(article.id)
         assert refreshed_article.comments is not None
 
         payload = {'token': user.token, 'slug': article.slug}
@@ -178,5 +183,5 @@ class TestDeleteComment:
         assert not response.is_successful
         assert response.code.value == 422
 
-        refreshed_article = Article.get(article.id)
+        refreshed_article = test_domain.get_repository(Article).get(article.id)
         assert refreshed_article.comments is not None

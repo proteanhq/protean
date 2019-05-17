@@ -13,11 +13,13 @@ class TestGetProfile:
     """Test Get Profile Usecase"""
     # FIXME Implementation different test cases for Auth and Non-Auth
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful profile fetch"""
 
-        User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1')
-        user2 = User.create(email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2')
+        test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1')
+        user2 = test_domain.get_repository(User).create(
+            email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2')
 
         payload = {'username': 'janedoe'}
         response = Tasklet.perform(User, GetProfileUseCase, GetProfileRequestObject,
@@ -27,11 +29,13 @@ class TestGetProfile:
         assert isinstance(response.value, User)
         assert response.value.id == user2.id
 
-    def test_failure(self):
+    def test_failure(self, test_domain):
         """Test failed profile fetch"""
 
-        User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1')
-        User.create(email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2')
+        test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1')
+        test_domain.get_repository(User).create(
+            email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2')
 
         payload = {'username': 'janedoe1'}
         response = Tasklet.perform(
@@ -46,11 +50,13 @@ class TestFollowProfile:
     """Test Follow Profile Usecase"""
     # FIXME Test that user cannot follow hisself
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful profile follow"""
 
-        user1 = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1')
-        user2 = User.create(email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2')
+        user1 = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1')
+        user2 = test_domain.get_repository(User).create(
+            email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2')
 
         payload = {'token': user1.token, 'username': user2.username}
         response = Tasklet.perform(User, FollowProfileUseCase, FollowProfileRequestObject,
@@ -61,11 +67,13 @@ class TestFollowProfile:
         user_follows = [follow.user_id for follow in user1.follows]
         assert user2.id in user_follows
 
-    def test_failure(self):
+    def test_failure(self, test_domain):
         """Test Failure in profile follow"""
 
-        user1 = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1')
-        User.create(email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2')
+        user1 = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1')
+        test_domain.get_repository(User).create(
+            email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2')
 
         payload = {'username': 'janedoe1'}
         response = Tasklet.perform(User, FollowProfileUseCase, FollowProfileRequestObject,
@@ -80,11 +88,13 @@ class TestUnfollowProfile:
     """Test Unfollow Profile Usecase"""
     # FIXME Test that user cannot unfollow hisself
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful profile unfollow"""
 
-        user1 = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1')
-        user2 = User.create(email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2')
+        user1 = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1')
+        user2 = test_domain.get_repository(User).create(
+            email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2')
 
         payload = {'token': user1.token, 'username': user2.username}
         response = Tasklet.perform(User, FollowProfileUseCase, FollowProfileRequestObject,
@@ -97,14 +107,16 @@ class TestUnfollowProfile:
 
         response = Tasklet.perform(User, UnfollowProfileUseCase, FollowProfileRequestObject,
                                    payload=payload)
-        refreshed_user1 = User.get(user1.id)
+        refreshed_user1 = test_domain.get_repository(User).get(user1.id)
         assert refreshed_user1.follows is None
 
-    def test_failure(self):
+    def test_failure(self, test_domain):
         """Test Failure in profile follow"""
 
-        user1 = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1')
-        user2 = User.create(email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2')
+        user1 = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1')
+        user2 = test_domain.get_repository(User).create(
+            email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2')
 
         payload = {'token': user1.token, 'username': user2.username}
         response = Tasklet.perform(User, FollowProfileUseCase, FollowProfileRequestObject,
@@ -117,5 +129,5 @@ class TestUnfollowProfile:
         assert not response.is_successful
         assert response.code.value == 422
 
-        refreshed_user1 = User.get(user1.id)
+        refreshed_user1 = test_domain.get_repository(User).get(user1.id)
         assert refreshed_user1.follows is not None

@@ -155,7 +155,7 @@ class DictRepository(BaseRepository):
                 model_obj[field_name] = counter
         return model_obj
 
-    def create(self, model_obj):
+    def _create(self, model_obj):
         """Write a record to the dict repository"""
         # Update the value of the counters
         model_obj = self._set_auto_fields(model_obj)
@@ -167,7 +167,7 @@ class DictRepository(BaseRepository):
 
         return model_obj
 
-    def _filter(self, criteria: Q, db):
+    def _filter_items(self, criteria: Q, db):
         """Recursive function to filter items from dictionary"""
         # Filter the dictionary objects based on the filters
         negated = criteria.negated
@@ -179,7 +179,7 @@ class DictRepository(BaseRepository):
             input_db = db
             for child in criteria.children:
                 if isinstance(child, Q):
-                    input_db = self._filter(child, input_db)
+                    input_db = self._filter_items(child, input_db)
                 else:
                     input_db = self.provider._evaluate_lookup(child[0], child[1],
                                                               negated, input_db)
@@ -189,7 +189,7 @@ class DictRepository(BaseRepository):
             input_db = {}
             for child in criteria.children:
                 if isinstance(child, Q):
-                    results = self._filter(child, db)
+                    results = self._filter_items(child, db)
                 else:
                     results = self.provider._evaluate_lookup(child[0], child[1], negated, db)
 
@@ -197,11 +197,11 @@ class DictRepository(BaseRepository):
 
         return input_db
 
-    def filter(self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()):
+    def _filter(self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()):
         """Read the repository and return results as per the filer"""
 
         if criteria.children:
-            items = list(self._filter(criteria, self.conn['data'][self.schema_name]).values())
+            items = list(self._filter_items(criteria, self.conn['data'][self.schema_name]).values())
         else:
             items = list(self.conn['data'][self.schema_name].values())
 
@@ -220,7 +220,7 @@ class DictRepository(BaseRepository):
             items=items[offset: offset + limit])
         return result
 
-    def update(self, model_obj):
+    def _update(self, model_obj):
         """Update the entity record in the dictionary """
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
@@ -233,9 +233,9 @@ class DictRepository(BaseRepository):
             self.conn['data'][self.schema_name][identifier] = model_obj
         return model_obj
 
-    def update_all(self, criteria: Q, *args, **kwargs):
+    def _update_all(self, criteria: Q, *args, **kwargs):
         """Update all objects satisfying the criteria """
-        items = self._filter(criteria, self.conn['data'][self.schema_name])
+        items = self._filter_items(criteria, self.conn['data'][self.schema_name])
 
         update_count = 0
         for key in items:
@@ -248,24 +248,24 @@ class DictRepository(BaseRepository):
 
         return update_count
 
-    def delete(self, model_obj):
+    def _delete(self, model_obj):
         """Delete the entity record in the dictionary """
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
             # Check if object is present
             if identifier not in self.conn['data'][self.schema_name]:
                 raise ObjectNotFoundError(
-                    f'`{self.__class__.__name__}` object with identifier {identifier} '
+                    f'`{self.entity_cls.__name__}` object with identifier {identifier} '
                     f'does not exist.')
 
             del self.conn['data'][self.schema_name][identifier]
         return model_obj
 
-    def delete_all(self, criteria: Q = None):
+    def _delete_all(self, criteria: Q = None):
         """Delete the dictionary object by its criteria"""
         if criteria:
             # Delete the object from the dictionary and return the deletion count
-            items = self._filter(criteria, self.conn['data'][self.schema_name])
+            items = self._filter_items(criteria, self.conn['data'][self.schema_name])
 
             # Delete all the matching identifiers
             with self.conn['lock']:
@@ -278,7 +278,7 @@ class DictRepository(BaseRepository):
                 if self.schema_name in self.conn['data']:
                     del self.conn['data'][self.schema_name]
 
-    def raw(self, query: Any, data: Any = None):
+    def _raw(self, query: Any, data: Any = None):
         """Run raw query on Repository.
 
         For this stand-in repository, the query string is a json string that contains kwargs

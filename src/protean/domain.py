@@ -188,6 +188,14 @@ class Domain:
     def registry(self):
         return domain_registry
 
+    def get_repository(self, entity_cls):
+        from protean.core.repository.factory import repo_factory
+        return repo_factory.get_repository(entity_cls)
+
+    def get_model(self, entity_cls):
+        from protean.core.repository.factory import repo_factory
+        return repo_factory.get_model(entity_cls)
+
     def register_elements(self) -> None:
         from protean.core.repository.factory import repo_factory
 

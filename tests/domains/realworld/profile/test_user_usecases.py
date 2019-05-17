@@ -22,9 +22,9 @@ from tests.support.domains.realworld.profile.jwt import encode_access_token
 class TestLogin:
     """Test Login Functionality"""
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful Login"""
-        user = User.create(
+        user = test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'),
             username='johndoe', password='secret',
             bio='I work at Webmart', image='https://234ssll.xfg')
@@ -37,9 +37,9 @@ class TestLogin:
         assert isinstance(response.value, User)
         assert user.email == Email.build(address='john.doe@gmail.com')
 
-    def test_failure_invalid_email(self):
+    def test_failure_invalid_email(self, test_domain):
         """Test Invalid Email Login"""
-        User.create(
+        test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'),
             username='johndoe', password='secret')
 
@@ -50,9 +50,9 @@ class TestLogin:
         assert response.code.value == 401
         assert response.errors == [{'email': 'Login Failed'}]
 
-    def test_failure_invalid_password(parameter_list):
+    def test_failure_invalid_password(self, test_domain):
         """Test Invalid Password Login"""
-        User.create(
+        test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'),
             username='johndoe', password='secret')
 
@@ -67,9 +67,9 @@ class TestLogin:
 class TestAuthentication:
     """Test Authentication Functionality"""
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful Authentication with JWT Token"""
-        User.create(
+        test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'),
             username='johndoe', password='secret')
 
@@ -81,9 +81,9 @@ class TestAuthentication:
                                    UserFromTokenRequestObject, payload=payload)
         assert response.is_successful
 
-    def test_failure_expired(self):
+    def test_failure_expired(self, test_domain):
         """Test Expired JWT Token Login"""
-        user = User.create(
+        user = test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'),
             username='johndoe', password='secret')
 
@@ -107,9 +107,9 @@ class TestAuthentication:
         assert response.code.value == 401
         assert response.errors == {'token': 'Invalid JWT Token'}
 
-    def test_failure_invalid_token(self):
+    def test_failure_invalid_token(self, test_domain):
         """Test Login failure due to invalid Token"""
-        User.create(
+        test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'),
             username='johndoe', password='secret')
 
@@ -124,7 +124,7 @@ class TestAuthentication:
 class TestRegistration:
     """Test Registration Functionality"""
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful User Registration"""
         payload = {'address': 'john.doe@gmail.com', 'password': 'secret', 'username': 'johndoe',
                    'bio': 'I work at Webmart', 'image': 'https://234ssll.xfg'}
@@ -137,7 +137,7 @@ class TestRegistration:
         assert response.value.email_address == 'john.doe@gmail.com'
         assert response.value.username == 'johndoe'
 
-    def test_validation_failure(self):
+    def test_validation_failure(self, test_domain):
         """Test that validation errors are thrown correctly"""
         payload = {'address': 'john.doe@gmail.com', 'password': 'secret',
                    'bio': 'I work at Webmart', 'image': 'https://234ssll.xfg'}
@@ -152,9 +152,9 @@ class TestRegistration:
 class TestCurrentUser:
     """Test Fetch Current User Functionality"""
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful User Fetch from JWT Token"""
-        User.create(
+        test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'),
             username='johndoe', password='secret')
 
@@ -166,9 +166,9 @@ class TestCurrentUser:
                                    UserFromTokenRequestObject, payload=payload)
         assert response.is_successful
 
-    def test_failure_invalid_token(self):
+    def test_failure_invalid_token(self, test_domain):
         """Test Login failure due to invalid Token"""
-        User.create(
+        test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'),
             username='johndoe', password='secret')
 
@@ -183,9 +183,9 @@ class TestCurrentUser:
 class TestUpdateUser:
     """Test User Update Functionality"""
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful User Registration"""
-        user = User.create(
+        user = test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'),
             username='johndoe', password='secret', token='adjflkasjoiwhnrs',
             bio='I work at Webmart', image='https://234ssll.xfg')
@@ -207,9 +207,9 @@ class TestUpdateUser:
         assert response.value.username == 'changed.johndoe'
 
     @pytest.mark.xfail
-    def test_validation_failure(self):
+    def test_validation_failure(self, test_domain):
         """Test that validation errors are thrown correctly"""
-        user = User.create(
+        user = test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'),
             username='johndoe', password='secret', token='adjflkasjoiwhnrs',
             bio='I work at Webmart', image='https://234ssll.xfg')

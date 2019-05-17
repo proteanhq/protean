@@ -12,9 +12,9 @@ from tests.support.dog import Dog
 class TestTasklet:
     """Tests for Tasklet Utility Methods"""
 
-    def test_perform(self):
+    def test_perform(self, test_domain):
         """Test call to Tasklet's perform method"""
-        Dog.create(id=1, name='Murdock', owner='John')
+        test_domain.get_repository(Dog).create(id=1, name='Murdock', owner='John')
 
         # Perform a Show Usecase using Tasklet
         payload = {'identifier': 1}

@@ -2,15 +2,13 @@
 
 # Standard Library Imports
 from collections import OrderedDict
-from datetime import datetime
 
 # Protean
 import pytest
 
 from protean import Entity
-from protean.core.field.basic import String, Integer, DateTime, Auto
-from protean.core.exceptions import InvalidOperationError, NotSupportedError, ObjectNotFoundError, ValidationError
-from protean.core.queryset import QuerySet
+from protean.core.field.basic import String, Integer, Auto
+from protean.core.exceptions import InvalidOperationError, ValidationError
 from tests.support.dog import Dog, HasOneDog1, RelatedDog, SubDog
 from tests.support.human import HasOneHuman1, Human
 
@@ -39,35 +37,35 @@ class TestEntity:
         assert dog2.age == 3
         assert dog2.owner == 'John'
 
-    def test_equality_of_entities_1(self):
+    def test_that_two_entities_with_same_id_are_treated_as_equal(self):
         """Test that two entities are considered equal based on their ID"""
-        dog1 = Dog.create(name='Slobber 1', age=6, owner='Jason')
-        dog2 = Dog.create(name='Slobber 2', age=6, owner='Jason')
+        dog1 = Dog(id=12345, name='Slobber 1', age=6, owner='Jason')
+        dog2 = Dog(id=23442, name='Slobber 2', age=6, owner='Jason')
 
         assert dog1 != dog2  # Because their identities are different
         assert dog2 != dog1  # Because their identities are different
 
-        db_dog = Dog.get(dog1.id)
-        assert dog1 == db_dog  # Because it's the same record but reloaded from db
-        assert db_dog == dog1  # Because it's the same record but reloaded from db
+        dog3 = Dog(id=12345, name='Slobber 3', age=6, owner='Jason')
+        assert dog1 == dog3  # Because it's the same record even though attributes differ
+        assert dog3 == dog1
 
-    def test_equality_of_entities_2(self):
+    def test_that_two_entities_of_different_types_are_different_even_with_same_id(self):
         """Test that two entities are not considered equal even if they have the same ID
             and one belongs to a different Entity class
         """
-        dog = Dog.create(id=1, name='Slobber 1', age=6, owner='Jason')
-        human = Human.create(id=1, first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        dog = Dog(id=1, name='Slobber 1', age=6, owner='Jason')
+        human = Human(id=1, first_name='Jeff', last_name='Kennedy',
+                      email='jeff.kennedy@presidents.com')
 
         assert dog != human  # Even though their identities are the same
         assert human != dog  # Even though their identities are the same
 
-    def test_equality_of_entities_3(self):
+    def test_that_two_entities_of_inherited_types_are_different_even_with_same_id(self):
         """Test that two entities are not considered equal even if they have the same ID
             and one is subclassed from the other
         """
-        dog = Dog.create(id=1, name='Slobber 1', age=6, owner='Jason')
-        subdog = SubDog.create(id=1, name='Slobber 1', age=6, owner='Jason')
+        dog = Dog(id=1, name='Slobber 1', age=6, owner='Jason')
+        subdog = SubDog(id=1, name='Slobber 1', age=6, owner='Jason')
 
         assert dog != subdog  # Even though their identities are the same
         assert subdog != dog  # Even though their identities are the same
@@ -76,7 +74,7 @@ class TestEntity:
         """Test that the entity's hash is based on its identity"""
         hashed_id = hash(1)
 
-        dog = Dog.create(id=1, name='Slobber 1', age=6, owner='Jason')
+        dog = Dog(id=1, name='Slobber 1', age=6, owner='Jason')
         assert hashed_id == hash(dog)
 
     def test_required_fields(self):
@@ -156,7 +154,7 @@ class TestEntity:
 
         assert Dog.meta_.schema_name != Dog4.meta_.schema_name
 
-    def test_default_id(self):
+    def test_that_a_default_id_field_is_assigned_when_not_explicitly_defined(self):
         """ Test that default id field is assigned when not defined"""
 
         @Entity
@@ -168,17 +166,14 @@ class TestEntity:
         assert dog5 is not None
         assert dog5.id == 3
 
-    def test_id_immutability(self):
+    def test_that_ids_are_immutable(self):
         """Test that `id` cannot be changed once assigned"""
         dog = Dog(id=4, name='Chucky', owner='John Doe')
-        dog.save()
-
-        assert dog.state_.is_persisted is True
 
         with pytest.raises(InvalidOperationError):
-            dog.update(id=5)
+            dog.id = 5
 
-    def test_to_dict(self):
+    def test_conversion_of_entity_attributes_to_dict(self):
         """Test conversion of the entity to dict"""
 
         dog = Dog(
@@ -193,645 +188,9 @@ class TestEntity:
         assert str(dog1) == 'Dog object (id: None)'
         assert repr(dog1) == '<Dog: Dog object (id: None)>'
 
-        dog2 = Dog.create(id=1, name='Jimmy', age=10, owner='John Doe')
+        dog2 = Dog(id=1, name='Jimmy', age=10, owner='John Doe')
         assert str(dog2) == 'Dog object (id: 1)'
         assert repr(dog2) == '<Dog: Dog object (id: 1)>'
-
-    def test_get(self):
-        """Test Entity Retrieval by its primary key"""
-        Dog.create(id=1234, name='Johnny', owner='John')
-
-        dog = Dog.get(1234)
-        assert dog is not None
-        assert dog.id == 1234
-
-    def test_get_object_not_found_error(self):
-        """Test failed Entity Retrieval by its primary key"""
-        Dog.create(id=1234, name='Johnny', owner='John')
-
-        with pytest.raises(ObjectNotFoundError):
-            Dog.get(1235)
-
-    def test_find_by(self):
-        """Test Entity retrieval by a specific column's value"""
-
-        Dog.create(id=2345, name='Johnny', owner='John')
-
-        dog = Dog.find_by(name='Johnny')
-        assert dog is not None
-        assert dog.id == 2345
-
-    def test_find_by_object_not_found_error(self):
-        """Test Entity retrieval by specific column value(s)"""
-
-        Dog.create(id=2345, name='Johnny', owner='John')
-
-        with pytest.raises(ObjectNotFoundError):
-            Dog.find_by(name='JohnnyChase')
-
-    def test_find_by_multiple_attributes(self):
-        """Test Entity retrieval by multiple column value(s)"""
-
-        Dog.create(id=2346, name='Johnny1', age=8, owner='John')
-        Dog.create(id=2347, name='Johnny2', age=6, owner='John')
-
-        dog = Dog.find_by(name='Johnny1', age=8)
-        assert dog is not None
-        assert dog.id == 2346
-
-    def test_find_by_multiple_attributes_object_not_found_error(self):
-        """Test Entity retrieval by multiple column value(s)"""
-
-        Dog.create(id=2346, name='Johnny1', age=8, owner='John')
-        Dog.create(id=2347, name='Johnny2', age=6, owner='John')
-
-        with pytest.raises(ObjectNotFoundError):
-            Dog.find_by(name='Johnny1', age=6)
-
-    def test_create_error(self):
-        """ Add an entity to the repository missing a required attribute"""
-        with pytest.raises(ValidationError):
-            Dog.create(owner='John')
-
-    def test_create(self):
-        """ Add an entity to the repository"""
-        dog = Dog.create(id=11344234, name='Johnny', owner='John')
-        assert dog is not None
-        assert dog.id == 11344234
-        assert dog.name == 'Johnny'
-        assert dog.age == 5
-        assert dog.owner == 'John'
-
-        dog = Dog.get(11344234)
-        assert dog is not None
-
-    def test_save(self):
-        """Initialize an entity and save it to repository"""
-        dog = Dog(name='Johnny', owner='John')
-
-        saved_dog = dog.save()
-        assert saved_dog is not None
-        assert saved_dog.id is not None
-        assert saved_dog.name == 'Johnny'
-        assert saved_dog.age == 5
-        assert saved_dog.owner == 'John'
-
-    def test_save_validation_error(self):
-        """Test failed `save()` because of validation errors"""
-        dog = Dog(name='Johnny', owner='John')
-
-        with pytest.raises(ValidationError):
-            dog.name = ""  # Simulate an error by force-resetting an attribute
-            dog.save()
-
-    def test_save_invalid_value(self):
-        """Initialize an entity and save it to repository"""
-        dog = Dog(name='Johnny', owner='John')
-
-        with pytest.raises(ValidationError):
-            dog.age = 'abcd'
-            dog.save()
-
-    def test_save_again(self):
-        """Test that save can be invoked again on an already existing entity, to update values"""
-        dog = Dog(name='Johnny', owner='John')
-        dog.save()
-
-        dog.name = 'Janey'
-        dog.save()
-
-        dog.reload()
-        assert dog.name == 'Janey'
-
-    def test_update_with_invalid_id(self):
-        """Try to update a non-existing entry"""
-
-        dog = Dog.create(id=11344234, name='Johnny', owner='John')
-        dog.delete()
-        with pytest.raises(ObjectNotFoundError):
-            dog.update({'age': 10})
-
-    def test_update_with_dict(self):
-        """ Update an existing entity in the repository"""
-        dog = Dog.create(id=2, name='Johnny', owner='Carey', age=2)
-
-        dog.update({'age': 10})
-        u_dog = Dog.get(2)
-        assert u_dog is not None
-        assert u_dog.age == 10
-
-    def test_update_with_kwargs(self):
-        """ Update an existing entity in the repository"""
-        dog = Dog.create(id=2, name='Johnny', owner='Carey', age=2)
-
-        dog.update(age=10)
-        u_dog = Dog.get(2)
-        assert u_dog is not None
-        assert u_dog.age == 10
-
-    def test_update_with_dict_and_kwargs(self):
-        """ Update an existing entity in the repository"""
-        dog = Dog.create(id=2, name='Johnny', owner='Carey', age=2)
-
-        dog.update({'owner': 'Stephen'}, age=10)
-        u_dog = Dog.get(2)
-        assert u_dog is not None
-        assert u_dog.age == 10
-        assert u_dog.owner == 'Stephen'
-
-    def test_that_update_runs_validations(self):
-        """Try updating with invalid values"""
-        dog = Dog.create(id=1, name='Johnny', owner='Carey', age=2)
-
-        with pytest.raises(ValidationError):
-            dog.update(age='x')
-
-    def test_update_by(self):
-        """Test that update by query updates only correct records"""
-        Dog.create(id=1, name='Athos', owner='John', age=2)
-        Dog.create(id=2, name='Porthos', owner='John', age=3)
-        Dog.create(id=3, name='Aramis', owner='John', age=4)
-        Dog.create(id=4, name='d\'Artagnan', owner='John', age=5)
-
-        # Perform update
-        updated_count = Dog.query.filter(age__gt=3).update(owner='Jane')
-
-        # Query and check if only the relevant records have been updated
-        assert updated_count == 2
-
-        u_dog1 = Dog.get(1)
-        u_dog2 = Dog.get(2)
-        u_dog3 = Dog.get(3)
-        u_dog4 = Dog.get(4)
-        assert u_dog1.owner == 'John'
-        assert u_dog2.owner == 'John'
-        assert u_dog3.owner == 'Jane'
-        assert u_dog4.owner == 'Jane'
-
-    def test_update_all_with_args(self):
-        """Try updating all records satisfying filter in one step, passing a dict"""
-        Dog.create(id=1, name='Athos', owner='John', age=2)
-        Dog.create(id=2, name='Porthos', owner='John', age=3)
-        Dog.create(id=3, name='Aramis', owner='John', age=4)
-        Dog.create(id=4, name='d\'Artagnan', owner='John', age=5)
-
-        # Perform update
-        updated_count = Dog.query.filter(age__gt=3).update_all({'owner': 'Jane'})
-
-        # Query and check if only the relevant records have been updated
-        assert updated_count == 2
-
-        u_dog1 = Dog.get(1)
-        u_dog2 = Dog.get(2)
-        u_dog3 = Dog.get(3)
-        u_dog4 = Dog.get(4)
-        assert u_dog1.owner == 'John'
-        assert u_dog2.owner == 'John'
-        assert u_dog3.owner == 'Jane'
-        assert u_dog4.owner == 'Jane'
-
-    def test_update_all_with_kwargs(self):
-        """Try updating all records satisfying filter in one step"""
-        Dog.create(id=1, name='Athos', owner='John', age=2)
-        Dog.create(id=2, name='Porthos', owner='John', age=3)
-        Dog.create(id=3, name='Aramis', owner='John', age=4)
-        Dog.create(id=4, name='d\'Artagnan', owner='John', age=5)
-
-        # Perform update
-        updated_count = Dog.query.filter(age__gt=3).update_all(owner='Jane')
-
-        # Query and check if only the relevant records have been updated
-        assert updated_count == 2
-
-        u_dog1 = Dog.get(1)
-        u_dog2 = Dog.get(2)
-        u_dog3 = Dog.get(3)
-        u_dog4 = Dog.get(4)
-        assert u_dog1.owner == 'John'
-        assert u_dog2.owner == 'John'
-        assert u_dog3.owner == 'Jane'
-        assert u_dog4.owner == 'Jane'
-
-    def test_unique(self):
-        """ Test the unique constraints for the entity """
-        Dog.create(id=2, name='Johnny', owner='Carey')
-
-        with pytest.raises(ValidationError) as err:
-            Dog.create(
-                id=2, name='Johnny', owner='Carey')
-        assert err.value.normalized_messages == {
-            'name': ['`Dog` with this `name` already exists.']}
-
-    def test_query_init(self):
-        """Test the initialization of a QuerySet"""
-        query = Dog.query
-
-        assert query is not None
-        assert isinstance(query, QuerySet)
-        assert vars(query) == vars(QuerySet(Dog))
-
-    def test_filter_chain_initialization_from_entity(self):
-        """ Test that chaining returns a QuerySet for further chaining """
-        filters = [
-            Dog.query.filter(name='Murdock'),
-            Dog.query.filter(name='Jean').filter(owner='John'),
-            Dog.query.offset(1),
-            Dog.query.limit(25),
-            Dog.query.order_by('name'),
-            Dog.query.exclude(name='Murdock')
-        ]
-
-        for filter in filters:
-            assert isinstance(filter, QuerySet)
-
-    def test_filter_chaining(self):
-        """ Test that chaining returns a QuerySet for further chaining """
-        dog = Dog.query.filter(name='Murdock')
-        filters = [
-            dog,
-            Dog.query.filter(name='Jean').filter(owner='John'),
-            dog.offset(5 * 5),
-            dog.limit(5),
-            dog.order_by('name'),
-            dog.exclude(name='Murdock')
-        ]
-
-        for filter in filters:
-            assert isinstance(filter, QuerySet)
-
-    def test_filter_chain_results_1(self):
-        """ Chain filter method invocations to construct a complex filter """
-        # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
-
-        # Filter by Dog attributes
-        query = Dog.query.filter(name='Jean').filter(owner='John').filter(age=3)
-        dogs = query.all()
-
-        assert dogs is not None
-        assert dogs.total == 1
-        assert len(dogs.items) == 1
-
-        dog = dogs.first
-        assert dog.id == 3
-
-    def test_filter_chain_results_2(self):
-        """ Chain filter method invocations to construct a complex filter """
-        # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
-
-        # Filter by Dog attributes
-        query = Dog.query.filter(owner='John')
-        dogs = query.all()
-
-        assert dogs is not None
-        assert dogs.total == 2
-        assert len(dogs.items) == 2
-
-        dog = dogs.first
-        assert dog.id == 2
-
-    def test_filter_chain_results_3(self):
-        """ Chain filter method invocations to construct a complex filter """
-        # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
-
-        # Filter by Dog attributes
-        query = Dog.query.filter(owner='John').order_by('age')
-        dogs = query.all()
-
-        assert dogs is not None
-        assert dogs.total == 2
-        assert len(dogs.items) == 2
-
-        dog = dogs.first
-        assert dog.id == 3
-
-    def test_filter_norm(self):
-        """ Query the repository using filters """
-        # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
-
-        # Filter by the Owner
-        dogs = Dog.query.filter(owner='John')
-        assert dogs is not None
-        assert dogs.total == 2
-        assert len(dogs.items) == 2
-
-        # Order the results by age
-        dogs = Dog.query.filter(owner='John').order_by('-age')
-        assert dogs is not None
-        assert dogs.first.age == 7
-        assert dogs.first.name == 'Murdock'
-
-    def test_exclude(self):
-        """Query the resository with exclusion filters"""
-        # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
-
-        # Filter by the Owner
-        dogs = Dog.query.exclude(owner='John')
-        assert dogs is not None
-        assert dogs.total == 1
-        assert len(dogs.items) == 1
-        assert dogs.first.age == 6
-        assert dogs.first.name == 'Bart'
-
-    def test_exclude_multiple(self):
-        """Query the repository with exclusion filters"""
-        # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
-
-        # Filter by the Owner
-        dogs = Dog.query.exclude(name__in=['Murdock', 'Jean'])
-        assert dogs is not None
-        assert dogs.total == 1
-        assert len(dogs.items) == 1
-        assert dogs.first.age == 6
-        assert dogs.first.name == 'Bart'
-
-    def test_comparisons(self):
-        """Query with greater than operator"""
-        # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='john')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
-
-        # Filter by the Owner
-        dogs_gte = Dog.query.filter(age__gte=3)
-        dogs_lte = Dog.query.filter(age__lte=6)
-        dogs_gt = Dog.query.filter(age__gt=3)
-        dogs_lt = Dog.query.filter(age__lt=6)
-        dogs_in = Dog.query.filter(name__in=['Jean', 'Bart', 'Nobody'])
-        dogs_exact = Dog.query.filter(owner__exact='John')
-        dogs_iexact = Dog.query.filter(owner__iexact='John')
-        dogs_contains = Dog.query.filter(owner__contains='Joh')
-        dogs_icontains = Dog.query.filter(owner__icontains='Joh')
-
-        assert dogs_gte.total == 3
-        assert dogs_lte.total == 2
-        assert dogs_gt.total == 2
-        assert dogs_lt.total == 1
-        assert dogs_in.total == 2
-        assert dogs_exact.total == 1
-        assert dogs_iexact.total == 2
-        assert dogs_contains.total == 1
-        assert dogs_icontains.total == 2
-
-    def test_invalid_comparison_on_query_evaluation(self):
-        """Query with an invalid/unimplemented comparison"""
-        # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='john')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
-
-        # Filter by the Owner
-        with pytest.raises(NotImplementedError):
-            Dog.query.filter(age__notexact=3).all()
-
-    def test_result_traversal(self):
-        """ Test the traversal of the filter results"""
-        for counter in range(1, 5):
-            Dog.create(id=counter, name=counter, owner='Owner Name')
-
-        dogs = Dog.query.limit(2).order_by('id')
-        assert dogs.total == 4
-        assert len(dogs.items) == 2
-        assert dogs.first.id == 1
-        assert dogs.has_next
-        assert not dogs.has_prev
-
-        dogs = Dog.query.offset(2).limit(2).order_by('id').all()
-        assert len(dogs.items) == 2
-        assert dogs.first.id == 3
-        assert not dogs.has_next
-        assert dogs.has_prev
-
-    def test_delete(self):
-        """ Delete an object in the reposoitory by ID"""
-        dog = Dog.create(id=3, name='Johnny', owner='Carey')
-        deleted_dog = dog.delete()
-        assert deleted_dog is not None
-        assert deleted_dog.state_.is_destroyed is True
-
-        with pytest.raises(ObjectNotFoundError):
-            Dog.get(3)
-
-    def test_delete_all(self):
-        """Clean up repository and delete all records"""
-        Dog.create(id=1, name='Athos', owner='John', age=2)
-        Dog.create(id=2, name='Porthos', owner='John', age=3)
-        Dog.create(id=3, name='Aramis', owner='John', age=4)
-        Dog.create(id=4, name='d\'Artagnan', owner='John', age=5)
-
-        dogs = Dog.query.all()
-        assert dogs.total == 4
-
-        Dog.delete_all()
-
-        dogs = Dog.query.all()
-        assert dogs.total == 0
-
-    def test_delete_all_by_filter(self):
-        """Try updating all records satisfying filter in one step, passing a dict"""
-        Dog.create(id=1, name='Athos', owner='John', age=2)
-        Dog.create(id=2, name='Porthos', owner='John', age=3)
-        Dog.create(id=3, name='Aramis', owner='John', age=4)
-        Dog.create(id=4, name='d\'Artagnan', owner='John', age=5)
-
-        # Perform update
-        deleted_count = Dog.query.filter(age__gt=3).delete_all()
-
-        # Query and check if only the relevant records have been deleted
-        assert deleted_count == 2
-
-        dog1 = Dog.get(1)
-        dog2 = Dog.get(2)
-
-        assert dog1 is not None
-        assert dog2 is not None
-
-        with pytest.raises(ObjectNotFoundError):
-            Dog.get(3)
-
-        with pytest.raises(ObjectNotFoundError):
-            Dog.get(4)
-
-    def test_delete_by(self):
-        """Test that update by query updates only correct records"""
-        Dog.create(id=1, name='Athos', owner='John', age=2)
-        Dog.create(id=2, name='Porthos', owner='John', age=3)
-        Dog.create(id=3, name='Aramis', owner='John', age=4)
-        Dog.create(id=4, name='d\'Artagnan', owner='John', age=5)
-
-        # Perform update
-        deleted_count = Dog.query.filter(age__gt=3).delete()
-
-        # Query and check if only the relevant records have been updated
-        assert deleted_count == 2
-        assert Dog.query.all().total == 2
-
-        assert Dog.get(1) is not None
-        assert Dog.get(2) is not None
-        with pytest.raises(ObjectNotFoundError):
-            Dog.get(3)
-
-        with pytest.raises(ObjectNotFoundError):
-            Dog.get(4)
-
-    def test_filter_returns_q_object(self):
-        """Test Negation of a criteria"""
-        # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
-
-        # Filter by the Owner
-        query = Dog.query.filter(owner='John')
-        assert isinstance(query, QuerySet)
-
-    def test_escaped_quotes_in_values(self):
-        """Test that escaped quotes in values are handled properly"""
-
-        Dog.create(name='Athos', owner='John', age=2)
-        Dog.create(name='Porthos', owner='John', age=3)
-        Dog.create(name='Aramis', owner='John', age=4)
-
-        dog1 = Dog.create(name="d'Artagnan1", owner='John', age=5)
-        dog2 = Dog.create(name="d\'Artagnan2", owner='John', age=5)
-        dog3 = Dog.create(name="d\"Artagnan3", owner='John', age=5)
-        dog4 = Dog.create(name='d\"Artagnan4', owner='John', age=5)
-
-        assert all(dog is not None for dog in [dog1, dog2, dog3, dog4])
-
-    def test_override(self, test_domain):
-        """Test overriding methods from Entity"""
-
-        @Entity
-        class ImmortalDog:
-            """A Dog who lives forever"""
-
-            name = String(required=True, unique=True, max_length=50)
-            age = Integer(default=5)
-            owner = String(required=True, max_length=15)
-
-            def delete(self):
-                """You can't delete me!!"""
-                raise SystemError("Deletion Prohibited!")
-
-        test_domain.register_element(ImmortalDog)
-
-        immortal_dog = ImmortalDog.create(name='Titan', age=10001, owner='God')
-        with pytest.raises(SystemError):
-            immortal_dog.delete()
-
-        test_domain.unregister_element(ImmortalDog)
-
-    def test_abstract(self):
-        """Test that abstract entities cannot be initialized"""
-        @Entity
-        class AbstractDog2:
-            """A Dog that cannot Live!"""
-            name = String(required=True, unique=True, max_length=50)
-            age = Integer(default=5)
-            owner = String(required=True, max_length=15)
-
-            class Meta:
-                abstract = True
-
-        with pytest.raises(NotSupportedError) as exc1:
-            from protean.core.repository.factory import repo_factory
-            repo_factory.register(AbstractDog2)
-        assert exc1.value.args[0] == ('AbstractDog2 class has been marked abstract'
-                                      ' and cannot be instantiated')
-
-        with pytest.raises(NotSupportedError) as exc2:
-            AbstractDog2(name='Titan', age=10001, owner='God')
-        assert exc2.value.args[0] == ('AbstractDog2 class has been marked abstract'
-                                      ' and cannot be instantiated')
-
-    def test_abstract_inheritance(self):
-        """Test that abstract entities cannot be initialized"""
-        @Entity
-        class AbstractDog3:
-            """A Dog that cannot Live!"""
-            age = Integer(default=5)
-
-            class Meta:
-                abstract = True
-
-        @Entity
-        class ConcreteDog1(AbstractDog3):
-            """A Dog that inherits aging and death"""
-            name = String(required=True, unique=True, max_length=50)
-            owner = String(required=True, max_length=15)
-
-        immortal_dog = ConcreteDog1(name='Titan', owner='God')
-        assert immortal_dog is not None
-        assert immortal_dog.age == 5
-
-    def test_two_level_abstract_inheritance(self):
-        """Test that abstract entities cannot be initialized"""
-        @Entity
-        class AbstractDog:
-            """A Dog that cannot Live!"""
-            age = Integer(default=5)
-
-            class Meta:
-                abstract = True
-
-        @Entity
-        class DogWithRecords(AbstractDog):
-            """A Dog that has medical records"""
-            born_at = DateTime(default=datetime.now())
-
-            class Meta:
-                abstract = True
-
-        @Entity
-        class ConcreteDog2(DogWithRecords):
-            """A Dog that inherits aging and death, with medical records"""
-            name = String(required=True, unique=True, max_length=50)
-            owner = String(required=True, max_length=15)
-
-        ordinary_dog = ConcreteDog2(name='Titan', owner='God')
-        assert ordinary_dog is not None
-        assert ordinary_dog.age == 5
-        assert ordinary_dog.born_at is not None
-
-        with pytest.raises(NotSupportedError) as exc1:
-            from protean.core.repository.factory import repo_factory
-            repo_factory.register(DogWithRecords)
-        assert exc1.value.args[0] == ('DogWithRecords class has been marked abstract'
-                                      ' and cannot be instantiated')
-
-    def test_reload(self):
-        """Test that entities can be reloaded"""
-        dog = Dog.create(id=1234, name='Johnny', owner='John')
-
-        dog_dup = Dog.get(1234)
-        assert dog_dup is not None
-        assert dog_dup.id == 1234
-        dog_dup.owner = 'Jane'
-        dog_dup.save()
-
-        assert dog_dup.owner == 'Jane'
-        assert dog.owner == 'John'
-
-        dog.reload()
-        assert dog.owner == 'Jane'
 
 
 class TestIdentity:
@@ -875,7 +234,7 @@ class TestIdentity:
 
         test_domain.register_element(Person2)
 
-        person = Person2.create(name='John Doe')
+        person = test_domain.get_repository(Person2).create(name='John Doe')
         assert person.meta_.id_field.field_name == 'ssn'
         assert person.ssn is not None
 
@@ -979,20 +338,21 @@ class TestEntityMetaAttributes:
         attribute_keys = list(OrderedDict(sorted(dog.meta_.attributes.items())).keys())
         assert attribute_keys == ['age', 'id', 'name', 'owner']
 
-    def test_declared_fields_with_reference(self):
+    def test_declared_fields_with_reference(self, test_domain):
         """Test declared fields on an entity with references"""
-        human = Human.create(first_name='Jeff', last_name='Kennedy',
-                             email='jeff.kennedy@presidents.com')
+        human = test_domain.get_repository(Human).create(
+            first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
         dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
 
         attribute_keys = list(OrderedDict(sorted(dog.meta_.attributes.items())).keys())
         assert attribute_keys == ['age', 'id', 'name', 'owner_id']
 
-    def test_declared_fields_with_hasone_association(self):
+    def test_declared_fields_with_hasone_association(self, test_domain):
         """Test declared fields on an entity with a HasOne association"""
-        human = HasOneHuman1.create(first_name='Jeff', last_name='Kennedy',
-                                    email='jeff.kennedy@presidents.com')
-        dog = HasOneDog1.create(id=1, name='John Doe', age=10, has_one_human1=human)
+        human = test_domain.get_repository(HasOneHuman1).create(
+            first_name='Jeff', last_name='Kennedy', email='jeff.kennedy@presidents.com')
+        dog = test_domain.get_repository(HasOneDog1).create(id=1, name='John Doe', age=10, has_one_human1=human)
 
         assert all(key in dog.meta_.attributes for key in ['age', 'has_one_human1_id', 'id', 'name'])
         assert all(key in human.meta_.attributes for key in ['first_name', 'id', 'last_name', 'email'])

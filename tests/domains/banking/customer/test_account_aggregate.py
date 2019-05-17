@@ -102,9 +102,9 @@ class TestAccountAggregate:
         account2.name = "Premium Checking Account"
         assert account1 == account2
 
-    def test_persistence(self):
+    def test_persistence(self, test_domain):
         """Test that the Account Aggregate can be persisted successfully"""
-        account = Account.create(
+        account = test_domain.get_repository(Account).create(
             balance=Balance.build(currency=Currency.CAD.value, amount=500.0),
             name='Premium Savings Account',
             account_type=AccountType.SAVINGS.value)
@@ -117,15 +117,15 @@ class TestAccountAggregate:
         except ValueError:
             pytest.fail("ID is not valid UUID")
 
-    def test_retrieval(self):
+    def test_retrieval(self, test_domain):
         """Test that the Account Aggregate can be retrieved successfully
         and it retains its state
         """
-        account = Account.create(
+        account = test_domain.get_repository(Account).create(
             balance=Balance.build(currency=Currency.CAD.value, amount=500.0),
             name='Premium Savings Account',
             account_type=AccountType.SAVINGS.value)
-        db_account = Account.get(account.id)
+        db_account = test_domain.get_repository(Account).get(account.id)
 
         assert db_account is not None
         assert db_account.balance is not None

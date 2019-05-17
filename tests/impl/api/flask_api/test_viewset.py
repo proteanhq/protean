@@ -18,10 +18,10 @@ class TestGenericAPIResourceSet:
         """ Setup client for test cases """
         yield app.test_client()
 
-    def test_set_show(self, client):
+    def test_set_show(self, client, test_domain):
         """ Test retrieving an entity using the resource set"""
         # Create a human object
-        Human.create(id=1, first_name='John', last_name='Doe', email='john.doe@gmail.com')
+        test_domain.get_repository(Human).create(id=1, first_name='John', last_name='Doe', email='john.doe@gmail.com')
 
         # Fetch this human by ID
         rv = client.get('/humans/1')
@@ -32,14 +32,14 @@ class TestGenericAPIResourceSet:
         assert rv.json == expected_resp
 
         # Delete the human now
-        human = Human.get(1)
-        human.delete()
+        human = test_domain.get_repository(Human).get(1)
+        test_domain.get_repository(Human).delete(human)
 
-    def test_set_list(self, client):
+    def test_set_list(self, client, test_domain):
         """ Test listing an entity using the resource set"""
         # Create Human objects
-        Human.create(id=2, first_name='Jane', last_name='DoeJ', email='jane.doe@gmail.com')
-        Human.create(id=3, first_name='Mary', last_name='DoeM', email='mary.doe@gmail.com')
+        test_domain.get_repository(Human).create(id=2, first_name='Jane', last_name='DoeJ', email='jane.doe@gmail.com')
+        test_domain.get_repository(Human).create(id=3, first_name='Mary', last_name='DoeM', email='mary.doe@gmail.com')
 
         # Get the list of humans
         rv = client.get('/humans?order_by[]=id')
@@ -50,12 +50,12 @@ class TestGenericAPIResourceSet:
             'last_name': 'DoeJ', 'email': 'jane.doe@gmail.com'
         }
 
-        human = Human.get(2)
-        human.delete()
-        human = Human.get(3)
-        human.delete()
+        human = test_domain.get_repository(Human).get(2)
+        test_domain.get_repository(Human).delete(human)
+        human = test_domain.get_repository(Human).get(3)
+        test_domain.get_repository(Human).delete(human)
 
-    def test_set_create(self, client):
+    def test_set_create(self, client, test_domain):
         """ Test creating an entity using the resource set """
 
         # Create a human object
@@ -82,14 +82,14 @@ class TestGenericAPIResourceSet:
         assert rv.json == expected_resp
 
         # Delete the human now
-        human = Human.get(1)
-        human.delete()
+        human = test_domain.get_repository(Human).get(1)
+        test_domain.get_repository(Human).delete(human)
 
-    def test_set_update(self, client):
+    def test_set_update(self, client, test_domain):
         """ Test updating an entity using the resource set """
 
         # Create a human object
-        Human.create(id=2, first_name='Jane', last_name='DoeJ', email='jane.doe@gmail.com')
+        test_domain.get_repository(Human).create(id=2, first_name='Jane', last_name='DoeJ', email='jane.doe@gmail.com')
 
         # Update the human object
         rv = client.put(
@@ -109,28 +109,28 @@ class TestGenericAPIResourceSet:
         assert rv.json == expected_resp
 
         # Delete the human now
-        human = Human.get(2)
-        human.delete()
+        human = test_domain.get_repository(Human).get(2)
+        test_domain.get_repository(Human).delete(human)
 
-    def test_set_delete(self, client):
+    def test_set_delete(self, client, test_domain):
         """ Test deleting an entity using the resource set """
 
         # Create a human object
-        Human.create(id=1, first_name='John', last_name='Doe', email='john.doe@gmail.com')
+        test_domain.get_repository(Human).create(id=1, first_name='John', last_name='Doe', email='john.doe@gmail.com')
 
         # Delete the dog object
         rv = client.delete('/humans/1')
         assert rv.status_code == 204
         assert rv.data == b''
 
-    def test_custom_route(self, client):
+    def test_custom_route(self, client, test_domain):
         """ Test custom routes using the resource set """
 
         # Create a human object
-        Human.create(id=1, first_name='John', last_name='Doe', email='john.doe@gmail.com')
-        Dog.create(id=1, name='Johnny', owner='John Doe')
-        Dog.create(id=2, name='Mary', owner='John Doe', age=3)
-        Dog.create(id=3, name='Grady', owner='Jane Doe', age=8)
+        test_domain.get_repository(Human).create(id=1, first_name='John', last_name='Doe', email='john.doe@gmail.com')
+        test_domain.get_repository(Dog).create(id=1, name='Johnny', owner='John Doe')
+        test_domain.get_repository(Dog).create(id=2, name='Mary', owner='John Doe', age=3)
+        test_domain.get_repository(Dog).create(id=3, name='Grady', owner='Jane Doe', age=8)
 
         # Get the custom route
         rv = client.get('/humans/1/my_dogs')

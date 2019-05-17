@@ -86,9 +86,10 @@ class TestUserAggregate:
         user2.username = "janedoe"
         assert user1 == user2
 
-    def test_persistence(self):
+    def test_persistence(self, test_domain):
         """Test that the User Aggregate can be persisted successfully"""
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='a1b2c3d4e5')
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='a1b2c3d4e5')
         assert user is not None
         assert user.id is not None
 
@@ -97,12 +98,13 @@ class TestUserAggregate:
         except ValueError:
             pytest.fail("ID is not valid UUID")
 
-    def test_retrieval(self):
+    def test_retrieval(self, test_domain):
         """Test that the User Aggregate can be retrieved successfully
         and it retains its state
         """
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='a1b2c3d4e5')
-        db_user = User.get(user.id)
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='a1b2c3d4e5')
+        db_user = test_domain.get_repository(User).get(user.id)
 
         assert db_user is not None
         assert db_user.email is not None
@@ -113,9 +115,10 @@ class TestUserAggregate:
         except ValueError:
             pytest.fail("ID is not valid UUID")
 
-    def test_password_hash(self):
+    def test_password_hash(self, test_domain):
         """Test that passwords are hashed as part of entity initialization"""
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='a1b2c3d4e5')
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='a1b2c3d4e5')
         assert pbkdf2_sha256.verify('a1b2c3d4e5', user.password)
 
 
@@ -131,11 +134,13 @@ class TestFollower:
         with pytest.raises(IncorrectUsageError):
             Follower.create(user_id=user1.id, follower_id=user2.id, followed_on=datetime.utcnow())
 
-    def test_follow(self):
+    def test_follow(self, test_domain):
         """Test initialization of Follower Entity under User Aggregate"""
 
-        user1 = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        user2 = User.create(email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret')
+        user1 = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        user2 = test_domain.get_repository(User).create(
+            email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret')
 
         user1.follow(user2)
 
@@ -146,17 +151,18 @@ class TestFollower:
 class TestFavorite:
     """Tests for Favorite Entity"""
 
-    def test_init(self):
+    def test_init(self, test_domain):
         """Test initialization of Favorite Entity"""
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        article = test_domain.get_repository(Article).create(
             slug='how-to-train-your-dragon',
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
 
         # FIXME This is a much more elegant method of handling entities under aggregates
         # favorite = user.favorites.add(article=article)
-        favorite = Favorite.create(user=user, article=article)
+        favorite = test_domain.get_repository(Favorite).create(user=user, article=article)
         assert favorite is not None
         assert favorite.id is not None
         assert favorite.article == article

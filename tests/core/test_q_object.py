@@ -8,15 +8,15 @@ from tests.support.dog import Dog
 class TestCriteriaConstruction:
     """Test Conjunction operations on QuerySet"""
 
-    def test_empty_query(self):
+    def test_empty_query(self, test_domain):
         """Test that an empty Q object is initialized with Queryset"""
-        assert isinstance(Dog.query, QuerySet)
-        assert isinstance(Dog.query._criteria, Q)
+        assert isinstance(test_domain.get_repository(Dog).query, QuerySet)
+        assert isinstance(test_domain.get_repository(Dog).query._criteria, Q)
 
-    def test_simple_filter(self):
+    def test_simple_filter(self, test_domain):
         """Test query construction with simple filter kwargs"""
         # Filter by the Owner
-        q1 = Dog.query.filter(owner='John')
+        q1 = test_domain.get_repository(Dog).query.filter(owner='John')
         assert q1._criteria is not None
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
@@ -27,10 +27,10 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is False
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_simple_exclude(self):
+    def test_simple_exclude(self, test_domain):
         """Test query construction with simple exclude kwargs"""
         # Filter by the Owner
-        q1 = Dog.query.exclude(owner='John')
+        q1 = test_domain.get_repository(Dog).query.exclude(owner='John')
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -40,10 +40,10 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is True
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_multiple_filters(self):
+    def test_multiple_filters(self, test_domain):
         """Test query construction with multiple filter criteria"""
         # Filter by the Owner
-        q1 = Dog.query.filter(owner='John')
+        q1 = test_domain.get_repository(Dog).query.filter(owner='John')
         q2 = q1.filter(age=3)
 
         _, decon_args, decon_kwargs = q2._criteria.deconstruct()
@@ -54,10 +54,10 @@ class TestCriteriaConstruction:
         assert q2._criteria.negated is False
         assert Q(*decon_args, **decon_kwargs) == q2._criteria
 
-    def test_multiple_excludes(self):
+    def test_multiple_excludes(self, test_domain):
         """Test query construction with multiple exclude criteria"""
         # Filter by the Owner
-        q1 = Dog.query.exclude(owner='John')
+        q1 = test_domain.get_repository(Dog).query.exclude(owner='John')
         q2 = q1.exclude(age=3)
 
         _, decon_args, decon_kwargs = q2._criteria.deconstruct()
@@ -69,10 +69,10 @@ class TestCriteriaConstruction:
         assert q2._criteria.negated is False
         assert Q(*decon_args, **decon_kwargs) == q2._criteria
 
-    def test_multiple_criteria_in_filter(self):
+    def test_multiple_criteria_in_filter(self, test_domain):
         """Test query construction with multiple filter in filter"""
         # Filter by the Owner
-        q1 = Dog.query.filter(owner='John', age=3)
+        q1 = test_domain.get_repository(Dog).query.filter(owner='John', age=3)
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
         assert decon_args == (('age', 3), ('owner', 'John'))
@@ -81,10 +81,10 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is False
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_multiple_criteria_in_exclude(self):
+    def test_multiple_criteria_in_exclude(self, test_domain):
         """Test query construction with multiple filter in exclude"""
         # Filter by the Owner
-        q1 = Dog.query.exclude(owner='John', age=3)
+        q1 = test_domain.get_repository(Dog).query.exclude(owner='John', age=3)
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -94,10 +94,10 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is True
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_combined_filter_and_exclude(self):
+    def test_combined_filter_and_exclude(self, test_domain):
         """Test query construction with combined filter/exclude with filter coming first"""
         # Filter by the Owner
-        q1 = Dog.query.filter(owner='John').exclude(age=3)
+        q1 = test_domain.get_repository(Dog).query.filter(owner='John').exclude(age=3)
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -107,10 +107,10 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is False
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_combined_exclude_and_filter(self):
+    def test_combined_exclude_and_filter(self, test_domain):
         """Test query construction with combined filter/exclude with exclude coming first"""
         # Filter by the Owner
-        q1 = Dog.query.exclude(age=3).filter(owner='John')
+        q1 = test_domain.get_repository(Dog).query.exclude(age=3).filter(owner='John')
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -120,10 +120,10 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is False
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_filter_with_single_Q_object(self):
+    def test_filter_with_single_Q_object(self, test_domain):
         """Test query construction with single Q instance as input to `filter` method"""
         # Filter by the Owner
-        q1 = Dog.query.filter(Q(owner='John'))
+        q1 = test_domain.get_repository(Dog).query.filter(Q(owner='John'))
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -133,10 +133,10 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is False
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_exclude_with_single_Q_object(self):
+    def test_exclude_with_single_Q_object(self, test_domain):
         """Test query construction with single Q instance as input to `exclude` method"""
         # Filter by the Owner
-        q1 = Dog.query.exclude(Q(owner='John'))
+        q1 = test_domain.get_repository(Dog).query.exclude(Q(owner='John'))
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -146,10 +146,10 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is True
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_filter_with_multiple_Q_objects(self):
+    def test_filter_with_multiple_Q_objects(self, test_domain):
         """Test query construction with multiple Q objects input to `filter` method"""
         # Filter by the Owner
-        q1 = Dog.query.filter(Q(owner='John'), Q(age=3))
+        q1 = test_domain.get_repository(Dog).query.filter(Q(owner='John'), Q(age=3))
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -159,9 +159,9 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is False
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_exclude_with_multiple_Q_objects(self):
+    def test_exclude_with_multiple_Q_objects(self, test_domain):
         """Test query construction with multiple Q objects input to `exclude` method"""
-        q1 = Dog.query.exclude(Q(owner='John'), Q(age=3))
+        q1 = test_domain.get_repository(Dog).query.exclude(Q(owner='John'), Q(age=3))
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -171,10 +171,10 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is True
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_filter_with_AND(self):
+    def test_filter_with_AND(self, test_domain):
         """Test query construction with AND"""
         # Filter by the Owner
-        q1 = Dog.query.filter(Q(owner='John') & Q(age=3))
+        q1 = test_domain.get_repository(Dog).query.filter(Q(owner='John') & Q(age=3))
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -184,10 +184,10 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is False
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_filter_with_OR(self):
+    def test_filter_with_OR(self, test_domain):
         """Test query construction with OR"""
         # Filter by the Owner
-        q1 = Dog.query.filter(Q(owner='John') | Q(age=3))
+        q1 = test_domain.get_repository(Dog).query.filter(Q(owner='John') | Q(age=3))
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -197,10 +197,10 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is False
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_filter_with_multiple_ANDs(self):
+    def test_filter_with_multiple_ANDs(self, test_domain):
         """Test query construction with multiple AND criteria"""
         # Filter by the Owner
-        q1 = Dog.query.filter(Q(owner='John') & Q(age=3) & Q(name='Jean'))
+        q1 = test_domain.get_repository(Dog).query.filter(Q(owner='John') & Q(age=3) & Q(name='Jean'))
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -213,10 +213,10 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is False
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_filter_with_multiple_ORs(self):
+    def test_filter_with_multiple_ORs(self, test_domain):
         """Test query construction with multiple OR criteria"""
         # Filter by the Owner
-        q1 = Dog.query.filter(Q(owner='John') | Q(age=3) | Q(name='Jean'))
+        q1 = test_domain.get_repository(Dog).query.filter(Q(owner='John') | Q(age=3) | Q(name='Jean'))
 
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
@@ -229,24 +229,24 @@ class TestCriteriaConstruction:
         assert q1._criteria.negated is False
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
 
-    def test_filter_with_AND_OR_combination(self):
+    def test_filter_with_AND_OR_combination(self, test_domain):
         """Test query construction with AND and OR combinations"""
         # Filter by the Owner
-        q1 = Dog.query.filter(Q(owner='John') | Q(age=3), name='Jean')
+        q1 = test_domain.get_repository(Dog).query.filter(Q(owner='John') | Q(age=3), name='Jean')
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
         assert str(decon_args) == ("(<Q: (OR: ('owner', 'John'), ('age', 3))>, "
                                    "('name', 'Jean'))")
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
         assert q1._criteria.children[0].connector == Q.OR
 
-        q2 = Dog.query.filter((Q(owner='John') | Q(age=3)), Q(name='Jean'))
+        q2 = test_domain.get_repository(Dog).query.filter((Q(owner='John') | Q(age=3)), Q(name='Jean'))
         _, decon_args, decon_kwargs = q2._criteria.deconstruct()
         assert str(decon_args) == ("(<Q: (OR: ('owner', 'John'), ('age', 3))>, "
                                    "<Q: (AND: ('name', 'Jean'))>)")
         assert Q(*decon_args, **decon_kwargs) == q2._criteria
         assert q2._criteria.children[0].connector == Q.OR
 
-        q3 = Dog.query.filter(Q(name='Jean') & (Q(owner='John') | Q(age=3)))
+        q3 = test_domain.get_repository(Dog).query.filter(Q(name='Jean') & (Q(owner='John') | Q(age=3)))
         _, decon_args, decon_kwargs = q3._criteria.deconstruct()
         assert str(decon_args) == ("(<Q: (AND: "
                                    "('name', 'Jean'), "
@@ -333,110 +333,111 @@ class TestQ:
 class TestConjunctions:
     """Class that holds tests cases for Conjunctions (AND, OR, NeG)"""
 
-    def test_default_AND(self):
+    def test_default_AND(self, test_domain):
         """Test that kwargs to `filter` are ANDed by default"""
         # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+        test_domain.get_repository(Dog).create(id=2, name='Murdock', age=7, owner='John')
+        test_domain.get_repository(Dog).create(id=3, name='Jean', age=3, owner='John')
+        test_domain.get_repository(Dog).create(id=4, name='Bart', age=6, owner='Carrie')
 
-        q1 = Dog.query.filter(owner='John', age=3)
+        q1 = test_domain.get_repository(Dog).query.filter(owner='John', age=3)
         assert q1.total == 1
 
-    def test_default_NEG_AND(self):
+    def test_default_NEG_AND(self, test_domain):
         """Test that kwargs to `filter` are ANDed by default"""
         # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+        test_domain.get_repository(Dog).create(id=2, name='Murdock', age=7, owner='John')
+        test_domain.get_repository(Dog).create(id=3, name='Jean', age=3, owner='John')
+        test_domain.get_repository(Dog).create(id=4, name='Bart', age=6, owner='Carrie')
 
-        q1 = Dog.query.exclude(owner='John', age=3)
+        q1 = test_domain.get_repository(Dog).query.exclude(owner='John', age=3)
         assert q1.total == 1
 
-        q2 = Dog.query.exclude(owner='Carrie', age=10)
+        q2 = test_domain.get_repository(Dog).query.exclude(owner='Carrie', age=10)
         assert q2.total == 2
 
-    def test_simple_AND(self):
+    def test_simple_AND(self, test_domain):
         """Test straightforward AND of two criteria"""
         # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+        test_domain.get_repository(Dog).create(id=2, name='Murdock', age=7, owner='John')
+        test_domain.get_repository(Dog).create(id=3, name='Jean', age=3, owner='John')
+        test_domain.get_repository(Dog).create(id=4, name='Bart', age=6, owner='Carrie')
 
         # Filter by the Owner
-        q1 = Dog.query.filter(Q(owner='John') & Q(age=3))
+        q1 = test_domain.get_repository(Dog).query.filter(Q(owner='John') & Q(age=3))
         assert q1.total == 1
 
-    def test_simple_OR(self):
+    def test_simple_OR(self, test_domain):
         """Test straightforward OR of two criteria"""
         # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+        test_domain.get_repository(Dog).create(id=2, name='Murdock', age=7, owner='John')
+        test_domain.get_repository(Dog).create(id=3, name='Jean', age=3, owner='John')
+        test_domain.get_repository(Dog).create(id=4, name='Bart', age=6, owner='Carrie')
 
-        q1 = Dog.query.filter(Q(owner='John') | Q(age=3))
+        q1 = test_domain.get_repository(Dog).query.filter(Q(owner='John') | Q(age=3))
         assert q1.total == 2
 
-    def test_AND_with_OR(self):
+    def test_AND_with_OR(self, test_domain):
         """Test combination of AND and OR"""
         # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
-        Dog.create(id=5, name='Leslie', age=6, owner='Underwood')
-        Dog.create(id=6, name='Dave', age=6, owner='Carrie')
+        test_domain.get_repository(Dog).create(id=2, name='Murdock', age=7, owner='John')
+        test_domain.get_repository(Dog).create(id=3, name='Jean', age=3, owner='John')
+        test_domain.get_repository(Dog).create(id=4, name='Bart', age=6, owner='Carrie')
+        test_domain.get_repository(Dog).create(id=5, name='Leslie', age=6, owner='Underwood')
+        test_domain.get_repository(Dog).create(id=6, name='Dave', age=6, owner='Carrie')
 
-        q1 = Dog.query.filter(
+        q1 = test_domain.get_repository(Dog).query.filter(
             Q(owner='John', name='Jean')
             | Q(age=6))
         assert q1.total == 4
 
-        q2 = Dog.query.filter(Q(owner='John') | Q(age=6))
+        q2 = test_domain.get_repository(Dog).query.filter(Q(owner='John') | Q(age=6))
         assert q2.total == 5
 
-        q3 = Dog.query.filter(
+        q3 = test_domain.get_repository(Dog).query.filter(
             (Q(owner='John') & Q(age=7)) |
             (Q(owner='Carrie') & Q(age=6)))
         assert q3.total == 3
 
-    def test_OR_with_AND(self):
+    def test_OR_with_AND(self, test_domain):
         """Test combination of OR and AND"""
         # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
-        Dog.create(id=5, name='Leslie', age=6, owner='Underwood')
-        Dog.create(id=6, name='Dave', age=6, owner='Carrie')
+        test_domain.get_repository(Dog).create(id=2, name='Murdock', age=7, owner='John')
+        test_domain.get_repository(Dog).create(id=3, name='Jean', age=3, owner='John')
+        test_domain.get_repository(Dog).create(id=4, name='Bart', age=6, owner='Carrie')
+        test_domain.get_repository(Dog).create(id=5, name='Leslie', age=6, owner='Underwood')
+        test_domain.get_repository(Dog).create(id=6, name='Dave', age=6, owner='Carrie')
 
-        q1 = Dog.query.filter((Q(owner='John') | Q(age=7)) & (Q(owner='Carrie') | Q(age=6)))
+        q1 = test_domain.get_repository(Dog).query.filter(
+            (Q(owner='John') | Q(age=7)) & (Q(owner='Carrie') | Q(age=6)))
         assert q1.total == 0
 
-        q2 = Dog.query.filter(
+        q2 = test_domain.get_repository(Dog).query.filter(
             (Q(owner='John') | Q(age__gte=3)) &
             (Q(name='Jean') | Q(name='Murdock')))
         assert q2.total == 2
 
-    def test_NEG(self):
+    def test_NEG(self, test_domain):
         """Test Negation of a criteria"""
         # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
-        Dog.create(id=5, name='Leslie', age=6, owner='Underwood')
-        Dog.create(id=6, name='Dave', age=6, owner='Carrie')
+        test_domain.get_repository(Dog).create(id=2, name='Murdock', age=7, owner='John')
+        test_domain.get_repository(Dog).create(id=3, name='Jean', age=3, owner='John')
+        test_domain.get_repository(Dog).create(id=4, name='Bart', age=6, owner='Carrie')
+        test_domain.get_repository(Dog).create(id=5, name='Leslie', age=6, owner='Underwood')
+        test_domain.get_repository(Dog).create(id=6, name='Dave', age=6, owner='Carrie')
 
-        q1 = Dog.query.filter(~Q(owner='John'))
+        q1 = test_domain.get_repository(Dog).query.filter(~Q(owner='John'))
         assert q1.total == 3
 
-        q2 = Dog.query.filter(~Q(owner='John') | ~Q(age=7))
+        q2 = test_domain.get_repository(Dog).query.filter(~Q(owner='John') | ~Q(age=7))
         assert q2.total == 4
 
-    def test_empty_resultset(self):
+    def test_empty_resultset(self, test_domain):
         """Test that kwargs to `filter` are ANDed by default"""
         # Add multiple entries to the DB
-        Dog.create(id=2, name='Murdock', age=7, owner='John')
-        Dog.create(id=3, name='Jean', age=3, owner='John')
-        Dog.create(id=4, name='Bart', age=6, owner='Carrie')
+        test_domain.get_repository(Dog).create(id=2, name='Murdock', age=7, owner='John')
+        test_domain.get_repository(Dog).create(id=3, name='Jean', age=3, owner='John')
+        test_domain.get_repository(Dog).create(id=4, name='Bart', age=6, owner='Carrie')
 
-        q1 = Dog.query.filter(owner='XYZ', age=100)
+        q1 = test_domain.get_repository(Dog).query.filter(owner='XYZ', age=100)
         assert q1.total == 0

@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-# Protean
 from passlib.hash import pbkdf2_sha256
+
+# Protean
+from protean import Domain
 from protean import Aggregate, Entity, ValueObject
 from protean.core.field.basic import String, Text, DateTime
 from protean.core.field.association import HasMany, Reference
@@ -82,22 +84,22 @@ class User:
     favorites = HasMany('Favorite')
 
     def follow(self, profile):
-        Follower.create(user_id=profile.id, follower_id=self.id)
+        Domain().get_repository(Follower).create(user_id=profile.id, follower_id=self.id)
         return self
 
     def unfollow(self, profile):
-        follower = Follower.find_by(user_id=profile.id, follower_id=self.id)
-        follower.delete()
+        follower = Domain().get_repository(Follower).find_by(user_id=profile.id, follower_id=self.id)
+        Domain().get_repository(Follower).delete(follower)
         return self
 
     # FIXME Should we expect an article here, or just an identifier
     def favorite(self, article):
-        Favorite.create(user=self, article_id=article.id)
+        Domain().get_repository(Favorite).create(user=self, article_id=article.id)
         return self
 
     def unfavorite(self, article):  # FIXME Should we expect an Identifier here, or an article object
-        favorite = Favorite.find_by(user_id=self.id, article_id=article.id)
-        favorite.delete()
+        favorite = Domain().get_repository(Favorite).find_by(user_id=self.id, article_id=article.id)
+        Domain().get_repository(Favorite).delete(favorite)
         return self
 
 

@@ -35,15 +35,15 @@ class TestSAProvider:
             'SELECT * FROM sqlite_master WHERE type="table"')
         assert len(list(resp)) > 1
 
-    def test_raw(self):
+    def test_raw(self, test_domain):
         """Test raw queries on Provider"""
-        Dog.create(name='Cash', owner='John', age=10)
-        Dog.create(name='Boxy', owner='Carry', age=4)
-        Dog.create(name='Gooey', owner='John', age=2)
+        test_domain.get_repository(Dog).create(name='Cash', owner='John', age=10)
+        test_domain.get_repository(Dog).create(name='Boxy', owner='Carry', age=4)
+        test_domain.get_repository(Dog).create(name='Gooey', owner='John', age=2)
 
-        john = RelatedHuman.create(name='John Doe', age=26,
-                                   date_of_birth=datetime(1993, 1, 1).date())
-        RelatedDog.create(name='Rubble', age=4, owner=john)
+        john = test_domain.get_repository(RelatedHuman).create(
+            name='John Doe', age=26, date_of_birth=datetime(1993, 1, 1).date())
+        test_domain.get_repository(RelatedDog).create(name='Rubble', age=4, owner=john)
 
         provider = SAProvider(self.repo_conf)
         result = provider.raw('SELECT * FROM sql_dog')

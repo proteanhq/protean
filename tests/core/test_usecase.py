@@ -96,11 +96,11 @@ class TestShowUseCase:
     def teardown_class(cls):
         """ Cleanup after the usecase """
 
-    def test_process_request(self):
+    def test_process_request(self, test_domain):
         """Test Show UseCase's `process_request` method"""
 
         # Add an object to the repository
-        Dog.create(id=1, name='Johnny', owner='John')
+        test_domain.get_repository(Dog).create(id=1, name='Johnny', owner='John')
 
         # Build the request object and run the usecase
         request_obj = ShowRequestObject.from_dict({'entity_cls': Dog, 'identifier': 1})
@@ -137,11 +137,11 @@ class TestShowUseCase:
 class TestListUseCase:
     """Tests for the generic ListUseCase Class"""
 
-    def test_process_request(self):
+    def test_process_request(self, test_domain):
         """Test List UseCase's `process_request` method"""
-        Dog.create(name='Murdock', owner='John', age=7)
-        Dog.create(name='Jean', owner='John', age=3)
-        Dog.create(name='Bart', owner='Carrie', age=6)
+        test_domain.get_repository(Dog).create(name='Murdock', owner='John', age=7)
+        test_domain.get_repository(Dog).create(name='Jean', owner='John', age=3)
+        test_domain.get_repository(Dog).create(name='Bart', owner='Carrie', age=6)
 
         # Build the request object and run the usecase
         request_obj = ListRequestObject.from_dict({
@@ -201,9 +201,9 @@ class TestUpdateUseCase:
     """Tests for the generic UpdateUseCase Class"""
 
     @pytest.fixture(scope="function")
-    def dog_to_update(self):
+    def dog_to_update(self, test_domain):
         """ Setup instructions for this case """
-        dog = Dog.create(id=1, name='Johnny', owner='John')
+        dog = test_domain.get_repository(Dog).create(id=1, name='Johnny', owner='John')
         yield dog
 
     def test_process_request(self, dog_to_update):
@@ -235,10 +235,10 @@ class TestUpdateUseCase:
         assert response.value == {
             'code': 422, 'errors': [{'age': ['"x" value must be an integer.']}]}
 
-    def test_unique_validation(self, dog_to_update):
+    def test_unique_validation(self, dog_to_update, test_domain):
         """Test Update Usecase for unique validation"""
         # Create a dog with the same name
-        Dog.create(id=2, name='Barry', owner='John')
+        test_domain.get_repository(Dog).create(id=2, name='Barry', owner='John')
 
         # Build the request object and run the usecase
         request_obj = UpdateRequestObject.from_dict(
@@ -258,17 +258,13 @@ class TestUpdateUseCase:
 class TestDeleteUseCase:
     """Tests for the generic DeleteUseCase Class"""
 
-    @classmethod
-    def setup_class(cls):
-        """ Setup instructions for this case """
-        cls.dog = Dog.create(name='Jimmy', owner='John')
-
-    def test_process_request(self):
+    def test_process_request(self, test_domain):
         """Test Delete UseCase's `process_request` method"""
+        dog = test_domain.get_repository(Dog).create(name='Jimmy', owner='John')
 
         # Build the request object and run the usecase
         request_obj = DeleteRequestObject.from_dict(
-            {'entity_cls': Dog, 'identifier': self.dog.id})
+            {'entity_cls': Dog, 'identifier': dog.id})
         use_case = DeleteUseCase()
         response = use_case.execute(request_obj)
 
@@ -278,7 +274,7 @@ class TestDeleteUseCase:
         assert response.value is None
 
         # Try to lookup the object again
-        request_obj = ShowRequestObject.from_dict({'entity_cls': Dog, 'identifier': self.dog.id})
+        request_obj = ShowRequestObject.from_dict({'entity_cls': Dog, 'identifier': dog.id})
         use_case = ShowUseCase()
         response = use_case.execute(request_obj)
         assert response is not None

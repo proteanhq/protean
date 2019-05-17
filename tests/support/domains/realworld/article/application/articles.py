@@ -1,5 +1,6 @@
 """Use Cases for Article Functionality"""
 
+from protean import Domain
 from protean.conf import active_config
 from protean.core.entity import BaseEntity
 from protean.core.exceptions import ObjectNotFoundError
@@ -57,7 +58,7 @@ class ListArticlesRequestObject:
         author_username = adict.pop('author', None)
         if author_username:
             try:
-                author = User.find_by(username=author_username)
+                author = Domain().get_repository(User).find_by(username=author_username)
             except ObjectNotFoundError:
                 invalid_req.add_error('author', 'is invalid')
 
@@ -66,11 +67,11 @@ class ListArticlesRequestObject:
         favorited = adict.pop('favorited', None)
         if favorited:
             try:
-                user = User.find_by(username=favorited)
+                user = Domain().get_repository(User).find_by(username=favorited)
             except ObjectNotFoundError:
                 invalid_req.add_error('favorited', 'is invalid')
 
-            favorites = Favorite.query.filter(user_id=user.id).all()
+            favorites = Domain().get_repository(Favorite).query.filter(user_id=user.id).all()
             article_ids = [favorite.article_id for favorite in favorites]
 
             filters['id__in'] = article_ids
@@ -88,7 +89,8 @@ class ListArticlesUseCase(UseCase):
 
     def process_request(self, request_object):
         """Return a list of resources"""
-        resources = (request_object.entity_cls.query
+        repo = Domain().get_repository(request_object.entity_cls)
+        resources = (repo.query
                      .filter(**request_object.filters)
                      .offset(request_object.offset)
                      .limit(request_object.limit)
@@ -138,7 +140,7 @@ class FeedArticlesRequestObject:
 
         filters = {}
         try:
-            user = User.find_by(token=token)
+            user = Domain().get_repository(User).find_by(token=token)
         except ObjectNotFoundError:
             invalid_req.add_error('token', 'is invalid')
 
@@ -166,7 +168,8 @@ class GetArticleUseCase(UseCase):
     def process_request(self, request_object):
         """Process Fetch Article by Slug"""
         try:
-            article = request_object.entity_cls.find_by(slug=request_object.slug)
+            repo = Domain().get_repository(request_object.entity_cls)
+            article = repo.find_by(slug=request_object.slug)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,
@@ -190,8 +193,8 @@ class CreateArticleUseCase(UseCase):
 
     def process_request(self, request_object):
         """Process Article Creation"""
-
-        author = request_object.entity_cls.create(
+        repo = Domain().get_repository(request_object.entity_cls)
+        author = repo.create(
             title=request_object.title,
             description=request_object.description,
             body=request_object.body,
@@ -212,9 +215,10 @@ class UpdateArticleUseCase(UseCase):
 
     def process_request(self, request_object):
         """Process Article Update Request"""
+        repo = Domain().get_repository(request_object.entity_cls)
 
         try:
-            article = request_object.entity_cls.find_by(slug=request_object.slug)
+            article = repo.find_by(slug=request_object.slug)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,
@@ -228,7 +232,7 @@ class UpdateArticleUseCase(UseCase):
             article.body = request_object.data['body']
         if 'author' in request_object.data:
             article.author = request_object.data['author']
-        article.save()
+        repo.save(article)
 
         return ResponseSuccess(Status.SUCCESS, article)
 
@@ -242,7 +246,8 @@ class DeleteArticleUseCase(UseCase):
     def process_request(self, request_object):
         """Delete Article by Slug"""
         try:
-            article = request_object.entity_cls.find_by(slug=request_object.slug)
+            repo = Domain().get_repository(request_object.entity_cls)
+            article = repo.find_by(slug=request_object.slug)
             article.delete()
         except ObjectNotFoundError:
             return ResponseFailure(
@@ -265,14 +270,15 @@ class FavoriteArticleUseCase(UseCase):
     def process_request(self, request_object):
         """Process request for favoriting Article by slug"""
         try:
-            logged_in_user = User.find_by(token=request_object.token)
+            logged_in_user = Domain().get_repository(User).find_by(token=request_object.token)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,
                 {'token': 'Token is invalid'})
 
         try:
-            article = request_object.entity_cls.find_by(slug=request_object.slug)
+            repo = Domain().get_repository(request_object.entity_cls)
+            article = repo.find_by(slug=request_object.slug)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,
@@ -288,14 +294,15 @@ class UnfavoriteArticleUseCase(UseCase):
     def process_request(self, request_object):
         """Process request for following profile by username"""
         try:
-            logged_in_user = User.find_by(token=request_object.token)
+            logged_in_user = Domain().get_repository(User).find_by(token=request_object.token)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,
                 {'token': 'Token is invalid'})
 
         try:
-            article = request_object.entity_cls.find_by(slug=request_object.slug)
+            repo = Domain().get_repository(request_object.entity_cls)
+            article = repo.find_by(slug=request_object.slug)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,
@@ -316,7 +323,8 @@ class GetTagsUseCase(UseCase):
     def process_request(self, request_object):
         """Process Fetch all tags"""
         # FIXME Correct Usage: tags = request_object.entity_cls.query.distinct('tagList')
-        resultset = request_object.entity_cls.query.all()
+        repo = Domain().get_repository(request_object.entity_cls)
+        resultset = repo.query.all()
         if resultset.items:
             tagsList = [article.tagList for article in resultset.items
                         if article.tagList is not None]

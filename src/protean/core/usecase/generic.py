@@ -4,6 +4,7 @@
 from typing import Any
 
 # Protean
+from protean import Domain
 from protean.conf import active_config
 from protean.core.entity import BaseEntity
 from protean.core.transport import (InvalidRequestObject, BaseRequestObject, RequestObjectFactory, ResponseSuccess,
@@ -29,7 +30,8 @@ class ShowUseCase(UseCase):
         identifier = request_object.identifier
 
         # Look for the object by its ID and return it
-        resource = request_object.entity_cls.get(identifier)
+        repo = Domain().get_repository(request_object.entity_cls)
+        resource = repo.get(identifier)
         return ResponseSuccess(Status.SUCCESS, resource)
 
 
@@ -101,7 +103,9 @@ class ListUseCase(UseCase):
 
     def process_request(self, request_object):
         """Return a list of resources"""
-        resources = (request_object.entity_cls.query
+        repo = Domain().get_repository(request_object.entity_cls)
+
+        resources = (repo.query
                      .filter(**request_object.filters)
                      .offset((request_object.page - 1) * request_object.per_page)
                      .limit(request_object.per_page)
@@ -124,7 +128,8 @@ class CreateUseCase(UseCase):
     def process_request(self, request_object):
         """Process Create Resource Request"""
 
-        resource = request_object.entity_cls.create(**request_object.data)
+        repo = Domain().get_repository(request_object.entity_cls)
+        resource = repo.create(**request_object.data)
         return ResponseSuccessCreated(resource)
 
 
@@ -144,10 +149,11 @@ class UpdateUseCase(UseCase):
         """Process Update Resource Request"""
 
         # Retrieve the object by its identifier
-        entity = request_object.entity_cls.get(request_object.identifier)
+        repo = Domain().get_repository(request_object.entity_cls)
+        entity = repo.get(request_object.identifier)
 
         # Update the object and return the updated data
-        resource = entity.update(request_object.data)
+        resource = Domain().get_repository(request_object.entity_cls).update(entity, request_object.data)
         return ResponseSuccess(Status.SUCCESS, resource)
 
 
@@ -166,8 +172,9 @@ class DeleteUseCase(UseCase):
         """Process the Delete Resource Request"""
 
         # Delete the object by its identifier
-        entity = request_object.entity_cls.get(request_object.identifier)
-        entity.delete()
+        repo = Domain().get_repository(request_object.entity_cls)
+        entity = repo.get(request_object.identifier)
+        repo.delete(entity)
 
         # FIXME Check for return value of `delete()`
 

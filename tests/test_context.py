@@ -32,7 +32,7 @@ def run_create_task(thread_name, name, sleep=0):
     Tasklet.perform(ThreadedDog, CreateUseCase2, CreateRequestObject, {'data': {'name': name}})
 
 
-def test_context_with_threads():
+def test_context_with_threads(test_domain):
     """ Test context information is passed to use cases"""
 
     # Run 5 threads and create multiple objects
@@ -57,7 +57,7 @@ def test_context_with_threads():
         t.join()
 
     # Get the list of dogs and validate the results
-    dogs = ThreadedDog.query.limit(10)
+    dogs = test_domain.get_repository(ThreadedDog).query.limit(10)
     assert dogs.total == 5
     for dog in dogs.items:
         if dog.name == 'Johnny':

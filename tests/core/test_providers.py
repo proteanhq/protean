@@ -26,13 +26,14 @@ class TestProviders:
 
     def test_provider_raw(self, test_domain):
         """Test raw queries"""
-        Dog.create(name='Murdock', age=7, owner='John')
-        Dog.create(name='Jean', age=3, owner='John')
-        Dog.create(name='Bart', age=6, owner='Carrie')
+        test_domain.get_repository(Dog).create(name='Murdock', age=7, owner='John')
+        test_domain.get_repository(Dog).create(name='Jean', age=3, owner='John')
+        test_domain.get_repository(Dog).create(name='Bart', age=6, owner='Carrie')
 
         # This is a raw query, so should bring results from all repositories
-        human = Human.create(first_name='John', last_name='Doe', email='john.doe@gmail.com')
-        RelatedDog.create(name='RelMurdock', age=2, owner=human)
+        human = test_domain.get_repository(Human).create(
+            first_name='John', last_name='Doe', email='john.doe@gmail.com')
+        test_domain.get_repository(RelatedDog).create(name='RelMurdock', age=2, owner=human)
 
         provider = test_domain.providers.get_provider('default')
 

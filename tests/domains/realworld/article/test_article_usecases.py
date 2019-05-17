@@ -24,15 +24,18 @@ from tests.support.domains.realworld.profile.domain.model.user import User, Emai
 class TestListArticles:
     """Test Listing of Articles"""
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test that articles can be listed"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
-                           bio='I work at Webmart', image='https://234ssll.xfg')
-        Article.create(title='How to train your dragon', description='Ever wonder how?',
-                       body='It takes a Jacobian', author=user)
-        Article.create(title='How to train your dragon 2', description='So toothless',
-                       body='It a dragon', author=user)
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
+            bio='I work at Webmart', image='https://234ssll.xfg')
+        test_domain.get_repository(Article).create(
+            title='How to train your dragon', description='Ever wonder how?',
+            body='It takes a Jacobian', author=user)
+        test_domain.get_repository(Article).create(
+            title='How to train your dragon 2', description='So toothless',
+            body='It a dragon', author=user)
 
         response = Tasklet.perform(Article, ListArticlesUseCase, ListArticlesRequestObject,
                                    payload={})
@@ -43,19 +46,24 @@ class TestListArticles:
         assert response.value.total == 2
         assert response.value.first.title == 'How to train your dragon'
 
-    def test_paginated(self):
+    def test_paginated(self, test_domain):
         """Test that articles can be paginated"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
-                           bio='I work at Webmart', image='https://234ssll.xfg')
-        Article.create(title='How to train your dragon', description='Ever wonder how?',
-                       body='It takes a Jacobian', author=user)
-        Article.create(title='How to train your dragon 2', description='So toothless',
-                       body='It a dragon', author=user)
-        Article.create(title='GOT 1', description='Oh man, this is unwatchable!',
-                       body='What does everybody see in this?', author=user)
-        Article.create(title='GOT 2', description='I am hooked!',
-                       body='Where was this for so long?', author=user)
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
+            bio='I work at Webmart', image='https://234ssll.xfg')
+        test_domain.get_repository(Article).create(
+            title='How to train your dragon', description='Ever wonder how?',
+            body='It takes a Jacobian', author=user)
+        test_domain.get_repository(Article).create(
+            title='How to train your dragon 2', description='So toothless',
+            body='It a dragon', author=user)
+        test_domain.get_repository(Article).create(
+            title='GOT 1', description='Oh man, this is unwatchable!',
+            body='What does everybody see in this?', author=user)
+        test_domain.get_repository(Article).create(
+            title='GOT 2', description='I am hooked!',
+            body='Where was this for so long?', author=user)
 
         response = Tasklet.perform(Article, ListArticlesUseCase, ListArticlesRequestObject,
                                    payload=dict(offset=2, limit=2))
@@ -66,7 +74,7 @@ class TestListArticles:
         assert response.value.total == 4
         assert response.value.first.title == 'GOT 1'
 
-    def test_no_results(self):
+    def test_no_results(self, test_domain):
         """Test that no articles are returned when there are none"""
         response = Tasklet.perform(Article, ListArticlesUseCase, ListArticlesRequestObject,
                                    payload={})
@@ -77,21 +85,26 @@ class TestListArticles:
         assert response.value.total == 0
         assert response.value.items == []
 
-    def test_filter_by_tag(self):
+    def test_filter_by_tag(self, test_domain):
         """Test Filtering by specific tag"""
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
-                           bio='I work at Webmart', image='https://234ssll.xfg')
-        Article.create(title='How to train your dragon', description='Ever wonder how?',
-                       body='It takes a Jacobian', author=user, tagList=['dragons', 'training'],
-                       created_at=(datetime.datetime.now() - datetime.timedelta(days=3)))
-        Article.create(title='How to train your dragon 2', description='So toothless',
-                       body='It a dragon', author=user, tagList=['reactjs', 'angularjs', 'dragons'],
-                       created_at=(datetime.datetime.now() - datetime.timedelta(days=2)))
-        Article.create(title='GOT 1', description='Oh man, this is unwatchable!',
-                       body='What does everybody see in this?', author=user, tagList=['GOT'],
-                       created_at=(datetime.datetime.now() - datetime.timedelta(days=1)))
-        Article.create(title='GOT 2', description='I am hooked!',
-                       body='Where was this for so long?', author=user, tagList=['GOT', 'dragons'])
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
+            bio='I work at Webmart', image='https://234ssll.xfg')
+        test_domain.get_repository(Article).create(
+            title='How to train your dragon', description='Ever wonder how?',
+            body='It takes a Jacobian', author=user, tagList=['dragons', 'training'],
+            created_at=(datetime.datetime.now() - datetime.timedelta(days=3)))
+        test_domain.get_repository(Article).create(
+            title='How to train your dragon 2', description='So toothless',
+            body='It a dragon', author=user, tagList=['reactjs', 'angularjs', 'dragons'],
+            created_at=(datetime.datetime.now() - datetime.timedelta(days=2)))
+        test_domain.get_repository(Article).create(
+            title='GOT 1', description='Oh man, this is unwatchable!',
+            body='What does everybody see in this?', author=user, tagList=['GOT'],
+            created_at=(datetime.datetime.now() - datetime.timedelta(days=1)))
+        test_domain.get_repository(Article).create(
+            title='GOT 2', description='I am hooked!',
+            body='Where was this for so long?', author=user, tagList=['GOT', 'dragons'])
 
         response = Tasklet.perform(Article, ListArticlesUseCase, ListArticlesRequestObject,
                                    payload=dict(tag='dragons'))
@@ -101,21 +114,26 @@ class TestListArticles:
         assert response.value.total == 3
         assert response.value.first.title == 'GOT 2'
 
-    def test_filter_by_non_existant_tag(self):
+    def test_filter_by_non_existant_tag(self, test_domain):
         """Test Filtering by a non-existant tag"""
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
-                           bio='I work at Webmart', image='https://234ssll.xfg')
-        Article.create(title='How to train your dragon', description='Ever wonder how?',
-                       body='It takes a Jacobian', author=user, tagList=['dragons', 'training'],
-                       created_at=(datetime.datetime.now() - datetime.timedelta(days=3)))
-        Article.create(title='How to train your dragon 2', description='So toothless',
-                       body='It a dragon', author=user, tagList=['reactjs', 'angularjs', 'dragons'],
-                       created_at=(datetime.datetime.now() - datetime.timedelta(days=2)))
-        Article.create(title='GOT 1', description='Oh man, this is unwatchable!',
-                       body='What does everybody see in this?', author=user, tagList=['GOT'],
-                       created_at=(datetime.datetime.now() - datetime.timedelta(days=1)))
-        Article.create(title='GOT 2', description='I am hooked!',
-                       body='Where was this for so long?', author=user, tagList=['GOT', 'dragons'])
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret',
+            bio='I work at Webmart', image='https://234ssll.xfg')
+        test_domain.get_repository(Article).create(
+            title='How to train your dragon', description='Ever wonder how?',
+            body='It takes a Jacobian', author=user, tagList=['dragons', 'training'],
+            created_at=(datetime.datetime.now() - datetime.timedelta(days=3)))
+        test_domain.get_repository(Article).create(
+            title='How to train your dragon 2', description='So toothless',
+            body='It a dragon', author=user, tagList=['reactjs', 'angularjs', 'dragons'],
+            created_at=(datetime.datetime.now() - datetime.timedelta(days=2)))
+        test_domain.get_repository(Article).create(
+            title='GOT 1', description='Oh man, this is unwatchable!',
+            body='What does everybody see in this?', author=user, tagList=['GOT'],
+            created_at=(datetime.datetime.now() - datetime.timedelta(days=1)))
+        test_domain.get_repository(Article).create(
+            title='GOT 2', description='I am hooked!',
+            body='Where was this for so long?', author=user, tagList=['GOT', 'dragons'])
 
         response = Tasklet.perform(Article, ListArticlesUseCase, ListArticlesRequestObject,
                                    payload=dict(tag='foobar'))
@@ -124,27 +142,27 @@ class TestListArticles:
         assert response.is_successful
         assert response.value.total == 0
 
-    def test_filter_by_author(self):
+    def test_filter_by_author(self, test_domain):
         """Test Filtering by a specific article author"""
-        user1 = User.create(
+        user1 = test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1',
             bio='I work at Webmart', image='https://234ssll.xfg')
-        user2 = User.create(
+        user2 = test_domain.get_repository(User).create(
             email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2',
             bio='I work at Weirdart', image='https://234ssdaf.xfg')
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user1, tagList=['dragons', 'training'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=3)))
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='How to train your dragon 2', description='So toothless',
             body='It a dragon', author=user1, tagList=['reactjs', 'angularjs', 'dragons'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=2)))
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='GOT 1', description='Oh man, this is unwatchable!',
             body='What does everybody see in this?', author=user2, tagList=['GOT'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=1)))
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='GOT 2', description='I am hooked!',
             body='Where was this for so long?', author=user2, tagList=['GOT', 'dragons'])
 
@@ -156,27 +174,27 @@ class TestListArticles:
         assert response.value.total == 2
         assert response.value.first.title == 'GOT 2'
 
-    def test_filter_by_favorited(self):
+    def test_filter_by_favorited(self, test_domain):
         """Test Filtering by a specific article author"""
-        user1 = User.create(
+        user1 = test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1',
             bio='I work at Webmart', image='https://234ssll.xfg')
-        user2 = User.create(
+        user2 = test_domain.get_repository(User).create(
             email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2',
             bio='I work at Weirdart', image='https://234ssdaf.xfg')
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user1, tagList=['dragons', 'training'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=3)))
-        article2 = Article.create(
+        article2 = test_domain.get_repository(Article).create(
             title='How to train your dragon 2', description='So toothless',
             body='It a dragon', author=user1, tagList=['reactjs', 'angularjs', 'dragons'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=2)))
-        article3 = Article.create(
+        article3 = test_domain.get_repository(Article).create(
             title='GOT 1', description='Oh man, this is unwatchable!',
             body='What does everybody see in this?', author=user2, tagList=['GOT'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=1)))
-        article4 = Article.create(
+        article4 = test_domain.get_repository(Article).create(
             title='GOT 2', description='I am hooked!',
             body='Where was this for so long?', author=user2, tagList=['GOT', 'dragons'])
         user1.favorite(article2)
@@ -195,34 +213,34 @@ class TestListArticles:
 class TestFeedArticles:
     """Test Feeding of Articles"""
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test that articles of followed users can be listed"""
 
-        user1 = User.create(
+        user1 = test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1',
             bio='I work at Webmart', image='https://234ssll.xfg')
-        user2 = User.create(
+        user2 = test_domain.get_repository(User).create(
             email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2',
             bio='I work at Weirdart', image='https://234ssdaf.xfg')
-        user3 = User.create(
+        user3 = test_domain.get_repository(User).create(
             email=Email.build(address='puppy.doe@gmail.com'), username='puppydoe', password='secret3',
             bio='I don\' work at all', image='https://23ws344.xfg')
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user1, tagList=['dragons', 'training'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=3)))
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='How to train your dragon 2', description='So toothless',
             body='It a dragon', author=user1, tagList=['reactjs', 'angularjs', 'dragons'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=2)))
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='GOT 1', description='Oh man, this is unwatchable!',
             body='What does everybody see in this?', author=user2, tagList=['GOT'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=1)))
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='GOT 2', description='I am hooked!',
             body='Where was this for so long?', author=user2, tagList=['GOT', 'dragons'])
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='Doggone!', description='This is crazy',
             body='The first article written by a puppy', author=user3,
             tagList=['dog', 'cat'])
@@ -236,34 +254,34 @@ class TestFeedArticles:
         assert response.value.total == 3
         assert response.value.first.title == 'Doggone!'
 
-    def test_paginated(self):
+    def test_paginated(self, test_domain):
         """Test that articles of followed users can be listed"""
 
-        user1 = User.create(
+        user1 = test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1',
             bio='I work at Webmart', image='https://234ssll.xfg')
-        user2 = User.create(
+        user2 = test_domain.get_repository(User).create(
             email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2',
             bio='I work at Weirdart', image='https://234ssdaf.xfg')
-        user3 = User.create(
+        user3 = test_domain.get_repository(User).create(
             email=Email.build(address='puppy.doe@gmail.com'), username='puppydoe', password='secret3',
             bio='I don\' work at all', image='https://23ws344.xfg')
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user1, tagList=['dragons', 'training'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=3)))
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='How to train your dragon 2', description='So toothless',
             body='It a dragon', author=user1, tagList=['reactjs', 'angularjs', 'dragons'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=2)))
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='GOT 1', description='Oh man, this is unwatchable!',
             body='What does everybody see in this?', author=user2, tagList=['GOT'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=1)))
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='GOT 2', description='I am hooked!',
             body='Where was this for so long?', author=user2, tagList=['GOT', 'dragons'])
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='Doggone!', description='This is crazy',
             body='The first article written by a puppy', author=user3,
             tagList=['dog', 'cat'])
@@ -282,34 +300,34 @@ class TestFeedArticles:
         assert response.value.total == 3
         assert response.value.first.title == 'How to train your dragon'
 
-    def test_no_results(self):
+    def test_no_results(self, test_domain):
         """Test that articles of followed users can be listed"""
 
-        user1 = User.create(
+        user1 = test_domain.get_repository(User).create(
             email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret1',
             bio='I work at Webmart', image='https://234ssll.xfg')
-        user2 = User.create(
+        user2 = test_domain.get_repository(User).create(
             email=Email.build(address='jane.doe@gmail.com'), username='janedoe', password='secret2',
             bio='I work at Weirdart', image='https://234ssdaf.xfg')
-        user3 = User.create(
+        user3 = test_domain.get_repository(User).create(
             email=Email.build(address='puppy.doe@gmail.com'), username='puppydoe', password='secret3',
             bio='I don\' work at all', image='https://23ws344.xfg')
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user1, tagList=['dragons', 'training'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=3)))
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='How to train your dragon 2', description='So toothless',
             body='It a dragon', author=user1, tagList=['reactjs', 'angularjs', 'dragons'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=2)))
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='GOT 1', description='Oh man, this is unwatchable!',
             body='What does everybody see in this?', author=user2, tagList=['GOT'],
             created_at=(datetime.datetime.now() - datetime.timedelta(days=1)))
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='GOT 2', description='I am hooked!',
             body='Where was this for so long?', author=user2, tagList=['GOT', 'dragons'])
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='Doggone!', description='This is crazy',
             body='The first article written by a puppy', author=user3,
             tagList=['dog', 'cat'])
@@ -328,11 +346,12 @@ class TestFeedArticles:
 class TestGetArticle:
     """Test Get Article Usecase"""
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful article fetch"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        article = test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
 
@@ -344,12 +363,14 @@ class TestGetArticle:
         assert isinstance(response.value, Article)
         assert response.value.id == article.id
 
-    def test_failure(self):
+    def test_failure(self, test_domain):
         """Test failed article fetch"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        Article.create(title='How to train your dragon', description='Ever wonder how?',
-                       body='It takes a Jacobian', author=user)
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        test_domain.get_repository(Article).create(
+            title='How to train your dragon', description='Ever wonder how?',
+            body='It takes a Jacobian', author=user)
 
         payload = {'slug': 'nonexistant'}
         response = Tasklet.perform(Article, GetArticleUseCase, GetArticleRequestObject,
@@ -362,9 +383,10 @@ class TestGetArticle:
 class TestCreateArticle:
     """Test Article Creatiopn Functionality"""
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful Article Creation"""
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
         payload = {'title': 'How to train your dragon', 'description': 'Ever wonder how?',
                    'body': 'It takes a Jacobian', 'author': user,
                    'tagList': ['dragons', 'training']}
@@ -377,9 +399,10 @@ class TestCreateArticle:
         assert response.value.title == 'How to train your dragon'
         assert response.value.author.id == user.id
 
-    def test_validation_failure(self):
+    def test_validation_failure(self, test_domain):
         """Test that validation errors are thrown correctly"""
-        User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
         payload = {'title': 'How to train your dragon', 'description': 'Ever wonder how?',
                    'body': 'It takes a Jacobian'}
         response = Tasklet.perform(Article, CreateArticleUseCase, CreateArticleRequestObject,
@@ -394,10 +417,11 @@ class TestCreateArticle:
 class TestUpdateArticle:
     """Test Article Update Functionality"""
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful Article Registration"""
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        article = test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
 
@@ -411,10 +435,11 @@ class TestUpdateArticle:
         assert isinstance(response.value, Article)
         assert response.value.title == 'changed.How to train your dragon'
 
-    def test_validation_failure(self):
+    def test_validation_failure(self, test_domain):
         """Test that validation errors are thrown correctly"""
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        article = test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
         payload = {'slug': article.slug,
@@ -433,11 +458,12 @@ class TestFavoriteArticle:
     """Test Favoriting an Article UseCase"""
     # FIXME Test that Article cannot be favorited again
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful Article Favoriting"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        article = test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
         payload = {'token': user.token, 'slug': article.slug}
@@ -449,12 +475,14 @@ class TestFavoriteArticle:
         favorite_ids = [favorite.article_id for favorite in user.favorites]
         assert article.id in favorite_ids
 
-    def test_failure(self):
+    def test_failure(self, test_domain):
         """Test Failure in profile follow"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        Article.create(title='How to train your dragon', description='Ever wonder how?',
-                       body='It takes a Jacobian', author=user)
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        test_domain.get_repository(Article).create(
+            title='How to train your dragon', description='Ever wonder how?',
+            body='It takes a Jacobian', author=user)
 
         payload = {'token': user.token}
         response = Tasklet.perform(Article, FavoriteArticleUseCase, FavoriteArticleRequestObject,
@@ -477,11 +505,12 @@ class TestUnfavoriteArticle:
     """Test Unfollow Profile Usecase"""
     # FIXME Test that user has already favorited article before unfavoriting
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful profile unfollow"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        article = test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user, tagList=['dragons', 'training'])
         payload = {'token': user.token, 'slug': article.slug}
@@ -495,14 +524,15 @@ class TestUnfavoriteArticle:
 
         response = Tasklet.perform(Article, UnfavoriteArticleUseCase, FavoriteArticleRequestObject,
                                    payload=payload)
-        refreshed_user = User.get(user.id)
+        refreshed_user = test_domain.get_repository(User).get(user.id)
         assert refreshed_user.favorites is None
 
-    def test_failure(self):
+    def test_failure(self, test_domain):
         """Test Failure in profile follow"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        article = test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
         payload = {'token': user.token, 'slug': article.slug}
@@ -517,7 +547,7 @@ class TestUnfavoriteArticle:
         payload = {'token': user.token}
         response = Tasklet.perform(User, UnfavoriteArticleUseCase, FavoriteArticleRequestObject,
                                    payload=payload)
-        refreshed_user = User.get(user.id)
+        refreshed_user = test_domain.get_repository(User).get(user.id)
         assert not response.is_successful
         assert response.code.value == 422
         assert refreshed_user.favorites is not None
@@ -526,14 +556,15 @@ class TestUnfavoriteArticle:
 class TestGetTags:
     """Test Get Unique Tags from Articles"""
 
-    def test_success(self):
+    def test_success(self, test_domain):
         """Test Successful article fetch"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user, tagList=['dragons', 'training'])
-        Article.create(
+        test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user,
             tagList=['reactjs', 'angularjs', 'dragons'])
@@ -546,11 +577,12 @@ class TestGetTags:
         assert all(tag in response.value for tag in
                    ['dragons', 'training', 'reactjs', 'angularjs'])
 
-    def test_no_tags(self):
+    def test_no_tags(self, test_domain):
         """Test failed article fetch"""
 
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
+        test_domain.get_repository(Article).create(
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user)
 

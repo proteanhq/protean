@@ -9,10 +9,12 @@ from tests.support.domains.realworld.profile.domain.model.user import User, Emai
 class TestArticle:
     """Tests for Article Aggregate"""
 
-    def test_init(self):
+    def test_init(self, test_domain):
         """Test initialization of Article Entity"""
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'),
+            username='johndoe', password='secret')
+        article = test_domain.get_repository(Article).create(
             slug='how-to-train-your-dragon',
             title='How to train your dragon', description='Ever wonder how?',
             body='It takes a Jacobian', author=user,
@@ -39,16 +41,18 @@ class TestArticle:
 class TestComment:
     """Tests for Comment Entity"""
 
-    def test_init(self):
+    def test_init(self, test_domain):
         """Test initialization of Comment Entity"""
-        user = User.create(email=Email.build(address='john.doe@gmail.com'), username='johndoe', password='secret')
-        article = Article.create(
+        user = test_domain.get_repository(User).create(
+            email=Email.build(address='john.doe@gmail.com'),
+            username='johndoe', password='secret')
+        article = test_domain.get_repository(Article).create(
             slug='how-to-train-your-dragon', title='How to train your dragon',
             description='Ever wonder how?', body='It takes a Jacobian', author=user)
 
         # FIXME This is a much more elegant method of handling entities under aggregates
         # comment = article.comments.add(body='It takes a Jacobian')
-        comment = Comment.create(user=user, article=article, body='It takes a Jacobian')
+        comment = test_domain.get_repository(Comment).create(user=user, article=article, body='It takes a Jacobian')
         assert comment is not None
         assert comment.id is not None
         assert comment.body == 'It takes a Jacobian'

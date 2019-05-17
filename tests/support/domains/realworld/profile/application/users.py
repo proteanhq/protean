@@ -3,6 +3,7 @@ from jwt.exceptions import DecodeError
 from jwt.exceptions import ExpiredSignatureError
 from passlib.hash import pbkdf2_sha256
 
+from protean import Domain
 from protean.conf import active_config
 from protean.core.entity import BaseEntity
 from protean.core.exceptions import ObjectNotFoundError
@@ -12,7 +13,7 @@ from protean.core.transport import Status
 from protean.core.transport import RequestObjectFactory
 from protean.core.usecase.base import UseCase
 
-from tests.support.domains.realworld.profile.domain.model.user import Email
+from tests.support.domains.realworld.profile.domain.model.user import Email, User
 from tests.support.domains.realworld.profile.exceptions import JWTDecodeError
 from tests.support.domains.realworld.profile.jwt import encode_access_token, decode_jwt
 
@@ -29,8 +30,8 @@ class LoginUseCase(UseCase):
 
     def process_request(self, request_object):
         """Process Login Request"""
-
-        user = request_object.entity_cls.query.filter(email_address=request_object.email).first
+        repo = Domain().get_repository(request_object.entity_cls)
+        user = repo.query.filter(email_address=request_object.email).first
 
         if not user:
             return ResponseFailure.build_response(
@@ -56,7 +57,7 @@ class LoginUseCase(UseCase):
                 user_claims_key=None,
             )
             # Store the just-generated Access Token for future reference
-            user.update(token=access_token)
+            Domain().get_repository(User).update(user, token=access_token)
 
             return ResponseSuccess(Status.SUCCESS, user)
 
@@ -96,7 +97,8 @@ class AuthenticationUseCase(UseCase):
         # Find the identity in the decoded jwt
         identity = jwt_data.get(active_config.JWT_IDENTITY_CLAIM, None)
         try:
-            user = request_object.entity_cls.get(identity.get('user_id'))
+            repo = Domain().get_repository(request_object.entity_cls)
+            user = repo.get(identity.get('user_id'))
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.UNAUTHORIZED,
@@ -120,8 +122,8 @@ class RegisterUseCase(UseCase):
 
     def process_request(self, request_object):
         """Process Registration Request"""
-
-        user = request_object.entity_cls.create(
+        repo = Domain().get_repository(request_object.entity_cls)
+        user = repo.create(
             address=request_object.address,
             password=request_object.password,
             username=request_object.username,
@@ -137,7 +139,8 @@ class CurrentUserUseCase(UseCase):
     def process_request(self, request_object):
         """Process Fetch Logged-in User Request"""
         try:
-            user = request_object.entity_cls.find_by(token=request_object.token)
+            repo = Domain().get_repository(request_object.entity_cls)
+            user = repo.find_by(token=request_object.token)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,
@@ -160,7 +163,8 @@ class UpdateUserUseCase(UseCase):
         """Process User Update Request"""
 
         try:
-            user = request_object.entity_cls.find_by(token=request_object.token)
+            repo = Domain().get_repository(request_object.entity_cls)
+            user = repo.find_by(token=request_object.token)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,
@@ -177,6 +181,6 @@ class UpdateUserUseCase(UseCase):
             user.bio = request_object.data['bio']
         if 'image' in request_object.data:
             user.image = request_object.data['image']
-        user.save()
+        Domain().get_repository(User).save(user)
 
         return ResponseSuccess(Status.SUCCESS, user)

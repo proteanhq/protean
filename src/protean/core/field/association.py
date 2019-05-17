@@ -140,7 +140,8 @@ class Reference(FieldCacheMixin, Field):
 
     def _fetch_objects(self, key, value):
         """Fetch Multiple linked objects"""
-        return self.to_cls.find_by(**{key: value})
+        from protean.domain import Domain
+        return Domain().get_repository(self.to_cls).find_by(**{key: value})
 
     def __set__(self, instance, value):
         """Override `__set__` to coordinate between relation field and its shadow attribute"""
@@ -278,7 +279,8 @@ class HasOne(Association):
 
     def _fetch_objects(self, key, value):
         """Fetch Multiple linked objects"""
-        return self.to_cls.find_by(**{key: value})
+        from protean.domain import Domain
+        return Domain().get_repository(self.to_cls).find_by(**{key: value})
 
 
 class HasMany(Association):
@@ -291,4 +293,5 @@ class HasMany(Association):
 
     def _fetch_objects(self, key, value):
         """Fetch Multiple linked objects"""
-        return self.to_cls.query.filter(**{key: value})
+        from protean.domain import Domain
+        return Domain().get_repository(self.to_cls).query.filter(**{key: value})

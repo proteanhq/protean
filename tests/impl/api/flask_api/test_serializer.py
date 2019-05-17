@@ -4,6 +4,7 @@
 import marshmallow as ma
 import pytest
 
+from protean import Domain
 from protean.core.exceptions import ConfigurationError
 from protean.impl.api.flask.serializers import EntitySerializer
 from tests.support.dog import Dog, HasManyDog1
@@ -108,13 +109,14 @@ class TestEntitySerializer2:
     @classmethod
     def setup_class(cls):
         """ Setup the test case """
-        cls.human = HasManyHuman1.create(id=1, first_name='Jeff', last_name='Kennedy',
-                                         email='jeff.kennedy@presidents.com')
+        cls.human = Domain().get_repository(HasManyHuman1).create(
+            id=1, first_name='Jeff', last_name='Kennedy',
+            email='jeff.kennedy@presidents.com')
 
-    def test_reference_field(self):
+    def test_reference_field(self, test_domain):
         """ Test that the reference field gets serialized """
 
-        dog = HasManyDog1.create(id=5, name='Johnny', has_many_human1=self.human)
+        dog = test_domain.get_repository(HasManyDog1).create(id=5, name='Johnny', has_many_human1=self.human)
 
         # Check that the entity gets serialized correctly
         s = HasManyDog1Serializer()
@@ -129,9 +131,9 @@ class TestEntitySerializer2:
         }
         assert s_result.data == expected_data
 
-    def test_hasmany_association(self):
+    def test_hasmany_association(self, test_domain):
         """ Test the has many association gets serialized """
-        HasManyDog1.create(id=5, name='Johnny', has_many_human1=self.human)
+        test_domain.get_repository(HasManyDog1).create(id=5, name='Johnny', has_many_human1=self.human)
 
         s = HasManyHuman1DetailSerializer()
         self.human.dogs

@@ -1,5 +1,6 @@
 """Use Cases for Comments Functionality"""
 
+from protean import Domain
 from protean.conf import active_config
 from protean.core.entity import BaseEntity
 from protean.core.exceptions import ObjectNotFoundError
@@ -29,14 +30,15 @@ class AddCommentUseCase(UseCase):
     def process_request(self, request_object):
         """Process request for adding comment to an article"""
         try:
-            logged_in_user = User.find_by(token=request_object.token)
+            logged_in_user = Domain().get_repository(User).find_by(token=request_object.token)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,
                 {'token': 'Token is invalid'})
 
         try:
-            article = request_object.entity_cls.find_by(slug=request_object.slug)
+            repo = Domain().get_repository(request_object.entity_cls)
+            article = repo.find_by(slug=request_object.slug)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,
@@ -82,7 +84,7 @@ class GetCommentsRequestObject(BaseRequestObject):
             invalid_req.add_error('slug', 'Article Slug is required')
         else:
             slug = adict.pop('slug')
-        article = Article.find_by(slug=slug)
+        article = Domain().get_repository(Article).find_by(slug=slug)
 
         # Check for invalid request conditions
         if page < 0:
@@ -102,7 +104,8 @@ class GetCommentsUseCase(UseCase):
     def process_request(self, request_object):
         """Return a list of resources"""
         request_object.filters['article_id'] = request_object.article_id
-        resources = (request_object.entity_cls.query
+        repo = Domain().get_repository(request_object.entity_cls)
+        resources = (repo.query
                      .filter(**request_object.filters)
                      .offset((request_object.page - 1) * request_object.per_page)
                      .limit(request_object.per_page)
@@ -125,7 +128,8 @@ class DeleteCommentUseCase(UseCase):
     def process_request(self, request_object):
         """Process request for Deleting a comment from an article"""
         try:
-            article = request_object.entity_cls.find_by(slug=request_object.slug)
+            repo = Domain().get_repository(request_object.entity_cls)
+            article = repo.find_by(slug=request_object.slug)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,

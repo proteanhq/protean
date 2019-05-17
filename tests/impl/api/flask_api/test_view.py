@@ -19,11 +19,11 @@ class TestGenericAPIResource:
         """ Setup client for test cases """
         yield app.test_client()
 
-    def test_show(self, client):
+    def test_show(self, client, test_domain):
         """ Test retrieving an entity using ShowAPIResource"""
 
         # Create a dog object
-        Dog.create(id=5, name='Johnny', owner='John')
+        test_domain.get_repository(Dog).create(id=5, name='Johnny', owner='John')
 
         # Fetch this dog by ID
         rv = client.get('/dogs/5')
@@ -39,16 +39,16 @@ class TestGenericAPIResource:
         assert rv.status_code == 404
 
         # Delete the dog now
-        dog = Dog.get(5)
-        dog.delete()
+        dog = test_domain.get_repository(Dog).get(5)
+        test_domain.get_repository(Dog).delete(dog)
 
-    def test_list(self, client):
+    def test_list(self, client, test_domain):
         """ Test listing an entity using ListAPIResource """
         # Create a dog objects
-        Dog.create(id=1, name='Johnny', owner='John')
-        Dog.create(id=2, name='Mary', owner='John', age=3)
-        Dog.create(id=3, name='Grady', owner='Jane', age=8)
-        Dog.create(id=4, name='Brawny', owner='John', age=2)
+        test_domain.get_repository(Dog).create(id=1, name='Johnny', owner='John')
+        test_domain.get_repository(Dog).create(id=2, name='Mary', owner='John', age=3)
+        test_domain.get_repository(Dog).create(id=3, name='Grady', owner='Jane', age=8)
+        test_domain.get_repository(Dog).create(id=4, name='Brawny', owner='John', age=2)
 
         # Get the list of dogs
         rv = client.get('/dogs?order_by[]=age')
@@ -61,7 +61,7 @@ class TestGenericAPIResource:
         assert rv.status_code == 200
         assert rv.json['total'] == 1
 
-    def test_create(self, client):
+    def test_create(self, client, test_domain):
         """ Test creating an entity using CreateAPIResource """
 
         # Create a dog object
@@ -82,19 +82,19 @@ class TestGenericAPIResource:
         assert rv.json == expected_resp
 
         # Test value has been added to db
-        dog = Dog.get(5)
+        dog = test_domain.get_repository(Dog).get(5)
         assert dog is not None
         assert dog.id == 5
 
         # Delete the dog now
-        dog = Dog.get(5)
-        dog.delete()
+        dog = test_domain.get_repository(Dog).get(5)
+        test_domain.get_repository(Dog).delete(dog)
 
-    def test_update(self, client):
+    def test_update(self, client, test_domain):
         """ Test updating an entity using UpdateAPIResource """
 
         # Create a dog object
-        Dog.create(id=5, name='Johnny', owner='John')
+        test_domain.get_repository(Dog).create(id=5, name='Johnny', owner='John')
 
         # Update the dog object
         rv = client.put('/dogs/5', data=json.dumps(dict(age=3)),
@@ -107,19 +107,19 @@ class TestGenericAPIResource:
         assert rv.json == expected_resp
 
         # Test value has been updated in the db
-        dog = Dog.get(5)
+        dog = test_domain.get_repository(Dog).get(5)
         assert dog is not None
         assert dog.age == 3
 
         # Delete the dog now
-        dog = Dog.get(5)
-        dog.delete()
+        dog = test_domain.get_repository(Dog).get(5)
+        test_domain.get_repository(Dog).delete(dog)
 
-    def test_delete(self, client):
+    def test_delete(self, client, test_domain):
         """ Test deleting an entity using DeleteAPIResource """
 
         # Create a dog object
-        Dog.create(id=5, name='Johnny', owner='John')
+        test_domain.get_repository(Dog).create(id=5, name='Johnny', owner='John')
 
         # Delete the dog object
         rv = client.delete('/dogs/5')
@@ -128,7 +128,7 @@ class TestGenericAPIResource:
 
         # Test value has been updated in the db
         with pytest.raises(ObjectNotFoundError):
-            Dog.get(5)
+            test_domain.get_repository(Dog).get(5)
 
 
 def test_flask_view():

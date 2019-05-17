@@ -143,7 +143,7 @@ class QuerySet:
         order_by = self._entity_cls.meta_.order_by if not self._order_by else self._order_by
 
         # Call the read method of the repository
-        results = repository.filter(self._criteria, self._offset, self._limit, order_by)
+        results = repository._filter(self._criteria, self._offset, self._limit, order_by)
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -168,11 +168,13 @@ class QuerySet:
             updated if objects rows already have the new value).
         """
         updated_item_count = 0
+        repository = repo_factory.get_repository(self._entity_cls)
+
         try:
             items = self.all()
 
             for item in items:
-                item.update(*data, **kwargs)
+                repository.update(item, *data, **kwargs)
                 updated_item_count += 1
         except Exception:
             # FIXME Log Exception
@@ -202,7 +204,7 @@ class QuerySet:
 
         try:
             # Call the raw method of the repository
-            results = repository.raw(query, data)
+            results = repository._raw(query, data)
 
             # Convert the returned results to entity and return it
             entity_items = []
@@ -230,11 +232,13 @@ class QuerySet:
         """
         # Fetch Model class and connected repository from Repository Factory
         deleted_item_count = 0
+        repository = repo_factory.get_repository(self._entity_cls)
+
         try:
             items = self.all()
 
             for item in items:
-                item.delete()
+                repository.delete(item)
                 deleted_item_count += 1
         except Exception:
             # FIXME Log Exception
@@ -258,7 +262,7 @@ class QuerySet:
         repository = repo_factory.get_repository(self._entity_cls)
 
         try:
-            updated_item_count = repository.update_all(self._criteria, *args, **kwargs)
+            updated_item_count = repository._update_all(self._criteria, *args, **kwargs)
         except Exception:
             # FIXME Log Exception
             raise
@@ -276,7 +280,7 @@ class QuerySet:
         deleted_item_count = 0
         repository = repo_factory.get_repository(self._entity_cls)
         try:
-            deleted_item_count = repository.delete_all(self._criteria)
+            deleted_item_count = repository._delete_all(self._criteria)
         except Exception:
             # FIXME Log Exception
             raise

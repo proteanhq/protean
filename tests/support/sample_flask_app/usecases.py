@@ -1,5 +1,6 @@
 """ Usecases of the sample application """
 # Protean
+from protean import Domain
 from protean.core.tasklet import Tasklet
 from protean.core.usecase.base import UseCase
 from protean.core.usecase.generic import ListRequestObject, ListUseCase, ShowRequestObject
@@ -14,7 +15,7 @@ class ListMyDogsUsecase(UseCase):
     """ Use case for listing dogs of a human """
     def process_request(self, request_object):
         """ Get the human and return the dogs owned by the human"""
-        human = Human.get(request_object.identifier)
+        human = Domain().get_repository(Human).get(request_object.identifier)
 
         # Get the dogs related to the human
         payload = {'owner': ' '.join([human.first_name, human.last_name]), 'order_by': ['age']}

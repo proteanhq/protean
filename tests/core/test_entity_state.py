@@ -15,44 +15,44 @@ class TestState:
         assert dog.state_.is_new
         assert not dog.state_.is_persisted
 
-    def test_state_on_retrieved_objects(self):
+    def test_state_on_retrieved_objects(self, test_domain):
         """Test that retrieved objects are not marked as new"""
-        dog = Dog.create(name='John Doe', age=10, owner='Jimmy')
-        dog_dup = Dog.get(dog.id)
+        dog = test_domain.get_repository(Dog).create(name='John Doe', age=10, owner='Jimmy')
+        dog_dup = test_domain.get_repository(Dog).get(dog.id)
 
         assert not dog_dup.state_.is_new
 
-    def test_persisted_after_save(self):
+    def test_persisted_after_save(self, test_domain):
         """Test that the entity is marked as saved after successfull save"""
         dog = Dog(id=1, name='John Doe', age=10, owner='Jimmy')
         assert dog.state_.is_new
-        dog.save()
+        test_domain.get_repository(Dog).save(dog)
         assert dog.state_.is_persisted
 
-    def test_not_persisted_if_save_failed(self):
+    def test_not_persisted_if_save_failed(self, test_domain):
         """Test that the entity still shows as new if save failed"""
         dog = Dog(id=1, name='John Doe', age=10, owner='Jimmy')
         try:
             del dog.name
-            dog.save()
+            test_domain.get_repository(Dog).save(dog)
         except ValidationError:
             assert dog.state_.is_new
 
-    def test_persisted_after_create(self):
+    def test_persisted_after_create(self, test_domain):
         """Test that the entity is marked as saved after successfull create"""
-        dog = Dog.create(id=1, name='John Doe', age=10, owner='Jimmy')
+        dog = test_domain.get_repository(Dog).create(id=1, name='John Doe', age=10, owner='Jimmy')
         assert not dog.state_.is_new
 
-    def test_copy_resets_state(self):
+    def test_copy_resets_state(self, test_domain):
         """Test that a default state is available when the entity is instantiated"""
-        dog1 = Dog.create(id=1, name='John Doe', age=10, owner='Jimmy')
+        dog1 = test_domain.get_repository(Dog).create(id=1, name='John Doe', age=10, owner='Jimmy')
         dog2 = dog1.clone()
 
         assert dog2.state_.is_new
 
-    def test_changed(self):
+    def test_changed(self, test_domain):
         """Test that entity is marked as changed if attributes are updated"""
-        dog = Dog.create(id=1, name='John Doe', age=10, owner='Jimmy')
+        dog = test_domain.get_repository(Dog).create(id=1, name='John Doe', age=10, owner='Jimmy')
         assert not dog.state_.is_changed
         dog.name = 'Jane Doe'
         assert dog.state_.is_changed
@@ -65,17 +65,17 @@ class TestState:
         dog.name = 'Jane Doe'
         assert not dog.state_.is_changed
 
-    def test_not_changed_after_save(self):
+    def test_not_changed_after_save(self, test_domain):
         """Test that entity is marked as not changed after save"""
-        dog = Dog.create(id=1, name='John Doe', age=10, owner='Jimmy')
+        dog = test_domain.get_repository(Dog).create(id=1, name='John Doe', age=10, owner='Jimmy')
         dog.name = 'Jane Doe'
         assert dog.state_.is_changed
-        dog.save()
+        test_domain.get_repository(Dog).save(dog)
         assert not dog.state_.is_changed
 
-    def test_destroyed(self):
+    def test_destroyed(self, test_domain):
         """Test that a entity is marked as destroyed after delete"""
-        dog = Dog.create(id=1, name='John Doe', age=10, owner='Jimmy')
+        dog = test_domain.get_repository(Dog).create(id=1, name='John Doe', age=10, owner='Jimmy')
         assert not dog.state_.is_destroyed
-        dog.delete()
+        test_domain.get_repository(Dog).delete(dog)
         assert dog.state_.is_destroyed

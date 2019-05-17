@@ -16,11 +16,11 @@ class TestBlueprint:
         # Create the test client
         cls.client = app.test_client()
 
-    def test_show(self):
+    def test_show(self, test_domain):
         """ Test retrieving an entity using blueprint ShowAPIResource"""
 
         # Create a dog object
-        Dog.create(id=5, name='Johnny', owner='John')
+        test_domain.get_repository(Dog).create(id=5, name='Johnny', owner='John')
 
         # Fetch this dog by ID
         rv = self.client.get('/blueprint/dogs/5')
@@ -36,13 +36,14 @@ class TestBlueprint:
         assert rv.status_code == 404
 
         # Delete the dog now
-        dog = Dog.get(5)
-        dog.delete()
+        dog = test_domain.get_repository(Dog).get(5)
+        test_domain.get_repository(Dog).delete(dog)
 
-    def test_set_show(self):
+    def test_set_show(self, test_domain):
         """ Test retrieving an entity using the blueprint resource set"""
         # Create a human object
-        Human.create(id=1, first_name='Jeff', last_name='Kennedy', email='jeff.kennedy@presidents.com')
+        test_domain.get_repository(Human).create(
+            id=1, first_name='Jeff', last_name='Kennedy', email='jeff.kennedy@presidents.com')
 
         # Fetch this human by ID
         rv = self.client.get('/blueprint/humans/1')
@@ -53,15 +54,16 @@ class TestBlueprint:
         assert rv.json == expected_resp
 
         # Delete the human now
-        human = Human.get(1)
-        human.delete()
+        human = test_domain.get_repository(Human).get(1)
+        test_domain.get_repository(Human).delete(human)
 
-    def test_custom_route(self):
+    def test_custom_route(self, test_domain):
         """ Test custom routes using the blueprint resource set """
 
         # Create a human object
-        Human.create(id=1, first_name='Jeff', last_name='Kennedy', email='jeff.kennedy@presidents.com')
-        Dog.create(id=5, name='Johnny', owner='Jeff Kennedy')
+        test_domain.get_repository(Human).create(
+            id=1, first_name='Jeff', last_name='Kennedy', email='jeff.kennedy@presidents.com')
+        test_domain.get_repository(Dog).create(id=5, name='Johnny', owner='Jeff Kennedy')
 
         # Get the custom route
         rv = self.client.get('/humans/1/my_dogs')

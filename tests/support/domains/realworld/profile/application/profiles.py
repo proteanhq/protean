@@ -1,5 +1,6 @@
 """Use Cases for the Profile functionality"""
 
+from protean import Domain
 from protean.core.entity import BaseEntity
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.transport import ResponseFailure
@@ -21,7 +22,8 @@ class GetProfileUseCase(UseCase):
     def process_request(self, request_object):
         """Process Fetch Logged-in User Request"""
         try:
-            user = request_object.entity_cls.find_by(username=request_object.username)
+            repo = Domain().get_repository(request_object.entity_cls)
+            user = repo.find_by(username=request_object.username)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,
@@ -43,8 +45,9 @@ class FollowProfileUseCase(UseCase):
     def process_request(self, request_object):
         """Process request for following profile by username"""
         try:
-            logged_in_user = request_object.entity_cls.find_by(token=request_object.token)
-            profile = request_object.entity_cls.find_by(username=request_object.username)
+            repo = Domain().get_repository(request_object.entity_cls)
+            logged_in_user = repo.find_by(token=request_object.token)
+            profile = repo.find_by(username=request_object.username)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,
@@ -60,8 +63,9 @@ class UnfollowProfileUseCase(UseCase):
     def process_request(self, request_object):
         """Process request for following profile by username"""
         try:
-            logged_in_user = request_object.entity_cls.find_by(token=request_object.token)
-            profile = request_object.entity_cls.find_by(username=request_object.username)
+            repo = Domain().get_repository(request_object.entity_cls)
+            logged_in_user = repo.find_by(token=request_object.token)
+            profile = repo.find_by(username=request_object.username)
         except ObjectNotFoundError:
             return ResponseFailure(
                 Status.NOT_FOUND,
