@@ -583,9 +583,6 @@ class BaseEntity(metaclass=_EntityMetaclass):
             # Do unique checks, create this object and return it
             entity._validate_unique()
 
-            # Perform Pre-Save Actions
-            entity.pre_save()
-
             # Build the model object and create it
             model_obj = repository.create(model_cls.from_entity(entity))
 
@@ -600,9 +597,6 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
             # Set Entity status to saved
             entity.state_.mark_saved()
-
-            # Perform Post-Save Actions
-            entity.post_save()
 
             return entity
         except ValidationError:
@@ -630,9 +624,6 @@ class BaseEntity(metaclass=_EntityMetaclass):
             # Do unique checks, update the record and return the Entity
             self._validate_unique(create=False)
 
-            # Perform Pre-Save Actions
-            self.pre_save()
-
             # Build the model object and create it
             model_obj = repository.create(model_cls.from_entity(self))
 
@@ -647,9 +638,6 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
             # Set Entity status to saved
             self.state_.mark_saved()
-
-            # Perform Post-Save Actions
-            self.post_save()
 
             return self
         except Exception:
@@ -683,16 +671,10 @@ class BaseEntity(metaclass=_EntityMetaclass):
             # Do unique checks, update the record and return the Entity
             self._validate_unique(create=False)
 
-            # Perform Pre-Save Actions
-            self.pre_save()
-
             repository.update(model_cls.from_entity(self))
 
             # Set Entity status to saved
             self.state_.mark_saved()
-
-            # Perform Post-Save Actions
-            self.post_save()
 
             return self
         except Exception:
@@ -761,11 +743,3 @@ class BaseEntity(metaclass=_EntityMetaclass):
         except Exception:
             # FIXME Log Exception
             raise
-
-    def pre_save(self):
-        """Pre-Save Hook"""
-        pass
-
-    def post_save(self):
-        """Post-Save Hook"""
-        pass
