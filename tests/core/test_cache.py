@@ -45,7 +45,7 @@ class TestCache:
         assert dog_d is None
 
     @pytest.mark.slow
-    def test_touch(self):
+    def test_touch(self, test_domain):
         """ Test updating the expiry of key using touch """
         dog = test_domain.get_repository(Dog).create(id=1, name='Johnny', owner='John')
 
