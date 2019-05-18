@@ -1,6 +1,6 @@
 click==7.0
 cookiecutter==1.6.0
-flask==1.0.2
+flask==1.0.3
 inflect==1.0.1
 marshmallow==2.19.2
 python-dateutil==2.7.3
