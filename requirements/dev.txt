@@ -6,4 +6,4 @@ docutils==0.14
 pytest-flake8==1.0.4
 sphinx==2.0.1
 tox==3.11.1
-twine==1.11.0
+twine==1.13.0
