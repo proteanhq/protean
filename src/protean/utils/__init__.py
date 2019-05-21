@@ -25,7 +25,7 @@ class classproperty(object):
 
 def fully_qualified_name(cls):
     """Return Fully Qualified name along with module"""
-    return '.'.join([cls.__module__, cls.__qualname__])
+    return '.'.join([cls.__module__, cls.__name__])
 
 
 def singleton(cls):

@@ -37,3 +37,11 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_slow)
         if "pending" in item.keywords and run_pending is False:
             item.add_marker(skip_pending)
+
+
+@pytest.fixture
+def test_domain():
+    from protean.domain import Domain
+    domain = Domain("Test")
+
+    yield domain
