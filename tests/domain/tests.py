@@ -91,16 +91,6 @@ class TestDomainRegistration:
         with pytest.raises(NotImplementedError):
             test_domain.register(Bar)
 
-    def test_that_an_element_subclassed_from_multiple_valid_elements_cannot_be_registered(self, test_domain):
-        from protean.core.aggregate import BaseAggregate
-        from protean.core.entity import BaseEntity
-
-        class Foo(BaseAggregate, BaseEntity):
-            pass
-
-        with pytest.raises(ConfigurationError):
-            test_domain.register(Foo)
-
 
 class TestDomainAnnotations:
 

@@ -182,9 +182,7 @@ class Domain:
             if element_class in element_cls.__bases__
         ]
 
-        if len(element_types) > 1:
-            raise ConfigurationError
-        elif len(element_types) == 0:
+        if len(element_types) == 0:
             raise NotImplementedError
 
         return self._register_element(
