@@ -4,7 +4,7 @@ from protean.core.field.basic import Auto, String
 from .elements import (
     Role, AbstractRole, ConcreteRole, DbRole, DifferentDbRole, FurtherAbstractRole,
     OrderedRole, OrderedRoleSubclass,
-    SqlRole, SqlDifferentDbRole)
+    SqlRole, SqlDifferentDbRole, SubclassRole)
 
 
 class TestAggregateMeta:
@@ -79,3 +79,6 @@ class TestAggregateMeta:
         """Test that `order_by` can be overridden"""
         assert hasattr(OrderedRoleSubclass.meta_, 'order_by')
         assert getattr(OrderedRoleSubclass.meta_, 'order_by') == ('bar', )
+
+    def test_that_schema_is_not_inherited(self):
+        assert Role.meta_.schema_name != SubclassRole.meta_.schema_name

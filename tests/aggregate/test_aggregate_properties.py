@@ -1,11 +1,25 @@
 import pytest
 
+from datetime import datetime
 from uuid import UUID, uuid4
 
-from protean.core.exceptions import ValidationError
+from protean.core.exceptions import ValidationError, InvalidOperationError
 from protean.core.field.basic import Auto, String
 
 from .elements import Role, PersonAutoSSN, PersonExplicitID, SubclassRole
+
+
+class TestProperties:
+    def test_conversion_of_aggregate_values_to_dict(self):
+        current_time = datetime.now()
+        role = Role(id=12, name='ADMIN', created_on=current_time)
+        assert role.to_dict() == {'id': 12, 'name': 'ADMIN', 'created_on': current_time}
+
+    def test_repr_output_of_aggregate(self):
+        role = Role(id=12, name='ADMIN')
+
+        assert str(role) == 'Role object (id: 12)'
+        assert repr(role) == '<Role: Role object (id: 12)>'
 
 
 class TestIdentity:
@@ -52,6 +66,13 @@ class TestIdentityValues:
             pytest.fail("ID is not valid UUID")
 
         assert str(uuid_obj) == role.id
+
+    def test_that_ids_are_immutable(self):
+        """Test that `id` cannot be changed once assigned"""
+        role = Role(id=12, name='ADMIN')
+
+        with pytest.raises(InvalidOperationError):
+            role.id = 13
 
     def test_non_default_auto_id_field_value(self):
         role = PersonAutoSSN(name='John Doe')

@@ -3,6 +3,7 @@
 import copy
 import logging
 
+from collections import defaultdict
 from uuid import uuid4
 
 # Protean
@@ -303,7 +304,7 @@ class BaseAggregate(metaclass=_AggregateMetaclass):
                 f'{self.__class__.__name__} class has been marked abstract'
                 f' and cannot be instantiated')
 
-        self.errors = {}
+        self.errors = defaultdict(list)
 
         # Set up the storage for instance state
         self.state_ = _AggregateState()
@@ -324,7 +325,11 @@ class BaseAggregate(metaclass=_AggregateMetaclass):
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
             loaded_fields.append(field_name)
-            setattr(self, field_name, val)
+            try:
+                setattr(self, field_name, val)
+            except ValidationError as err:
+                for field_name in err.messages:
+                    self.errors[field_name].extend(err.messages[field_name])
 
         # Load Value Objects
         for field_name, field_obj in self.meta_.declared_fields.items():
@@ -351,7 +356,11 @@ class BaseAggregate(metaclass=_AggregateMetaclass):
         for field_name, field_obj in self.meta_.declared_fields.items():
             if field_name not in loaded_fields:
                 if not isinstance(field_obj, (Reference, _ReferenceField)):
-                    setattr(self, field_name, None)
+                    try:
+                        setattr(self, field_name, None)
+                    except ValidationError as err:
+                        for field_name in err.messages:
+                            self.errors[field_name].extend(err.messages[field_name])
 
         # Raise any errors found during load
         if self.errors:

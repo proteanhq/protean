@@ -1,12 +1,18 @@
 from datetime import datetime
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import Auto, DateTime, String
+from protean.core.field.basic import Auto, DateTime, Integer, String
 
 
 class Role(BaseAggregate):
     name = String(max_length=15, required=True)
     created_on = DateTime(default=datetime.today())
+
+
+class Person(BaseAggregate):
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50, required=True)
+    age = Integer(default=21)
 
 
 # Aggregates to test Identity

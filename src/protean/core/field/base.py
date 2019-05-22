@@ -4,6 +4,7 @@
 import enum
 
 from abc import ABCMeta, abstractmethod
+from collections import defaultdict
 from typing import Any, Iterable
 
 # Protean
@@ -130,7 +131,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
             raise AssertionError(msg)
         if isinstance(msg, str):
             msg = msg.format(**kwargs)
-        raise exceptions.ValidationError(msg, self.field_name)
+        raise exceptions.ValidationError({self.field_name: [msg]})
 
     @property
     def validators(self):
@@ -156,15 +157,12 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
         if value in self.empty_values:
             return
 
-        errors = []
+        errors = defaultdict(list)
         for validator in self.validators:
             try:
                 validator(value)
             except exceptions.ValidationError as err:
-                if isinstance(err.messages, dict):
-                    errors.append(err.messages)
-                else:
-                    errors.extend(err.messages)
+                errors[self.field_name].extend(err.messages)
 
         if errors:
             raise exceptions.ValidationError(errors)
