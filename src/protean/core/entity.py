@@ -343,6 +343,10 @@ class BaseEntity(metaclass=_EntityMetaclass):
                 setattr(self, field_name, value_object)
                 loaded_fields.append(field_name)
 
+        if not getattr(self, self.meta_.id_field.field_name, None) and type(self.meta_.id_field) is Auto:
+            setattr(self, self.meta_.id_field.field_name, self._generate_identity())
+            loaded_fields.append(self.meta_.id_field.field_name)
+
         # Now load the remaining fields with a None value, which will fail
         # for required fields
         for field_name, field_obj in self.meta_.declared_fields.items():
@@ -361,16 +365,6 @@ class BaseEntity(metaclass=_EntityMetaclass):
             return uuid4()
 
         return None  # Database will generate the identity
-
-    @classmethod
-    def build(cls, *template, **kwargs):
-        """Factory method to initialize an Entity object"""
-        instance = cls(*template, **kwargs)
-
-        if not getattr(instance, cls.meta_.id_field.field_name, None):
-            setattr(instance, cls.meta_.id_field.field_name, cls._generate_identity())
-
-        return instance
 
     def __eq__(self, other):
         """Equaivalence check to be based only on Identity"""
