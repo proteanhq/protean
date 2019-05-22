@@ -1,5 +1,7 @@
+from enum import Enum
+
 from protean.core.value_object import BaseValueObject
-from protean.core.field.basic import String
+from protean.core.field.basic import String, Float
 
 
 class Email(BaseValueObject):
@@ -45,3 +47,27 @@ class Email(BaseValueObject):
 
 class MyOrgEmail(Email):
     pass
+
+
+class Currency(Enum):
+    """ Set of choices for the status"""
+    USD = 'USD'
+    INR = 'INR'
+    CAD = 'CAD'
+
+
+class Balance(BaseValueObject):
+    """A composite amount object, containing two parts:
+        * currency code - a three letter unique currency code
+        * amount - a float value
+    """
+
+    currency = String(max_length=3, choices=Currency)
+    amount = Float()
+
+    def replace(self, **kwargs):
+        # FIXME Find a way to do this generically and move method to `BaseValueObject`
+        currency = kwargs.pop('currency', None)
+        amount = kwargs.pop('amount', None)
+        return Balance(currency=currency or self.currency,
+                       amount=amount or self.amount)
