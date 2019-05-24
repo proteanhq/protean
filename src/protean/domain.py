@@ -11,7 +11,7 @@ from typing import Any, Dict
 
 # Protean
 from protean.core.provider import Providers
-from protean.core.exceptions import ConfigurationError
+from protean.core.exceptions import ConfigurationError, IncorrectUsageError, NotSupportedError, ObjectNotFoundError
 from protean.utils import fully_qualified_name
 
 logger = logging.getLogger('protean.repository')
@@ -34,13 +34,15 @@ class _DomainRegistry:
         qualname: str
         class_type: str
         cls: Any
+        provider_name: str
+        model_cls: Any
 
     def __post_init__(self):
         """Initialize placeholders for element types"""
         for element_type in DomainObjects:
             self._elements[element_type.value] = defaultdict(dict)
 
-    def register_element(self, element_type, element_cls):
+    def register_element(self, element_type, element_cls, provider_name=None, model_cls=None):
         if element_type.name not in DomainObjects.__members__:
             raise NotImplementedError
 
@@ -54,12 +56,22 @@ class _DomainRegistry:
                 name=element_cls.__name__,
                 qualname=element_name,
                 class_type=element_type.value,
-                cls=element_cls
+                cls=element_cls,
+                provider_name=provider_name,
+                model_cls=model_cls
             )
 
             self._elements[element_type.value][element_name] = element_record
 
             logger.debug(f'Registered Element {element_name} with Domain as a {element_type.value}')
+
+    def unregister_element(self, element_type, element_cls):
+        if element_type.name not in DomainObjects.__members__:
+            raise NotImplementedError
+
+        element_name = fully_qualified_name(element_cls)
+
+        self._elements[element_type.value].pop(element_name, None)
 
 
 class Domain:
@@ -117,25 +129,56 @@ class Domain:
     def request_objects(self):
         return self._domain_registry._elements[DomainObjects.REQUEST_OBJECT.value]
 
-    def _register_element(self, element_type, element_cls, aggregate=None, bounded_context=None, **kwargs):
+    def _register_element(self, element_type, element_cls, **kwargs):
         """Register class into the domain"""
         new_dict = element_cls.__dict__.copy()
         new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
 
-        if element_type.value in self.base_class_mapping:
+        try:
+            if element_type.value not in self.base_class_mapping:
+                raise
+
             new_cls = type(element_cls.__name__, (self.base_class_mapping[element_type.value], ), new_dict)
-        else:
-            raise NotImplementedError
+        except BaseException as exc:
+            logger.debug("Error during Element registration:", repr(exc))
+            raise IncorrectUsageError(
+                "Invalid class {element_cls.__name__} for type {element_type.value}"
+                " (Error: {exc})"
+                )
+
+        # Decorate Aggregate classes with Provider and Model info
+        provider_name = None
+        model_cls = None
+        if element_type == DomainObjects.AGGREGATE and self._validate_aggregate_class(new_cls):
+            provider_name = provider_name or new_cls.meta_.provider or 'default'
+            model_cls = None  # FIXME Add ability to specify model_cls explicitly
 
         # Enrich element with domain information
         if hasattr(new_cls, 'meta_'):
-            new_cls.meta_.aggregate = aggregate
-            new_cls.meta_.bounded_context = bounded_context
+            new_cls.meta_.aggregate = kwargs.pop('aggregate', None)
+            new_cls.meta_.bounded_context = kwargs.pop('bounded_context', None)
 
         # Register element with domain
-        self._domain_registry.register_element(element_type, new_cls)
+        self._domain_registry.register_element(
+            element_type, new_cls, provider_name=provider_name, model_cls=model_cls)
 
         return new_cls
+
+    def _validate_aggregate_class(self, element_cls):
+        """Validate that Entity is a valid class"""
+        # Import here to avoid cyclic dependency
+        from protean.core.aggregate import BaseAggregate
+
+        if not issubclass(element_cls, BaseAggregate):
+            raise AssertionError(
+                f'Element {element_cls.__name__} must be subclass of `BaseAggregate`')
+
+        if element_cls.meta_.abstract is True:
+            raise NotSupportedError(
+                f'{element_cls.__name__} class has been marked abstract'
+                f' and cannot be instantiated')
+
+        return True
 
     # _cls should never be specified by keyword, so start it with an
     # underscore.  The presence of _cls is used to detect if this
@@ -144,7 +187,9 @@ class Domain:
         """Returns the registered class after decoarating it and recording its presence in the domain"""
 
         def wrap(cls):
-            return self._register_element(element_type, cls, aggregate, bounded_context)
+            return self._register_element(
+                element_type, cls,
+                aggregate=aggregate, bounded_context=bounded_context)
 
         # See if we're being called as @Entity or @Entity().
         if _cls is None:
@@ -174,7 +219,7 @@ class Domain:
             DomainObjects.REQUEST_OBJECT, _cls=_cls, **kwargs,
             aggregate=aggregate, bounded_context=bounded_context)
 
-    def register(self, element_cls, aggregate=None, bounded_context=None, **kwargs):
+    def register(self, element_cls, **kwargs):
         """Register an element already subclassed with the correct Hierarchy"""
         element_types = [
             element_type
@@ -185,6 +230,64 @@ class Domain:
         if len(element_types) == 0:
             raise NotImplementedError
 
-        return self._register_element(
-            DomainObjects[element_types.pop()], element_cls,
-            aggregate, bounded_context, **kwargs)
+        return self._register_element(DomainObjects[element_types.pop()], element_cls, **kwargs)
+
+    def unregister(self, element_cls):
+        """Unregister a Domain Element.
+
+        This method will result in a no-op if the entity class was not found
+        in the registry for whatever reason.
+        """
+        element_types = [
+            element_type
+            for element_type, element_class in self.base_class_mapping.items()
+            if element_class in element_cls.__bases__
+        ]
+
+        if len(element_types) == 0:
+            raise NotImplementedError
+
+        self._domain_registry.unregister_element(DomainObjects[element_types.pop()], element_cls)
+
+    def _derive_element_type(self, element_cls):
+        element_types = [
+            element_type
+            for element_type, element_class in self.base_class_mapping.items()
+            if element_class in element_cls.__bases__
+        ]
+
+        if len(element_types) == 0:
+            raise NotImplementedError
+
+        return DomainObjects[element_types.pop()]
+
+    def _get_element_by_class(self, element_type, element_cls):
+        """Fetch Domain record with Element class details"""
+        element_qualname = fully_qualified_name(element_cls)
+        if element_qualname in self._domain_registry:
+            return self._domain_registry._elements[element_type.value][element_qualname]
+        else:
+            raise ObjectNotFoundError("Element {element_qualname} not registered in domain {self.domain_name}")
+
+    def get_model(self, aggregate_cls):
+        """Retrieve Model class connected to Entity"""
+        aggregate_record = self._get_entity_by_class(DomainObjects.AGGREGATE, aggregate_cls)
+
+        # We should ask the Provider to give a fully baked model
+        #   that has been initialized properly for this aggregate
+        provider = self.get_provider(aggregate_record.provider_name)
+        baked_model_cls = provider.get_model(aggregate_record.cls)
+
+        return baked_model_cls
+
+    def get_provider(self, provider_name):
+        """Retrieve the provider object with a given provider name"""
+        # FIXME Should domain be derived from "context"?
+        return self.providers.get_provider(provider_name)
+
+    def get_repository(self, element_cls):
+        """Retrieve a Repository for the Model with a live connection"""
+        aggregate_record = self._get_element_by_class(element_cls)
+        provider = self.get_provider(aggregate_record.provider_name)
+
+        return provider.get_repository(aggregate_record.cls)

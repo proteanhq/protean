@@ -5,20 +5,26 @@ from protean.core.field.basic import String, Float
 
 
 class Email(BaseValueObject):
-    """An email address, with two clearly identified parts:
+    """An email address value object, with two clearly identified parts:
         * local_part
         * domain_part
     """
 
+    # This is the external facing data attribute
     address = String(max_length=254)
 
     def __init__(self, *template, local_part=None, domain_part=None, **kwargs):
         super(Email, self).__init__(*template, **kwargs)
+
+        # `local_part` and `domain_part` are internal attributes that capture
+        #   and preserve the validity of an Email Address
         self.local_part = local_part
         self.domain_part = domain_part
 
         if self.local_part and self.domain_part:
             self.address = '@'.join([self.local_part, self.domain_part])
+        else:
+            raise ValidationError
 
     @classmethod
     def from_address(cls, address):

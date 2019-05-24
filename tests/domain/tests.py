@@ -2,7 +2,7 @@ import pytest
 
 from protean import Domain
 from protean.domain import DomainObjects
-from protean.core.exceptions import ConfigurationError
+from protean.core.exceptions import ConfigurationError, IncorrectUsageError
 from protean.utils import fully_qualified_name
 
 from .elements import UserStruct
@@ -149,5 +149,5 @@ class TestDomainAnnotations:
         class FooBar:
             foo = String(max_length=50)
 
-        with pytest.raises(NotImplementedError):
-            test_domain._register_element(DummyElement.FOO, FooBar, 'foo')
+        with pytest.raises(IncorrectUsageError):
+            test_domain._register_element(DummyElement.FOO, FooBar, aggregate='foo')
