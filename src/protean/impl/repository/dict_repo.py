@@ -15,7 +15,7 @@ from protean.core.exceptions import ObjectNotFoundError
 from protean.core.provider.base import BaseProvider
 from protean.core.repository.lookup import BaseLookup
 from protean.core.repository.model import BaseModel
-from protean.core.repository.base import BaseRepository
+from protean.core.repository.base import AbstractRepository
 from protean.core.repository.resultset import ResultSet
 from protean.utils.query import Q
 
@@ -138,7 +138,7 @@ class DictProvider(BaseProvider):
         return items
 
 
-class DictRepository(BaseRepository):
+class DictRepository(AbstractRepository):
     """A repository for storing data in a dictionary """
 
     def _set_auto_fields(self, model_obj):

@@ -10,7 +10,7 @@ from protean.core.field.association import Reference
 from protean.core.provider.base import BaseProvider
 from protean.core.repository.lookup import BaseLookup
 from protean.core.repository.model import BaseModel
-from protean.core.repository.base import BaseRepository
+from protean.core.repository.base import AbstractRepository
 from protean.core.repository.resultset import ResultSet
 from protean.utils.query import Q
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
@@ -111,7 +111,7 @@ class SqlalchemyModel(BaseModel):
         return cls.entity_cls(item_dict)
 
 
-class SARepository(BaseRepository):
+class SARepository(AbstractRepository):
     """Repository implementation for Databases compliant with SQLAlchemy"""
 
     def _build_filters(self, criteria: Q):

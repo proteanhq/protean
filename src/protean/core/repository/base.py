@@ -19,7 +19,7 @@ from .resultset import ResultSet
 logger = logging.getLogger('protean.repository')
 
 
-class BaseRepository(metaclass=ABCMeta):
+class AbstractRepository(metaclass=ABCMeta):
     """Repository interface to interact with databases
 
     :param conn: A connection/session to the data source of the model
