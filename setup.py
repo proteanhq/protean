@@ -76,7 +76,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'protean = protean.cli:main',
+            'protean = protean.management:execute_from_command_line',
         ]
     },
 )
