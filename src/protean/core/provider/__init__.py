@@ -3,22 +3,22 @@
 import importlib
 
 # Protean
-from protean.conf import active_config
+from protean.conf import Config, active_config
 from protean.core.exceptions import ConfigurationError
-from protean.utils import singleton
 
 
-@singleton
 class Providers:
     """Application Singleton to configure and manage database connections
     """
-    def __init__(self):
+    def __init__(self, domain, config_file=None):
         """Read config file and initialize providers"""
+        self.domain = domain
+        self.config = Config(config_module_str=config_file) if config_file else active_config
         self._providers = self._initialize_providers()
 
     def _initialize_providers(self):
         """Read config file and initialize providers"""
-        configured_providers = active_config.DATABASES
+        configured_providers = self.config.DATABASES
         provider_objects = {}
 
         if configured_providers and isinstance(configured_providers, dict):
@@ -31,7 +31,7 @@ class Providers:
                 provider_module, provider_class = provider_full_path.rsplit('.', maxsplit=1)
 
                 provider_cls = getattr(importlib.import_module(provider_module), provider_class)
-                provider_objects[provider_name] = provider_cls(conn_info)
+                provider_objects[provider_name] = provider_cls(self.domain, conn_info)
 
         return provider_objects
 

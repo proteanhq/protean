@@ -15,7 +15,7 @@ from protean.core.exceptions import ObjectNotFoundError
 from protean.core.provider.base import BaseProvider
 from protean.core.repository.lookup import BaseLookup
 from protean.core.repository.model import BaseModel
-from protean.core.repository.base import AbstractRepository
+from protean.core.repository.dao import BaseDAO
 from protean.core.repository.resultset import ResultSet
 from protean.utils.query import Q
 
@@ -81,10 +81,10 @@ class DictProvider(BaseProvider):
 
         return cls
 
-    def get_repository(self, entity_cls):
-        """Return a repository object configured with a live connection"""
+    def get_dao(self, entity_cls):
+        """Return a DAO object configured with a live connection"""
         model_cls = self.get_model(entity_cls)
-        return DictRepository(self, entity_cls, model_cls)
+        return DictDAO(self.domain, self, entity_cls, model_cls)
 
     def _evaluate_lookup(self, key, value, negated, db):
         """Extract values from DB that match the given criteria"""
@@ -138,7 +138,7 @@ class DictProvider(BaseProvider):
         return items
 
 
-class DictRepository(AbstractRepository):
+class DictDAO(BaseDAO):
     """A repository for storing data in a dictionary """
 
     def _set_auto_fields(self, model_obj):

@@ -4,7 +4,7 @@ import copy
 import logging
 
 # Protean
-from protean.core.exceptions import NotSupportedError, ValidationError, InvalidOperationError
+from protean.core.exceptions import NotSupportedError, ValidationError
 from protean.core.field.basic import Auto, Field
 from protean.utils import inflection
 
@@ -212,7 +212,6 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
         if self.errors:
             raise ValidationError(self.errors)
 
-
     @classmethod
     def build(cls, **values):
         assert all(attr in values
@@ -221,7 +220,10 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
         return cls(**values)
 
     def __eq__(self, other):
-        """Equaivalence check to be based only on Identity"""
+        """Equaivalence check for value objects is based only on data.
+
+        Two Value Objects are considered equal if they have the same data.
+        """
         if type(other) is not type(self):
             return False
 

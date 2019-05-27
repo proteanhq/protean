@@ -20,6 +20,7 @@ logger = logging.getLogger('protean.repository')
 class DomainObjects(Enum):
     AGGREGATE = 'AGGREGATE'
     ENTITY = 'ENTITY'
+    REPOSITORY = 'REPOSITORY'
     REQUEST_OBJECT = 'REQUEST_OBJECT'
     VALUE_OBJECT = 'VALUE_OBJECT'
 
@@ -91,23 +92,25 @@ class Domain:
 
     from protean.core.aggregate import BaseAggregate
     from protean.core.entity import BaseEntity
+    from protean.core.repository.base import BaseRepository
     from protean.core.transport.request import BaseRequestObject
     from protean.core.value_object import BaseValueObject
 
     base_class_mapping = {
             DomainObjects.AGGREGATE.value: BaseAggregate,
             DomainObjects.ENTITY.value: BaseEntity,
+            DomainObjects.REPOSITORY.value: BaseRepository,
             DomainObjects.REQUEST_OBJECT.value: BaseRequestObject,
             DomainObjects.VALUE_OBJECT.value: BaseValueObject
         }
 
-    def __init__(self, domain_name=__name__):
+    def __init__(self, domain_name=__name__, config_file=None):
         self.domain_name = domain_name
 
         # Registry for all domain Objects
         self._domain_registry = _DomainRegistry()
 
-        self.providers = Providers()
+        self.providers = Providers(self, config_file=config_file)
 
     @property
     def registry(self):
@@ -264,14 +267,14 @@ class Domain:
     def _get_element_by_class(self, element_type, element_cls):
         """Fetch Domain record with Element class details"""
         element_qualname = fully_qualified_name(element_cls)
-        if element_qualname in self._domain_registry:
+        if element_qualname in self._domain_registry._elements[element_type.value]:
             return self._domain_registry._elements[element_type.value][element_qualname]
         else:
             raise ObjectNotFoundError("Element {element_qualname} not registered in domain {self.domain_name}")
 
     def get_model(self, aggregate_cls):
         """Retrieve Model class connected to Entity"""
-        aggregate_record = self._get_entity_by_class(DomainObjects.AGGREGATE, aggregate_cls)
+        aggregate_record = self._get_element_by_class(DomainObjects.AGGREGATE, aggregate_cls)
 
         # We should ask the Provider to give a fully baked model
         #   that has been initialized properly for this aggregate
@@ -285,9 +288,12 @@ class Domain:
         # FIXME Should domain be derived from "context"?
         return self.providers.get_provider(provider_name)
 
-    def get_repository(self, element_cls):
-        """Retrieve a Repository for the Model with a live connection"""
-        aggregate_record = self._get_element_by_class(element_cls)
+    def get_repository(self, aggregate_cls):
+        """Retrieve a Repository registered for the Aggregate"""
+
+    def get_dao(self, aggregate_cls):
+        """Retrieve a DAO registered for the Aggregate with a live connection"""
+        aggregate_record = self._get_element_by_class(DomainObjects.AGGREGATE, aggregate_cls)
         provider = self.get_provider(aggregate_record.provider_name)
 
-        return provider.get_repository(aggregate_record.cls)
+        return provider.get_dao(aggregate_record.cls)

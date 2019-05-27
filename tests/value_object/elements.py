@@ -1,7 +1,8 @@
 from enum import Enum
 
-from protean.core.value_object import BaseValueObject
+from protean.core.exceptions import ValidationError
 from protean.core.field.basic import String, Float
+from protean.core.value_object import BaseValueObject
 
 
 class Email(BaseValueObject):
@@ -24,7 +25,7 @@ class Email(BaseValueObject):
         if self.local_part and self.domain_part:
             self.address = '@'.join([self.local_part, self.domain_part])
         else:
-            raise ValidationError
+            raise ValidationError("`local_part` and `domain_part` of email address are mandatory")
 
     @classmethod
     def from_address(cls, address):

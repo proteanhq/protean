@@ -15,9 +15,10 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     retrieve connections and perform commits
     """
 
-    def __init__(self, conn_info: dict):
+    def __init__(self, domain, conn_info: dict):
         """Initialize Provider with Connection/Adapter details"""
         self.identifier = str(uuid.uuid4())
+        self.domain = domain
         self.conn_info = conn_info
 
     def _extract_lookup(self, key):
@@ -56,8 +57,8 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """Close the connection object for the repository"""
 
     @abstractmethod
-    def get_repository(self, model_cls):
-        """Return a repository object configured with a live connection"""
+    def get_dao(self, model_cls):
+        """Return a DAO object configured with a live connection"""
 
     @abstractmethod
     def get_model(self, entity_cls):
