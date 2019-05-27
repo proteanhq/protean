@@ -49,10 +49,16 @@ class DictProvider(BaseProvider):
     def get_session(self):
         """Return a session object
 
-        FIXME Is it possible to simulate transactions with Dict Repo?
-        Maybe we should to be able to simulate Unit of Work transactions
+        For Dictionary Repo, a session translates to a copy of the
+        `database`. All transactions on the Provider's repositories
+        are committed on this copy of the database.
         """
-        pass
+        database = {
+            'data': _databases.setdefault(self.identifier, defaultdict(dict)),
+            'lock': _locks.setdefault(self.identifier, Lock()),
+            'counters': _counters
+        }
+        return database
 
     def get_connection(self):
         """Return the dictionary database object """

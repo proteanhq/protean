@@ -14,11 +14,11 @@ class BaseRepository(ABC):
     def add(self, aggregate):
         """Add object to Repository"""
 
-    def add_all(self, aggregates):
-        """Add object to Repository"""
-
     def remove(self, aggregate):
-        """Add object to Repository"""
+        """Remove object to Repository"""
 
-    def remove_all(self, aggregates):
-        """Add object to Repository"""
+    def get(self, identifier):
+        """Retrieve object from Repository"""
+
+    def filter(self, specification):
+        """Filter for objects that fit specification"""

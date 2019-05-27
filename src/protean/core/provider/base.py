@@ -15,8 +15,9 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     retrieve connections and perform commits
     """
 
-    def __init__(self, domain, conn_info: dict):
+    def __init__(self, name, domain, conn_info: dict):
         """Initialize Provider with Connection/Adapter details"""
+        self.name = name
         self.identifier = str(uuid.uuid4())
         self.domain = domain
         self.conn_info = conn_info

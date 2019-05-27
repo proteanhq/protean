@@ -31,7 +31,7 @@ class Providers:
                 provider_module, provider_class = provider_full_path.rsplit('.', maxsplit=1)
 
                 provider_cls = getattr(importlib.import_module(provider_module), provider_class)
-                provider_objects[provider_name] = provider_cls(self.domain, conn_info)
+                provider_objects[provider_name] = provider_cls(provider_name, self.domain, conn_info)
 
         return provider_objects
 
@@ -48,3 +48,8 @@ class Providers:
             return self._providers[provider_name].get_connection()
         except KeyError:
             raise AssertionError(f'No Provider registered with name {provider_name}')
+
+    def providers_list(self):
+        """A generator that helps users iterator through providers"""
+        for provider_name in self._providers:
+            yield self._providers[provider_name]
