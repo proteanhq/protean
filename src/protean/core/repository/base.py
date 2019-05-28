@@ -73,6 +73,8 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
 
     def get(self, identifier):
         """Retrieve object from Repository"""
+        dao = self.domain.get_dao(self.meta_.aggregate)
+        return dao.get(identifier)
 
     def filter(self, specification):
         """Filter for objects that fit specification"""

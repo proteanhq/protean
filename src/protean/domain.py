@@ -310,8 +310,8 @@ class Domain:
     def repository_for(self, aggregate_cls, uow=None):
         """Retrieve a Repository registered for the Aggregate"""
         repository_record = next(
-                    repository for _, repository in self.repositories.items()
-                    if repository.cls.meta_.aggregate == aggregate_cls)
+            repository for _, repository in self.repositories.items()
+            if type(repository.cls.meta_.aggregate) == type(aggregate_cls))  # FIXME Avoid comparing classes
         return repository_record.cls(self, uow)
 
     def get_dao(self, aggregate_cls):

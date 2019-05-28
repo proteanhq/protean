@@ -42,8 +42,9 @@ class TestAggregatePersistenceWithRepository:
     def test_new_object_persistence_with_no_uow(self, person_dao, test_domain):
         repo = test_domain.repository_for(Person)
         person = Person(first_name='John', last_name='Doe')
-        persisted_person = repo.add(person)
+        repo.add(person)
 
+        persisted_person = repo.get(person.id)
         assert persisted_person is not None
 
     def test_that_an_aggregate_object_can_be_persisted_via_dao(self, person_dao):

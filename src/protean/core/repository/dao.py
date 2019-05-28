@@ -31,7 +31,7 @@ class BaseDAO(metaclass=ABCMeta):
         self.conn = self.provider.get_connection()
         self.model_cls = model_cls
         self.entity_cls = entity_cls
-        self.query = QuerySet(self.entity_cls)
+        self.query = QuerySet(domain, self.entity_cls)
         self.schema_name = entity_cls.meta_.schema_name
 
     ###############################
