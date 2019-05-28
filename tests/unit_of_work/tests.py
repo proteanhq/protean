@@ -40,12 +40,24 @@ class TestUnitOfWorkRegistration:
 
         yield domain
 
-    def test_uow_new_object_registration(self, test_domain):
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
         test_domain.register(Person)
         test_domain.register(PersonRepository, aggregate=Person)
 
+        yield
+
+    def test_new_object_registration_with_uow_passed_on_repository_initialization(self, test_domain):
         with UnitOfWork(test_domain) as uow:
             repo = test_domain.repository_for(Person, uow)
+            person = Person(first_name='John', last_name='Doe')
+            repo.add(person)
+
+            assert person.id in uow.objects_to_be_added
+
+    def test_new_object_registration_with_uow_passed_through_repository_within(self, test_domain):
+        with UnitOfWork(test_domain) as uow:
+            repo = test_domain.repository_for(Person).within(uow)
             person = Person(first_name='John', last_name='Doe')
             repo.add(person)
 

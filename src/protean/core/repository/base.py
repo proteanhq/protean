@@ -51,14 +51,22 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
     It is also a marker interface for registering repository
     classes with the domain"""
 
-    def __init__(self, uow=None):
+    def __init__(self, domain, uow=None):
+        self.domain = domain
         self.uow = uow
 
     def within(self, uow):
         self.uow = uow
+        return self
 
     def add(self, aggregate):
-        self.uow.register_new(aggregate)
+        if self.uow:
+            self.uow.register_new(aggregate)
+        else:
+            dao = self.domain.get_dao(self.meta_.aggregate)
+            dao.save(aggregate)
+
+        return aggregate
 
     def remove(self, aggregate):
         """Remove object to Repository"""

@@ -13,4 +13,7 @@ class Person(BaseAggregate):
 
 class PersonRepository(BaseRepository):
     def find_adults(self, age: int = 21) -> List[Person]:
-        pass
+        pass  # FIXME Implement filter method
+
+    class Meta:
+        aggregate = Person

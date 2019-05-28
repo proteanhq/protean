@@ -312,7 +312,7 @@ class Domain:
         repository_record = next(
                     repository for _, repository in self.repositories.items()
                     if repository.cls.meta_.aggregate == aggregate_cls)
-        return repository_record.cls(uow)
+        return repository_record.cls(self, uow)
 
     def get_dao(self, aggregate_cls):
         """Retrieve a DAO registered for the Aggregate with a live connection"""
