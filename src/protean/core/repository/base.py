@@ -1,3 +1,6 @@
+from protean.core.exceptions import InvalidOperationError
+
+
 class _RepositoryMetaclass(type):
     """
     This base metaclass processes the class declaration and constructs a meta object that can
@@ -61,15 +64,31 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
 
     def add(self, aggregate):
         if self.uow:
-            self.uow.register_new(aggregate)
+            if aggregate.state_.is_persisted and aggregate.state_.is_changed:
+                self.uow.register_update(aggregate)
+            else:
+                self.uow.register_new(aggregate)
         else:
-            dao = self.domain.get_dao(self.meta_.aggregate)
-            dao.save(aggregate)
+            # Persist only if the aggregate object is new, or it has changed since last persistence
+            if ((not aggregate.state_.is_persisted) or
+                    (aggregate.state_.is_persisted and aggregate.state_.is_changed)):
+                dao = self.domain.get_dao(self.meta_.aggregate)
+                dao.save(aggregate)
 
         return aggregate
 
     def remove(self, aggregate):
         """Remove object to Repository"""
+        if self.uow:
+            if not aggregate.state_.is_persisted:
+                raise InvalidOperationError("Element has not been persisted yet")
+
+            self.uow.register_delete(aggregate)
+        else:
+            dao = self.domain.get_dao(self.meta_.aggregate)
+            dao.delete(aggregate)
+
+        return aggregate
 
     def get(self, identifier):
         """Retrieve object from Repository"""

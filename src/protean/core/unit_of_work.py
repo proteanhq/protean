@@ -59,3 +59,11 @@ class UnitOfWork:
         assert identity is not None
 
         self.objects_to_be_removed[identity] = element
+
+    @property
+    def changes_to_be_committed(self):
+        return {
+            'ADDED': self.objects_to_be_added,
+            'UPDATED': self.objects_to_be_updated,
+            'REMOVED': self.objects_to_be_removed
+        }
