@@ -12,6 +12,10 @@ class UnitOfWork:
         for provider in self.domain.providers.providers_list():
             self.sessions[provider.name] = provider.get_session()
 
+        self.objects_to_be_added = {}
+        self.objects_to_be_updated = {}
+        self.objects_to_be_removed = {}
+
     @property
     def in_progress(self):
         return self._in_progress
@@ -39,13 +43,19 @@ class UnitOfWork:
         pass
 
     def register_new(self, element):
-        # For new Entities
-        pass
+        identity = getattr(element, element.meta_.id_field.field_name, None)
+        assert identity is not None
+
+        self.objects_to_be_added[identity] = element
 
     def register_update(self, element):
-        # For Dirty Entities
-        pass
+        identity = getattr(element, element.meta_.id_field.field_name, None)
+        assert identity is not None
+
+        self.objects_to_be_updated[identity] = element
 
     def register_delete(self, element):
-        # For Entities to be removed
-        pass
+        identity = getattr(element, element.meta_.id_field.field_name, None)
+        assert identity is not None
+
+        self.objects_to_be_removed[identity] = element

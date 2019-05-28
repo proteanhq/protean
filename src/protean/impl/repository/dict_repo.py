@@ -54,8 +54,8 @@ class DictProvider(BaseProvider):
         are committed on this copy of the database.
         """
         database = {
-            'data': _databases.setdefault(self.identifier, defaultdict(dict)),
-            'lock': _locks.setdefault(self.identifier, Lock()),
+            'data': _databases.setdefault(self.name, defaultdict(dict)),
+            'lock': _locks.setdefault(self.name, Lock()),
             'counters': _counters
         }
         return database
@@ -63,8 +63,8 @@ class DictProvider(BaseProvider):
     def get_connection(self):
         """Return the dictionary database object """
         database = {
-            'data': _databases.setdefault(self.identifier, defaultdict(dict)),
-            'lock': _locks.setdefault(self.identifier, Lock()),
+            'data': _databases.setdefault(self.name, defaultdict(dict)),
+            'lock': _locks.setdefault(self.name, Lock()),
             'counters': _counters
         }
         return database

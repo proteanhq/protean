@@ -1,8 +1,6 @@
 """Base class for Providers"""
 
 # Standard Library Imports
-import uuid
-
 from abc import ABCMeta, abstractmethod
 from typing import Any
 
@@ -18,7 +16,6 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Provider with Connection/Adapter details"""
         self.name = name
-        self.identifier = str(uuid.uuid4())
         self.domain = domain
         self.conn_info = conn_info
 

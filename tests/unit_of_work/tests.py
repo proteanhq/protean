@@ -2,6 +2,8 @@ import pytest
 
 from protean.core.unit_of_work import UnitOfWork
 
+from .elements import Person, PersonRepository
+
 
 class TestUnitOfWorkInitialization:
     @pytest.fixture
@@ -31,9 +33,23 @@ class TestUnitOfWorkInitialization:
 
 
 class TestUnitOfWorkRegistration:
-    @pytest.mark.skip
-    def test_uow_new_object_registration(self):
-        pass
+    @pytest.fixture
+    def test_domain(self):
+        from protean.domain import Domain
+        domain = Domain('Test', 'tests.unit_of_work.config')
+
+        yield domain
+
+    def test_uow_new_object_registration(self, test_domain):
+        test_domain.register(Person)
+        test_domain.register(PersonRepository, aggregate=Person)
+
+        with UnitOfWork(test_domain) as uow:
+            repo = test_domain.repository_for(Person, uow)
+            person = Person(first_name='John', last_name='Doe')
+            repo.add(person)
+
+            assert person.id in uow.objects_to_be_added
 
     @pytest.mark.skip
     def test_uow_update_object_registration(self):

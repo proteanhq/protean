@@ -59,7 +59,7 @@ class _DomainRegistry:
                 class_type=element_type.value,
                 cls=element_cls,
                 provider_name=provider_name,
-                model_cls=model_cls
+                model_cls=model_cls  # FIXME Remove `model_cls` from being stored here
             )
 
             self._elements[element_type.value][element_name] = element_record
@@ -132,6 +132,10 @@ class Domain:
     def request_objects(self):
         return self._domain_registry._elements[DomainObjects.REQUEST_OBJECT.value]
 
+    @property
+    def repositories(self):
+        return self._domain_registry._elements[DomainObjects.REPOSITORY.value]
+
     def _register_element(self, element_type, element_cls, **kwargs):
         """Register class into the domain"""
         new_dict = element_cls.__dict__.copy()
@@ -156,9 +160,15 @@ class Domain:
             provider_name = provider_name or new_cls.meta_.provider or 'default'
             model_cls = None  # FIXME Add ability to specify model_cls explicitly
 
+        aggregate = None
+        if element_type == DomainObjects.REPOSITORY and self._validate_repository_class(new_cls):
+            aggregate = new_cls.meta_.aggregate or kwargs.pop('aggregate', None)
+            if not aggregate:
+                raise IncorrectUsageError("Repositories need to be associated with an Aggregate Class")
+
         # Enrich element with domain information
         if hasattr(new_cls, 'meta_'):
-            new_cls.meta_.aggregate = kwargs.pop('aggregate', None)
+            new_cls.meta_.aggregate = aggregate or kwargs.pop('aggregate', None)
             new_cls.meta_.bounded_context = kwargs.pop('bounded_context', None)
 
         # Register element with domain
@@ -168,7 +178,6 @@ class Domain:
         return new_cls
 
     def _validate_aggregate_class(self, element_cls):
-        """Validate that Entity is a valid class"""
         # Import here to avoid cyclic dependency
         from protean.core.aggregate import BaseAggregate
 
@@ -180,6 +189,16 @@ class Domain:
             raise NotSupportedError(
                 f'{element_cls.__name__} class has been marked abstract'
                 f' and cannot be instantiated')
+
+        return True
+
+    def _validate_repository_class(self, element_cls):
+        # Import here to avoid cyclic dependency
+        from protean.core.repository.base import BaseRepository
+
+        if not issubclass(element_cls, BaseRepository):
+            raise AssertionError(
+                f'Element {element_cls.__name__} must be subclass of `BaseRepository`')
 
         return True
 
@@ -288,8 +307,12 @@ class Domain:
         # FIXME Should domain be derived from "context"?
         return self.providers.get_provider(provider_name)
 
-    def get_repository(self, aggregate_cls):
+    def repository_for(self, aggregate_cls, uow=None):
         """Retrieve a Repository registered for the Aggregate"""
+        repository_record = next(
+                    repository for _, repository in self.repositories.items()
+                    if repository.cls.meta_.aggregate == aggregate_cls)
+        return repository_record.cls(uow)
 
     def get_dao(self, aggregate_cls):
         """Retrieve a DAO registered for the Aggregate with a live connection"""
