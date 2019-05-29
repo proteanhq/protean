@@ -145,7 +145,7 @@ class BaseDAO(metaclass=ABCMeta):
         try:
             # Build the entity from the input arguments
             # Raises validation errors, if any, at this point
-            entity_obj = self.entity_cls.build(*args, **kwargs)
+            entity_obj = self.entity_cls(*args, **kwargs)
 
             # Do unique checks, create this object and return it
             self._validate_unique(entity_obj)

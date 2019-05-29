@@ -66,8 +66,10 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
         if self.uow:
             if aggregate.state_.is_persisted and aggregate.state_.is_changed:
                 self.uow.register_update(aggregate)
-            else:
+            elif not aggregate.state_.is_persisted:
                 self.uow.register_new(aggregate)
+            else:
+                pass  # Ignore if the same unchanged object is added again to the repository
         else:
             # Persist only if the aggregate object is new, or it has changed since last persistence
             if ((not aggregate.state_.is_persisted) or

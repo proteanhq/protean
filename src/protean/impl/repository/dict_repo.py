@@ -1,6 +1,7 @@
 """Implementation of a dictionary based repository """
 
 # Standard Library Imports
+import copy
 import json
 
 from collections import defaultdict
@@ -53,9 +54,10 @@ class DictProvider(BaseProvider):
         `database`. All transactions on the Provider's repositories
         are committed on this copy of the database.
         """
+        _databases_copy = copy.deepcopy(_databases)
         database = {
-            'data': _databases.setdefault(self.name, defaultdict(dict)),
-            'lock': _locks.setdefault(self.name, Lock()),
+            'data': _databases_copy.setdefault(self.name, defaultdict(dict)),
+            'lock': _locks,
             'counters': _counters
         }
         return database
@@ -65,9 +67,24 @@ class DictProvider(BaseProvider):
         database = {
             'data': _databases.setdefault(self.name, defaultdict(dict)),
             'lock': _locks.setdefault(self.name, Lock()),
-            'counters': _counters
+            'counters': defaultdict(count)
         }
         return database
+
+    def commit(self, changes):
+        global _databases, _locks, _counters
+
+        for _, element in changes['ADDED'].items():
+            dao = self.get_dao(element.__class__)
+            dao.create(element.to_dict())
+
+        for _, element in changes['UPDATED'].items():
+            dao = self.get_dao(element.__class__)
+            dao.update(element, element.to_dict())
+
+        for _, element in changes['REMOVED'].items():
+            dao = self.get_dao(element.__class__)
+            dao.delete(element)
 
     def close_connection(self, conn):
         """Close connection does nothing on the repo """
