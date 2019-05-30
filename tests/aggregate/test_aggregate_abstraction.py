@@ -2,7 +2,7 @@ import pytest
 
 from protean.core.exceptions import NotSupportedError
 
-from .elements import AbstractRole, Role
+from .elements import AbstractRole, ConcreteRole
 
 
 class TestAggregateAbstraction:
@@ -18,7 +18,7 @@ class TestAggregateAbstraction:
                                       ' and cannot be instantiated')
 
     def test_that_concrete_entities_can_be_created_from_abstract_entities_through_inheritance(self, test_domain):
-        test_domain.register(Role)
-        concrete_role = Role(name='Titan')
+        test_domain.register(ConcreteRole)
+        concrete_role = ConcreteRole(name='Titan')
         assert concrete_role is not None
         assert concrete_role.name == 'Titan'
