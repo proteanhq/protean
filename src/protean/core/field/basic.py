@@ -22,7 +22,7 @@ class String(Field):
         'invalid': '{value}" value must be a string.',
     }
 
-    def __init__(self, max_length, min_length=None, **kwargs):
+    def __init__(self, max_length=255, min_length=None, **kwargs):
         self.min_length = min_length
         self.max_length = max_length
         self.default_validators = [
