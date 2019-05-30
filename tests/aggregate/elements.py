@@ -4,8 +4,14 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import Auto, DateTime, Integer, String
 
 
-class Role(BaseAggregate):
+class AbstractRole(BaseAggregate):
     name = String(max_length=15, required=True)
+
+    class Meta:
+        abstract = True
+
+
+class Role(AbstractRole):
     created_on = DateTime(default=datetime.today())
 
 

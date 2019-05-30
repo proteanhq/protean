@@ -246,11 +246,17 @@ class Domain:
         element_types = [
             element_type
             for element_type, element_class in self.base_class_mapping.items()
-            if element_class in element_cls.__bases__
+            if element_class in element_cls.__mro__
         ]
 
         if len(element_types) == 0:
             raise NotImplementedError
+
+        if (hasattr(element_cls, 'meta_') and
+                hasattr(element_cls.meta_, 'abstract') and
+                element_cls.meta_.abstract is True):
+            raise NotSupportedError(f'{element_cls.__name__} class has been marked abstract'
+                                    ' and cannot be instantiated')
 
         return self._register_element(DomainObjects[element_types.pop()], element_cls, **kwargs)
 

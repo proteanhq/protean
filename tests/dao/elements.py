@@ -1,14 +1,9 @@
-from datetime import datetime
+
 from typing import List
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository.base import BaseRepository
-from protean.core.field.basic import DateTime, Integer, String
-
-
-class Role(BaseAggregate):
-    name = String(max_length=15, required=True)
-    created_on = DateTime(default=datetime.today())
+from protean.core.field.basic import Integer, String
 
 
 class Person(BaseAggregate):

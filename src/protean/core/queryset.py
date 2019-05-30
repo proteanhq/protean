@@ -168,13 +168,13 @@ class QuerySet:
             updated if objects rows already have the new value).
         """
         updated_item_count = 0
-        repository = repo_factory.get_repository(self._entity_cls)
+        dao = self._domain.get_dao(self._entity_cls)
 
         try:
             items = self.all()
 
             for item in items:
-                repository.update(item, *data, **kwargs)
+                dao.update(item, *data, **kwargs)
                 updated_item_count += 1
         except Exception:
             # FIXME Log Exception
@@ -232,13 +232,13 @@ class QuerySet:
         """
         # Fetch Model class and connected repository from Repository Factory
         deleted_item_count = 0
-        repository = repo_factory.get_repository(self._entity_cls)
+        dao = self._domain.get_dao(self._entity_cls)
 
         try:
             items = self.all()
 
             for item in items:
-                repository.delete(item)
+                dao.delete(item)
                 deleted_item_count += 1
         except Exception:
             # FIXME Log Exception
@@ -259,10 +259,10 @@ class QuerySet:
         """
         updated_item_count = 0
 
-        repository = repo_factory.get_repository(self._entity_cls)
+        dao = self._domain.get_dao(self._entity_cls)
 
         try:
-            updated_item_count = repository._update_all(self._criteria, *args, **kwargs)
+            updated_item_count = dao._update_all(self._criteria, *args, **kwargs)
         except Exception:
             # FIXME Log Exception
             raise
@@ -278,9 +278,9 @@ class QuerySet:
         Returns the number of objects matched and deleted.
         """
         deleted_item_count = 0
-        repository = repo_factory.get_repository(self._entity_cls)
+        dao = self._domain.get_dao(self._entity_cls)
         try:
-            deleted_item_count = repository._delete_all(self._criteria)
+            deleted_item_count = dao._delete_all(self._criteria)
         except Exception:
             # FIXME Log Exception
             raise
