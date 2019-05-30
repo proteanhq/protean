@@ -289,11 +289,8 @@ class BaseDAO(metaclass=ABCMeta):
 
         Will skip callbacks and validations.
         """
-        # Fetch connected repository from Repository Factory
-        repository = self.domain.get_repository(self.entity_cls)
-
         try:
-            repository._delete_all()
+            self._delete_all()
         except Exception:
             # FIXME Log Exception
             raise
