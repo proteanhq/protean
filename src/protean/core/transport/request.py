@@ -112,12 +112,8 @@ class RequestObjectFactory:
 
         formatted_fields = cls._format_fields(declared_fields)
         dc = make_dataclass(name, formatted_fields,
+                            bases=(BaseRequestObject, ),
                             namespace={'from_dict': from_dict, 'is_valid': True})
-
-        # Register element with domain
-        from protean import domain_registry
-        from protean.domain import DomainObjects
-        domain_registry.register_element(DomainObjects.REQUEST_OBJECT, dc)
 
         return dc
 
