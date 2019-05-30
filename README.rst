@@ -4,20 +4,18 @@ Protean: The Clean Architecture, MultiPurpose Framework
 
 Protean helps you build software on architecture stacks that need to survive in the ever changing technology landscape.
 
+.. image:: https://travis-ci.org/proteanhq/protean.svg?branch=master
+    :target: https://travis-ci.org/proteanhq/protean
+    :alt: Build Status
 .. image:: https://readthedocs.org/projects/protean/badge/?style=flat
     :target: https://readthedocs.org/projects/protean
-.. image:: https://img.shields.io/pypi/l/protean.svg
-    :target: https://pypi.org/project/protean/
-.. image:: https://img.shields.io/pypi/v/protean.svg
-    :target: https://pypi.org/project/protean/
-.. image:: https://img.shields.io/pypi/wheel/protean.svg
-    :target: https://pypi.org/project/protean/
-.. image:: https://img.shields.io/pypi/pyversions/protean.svg
-    :target: https://pypi.org/project/protean/
-.. image:: https://img.shields.io/pypi/implementation/protean.svg
-    :target: https://pypi.org/project/protean/
+    :alt: Docs Status
 .. image:: https://codecov.io/gh/proteanhq/protean/branch/master/graph/badge.svg
     :target: https://codecov.io/gh/proteanhq/protean
+    :alt: Coverage
+.. image:: https://pyup.io/repos/github/proteanhq/protean/shield.svg
+     :target: https://pyup.io/repos/github/proteanhq/protean/
+     :alt: Updates
 
 Installation
 ############

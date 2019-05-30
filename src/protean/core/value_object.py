@@ -34,7 +34,7 @@ class _ValueObjectMetaclass(type):
 
         # Remove `abstract` in base classes if defined
         for base in bases:
-            if hasattr(base.Meta, 'abstract'):
+            if hasattr(base, 'Meta') and hasattr(base.Meta, 'abstract'):
                 delattr(base.Meta, 'abstract')
 
         new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
@@ -164,12 +164,6 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
     retrieved from the repository factory. Model is usually initialized with a live DB connection.
     """
 
-    class Meta:
-        """Options object for a ValueObject.
-
-        Check ``_ValueObjectMeta`` class for full documentation.
-        """
-
     def __init__(self, *template, owner=None, **kwargs):
         """
         Initialise the value object.
@@ -226,15 +220,18 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
         return cls(**values)
 
     def __eq__(self, other):
-        """Equaivalence check to be based only on Identity"""
+        """Equaivalence check for value objects is based only on data.
+
+        Two Value Objects are considered equal if they have the same data.
+        """
         if type(other) is not type(self):
             return False
 
         return self.to_dict() == other.to_dict()
 
     def __hash__(self):
-        """Overrides the default implementation and bases hashing on identity"""
-        return hash(getattr(self, self.meta_.id_field.field_name))
+        """Overrides the default implementation and bases hashing on values"""
+        return hash(frozenset(self.to_dict().items()))
 
     def __repr__(self):
         """Friendly repr for Value Object"""
@@ -253,9 +250,7 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
 
     def clone(self):
         """Deepclone the value object"""
-        clone_copy = copy.deepcopy(self)
-
-        return clone_copy
+        return copy.deepcopy(self)
 
     def _clone_with_values(self, **kwargs):
         """To be implemented in each value object"""

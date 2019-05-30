@@ -3,39 +3,35 @@
 import importlib
 
 # Protean
-from protean.conf import active_config
+from protean.conf import Config, active_config
 from protean.core.exceptions import ConfigurationError
-from protean.utils import singleton
 
 
-@singleton
 class Providers:
     """Application Singleton to configure and manage database connections
     """
-    def __init__(self):
+    def __init__(self, domain, config_file=None):
         """Read config file and initialize providers"""
+        self.domain = domain
+        self.config = Config(config_module_str=config_file) if config_file else active_config
         self._providers = self._initialize_providers()
 
     def _initialize_providers(self):
         """Read config file and initialize providers"""
-        configured_providers = active_config.DATABASES
+        configured_providers = self.config.DATABASES
         provider_objects = {}
 
-        if not isinstance(configured_providers, dict) or configured_providers == {}:
-            raise ConfigurationError(
-                "'DATABASES' config must be a dict and at least one "
-                "provider must be defined")
+        if configured_providers and isinstance(configured_providers, dict):
+            if 'default' not in configured_providers:
+                raise ConfigurationError(
+                    "You must define a 'default' provider")
 
-        if 'default' not in configured_providers:
-            raise ConfigurationError(
-                "You must define a 'default' provider")
+            for provider_name, conn_info in configured_providers.items():
+                provider_full_path = conn_info['PROVIDER']
+                provider_module, provider_class = provider_full_path.rsplit('.', maxsplit=1)
 
-        for provider_name, conn_info in configured_providers.items():
-            provider_full_path = conn_info['PROVIDER']
-            provider_module, provider_class = provider_full_path.rsplit('.', maxsplit=1)
-
-            provider_cls = getattr(importlib.import_module(provider_module), provider_class)
-            provider_objects[provider_name] = provider_cls(conn_info)
+                provider_cls = getattr(importlib.import_module(provider_module), provider_class)
+                provider_objects[provider_name] = provider_cls(provider_name, self.domain, conn_info)
 
         return provider_objects
 
@@ -52,3 +48,8 @@ class Providers:
             return self._providers[provider_name].get_connection()
         except KeyError:
             raise AssertionError(f'No Provider registered with name {provider_name}')
+
+    def providers_list(self):
+        """A generator that helps users iterator through providers"""
+        for provider_name in self._providers:
+            yield self._providers[provider_name]

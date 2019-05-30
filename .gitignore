@@ -141,3 +141,6 @@ TODO
 
 # SQLite DBs
 *.db
+
+# Temporary Python files
+tester.py

@@ -10,7 +10,7 @@ from protean.core.field.association import Reference
 from protean.core.provider.base import BaseProvider
 from protean.core.repository.lookup import BaseLookup
 from protean.core.repository.model import BaseModel
-from protean.core.repository.base import BaseRepository
+from protean.core.repository.dao import BaseDAO
 from protean.core.repository.resultset import ResultSet
 from protean.utils.query import Q
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
@@ -111,7 +111,7 @@ class SqlalchemyModel(BaseModel):
         return cls.entity_cls(item_dict)
 
 
-class SARepository(BaseRepository):
+class SARepository(BaseDAO):
     """Repository implementation for Databases compliant with SQLAlchemy"""
 
     def _build_filters(self, criteria: Q):
@@ -136,8 +136,8 @@ class SARepository(BaseRepository):
 
         return func(*params)
 
-    def filter(self, criteria: Q, offset: int = 0, limit: int = 10,
-               order_by: list = ()) -> ResultSet:
+    def _filter(self, criteria: Q, offset: int = 0, limit: int = 10,
+                order_by: list = ()) -> ResultSet:
         """ Filter objects from the sqlalchemy database """
         qs = self.conn.query(self.model_cls)
 
@@ -170,7 +170,7 @@ class SARepository(BaseRepository):
 
         return result
 
-    def create(self, model_obj):
+    def _create(self, model_obj):
         """ Add a new record to the sqlalchemy database"""
         self.conn.add(model_obj)
 
@@ -185,7 +185,7 @@ class SARepository(BaseRepository):
 
         return model_obj
 
-    def update(self, model_obj):
+    def _update(self, model_obj):
         """ Update a record in the sqlalchemy database"""
         primary_key, data = {}, {}
         for field_name, field_obj in \
@@ -212,7 +212,7 @@ class SARepository(BaseRepository):
 
         return model_obj
 
-    def update_all(self, criteria: Q, *args, **kwargs):
+    def _update_all(self, criteria: Q, *args, **kwargs):
         """ Update all objects satisfying the criteria """
         # Delete the objects and commit the results
         qs = self.conn.query(self.model_cls).filter(self._build_filters(criteria))
@@ -226,7 +226,7 @@ class SARepository(BaseRepository):
             raise
         return updated_count
 
-    def delete(self, model_obj):
+    def _delete(self, model_obj):
         """ Delete the entity record in the dictionary """
         identifier = getattr(model_obj, self.entity_cls.meta_.id_field.field_name)
         primary_key = {self.entity_cls.meta_.id_field.field_name: identifier}
@@ -239,7 +239,7 @@ class SARepository(BaseRepository):
 
         return model_obj
 
-    def delete_all(self, criteria: Q = None):
+    def _delete_all(self, criteria: Q = None):
         """ Delete a record from the sqlalchemy database"""
         del_count = 0
         if criteria:
@@ -256,7 +256,7 @@ class SARepository(BaseRepository):
 
         return del_count
 
-    def raw(self, query: Any, data: Any = None):
+    def _raw(self, query: Any, data: Any = None):
         """Run a raw query on the repository and return entity objects"""
         assert isinstance(query, str)
 

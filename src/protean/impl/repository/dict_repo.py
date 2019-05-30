@@ -1,6 +1,7 @@
 """Implementation of a dictionary based repository """
 
 # Standard Library Imports
+import copy
 import json
 
 from collections import defaultdict
@@ -15,7 +16,7 @@ from protean.core.exceptions import ObjectNotFoundError
 from protean.core.provider.base import BaseProvider
 from protean.core.repository.lookup import BaseLookup
 from protean.core.repository.model import BaseModel
-from protean.core.repository.base import BaseRepository
+from protean.core.repository.dao import BaseDAO
 from protean.core.repository.resultset import ResultSet
 from protean.utils.query import Q
 
@@ -49,19 +50,41 @@ class DictProvider(BaseProvider):
     def get_session(self):
         """Return a session object
 
-        FIXME Is it possible to simulate transactions with Dict Repo?
-        Maybe we should to be able to simulate Unit of Work transactions
+        For Dictionary Repo, a session translates to a copy of the
+        `database`. All transactions on the Provider's repositories
+        are committed on this copy of the database.
         """
-        pass
+        _databases_copy = copy.deepcopy(_databases)
+        database = {
+            'data': _databases_copy.setdefault(self.name, defaultdict(dict)),
+            'lock': _locks,
+            'counters': _counters
+        }
+        return database
 
     def get_connection(self):
         """Return the dictionary database object """
         database = {
-            'data': _databases.setdefault(self.identifier, defaultdict(dict)),
-            'lock': _locks.setdefault(self.identifier, Lock()),
-            'counters': _counters
+            'data': _databases.setdefault(self.name, defaultdict(dict)),
+            'lock': _locks.setdefault(self.name, Lock()),
+            'counters': defaultdict(count)
         }
         return database
+
+    def commit(self, changes):
+        global _databases, _locks, _counters
+
+        for _, element in changes['ADDED'].items():
+            dao = self.get_dao(element.__class__)
+            dao.create(element.to_dict())
+
+        for _, element in changes['UPDATED'].items():
+            dao = self.get_dao(element.__class__)
+            dao.update(element, element.to_dict())
+
+        for _, element in changes['REMOVED'].items():
+            dao = self.get_dao(element.__class__)
+            dao.delete(element)
 
     def close_connection(self, conn):
         """Close connection does nothing on the repo """
@@ -81,10 +104,10 @@ class DictProvider(BaseProvider):
 
         return cls
 
-    def get_repository(self, entity_cls):
-        """Return a repository object configured with a live connection"""
+    def get_dao(self, entity_cls):
+        """Return a DAO object configured with a live connection"""
         model_cls = self.get_model(entity_cls)
-        return DictRepository(self, entity_cls, model_cls)
+        return DictDAO(self.domain, self, entity_cls, model_cls)
 
     def _evaluate_lookup(self, key, value, negated, db):
         """Extract values from DB that match the given criteria"""
@@ -138,7 +161,7 @@ class DictProvider(BaseProvider):
         return items
 
 
-class DictRepository(BaseRepository):
+class DictDAO(BaseDAO):
     """A repository for storing data in a dictionary """
 
     def _set_auto_fields(self, model_obj):
@@ -155,7 +178,7 @@ class DictRepository(BaseRepository):
                 model_obj[field_name] = counter
         return model_obj
 
-    def create(self, model_obj):
+    def _create(self, model_obj):
         """Write a record to the dict repository"""
         # Update the value of the counters
         model_obj = self._set_auto_fields(model_obj)
@@ -167,7 +190,7 @@ class DictRepository(BaseRepository):
 
         return model_obj
 
-    def _filter(self, criteria: Q, db):
+    def _filter_items(self, criteria: Q, db):
         """Recursive function to filter items from dictionary"""
         # Filter the dictionary objects based on the filters
         negated = criteria.negated
@@ -179,7 +202,7 @@ class DictRepository(BaseRepository):
             input_db = db
             for child in criteria.children:
                 if isinstance(child, Q):
-                    input_db = self._filter(child, input_db)
+                    input_db = self._filter_items(child, input_db)
                 else:
                     input_db = self.provider._evaluate_lookup(child[0], child[1],
                                                               negated, input_db)
@@ -189,7 +212,7 @@ class DictRepository(BaseRepository):
             input_db = {}
             for child in criteria.children:
                 if isinstance(child, Q):
-                    results = self._filter(child, db)
+                    results = self._filter_items(child, db)
                 else:
                     results = self.provider._evaluate_lookup(child[0], child[1], negated, db)
 
@@ -197,11 +220,11 @@ class DictRepository(BaseRepository):
 
         return input_db
 
-    def filter(self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()):
+    def _filter(self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()):
         """Read the repository and return results as per the filer"""
 
         if criteria.children:
-            items = list(self._filter(criteria, self.conn['data'][self.schema_name]).values())
+            items = list(self._filter_items(criteria, self.conn['data'][self.schema_name]).values())
         else:
             items = list(self.conn['data'][self.schema_name].values())
 
@@ -220,7 +243,7 @@ class DictRepository(BaseRepository):
             items=items[offset: offset + limit])
         return result
 
-    def update(self, model_obj):
+    def _update(self, model_obj):
         """Update the entity record in the dictionary """
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
@@ -233,9 +256,9 @@ class DictRepository(BaseRepository):
             self.conn['data'][self.schema_name][identifier] = model_obj
         return model_obj
 
-    def update_all(self, criteria: Q, *args, **kwargs):
+    def _update_all(self, criteria: Q, *args, **kwargs):
         """Update all objects satisfying the criteria """
-        items = self._filter(criteria, self.conn['data'][self.schema_name])
+        items = self._filter_items(criteria, self.conn['data'][self.schema_name])
 
         update_count = 0
         for key in items:
@@ -248,24 +271,24 @@ class DictRepository(BaseRepository):
 
         return update_count
 
-    def delete(self, model_obj):
+    def _delete(self, model_obj):
         """Delete the entity record in the dictionary """
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
         with self.conn['lock']:
             # Check if object is present
             if identifier not in self.conn['data'][self.schema_name]:
                 raise ObjectNotFoundError(
-                    f'`{self.__class__.__name__}` object with identifier {identifier} '
+                    f'`{self.entity_cls.__name__}` object with identifier {identifier} '
                     f'does not exist.')
 
             del self.conn['data'][self.schema_name][identifier]
         return model_obj
 
-    def delete_all(self, criteria: Q = None):
+    def _delete_all(self, criteria: Q = None):
         """Delete the dictionary object by its criteria"""
         if criteria:
             # Delete the object from the dictionary and return the deletion count
-            items = self._filter(criteria, self.conn['data'][self.schema_name])
+            items = self._filter_items(criteria, self.conn['data'][self.schema_name])
 
             # Delete all the matching identifiers
             with self.conn['lock']:
@@ -278,7 +301,7 @@ class DictRepository(BaseRepository):
                 if self.schema_name in self.conn['data']:
                     del self.conn['data'][self.schema_name]
 
-    def raw(self, query: Any, data: Any = None):
+    def _raw(self, query: Any, data: Any = None):
         """Run raw query on Repository.
 
         For this stand-in repository, the query string is a json string that contains kwargs

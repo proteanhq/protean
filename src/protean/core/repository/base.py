@@ -1,65 +1,101 @@
-""" Define the interfaces for Repository implementations """
-# Standard Library Imports
-import logging
-
-from abc import ABCMeta, abstractmethod
-from typing import Any
-
-# Protean
-from protean.utils.query import Q
-
-# Local/Relative Imports
-from .resultset import ResultSet
-
-logger = logging.getLogger('protean.repository')
+from protean.core.exceptions import InvalidOperationError
 
 
-class BaseRepository(metaclass=ABCMeta):
-    """Repository interface to interact with databases
+class _RepositoryMetaclass(type):
+    """
+    This base metaclass processes the class declaration and constructs a meta object that can
+    be used to introspect the Repository class later. Specifically, it sets up a `meta_` attribute on
+    the Repository to an instance of Meta, either the default of one that is defined in the
+    Repository class.
 
-    :param conn: A connection/session to the data source of the model
-    :param model_cls: The model class registered with this repository
+    `meta_` is setup with these attributes:
+        * `aggregate`: The aggregate associated with the repository
     """
 
-    def __init__(self, provider, entity_cls, model_cls):
-        self.provider = provider
-        self.conn = self.provider.get_connection()
-        self.model_cls = model_cls
-        self.entity_cls = entity_cls
-        self.schema_name = entity_cls.meta_.schema_name
+    def __new__(mcs, name, bases, attrs, **kwargs):
+        """Initialize Repository MetaClass and load attributes"""
 
-    @abstractmethod
-    def filter(self, criteria: Q, offset: int = 0, limit: int = 10,
-               order_by: list = ()) -> ResultSet:
-        """
-        Filter objects from the repository. Method must return a `ResultSet`
-        object
-        """
+        # Ensure initialization is only performed for subclasses of Repository
+        # (excluding Repository class itself).
+        parents = [b for b in bases if isinstance(b, _RepositoryMetaclass)]
+        if not parents:
+            return super().__new__(mcs, name, bases, attrs)
 
-    @abstractmethod
-    def create(self, model_obj: Any):
-        """Create a new model object from the entity"""
+        # Remove `abstract` in base classes if defined
+        for base in bases:
+            if hasattr(base, 'Meta') and hasattr(base.Meta, 'abstract'):
+                delattr(base.Meta, 'abstract')
 
-    @abstractmethod
-    def update(self, model_obj: Any):
-        """Update a model object in the repository and return it"""
+        new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
 
-    @abstractmethod
-    def update_all(self, criteria: Q, *args, **kwargs):
-        """Updates object directly in the repository and returns update count"""
+        # Gather `Meta` class/object if defined
+        attr_meta = attrs.pop('Meta', None)
+        meta = attr_meta or getattr(new_class, 'Meta', None)
+        setattr(new_class, 'meta_', RepositoryMeta(name, meta))
 
-    @abstractmethod
-    def delete(self):
-        """Delete a Record from the Repository"""
+        return new_class
 
-    @abstractmethod
-    def delete_all(self, criteria: Q = None):
-        """Delete a Record from the Repository"""
 
-    @abstractmethod
-    def raw(self, query: Any, data: Any = None):
-        """Run raw query on Data source.
+class RepositoryMeta:
+    """ Metadata info for the RepositoryMeta.
 
-        Running a raw query on the repository should always returns entity instance objects. If
-        the results were not synthesizable back into entity objects, an exception should be thrown.
-        """
+    Options:
+    - ``aggregate``: The aggregate associated with the repository
+    """
+
+    def __init__(self, entity_name, meta):
+        self.aggregate = getattr(meta, 'aggregate', None)
+
+
+class BaseRepository(metaclass=_RepositoryMetaclass):
+    """This class outlines the base repository functions,
+    to be satisifed by all implementing repositories.
+
+    It is also a marker interface for registering repository
+    classes with the domain"""
+
+    def __init__(self, domain, uow=None):
+        self.domain = domain
+        self.uow = uow
+
+    def within(self, uow):
+        self.uow = uow
+        return self
+
+    def add(self, aggregate):
+        if self.uow:
+            if aggregate.state_.is_persisted and aggregate.state_.is_changed:
+                self.uow.register_update(aggregate)
+            elif not aggregate.state_.is_persisted:
+                self.uow.register_new(aggregate)
+            else:
+                pass  # Ignore if the same unchanged object is added again to the repository
+        else:
+            # Persist only if the aggregate object is new, or it has changed since last persistence
+            if ((not aggregate.state_.is_persisted) or
+                    (aggregate.state_.is_persisted and aggregate.state_.is_changed)):
+                dao = self.domain.get_dao(self.meta_.aggregate)
+                dao.save(aggregate)
+
+        return aggregate
+
+    def remove(self, aggregate):
+        """Remove object to Repository"""
+        if self.uow:
+            if not aggregate.state_.is_persisted:
+                raise InvalidOperationError("Element has not been persisted yet")
+
+            self.uow.register_delete(aggregate)
+        else:
+            dao = self.domain.get_dao(self.meta_.aggregate)
+            dao.delete(aggregate)
+
+        return aggregate
+
+    def get(self, identifier):
+        """Retrieve object from Repository"""
+        dao = self.domain.get_dao(self.meta_.aggregate)
+        return dao.get(identifier)
+
+    def filter(self, specification):
+        """Filter for objects that fit specification"""

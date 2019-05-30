@@ -36,12 +36,12 @@ class QuerySet:
     :return Returns a `ResultSet` object that holds the query results
     """
 
-    def __init__(self, entity_cls, criteria=None, offset: int = 0, limit: int = 10,
+    def __init__(self, domain, entity_cls, criteria=None, offset: int = 0, limit: int = 10,
                  order_by: set = None):
         """Initialize either with empty preferences (when invoked on an Entity)
             or carry forward filters and preferences when chained
         """
-
+        self._domain = domain
         self._entity_cls = entity_cls
         self._criteria = criteria or Q()
         self._result_cache = None
@@ -61,7 +61,7 @@ class QuerySet:
         """
         Return a copy of the current QuerySet.
         """
-        clone = self.__class__(self._entity_cls, criteria=self._criteria,
+        clone = self.__class__(self._domain, self._entity_cls, criteria=self._criteria,
                                offset=self._offset, limit=self._limit,
                                order_by=self._order_by)
         return clone
@@ -136,14 +136,14 @@ class QuerySet:
         self._result_cache = None
 
         # Fetch Model class and connected repository from Repository Factory
-        model_cls = repo_factory.get_model(self._entity_cls)
-        repository = repo_factory.get_repository(self._entity_cls)
+        model_cls = self._domain.get_model(self._entity_cls)
+        dao = self._domain.get_dao(self._entity_cls)
 
         # order_by clause must be list of keys
         order_by = self._entity_cls.meta_.order_by if not self._order_by else self._order_by
 
-        # Call the read method of the repository
-        results = repository.filter(self._criteria, self._offset, self._limit, order_by)
+        # Call the read method of the dao
+        results = dao._filter(self._criteria, self._offset, self._limit, order_by)
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -168,11 +168,13 @@ class QuerySet:
             updated if objects rows already have the new value).
         """
         updated_item_count = 0
+        dao = self._domain.get_dao(self._entity_cls)
+
         try:
             items = self.all()
 
             for item in items:
-                item.update(*data, **kwargs)
+                dao.update(item, *data, **kwargs)
                 updated_item_count += 1
         except Exception:
             # FIXME Log Exception
@@ -202,7 +204,7 @@ class QuerySet:
 
         try:
             # Call the raw method of the repository
-            results = repository.raw(query, data)
+            results = repository._raw(query, data)
 
             # Convert the returned results to entity and return it
             entity_items = []
@@ -230,11 +232,13 @@ class QuerySet:
         """
         # Fetch Model class and connected repository from Repository Factory
         deleted_item_count = 0
+        dao = self._domain.get_dao(self._entity_cls)
+
         try:
             items = self.all()
 
             for item in items:
-                item.delete()
+                dao.delete(item)
                 deleted_item_count += 1
         except Exception:
             # FIXME Log Exception
@@ -255,10 +259,10 @@ class QuerySet:
         """
         updated_item_count = 0
 
-        repository = repo_factory.get_repository(self._entity_cls)
+        dao = self._domain.get_dao(self._entity_cls)
 
         try:
-            updated_item_count = repository.update_all(self._criteria, *args, **kwargs)
+            updated_item_count = dao._update_all(self._criteria, *args, **kwargs)
         except Exception:
             # FIXME Log Exception
             raise
@@ -274,9 +278,9 @@ class QuerySet:
         Returns the number of objects matched and deleted.
         """
         deleted_item_count = 0
-        repository = repo_factory.get_repository(self._entity_cls)
+        dao = self._domain.get_dao(self._entity_cls)
         try:
-            deleted_item_count = repository.delete_all(self._criteria)
+            deleted_item_count = dao._delete_all(self._criteria)
         except Exception:
             # FIXME Log Exception
             raise
