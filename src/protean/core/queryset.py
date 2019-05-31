@@ -135,7 +135,7 @@ class QuerySet:
         # Destroy any cached results
         self._result_cache = None
 
-        # Fetch Model class and connected repository from Repository Factory
+        # Fetch Model class and connected repository from Domain
         model_cls = self._domain.get_model(self._entity_cls)
         dao = self._domain.get_dao(self._entity_cls)
 
@@ -198,13 +198,13 @@ class QuerySet:
         # Destroy any cached results
         self._result_cache = None
 
-        # Fetch Model class and connected repository from Repository Factory
-        model_cls = repo_factory.get_model(self._entity_cls)
-        repository = repo_factory.get_repository(self._entity_cls)
+        # Fetch Model class and connected repository from Domain
+        model_cls = self._domain.get_model(self._entity_cls)
+        dao = self._domain.get_dao(self._entity_cls)
 
         try:
             # Call the raw method of the repository
-            results = repository._raw(query, data)
+            results = dao._raw(query, data)
 
             # Convert the returned results to entity and return it
             entity_items = []
@@ -230,7 +230,7 @@ class QuerySet:
         Returns the number of objects matched (which may not be equal to the number of objects
             deleted if objects rows already have the new value).
         """
-        # Fetch Model class and connected repository from Repository Factory
+        # Fetch Model class and connected repository from Domain
         deleted_item_count = 0
         dao = self._domain.get_dao(self._entity_cls)
 
