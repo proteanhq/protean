@@ -9,7 +9,7 @@ from uuid import uuid4
 # Protean
 from protean.core.exceptions import NotSupportedError, ValidationError
 from protean.core.field.basic import Auto, Field
-from protean.core.field.association import Reference
+from protean.core.field.association import Reference, Association
 from protean.core.field.embedded import ValueObjectField
 from protean.utils import inflection
 
@@ -96,7 +96,7 @@ class _AggregateMetaclass(type):
         is set up in this method, while `parent_id` is set up in `_set_up_reference_fields()`.
         """
         for attr_name, attr_obj in attrs.items():
-            if isinstance(attr_obj, (Field, Reference)):
+            if isinstance(attr_obj, (Association, Field, Reference)):
                 setattr(new_class, attr_name, attr_obj)
                 new_class.meta_.declared_fields[attr_name] = attr_obj
 
@@ -126,7 +126,7 @@ class _AggregateMetaclass(type):
             try:
                 new_class.meta_.id_field = next(
                     field for _, field in new_class.meta_.declared_fields.items()
-                    if field.identifier)
+                    if isinstance(field, (Field, Reference)) and field.identifier)
             except StopIteration:
                 # If no id field is declared then create one
                 new_class._create_id_field()
@@ -355,7 +355,7 @@ class BaseAggregate(metaclass=_AggregateMetaclass):
         # for required fields
         for field_name, field_obj in self.meta_.declared_fields.items():
             if field_name not in loaded_fields:
-                if not isinstance(field_obj, (Reference, _ReferenceField)):
+                if not isinstance(field_obj, (Reference, _ReferenceField, Association)):
                     try:
                         setattr(self, field_name, None)
                     except ValidationError as err:

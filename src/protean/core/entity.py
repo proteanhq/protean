@@ -9,7 +9,7 @@ from uuid import uuid4
 from protean.conf import active_config
 from protean.core.exceptions import NotSupportedError, ValidationError
 from protean.core.field.basic import Auto, Field
-from protean.core.field.association import Reference
+from protean.core.field.association import Association, Reference
 from protean.core.field.embedded import ValueObjectField
 from protean.utils import IdentityStrategy, inflection
 
@@ -96,7 +96,7 @@ class _EntityMetaclass(type):
         is set up in this method, while `parent_id` is set up in `_set_up_reference_fields()`.
         """
         for attr_name, attr_obj in attrs.items():
-            if isinstance(attr_obj, (Field, Reference)):
+            if isinstance(attr_obj, (Association, Field, Reference)):
                 setattr(new_class, attr_name, attr_obj)
                 new_class.meta_.declared_fields[attr_name] = attr_obj
 
@@ -126,7 +126,7 @@ class _EntityMetaclass(type):
             try:
                 new_class.meta_.id_field = next(
                     field for _, field in new_class.meta_.declared_fields.items()
-                    if field.identifier)
+                    if isinstance(field, (Field, Reference)) and field.identifier)
             except StopIteration:
                 # If no id field is declared then create one
                 new_class._create_id_field()
@@ -149,8 +149,10 @@ class _EntityMetaclass(type):
                 shadow_fields = field_obj.get_shadow_fields()
                 for _, shadow_field in shadow_fields:
                     new_class.meta_.attributes[shadow_field.attribute_name] = shadow_field
-            else:
+            elif isinstance(field_obj, (Field, Reference)):
                 new_class.meta_.attributes[field_obj.get_attribute_name()] = field_obj
+            else:  # This field is an association. Ignore recording it as an attribute
+                pass
 
 
 class EntityMeta:
@@ -351,7 +353,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         # for required fields
         for field_name, field_obj in self.meta_.declared_fields.items():
             if field_name not in loaded_fields:
-                if not isinstance(field_obj, (Reference, _ReferenceField)):
+                if not isinstance(field_obj, (Reference, _ReferenceField, Association)):
                     setattr(self, field_name, None)
 
         # Raise any errors found during load

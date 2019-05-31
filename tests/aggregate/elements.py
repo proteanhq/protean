@@ -2,7 +2,9 @@ from typing import List
 from datetime import datetime
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import Auto, DateTime, Integer, String
+from protean.core.field.association import HasMany, HasOne, Reference
+from protean.core.entity import BaseEntity
+from protean.core.field.basic import Auto, DateTime, Integer, String, Text
 from protean.core.repository.base import BaseRepository
 
 
@@ -97,3 +99,30 @@ class OrderedRoleSubclass(Role):
     class Meta:
         order_by = 'bar'
 # Aggregates to test Meta Info overriding # END #
+
+
+# Aggregates to test associations # START #
+class Post(BaseAggregate):
+    content = Text(required=True)
+    comments = HasMany('Comment')
+    author = Reference('Author')
+
+
+class Author(BaseEntity):
+    first_name = String(required=True, max_length=25)
+    last_name = String(max_length=25)
+    posts = HasMany('Post')
+    account = Reference('Account')
+
+
+class Account(BaseEntity):
+    email = String(required=True, max_length=255, unique=True, identifier=True)
+    password = String(required=True, max_length=255)
+    author = HasOne('Author')
+
+
+class Comment(BaseEntity):
+    content = Text()
+    added_on = DateTime()
+    post = Reference('Post')
+# Aggregates to test associations # END #

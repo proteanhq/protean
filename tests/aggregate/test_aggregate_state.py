@@ -12,7 +12,7 @@ class TestState:
     @pytest.fixture
     def test_domain(self):
         from protean.domain import Domain
-        domain = Domain('Test', 'tests.repository.config')
+        domain = Domain('Test', 'tests.aggregate.config')
 
         yield domain
 

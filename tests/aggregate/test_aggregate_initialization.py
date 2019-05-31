@@ -7,7 +7,7 @@ from protean.core.aggregate import _AggregateMetaclass
 from protean.core.exceptions import ValidationError
 from protean.utils import fully_qualified_name
 
-from .elements import Role, SubclassRole, Person, ConcreteRole
+from .elements import Role, SubclassRole, Person, ConcreteRole, Post, Author, Account
 
 
 class TestAggregateStructure:
@@ -18,9 +18,42 @@ class TestAggregateStructure:
         test_domain.register(Role)
         assert fully_qualified_name(Role) in test_domain.aggregates
 
-    def test_aggregate_field_definitions(self):
+    def test_field_definitions_declared_in_aggregate(self):
         declared_fields_keys = list(OrderedDict(sorted(Role.meta_.declared_fields.items())).keys())
         assert declared_fields_keys == ['created_on', 'id', 'name']
+
+    def test_declared_reference_fields_in_an_aggregate(self, test_domain):
+        declared_fields_keys = list(OrderedDict(sorted(Post.meta_.declared_fields.items())).keys())
+        assert declared_fields_keys == ['author', 'comments', 'content', 'id']
+
+    def test_declared_has_one_fields_in_an_aggregate(self, test_domain):
+        # `author` is a HasOne field, so it should be:
+        #   absent in attributes
+        #   present as `author` in declared_fields
+        assert all(key in Account.meta_.declared_fields for key in ['author', 'email', 'password'])
+        assert all(key in Account.meta_.attributes for key in ['email', 'password'])
+
+        # `account` is a Reference field, so it should be present as:
+        #   `account_id` in attributes
+        #   `account` in declared_fields
+        assert all(key in Author.meta_.declared_fields for key in [
+            'first_name', 'last_name', 'id', 'posts', 'account'])
+        assert all(key in Author.meta_.attributes for key in ['first_name', 'id', 'last_name', 'account_id'])
+
+    def test_declared_has_many_fields_in_an_aggregate(self, test_domain):
+        # `posts` is a HasMany field, so it should be:
+        #   absent in attributes
+        #   present as `posts` in declared_fields
+        assert all(key in Author.meta_.declared_fields for key in [
+            'first_name', 'last_name', 'id', 'posts', 'account'])
+        assert all(key in Author.meta_.attributes for key in ['first_name', 'id', 'last_name', 'account_id'])
+
+        # `author` is a Reference field, so it should be present as:
+        #   `author_id` in attributes
+        #   `author` in declared_fields
+        assert all(key in Post.meta_.declared_fields for key in [
+            'content', 'comments', 'id', 'author'])
+        assert all(key in Post.meta_.attributes for key in ['content', 'id', 'comments', 'author_id'])
 
 
 class TestSubclassedAggregateStructure:
