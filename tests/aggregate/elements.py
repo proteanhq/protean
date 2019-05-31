@@ -1,17 +1,13 @@
+from typing import List
 from datetime import datetime
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import Auto, DateTime, Integer, String
+from protean.core.repository.base import BaseRepository
 
 
-class AbstractRole(BaseAggregate):
+class Role(BaseAggregate):
     name = String(max_length=15, required=True)
-
-    class Meta:
-        abstract = True
-
-
-class Role(AbstractRole):
     created_on = DateTime(default=datetime.today())
 
 
@@ -19,6 +15,11 @@ class Person(BaseAggregate):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50, required=True)
     age = Integer(default=21)
+
+
+class PersonRepository(BaseRepository):
+    def find_adults(self, age: int = 21) -> List[Person]:
+        pass  # FIXME Implement filter method
 
 
 # Aggregates to test Identity

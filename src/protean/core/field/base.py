@@ -131,7 +131,11 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
             raise AssertionError(msg)
         if isinstance(msg, str):
             msg = msg.format(**kwargs)
-        raise exceptions.ValidationError({self.field_name: [msg]})
+
+        # If a field is being used by itself (not owned by an entity/aggregate),
+        #   it's field_name will be blank.
+        field_name = self.field_name or 'unlinked'
+        raise exceptions.ValidationError({field_name: [msg]})
 
     @property
     def validators(self):
@@ -162,7 +166,8 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
             try:
                 validator(value)
             except exceptions.ValidationError as err:
-                errors[self.field_name].extend(err.messages)
+                field_name = self.field_name or 'unlinked'
+                errors[field_name].append(err.messages)
 
         if errors:
             raise exceptions.ValidationError(errors)

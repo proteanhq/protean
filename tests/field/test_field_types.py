@@ -56,9 +56,9 @@ class TestStringField:
         assert status._load('Pending') == 'Pending'
         with pytest.raises(ValidationError) as e_info:
             status._load('Failure')
-        assert e_info.value.normalized_messages == {
-            '_entity': ["Value `'Failure'` is not a valid choice. "
-                        "Must be one of ['Pending', 'Success', 'Error']"]}
+        assert e_info.value.messages == {
+            'unlinked': ["Value `'Failure'` is not a valid choice. "
+                         "Must be one of ['Pending', 'Success', 'Error']"]}
 
 
 class TestIntegerField:
@@ -106,9 +106,9 @@ class TestIntegerField:
         assert status._load(0) == 0
         with pytest.raises(ValidationError) as e_info:
             status._load(4)
-        assert e_info.value.normalized_messages == {
-            '_entity': ["Value `4` is not a valid choice. "
-                        "Must be one of [0, 1, 2]"]}
+        assert e_info.value.messages == {
+            'unlinked': ["Value `4` is not a valid choice. "
+                         "Must be one of [0, 1, 2]"]}
 
 
 class TestFloatField:
@@ -191,9 +191,9 @@ class TestListField:
         assert status._load(['Pending']) == ['Pending']
         with pytest.raises(ValidationError) as e_info:
             status._load(['Pending', 'Failure'])
-        assert e_info.value.normalized_messages == {
-            '_entity': ["Value `'Failure'` is not a valid choice. "
-                        "Must be one of ['Pending', 'Success', 'Error']"]}
+        assert e_info.value.messages == {
+            'unlinked': ["Value `'Failure'` is not a valid choice. "
+                         "Must be one of ['Pending', 'Success', 'Error']"]}
 
 
 class TestDictField:

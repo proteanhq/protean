@@ -1,13 +1,13 @@
-"""Test Field Types"""
+"""Test Field Functionality"""
 
 # Protean
 import pytest
 
 from protean.core.exceptions import ValidationError
-from protean.core.field.base import Field
+from protean.core.field.basic import Field
 
 
-class String(Field):
+class DummyStringField(Field):
     """This is a dummy Field class for testing"""
 
     default_error_messages = {
@@ -37,37 +37,37 @@ class TestField:
     def test_init(self):
         """Test successful String Field initialization"""
 
-        name = String()
+        name = DummyStringField()
         assert name is not None
 
     def test_required(self):
         """Test errors if required field has no value"""
 
         with pytest.raises(ValidationError):
-            name = String(required=True)
+            name = DummyStringField(required=True)
             name._load(None)
 
     def test_defaults(self):
         """ Test default value is set when no value is supplied"""
         # Test with default value as constant
-        name = String(default='dummy')
+        name = DummyStringField(default='dummy')
         assert name._load('') == 'dummy'
 
         # Test with default value as callable
-        name = String(default=lambda: 'dummy')
+        name = DummyStringField(default=lambda: 'dummy')
         assert name._load('') == 'dummy'
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
-            name = String()
+            name = DummyStringField()
             name._load(1)
 
     def test_validators(self):
         """ Test custom validators defined for the field"""
 
         with pytest.raises(ValidationError):
-            name = String(
+            name = DummyStringField(
                 validators=[MinLengthValidator(min_length=5)])
             name._load('Dum')
 
@@ -76,30 +76,30 @@ class TestField:
 
         # Test the basic error message
         try:
-            name = String(required=True)
+            name = DummyStringField(required=True)
             name._load(None)
         except ValidationError as err:
-            assert err.normalized_messages == {
-                '_entity': [name.error_messages['required']]}
+            assert err.messages == {
+                'unlinked': [name.error_messages['required']]}
 
         # Test overriding of error message
         try:
-            name = String()
+            name = DummyStringField()
             name._load(1)
         except ValidationError as err:
-            assert err.normalized_messages == {
-                '_entity': ['Field value must be of str type.']}
+            assert err.messages == {
+                'unlinked': ['Field value must be of str type.']}
 
         # Test multiple error messages
         try:
-            name = String(
+            name = DummyStringField(
                 validators=[MinLengthValidator(min_length=5),
                             MinLengthValidator(min_length=5)])
             name._load('Dum')
         except ValidationError as err:
-            assert err.normalized_messages == {
-                '_entity': ['Ensure this value has at least 5 character.',
-                            'Ensure this value has at least 5 character.']}
+            assert err.messages == {
+                'unlinked': ['Ensure this value has at least 5 character.',
+                             'Ensure this value has at least 5 character.']}
 
     def test_default_validators(self):
         """ Test that default validators for a Field are called"""
@@ -108,7 +108,7 @@ class TestField:
             if len(value) > 15:
                 raise ValidationError(
                     'Value cannot be more than 15 characters long.')
-        String.default_validators = [medium_string_validator]
+        DummyStringField.default_validators = [medium_string_validator]
         with pytest.raises(ValidationError):
-            name = String()
+            name = DummyStringField()
             name._load('Dummy Dummy Dummy')
