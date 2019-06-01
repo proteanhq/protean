@@ -8,7 +8,8 @@ class TestReferenceFieldAssociation:
     @pytest.fixture
     def test_domain(self):
         from protean.domain import Domain
-        domain = Domain('Test', 'tests.aggregate.config')
+        domain = Domain('Test')
+        domain.config.from_object('tests.aggregate.config')
 
         yield domain
 

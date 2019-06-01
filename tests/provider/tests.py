@@ -12,7 +12,8 @@ class TestProviders:
     @pytest.fixture
     def test_domain(self):
         from protean.domain import Domain
-        domain = Domain('Test', 'tests.repository.config')
+        domain = Domain('Test')
+        domain.config.from_object('tests.repository.config')
 
         yield domain
 
@@ -25,20 +26,23 @@ class TestProviders:
 
         test_domain.get_provider('default')._data_reset()
 
-    def test_init(self, test_domain):
+    def test_initialization_of_providers_on_first_call(self, test_domain):
         """Test that ``providers`` object is available"""
+        assert test_domain.providers is None
+
+        test_domain.get_provider('default')
         assert test_domain.providers is not None
 
     def test_provider_detail(self, test_domain):
         """Test provider info loaded for tests"""
 
-        provider1 = test_domain.providers.get_provider('default')
+        provider1 = test_domain.get_provider('default')
         assert isinstance(provider1, DictProvider)
 
     def test_provider_get_connection(self, test_domain):
         """Test ``get_connection`` method and check for connection details"""
 
-        conn = test_domain.providers.get_provider('default').get_connection()
+        conn = test_domain.get_provider('default').get_connection()
         assert all(key in conn for key in ['data', 'lock', 'counters'])
 
     def test_provider_raw(self, test_domain):
@@ -51,7 +55,7 @@ class TestProviders:
         test_domain.get_dao(Alien).create(first_name='Mike', age=26, last_name='Monster')
         test_domain.get_dao(Alien).create(first_name='Boo', age=2, last_name='Human')
 
-        provider = test_domain.providers.get_provider('default')
+        provider = test_domain.get_provider('default')
 
         # Filter by Dog attributes
         results = provider.raw('{"last_name":"John"}')

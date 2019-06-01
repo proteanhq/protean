@@ -2,17 +2,21 @@
 to register Domain Elements.
 """
 # Standard Library Imports
+import importlib
 import logging
 
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict
+from werkzeug.datastructures import ImmutableDict
 
 # Protean
-from protean.core.provider import Providers
 from protean.core.exceptions import ConfigurationError, IncorrectUsageError, NotSupportedError, ObjectNotFoundError
 from protean.utils import fully_qualified_name
+
+from .config import Config, ConfigAttribute
+from .helpers import get_debug_flag, get_env, _PackageBoundObject
 
 logger = logging.getLogger('protean.repository')
 
@@ -75,7 +79,7 @@ class _DomainRegistry:
         self._elements[element_type.value].pop(element_name, None)
 
 
-class Domain:
+class Domain(_PackageBoundObject):
     """The domain object is a one-stop gateway to:
     * Registrating Domain Objects/Concepts
     * Querying/Retrieving Domain Artifacts like Entities, Services, etc.
@@ -96,6 +100,23 @@ class Domain:
     from protean.core.transport.request import BaseRequestObject
     from protean.core.value_object import BaseValueObject
 
+    config_class = Config
+    secret_key = ConfigAttribute("SECRET_KEY")
+
+    root_path = None
+
+    default_config = ImmutableDict(
+        {
+            "ENV": None,
+            "DEBUG": None,
+            "TESTING": False,
+            "SECRET_KEY": None,
+            "IDENTITY_STRATEGY": None,
+            "DATABASES": {},
+            "CACHE": {}
+        }
+    )
+
     base_class_mapping = {
             DomainObjects.AGGREGATE.value: BaseAggregate,
             DomainObjects.ENTITY.value: BaseEntity,
@@ -104,13 +125,39 @@ class Domain:
             DomainObjects.VALUE_OBJECT.value: BaseValueObject
         }
 
-    def __init__(self, domain_name=__name__, config_file=None):
+    def __init__(
+            self,
+            domain_name=__name__,
+            root_path=None,
+            instance_relative_config=False):
+
+        _PackageBoundObject.__init__(
+            self, domain_name, root_path=root_path
+        )
+
         self.domain_name = domain_name
 
         # Registry for all domain Objects
         self._domain_registry = _DomainRegistry()
 
-        self.providers = Providers(self, config_file=config_file)
+        self.config = self.make_config(instance_relative_config)
+
+        self.providers = None
+
+    def make_config(self, instance_relative=False):
+        """Used to create the config attribute by the Domain constructor.
+        The `instance_relative` parameter is passed in from the constructor
+        of Domain (there named `instance_relative_config`) and indicates if
+        the config should be relative to the instance path or the root path
+        of the application.
+        """
+        root_path = self.root_path
+        if instance_relative:
+            root_path = self.instance_path
+        defaults = dict(self.default_config)
+        defaults["ENV"] = get_env()
+        defaults["DEBUG"] = get_debug_flag()
+        return self.config_class(root_path, defaults)
 
     @property
     def registry(self):
@@ -308,10 +355,52 @@ class Domain:
 
         return baked_model_cls
 
+    def _initialize_providers(self):
+        """Read config file and initialize providers"""
+        configured_providers = self.config['DATABASES']
+        provider_objects = {}
+
+        if configured_providers and isinstance(configured_providers, dict):
+            if 'default' not in configured_providers:
+                raise ConfigurationError(
+                    "You must define a 'default' provider")
+
+            for provider_name, conn_info in configured_providers.items():
+                provider_full_path = conn_info['PROVIDER']
+                provider_module, provider_class = provider_full_path.rsplit('.', maxsplit=1)
+
+                provider_cls = getattr(importlib.import_module(provider_module), provider_class)
+                provider_objects[provider_name] = provider_cls(provider_name, self, conn_info)
+
+        return provider_objects
+
     def get_provider(self, provider_name):
         """Retrieve the provider object with a given provider name"""
-        # FIXME Should domain be derived from "context"?
-        return self.providers.get_provider(provider_name)
+        if self.providers is None:
+            self.providers = self._initialize_providers()
+
+        try:
+            return self.providers[provider_name]
+        except KeyError:
+            raise AssertionError(f'No Provider registered with name {provider_name}')
+
+    def get_connection(self, provider_name='default'):
+        """Fetch connection from Provider"""
+        if self.providers is None:
+            self.providers = self._initialize_providers()
+
+        try:
+            return self.providers[provider_name].get_connection()
+        except KeyError:
+            raise AssertionError(f'No Provider registered with name {provider_name}')
+
+    def providers_list(self):
+        """A generator that helps users iterator through providers"""
+        if self.providers is None:
+            self.providers = self._initialize_providers()
+
+        for provider_name in self.providers:
+            yield self.providers[provider_name]
 
     def repository_for(self, aggregate_cls, uow=None):
         """Retrieve a Repository registered for the Aggregate"""

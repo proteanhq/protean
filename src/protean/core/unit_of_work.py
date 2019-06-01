@@ -17,7 +17,7 @@ class UnitOfWork:
 
         self._sessions = {}
         self._changes = {}
-        for provider in self.domain.providers.providers_list():
+        for provider in self.domain.providers_list():
             self._sessions[provider.name] = provider.get_session()
 
             self._changes[provider.name] = {
@@ -52,7 +52,7 @@ class UnitOfWork:
         # Commit and destroy session
         try:
             for provider_name in self._sessions:
-                provider = self.domain.providers.get_provider(provider_name)
+                provider = self.domain.get_provider(provider_name)
                 provider.commit(self._changes[provider_name])
 
             self._sessions = {}

@@ -24,7 +24,7 @@ class TestRelations:
     @pytest.fixture(scope='function', autouse=True)
     def default_provider(self, test_domain):
         """Construct dummy Human objects for queries"""
-        return test_domain.providers.get_provider('sql_db')
+        return test_domain.get_provider('sql_db')
 
     @pytest.fixture(scope='function', autouse=True)
     def conn(self, default_provider):

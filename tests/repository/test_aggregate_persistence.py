@@ -9,12 +9,13 @@ class TestAggregatePersistenceWithDictProvider:
     @pytest.fixture
     def test_domain(self):
         from protean.domain import Domain
-        domain = Domain('Test', 'tests.repository.config')
+        domain = Domain('Test')
+        domain.config.from_object('tests.repository.config')
 
         yield domain
 
     def test_retrieval_from_provider_connection(self, test_domain):
-        conn = test_domain.providers.get_connection()
+        conn = test_domain.get_connection()
         assert conn is not None
 
         conn['data']['foo'] = 'bar'
@@ -27,7 +28,8 @@ class TestAggregatePersistenceWithRepository:
     @pytest.fixture
     def test_domain(self):
         from protean.domain import Domain
-        domain = Domain('Test', 'tests.repository.config')
+        domain = Domain('Test')
+        domain.config.from_object('tests.repository.config')
 
         yield domain
 
