@@ -4,6 +4,6 @@ check-manifest==0.38
 coverage==4.5.3
 docutils==0.14
 pytest-flake8==1.0.4
-sphinx==2.0.1
+sphinx==2.1.0
 tox==3.12.1
 twine==1.13.0
