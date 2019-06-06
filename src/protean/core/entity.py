@@ -204,7 +204,7 @@ class EntityMeta:
         """ Return the unique fields for this entity """
         return [(field_name, field_obj)
                 for field_name, field_obj in self.declared_fields.items()
-                if field_obj.unique]
+                if not isinstance(field_obj, Association) and field_obj.unique]
 
     @property
     def auto_fields(self):

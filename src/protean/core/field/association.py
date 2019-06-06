@@ -75,7 +75,7 @@ class Reference(FieldCacheMixin, Field):
         try:
             if isinstance(self._to_cls, str):
                 self._to_cls = fetch_entity_cls_from_registry(self._to_cls)
-        except AssertionError:
+        except (AssertionError, RuntimeError):
             # Preserve ``to_cls`` as a string and we will hook up the entity later
             pass
 
@@ -143,6 +143,9 @@ class Reference(FieldCacheMixin, Field):
         from protean.domain import Domain
         return Domain().get_repository(self.to_cls).find_by(**{key: value})
 
+    def __set_name__(self, entity_cls, name):
+        super().__set_name__(entity_cls, name)
+
     def __set__(self, instance, value):
         """Override `__set__` to coordinate between relation field and its shadow attribute"""
         if value:
@@ -157,7 +160,8 @@ class Reference(FieldCacheMixin, Field):
 
             if value:
                 # Check if the reference object has been saved. Otherwise, throw ValueError
-                if value.id is None:  # FIXME not a comprehensive check. Should refer to state
+                # FIXME not a comprehensive check. Should refer to state
+                if getattr(value, value.meta_.id_field.field_name) is None:
                     raise ValueError(
                         "Target Object must be saved before being referenced",
                         self.field_name)
@@ -192,8 +196,9 @@ class Reference(FieldCacheMixin, Field):
         self._set_relation_value(instance, None)
 
     def _cast_to_type(self, value):
-        if not isinstance(value, self.to_cls):
-            self.fail('invalid', value=value)
+        # FIXME Assign value only of the correct type
+        # if not isinstance(value, self.to_cls):
+        #     self.fail('invalid', value=value)
         return value
 
 

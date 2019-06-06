@@ -1,5 +1,5 @@
 from functools import partial
-from protean.utils.local import LocalStack, LocalProxy
+from werkzeug.local import LocalStack, LocalProxy
 
 _domain_ctx_err_msg = """\
 Working outside of domain context.
@@ -11,20 +11,20 @@ documentation for more information.\
 
 
 def _lookup_domain_object(name):
-    top = _domain_ctx_stack.top
+    top = _domain_context_stack.top
     if top is None:
         raise RuntimeError(_domain_ctx_err_msg)
     return getattr(top, name)
 
 
 def _find_domain():
-    top = _domain_ctx_stack.top
+    top = _domain_context_stack.top
     if top is None:
         raise RuntimeError(_domain_ctx_err_msg)
     return top.domain
 
 
 # context locals
-_domain_ctx_stack = LocalStack()
+_domain_context_stack = LocalStack()
 current_domain = LocalProxy(_find_domain)
 g = LocalProxy(partial(_lookup_domain_object, "g"))

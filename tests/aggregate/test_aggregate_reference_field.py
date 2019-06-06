@@ -11,7 +11,8 @@ class TestReferenceFieldAssociation:
         domain = Domain('Test')
         domain.config.from_object('tests.aggregate.config')
 
-        yield domain
+        with domain.domain_context():
+            yield domain
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self, test_domain):
@@ -26,34 +27,18 @@ class TestReferenceFieldAssociation:
         account = Account(email='john.doe@gmail.com', password='a1b2c3')
         author = Author(first_name='John', last_name='Doe', account=account)
 
-        assert all(key in author.__dict__ for key in ['first_name', 'last_name', 'account_id'])
-        assert author.account.id == account.id
-        assert author.account_id == account.id
+        assert all(key in author.__dict__ for key in ['first_name', 'last_name', 'account_email'])
+        assert author.account.email == account.email
+        assert author.account_email == account.email
 
-    # @pytest.mark.skip
-    # def test_init_with_string_reference(self, test_domain):
-    #     """Test successful RelatedDog initialization"""
-    #     human = test_domain.get_repository(Human).create(
-    #         first_name='Jeff', last_name='Kennedy',
-    #         email='jeff.kennedy@presidents.com')
-    #     dog = RelatedDog2(id=1, name='John Doe', age=10, owner=human)
-    #     assert all(key in dog.__dict__ for key in ['owner', 'owner_id'])
-    #     assert dog.owner.id == human.id
-    #     assert dog.owner_id == human.id
-    #     assert not hasattr(human,
-    #                        'dog')  # Reverse linkages are not provided by default
+    def test_successful_save_of_entity_with_reference_field(self, test_domain):
+        account = Account(email='john.doe@gmail.com', password='a1b2c3')
+        author = Author(first_name='John', last_name='Doe', account=account)
 
-    # @pytest.mark.skip
-    # def test_save(self, test_domain):
-    #     """Test successful RelatedDog save"""
-    #     human = test_domain.get_repository(Human).create(
-    #         first_name='Jeff', last_name='Kennedy',
-    #         email='jeff.kennedy@presidents.com')
-    #     dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
-    #     assert all(key in dog.__dict__ for key in ['owner', 'owner_id'])
-    #     test_domain.get_repository(RelatedDog).save(dog)
-    #     assert dog.id is not None
-    #     assert all(key in dog.__dict__ for key in ['owner', 'owner_id'])
+        assert not author.state_.is_persisted
+        test_domain.get_dao(Author).save(author)
+
+        assert author.state_.is_persisted
 
     # @pytest.mark.skip
     # def test_unsaved_entity_init(self):
@@ -256,4 +241,3 @@ class TestReferenceFieldAssociation:
     #     for _ in range(3):
     #         getattr(dog, 'owner')
     #     assert find_by_mock.call_count == 1
-

@@ -104,25 +104,25 @@ class OrderedRoleSubclass(Role):
 # Aggregates to test associations # START #
 class Post(BaseAggregate):
     content = Text(required=True)
-    comments = HasMany('Comment')
-    author = Reference('Author')
+    comments = HasMany('tests.aggregate.elements.Comment')
+    author = Reference('tests.aggregate.elements.Author')
 
 
 class Author(BaseEntity):
     first_name = String(required=True, max_length=25)
     last_name = String(max_length=25)
-    posts = HasMany('Post')
-    account = Reference('Account')
+    posts = HasMany('tests.aggregate.elements.Post')
+    account = Reference('tests.aggregate.elements.Account')
 
 
 class Account(BaseEntity):
     email = String(required=True, max_length=255, unique=True, identifier=True)
     password = String(required=True, max_length=255)
-    author = HasOne('Author')
+    author = HasOne('tests.aggregate.elements.Author')
 
 
 class Comment(BaseEntity):
     content = Text()
     added_on = DateTime()
-    post = Reference('Post')
+    post = Reference('tests.aggregate.elements.Post')
 # Aggregates to test associations # END #

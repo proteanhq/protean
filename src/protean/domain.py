@@ -4,6 +4,7 @@ to register Domain Elements.
 # Standard Library Imports
 import importlib
 import logging
+import sys
 
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -16,9 +17,13 @@ from protean.core.exceptions import ConfigurationError, IncorrectUsageError, Not
 from protean.utils import fully_qualified_name
 
 from .config import Config, ConfigAttribute
+from .context import _DomainContextGlobals, DomainContext
 from .helpers import get_debug_flag, get_env, _PackageBoundObject
 
 logger = logging.getLogger('protean.repository')
+
+# a singleton sentinel value for parameter defaults
+_sentinel = object()
 
 
 class DomainObjects(Enum):
@@ -101,6 +106,7 @@ class Domain(_PackageBoundObject):
     from protean.core.value_object import BaseValueObject
 
     config_class = Config
+    domain_context_globals_class = _DomainContextGlobals
     secret_key = ConfigAttribute("SECRET_KEY")
 
     root_path = None
@@ -144,6 +150,11 @@ class Domain(_PackageBoundObject):
 
         self.providers = None
 
+        #: A list of functions that are called when the domain context
+        #: is destroyed.  This is the place to store code that cleans up and
+        #: disconnects from databases, for example.
+        self.teardown_domain_context_funcs = []
+
     def make_config(self, instance_relative=False):
         """Used to create the config attribute by the Domain constructor.
         The `instance_relative` parameter is passed in from the constructor
@@ -158,6 +169,58 @@ class Domain(_PackageBoundObject):
         defaults["ENV"] = get_env()
         defaults["DEBUG"] = get_debug_flag()
         return self.config_class(root_path, defaults)
+
+    def domain_context(self):
+        """Create an :class:`~protean.context.DomainContext`. Use as a ``with``
+        block to push the context, which will make :data:`current_domain`
+        point at this domain.
+
+        ::
+
+            with domain.domain_context():
+                init_db()
+        """
+        return DomainContext(self)
+
+    def teardown_domain_context(self, f):
+        """Registers a function to be called when the domain context
+        ends.
+
+        Example::
+
+            ctx = domain.domain_context()
+            ctx.push()
+            ...
+            ctx.pop()
+
+        When ``ctx.pop()`` is executed in the above example, the teardown
+        functions are called just before the domain context moves from the
+        stack of active contexts.  This becomes relevant if you are using
+        such constructs in tests.
+
+        When a teardown function was called because of an unhandled exception
+        it will be passed an error object. If an :meth:`errorhandler` is
+        registered, it will handle the exception and the teardown will not
+        receive it.
+
+        The return values of teardown functions are ignored.
+        """
+        self.teardown_domain_context_funcs.append(f)
+        return f
+
+    def do_teardown_domain_context(self, exc=_sentinel):
+        """Called right before the domain context is popped.
+
+        This calls all functions decorated with
+        :meth:`teardown_domain_context`.
+
+        This is called by
+        :meth:`DomainContext.pop() <protean.context.DomainContext.pop>`.
+        """
+        if exc is _sentinel:
+            exc = sys.exc_info()[1]
+        for func in reversed(self.teardown_domain_context_funcs):
+            func(exc)
 
     @property
     def registry(self):
@@ -203,7 +266,8 @@ class Domain(_PackageBoundObject):
         # Decorate Aggregate classes with Provider and Model info
         provider_name = None
         model_cls = None
-        if element_type == DomainObjects.AGGREGATE and self._validate_aggregate_class(new_cls):
+        if (element_type in (DomainObjects.AGGREGATE, DomainObjects.ENTITY) and
+                self._validate_persistence_class(new_cls)):
             provider_name = provider_name or new_cls.meta_.provider or 'default'
             model_cls = None  # FIXME Add ability to specify model_cls explicitly
 
@@ -224,11 +288,12 @@ class Domain(_PackageBoundObject):
 
         return new_cls
 
-    def _validate_aggregate_class(self, element_cls):
+    def _validate_persistence_class(self, element_cls):
         # Import here to avoid cyclic dependency
         from protean.core.aggregate import BaseAggregate
+        from protean.core.entity import BaseEntity
 
-        if not issubclass(element_cls, BaseAggregate):
+        if not issubclass(element_cls, BaseAggregate) and not issubclass(element_cls, BaseEntity):
             raise AssertionError(
                 f'Element {element_cls.__name__} must be subclass of `BaseAggregate`')
 
@@ -336,17 +401,22 @@ class Domain(_PackageBoundObject):
 
         return DomainObjects[element_types.pop()]
 
-    def _get_element_by_class(self, element_type, element_cls):
+    def _get_element_by_name(self, element_types, element_name):
+        """Fetch Domain record with an Element name"""
+        for element_type in element_types:
+            if element_name in self._domain_registry._elements[element_type.value]:
+                return self._domain_registry._elements[element_type.value][element_name]
+        else:
+            raise ObjectNotFoundError("Element {element_name} not registered in domain {self.domain_name}")
+
+    def _get_element_by_class(self, element_types, element_cls):
         """Fetch Domain record with Element class details"""
         element_qualname = fully_qualified_name(element_cls)
-        if element_qualname in self._domain_registry._elements[element_type.value]:
-            return self._domain_registry._elements[element_type.value][element_qualname]
-        else:
-            raise ObjectNotFoundError("Element {element_qualname} not registered in domain {self.domain_name}")
+        return self._get_element_by_name(element_types, element_qualname)
 
     def get_model(self, aggregate_cls):
         """Retrieve Model class connected to Entity"""
-        aggregate_record = self._get_element_by_class(DomainObjects.AGGREGATE, aggregate_cls)
+        aggregate_record = self._get_element_by_class((DomainObjects.AGGREGATE, ), aggregate_cls)
 
         # We should ask the Provider to give a fully baked model
         #   that has been initialized properly for this aggregate
@@ -411,7 +481,9 @@ class Domain(_PackageBoundObject):
 
     def get_dao(self, aggregate_cls):
         """Retrieve a DAO registered for the Aggregate with a live connection"""
-        aggregate_record = self._get_element_by_class(DomainObjects.AGGREGATE, aggregate_cls)
+        aggregate_record = self._get_element_by_class(
+            (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
+            aggregate_cls)
         provider = self.get_provider(aggregate_record.provider_name)
 
         return provider.get_dao(aggregate_record.cls)
