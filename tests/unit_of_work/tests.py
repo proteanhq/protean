@@ -12,7 +12,8 @@ class TestUnitOfWorkInitialization:
     @pytest.fixture
     def test_domain(self):
         from protean.domain import Domain
-        domain = Domain('Test', 'tests.unit_of_work.config')
+        domain = Domain('Test')
+        domain.config.from_object('tests.unit_of_work.config')
 
         yield domain
 
@@ -48,7 +49,8 @@ class TestUnitOfWorkRegistration:
     @pytest.fixture
     def test_domain(self):
         from protean.domain import Domain
-        domain = Domain('Test', 'tests.unit_of_work.config')
+        domain = Domain('Test')
+        domain.config.from_object('tests.unit_of_work.config')
 
         yield domain
 
@@ -110,7 +112,8 @@ class TestUnitOfWorkTransactions:
     @pytest.fixture
     def test_domain(self):
         from protean.domain import Domain
-        domain = Domain('Test', 'tests.unit_of_work.config')
+        domain = Domain('Test')
+        domain.config.from_object('tests.unit_of_work.config')
 
         yield domain
 
@@ -121,7 +124,7 @@ class TestUnitOfWorkTransactions:
 
         yield
 
-        test_domain.providers.get_provider()._data_reset()
+        test_domain.get_provider('default')._data_reset()
 
     def random_name(self):
         return ''.join(random.choices(string.ascii_uppercase + string.digits, k=15))

@@ -1,0 +1,6 @@
+Sidebar:
+You may already know the difference between a method and a function.
+
+In one distinction, a function is an operation of an object that produces output but without modifying its own state. Since no modification occurs when executing a specific operation, that operation is said to be side-effect free. Methods, in constrast, tend to be associated with an object and operate on the data, usually modifiying it.
+
+In another distinction, typically in languages like Python, functions can be invoked by their names, while methods are typically associated with an object. So if you are calling a method on a call, you are dealing with a method, while a function is what you would write without associating it with a class.

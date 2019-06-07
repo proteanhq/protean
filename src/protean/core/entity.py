@@ -9,7 +9,7 @@ from uuid import uuid4
 from protean.conf import active_config
 from protean.core.exceptions import NotSupportedError, ValidationError
 from protean.core.field.basic import Auto, Field
-from protean.core.field.association import Reference
+from protean.core.field.association import Association, Reference
 from protean.core.field.embedded import ValueObjectField
 from protean.utils import IdentityStrategy, inflection
 
@@ -68,9 +68,6 @@ class _EntityMetaclass(type):
         # Set up ValueObject Fields
         new_class._set_up_value_object_fields()
 
-        # Load list of Attributes from declared fields, depending on type of fields
-        new_class._load_attributes()
-
         return new_class
 
     def _load_base_class_fields(new_class, bases, attrs):
@@ -84,7 +81,9 @@ class _EntityMetaclass(type):
                 base_class_fields = {
                     field_name: field_obj for (field_name, field_obj)
                     in base.meta_.declared_fields.items()
-                    if field_name not in attrs and not field_obj.identifier
+                    if (field_name not in attrs and
+                        not isinstance(field_obj, Association) and
+                        not field_obj.identifier)
                 }
                 new_class._load_fields(base_class_fields)
 
@@ -96,7 +95,7 @@ class _EntityMetaclass(type):
         is set up in this method, while `parent_id` is set up in `_set_up_reference_fields()`.
         """
         for attr_name, attr_obj in attrs.items():
-            if isinstance(attr_obj, (Field, Reference)):
+            if isinstance(attr_obj, (Association, Field, Reference)):
                 setattr(new_class, attr_name, attr_obj)
                 new_class.meta_.declared_fields[attr_name] = attr_obj
 
@@ -126,7 +125,7 @@ class _EntityMetaclass(type):
             try:
                 new_class.meta_.id_field = next(
                     field for _, field in new_class.meta_.declared_fields.items()
-                    if field.identifier)
+                    if isinstance(field, (Field, Reference)) and field.identifier)
             except StopIteration:
                 # If no id field is declared then create one
                 new_class._create_id_field()
@@ -141,16 +140,6 @@ class _EntityMetaclass(type):
         # Ensure ID field is updated properly in Meta attribute
         new_class.meta_.declared_fields['id'] = id_field
         new_class.meta_.id_field = id_field
-
-    def _load_attributes(new_class):
-        """Load list of attributes from declared fields"""
-        for _, field_obj in new_class.meta_.declared_fields.items():
-            if isinstance(field_obj, ValueObjectField):
-                shadow_fields = field_obj.get_shadow_fields()
-                for _, shadow_field in shadow_fields:
-                    new_class.meta_.attributes[shadow_field.attribute_name] = shadow_field
-            else:
-                new_class.meta_.attributes[field_obj.get_attribute_name()] = field_obj
 
 
 class EntityMeta:
@@ -190,7 +179,6 @@ class EntityMeta:
 
         # Initialize Options
         self.declared_fields = {}
-        self.attributes = {}
         self.id_field = None
 
         # Domain Attributes
@@ -202,13 +190,30 @@ class EntityMeta:
         """ Return the unique fields for this entity """
         return [(field_name, field_obj)
                 for field_name, field_obj in self.declared_fields.items()
-                if field_obj.unique]
+                if not isinstance(field_obj, Association) and field_obj.unique]
 
     @property
     def auto_fields(self):
         return [(field_name, field_obj)
                 for field_name, field_obj in self.declared_fields.items()
                 if isinstance(field_obj, Auto)]
+
+    @property
+    def attributes(self):
+        attributes_dict = {}
+        for _, field_obj in self.declared_fields.items():
+            if isinstance(field_obj, ValueObjectField):
+                shadow_fields = field_obj.get_shadow_fields()
+                for _, shadow_field in shadow_fields:
+                    attributes_dict[shadow_field.attribute_name] = shadow_field
+            elif isinstance(field_obj, Reference):
+                attributes_dict[field_obj.get_attribute_name()] = field_obj.relation
+            elif isinstance(field_obj, Field):
+                attributes_dict[field_obj.get_attribute_name()] = field_obj
+            else:  # This field is an association. Ignore recording it as an attribute
+                pass
+
+        return attributes_dict
 
 
 class _FieldsCacheDescriptor:
@@ -351,7 +356,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         # for required fields
         for field_name, field_obj in self.meta_.declared_fields.items():
             if field_name not in loaded_fields:
-                if not isinstance(field_obj, (Reference, _ReferenceField)):
+                if not isinstance(field_obj, (Reference, _ReferenceField, Association)):
                     setattr(self, field_name, None)
 
         # Raise any errors found during load

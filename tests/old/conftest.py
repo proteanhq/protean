@@ -32,14 +32,14 @@ def register_domain_elements(test_domain):
         repo_factory.get_repository(repo_factory._registry[entity_name].entity_cls)
 
     # Now, create all associated tables
-    for _, provider in test_domain.providers._providers.items():
+    for _, provider in test_domain.providers_list.items():
         if isinstance(provider, SAProvider):
             provider._metadata.create_all()
 
     yield
 
     # Drop all tables at the end of test suite
-    for _, provider in test_domain.providers._providers.items():
+    for _, provider in test_domain.providers_list.items():
         if isinstance(provider, SAProvider):
             provider._metadata.drop_all()
 
@@ -51,7 +51,7 @@ def run_around_tests(test_domain):
     yield
 
     # Reset Test Data
-    test_domain.providers.get_provider()._data_reset()
+    test_domain.get_provider('default')._data_reset()
 
     # SqlAlchemy Entities
     from protean.core.repository.factory import repo_factory
