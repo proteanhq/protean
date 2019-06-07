@@ -108,7 +108,6 @@ class ValueObjectMeta:
 
         # Initialize Options
         self.declared_fields = {}
-        self.attributes = {}
 
     @property
     def unique_fields(self):
@@ -122,6 +121,14 @@ class ValueObjectMeta:
         return [(field_name, field_obj)
                 for field_name, field_obj in self.declared_fields.items()
                 if isinstance(field_obj, Auto)]
+
+    @property
+    def attributes(self):
+        attributes_dict = {}
+        for field_name, field_obj in self.declared_fields.items():
+            attributes_dict[field_obj.get_attribute_name()] = field_obj
+
+        return attributes_dict
 
 
 class _FieldsCacheDescriptor:

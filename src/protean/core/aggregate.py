@@ -68,9 +68,6 @@ class _AggregateMetaclass(type):
         # Set up ValueObject Fields
         new_class._set_up_value_object_fields()
 
-        # Load list of Attributes from declared fields, depending on type of fields
-        new_class._load_attributes()
-
         return new_class
 
     def _load_base_class_fields(new_class, bases, attrs):
@@ -142,16 +139,6 @@ class _AggregateMetaclass(type):
         new_class.meta_.declared_fields['id'] = id_field
         new_class.meta_.id_field = id_field
 
-    def _load_attributes(new_class):
-        """Load list of attributes from declared fields"""
-        for _, field_obj in new_class.meta_.declared_fields.items():
-            if isinstance(field_obj, ValueObjectField):
-                shadow_fields = field_obj.get_shadow_fields()
-                for _, shadow_field in shadow_fields:
-                    new_class.meta_.attributes[shadow_field.attribute_name] = shadow_field
-            else:
-                new_class.meta_.attributes[field_obj.get_attribute_name()] = field_obj
-
 
 class AggregateMeta:
     """ Metadata info for the entity.
@@ -190,7 +177,6 @@ class AggregateMeta:
 
         # Initialize Options
         self.declared_fields = {}
-        self.attributes = {}
         self.id_field = None
 
         # Domain Attributes
@@ -209,6 +195,19 @@ class AggregateMeta:
         return [(field_name, field_obj)
                 for field_name, field_obj in self.declared_fields.items()
                 if isinstance(field_obj, Auto)]
+
+    @property
+    def attributes(self):
+        attributes_dict = {}
+        for _, field_obj in self.declared_fields.items():
+            if isinstance(field_obj, ValueObjectField):
+                shadow_fields = field_obj.get_shadow_fields()
+                for _, shadow_field in shadow_fields:
+                    attributes_dict[shadow_field.attribute_name] = shadow_field
+            else:
+                attributes_dict[field_obj.get_attribute_name()] = field_obj
+
+        return attributes_dict
 
 
 class _FieldsCacheDescriptor:

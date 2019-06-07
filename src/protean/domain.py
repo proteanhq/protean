@@ -416,7 +416,9 @@ class Domain(_PackageBoundObject):
 
     def get_model(self, aggregate_cls):
         """Retrieve Model class connected to Entity"""
-        aggregate_record = self._get_element_by_class((DomainObjects.AGGREGATE, ), aggregate_cls)
+        aggregate_record = self._get_element_by_class(
+            (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
+            aggregate_cls)
 
         # We should ask the Provider to give a fully baked model
         #   that has been initialized properly for this aggregate

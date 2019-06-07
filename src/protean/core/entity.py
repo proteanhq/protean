@@ -68,9 +68,6 @@ class _EntityMetaclass(type):
         # Set up ValueObject Fields
         new_class._set_up_value_object_fields()
 
-        # Load list of Attributes from declared fields, depending on type of fields
-        new_class._load_attributes()
-
         return new_class
 
     def _load_base_class_fields(new_class, bases, attrs):
@@ -84,7 +81,9 @@ class _EntityMetaclass(type):
                 base_class_fields = {
                     field_name: field_obj for (field_name, field_obj)
                     in base.meta_.declared_fields.items()
-                    if field_name not in attrs and not field_obj.identifier
+                    if (field_name not in attrs and
+                        not isinstance(field_obj, Association) and
+                        not field_obj.identifier)
                 }
                 new_class._load_fields(base_class_fields)
 
@@ -142,18 +141,6 @@ class _EntityMetaclass(type):
         new_class.meta_.declared_fields['id'] = id_field
         new_class.meta_.id_field = id_field
 
-    def _load_attributes(new_class):
-        """Load list of attributes from declared fields"""
-        for _, field_obj in new_class.meta_.declared_fields.items():
-            if isinstance(field_obj, ValueObjectField):
-                shadow_fields = field_obj.get_shadow_fields()
-                for _, shadow_field in shadow_fields:
-                    new_class.meta_.attributes[shadow_field.attribute_name] = shadow_field
-            elif isinstance(field_obj, (Field, Reference)):
-                new_class.meta_.attributes[field_obj.get_attribute_name()] = field_obj
-            else:  # This field is an association. Ignore recording it as an attribute
-                pass
-
 
 class EntityMeta:
     """ Metadata info for the entity.
@@ -192,7 +179,6 @@ class EntityMeta:
 
         # Initialize Options
         self.declared_fields = {}
-        self.attributes = {}
         self.id_field = None
 
         # Domain Attributes
@@ -211,6 +197,21 @@ class EntityMeta:
         return [(field_name, field_obj)
                 for field_name, field_obj in self.declared_fields.items()
                 if isinstance(field_obj, Auto)]
+
+    @property
+    def attributes(self):
+        attributes_dict = {}
+        for _, field_obj in self.declared_fields.items():
+            if isinstance(field_obj, ValueObjectField):
+                shadow_fields = field_obj.get_shadow_fields()
+                for _, shadow_field in shadow_fields:
+                    attributes_dict[shadow_field.attribute_name] = shadow_field
+            elif isinstance(field_obj, (Field, Reference)):
+                attributes_dict[field_obj.get_attribute_name()] = field_obj
+            else:  # This field is an association. Ignore recording it as an attribute
+                pass
+
+        return attributes_dict
 
 
 class _FieldsCacheDescriptor:

@@ -4,6 +4,7 @@ from abc import abstractmethod
 # Protean
 from protean import utils
 from protean.core import exceptions
+from protean.globals import current_domain
 
 # Local/Relative Imports
 from .base import Field
@@ -127,7 +128,12 @@ class Reference(FieldCacheMixin, Field):
                 reference_obj = self.get_cached_value(instance)
             except KeyError:
                 # Fetch target object by own Identifier
-                id_value = getattr(instance, self.get_attribute_name())
+                id_field = self.get_attribute_name()
+
+                id_value = None
+                if hasattr(instance, id_field):
+                    id_value = getattr(instance, id_field)
+
                 if id_value:
                     reference_obj = self._fetch_objects(self.linked_attribute, id_value)
                     if reference_obj:
@@ -140,8 +146,7 @@ class Reference(FieldCacheMixin, Field):
 
     def _fetch_objects(self, key, value):
         """Fetch Multiple linked objects"""
-        from protean.domain import Domain
-        return Domain().get_repository(self.to_cls).find_by(**{key: value})
+        return current_domain.get_dao(self.to_cls).find_by(**{key: value})
 
     def __set_name__(self, entity_cls, name):
         super().__set_name__(entity_cls, name)
@@ -222,7 +227,7 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
            FIXME Explore converting this method into an attribute, and treating it
            uniformly at `association` level.
         """
-        return self.via or (utils.inflection.underscore(owner.__name__) + '_id')
+        return self.via or (utils.inflection.underscore(owner.__name__) + '_' + owner.meta_.id_field.attribute_name)
 
     def __get__(self, instance, owner):
         """Retrieve associated objects"""
@@ -284,8 +289,7 @@ class HasOne(Association):
 
     def _fetch_objects(self, key, value):
         """Fetch Multiple linked objects"""
-        from protean.domain import Domain
-        return Domain().get_repository(self.to_cls).find_by(**{key: value})
+        return current_domain.get_dao(self.to_cls).find_by(**{key: value})
 
 
 class HasMany(Association):
@@ -298,5 +302,4 @@ class HasMany(Association):
 
     def _fetch_objects(self, key, value):
         """Fetch Multiple linked objects"""
-        from protean.domain import Domain
-        return Domain().get_repository(self.to_cls).query.filter(**{key: value})
+        return current_domain.get_dao(self.to_cls).query.filter(**{key: value})
