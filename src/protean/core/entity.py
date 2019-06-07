@@ -206,7 +206,9 @@ class EntityMeta:
                 shadow_fields = field_obj.get_shadow_fields()
                 for _, shadow_field in shadow_fields:
                     attributes_dict[shadow_field.attribute_name] = shadow_field
-            elif isinstance(field_obj, (Field, Reference)):
+            elif isinstance(field_obj, Reference):
+                attributes_dict[field_obj.get_attribute_name()] = field_obj.relation
+            elif isinstance(field_obj, Field):
                 attributes_dict[field_obj.get_attribute_name()] = field_obj
             else:  # This field is an association. Ignore recording it as an attribute
                 pass

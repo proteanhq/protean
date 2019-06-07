@@ -1,8 +1,9 @@
+import mock
 import pytest
 
 from protean.core.exceptions import ValidationError
 
-from .elements import Account, Author
+from .elements import Account, Author, Profile
 
 
 class TestReferenceFieldAssociation:
@@ -20,6 +21,7 @@ class TestReferenceFieldAssociation:
     def run_around_tests(self, test_domain):
         test_domain.register(Account)
         test_domain.register(Author)
+        test_domain.register(Profile)
 
         yield
 
@@ -146,7 +148,7 @@ class TestReferenceFieldAssociation:
         assert author.account is None
         assert 'account_email' not in author.__dict__
 
-    def test_that_resetting_shadow_attribute_resets_reference_field_too(self, test_domain):
+    def test_that_setting_shadow_attribute_to_none_resets_reference_field_too(self, test_domain):
         account = Account(email='john.doe@gmail.com', password='a1b2c3')
         test_domain.get_dao(Account).save(account)
         author = Author(first_name='John', last_name='Doe', account=account)
@@ -154,78 +156,63 @@ class TestReferenceFieldAssociation:
         assert author.account.email == account.email
         assert author.account_email == account.email
 
+        assert 'account_email' in author.meta_.attributes
         author.account_email = None
 
         assert any(key in author.__dict__ for key in ['account', 'account_email']) is False
         assert author.account is None
+        assert author.account_email is None
         assert 'account_email' not in author.__dict__
 
-    # @pytest.mark.skip
-    # def test_reference_reset_association_by_del(self, test_domain):
-    #     """Test that the reference field and shadow attribute are reset together"""
-    #     human = test_domain.get_repository(Human).create(
-    #         id=101, first_name='Jeff', last_name='Kennedy',
-    #         email='jeff.kennedy@presidents.com')
-    #     dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
-    #     assert dog.owner_id == human.id
-    #     assert dog.owner.id == human.id
+    def test_that_resetting_the_reference_field_resets_shadow_attribute_too(self, test_domain):
+        account = Account(email='john.doe@gmail.com', password='a1b2c3')
+        test_domain.get_dao(Account).save(account)
+        author = Author(first_name='John', last_name='Doe', account=account)
 
-    #     del dog.owner
-    #     assert any(
-    #         key in dog.__dict__ for key in ['owner', 'owner_id']) is False
-    #     assert dog.owner is None
-    #     assert dog.owner_id is None
+        del author.account
+        assert any(key in author.__dict__ for key in ['account', 'account_email']) is False
+        assert author.account is None
+        assert author.account_email is None
+        assert 'account_email' not in author.__dict__
 
-    # @pytest.mark.skip
-    # def test_reference_reset_shadow_field_by_del(self, test_domain):
-    #     """Test that the reference field and shadow attribute are reset together"""
-    #     human = test_domain.get_repository(Human).create(
-    #         id=101, first_name='Jeff', last_name='Kennedy',
-    #         email='jeff.kennedy@presidents.com')
-    #     dog = RelatedDog(id=1, name='John Doe', age=10, owner=human)
-    #     assert dog.owner_id == human.id
-    #     assert dog.owner.id == human.id
+    def test_that_resetting_the_shadow_attribute_resets_reference_field_too(self, test_domain):
+        account = Account(email='john.doe@gmail.com', password='a1b2c3')
+        test_domain.get_dao(Account).save(account)
+        author = Author(first_name='John', last_name='Doe', account=account)
 
-    #     del dog.owner_id
-    #     assert any(
-    #         key in dog.__dict__ for key in ['owner', 'owner_id']) is False
-    #     assert dog.owner is None
-    #     assert dog.owner_id is None
+        del author.account_email
+        assert any(key in author.__dict__ for key in ['account', 'account_email']) is False
+        assert author.account is None
+        assert author.account_email is None
+        assert 'account_email' not in author.__dict__
 
-    # @pytest.mark.skip
-    # def test_via(self, test_domain):
-    #     """Test successful save with an entity linked by via"""
-    #     human = test_domain.get_repository(Human).create(
-    #         first_name='Jeff', last_name='Kennedy',
-    #         email='jeff.kennedy@presidents.com')
-    #     dog = test_domain.get_repository(DogRelatedByEmail).create(
-    #         id=1, name='John Doe', age=10, owner=human)
-    #     assert all(key in dog.__dict__ for key in ['owner', 'owner_email'])
-    #     assert hasattr(dog, 'owner_email')
-    #     assert dog.owner_email == human.email
+    def test_successful_save_with_an_entity_linked_by_via(self, test_domain):
+        account = Account(email='john.doe@gmail.com', password='a1b2c3', username='johndoe')
+        test_domain.get_dao(Account).save(account)
+        profile = Profile(about_me='Lorem Ipsum', account=account)
+        test_domain.get_dao(Profile).save(profile)
 
-    # @pytest.mark.skip
-    # def test_via_with_shadow_attribute_assign(self, test_domain):
-    #     """Test successful save with an entity linked by via"""
-    #     human = test_domain.get_repository(Human).create(
-    #         first_name='Jeff', last_name='Kennedy',
-    #         email='jeff.kennedy@presidents.com')
-    #     dog = DogRelatedByEmail(id=1, name='John Doe', age=10)
-    #     dog.owner_email = human.email
-    #     assert 'owner' not in dog.__dict__
-    #     test_domain.get_repository(DogRelatedByEmail).save(dog)
-    #     assert hasattr(dog, 'owner_email')
-    #     assert dog.owner_email == human.email
+        assert all(key in profile.__dict__ for key in ['account', 'account_username'])
+        assert hasattr(profile, 'account_username')
+        assert profile.account_username == account.username
 
-    # @mock.patch('protean.core.repository.dao.BaseDAO.find_by')
-    # @pytest.mark.skip
-    # def test_caching(self, find_by_mock, test_domain):
-    #     """Test that subsequent accesses after first retrieval don't fetch record again"""
-    #     human = test_domain.get_repository(Human).create(
-    #         first_name='Jeff', last_name='Kennedy',
-    #         email='jeff.kennedy@presidents.com')
-    #     dog = RelatedDog(id=1, name='John Doe', age=10, owner_id=human.id)
+    def test_successful_save_with_an_entity_linked_by_via_and_assigned_by_shadow_attribute(self, test_domain):
+        account = Account(email='john.doe@gmail.com', password='a1b2c3', username='johndoe')
+        test_domain.get_dao(Account).save(account)
+        profile = Profile(about_me='Lorem Ipsum')
+        profile.account_username = account.username
+        test_domain.get_dao(Profile).save(profile)
 
-    #     for _ in range(3):
-    #         getattr(dog, 'owner')
-    #     assert find_by_mock.call_count == 1
+        assert hasattr(profile, 'account_username')
+        assert profile.account.email == account.email
+        assert profile.account_username == account.username
+
+    @mock.patch('protean.core.repository.dao.BaseDAO.find_by')
+    def test_that_subsequent_accesses_after_first_retrieval_do_not_fetch_record_again(self, find_by_mock, test_domain):
+        account = Account(email='john.doe@gmail.com', password='a1b2c3', username='johndoe')
+        test_domain.get_dao(Account).save(account)
+        author = Author(first_name='John', last_name='Doe', account_email=account.email)
+
+        for _ in range(3):
+            getattr(author, 'account')
+        assert find_by_mock.call_count == 1

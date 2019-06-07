@@ -118,7 +118,13 @@ class Author(BaseEntity):
 class Account(BaseEntity):
     email = String(required=True, max_length=255, unique=True, identifier=True)
     password = String(required=True, max_length=255)
+    username = String(max_length=255, unique=True)
     author = HasOne('tests.aggregate.elements.Author')
+
+
+class Profile(BaseEntity):
+    about_me = Text()
+    account = Reference('tests.aggregate.elements.Account', via='username')
 
 
 class Comment(BaseEntity):
