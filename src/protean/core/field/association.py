@@ -109,7 +109,8 @@ class Reference(FieldCacheMixin, Field):
         self.attribute_name = self.get_attribute_name()
 
         # Reset the Shadow attribute's name
-        setattr(instance, self.attribute_name, self.relation)
+        self.relation = _ReferenceField(self)
+        setattr(instance.__class__, self.attribute_name, self.relation)
         self.relation.__set_name__(instance, self.attribute_name)
 
         # Remove the earlier attribute if it is still attached
@@ -118,7 +119,10 @@ class Reference(FieldCacheMixin, Field):
         if hasattr(instance, old_attribute_name):
             delattr(instance, old_attribute_name)
             delattr(instance.__class__, old_attribute_name)
-            setattr(instance.__class__, self.attribute_name, old_value)
+            self._set_relation_value(instance, old_value)
+
+        # Update domain records because we enriched the class structure
+        current_domain._replace_element_by_class(instance.__class__)
 
     def __get__(self, instance, owner):
         """Retrieve associated objects"""
@@ -230,32 +234,13 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
         """
         return self.via or (utils.inflection.underscore(owner.__name__) + '_' + owner.meta_.id_field.attribute_name)
 
-    def _resolve_to_cls(self, instance):
-        assert isinstance(self.to_cls, str)
-
-        self.to_cls = fetch_entity_cls_from_registry(self.to_cls)
-
-        # Refresh attribute name, now that we know `to_cls` Entity and it has been
-        #   initialized with `id_field`
-        self.attribute_name = self.get_attribute_name()
-
-        # Reset the Shadow attribute's name
-        setattr(instance, self.attribute_name, self.relation)
-        self.relation.__set_name__(instance, self.attribute_name)
-
-        # Remove the earlier attribute if it is still attached
-        old_attribute_name = '{}_{}'.format(self.field_name, 'id')
-        if hasattr(instance, old_attribute_name):
-            setattr(instance, old_attribute_name, None)
-            delattr(instance, old_attribute_name)
-
     def __get__(self, instance, owner):
         """Retrieve associated objects"""
 
         # If `to_cls` was specified as a string, take this opportunity to fetch
         #   and update the correct entity class against it, if not already done
         if isinstance(self.to_cls, str):
-            self._resolve_to_cls(instance)
+            self.to_cls = fetch_entity_cls_from_registry(self.to_cls)
 
         try:
             reference_obj = self.get_cached_value(instance)
