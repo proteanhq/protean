@@ -6,11 +6,11 @@ import logging
 from uuid import uuid4
 
 # Protean
-from protean.conf import active_config
 from protean.core.exceptions import NotSupportedError, ValidationError
 from protean.core.field.basic import Auto, Field
 from protean.core.field.association import Association, Reference
 from protean.core.field.embedded import ValueObjectField
+from protean.globals import current_domain
 from protean.utils import IdentityStrategy, inflection
 
 # Local/Relative Imports
@@ -366,7 +366,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
     @classmethod
     def _generate_identity(cls):
         """Generate Unique Identifier, based on strategy"""
-        if active_config.IDENTITY_STRATEGY == IdentityStrategy.UUID:
+        if current_domain.config['IDENTITY_STRATEGY'] == IdentityStrategy.UUID:
             return uuid4()
 
         return None  # Database will generate the identity

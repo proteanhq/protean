@@ -11,17 +11,8 @@ from .elements import (
 
 class TestHasOne:
 
-    @pytest.fixture
-    def test_domain(self):
-        from protean.domain import Domain
-        domain = Domain('Test')
-        domain.config.from_object('tests.aggregate.config')
-
-        with domain.domain_context():
-            yield domain
-
     @pytest.fixture(autouse=True)
-    def run_around_tests(self, test_domain):
+    def register_elements(self, test_domain):
         test_domain.register(Account)
         test_domain.register(Author)
         test_domain.register(AccountVia)
@@ -29,10 +20,6 @@ class TestHasOne:
         test_domain.register(Profile)
         test_domain.register(ProfileVia)
         test_domain.register(ProfileViaWithReference)
-
-        yield
-
-        test_domain.get_provider('default')._data_reset()
 
     def test_successful_initialization_of_entity_with_has_one_association(self, test_domain):
         account = Account(email='john.doe@gmail.com', password='a1b2c3')
@@ -77,27 +64,14 @@ class TestHasOne:
 
 class TestHasMany:
 
-    @pytest.fixture
-    def test_domain(self):
-        from protean.domain import Domain
-        domain = Domain('Test')
-        domain.config.from_object('tests.aggregate.config')
-
-        with domain.domain_context():
-            yield domain
-
     @pytest.fixture(autouse=True)
-    def run_around_tests(self, test_domain):
+    def register_elements(self, test_domain):
         test_domain.register(Post)
         test_domain.register(PostVia)
         test_domain.register(PostViaWithReference)
         test_domain.register(Comment)
         test_domain.register(CommentVia)
         test_domain.register(CommentViaWithReference)
-
-        yield
-
-        test_domain.get_provider('default')._data_reset()
 
     def test_successful_initialization_of_entity_with_has_many_association(self, test_domain):
         post = Post(content='Lorem Ipsum')

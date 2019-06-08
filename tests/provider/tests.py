@@ -9,22 +9,10 @@ from .elements import Person, Alien
 class TestProviders:
     """This class holds tests for Providers Singleton"""
 
-    @pytest.fixture
-    def test_domain(self):
-        from protean.domain import Domain
-        domain = Domain('Test')
-        domain.config.from_object('tests.repository.config')
-
-        yield domain
-
     @pytest.fixture(autouse=True)
-    def run_around_tests(self, test_domain):
+    def register_elements(self, test_domain):
         test_domain.register(Person)
         test_domain.register(Alien)
-
-        yield
-
-        test_domain.get_provider('default')._data_reset()
 
     def test_initialization_of_providers_on_first_call(self, test_domain):
         """Test that ``providers`` object is available"""

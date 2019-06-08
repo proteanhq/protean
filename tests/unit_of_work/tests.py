@@ -9,13 +9,6 @@ from .elements import Person, PersonRepository
 
 
 class TestUnitOfWorkInitialization:
-    @pytest.fixture
-    def test_domain(self):
-        from protean.domain import Domain
-        domain = Domain('Test')
-        domain.config.from_object('tests.unit_of_work.config')
-
-        yield domain
 
     def test_uow_can_be_initiated_with_context_manager(self, test_domain):
         with UnitOfWork(test_domain) as uow:
@@ -46,13 +39,6 @@ class TestUnitOfWorkInitialization:
 
 
 class TestUnitOfWorkRegistration:
-    @pytest.fixture
-    def test_domain(self):
-        from protean.domain import Domain
-        domain = Domain('Test')
-        domain.config.from_object('tests.unit_of_work.config')
-
-        yield domain
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
@@ -109,22 +95,11 @@ class TestUnitOfWorkRegistration:
 
 
 class TestUnitOfWorkTransactions:
-    @pytest.fixture
-    def test_domain(self):
-        from protean.domain import Domain
-        domain = Domain('Test')
-        domain.config.from_object('tests.unit_of_work.config')
-
-        yield domain
 
     @pytest.fixture(autouse=True)
-    def run_around_tests(self, test_domain):
+    def register_elements(self, test_domain):
         test_domain.register(Person)
         test_domain.register(PersonRepository, aggregate=Person)
-
-        yield
-
-        test_domain.get_provider('default')._data_reset()
 
     def random_name(self):
         return ''.join(random.choices(string.ascii_uppercase + string.digits, k=15))

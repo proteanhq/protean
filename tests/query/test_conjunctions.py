@@ -9,21 +9,9 @@ from .elements import Person
 class TestConjunctions:
     """Class that holds tests cases for Conjunctions (AND, OR, NeG)"""
 
-    @pytest.fixture
-    def test_domain(self):
-        from protean.domain import Domain
-        domain = Domain('Test')
-        domain.config.from_object('tests.repository.config')
-
-        yield domain
-
     @pytest.fixture(autouse=True)
-    def run_around_tests(self, test_domain):
+    def register_elements(self, test_domain):
         test_domain.register(Person)
-
-        yield
-
-        test_domain.get_provider('default')._data_reset()
 
     @pytest.fixture
     def create_3_people(self, test_domain):

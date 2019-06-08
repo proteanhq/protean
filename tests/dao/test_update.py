@@ -6,23 +6,12 @@ from .elements import Person, PersonRepository, User
 
 
 class TestDAODeleteFunctionality:
-    @pytest.fixture
-    def test_domain(self):
-        from protean.domain import Domain
-        domain = Domain('Test')
-        domain.config.from_object('tests.repository.config')
-
-        yield domain
 
     @pytest.fixture(autouse=True)
-    def run_around_tests(self, test_domain):
+    def register_elements(self, test_domain):
         test_domain.register(Person)
         test_domain.register(PersonRepository, aggregate=Person)
         test_domain.register(User)
-
-        yield
-
-        test_domain.get_provider('default')._data_reset()
 
     def test_update_an_existing_entity_in_the_repository(self, test_domain):
         person = test_domain.get_dao(Person).create(id=11344234, first_name='John', last_name='Doe', age=22)

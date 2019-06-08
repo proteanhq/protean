@@ -4,11 +4,11 @@ from protean.globals import current_domain, _domain_context_stack, g
 
 
 class TestDomainContext:
+
     @pytest.fixture
     def test_domain(self):
         from protean.domain import Domain
         domain = Domain('Test')
-        domain.config.from_object('tests.aggregate.config')
 
         yield domain
 

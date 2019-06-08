@@ -104,6 +104,7 @@ class Domain(_PackageBoundObject):
     from protean.core.repository.base import BaseRepository
     from protean.core.transport.request import BaseRequestObject
     from protean.core.value_object import BaseValueObject
+    from protean.utils import IdentityStrategy
 
     config_class = Config
     domain_context_globals_class = _DomainContextGlobals
@@ -117,7 +118,7 @@ class Domain(_PackageBoundObject):
             "DEBUG": None,
             "TESTING": False,
             "SECRET_KEY": None,
-            "IDENTITY_STRATEGY": None,
+            "IDENTITY_STRATEGY": IdentityStrategy.UUID,
             "DATABASES": {},
             "CACHE": {}
         }
@@ -466,6 +467,12 @@ class Domain(_PackageBoundObject):
                 provider_objects[provider_name] = provider_cls(provider_name, self, conn_info)
 
         return provider_objects
+
+    def has_provider(self, provider_name):
+        if self.providers is None:
+            self.providers = self._initialize_providers()
+
+        return provider_name in self.providers
 
     def get_provider(self, provider_name):
         """Retrieve the provider object with a given provider name"""

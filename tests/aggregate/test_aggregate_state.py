@@ -9,22 +9,10 @@ from .elements import Person, PersonRepository
 class TestState:
     """Class that holds tests for Entity State Management"""
 
-    @pytest.fixture
-    def test_domain(self):
-        from protean.domain import Domain
-        domain = Domain('Test')
-        domain.config.from_object('tests.aggregate.config')
-
-        yield domain
-
     @pytest.fixture(autouse=True)
-    def run_around_tests(self, test_domain):
+    def register_elements(self, test_domain):
         test_domain.register(Person)
         test_domain.register(PersonRepository, aggregate=Person)
-
-        yield
-
-        test_domain.get_provider('default')._data_reset()
 
     def test_that_a_default_state_is_available_when_the_entity_instantiated(self):
         person = Person(first_name='John', last_name='Doe')
