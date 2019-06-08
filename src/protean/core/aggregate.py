@@ -188,7 +188,7 @@ class AggregateMeta:
         """ Return the unique fields for this entity """
         return [(field_name, field_obj)
                 for field_name, field_obj in self.declared_fields.items()
-                if field_obj.unique]
+                if not isinstance(field_obj, Association) and field_obj.unique]
 
     @property
     def auto_fields(self):
@@ -199,13 +199,18 @@ class AggregateMeta:
     @property
     def attributes(self):
         attributes_dict = {}
+
         for _, field_obj in self.declared_fields.items():
             if isinstance(field_obj, ValueObjectField):
                 shadow_fields = field_obj.get_shadow_fields()
                 for _, shadow_field in shadow_fields:
                     attributes_dict[shadow_field.attribute_name] = shadow_field
-            else:
+            elif isinstance(field_obj, Reference):
+                attributes_dict[field_obj.get_attribute_name()] = field_obj.relation
+            elif isinstance(field_obj, Field):
                 attributes_dict[field_obj.get_attribute_name()] = field_obj
+            else:  # This field is an association. Ignore recording it as an attribute
+                pass
 
         return attributes_dict
 

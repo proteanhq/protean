@@ -108,6 +108,36 @@ class Post(BaseAggregate):
     author = Reference('tests.aggregate.elements.Author')
 
 
+class PostVia(BaseAggregate):
+    content = Text(required=True)
+    comments = HasMany('tests.aggregate.elements.CommentVia', via='posting_id')
+    author = Reference('tests.aggregate.elements.Author')
+
+
+class PostViaWithReference(BaseAggregate):
+    content = Text(required=True)
+    comments = HasMany('tests.aggregate.elements.CommentViaWithReference', via='posting_id')
+    author = Reference('tests.aggregate.elements.Author')
+
+
+class Comment(BaseEntity):
+    content = Text()
+    added_on = DateTime()
+    post = Reference('tests.aggregate.elements.Post')
+
+
+class CommentVia(BaseEntity):
+    content = Text()
+    added_on = DateTime()
+    posting_id = String()
+
+
+class CommentViaWithReference(BaseEntity):
+    content = Text()
+    added_on = DateTime()
+    posting = Reference('tests.aggregate.elements.PostVia')
+
+
 class Author(BaseEntity):
     first_name = String(required=True, max_length=25)
     last_name = String(max_length=25)
@@ -122,13 +152,45 @@ class Account(BaseEntity):
     author = HasOne('tests.aggregate.elements.Author')
 
 
+class AccountWithId(BaseEntity):
+    email = String(required=True, max_length=255, unique=True)
+    password = String(required=True, max_length=255)
+    username = String(max_length=255, unique=True)
+    author = HasOne('tests.aggregate.elements.Author')
+
+
+class AccountVia(BaseEntity):
+    email = String(required=True, max_length=255, unique=True, identifier=True)
+    password = String(required=True, max_length=255)
+    username = String(max_length=255, unique=True)
+    profile = HasOne('tests.aggregate.elements.ProfileVia', via='account_email')
+
+
+class AccountViaWithReference(BaseEntity):
+    email = String(required=True, max_length=255, unique=True, identifier=True)
+    password = String(required=True, max_length=255)
+    username = String(max_length=255, unique=True)
+    profile = HasOne('tests.aggregate.elements.ProfileViaWithReference', via='ac_email')
+
+
 class Profile(BaseEntity):
     about_me = Text()
     account = Reference('tests.aggregate.elements.Account', via='username')
 
 
-class Comment(BaseEntity):
-    content = Text()
-    added_on = DateTime()
-    post = Reference('tests.aggregate.elements.Post')
+class ProfileWithAccountId(BaseEntity):
+    about_me = Text()
+    account = Reference('tests.aggregate.elements.AccountWithId')
+
+
+class ProfileVia(BaseEntity):
+    profile_id = String(identifier=True)
+    about_me = Text()
+    account_email = String(max_length=255)
+
+
+class ProfileViaWithReference(BaseEntity):
+    about_me = Text()
+    ac = Reference('tests.aggregate.elements.AccountViaWithReference')
+
 # Aggregates to test associations # END #

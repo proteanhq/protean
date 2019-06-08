@@ -248,14 +248,28 @@ class Domain(_PackageBoundObject):
 
     def _register_element(self, element_type, element_cls, **kwargs):
         """Register class into the domain"""
-        new_dict = element_cls.__dict__.copy()
-        new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
+        # Check if `element_cls` is already a subclass of the Element Type
+        #   which would be the case in an explicit declaration like `class Account(BaseEntity):`
+        #
+        # We will need to construct a class derived from the right base class
+        #   if the Element was specified through annotation, like so:
+        #
+        #  ```
+        #       @Entity
+        #       class Account:
+        #  ```
 
         try:
-            if element_type.value not in self.base_class_mapping:
-                raise
+            if not issubclass(element_cls, self.base_class_mapping[element_type.value]):
+                new_dict = element_cls.__dict__.copy()
+                new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
 
-            new_cls = type(element_cls.__name__, (self.base_class_mapping[element_type.value], ), new_dict)
+                if element_type.value not in self.base_class_mapping:
+                    raise
+
+                new_cls = type(element_cls.__name__, (self.base_class_mapping[element_type.value], ), new_dict)
+            else:
+                new_cls = element_cls  # Element was already subclassed properly
         except BaseException as exc:
             logger.debug("Error during Element registration:", repr(exc))
             raise IncorrectUsageError(
@@ -413,6 +427,13 @@ class Domain(_PackageBoundObject):
         """Fetch Domain record with Element class details"""
         element_qualname = fully_qualified_name(element_cls)
         return self._get_element_by_name(element_types, element_qualname)
+
+    def _replace_element_by_class(self, new_element_cls):
+        aggregate_record = self._get_element_by_class(
+            (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
+            new_element_cls)
+
+        self._domain_registry._elements[aggregate_record.class_type][aggregate_record.qualname].cls = new_element_cls
 
     def get_model(self, aggregate_cls):
         """Retrieve Model class connected to Entity"""
