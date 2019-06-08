@@ -6,13 +6,6 @@ from .elements import Person, PersonRepository
 
 
 class TestAggregatePersistenceWithDictProvider:
-    @pytest.fixture
-    def test_domain(self):
-        from protean.domain import Domain
-        domain = Domain('Test')
-        domain.config.from_object('tests.repository.config')
-
-        yield domain
 
     def test_retrieval_from_provider_connection(self, test_domain):
         conn = test_domain.get_connection()
@@ -25,13 +18,6 @@ class TestAggregatePersistenceWithDictProvider:
 
 
 class TestAggregatePersistenceWithRepository:
-    @pytest.fixture
-    def test_domain(self):
-        from protean.domain import Domain
-        domain = Domain('Test')
-        domain.config.from_object('tests.repository.config')
-
-        yield domain
 
     @pytest.fixture(autouse=True)
     def register_repositories(self, test_domain):

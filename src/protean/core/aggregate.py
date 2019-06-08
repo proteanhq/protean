@@ -11,7 +11,8 @@ from protean.core.exceptions import NotSupportedError, ValidationError
 from protean.core.field.basic import Auto, Field
 from protean.core.field.association import Reference, Association
 from protean.core.field.embedded import ValueObjectField
-from protean.utils import inflection
+from protean.globals import current_domain
+from protean.utils import inflection, IdentityStrategy
 
 # Local/Relative Imports
 from ..core.field.association import _ReferenceField  # Relative path to private class
@@ -373,12 +374,10 @@ class BaseAggregate(metaclass=_AggregateMetaclass):
     @classmethod
     def _generate_identity(cls):
         """Generate Unique Identifier, based on strategy"""
-        # FIXME Implement multiple Identity Generation Strategies
-        # if active_config.IDENTITY_STRATEGY == IdentityStrategy.UUID:
-        #     return uuid4()
+        if current_domain.config['IDENTITY_STRATEGY'] == IdentityStrategy.UUID:
+            return uuid4()
 
-        # return None  # Database will generate the identity
-        return uuid4()
+        return None  # Database will generate the identity
 
     def __eq__(self, other):
         """Equaivalence check to be based only on Identity"""

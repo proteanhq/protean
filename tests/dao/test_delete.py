@@ -7,23 +7,12 @@ from .elements import Person, PersonRepository, User
 
 
 class TestDAODeleteFunctionality:
-    @pytest.fixture
-    def test_domain(self):
-        from protean.domain import Domain
-        domain = Domain('Test')
-        domain.config.from_object('tests.repository.config')
-
-        yield domain
 
     @pytest.fixture(autouse=True)
-    def run_around_tests(self, test_domain):
+    def register_elements(self, test_domain):
         test_domain.register(Person)
         test_domain.register(PersonRepository, aggregate=Person)
         test_domain.register(User)
-
-        yield
-
-        test_domain.get_provider('default')._data_reset()
 
     def test_delete_an_object_in_repository_by_id(self, test_domain):
         """ Delete an object in the reposoitory by ID"""
