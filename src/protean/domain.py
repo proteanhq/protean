@@ -28,6 +28,7 @@ _sentinel = object()
 
 class DomainObjects(Enum):
     AGGREGATE = 'AGGREGATE'
+    DOMAIN_SERVICE = 'DOMAIN_SERVICE'
     APPLICATION_SERVICE = 'APPLICATION_SERVICE'
     ENTITY = 'ENTITY'
     REPOSITORY = 'REPOSITORY'
@@ -101,6 +102,7 @@ class Domain(_PackageBoundObject):
     """
 
     from protean.core.aggregate import BaseAggregate
+    from protean.core.domain_service import BaseDomainService
     from protean.core.application_service import BaseApplicationService
     from protean.core.entity import BaseEntity
     from protean.core.repository.base import BaseRepository
@@ -128,6 +130,7 @@ class Domain(_PackageBoundObject):
 
     base_class_mapping = {
             DomainObjects.AGGREGATE.value: BaseAggregate,
+            DomainObjects.DOMAIN_SERVICE.value: BaseDomainService,
             DomainObjects.APPLICATION_SERVICE.value: BaseApplicationService,
             DomainObjects.ENTITY.value: BaseEntity,
             DomainObjects.REPOSITORY.value: BaseRepository,
@@ -233,6 +236,10 @@ class Domain(_PackageBoundObject):
     @property
     def aggregates(self):
         return self._domain_registry._elements[DomainObjects.AGGREGATE.value]
+
+    @property
+    def domain_services(self):
+        return self._domain_registry._elements[DomainObjects.DOMAIN_SERVICE.value]
 
     @property
     def application_services(self):
@@ -358,6 +365,11 @@ class Domain(_PackageBoundObject):
     def aggregate(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.AGGREGATE, _cls=_cls, **kwargs,
+            aggregate=aggregate, bounded_context=bounded_context)
+
+    def domain_service(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
+        return self._domain_element(
+            DomainObjects.DOMAIN_SERVICE, _cls=_cls, **kwargs,
             aggregate=aggregate, bounded_context=bounded_context)
 
     def application_service(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
