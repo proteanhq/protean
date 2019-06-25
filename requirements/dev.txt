@@ -5,5 +5,5 @@ coverage==4.5.3
 docutils==0.14
 pytest-flake8==1.0.4
 sphinx==2.1.2
-tox==3.12.1
+tox==3.13.0
 twine==1.13.0
