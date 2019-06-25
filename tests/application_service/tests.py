@@ -6,7 +6,7 @@ from protean.utils import fully_qualified_name
 from .elements import DummyApplicationService
 
 
-class TestDomainServiceInitialization:
+class TestApplicationServiceInitialization:
     def test_that_base_application_service_class_cannot_be_instantiated(self):
         with pytest.raises(TypeError):
             BaseApplicationService()
@@ -16,7 +16,7 @@ class TestDomainServiceInitialization:
         assert service is not None
 
 
-class TestDomainServiceRegistration:
+class TestApplicationServiceRegistration:
     def test_that_application_service_can_be_registered_with_domain(self, test_domain):
         test_domain.register(DummyApplicationService)
 
