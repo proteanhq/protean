@@ -72,6 +72,10 @@ class Balance(BaseValueObject):
     currency = String(max_length=3, choices=Currency)
     amount = Float()
 
+    def clean(self):
+        if self.amount < -1000000000000.0:
+            raise ValidationError("Amount cannot be less than 1 Trillion")
+
     def replace(self, **kwargs):
         # FIXME Find a way to do this generically and move method to `BaseValueObject`
         currency = kwargs.pop('currency', None)
