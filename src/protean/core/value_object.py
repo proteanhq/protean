@@ -219,12 +219,20 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
         if self.errors:
             raise ValidationError(self.errors)
 
+        self.clean()
+
     @classmethod
     def build(cls, **values):
         assert all(attr in values
                    for attr in cls.meta_.declared_fields.keys())
 
         return cls(**values)
+
+    def clean(self):
+        """Placeholder method for validations.
+        To be overridden in concrete Value Objects, when complex
+        validations spanning multiple fields are required.
+        """
 
     def __eq__(self, other):
         """Equaivalence check for value objects is based only on data.

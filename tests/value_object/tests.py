@@ -107,9 +107,13 @@ class TestBalanceVOBehavior:
         with pytest.raises(ValidationError):
             Balance.build(currency='FOO', amount=0.0)
 
-    def test_that_float_values_can_be_assigned_to_balance_object(self):
+    def test_that_only_valid_float_values_can_be_assigned_to_balance_object(self):
         with pytest.raises(ValidationError):
             Balance.build(currency='FOO', amount='abc')
+
+    def test_that_a_negative_balance_less_than_one_trillion_is_invalid(self):
+        with pytest.raises(ValidationError):
+            Balance.build(currency='FOO', amount=-100000000000000.0)
 
     def test_that_new_balance_object_is_generated_with_replace_method(self):
         balance1 = Balance.build(currency=Currency.CAD.value, amount=0.0)
