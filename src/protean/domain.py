@@ -28,11 +28,13 @@ _sentinel = object()
 
 class DomainObjects(Enum):
     AGGREGATE = 'AGGREGATE'
-    DOMAIN_SERVICE = 'DOMAIN_SERVICE'
     APPLICATION_SERVICE = 'APPLICATION_SERVICE'
+    DOMAIN_EVENT = 'DOMAIN_EVENT'
+    DOMAIN_SERVICE = 'DOMAIN_SERVICE'
     ENTITY = 'ENTITY'
     REPOSITORY = 'REPOSITORY'
     REQUEST_OBJECT = 'REQUEST_OBJECT'
+    SUBSCRIBER = 'SUBSCRIBER'
     VALUE_OBJECT = 'VALUE_OBJECT'
 
 
@@ -102,8 +104,10 @@ class Domain(_PackageBoundObject):
     """
 
     from protean.core.aggregate import BaseAggregate
-    from protean.core.domain_service import BaseDomainService
     from protean.core.application_service import BaseApplicationService
+    from protean.core.broker.subscriber import BaseSubscriber
+    from protean.core.domain_event import BaseDomainEvent
+    from protean.core.domain_service import BaseDomainService
     from protean.core.entity import BaseEntity
     from protean.core.repository.base import BaseRepository
     from protean.core.transport.request import BaseRequestObject
@@ -124,18 +128,21 @@ class Domain(_PackageBoundObject):
             "SECRET_KEY": None,
             "IDENTITY_STRATEGY": IdentityStrategy.UUID,
             "DATABASES": {},
+            "BROKERS": {},
             "CACHE": {}
         }
     )
 
     base_class_mapping = {
             DomainObjects.AGGREGATE.value: BaseAggregate,
-            DomainObjects.DOMAIN_SERVICE.value: BaseDomainService,
             DomainObjects.APPLICATION_SERVICE.value: BaseApplicationService,
+            DomainObjects.DOMAIN_EVENT.value: BaseDomainEvent,
+            DomainObjects.DOMAIN_SERVICE.value: BaseDomainService,
             DomainObjects.ENTITY.value: BaseEntity,
             DomainObjects.REPOSITORY.value: BaseRepository,
             DomainObjects.REQUEST_OBJECT.value: BaseRequestObject,
-            DomainObjects.VALUE_OBJECT.value: BaseValueObject
+            DomainObjects.SUBSCRIBER.value: BaseSubscriber,
+            DomainObjects.VALUE_OBJECT.value: BaseValueObject,
         }
 
     def __init__(
@@ -156,6 +163,7 @@ class Domain(_PackageBoundObject):
         self.config = self.make_config(instance_relative_config)
 
         self.providers = None
+        self._brokers = None
 
         #: A list of functions that are called when the domain context
         #: is destroyed.  This is the place to store code that cleans up and
@@ -238,20 +246,20 @@ class Domain(_PackageBoundObject):
         return self._domain_registry._elements[DomainObjects.AGGREGATE.value]
 
     @property
-    def domain_services(self):
-        return self._domain_registry._elements[DomainObjects.DOMAIN_SERVICE.value]
-
-    @property
     def application_services(self):
         return self._domain_registry._elements[DomainObjects.APPLICATION_SERVICE.value]
 
     @property
-    def entities(self):
-        return self._domain_registry._elements[DomainObjects.ENTITY.value]
+    def domain_events(self):
+        return self._domain_registry._elements[DomainObjects.DOMAIN_EVENT.value]
 
     @property
-    def value_objects(self):
-        return self._domain_registry._elements[DomainObjects.VALUE_OBJECT.value]
+    def domain_services(self):
+        return self._domain_registry._elements[DomainObjects.DOMAIN_SERVICE.value]
+
+    @property
+    def entities(self):
+        return self._domain_registry._elements[DomainObjects.ENTITY.value]
 
     @property
     def request_objects(self):
@@ -261,7 +269,15 @@ class Domain(_PackageBoundObject):
     def repositories(self):
         return self._domain_registry._elements[DomainObjects.REPOSITORY.value]
 
-    def _register_element(self, element_type, element_cls, **kwargs):
+    @property
+    def subscribers(self):
+        return self._domain_registry._elements[DomainObjects.SUBSCRIBER.value]
+
+    @property
+    def value_objects(self):
+        return self._domain_registry._elements[DomainObjects.VALUE_OBJECT.value]
+
+    def _register_element(self, element_type, element_cls, **kwargs):  # noqa: C901
         """Register class into the domain"""
         # Check if `element_cls` is already a subclass of the Element Type
         #   which would be the case in an explicit declaration like `class Account(BaseEntity):`
@@ -304,7 +320,21 @@ class Domain(_PackageBoundObject):
         if element_type == DomainObjects.REPOSITORY and self._validate_repository_class(new_cls):
             aggregate = new_cls.meta_.aggregate or kwargs.pop('aggregate', None)
             if not aggregate:
-                raise IncorrectUsageError("Repositories need to be associated with an Aggregate Class")
+                raise IncorrectUsageError("Repositories need to be associated with an Aggregate")
+
+        if element_type == DomainObjects.SUBSCRIBER and self._validate_subscriber_class(new_cls):
+            domain_event_cls = new_cls.meta_.domain_event_cls or kwargs.pop('domain_event', None)
+            broker_name = new_cls.meta_.broker or 'default'
+            if not domain_event_cls:
+                raise IncorrectUsageError("Subscribers need to be associated with Domain Event")
+
+            new_cls.meta_.domain_event_cls = domain_event_cls
+
+            if self._brokers is None:
+                self._brokers = self._initialize_brokers()
+            if broker_name not in self._brokers:
+                raise ConfigurationError(f"Broker {broker_name} has not been configured.")
+            self._brokers[broker_name].register(domain_event_cls, new_cls)
 
         # Enrich element with domain information
         if hasattr(new_cls, 'meta_'):
@@ -343,16 +373,26 @@ class Domain(_PackageBoundObject):
 
         return True
 
+    def _validate_subscriber_class(self, element_cls):
+        # Import here to avoid cyclic dependency
+        from protean.core.broker.subscriber import BaseSubscriber
+
+        if not issubclass(element_cls, BaseSubscriber):
+            raise AssertionError(
+                f'Element {element_cls.__name__} must be subclass of `BaseSubscriber`')
+
+        return True
+
     # _cls should never be specified by keyword, so start it with an
     # underscore.  The presence of _cls is used to detect if this
     # decorator is being called with parameters or not.
-    def _domain_element(self, element_type, _cls=None, *, aggregate=None, bounded_context=None):
+    def _domain_element(self, element_type, _cls=None, *, aggregate=None, bounded_context=None, domain_event=None):
         """Returns the registered class after decoarating it and recording its presence in the domain"""
 
         def wrap(cls):
             return self._register_element(
                 element_type, cls,
-                aggregate=aggregate, bounded_context=bounded_context)
+                aggregate=aggregate, bounded_context=bounded_context, domain_event=domain_event)
 
         # See if we're being called as @Entity or @Entity().
         if _cls is None:
@@ -367,14 +407,19 @@ class Domain(_PackageBoundObject):
             DomainObjects.AGGREGATE, _cls=_cls, **kwargs,
             aggregate=aggregate, bounded_context=bounded_context)
 
-    def domain_service(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
-        return self._domain_element(
-            DomainObjects.DOMAIN_SERVICE, _cls=_cls, **kwargs,
-            aggregate=aggregate, bounded_context=bounded_context)
-
     def application_service(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.APPLICATION_SERVICE, _cls=_cls, **kwargs,
+            aggregate=aggregate, bounded_context=bounded_context)
+
+    def domain_event(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
+        return self._domain_element(
+            DomainObjects.DOMAIN_EVENT, _cls=_cls, **kwargs,
+            aggregate=aggregate, bounded_context=bounded_context)
+
+    def domain_service(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
+        return self._domain_element(
+            DomainObjects.DOMAIN_SERVICE, _cls=_cls, **kwargs,
             aggregate=aggregate, bounded_context=bounded_context)
 
     def entity(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
@@ -382,14 +427,19 @@ class Domain(_PackageBoundObject):
             DomainObjects.ENTITY, _cls=_cls, **kwargs,
             aggregate=aggregate, bounded_context=bounded_context)
 
-    def value_object(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
-        return self._domain_element(
-            DomainObjects.VALUE_OBJECT, _cls=_cls, **kwargs,
-            aggregate=aggregate, bounded_context=bounded_context)
-
     def request_object(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.REQUEST_OBJECT, _cls=_cls, **kwargs,
+            aggregate=aggregate, bounded_context=bounded_context)
+
+    def subscriber(self, domain_event, _cls=None, aggregate=None, bounded_context=None, **kwargs):
+        return self._domain_element(
+            DomainObjects.SUBSCRIBER, _cls=_cls, **kwargs,
+            aggregate=aggregate, bounded_context=bounded_context, domain_event=domain_event)
+
+    def value_object(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
+        return self._domain_element(
+            DomainObjects.VALUE_OBJECT, _cls=_cls, **kwargs,
             aggregate=aggregate, bounded_context=bounded_context)
 
     def register(self, element_cls, **kwargs):
@@ -409,7 +459,7 @@ class Domain(_PackageBoundObject):
             raise NotSupportedError(f'{element_cls.__name__} class has been marked abstract'
                                     ' and cannot be instantiated')
 
-        return self._register_element(DomainObjects[element_types.pop()], element_cls, **kwargs)
+        return self._register_element(DomainObjects[element_types[0]], element_cls, **kwargs)
 
     def unregister(self, element_cls):
         """Unregister a Domain Element.
@@ -541,3 +591,55 @@ class Domain(_PackageBoundObject):
         provider = self.get_provider(aggregate_record.provider_name)
 
         return provider.get_dao(aggregate_record.cls)
+
+    def _initialize_brokers(self):
+        """Read config file and initialize brokers"""
+        configured_brokers = self.config['BROKERS']
+        broker_objects = {}
+
+        if configured_brokers and isinstance(configured_brokers, dict):
+            if 'default' not in configured_brokers:
+                raise ConfigurationError(
+                    "You must define a 'default' broker")
+
+            for broker_name, conn_info in configured_brokers.items():
+                broker_full_path = conn_info['PROVIDER']
+                broker_module, broker_class = broker_full_path.rsplit('.', maxsplit=1)
+
+                broker_cls = getattr(importlib.import_module(broker_module), broker_class)
+                broker_objects[broker_name] = broker_cls(broker_name, self, conn_info)
+
+        return broker_objects
+
+    def has_broker(self, broker_name):
+        if self.brokers is None:
+            self.brokers = self._initialize_brokers()
+
+        return broker_name in self.brokers
+
+    def get_broker(self, broker_name):
+        """Retrieve the broker object with a given broker name"""
+        if self.brokers is None:
+            self.brokers = self._initialize_brokers()
+
+        try:
+            return self.brokers[broker_name]
+        except KeyError:
+            raise AssertionError(f'No Broker registered with name {broker_name}')
+
+    @property
+    def brokers_list(self):
+        """A generator that helps users iterator through brokers"""
+        if self._brokers is None:
+            self._brokers = self._initialize_brokers()
+
+        for broker_name in self._brokers:
+            yield self._brokers[broker_name]
+
+    def publish(self, domain_event):
+        """Publish a domain event to all registered brokers"""
+        if self._brokers is None:
+            self._brokers = self._initialize_brokers()
+
+        for broker_name in self._brokers:
+            self._brokers[broker_name].send_message(domain_event)
