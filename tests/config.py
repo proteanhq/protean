@@ -26,3 +26,10 @@ DATABASES = {
 #   * IdentityStrategy.DATABASE: Let the database generate unique identity during persistence
 #   * IdentityStrategy.FUNCTION: Special function that returns a unique identifier
 IDENTITY_STRATEGY = IdentityStrategy.UUID
+
+# Messaging Mediums
+BROKERS = {
+    'default': {
+        'PROVIDER': 'protean.impl.broker.memory_broker.MemoryBroker'
+    }
+}
