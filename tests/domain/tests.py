@@ -133,11 +133,11 @@ class TestDomainAnnotations:
     def test_register_entity_against_an_aggregate(self, test_domain):
         from protean.core.field.basic import String
 
-        @test_domain.entity(aggregate='foo')
+        @test_domain.entity(aggregate_cls='foo')
         class FooBar:
             foo = String(max_length=50)
 
-        assert FooBar.meta_.aggregate == 'foo'
+        assert FooBar.meta_.aggregate_cls == 'foo'
 
     def test_that_only_recognized_element_types_can_be_registered(self, test_domain):
         from enum import Enum
@@ -150,4 +150,4 @@ class TestDomainAnnotations:
             foo = String(max_length=50)
 
         with pytest.raises(IncorrectUsageError):
-            test_domain._register_element(DummyElement.FOO, FooBar, aggregate='foo')
+            test_domain._register_element(DummyElement.FOO, FooBar, aggregate_cls='foo')

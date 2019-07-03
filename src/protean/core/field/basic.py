@@ -140,6 +140,20 @@ class List(Field):
         return value
 
 
+class Set(Field):
+    """Concrete field implementation for the Set type.
+    """
+    default_error_messages = {
+        'invalid': '"{value}" value must be of set type.',
+    }
+
+    def _cast_to_type(self, value):
+        """ Raise error if the value is not a set """
+        if not isinstance(value, set):
+            self.fail('invalid', value=value)
+        return value
+
+
 class Dict(Field):
     """Concrete field implementation for the Dict type.
     """
