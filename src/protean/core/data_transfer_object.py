@@ -1,4 +1,4 @@
-"""Value Object Functionality and Classes"""
+"""Data Transfer Object Functionality and Classes"""
 # Standard Library Imports
 import copy
 import logging
@@ -8,15 +8,15 @@ from protean.core.exceptions import NotSupportedError, ValidationError
 from protean.core.field.basic import Auto, Field
 from protean.utils import inflection
 
-logger = logging.getLogger('protean.core.value_object')
+logger = logging.getLogger('protean.core.data_transfer_object')
 
 
-class _ValueObjectMetaclass(type):
+class _DataTransferObjectMetaclass(type):
     """
     This base metaclass processes the class declaration and constructs a meta object that can
-    be used to introspect the ValueObject class later. Specifically, it sets up a `meta_` attribute on
-    the ValueObject to an instance of Meta, either the default of one that is defined in the
-    ValueObject class.
+    be used to introspect the DataTransferObject class later. Specifically, it sets up a `meta_` attribute on
+    the DataTransferObject to an instance of Meta, either the default of one that is defined in the
+    DataTransferObject class.
 
     `meta_` is setup with these attributes:
         * `declared_fields`: A dictionary that gives a list of any instances of `Field`
@@ -24,11 +24,11 @@ class _ValueObjectMetaclass(type):
     """
 
     def __new__(mcs, name, bases, attrs, **kwargs):
-        """Initialize ValueObject MetaClass and load attributes"""
+        """Initialize DataTransferObject MetaClass and load attributes"""
 
-        # Ensure initialization is only performed for subclasses of ValueObject
-        # (excluding ValueObject class itself).
-        parents = [b for b in bases if isinstance(b, _ValueObjectMetaclass)]
+        # Ensure initialization is only performed for subclasses of DataTransferObject
+        # (excluding DataTransferObject class itself).
+        parents = [b for b in bases if isinstance(b, _DataTransferObjectMetaclass)]
         if not parents:
             return super().__new__(mcs, name, bases, attrs)
 
@@ -42,7 +42,7 @@ class _ValueObjectMetaclass(type):
         # Gather `Meta` class/object if defined
         attr_meta = attrs.pop('Meta', None)
         meta = attr_meta or getattr(new_class, 'Meta', None)
-        setattr(new_class, 'meta_', ValueObjectMeta(name, meta))
+        setattr(new_class, 'meta_', DataTransferObjectMeta(name, meta))
 
         # Load declared fields
         new_class._load_fields(attrs)
@@ -56,7 +56,7 @@ class _ValueObjectMetaclass(type):
         return new_class
 
     def _load_base_class_fields(new_class, bases, attrs):
-        """If this class is subclassing another ValueObject, add that ValueObject's
+        """If this class is subclassing another DataTransferObject, add that DataTransferObject's
         fields.  Note that we loop over the bases in *reverse*.
         This is necessary in order to maintain the correct order of fields.
         """
@@ -83,15 +83,15 @@ class _ValueObjectMetaclass(type):
             new_class.meta_.attributes[field_obj.get_attribute_name()] = field_obj
 
 
-class ValueObjectMeta:
-    """ Metadata info for the ValueObject.
+class DataTransferObjectMeta:
+    """ Metadata info for the DataTransferObject.
 
     Options:
     - ``abstract``: Indicates that this is an abstract entity (Ignores all other meta options)
     - ``schema_name``: name of the schema (table/index/doc) used for persistence of this entity
-        defaults to underscore version of the Entity name. Only considered if the ValueObject is to be persisted.
+        defaults to underscore version of the Entity name. Only considered if the DataTransferObject is to be persisted.
     - ``provider``: the name of the datasource associated with this
-        ValueObject, default value is `default`. Only considered if the ValueObject is to be persisted.
+        DataTransferObject, default value is `default`. Only considered if the DataTransferObject is to be persisted.
 
     Also acts as a placeholder for generated entity fields like:
 
@@ -139,15 +139,15 @@ class _FieldsCacheDescriptor:
         return res
 
 
-class BaseValueObject(metaclass=_ValueObjectMetaclass):
-    """The Base class for Protean-Compliant Domain Value Objects.
+class BaseDataTransferObject(metaclass=_DataTransferObjectMetaclass):
+    """The Base class for Protean-Compliant Domain Data Transfer Objects.
 
     Provides helper methods to custom define attributes, and find attribute names
     during runtime.
 
     Basic Usage::
 
-        @ValueObject
+        @DataTransferObject
         class Address:
             unit = field.String()
             address = field.String(required=True, max_length=255)
@@ -157,7 +157,7 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
 
     (or)
 
-        class Address(BaseValueObject):
+        class Address(BaseDataTransferObject):
             unit = field.String()
             address = field.String(required=True, max_length=255)
             city = field.String(max_length=50)
@@ -166,19 +166,19 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
 
         domain.register_element(Address)
 
-    If persistence is required, the model associated with this value object is retrieved dynamically.
-    The value object may be persisted along with its related entity, or separately in which case its model is
+    If persistence is required, the model associated with this data transfer object is retrieved dynamically.
+    The data transfer object may be persisted along with its related entity, or separately in which case its model is
     retrieved from the repository factory. Model is usually initialized with a live DB connection.
     """
 
     def __new__(cls, *args, **kwargs):
-        if cls is BaseValueObject:
-            raise TypeError("BaseValueObject cannot be instantiated")
+        if cls is BaseDataTransferObject:
+            raise TypeError("BaseDataTransferObject cannot be instantiated")
         return super().__new__(cls)
 
     def __init__(self, *template, owner=None, **kwargs):
         """
-        Initialise the value object.
+        Initialise the data transfer object.
 
         During initialization, set value on fields if vaidation passes.
 
@@ -193,7 +193,7 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
 
         self.errors = {}
 
-        # Entity/Aggregate to which this Value Object is connected to
+        # Entity/Aggregate to which this Data Transfer Object is connected to
         self.owner = owner
 
         # Load the attributes based on the template
@@ -235,14 +235,14 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
 
     def clean(self):
         """Placeholder method for validations.
-        To be overridden in concrete Value Objects, when complex
+        To be overridden in concrete Data Transfer Objects, when complex
         validations spanning multiple fields are required.
         """
 
     def __eq__(self, other):
-        """Equaivalence check for value objects is based only on data.
+        """Equaivalence check for data transfer objects is based only on data.
 
-        Two Value Objects are considered equal if they have the same data.
+        Two Data Transfer Objects are considered equal if they have the same data.
         """
         if type(other) is not type(self):
             return False
@@ -254,7 +254,7 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
         return hash(frozenset(self.to_dict().items()))
 
     def __repr__(self):
-        """Friendly repr for Value Object"""
+        """Friendly repr for Data Transfer Object"""
         return '<%s: %s>' % (self.__class__.__name__, self)
 
     def __str__(self):
@@ -269,9 +269,9 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
                 for field_name in self.meta_.attributes}
 
     def clone(self):
-        """Deepclone the value object"""
+        """Deepclone the data transfer object"""
         return copy.deepcopy(self)
 
     def _clone_with_values(self, **kwargs):
-        """To be implemented in each value object"""
+        """To be implemented in each data transfer object"""
         raise NotImplementedError
