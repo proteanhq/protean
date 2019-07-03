@@ -40,11 +40,11 @@ class BrokerMeta:
     """ Metadata info for the Broker.
 
     Options:
-    - ``aggregate``: The aggregate associated with the repository
+    - ``aggregate_cls``: The aggregate associated with the repository
     """
 
     def __init__(self, entity_name, meta):
-        self.aggregate = getattr(meta, 'aggregate', None)
+        self.aggregate_cls = getattr(meta, 'aggregate_cls', None)
 
 
 class BaseBroker(metaclass=_BrokerMetaclass):

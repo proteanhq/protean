@@ -40,11 +40,11 @@ class RepositoryMeta:
     """ Metadata info for the RepositoryMeta.
 
     Options:
-    - ``aggregate``: The aggregate associated with the repository
+    - ``aggregate_cls``: The aggregate associated with the repository
     """
 
     def __init__(self, entity_name, meta):
-        self.aggregate = getattr(meta, 'aggregate', None)
+        self.aggregate_cls = getattr(meta, 'aggregate_cls', None)
 
 
 class BaseRepository(metaclass=_RepositoryMetaclass):
@@ -74,7 +74,7 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
             # Persist only if the aggregate object is new, or it has changed since last persistence
             if ((not aggregate.state_.is_persisted) or
                     (aggregate.state_.is_persisted and aggregate.state_.is_changed)):
-                dao = self.domain.get_dao(self.meta_.aggregate)
+                dao = self.domain.get_dao(self.meta_.aggregate_cls)
                 dao.save(aggregate)
 
         return aggregate
@@ -87,14 +87,14 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
 
             self.uow.register_delete(aggregate)
         else:
-            dao = self.domain.get_dao(self.meta_.aggregate)
+            dao = self.domain.get_dao(self.meta_.aggregate_cls)
             dao.delete(aggregate)
 
         return aggregate
 
     def get(self, identifier):
         """Retrieve object from Repository"""
-        dao = self.domain.get_dao(self.meta_.aggregate)
+        dao = self.domain.get_dao(self.meta_.aggregate_cls)
         return dao.get(identifier)
 
     def filter(self, specification):

@@ -16,4 +16,4 @@ class PersonRepository(BaseRepository):
         pass  # FIXME Implement filter method
 
     class Meta:
-        aggregate = Person
+        aggregate_cls = Person

@@ -316,10 +316,10 @@ class Domain(_PackageBoundObject):
             provider_name = provider_name or new_cls.meta_.provider or 'default'
             model_cls = None  # FIXME Add ability to specify model_cls explicitly
 
-        aggregate = None
+        aggregate_cls = None
         if element_type == DomainObjects.REPOSITORY and self._validate_repository_class(new_cls):
-            aggregate = new_cls.meta_.aggregate or kwargs.pop('aggregate', None)
-            if not aggregate:
+            aggregate_cls = new_cls.meta_.aggregate_cls or kwargs.pop('aggregate_cls', None)
+            if not aggregate_cls:
                 raise IncorrectUsageError("Repositories need to be associated with an Aggregate")
 
         if element_type == DomainObjects.SUBSCRIBER and self._validate_subscriber_class(new_cls):
@@ -338,7 +338,7 @@ class Domain(_PackageBoundObject):
 
         # Enrich element with domain information
         if hasattr(new_cls, 'meta_'):
-            new_cls.meta_.aggregate = aggregate or kwargs.pop('aggregate', None)
+            new_cls.meta_.aggregate_cls = aggregate_cls or kwargs.pop('aggregate_cls', None)
             new_cls.meta_.bounded_context = kwargs.pop('bounded_context', None)
 
         # Register element with domain
@@ -386,13 +386,15 @@ class Domain(_PackageBoundObject):
     # _cls should never be specified by keyword, so start it with an
     # underscore.  The presence of _cls is used to detect if this
     # decorator is being called with parameters or not.
-    def _domain_element(self, element_type, _cls=None, *, aggregate=None, bounded_context=None, domain_event=None):
+    def _domain_element(
+            self, element_type, _cls=None, *, aggregate_cls=None,
+            bounded_context=None, domain_event=None):
         """Returns the registered class after decoarating it and recording its presence in the domain"""
 
         def wrap(cls):
             return self._register_element(
                 element_type, cls,
-                aggregate=aggregate, bounded_context=bounded_context, domain_event=domain_event)
+                aggregate_cls=aggregate_cls, bounded_context=bounded_context, domain_event=domain_event)
 
         # See if we're being called as @Entity or @Entity().
         if _cls is None:
@@ -402,45 +404,45 @@ class Domain(_PackageBoundObject):
         # We're called as @dataclass without parens.
         return wrap(_cls)
 
-    def aggregate(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
+    def aggregate(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.AGGREGATE, _cls=_cls, **kwargs,
-            aggregate=aggregate, bounded_context=bounded_context)
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
 
-    def application_service(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
+    def application_service(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.APPLICATION_SERVICE, _cls=_cls, **kwargs,
-            aggregate=aggregate, bounded_context=bounded_context)
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
 
-    def domain_event(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
+    def domain_event(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.DOMAIN_EVENT, _cls=_cls, **kwargs,
-            aggregate=aggregate, bounded_context=bounded_context)
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
 
-    def domain_service(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
+    def domain_service(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.DOMAIN_SERVICE, _cls=_cls, **kwargs,
-            aggregate=aggregate, bounded_context=bounded_context)
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
 
-    def entity(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
+    def entity(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.ENTITY, _cls=_cls, **kwargs,
-            aggregate=aggregate, bounded_context=bounded_context)
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
 
-    def request_object(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
+    def request_object(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.REQUEST_OBJECT, _cls=_cls, **kwargs,
-            aggregate=aggregate, bounded_context=bounded_context)
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
 
-    def subscriber(self, domain_event, _cls=None, aggregate=None, bounded_context=None, **kwargs):
+    def subscriber(self, domain_event, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.SUBSCRIBER, _cls=_cls, **kwargs,
-            aggregate=aggregate, bounded_context=bounded_context, domain_event=domain_event)
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context, domain_event=domain_event)
 
-    def value_object(self, _cls=None, aggregate=None, bounded_context=None, **kwargs):
+    def value_object(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.VALUE_OBJECT, _cls=_cls, **kwargs,
-            aggregate=aggregate, bounded_context=bounded_context)
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
 
     def register(self, element_cls, **kwargs):
         """Register an element already subclassed with the correct Hierarchy"""
@@ -580,7 +582,7 @@ class Domain(_PackageBoundObject):
         """Retrieve a Repository registered for the Aggregate"""
         repository_record = next(
             repository for _, repository in self.repositories.items()
-            if type(repository.cls.meta_.aggregate) == type(aggregate_cls))  # FIXME Avoid comparing classes
+            if type(repository.cls.meta_.aggregate_cls) == type(aggregate_cls))  # FIXME Avoid comparing classes
         return repository_record.cls(self, uow)
 
     def get_dao(self, aggregate_cls):

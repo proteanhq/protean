@@ -43,7 +43,7 @@ class TestUnitOfWorkRegistration:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
-        test_domain.register(PersonRepository, aggregate=Person)
+        test_domain.register(PersonRepository, aggregate_cls=Person)
 
         yield
 
@@ -99,7 +99,7 @@ class TestUnitOfWorkTransactions:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
-        test_domain.register(PersonRepository, aggregate=Person)
+        test_domain.register(PersonRepository, aggregate_cls=Person)
 
     def random_name(self):
         return ''.join(random.choices(string.ascii_uppercase + string.digits, k=15))
