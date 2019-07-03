@@ -11,7 +11,7 @@ class TestDAO:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
-        test_domain.register(PersonRepository, aggregate=Person)
+        test_domain.register(PersonRepository, aggregate_cls=Person)
         test_domain.register(User)
 
     def test_unique(self, test_domain):
