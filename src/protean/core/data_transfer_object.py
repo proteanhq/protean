@@ -89,7 +89,8 @@ class DataTransferObjectMeta:
     Options:
     - ``abstract``: Indicates that this is an abstract entity (Ignores all other meta options)
     - ``schema_name``: name of the schema (table/index/doc) used for persistence of this entity
-        defaults to underscore version of the Entity name. Only considered if the DataTransferObject is to be persisted.
+        defaults to underscore version of the Entity name. Only considered if the DataTransferObject
+        is to be persisted.
     - ``provider``: the name of the datasource associated with this
         DataTransferObject, default value is `default`. Only considered if the DataTransferObject is to be persisted.
 
