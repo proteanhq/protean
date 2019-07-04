@@ -29,6 +29,7 @@ _sentinel = object()
 class DomainObjects(Enum):
     AGGREGATE = 'AGGREGATE'
     APPLICATION_SERVICE = 'APPLICATION_SERVICE'
+    DATA_TRANSFER_OBJECT = 'DATA_TRANSFER_OBJECT'
     DOMAIN_EVENT = 'DOMAIN_EVENT'
     DOMAIN_SERVICE = 'DOMAIN_SERVICE'
     ENTITY = 'ENTITY'
@@ -106,6 +107,7 @@ class Domain(_PackageBoundObject):
     from protean.core.aggregate import BaseAggregate
     from protean.core.application_service import BaseApplicationService
     from protean.core.broker.subscriber import BaseSubscriber
+    from protean.core.data_transfer_object import BaseDataTransferObject
     from protean.core.domain_event import BaseDomainEvent
     from protean.core.domain_service import BaseDomainService
     from protean.core.entity import BaseEntity
@@ -136,6 +138,7 @@ class Domain(_PackageBoundObject):
     base_class_mapping = {
             DomainObjects.AGGREGATE.value: BaseAggregate,
             DomainObjects.APPLICATION_SERVICE.value: BaseApplicationService,
+            DomainObjects.DATA_TRANSFER_OBJECT.value: BaseDataTransferObject,
             DomainObjects.DOMAIN_EVENT.value: BaseDomainEvent,
             DomainObjects.DOMAIN_SERVICE.value: BaseDomainService,
             DomainObjects.ENTITY.value: BaseEntity,
@@ -248,6 +251,10 @@ class Domain(_PackageBoundObject):
     @property
     def application_services(self):
         return self._domain_registry._elements[DomainObjects.APPLICATION_SERVICE.value]
+
+    @property
+    def data_transfer_objects(self):
+        return self._domain_registry._elements[DomainObjects.DATA_TRANSFER_OBJECT.value]
 
     @property
     def domain_events(self):
@@ -412,6 +419,11 @@ class Domain(_PackageBoundObject):
     def application_service(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.APPLICATION_SERVICE, _cls=_cls, **kwargs,
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
+
+    def data_transfer_object(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
+        return self._domain_element(
+            DomainObjects.DATA_TRANSFER_OBJECT, _cls=_cls, **kwargs,
             aggregate_cls=aggregate_cls, bounded_context=bounded_context)
 
     def domain_event(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
