@@ -441,6 +441,11 @@ class Domain(_PackageBoundObject):
             DomainObjects.ENTITY, _cls=_cls, **kwargs,
             aggregate_cls=aggregate_cls, bounded_context=bounded_context)
 
+    def repository(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
+        return self._domain_element(
+            DomainObjects.REPOSITORY, _cls=_cls, **kwargs,
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
+
     def request_object(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.REQUEST_OBJECT, _cls=_cls, **kwargs,
@@ -592,9 +597,16 @@ class Domain(_PackageBoundObject):
 
     def repository_for(self, aggregate_cls, uow=None):
         """Retrieve a Repository registered for the Aggregate"""
-        repository_record = next(
-            repository for _, repository in self.repositories.items()
-            if type(repository.cls.meta_.aggregate_cls) == type(aggregate_cls))  # FIXME Avoid comparing classes
+        try:
+            repository_record = next(
+                repository for _, repository in self.repositories.items()
+                if type(repository.cls.meta_.aggregate_cls) == type(aggregate_cls))  # FIXME Avoid comparing classes
+        except StopIteration:
+            raise ConfigurationError(
+                "Invalid or Unregistered Aggregate class specified, "
+                "or no Repository configured for aggregate class."
+            )
+
         return repository_record.cls(self, uow)
 
     def get_dao(self, aggregate_cls):

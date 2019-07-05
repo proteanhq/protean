@@ -3,6 +3,7 @@ from typing import List
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository.base import BaseRepository
 from protean.core.field.basic import Integer, String
+from protean.globals import current_domain
 
 
 class Person(BaseAggregate):
@@ -12,8 +13,8 @@ class Person(BaseAggregate):
 
 
 class PersonRepository(BaseRepository):
-    def find_adults(self, age: int = 21) -> List[Person]:
-        pass  # FIXME Implement filter method
+    def find_adults(self, minimum_age: int = 21) -> List[Person]:
+        return current_domain.get_dao(Person).filter(age__gte=minimum_age)
 
     class Meta:
         aggregate_cls = Person
