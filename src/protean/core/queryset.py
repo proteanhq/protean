@@ -7,6 +7,7 @@ from typing import Any, Union
 
 # Protean
 from protean.utils.query import Q
+from protean.core.repository.resultset import ResultSet
 
 logger = logging.getLogger('protean.core.entity')
 
@@ -368,3 +369,20 @@ class QuerySet:
             return self._result_cache.has_prev
 
         return self.all().has_prev
+
+    #######################
+    # Association support #
+    #######################
+
+    def add(self, item):
+        if self._result_cache:
+            if item.id not in [value.id for value in self._result_cache.items]:
+                self._result_cache.items.append(item)
+                self._result_cache.total += 1
+        else:
+            self._result_cache = ResultSet(0, 10, 1, [item])
+
+    def remove(self, item):
+        if self._result_cache:
+            self._result_cache.items[:] = [value for value in self._result_cache.items if value.id != item.id]
+            self._result_cache.total -= 1

@@ -252,7 +252,8 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
                 self._set_own_value(instance, reference_obj)
             else:
                 # No Objects were found in the remote entity with this Entity's ID
-                reference_obj = None
+                reference_obj = current_domain.get_dao(self.to_cls).query
+            self._set_own_value(instance, reference_obj)
 
         return reference_obj
 
