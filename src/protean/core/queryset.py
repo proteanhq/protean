@@ -1,13 +1,13 @@
 """QuerySet Implementation"""
 
 # Standard Library Imports
+import copy
 import logging
 
 from typing import Any, Union
 
 # Protean
 from protean.utils.query import Q
-from protean.core.repository.resultset import ResultSet
 
 logger = logging.getLogger('protean.core.entity')
 
@@ -57,6 +57,18 @@ class QuerySet:
         else:
             self._order_by = set()
 
+        # `_temp_cache` is a data container for holding temporary
+        #   It holds objects that have been added, but not yet persisted,
+        #   as well as objects that have been removed, but are still
+        #   present in the data store.
+        #
+        # The data set returned from Queryset is manipulated automatically
+        #   to be up-to-date with temporary changes.
+        self._temp_cache = {
+            'added': list(),
+            'removed': list()
+        }
+
     def _clone(self):
         """
         Return a copy of the current QuerySet.
@@ -65,6 +77,10 @@ class QuerySet:
                                offset=self._offset, limit=self._limit,
                                order_by=self._order_by)
         return clone
+
+    #########################
+    # Query support methods #
+    #########################
 
     def _add_q(self, q_object):
         """Add a Q-object to the current filter."""
@@ -291,26 +307,34 @@ class QuerySet:
     # Python Magic method support #
     ###############################
 
+    @property
+    def _data(self):
+        active_data = self._result_cache if self._result_cache else self.all()
+        temp_data = copy.deepcopy(active_data)
+
+        # Add objects in temporary cache
+        for item in self._temp_cache['added']:
+            temp_data.items.append(item)
+            temp_data.total += 1
+
+        # Remove objects in temporary cache
+        for item in self._temp_cache['removed']:
+            temp_data.items[:] = [value for value in temp_data.items if value.id != item.id]
+            temp_data.total -= 1
+
+        return temp_data
+
     def __iter__(self):
         """Return results on iteration"""
-        if self._result_cache:
-            return iter(self._result_cache)
-
-        return iter(self.all())
+        return iter(self._data)
 
     def __len__(self):
         """Return length of results"""
-        if self._result_cache:
-            return self._result_cache.total
-
-        return self.all().total
+        return self._data.total
 
     def __bool__(self):
         """Return True if query results have items"""
-        if self._result_cache:
-            return bool(self._result_cache)
-
-        return bool(self.all())
+        return bool(self._data)
 
     def __repr__(self):
         """Support friendly print of query criteria"""
@@ -321,10 +345,11 @@ class QuerySet:
 
     def __getitem__(self, k):
         """Support slicing of results"""
-        if self._result_cache:
-            return self._result_cache.items[k]
+        return self._data.items[k]
 
-        return self.all().items[k]
+    def __contains__(self, k):
+        """Support `in` operations"""
+        return k.id in [item.id for item in self._data.items]
 
     #########################
     # Result properties #
@@ -333,56 +358,40 @@ class QuerySet:
     @property
     def total(self):
         """Return the total number of records"""
-        if self._result_cache:
-            return self._result_cache.total
-
-        return self.all().total
+        return self._data.total
 
     @property
     def items(self):
         """Return result values"""
-        if self._result_cache:
-            return self._result_cache.items
-
-        return self.all().items
+        return self._data.items
 
     @property
     def first(self):
         """Return the first result"""
-        if self._result_cache:
-            return self._result_cache.first
-
-        return self.all().first
+        return self._data.first
 
     @property
     def has_next(self):
         """Return True if there are more values present"""
-        if self._result_cache:
-            return self._result_cache.has_next
-
-        return self.all().has_next
+        return self._data.has_next
 
     @property
     def has_prev(self):
         """Return True if there are previous values present"""
-        if self._result_cache:
-            return self._result_cache.has_prev
-
-        return self.all().has_prev
+        return self._data.has_prev
 
     #######################
     # Association support #
     #######################
 
     def add(self, item):
-        if self._result_cache:
-            if item.id not in [value.id for value in self._result_cache.items]:
-                self._result_cache.items.append(item)
-                self._result_cache.total += 1
-        else:
-            self._result_cache = ResultSet(0, 10, 1, [item])
+        if (item.id not in [value.id for value in self._data.items] or
+                (item.id in [value.id for value in self._data.items] and
+                 item.state_.is_persisted and item.state_.is_changed)):
+            if item.id not in [value.id for value in self._temp_cache['added']]:
+                self._temp_cache['added'].append(item)
 
     def remove(self, item):
-        if self._result_cache:
-            self._result_cache.items[:] = [value for value in self._result_cache.items if value.id != item.id]
-            self._result_cache.total -= 1
+        if item.id in [value.id for value in self._data.items]:
+            if item.id not in [value.id for value in self._temp_cache['removed']]:
+                self._temp_cache['removed'].append(item)
