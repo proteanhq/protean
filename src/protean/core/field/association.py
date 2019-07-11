@@ -242,17 +242,20 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
         if isinstance(self.to_cls, str):
             self.to_cls = fetch_entity_cls_from_registry(self.to_cls)
 
+            # FIXME Test that `to_cls` contains a corresponding `Reference` field
+
         try:
             reference_obj = self.get_cached_value(instance)
         except KeyError:
             # Fetch target object by own Identifier
             id_value = getattr(instance, instance.meta_.id_field.field_name)
             reference_obj = self._fetch_objects(self._linked_attribute(owner), id_value)
-            if reference_obj:
-                self._set_own_value(instance, reference_obj)
-            else:
+
+            if not reference_obj:
                 # No Objects were found in the remote entity with this Entity's ID
-                reference_obj = None
+                reference_obj = current_domain.get_dao(self.to_cls).query
+
+            self._set_own_value(instance, reference_obj)
 
         return reference_obj
 
