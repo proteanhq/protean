@@ -213,6 +213,14 @@ class Identifier(Field):
         return value
 
 
+class CustomObject(Field):
+    """Concrete field implementation for objects. Values are instances of custom classes"""
+
+    def _cast_to_type(self, value):
+        """ Perform no validation for identifier fields. Return the value as is"""
+        return value
+
+
 class Date(Field):
     """ Concrete field implementation for the Date type.
     """
