@@ -46,4 +46,4 @@ class TestSerializerDump:
     def test_that_serializer_dumps_data_from_domain_element(self):
         user = User(name='John Doe', age=24)
         json_result = UserSchema().dump(user)
-        assert json_result.data == {'age': 24, 'name': 'John Doe'}
+        assert json_result == {'age': 24, 'name': 'John Doe'}
