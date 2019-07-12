@@ -348,7 +348,7 @@ class Domain(_PackageBoundObject):
                 or (element_type == DomainObjects.SERIALIZER)):
             aggregate_cls = new_cls.meta_.aggregate_cls or kwargs.pop('aggregate_cls', None)
             if not aggregate_cls:
-                raise IncorrectUsageError("Repositories need to be associated with an Aggregate")
+                raise IncorrectUsageError("Repositories and Serializers need to be associated with an Aggregate")
 
         if element_type == DomainObjects.SUBSCRIBER and self._validate_subscriber_class(new_cls):
             domain_event_cls = new_cls.meta_.domain_event_cls or kwargs.pop('domain_event', None)

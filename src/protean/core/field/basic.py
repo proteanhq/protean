@@ -221,6 +221,30 @@ class CustomObject(Field):
         return value
 
 
+class Method(Field):
+    """Helper field for custom methods associated with serializer fields"""
+
+    def __init__(self, method_name, **kwargs):
+        self.method_name = method_name
+        super().__init__(**kwargs)
+
+    def _cast_to_type(self, value):
+        """ Perform no validation for identifier fields. Return the value as is"""
+        return value
+
+
+class Nested(Field):
+    """Helper field for nested objects associated with serializer fields"""
+
+    def __init__(self, schema_name, **kwargs):
+        self.schema_name = schema_name
+        super().__init__(**kwargs)
+
+    def _cast_to_type(self, value):
+        """ Perform no validation for identifier fields. Return the value as is"""
+        return value
+
+
 class Date(Field):
     """ Concrete field implementation for the Date type.
     """

@@ -64,7 +64,7 @@ setup(
         'cookiecutter==1.6.0',
         'flask==1.0.3',
         'inflect==2.1.0',
-        'marshmallow==2.19.2',
+        'marshmallow==3.0.0rc8',
         'python-dateutil==2.8.0',
         'sqlalchemy==1.3.4',
         'werkzeug==0.15.4'

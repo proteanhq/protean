@@ -6,7 +6,9 @@ from marshmallow import fields, Schema
 
 # Protean
 from protean.core.exceptions import NotSupportedError
-from protean.core.field.basic import Boolean, Date, DateTime, Field, Float, Integer, String
+from protean.core.field.basic import (
+    Boolean, Date, DateTime, Field, Float, Identifier,
+    Integer, List, Method, Nested, String, Text)
 
 logger = logging.getLogger('protean.core.data_transfer_object')
 
@@ -76,21 +78,38 @@ class _SerializerMetaclass(type):
                 schema_fields[field_name] = fields.Date()
             elif isinstance(field_obj, DateTime):
                 schema_fields[field_name] = fields.DateTime()
+            elif isinstance(field_obj, Identifier):
+                schema_fields[field_name] = fields.String()
             elif isinstance(field_obj, String):
+                schema_fields[field_name] = fields.String()
+            elif isinstance(field_obj, Text):
                 schema_fields[field_name] = fields.String()
             elif isinstance(field_obj, Integer):
                 schema_fields[field_name] = fields.Integer()
             elif isinstance(field_obj, Float):
                 schema_fields[field_name] = fields.Float()
+            elif isinstance(field_obj, Method):
+                schema_fields[field_name] = fields.Method(field_obj.method_name)
+            elif isinstance(field_obj, List):
+                schema_fields[field_name] = fields.List(fields.String())  # FIXME Accept type param in List field
+            elif isinstance(field_obj, Nested):
+                schema_fields[field_name] = fields.Nested(field_obj.schema_name)
             else:
                 raise NotSupportedError("{} Field not supported".format(type(field_obj)))
+
+        # Remove Protean fields from Serializer class
+        for field_name in schema_fields:
+            attrs.pop(field_name, None)
+
+        # Update `attrs` with new marshmallow fields
+        attrs.update(schema_fields)
 
         # Remove `abstract` in base classes if defined
         for base in bases:
             if hasattr(base, 'Meta') and hasattr(base.Meta, 'abstract'):
                 delattr(base.Meta, 'abstract')
 
-        new_class = type(name, (Schema,), schema_fields)
+        new_class = type(name, (Schema,), attrs)
 
         # Gather `Meta` class/object if defined
         attr_meta = attrs.pop('Meta', None)
