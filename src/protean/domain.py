@@ -4,6 +4,7 @@ to register Domain Elements.
 # Standard Library Imports
 import importlib
 import logging
+import marshmallow
 import sys
 
 from collections import defaultdict
@@ -35,6 +36,7 @@ class DomainObjects(Enum):
     ENTITY = 'ENTITY'
     REPOSITORY = 'REPOSITORY'
     REQUEST_OBJECT = 'REQUEST_OBJECT'
+    SERIALIZER = 'SERIALIZER'
     SUBSCRIBER = 'SUBSCRIBER'
     VALUE_OBJECT = 'VALUE_OBJECT'
 
@@ -112,6 +114,7 @@ class Domain(_PackageBoundObject):
     from protean.core.domain_service import BaseDomainService
     from protean.core.entity import BaseEntity
     from protean.core.repository.base import BaseRepository
+    from protean.core.serializer import BaseSerializer
     from protean.core.transport.request import BaseRequestObject
     from protean.core.value_object import BaseValueObject
     from protean.utils import IdentityStrategy
@@ -144,6 +147,7 @@ class Domain(_PackageBoundObject):
             DomainObjects.ENTITY.value: BaseEntity,
             DomainObjects.REPOSITORY.value: BaseRepository,
             DomainObjects.REQUEST_OBJECT.value: BaseRequestObject,
+            DomainObjects.SERIALIZER.value: marshmallow.Schema,
             DomainObjects.SUBSCRIBER.value: BaseSubscriber,
             DomainObjects.VALUE_OBJECT.value: BaseValueObject,
         }
@@ -277,6 +281,10 @@ class Domain(_PackageBoundObject):
         return self._domain_registry._elements[DomainObjects.REPOSITORY.value]
 
     @property
+    def serializers(self):
+        return self._domain_registry._elements[DomainObjects.SERIALIZER.value]
+
+    @property
     def subscribers(self):
         return self._domain_registry._elements[DomainObjects.SUBSCRIBER.value]
 
@@ -305,7 +313,19 @@ class Domain(_PackageBoundObject):
                 if element_type.value not in self.base_class_mapping:
                     raise
 
-                new_cls = type(element_cls.__name__, (self.base_class_mapping[element_type.value], ), new_dict)
+                # Hacky code to switch between `marshmallow.Schema` and `BaseSerializer`
+                #   while creating the derived class for Serializers
+                #
+                # This becomes necessary because we need to derive the undecorated class
+                #   from `BaseSerializer`, but once derived, the base heirarchy only reflects
+                #   `marshmallow.Schema` (This is a metaclass, so it disrupts heirarchy).
+                if element_type == DomainObjects.SERIALIZER:
+                    from protean.core.serializer import BaseSerializer
+                    base_cls = BaseSerializer
+                else:
+                    base_cls = self.base_class_mapping[element_type.value]
+
+                new_cls = type(element_cls.__name__, (base_cls, ), new_dict)
             else:
                 new_cls = element_cls  # Element was already subclassed properly
         except BaseException as exc:
@@ -324,10 +344,11 @@ class Domain(_PackageBoundObject):
             model_cls = None  # FIXME Add ability to specify model_cls explicitly
 
         aggregate_cls = None
-        if element_type == DomainObjects.REPOSITORY and self._validate_repository_class(new_cls):
+        if ((element_type == DomainObjects.REPOSITORY and self._validate_repository_class(new_cls))
+                or (element_type == DomainObjects.SERIALIZER)):
             aggregate_cls = new_cls.meta_.aggregate_cls or kwargs.pop('aggregate_cls', None)
             if not aggregate_cls:
-                raise IncorrectUsageError("Repositories need to be associated with an Aggregate")
+                raise IncorrectUsageError("Repositories and Serializers need to be associated with an Aggregate")
 
         if element_type == DomainObjects.SUBSCRIBER and self._validate_subscriber_class(new_cls):
             domain_event_cls = new_cls.meta_.domain_event_cls or kwargs.pop('domain_event', None)
@@ -377,6 +398,16 @@ class Domain(_PackageBoundObject):
         if not issubclass(element_cls, BaseRepository):
             raise AssertionError(
                 f'Element {element_cls.__name__} must be subclass of `BaseRepository`')
+
+        return True
+
+    def _validate_serializer_class(self, element_cls):
+        # Import here to avoid cyclic dependency
+        from protean.core.serializer import BaseSerializer
+
+        if not issubclass(element_cls, BaseSerializer):
+            raise AssertionError(
+                f'Element {element_cls.__name__} must be subclass of `BaseSerializer`')
 
         return True
 
@@ -449,6 +480,11 @@ class Domain(_PackageBoundObject):
     def request_object(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.REQUEST_OBJECT, _cls=_cls, **kwargs,
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
+
+    def serializer(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
+        return self._domain_element(
+            DomainObjects.SERIALIZER, _cls=_cls, **kwargs,
             aggregate_cls=aggregate_cls, bounded_context=bounded_context)
 
     def subscriber(self, domain_event, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
@@ -600,7 +636,7 @@ class Domain(_PackageBoundObject):
         try:
             repository_record = next(
                 repository for _, repository in self.repositories.items()
-                if type(repository.cls.meta_.aggregate_cls) == type(aggregate_cls))  # FIXME Avoid comparing classes
+                if repository.cls.meta_.aggregate_cls == aggregate_cls)  # FIXME Avoid comparing classes
         except StopIteration:
             raise ConfigurationError(
                 "Invalid or Unregistered Aggregate class specified, "
