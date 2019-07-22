@@ -81,16 +81,19 @@ Protean is ready for today's diverse and multilayered software stack requirement
 
 .. toctree::
    :maxdepth: 1
-   :caption: Introduction
-
-   intro/install
-
-
-.. toctree::
-   :maxdepth: 1
    :caption: User Guide
 
+   user/foreword
+   user/install
+   user/quickstart
+   user/tutorial
+   user/composition-root
+   user/domain-layer-mechanics
+   user/application-layer
+   user/infrastructure
    user/persistence
+   user/unit-of-work
+   user/messaging-medium
 
 .. toctree::
    :maxdepth: 1

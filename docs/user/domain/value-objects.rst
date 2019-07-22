@@ -1,0 +1,268 @@
+=============
+Value Objects
+=============
+
+Value Objects are containers of data elements, with behavior and validations built into them, the data elements being primitive types (typically).
+
+Value objects are also usually "Conceptual Whole" data elements. They are a set/pack of attributes that make sense when taken together.
+
+Let's take a simple example. We have frequently designated an `EmailAddress`  as a "String" in the past. Validations that check for the attribute value to be a valid Email are then specified either as part of the model, or as independent business logic usually present in services.
+
+But an `EmailAddress`  is more than any other string in the system (say like First Name or Last Name).
+
+An `EmailAddress`  has explicit rules defined, like:
+
+* The presence of an `@` symbol
+* The part coming after the `@` to be a valid domain URL
+* The total length of an email address not exceeding 255 characters, and so on.
+
+If an `EmailAddress` field is defined as a string with these validations, we will either:
+
+* Add these validations in the wrong concern (the User or Account object that owns the email attribute, for example)
+* Don't add these validations at all
+
+Qualities that make a domain element a good candidate to be a Value Object:
+
+* It measures, quantifies, or describes a thing in the domain
+* It is a concept used in multiple parts of the system (in the case of Status, throughout the system)
+* It has one or more invariant rules (a.k.a validations)
+* It is a cluster of two or more attributes (a conceptual whole), that are treated as an integral unit
+* It is completely replaceable when the measurement or description changes
+* It makes sense to compare it with other objects using value equality
+
+A few concrete examples of Value Objects:
+
+* **`Email`**:
+
+.. code-block:: python
+
+    class Email(BaseValueObject):
+        """An email address value object, with two identified parts:
+            * local_part
+            * domain_part
+        """
+
+        # This is the external facing data attribute
+        address = String(max_length=254, required=True)
+
+        def __init__(self, *template, local_part=None, domain_part=None, **kwargs):
+            super(Email, self).__init__(*template, **kwargs)
+
+            # `local_part` and `domain_part` are internal attributes that capture
+            #   and preserve the validity of an Email Address
+            self.local_part = local_part
+            self.domain_part = domain_part
+
+            if self.local_part and self.domain_part:
+                self.address = '@'.join([self.local_part, self.domain_part])
+            else:
+                raise ValidationError("Email address is invalid")
+
+        @classmethod
+        def from_address(cls, address):
+            if not cls.validate(address):
+                raise ValueError('Email address is invalid')
+
+            local_part, _, domain_part = address.partition('@')
+
+            return cls(local_part=local_part, domain_part=domain_part)
+
+        @classmethod
+        def from_parts(cls, local_part, domain_part):
+            return cls(local_part=local_part, domain_part=domain_part)
+
+        @classmethod
+        def validate(cls, address):
+            if type(address) is not str:
+                return False
+            if '@' not in address:
+                return False
+            if len(address) > 255:
+                return False
+
+            return True
+
+* **`Address`**:
+
+An excellent example of a conceptual whole is how we capture the "Address" of a user in the system. There are many elements associated with an address, like the type of Address (Home/Work), three separate lines to capture the full address (Address 1, Address 2 and Address 3), City, State, Country, and Zip, at a minimum.
+
+In the past, we have always treated these elements as individual data attributes of a user/account entity, but is it correct to do so? What if the city or country was left blank? Would that be considered valid?
+
+The correct way would be to create a Value Object called "Address," and capture all data elements as part of it, enforced by rules and even external API validation (Canada and US, for example, have well-published Address APIs that can be used to crosscheck the validity of an address.)
+
+.. code-block:: python
+
+    class Address(BaseValueObject):
+        address1 = String(max_length=255, required=True)
+        address2 = String(max_length=255)
+        address3 = String(max_length=255)
+        city = String(max_length=25, required=True)
+        state = String(max_length=25, required=True)
+        country = String(max_length=2, required=True, choices=CountryEnum)
+        zip = String(max_length=6, required=True)
+
+        def validate_with_canada_post(self):
+            return CanadaPostService.verify(self.to_dict())
+
+* **`Balance`**: consists of two parts: a Currency and an amount. It may have restrictions like positive balance, supported currencies, etc.
+
+.. code-block:: python
+
+    class Currency(Enum):
+        """ Set of choices for the status"""
+        USD = 'USD'
+        INR = 'INR'
+        CAD = 'CAD'
+
+
+    class Balance(BaseValueObject):
+        """A composite amount object, containing two parts:
+            * currency code - a three letter unique currency code
+            * amount - a float value
+        """
+
+        currency = String(max_length=3, required=True, choices=Currency)
+        amount = Float(required=True)
+
+* **`Temperature`**: contains two parts, a scale (Celsius or Fahrenheit) and a temperature integer value. The value may have restrictions in range and can contain positive numbers alone.
+
+.. code-block:: python
+
+    class Temperature(BaseValueObject):
+        scale = String(max_length=1, required=True, choices=['C', 'F'])
+        degrees = Integer(required=True, min_value=-70, max_value=500)
+
+
+Properties
+==========
+
+**1. Value Objects do not have an identity.**
+
+They don't have a PK field a.k.a an id field a.k.a an identifier associated with them.
+
+Let's again consider the example of a Customer entity in our domain, with Address and Email Value Objects.
+
+.. code-block:: python
+
+    class Customer(BaseAggregate):
+        first_name = String(max_length=255, required=True)
+        last_name = String(max_length=255)
+        email = ValueObjectField(Email)
+        address = ValueObjectField(Address)
+
+For this example, let us assume that a separate table holds Address values in the database. You would care about having access to the customer's address via the Customer object, viz. customer.address.address1, or even customer.address1. But would you care what the id of the Address row is in the table? Most probably not.
+
+So from a business or domain point of view, Value objects (like an address) tend not to have a concept of identity. They don't have unique identifiers that could be used to get hold of them individually. This rule holds, irrespective of whether you store the address attributes in line with other fields in the Customer table in the earlier example, or you persist them in a separate table of their own.
+
+Also, Value Objects don't have to be tracked separately for changes during their lifetime. Their instances are created and maintained on the fly (only on the RAM), and eventually destroyed on the RAM. Aggregates or entities that own the value object will take care of persistence as needed.
+
+**2. Two Value Objects are considered to be equal if their values are equal.**
+
+You wouldn't care whether two integer objects in memory are different if they both have a value of 5, would you? They are replaceable. You don't care which "instance" is being used at any point in time. Similar reasoning applies to the example of Balance value object below. You wouldn't care about differentiating between two objects if they both represent $100:
+
+.. code-block:: python
+
+    balance = Balance(currency=Currency.USD.value, amount=100.0)
+
+In python, we could use the underlying data dictionary to compare the values of two objects. Protean generically accomplishes this with the help of a `to_dict` method:
+
+.. code-block:: python
+
+    if type(other) is not type(self):
+            return False
+
+        return self.to_dict() == other.to_dict()
+
+**3. Value Objects are Immutable.**
+
+A Value Object cannot be altered once initialized.
+
+Why is this, you may ask? Refer to the first part of this thread where we talked about what attributes make excellent candidates as Value Objects.
+
+If you have a currency value object of 50 USD, would you be able to update the amount value to 100? How about if you are trying to do this with an actual 50 USD note in hand?
+
+Let's go one level deeper, and consider an arbitrary number, say 6. Why is 6 immutable?
+6 is immutable because 6's identity is determined by what it represents, namely the state of having six of something. You can't change what 6 represents.
+
+This is the fundamental concept of Value Objects. Its state determines a Value Object's value. Contrast this with an Entity, which is not determined by its state. A Customer can change their address and still be the same Customer.
+
+Consider object sharing as another example to understand why Value Objects need to be immutable. Say we have one Address Value Object is shared between two Customers. You cannot change the shared address because it will affect both customers. For an object to be shared safely, it must be immutable: It can only be changed by full replacement.
+
+There is a considerable benefit that results from this property. Value Objects need to be validated only on initialization!
+
+Which means you can forget about all those callbacks or `before_save` methods you would write to ensure the data is valid before being persisted into the database. When you want to alter a value object, you create a new instance (either by passing all attributes again or by using the earlier value object as a template and specifying only the changed attributes). Again, you would validate only during initialization time.
+
+Generally, validation of Value Objects should not take place in their constructor. Constructors, as a rule, should not include logic, but should simply assign values. Validation, if required, should be part of a factory method. In languages like Java and C# that support access modifiers, it is a common pattern to make Value Objects’ constructors private and provide one or more public static methods for creating the Value Object. This achieves separation of concerns, since constructing an instance from a set of values is a separate concern from ensuring the values are valid.
+
+Immutability is the reason why the complexity of code reduces drastically if you were to change all attributes in your aggregate/entity to be Value Objects. Their management and data behavior becomes pretty simple.
+
+**4. Value Objects depict Domain Concepts**
+
+We earlier discussed Value Objects being Conceptually Whole. It is a perfect mechanism to illustrate and explain a domain concept. It may have one or more attributes as part of itself, but to the parent object, it is merely a property with behavior.
+
+Consider a simple FullName Value Object below:
+
+.. code-block:: python
+
+    from enum import Enum
+
+    from protean.core.value_object import BaseValueObject
+    from protean.core import field
+
+
+    class Titles(Enum):
+        MR = 'Mr.'
+        MRS = 'Mrs.'
+        MS = 'Ms.'
+
+    class FullName(BaseValueObject):
+        first_name = field.String(max_length=50)
+        middle_name = field.String(max_length=50)
+        last_name = field.String(max_length=50)
+        initials = field.String(max_length=3)
+        title = field.String(max_length=5, choices=Titles)
+
+
+By implementing a Value Object, instead of treating a bunch of attributes as simple strings in an Entity, you now have a good representative of a Full Name Domain Concept, and you can tune its behavior and invariants to your heart's content.
+
+
+**5. Value Objects exhibit Side-Effect-Free Behavior**
+
+All methods of a Value Object must all be Side-Effect-Free Functions because they must not violate its immutability quality.
+
+This property is a fundamental requirement of immutability, but not always apparent. It pays to consider it carefully because of its immense benefits to robust and bug-free code.
+
+.. note::
+    Though often used interchangeably, there are subtle differences between a method and a function.
+
+    A function is an operation of an object that produces output but without modifying its state. Since no modification occurs when executing a specific action, that operation is said to be side-effect free. Methods, in contrast, tend to be associated with an object and operate on the data, usually modifying it.
+
+    Developers also have a more topical way of distinguishing between functions and methods. In languages like Python, functions can be invoked by their names, while methods are typically associated with an object. So if you are calling a method on a call, you are dealing with a technique, while a function is what you would write without associating it with a class.
+
+Consider a simplistic example of a side-effect free function for the FullName Value Object:
+
+.. code-block:: python
+
+    def in_second_order(self):
+        return ', '.join(
+            [self.last_name,
+            ' '.join([self.first_name, self.middle_name])])
+
+The function returns a fully formatted second-order name, without affecting the internal state.
+
+We should strive to construct as many, if not all, methods to be side-effect free. If a function needs to change the Value Object in some way, you are better off making it a factory method (or a @classmethod in the class) and returning a fully-formed Value Object instance with the changed attributes.
+
+**6. Replace Value Objects when you need to change values**
+
+This aspect is again a consequence of Value Object Immutability but can be used effectively to create side-effect free methods. Since a Value Object, once constructed, cannot be changed, you build a new one and replace the existing object.
+
+This property becomes essential when you are evaluating or looking for Value Objects in your codebase. If you are leaning toward the creation of an Entity because the attributes of the object must change, challenge your assumptions to check if it’s the correct model. Would object replacement work instead?
+
+Is Everything a Value Object?
+=============================
+
+By now you may have begun to think that everything in your code looks like a Value Object. That’s better than thinking that everything looks like an Entity.
+
+You can exercise caution when there are straightforward attributes that don’t need any special treatment. You may have Boolean attributes or numeric values that are self-contained, requiring no additional functional support, and are related to no other aspects in the same Entity. On their own, these simple attributes are Meaningful Wholes.
+
+Still, you will occasionally make the “mistake” of unnecessarily wrapping a single attribute in a Value type with no unique functionality. Worry not. If you find that you’ve overdone it a bit, you can always refactor a little.
