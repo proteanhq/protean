@@ -118,10 +118,13 @@ class DictProvider(BaseProvider):
             stripped_key, lookup_class = self._extract_lookup(key)
             lookup = lookup_class(record_value[stripped_key], value)
 
-            if negated:
-                match &= not eval(lookup.as_expression())
+            if record_value[stripped_key]:  # Do not evaluate if the value is None
+                if negated:
+                    match &= not eval(lookup.as_expression())
+                else:
+                    match &= eval(lookup.as_expression())
             else:
-                match &= eval(lookup.as_expression())
+                match = False
 
             if match:
                 results[record_key] = record_value
