@@ -2,16 +2,19 @@
 Release History
 ===============
 
-dev
----
+0.1 (2019-07-25)
+----------------
 
-* Add Request Object Factory to construct Request Object classes on the fly
-* Add `reload` method to refresh an entity's data from database
+* Full revamp of Protean codebase to adhere to DDD principles
+* Add `Domain` Composition root, with support for the definition of multiple domains in a project
+* Support for Domain Layer elements: Aggregates, Entities, Value Objects, Domain Services, and Domain Events
+* Support for Application Layer elements: Application Services, Data Transfer Objects, Repositories, Subscribers and Serializers
+* Support annotations to register elements with Domain
+* Complete revamping of Repository layer, and introduction of an underlying DAO layer
+* Add Unit of Work capabilities to support ACID transactions
 * Collapse SQLAlchemy and Flask implementations in Protean itself temporarily, until API stabilizes
-* Rename `success` flag on Reponse to `is_successful`
-* Rename `message` attribute in Response object to `errors` with uniform structure in all error cases
-* Introduce `Domain` composition root
-* Introduce `Entity` Decorator to subclass and register entities with the domain
+* Rename `success` flag on Response to `is_successful`
+* Rename `message` attribute in Response object to `errors` with a uniform structure in all error cases
 
 0.0.11 (2019-04-23)
 -------------------
