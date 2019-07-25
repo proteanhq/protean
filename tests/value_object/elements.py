@@ -1,7 +1,9 @@
+# Standard Library Imports
 from enum import Enum
 
+# Protean
 from protean.core.exceptions import ValidationError
-from protean.core.field.basic import String, Float
+from protean.core.field.basic import Float, String
 from protean.core.value_object import BaseValueObject
 
 

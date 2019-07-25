@@ -1,9 +1,10 @@
+# Protean
 import pytest
 
-# Protean
 from protean.impl.repository.dict_repo import DictProvider
 
-from .elements import Person, Alien
+# Local/Relative Imports
+from .elements import Alien, Person
 
 
 class TestProviders:

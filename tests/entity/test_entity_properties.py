@@ -1,10 +1,13 @@
-import pytest
-
+# Standard Library Imports
 from uuid import UUID, uuid4
 
-from protean.core.exceptions import ValidationError, InvalidOperationError
+# Protean
+import pytest
+
+from protean.core.exceptions import InvalidOperationError, ValidationError
 from protean.core.field.basic import Auto, String
 
+# Local/Relative Imports
 from .elements import Adult, NotAPerson, Person, PersonAutoSSN, PersonExplicitID
 
 

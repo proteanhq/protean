@@ -1,8 +1,9 @@
+# Protean
 import pytest
 
-# Protean
 from protean.core.exceptions import ValidationError
 
+# Local/Relative Imports
 from .elements import Person, PersonRepository
 
 

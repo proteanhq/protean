@@ -1,8 +1,10 @@
+# Protean
 import pytest
 
 from protean.core.exceptions import InvalidOperationError, ValidationError
 
-from .elements import Email, MyOrgEmail, Balance, Currency
+# Local/Relative Imports
+from .elements import Balance, Currency, Email, MyOrgEmail
 
 
 class TestEquivalence:

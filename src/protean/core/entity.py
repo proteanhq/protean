@@ -7,8 +7,8 @@ from uuid import uuid4
 
 # Protean
 from protean.core.exceptions import NotSupportedError, ValidationError
-from protean.core.field.basic import Auto, Field
 from protean.core.field.association import Association, Reference
+from protean.core.field.basic import Auto, Field
 from protean.core.field.embedded import ValueObjectField
 from protean.globals import current_domain
 from protean.utils import IdentityStrategy, inflection

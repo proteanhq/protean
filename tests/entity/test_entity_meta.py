@@ -1,10 +1,10 @@
+# Protean
 from protean.core.entity import EntityMeta
-from protean.core.field.basic import Auto, String, Integer
+from protean.core.field.basic import Auto, Integer, String
 
-from .elements import (
-    AbstractPerson, ConcretePerson, AdultAbstractPerson, Adult, Person,
-    DbPerson, SqlPerson, DifferentDbPerson, SqlDifferentDbPerson,
-    OrderedPerson, OrderedPersonSubclass)
+# Local/Relative Imports
+from .elements import (AbstractPerson, Adult, AdultAbstractPerson, ConcretePerson, DbPerson, DifferentDbPerson,
+                       OrderedPerson, OrderedPersonSubclass, Person, SqlDifferentDbPerson, SqlPerson)
 
 
 class TestEntityMeta:

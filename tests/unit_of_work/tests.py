@@ -1,10 +1,14 @@
-import pytest
+# Standard Library Imports
 import random
 import string
 
-from protean.core.unit_of_work import UnitOfWork
-from protean.core.exceptions import ObjectNotFoundError, InvalidOperationError
+# Protean
+import pytest
 
+from protean.core.exceptions import InvalidOperationError, ObjectNotFoundError
+from protean.core.unit_of_work import UnitOfWork
+
+# Local/Relative Imports
 from .elements import Person, PersonRepository
 
 

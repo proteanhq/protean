@@ -1,15 +1,16 @@
-import pytest
-
+# Standard Library Imports
 from collections import OrderedDict
 from datetime import datetime
+
+# Protean
+import pytest
 
 from protean.core.aggregate import _AggregateMetaclass
 from protean.core.exceptions import ValidationError
 from protean.utils import fully_qualified_name
 
-from .elements import (
-    Role, SubclassRole, Person, ConcreteRole,
-    Post, Comment, AccountWithId, ProfileWithAccountId)
+# Local/Relative Imports
+from .elements import AccountWithId, Comment, ConcreteRole, Person, Post, ProfileWithAccountId, Role, SubclassRole
 
 
 class TestAggregateStructure:

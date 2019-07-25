@@ -1,6 +1,8 @@
+# Protean
 import pytest
 
-from .aggregate_elements import Post, PostMeta, Comment
+# Local/Relative Imports
+from .aggregate_elements import Comment, Post, PostMeta
 
 
 class TestAggregatesWithEntities:

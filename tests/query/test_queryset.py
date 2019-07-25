@@ -1,10 +1,11 @@
 """ Test the Q object used for managing filter criteria """
+# Protean
 import pytest
 
-# Protean
 from protean.core.queryset import QuerySet
 from protean.utils.query import Q
 
+# Local/Relative Imports
 from .elements import Person
 
 

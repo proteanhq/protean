@@ -14,9 +14,9 @@ from uuid import UUID
 # Protean
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.provider.base import BaseProvider
+from protean.core.repository.dao import BaseDAO
 from protean.core.repository.lookup import BaseLookup
 from protean.core.repository.model import BaseModel
-from protean.core.repository.dao import BaseDAO
 from protean.core.repository.resultset import ResultSet
 from protean.utils.query import Q
 

@@ -1,3 +1,4 @@
+# Protean
 import pytest
 
 from protean.core.data_transfer_object import BaseDataTransferObject
@@ -5,6 +6,7 @@ from protean.core.exceptions import InvalidOperationError
 from protean.core.field.basic import String
 from protean.utils import fully_qualified_name
 
+# Local/Relative Imports
 from .elements import Person, PersonBasicDetails
 
 

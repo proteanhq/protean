@@ -1,12 +1,16 @@
+# Standard Library Imports
 import os
-import pytest
 
-os.environ['PROTEAN_CONFIG'] = 'tests.old.support.sample_config'  # isort:skip
+# Protean
+import pytest
 
 from tests.old.support.dog import *
 from tests.old.support.human import *
 from tests.old.support.sqlalchemy.dog import *
 from tests.old.support.sqlalchemy.human import *
+
+os.environ['PROTEAN_CONFIG'] = 'tests.old.support.sample_config'  # isort:skip
+
 
 
 @pytest.fixture(scope="session", autouse=True)

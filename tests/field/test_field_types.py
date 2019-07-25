@@ -9,7 +9,7 @@ from datetime import datetime
 import pytest
 
 from protean.core.exceptions import ValidationError
-from protean.core.field.basic import String, Integer, Float, Boolean, Dict, List, Auto, DateTime, Date, Text
+from protean.core.field.basic import Auto, Boolean, Date, DateTime, Dict, Float, Integer, List, String, Text
 
 
 class TestStringField:

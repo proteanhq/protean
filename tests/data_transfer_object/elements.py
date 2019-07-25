@@ -1,6 +1,6 @@
+# Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.data_transfer_object import BaseDataTransferObject
-
 from protean.core.field.basic import Integer, String
 
 

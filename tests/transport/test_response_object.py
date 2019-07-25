@@ -1,5 +1,6 @@
-from protean.core.transport import (InvalidRequestObject, ResponseFailure,
-                                    ResponseSuccess, ResponseSuccessCreated, ResponseSuccessWithNoContent, Status)
+# Protean
+from protean.core.transport import (InvalidRequestObject, ResponseFailure, ResponseSuccess,
+                                    ResponseSuccessCreated, ResponseSuccessWithNoContent, Status)
 
 
 class TestResponseObject:

@@ -1,8 +1,10 @@
+# Protean
 import mock
 import pytest
 
 from protean.core.exceptions import ValidationError
 
+# Local/Relative Imports
 from .elements import Account, Author, Profile
 
 

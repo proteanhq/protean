@@ -1,5 +1,8 @@
+# Standard Library Imports
 from functools import partial
-from werkzeug.local import LocalStack, LocalProxy
+
+# Protean
+from werkzeug.local import LocalProxy, LocalStack
 
 _domain_ctx_err_msg = """\
 Working outside of domain context.

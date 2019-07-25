@@ -1,5 +1,5 @@
+# Protean
 from protean.utils import IdentityStrategy
-
 
 DEBUG = True
 

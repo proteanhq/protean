@@ -3,9 +3,10 @@
 from dataclasses import fields
 
 # Protean
-from protean.core.transport import (InvalidRequestObject, RequestObjectFactory)
+from protean.core.transport import InvalidRequestObject, RequestObjectFactory
 from protean.domain import DomainObjects
 
+# Local/Relative Imports
 from .elements import DummyValidRequestObject
 
 

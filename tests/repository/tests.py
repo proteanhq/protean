@@ -1,9 +1,11 @@
+# Protean
 import pytest
 
 from protean.core.exceptions import ConfigurationError, IncorrectUsageError
 from protean.core.repository.base import BaseRepository
 from protean.utils import fully_qualified_name
 
+# Local/Relative Imports
 from .elements import Person, PersonRepository
 
 

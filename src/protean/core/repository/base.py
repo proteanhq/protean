@@ -1,5 +1,6 @@
-from protean.core.field.association import HasMany
+# Protean
 from protean.core.exceptions import InvalidOperationError
+from protean.core.field.association import HasMany
 
 
 class _RepositoryMetaclass(type):

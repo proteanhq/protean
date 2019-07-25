@@ -1,5 +1,7 @@
+# Standard Library Imports
 from datetime import datetime
 
+# Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.field.association import HasMany, HasOne, Reference

@@ -1,12 +1,14 @@
+# Protean
 import mock
 import pytest
 
 from protean.core.queryset import QuerySet
 from protean.core.repository.resultset import ResultSet
 
-from .elements import (
-    Account, AccountVia, AccountViaWithReference, Author, Comment, CommentVia, CommentViaWithReference,
-    Post, PostVia, PostViaWithReference, Profile, ProfileVia, ProfileViaWithReference)
+# Local/Relative Imports
+from .elements import (Account, AccountVia, AccountViaWithReference, Author, Comment,
+                       CommentVia, CommentViaWithReference, Post, PostVia,
+                       PostViaWithReference, Profile, ProfileVia, ProfileViaWithReference)
 
 
 class TestHasOne:

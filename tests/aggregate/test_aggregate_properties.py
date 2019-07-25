@@ -1,12 +1,15 @@
-import pytest
-
+# Standard Library Imports
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from protean.core.exceptions import ValidationError, InvalidOperationError
+# Protean
+import pytest
+
+from protean.core.exceptions import InvalidOperationError, ValidationError
 from protean.core.field.basic import Auto, String
 
-from .elements import Role, PersonAutoSSN, PersonExplicitID, SubclassRole
+# Local/Relative Imports
+from .elements import PersonAutoSSN, PersonExplicitID, Role, SubclassRole
 
 
 class TestProperties:

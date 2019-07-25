@@ -8,8 +8,8 @@ import marshmallow as ma
 
 from protean.core.entity import BaseEntity
 from protean.core.exceptions import ConfigurationError
-from protean.core.field.basic import String, Boolean, Integer, Float, List, Dict, Auto
 from protean.core.field.association import Reference
+from protean.core.field.basic import Auto, Boolean, Dict, Float, Integer, List, String
 
 
 class BaseSerializer(ma.Schema):

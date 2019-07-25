@@ -1,8 +1,9 @@
+# Protean
 import pytest
 
-# Protean
 from protean.utils.query import Q
 
+# Local/Relative Imports
 from .elements import Person
 
 

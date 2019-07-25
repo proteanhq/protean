@@ -1,10 +1,10 @@
+# Protean
 from protean.core.aggregate import AggregateMeta
 from protean.core.field.basic import Auto, String
 
-from .elements import (
-    Role, AbstractRole, ConcreteRole, DbRole, DifferentDbRole, FurtherAbstractRole,
-    OrderedRole, OrderedRoleSubclass,
-    SqlRole, SqlDifferentDbRole, SubclassRole)
+# Local/Relative Imports
+from .elements import (AbstractRole, ConcreteRole, DbRole, DifferentDbRole, FurtherAbstractRole,
+                       OrderedRole, OrderedRoleSubclass, Role, SqlDifferentDbRole, SqlRole, SubclassRole)
 
 
 class TestAggregateMeta:

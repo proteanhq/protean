@@ -1,6 +1,8 @@
 """Context Management Framework"""
+# Standard Library Imports
 import sys
 
+# Local/Relative Imports
 from .globals import _domain_context_stack
 
 # a singleton sentinel value for parameter defaults

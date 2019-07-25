@@ -5,12 +5,12 @@ from abc import ABCMeta
 from typing import Any
 
 # Protean
-from protean.core.field.basic import Auto, String, Text, Boolean, Integer, Float, List, Dict, Date, DateTime
 from protean.core.field.association import Reference
+from protean.core.field.basic import Auto, Boolean, Date, DateTime, Dict, Float, Integer, List, String, Text
 from protean.core.provider.base import BaseProvider
+from protean.core.repository.dao import BaseDAO
 from protean.core.repository.lookup import BaseLookup
 from protean.core.repository.model import BaseModel
-from protean.core.repository.dao import BaseDAO
 from protean.core.repository.resultset import ResultSet
 from protean.utils.query import Q
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm

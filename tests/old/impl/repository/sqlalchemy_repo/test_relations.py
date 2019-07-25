@@ -3,7 +3,6 @@
 import pytest
 
 from protean import Domain
-
 from tests.old.support.sqlalchemy.dog import SqlRelatedDog as RelatedDog
 from tests.old.support.sqlalchemy.human import SqlRelatedHuman as RelatedHuman
 

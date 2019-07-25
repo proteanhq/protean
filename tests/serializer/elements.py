@@ -1,7 +1,7 @@
+# Protean
 from protean.core.aggregate import BaseAggregate
-from protean.core.serializer import BaseSerializer
-
 from protean.core.field.basic import Integer, String
+from protean.core.serializer import BaseSerializer
 
 
 class User(BaseAggregate):

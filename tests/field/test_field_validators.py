@@ -1,12 +1,13 @@
 """ Test cases for validators"""
-import pytest
+# Standard Library Imports
 import re
 
+# Protean
+import pytest
+
 from protean.core.exceptions import ValidationError
-from protean.core.field.validators import (
-    MinLengthValidator, MaxLengthValidator,
-    MinValueValidator, MaxValueValidator,
-    RegexValidator)
+from protean.core.field.validators import (MaxLengthValidator, MaxValueValidator,
+                                           MinLengthValidator, MinValueValidator, RegexValidator)
 
 TEST_DATA = [
     # (validator, value, expected),

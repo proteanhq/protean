@@ -2,13 +2,11 @@
 # Standard Library Imports
 import logging
 
-from marshmallow import fields, Schema
-
 # Protean
+from marshmallow import Schema, fields
 from protean.core.exceptions import NotSupportedError
-from protean.core.field.basic import (
-    Boolean, Date, DateTime, Field, Float, Identifier,
-    Integer, List, Method, Nested, String, Text)
+from protean.core.field.basic import (Boolean, Date, DateTime, Field, Float, Identifier,
+                                      Integer, List, Method, Nested, String, Text)
 
 logger = logging.getLogger('protean.core.data_transfer_object')
 

@@ -1,10 +1,12 @@
+# Protean
 import pytest
 
 from protean import Domain
-from protean.domain import DomainObjects
 from protean.core.exceptions import ConfigurationError, IncorrectUsageError
+from protean.domain import DomainObjects
 from protean.utils import fully_qualified_name
 
+# Local/Relative Imports
 from .elements import UserStruct
 
 

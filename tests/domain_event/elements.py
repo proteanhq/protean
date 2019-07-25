@@ -1,9 +1,8 @@
+# Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.domain_event import BaseDomainEvent
-
 from protean.core.field.basic import Integer, String
 from protean.core.field.embedded import AggregateField
-
 from protean.globals import current_domain
 
 
