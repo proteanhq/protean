@@ -357,12 +357,7 @@ class Domain(_PackageBoundObject):
                 raise IncorrectUsageError("Subscribers need to be associated with Domain Event")
 
             new_cls.meta_.domain_event_cls = domain_event_cls
-
-            if self._brokers is None:
-                self._brokers = self._initialize_brokers()
-            if broker_name not in self._brokers:
-                raise ConfigurationError(f"Broker {broker_name} has not been configured.")
-            self._brokers[broker_name].register(domain_event_cls, new_cls)
+            new_cls.meta_.broker = broker_name
 
         # Enrich element with domain information
         if hasattr(new_cls, 'meta_'):
@@ -671,18 +666,28 @@ class Domain(_PackageBoundObject):
                 broker_cls = getattr(importlib.import_module(broker_module), broker_class)
                 broker_objects[broker_name] = broker_cls(broker_name, self, conn_info)
 
-        return broker_objects
+        self._brokers = broker_objects
+
+        # Also initialize subscribers for Brokers
+        for _, subscriber_record in self.subscribers.items():
+            subscriber = subscriber_record.cls
+            broker_name = subscriber.meta_.broker
+
+            if broker_name not in self._brokers:
+                raise ConfigurationError(f"Broker {broker_name} has not been configured.")
+
+            self._brokers[broker_name].register(subscriber.meta_.domain_event_cls, subscriber)
 
     def has_broker(self, broker_name):
         if self.brokers is None:
-            self.brokers = self._initialize_brokers()
+            self._initialize_brokers()
 
         return broker_name in self.brokers
 
     def get_broker(self, broker_name):
         """Retrieve the broker object with a given broker name"""
         if self.brokers is None:
-            self.brokers = self._initialize_brokers()
+            self._initialize_brokers()
 
         try:
             return self.brokers[broker_name]
@@ -693,7 +698,7 @@ class Domain(_PackageBoundObject):
     def brokers_list(self):
         """A generator that helps users iterator through brokers"""
         if self._brokers is None:
-            self._brokers = self._initialize_brokers()
+            self._initialize_brokers()
 
         for broker_name in self._brokers:
             yield self._brokers[broker_name]
@@ -701,7 +706,7 @@ class Domain(_PackageBoundObject):
     def publish(self, domain_event):
         """Publish a domain event to all registered brokers"""
         if self._brokers is None:
-            self._brokers = self._initialize_brokers()
+            self._initialize_brokers()
 
         for broker_name in self._brokers:
             self._brokers[broker_name].send_message(domain_event)

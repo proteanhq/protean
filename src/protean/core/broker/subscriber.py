@@ -55,9 +55,9 @@ class BaseSubscriber(metaclass=_SubscriberMetaclass):
     with the domain
     """
 
-    def __init__(self, domain, domain_event):
+    def __init__(self, domain, domain_event_cls):
         self.domain = domain
-        self.domain_event = domain_event
+        self.domain_event_cls = domain_event_cls
 
     @abstractmethod
     def notify(self, domain_event):
