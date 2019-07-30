@@ -78,7 +78,6 @@ Protean is ready for today's diverse and multilayered software stack requirement
     philosophy/decision-delay
     philosophy/architecture/dependency-rule
 
-
 .. toctree::
    :maxdepth: 1
    :caption: User Guide
@@ -99,6 +98,7 @@ Protean is ready for today's diverse and multilayered software stack requirement
    :maxdepth: 1
    :caption: API
 
+   api/domain
    api/entity
    api/field
    api/queryset
