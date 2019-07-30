@@ -1,7 +1,7 @@
 # Development Requirements
 
 check-manifest==0.39
-coverage==4.5.3
+coverage==4.5.4
 docutils>=0.15
 pytest-flake8==1.0.4
 sphinx==2.1.2
