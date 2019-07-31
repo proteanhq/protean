@@ -89,6 +89,7 @@ Protean is ready for today's diverse and multilayered software stack requirement
    user/composition-root
    user/domain-layer-mechanics
    user/application-layer
+   user/configuration
    user/infrastructure
    user/persistence
    user/unit-of-work
