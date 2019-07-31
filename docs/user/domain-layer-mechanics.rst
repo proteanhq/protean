@@ -4,6 +4,6 @@ Domain Layer Mechanics
 
 .. toctree::
     :glob:
-    :caption: Domain Elements
+    :caption: Domain Layer Elements
 
     domain/*

@@ -77,6 +77,11 @@ Protean is ready for today's diverse and multilayered software stack requirement
 
 *Protean officially supports Python 3.7+.*
 
+Guides
+------
+
+Protean guides contain a mixture of Architecture Principles, Conventions, Practical Considerations, and Example code. Wherever applicable, additional links to reference materials have been provided.
+
 .. toctree::
     :maxdepth: 1
     :caption: Philosophy
@@ -95,12 +100,15 @@ Protean is ready for today's diverse and multilayered software stack requirement
    user/tutorial
    user/composition-root
    user/domain-layer-mechanics
-   user/application-layer
+   user/application-layer-mechanics
    user/configuration
    user/infrastructure
    user/persistence
    user/unit-of-work
    user/messaging-medium
+
+API
+---
 
 .. toctree::
    :maxdepth: 1
