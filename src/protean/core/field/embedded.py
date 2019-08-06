@@ -45,7 +45,6 @@ class ValueObjectField(Field):
     def __init__(self, value_object_cls, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._value_object_cls = value_object_cls
-        self.value_object = value_object_cls(*args, **kwargs)
 
         self.embedded_fields = {}
         for field_name, field_obj in self._value_object_cls.meta_.declared_fields.items():
