@@ -1,3 +1,5 @@
+.. _foreword:
+
 ========
 Foreword
 ========

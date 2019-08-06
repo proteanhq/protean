@@ -348,9 +348,13 @@ class BaseAggregate(metaclass=_AggregateMetaclass):
                     name: getattr(self, attr)
                     for name, attr in attributes
                 }
-                value_object = field_obj.value_object_cls.build(**vals)
-                setattr(self, field_name, value_object)
-                loaded_fields.append(field_name)
+                try:
+                    value_object = field_obj.value_object_cls.build(**vals)
+                    setattr(self, field_name, value_object)
+                    loaded_fields.append(field_name)
+                except ValidationError as err:
+                    for sub_field_name in err.messages:
+                        self.errors['{}-{}'.format(field_name, sub_field_name)].extend(err.messages[sub_field_name])
 
         if not getattr(self, self.meta_.id_field.field_name, None) and type(self.meta_.id_field) is Auto:
             setattr(self, self.meta_.id_field.field_name, self._generate_identity())

@@ -1,3 +1,5 @@
+.. _value-objects:
+
 =============
 Value Objects
 =============
@@ -161,7 +163,7 @@ Usage
 
 A Value Object (VO) can be defined in two ways:
 
-1. As a class inheriting from `BaseValueObject`
+1. As a class inheriting from ``BaseValueObject``
 
 .. code-block:: python
 
@@ -180,7 +182,7 @@ You will then have to register the Value Object with the domain:
 
     domain.register(Balance)
 
-2. As a class annotated with @domain.value_object
+2. As a class annotated with ``@domain.value_object``
 
 .. code-block:: python
 
@@ -194,7 +196,7 @@ You will then have to register the Value Object with the domain:
         currency = String(max_length=3, required=True, choices=Currency)
         amount = Float(required=True)
 
-In this case, domain registration is automatic and does not require manual registration of the element with the domain.
+In this case, registration is automatic and does not require manual registration of the domain element.
 
 You can assign a VO's value by instantiating an object of the class:
 
