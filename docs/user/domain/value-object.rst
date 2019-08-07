@@ -1,4 +1,4 @@
-.. _value-objects:
+.. _value-object:
 
 =============
 Value Objects
