@@ -35,7 +35,6 @@ class _ShadowField(Field):
 
     def _reset_values(self, instance):
         """Reset all associated values and clean up dictionary items"""
-        self.value = None
         instance.__dict__.pop(self.field_name, None)
 
 
@@ -103,7 +102,6 @@ class ValueObjectField(Field):
             self._reset_values(instance)
 
     def _set_own_value(self, instance, value):
-        self.value = value
         if value is None:
             instance.__dict__.pop(self.field_name, None)
         else:
