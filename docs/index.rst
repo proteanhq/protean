@@ -80,7 +80,15 @@ Protean is ready for today's diverse and multilayered software stack requirement
 Guides
 ------
 
-Protean guides contain a mixture of Architecture Principles, Conventions, Practical Considerations, and Example code. Wherever applicable, additional links to reference materials have been provided.
+Protean guides contain a mixture of Architecture Principles, Conventions, Practical Considerations, Protean Opinions/Choices and Sample code. Wherever applicable, additional links to reference materials have been provided.
+
+These guides have been heavily influenced by the thoughts and works of DDD pioneers. Specifically, it references extensively to the following texts:
+
+* |ddd-eric-evans|
+* |implementing-ddd-vaughn-vernon|
+* |ddd-distilled-vaughn-vernon|
+
+*Protean's guides are not a replacement to the original texts. It is recommended that you go through them to polish your DDD knowledge.*
 
 .. toctree::
     :maxdepth: 1
@@ -106,6 +114,7 @@ Protean guides contain a mixture of Architecture Principles, Conventions, Practi
    user/persistence
    user/unit-of-work
    user/messaging-medium
+   user/negative-patterns
 
 API
 ---
@@ -128,3 +137,16 @@ API
    community/styleguide
    Code of Conduct <community/code-of-conduct>
    community/contributing
+
+
+.. |ddd-eric-evans| raw:: html
+
+    <a href="https://www.amazon.com/Domain-Driven-Design-Tackling-Complexity-Software-ebook/dp/B00794TAUG" target="_blank">Domain-Driven Design: Tackling Complexity in the Heart of Software - Eric Evans</a>
+
+.. |implementing-ddd-vaughn-vernon| raw:: html
+
+    <a href="https://www.amazon.com/Implementing-Domain-Driven-Design-Vaughn-Vernon-ebook/dp/B00BCLEBN8" target="_blank">Implementing Domain-Driven Design - Vaughn Vernon</a>
+
+.. |ddd-distilled-vaughn-vernon| raw:: html
+
+    <a href="https://www.amazon.com/Domain-Driven-Design-Distilled-Vaughn-Vernon-ebook/dp/B01JJSGE5S" target="_blank">Domain-Driven Design Distilled - Vaughn Vernon</a>
