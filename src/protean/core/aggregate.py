@@ -338,23 +338,25 @@ class BaseAggregate(metaclass=_AggregateMetaclass):
 
         # Load Value Objects
         for field_name, field_obj in self.meta_.declared_fields.items():
-            if isinstance(field_obj, (ValueObjectField)):
+            if isinstance(field_obj, (ValueObjectField)) and not getattr(self, field_name):
                 attributes = [
                     (embedded_field.field_name, embedded_field.attribute_name)
                     for embedded_field
                     in field_obj.embedded_fields.values()
                     ]
                 vals = {
-                    name: getattr(self, attr)
+                    name: kwargs.get(attr)
                     for name, attr in attributes
                 }
                 try:
                     value_object = field_obj.value_object_cls.build(**vals)
-                    setattr(self, field_name, value_object)
-                    loaded_fields.append(field_name)
+                    # Set VO value only if the value object is not None/Empty
+                    if value_object:
+                        setattr(self, field_name, value_object)
+                        loaded_fields.append(field_name)
                 except ValidationError as err:
                     for sub_field_name in err.messages:
-                        self.errors['{}-{}'.format(field_name, sub_field_name)].extend(err.messages[sub_field_name])
+                        self.errors['{}_{}'.format(field_name, sub_field_name)].extend(err.messages[sub_field_name])
 
         if not getattr(self, self.meta_.id_field.field_name, None) and type(self.meta_.id_field) is Auto:
             setattr(self, self.meta_.id_field.field_name, self._generate_identity())

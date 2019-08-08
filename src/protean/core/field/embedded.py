@@ -35,7 +35,6 @@ class _ShadowField(Field):
 
     def _reset_values(self, instance):
         """Reset all associated values and clean up dictionary items"""
-        self.value = None
         instance.__dict__.pop(self.field_name, None)
 
 
@@ -86,24 +85,22 @@ class ValueObjectField(Field):
 
     def __set__(self, instance, value):
         """Override `__set__` to coordinate between value object and its embedded fields"""
+        if isinstance(self.value_object_cls, str):
+            self.value_object_cls = fetch_value_object_cls_from_domain(self.value_object_cls)
+
+            # Refresh attribute name, now that we know `value_object_cls` class
+            self.attribute_name = self.get_attribute_name()
+
+        value = self._load(value)
+
         if value:
-            if isinstance(self.value_object_cls, str):
-                self.value_object_cls = fetch_value_object_cls_from_domain(self.value_object_cls)
-
-                # Refresh attribute name, now that we know `value_object_cls` class
-                self.attribute_name = self.get_attribute_name()
-
-            value = self._load(value)
-
-            if value:
-                # Check if the reference object has been saved. Otherwise, throw ValueError
-                self._set_own_value(instance, value)
-                self._set_embedded_values(instance, value)
+            # Check if the reference object has been saved. Otherwise, throw ValueError
+            self._set_own_value(instance, value)
+            self._set_embedded_values(instance, value)
         else:
             self._reset_values(instance)
 
     def _set_own_value(self, instance, value):
-        self.value = value
         if value is None:
             instance.__dict__.pop(self.field_name, None)
         else:

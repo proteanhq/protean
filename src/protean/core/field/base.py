@@ -181,7 +181,8 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
 
         """
 
-        if value in self.empty_values:
+        # Check if value is one among recognized empty values, or is False (for complex objects)
+        if value in self.empty_values or not value:
             # If a default has been set for the field return it
             if self.default is not None:
                 default = self.default
@@ -192,10 +193,12 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
             elif self.required:
                 self.fail('required')
 
-            # In all other cases just return `None` as we do not want to
+            # In all other cases just return the passed value, as we do not want to
             # run validations against an empty value
+            # Because of this behavior, we preserve the data sanctity for int and float objects,
+            # and return 0 or 0.0, as need be.
             else:
-                return None
+                return value
 
         # If choices exist then validate that value is be one of the choices
         if self.choices:

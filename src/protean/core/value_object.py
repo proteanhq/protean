@@ -263,6 +263,14 @@ class BaseValueObject(metaclass=_ValueObjectMetaclass):
             '{}'.format(self.to_dict())
         )
 
+    def __bool__(self):
+        """ Return this object's truthiness to be `False`,
+        if all its attributes evaluate to truthiness `False`
+        """
+        return any(
+            bool(getattr(self, field_name, None))
+            for field_name in self.meta_.attributes)
+
     def to_dict(self):
         """ Return data as a dictionary """
         return {field_name: getattr(self, field_name, None)
