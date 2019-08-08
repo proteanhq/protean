@@ -350,8 +350,10 @@ class BaseAggregate(metaclass=_AggregateMetaclass):
                 }
                 try:
                     value_object = field_obj.value_object_cls.build(**vals)
-                    setattr(self, field_name, value_object)
-                    loaded_fields.append(field_name)
+                    # Set VO value only if the value object is not None/Empty
+                    if value_object:
+                        setattr(self, field_name, value_object)
+                        loaded_fields.append(field_name)
                 except ValidationError as err:
                     for sub_field_name in err.messages:
                         self.errors['{}_{}'.format(field_name, sub_field_name)].extend(err.messages[sub_field_name])

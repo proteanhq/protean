@@ -68,7 +68,7 @@ class Balance(BaseValueObject):
     amount = Float()
 
     def clean(self):
-        if self.amount < -1000000000000.0:
+        if self.amount and self.amount < -1000000000000.0:
             raise ValidationError("Amount cannot be less than 1 Trillion")
 
     def replace(self, **kwargs):
@@ -77,3 +77,8 @@ class Balance(BaseValueObject):
         amount = kwargs.pop('amount', None)
         return Balance(currency=currency or self.currency,
                        amount=amount or self.amount)
+
+
+class Account(BaseAggregate):
+    balance = ValueObjectField(Balance, required=True)
+    kind = String(max_length=15, required=True)

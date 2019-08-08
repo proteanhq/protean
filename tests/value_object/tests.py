@@ -4,7 +4,7 @@ import pytest
 from protean.core.exceptions import InvalidOperationError, ValidationError
 
 # Local/Relative Imports
-from .elements import Balance, Currency, Email, MyOrgEmail, User
+from .elements import Account, Balance, Currency, Email, MyOrgEmail, User
 
 
 class TestEquivalence:
@@ -153,7 +153,7 @@ class TestEmailVOBehavior:
         assert email.address == 'john.doe@gmail.com'
 
 
-class TestVOEmbedding:
+class TestEmailVOEmbedding:
     def test_that_user_has_all_the_required_fields(self):
         assert all(
             field_name in User.meta_.declared_fields
@@ -186,3 +186,42 @@ class TestVOEmbedding:
 
         assert 'email_address' in email_exception.value.messages
         assert email_exception.value.messages['email_address'] == ['is required']
+
+
+class TestBalanceVOEmbedding:
+    def test_that_account_has_all_the_required_fields(self):
+        assert all(
+            field_name in Account.meta_.declared_fields
+            for field_name in
+            ['balance', 'kind'])
+
+    def test_that_account_can_be_initialized_successfully(self):
+        account = Account(balance=Balance.build(currency='USD', amount=150.0), kind='PRIMARY')
+        assert account is not None
+        assert account.id is not None
+        assert account.balance == Balance.build(currency='USD', amount=150.0)
+        assert account.balance_currency == 'USD'
+        assert account.balance_amount == 150.0
+
+    def test_that_account_can_be_initialized_successfully_with_embedded_fields(self):
+        account = Account(balance_currency='USD', balance_amount=150.0, kind='PRIMARY')
+        assert account is not None
+        assert account.id is not None
+        assert account.balance == Balance.build(currency='USD', amount=150.0)
+        assert account.balance_currency == 'USD'
+        assert account.balance_amount == 150.0
+
+    def test_that_mandatory_fields_are_validated(self):
+        with pytest.raises(ValidationError) as multi_exceptions:
+            Account()
+
+        assert 'balance' in multi_exceptions.value.messages
+        assert multi_exceptions.value.messages['balance'] == ['is required']
+        assert 'kind' in multi_exceptions.value.messages
+        assert multi_exceptions.value.messages['kind'] == ['is required']
+
+        with pytest.raises(ValidationError) as email_exception:
+            Account(kind='PRIMARY')
+
+        assert 'balance' in email_exception.value.messages
+        assert email_exception.value.messages['balance'] == ['is required']
