@@ -8,6 +8,30 @@ Aggregates are the coarse-grained building blocks of the domain model. Aggregate
 
 The Root Entity is responsible for all other elements within the Aggregate. Put another way, all elements in the Aggregate are only accessible through the Root Entity. The name of the Root Entity usually mirrors the Aggregate’s name, so it is vital to choose a name that accurately describes the entire conceptual whole that the Aggregate represents.
 
+.. testsetup:: *
+
+    import os
+    from protean.domain import Domain
+
+    domain = Domain('Test')
+
+    ctx = domain.domain_context()
+    ctx.push()
+
+.. testcode::
+
+    from datetime import datetime
+
+    from protean.core.field.basic import DateTime, String
+
+    @domain.aggregate
+    class Role:
+        name = String(max_length=15, required=True)
+        created_on = DateTime(default=datetime.today())
+
+    role = Role(name='ADMIN')
+
+
 Each Aggregate forms a transactional consistency boundary, meaning that within a single Aggregate, all elements must be consistent and satisfy associated business rules at the time of a transaction. The Aggregate should preferably satisfy all invariant rules all the time. This way, when the controlling transaction is committed to the database, the Aggregate should not need to check for conceptual validity.
 
 Enclosing Entities and Value Objects into an Aggregate within a consistency boundary may seem easy, but this pattern is one of the least well understood amongst DDD technical guidelines.
