@@ -1,0 +1,32 @@
+from protean.utils.container import BaseContainer
+
+
+class BaseCommand(BaseContainer):
+    """The Base class for Protean-Compliant Domain Commands.
+
+    Provides helper methods to custom define attributes, and find attribute names
+    during runtime.
+
+    Basic Usage::
+
+        @domain.command
+        class UserRegistrationCommand:
+            email = String(required=True, max_length=250)
+            username = String(required=True, max_length=50)
+            password = String(required=True, max_length=255)
+
+
+    (or)
+
+        class UserRegistrationCommand(BaseCommand):
+            email = String(required=True, max_length=250)
+            username = String(required=True, max_length=50)
+            password = String(required=True, max_length=255)
+
+        domain.register_element(UserRegistrationCommand)
+    """
+
+    def __new__(cls, *args, **kwargs):
+        if cls is BaseCommand:
+            raise TypeError("BaseCommand cannot be instantiated")
+        return super().__new__(cls)
