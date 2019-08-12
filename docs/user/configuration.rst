@@ -57,3 +57,19 @@ The following configuration values are used internally by Protean:
     Options are defined in :ref:`api-identity-strategy`.
 
     Default: ``IdentityStrategy.UUID``
+
+.. py:data:: BROKERS
+
+    Protean uses Message Brokers for publishing and propogating Domain events within and across Bounded Contexts.
+
+    By default, Protean is packaged with a :ref:`in-memory-broker` that works perfectly well in development environments and within a single bounded context. But it is recommended to use full-fledged message brokers in production and for large scale deployments. Protean comes with built-in support for RabbitMQ and Redis, but you can easily extend the mechanism to support your :ref:`own broker<plugin-broker>`.
+
+    Options:
+
+    * **INMEMORY**: default. Use Protean's in-built message broker for development and testing purposes.
+    * **RABBITMQ**: Use RabbitMQ as the message broker
+    * **REDIS**: Use Redis' PubSub infrastructure as the message broker
+
+    Options are defined in :ref:`api-brokers`.
+
+    Default: ``BaseBroker.INMEMORY``

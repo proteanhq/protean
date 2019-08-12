@@ -127,7 +127,20 @@ API
    api/entity
    api/field
    api/queryset
+   api/brokers
    api/utils
+   api/in-memory-broker
+
+
+Plugins
+-------
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Plugins
+
+   plugins/broker
+
 
 .. toctree::
    :maxdepth: 1

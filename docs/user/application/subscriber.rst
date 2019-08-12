@@ -4,20 +4,30 @@
 Subscribers
 ===========
 
-Subscribers live on the other side of event publishing. They are domain elements that subscribe to specific events and are notified by the domain automatically on event bubble-up
+Subscribers live on the other side of event publishing. They are domain elements that subscribe to specific domain events and are notified by the domain on event bubble-up.
 
 Protean provides a concrete message broker infrastructure as well as guaranteed transfer mechanisms. So Subscribers are agnostic to how the messages make their way to them. They can tap into Protean's infrastructure by specifying the domain event to attach to as part of their definition.
 
-Subscribers implement their functionality in the ``notify`` function, which receives the domain event as an argument. Typically, they end up triggering a call to an Application Service method that accesses the rest of the infrastructure to execute the behavior. Asynchronous processes, long-drawn and expensive transactions and communication across bounded contexts are good candidates to be executed through the subscriber process.
+Subscribers implement their functionality in the ``notify`` function, which receives the domain event as an argument. Typically, they end up triggering a call to an Application Service method that accesses the rest of the infrastructure to execute the behavior. Asynchronous processes, long-drawn and expensive transactions and communication across bounded contexts are good candidates to be executed through domain events.
 
 Usage
 =====
 
 A Subscriber can be defined and registered with the help of ``@domain.subscriber`` decorator:
 
-.. code-block:: python
+.. testsetup:: *
 
-    @domain.subscriber(domain_event=CommentAdded)
+    import os
+    from protean.domain import Domain
+
+    domain = Domain('Test')
+
+    ctx = domain.domain_context()
+    ctx.push()
+
+.. doctest::
+
+    @domain.subscriber(domain_event='CommentAdded')
     class SendNewCommentEmail:
         """Send an email alerting the author about a new comment"""
 
