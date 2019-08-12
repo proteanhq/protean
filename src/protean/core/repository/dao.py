@@ -19,10 +19,10 @@ logger = logging.getLogger('protean.repository')
 
 
 class BaseDAO(metaclass=ABCMeta):
-    """Repository interface to interact with databases
+    """DAO interface to interact with databases
 
     :param conn: A connection/session to the data source of the model
-    :param model_cls: The model class registered with this repository
+    :param model_cls: The model class registered with this data store
     """
 
     def __init__(self, domain, provider, entity_cls, model_cls):
@@ -42,7 +42,7 @@ class BaseDAO(metaclass=ABCMeta):
     def _filter(self, criteria: Q, offset: int = 0, limit: int = 10,
                 order_by: list = ()) -> ResultSet:
         """
-        Filter objects from the repository. Method must return a `ResultSet`
+        Filter objects from the data store. Method must return a `ResultSet`
         object
         """
 
@@ -52,11 +52,11 @@ class BaseDAO(metaclass=ABCMeta):
 
     @abstractmethod
     def _update(self, model_obj: Any):
-        """Update a model object in the repository and return it"""
+        """Update a model object in the data store and return it"""
 
     @abstractmethod
     def _update_all(self, criteria: Q, *args, **kwargs):
-        """Updates object directly in the repository and returns update count"""
+        """Updates object directly in the data store and returns update count"""
 
     @abstractmethod
     def _delete(self):
@@ -70,7 +70,7 @@ class BaseDAO(metaclass=ABCMeta):
     def _raw(self, query: Any, data: Any = None):
         """Run raw query on Data source.
 
-        Running a raw query on the repository should always returns entity instance objects. If
+        Running a raw query on the data store should always returns entity instance objects. If
         the results were not synthesizable back into entity objects, an exception should be thrown.
         """
 
@@ -81,7 +81,7 @@ class BaseDAO(metaclass=ABCMeta):
     def get(self, identifier: Any) -> BaseEntity:
         """Get a specific Record from the Repository
 
-        :param identifier: id of the record to be fetched from the repository.
+        :param identifier: id of the record to be fetched from the data store.
         """
         logger.debug(f'Lookup `{self.entity_cls.__name__}` object with identifier {identifier}')
         # Get the ID field for the entity
@@ -89,7 +89,7 @@ class BaseDAO(metaclass=ABCMeta):
             self.entity_cls.meta_.id_field.field_name: identifier
         }
 
-        # Find this item in the repository or raise Error
+        # Find this item in the data store or raise Error
         results = self.query.filter(**filters).limit(1).all()
         if not results:
             raise ObjectNotFoundError(
@@ -107,7 +107,7 @@ class BaseDAO(metaclass=ABCMeta):
         logger.debug(f'Lookup `{self.entity_cls.__name__}` object with values '
                      f'{kwargs}')
 
-        # Find this item in the repository or raise Error
+        # Find this item in the data store or raise Error
         results = self.query.filter(**kwargs).limit(1).all()
 
         if not results:
@@ -132,7 +132,7 @@ class BaseDAO(metaclass=ABCMeta):
         return bool(results)
 
     def create(self, *args, **kwargs) -> 'BaseEntity':
-        """Create a new record in the repository.
+        """Create a new record in the data store.
 
         Also performs unique validations before creating the entity
 
@@ -171,7 +171,7 @@ class BaseDAO(metaclass=ABCMeta):
             raise
 
     def save(self, entity_obj):
-        """Save a new Entity into repository.
+        """Save a new Entity into data store.
 
         Performs unique validations before creating the entity.
         """
@@ -208,7 +208,7 @@ class BaseDAO(metaclass=ABCMeta):
             raise
 
     def update(self, entity_obj, *data, **kwargs) -> 'BaseEntity':
-        """Update a Record in the repository.
+        """Update a Record in the data store.
 
         Also performs unique validations before creating the entity.
 
@@ -269,7 +269,7 @@ class BaseDAO(metaclass=ABCMeta):
 
         will perform callbacks and run validations before deletion.
 
-        Throws ObjectNotFoundError if the object was not found in the repository.
+        Throws ObjectNotFoundError if the object was not found in the data store.
         """
         try:
             if not entity_obj.state_.is_destroyed:
