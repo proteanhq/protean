@@ -200,6 +200,12 @@ class BaseContainer(metaclass=_ContainerMetaclass):
             bool(getattr(self, field_name, None))
             for field_name in self.meta_.attributes)
 
+    def __setattr__(self, name, value):
+        if name in self.meta_.declared_fields or name in ['errors', 'owner']:
+            super().__setattr__(name, value)
+        else:
+            raise AttributeError("%s has no attribute %s" % (self.__class__.__name__, name))
+
     def to_dict(self):
         """ Return data as a dictionary """
         return {field_name: getattr(self, field_name, None)

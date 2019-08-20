@@ -75,3 +75,9 @@ class TestDTOProperties:
             'age': 34, 'address1': '3214 Ave', 'address2': None, 'city': 'Houston',
             'province': 'TX', 'country': 'US'
         }
+
+    @pytest.mark.xfail
+    def test_that_only_valid_attributes_can_be_assigned(self):
+        person = PersonBasicDetails(first_name='John', last_name='Doe', email='johndoe@gmail.com')
+        with pytest.raises(AttributeError):
+            person.foo = 'bar'

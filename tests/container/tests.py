@@ -31,3 +31,9 @@ class TestContainerProperties:
     def test_output_to_dict(self):
         custom = CustomContainer(foo='a', bar='b')
         assert custom.to_dict() == {'foo': 'a', 'bar': 'b'}
+
+    @pytest.mark.xfail
+    def test_that_only_valid_attributes_can_be_assigned(self):
+        custom = CustomContainer(foo='a', bar='b')
+        with pytest.raises(AttributeError):
+            custom.foo = 'bar'

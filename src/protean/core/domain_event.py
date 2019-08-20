@@ -1,8 +1,8 @@
 # Protean
-from protean.core.value_object import BaseValueObject
+from protean.utils.container import BaseContainer
 
 
-class BaseDomainEvent(BaseValueObject):
+class BaseDomainEvent(BaseContainer):
     """Base DomainEvent class that all other Domain Events should inherit from.
 
     Core functionality associated with Domain Events, like timestamping, are specified

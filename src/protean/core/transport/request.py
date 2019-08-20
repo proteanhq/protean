@@ -36,7 +36,7 @@ class RequestObjectFactory:
     """Factory to construct simple request object structures on the fly"""
 
     @classmethod  # noqa: C901
-    def construct(cls, name: str, declared_fields: typing.List[tuple]):
+    def construct(cls, domain, name: str, declared_fields: typing.List[tuple]):
         """
         Utility method packaged along with the factory to be able to construct Request Object
         classes on the fly.
@@ -115,6 +115,7 @@ class RequestObjectFactory:
                             bases=(BaseRequestObject, ),
                             namespace={'from_dict': from_dict, 'is_valid': True})
 
+        domain.register(dc)
         return dc
 
     @classmethod
