@@ -324,8 +324,8 @@ class BaseEntity(metaclass=_EntityMetaclass):
                     f'values.'
                 )
             for field_name, val in dictionary.items():
-                loaded_fields.append(field_name)
-                setattr(self, field_name, val)
+                if field_name not in kwargs:
+                    kwargs[field_name] = val
 
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
