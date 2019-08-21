@@ -2,6 +2,12 @@
 Release History
 ===============
 
+dev
+---
+
+* Value Object Validations - Bugfix
+* Register Request Object with domain automatically
+
 0.1 (2019-07-25)
 ----------------
 
