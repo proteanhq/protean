@@ -9,7 +9,7 @@ from typing import Any, Union
 # Protean
 from protean.utils.query import Q
 
-logger = logging.getLogger('protean.core.entity')
+logger = logging.getLogger('protean.repository.queryset')
 
 
 class QuerySet:

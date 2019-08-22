@@ -57,6 +57,7 @@ class UnitOfWork:
                 provider = self.domain.get_provider(provider_name)
                 provider.commit(self._changes[provider_name])
 
+            logger.debug('Commit Successful')
             self._sessions = {}
             self._in_progress = False
         except Exception as exc:

@@ -17,7 +17,7 @@ from protean.utils import IdentityStrategy, inflection
 # Local/Relative Imports
 from ..core.field.association import _ReferenceField  # Relative path to private class
 
-logger = logging.getLogger('protean.core.entity')
+logger = logging.getLogger('protean.domain.aggregate')
 
 
 class _AggregateMetaclass(type):
@@ -375,6 +375,7 @@ class BaseAggregate(metaclass=_AggregateMetaclass):
 
         # Raise any errors found during load
         if self.errors:
+            logger.error(self.errors)
             raise ValidationError(self.errors)
 
     @classmethod
@@ -437,6 +438,7 @@ class BaseAggregate(metaclass=_AggregateMetaclass):
 
         # Raise any errors found during update
         if self.errors:
+            logger.error(self.errors)
             raise ValidationError(self.errors)
 
     def to_dict(self):

@@ -1,5 +1,9 @@
 # Protean
+import logging
+
 from protean.utils.container import BaseContainer
+
+logger = logging.getLogger('protean.event')
 
 
 class BaseDomainEvent(BaseContainer):

@@ -1,3 +1,8 @@
+import logging
+
+logger = logging.getLogger('protean.application')
+
+
 class BaseApplicationService:
     """Base ApplicationService class that all other Application services should inherit from.
 

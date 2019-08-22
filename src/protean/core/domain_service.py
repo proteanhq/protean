@@ -1,3 +1,8 @@
+import logging
+
+logger = logging.getLogger('protean.domain.service')
+
+
 class BaseDomainService:
     """Base DomainService class that all other domain services should inherit from.
 

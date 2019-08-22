@@ -1,7 +1,10 @@
 import copy
+import logging
 
 from protean.core.exceptions import NotSupportedError, ValidationError
 from protean.core.field.basic import Field
+
+logger = logging.getLogger('protean.domain')
 
 
 class _ContainerMetaclass(type):

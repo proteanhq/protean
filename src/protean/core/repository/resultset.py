@@ -1,4 +1,7 @@
 """ResultSet Utility class and traversal methods for Repository results"""
+import logging
+
+logger = logging.getLogger('protean.repository')
 
 
 class ResultSet(object):

@@ -1,6 +1,10 @@
 """Classes and Functions for Lookup methods for Query translation"""
+import logging
+
 # Standard Library Imports
 from abc import ABCMeta, abstractmethod
+
+logger = logging.getLogger('protean.repository')
 
 
 class BaseLookup(metaclass=ABCMeta):

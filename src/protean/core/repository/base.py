@@ -1,6 +1,10 @@
+import logging
+
 # Protean
 from protean.core.exceptions import InvalidOperationError
 from protean.core.field.association import HasMany
+
+logger = logging.getLogger('protean.repository')
 
 
 class _RepositoryMetaclass(type):
@@ -66,6 +70,7 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
 
     def add(self, aggregate):  # noqa: C901
         if self.uow:
+            logger.debug("Inside UoW - Recording...")
             # Handle the aggregate changes first
             if aggregate.state_.is_persisted and aggregate.state_.is_changed:
                 self.uow.register_update(aggregate)
@@ -94,6 +99,7 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
                     has_many_field._temp_cache['removed'] = list()  # Empty contents of `removed` list
         else:
             # Persist only if the aggregate object is new, or it has changed since last persistence
+            logger.debug("Outside UoW - Committing...")
             if ((not aggregate.state_.is_persisted) or
                     (aggregate.state_.is_persisted and aggregate.state_.is_changed)):
                 dao = self.domain.get_dao(self.meta_.aggregate_cls)

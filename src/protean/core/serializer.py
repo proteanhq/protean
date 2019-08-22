@@ -8,7 +8,7 @@ from protean.core.exceptions import NotSupportedError
 from protean.core.field.basic import (Boolean, Date, DateTime, Field, Float, Identifier,
                                       Integer, List, Method, Nested, String, Text)
 
-logger = logging.getLogger('protean.core.serializer')
+logger = logging.getLogger('protean.application.serializer')
 
 
 class _SerializerMetaclass(type):

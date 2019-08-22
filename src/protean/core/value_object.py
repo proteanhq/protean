@@ -1,5 +1,9 @@
 """Value Object Functionality and Classes"""
+import logging
+
 from protean.utils.container import BaseContainer
+
+logger = logging.getLogger('protean.domain.value_object')
 
 
 class BaseValueObject(BaseContainer):

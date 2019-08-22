@@ -1,4 +1,6 @@
 """Context Management Framework"""
+import logging
+
 # Standard Library Imports
 import sys
 
@@ -7,6 +9,8 @@ from .globals import _domain_context_stack
 
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
+
+logger = logging.getLogger('protean.application')
 
 
 class _DomainContextGlobals(object):
