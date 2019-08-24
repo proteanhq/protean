@@ -319,9 +319,6 @@ class Domain(_PackageBoundObject):
                 new_dict = element_cls.__dict__.copy()
                 new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
 
-                if element_type.value not in self.base_class_mapping:
-                    raise
-
                 # Hacky code to switch between `marshmallow.Schema` and `BaseSerializer`
                 #   while creating the derived class for Serializers
                 #
