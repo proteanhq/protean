@@ -19,6 +19,7 @@ class UnitOfWork:
 
         self._sessions = {}
         self._changes = {}
+        self._events = []
         for provider in self.domain.providers_list():
             self._sessions[provider.name] = provider.get_session()
 
@@ -48,6 +49,7 @@ class UnitOfWork:
 
     def commit(self):
         # Raise error if there the Unit Of Work is not active
+        logger.debug(f'Committing {self}...')
         if not self._sessions or not self._in_progress:
             raise InvalidOperationError("UnitOfWork is not in progress")
 
@@ -57,8 +59,13 @@ class UnitOfWork:
                 provider = self.domain.get_provider(provider_name)
                 provider.commit(self._changes[provider_name])
 
+            for event in self._events:
+                for broker in self.domain.brokers_list:
+                    broker.send_message(event)
+
             logger.debug('Commit Successful')
             self._sessions = {}
+            self._events = []
             self._in_progress = False
         except Exception as exc:
             logger.error(f'Error during Commit: {str(exc)}. Rolling back Transaction...')
@@ -91,6 +98,9 @@ class UnitOfWork:
         assert identity is not None
 
         self._changes[element.meta_.provider]['REMOVED'][identity] = element
+
+    def register_event(self, event):
+        self._events.append(event)
 
     @property
     def changes_to_be_committed(self):

@@ -23,7 +23,7 @@ from .config import Config, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals
 from .helpers import _PackageBoundObject, get_debug_flag, get_env
 
-logger = logging.getLogger('protean.application')
+logger = logging.getLogger('protean.domain')
 
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
@@ -714,10 +714,15 @@ class Domain(_PackageBoundObject):
         for broker_name in self._brokers:
             yield self._brokers[broker_name]
 
-    def publish(self, domain_event):
+    def publish(self, domain_event, uow=None):
         """Publish a domain event to all registered brokers"""
         if self._brokers is None:
             self._initialize_brokers()
 
-        for broker_name in self._brokers:
-            self._brokers[broker_name].send_message(domain_event)
+        if uow:
+            logger.debug(f'Recording {domain_event.__class__.__name__} with values {domain_event.to_dict()} in {uow}')
+            uow.register_event(domain_event)
+        else:
+            logger.debug(f'Publishing {domain_event.__class__.__name__} with values {domain_event.to_dict()}')
+            for broker_name in self._brokers:
+                self._brokers[broker_name].send_message(domain_event)
