@@ -7,7 +7,7 @@ from typing import Any
 
 # Protean
 from protean.core.entity import BaseEntity
-from protean.core.exceptions import ObjectNotFoundError, ValidationError
+from protean.core.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
 from protean.core.field.basic import Auto, Field
 from protean.core.queryset import QuerySet
 from protean.utils.query import Q
@@ -90,11 +90,16 @@ class BaseDAO(metaclass=ABCMeta):
         }
 
         # Find this item in the data store or raise Error
-        results = self.query.filter(**filters).limit(1).all()
+        results = self.query.filter(**filters).all()
         if not results:
             raise ObjectNotFoundError(
                 f'`{self.entity_cls.__name__}` object with identifier {identifier} '
                 f'does not exist.')
+
+        if len(results) > 1:
+            raise TooManyObjectsError(
+                f'More than one object of `{self.entity_cls.__name__}` exist with identifier {identifier}'
+            )
 
         # Return the first result
         return results.first
@@ -108,12 +113,18 @@ class BaseDAO(metaclass=ABCMeta):
                      f'{kwargs}')
 
         # Find this item in the data store or raise Error
-        results = self.query.filter(**kwargs).limit(1).all()
+        results = self.query.filter(**kwargs).all()
 
         if not results:
             raise ObjectNotFoundError(
                 f'`{self.entity_cls.__name__}` object with values {[item for item in kwargs.items()]} '
                 f'does not exist.')
+
+        if len(results) > 1:
+            raise TooManyObjectsError(
+                f'More than one object of `{self.entity_cls.__name__}` exist '
+                f'with values {[item for item in kwargs.items()]}'
+            )
 
         # Return the first result
         return results.first

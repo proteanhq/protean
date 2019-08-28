@@ -15,6 +15,10 @@ class ObjectNotFoundError(Exception):
     """Object was not found, can raise 404"""
 
 
+class TooManyObjectsError(Exception):
+    """Expected one object, but found many"""
+
+
 class InvalidStateError(Exception):
     """Object is in invalid state for the given operation"""
 

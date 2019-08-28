@@ -46,3 +46,7 @@ class ResultSet(object):
     def __iter__(self):
         """ Return iterable on items """
         return iter(self.items)
+
+    def __len__(self):
+        """Return number of items"""
+        return len(self.items)

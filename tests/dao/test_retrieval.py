@@ -1,7 +1,9 @@
+from datetime import datetime, timedelta
+
 # Protean
 import pytest
 
-from protean.core.exceptions import ObjectNotFoundError
+from protean.core.exceptions import ObjectNotFoundError, TooManyObjectsError
 from protean.core.queryset import QuerySet
 
 # Local/Relative Imports
@@ -92,6 +94,13 @@ class TestDAODeleteFunctionality:
 
         with pytest.raises(ObjectNotFoundError):
             test_domain.get_dao(Person).find_by(first_name='Johnny1', age=6)
+
+    def test_error_on_finding_multiple_results(self, test_domain):
+        test_domain.get_dao(Person).create(id=2346, first_name='Johnny1', last_name='Bravo', age=8)
+        test_domain.get_dao(Person).create(id=2347, first_name='Johnny1', last_name='Gravo', age=6)
+
+        with pytest.raises(TooManyObjectsError):
+            test_domain.get_dao(Person).find_by(first_name='Johnny1')
 
     def test_entity_query_initialization(self, test_domain):
         """Test the initialization of a QuerySet"""
@@ -225,7 +234,7 @@ class TestDAODeleteFunctionality:
         assert people.first.age == 6
         assert people.first.first_name == 'Bart'
 
-    def test_comparisons_using_differetn_operators(self, test_domain):
+    def test_comparisons_using_different_operators(self, test_domain):
         # Add multiple entries to the DB
         test_domain.get_dao(Person).create(id=2, first_name='Murdock', age=7, last_name='John')
         test_domain.get_dao(Person).create(id=3, first_name='Jean', age=3, last_name='john')
@@ -233,6 +242,8 @@ class TestDAODeleteFunctionality:
 
         # Filter by the Owner
         people_gte = test_domain.get_dao(Person).query.filter(age__gte=3)
+        people_datetime_gte = test_domain.get_dao(Person).query.filter(
+            created_at__gte=datetime.now()-timedelta(hours=24))
         people_lte = test_domain.get_dao(Person).query.filter(age__lte=6)
         people_gt = test_domain.get_dao(Person).query.filter(age__gt=3)
         people_lt = test_domain.get_dao(Person).query.filter(age__lt=6)
@@ -243,6 +254,7 @@ class TestDAODeleteFunctionality:
         people_icontains = test_domain.get_dao(Person).query.filter(last_name__icontains='Joh')
 
         assert people_gte.total == 3
+        assert people_datetime_gte.total == 3
         assert people_lte.total == 2
         assert people_gt.total == 2
         assert people_lt.total == 1
