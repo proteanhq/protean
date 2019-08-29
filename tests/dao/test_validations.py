@@ -7,7 +7,7 @@ from protean.core.exceptions import ValidationError
 from .elements import Person, PersonRepository, User
 
 
-class TestDAO:
+class TestValidations:
     """This class holds tests for DAO class"""
 
     @pytest.fixture(autouse=True)

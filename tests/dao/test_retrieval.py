@@ -10,7 +10,7 @@ from protean.core.queryset import QuerySet
 from .elements import Person, PersonRepository, User
 
 
-class TestDAODeleteFunctionality:
+class TestDAORetrievalFunctionality:
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):

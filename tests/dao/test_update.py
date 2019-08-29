@@ -7,7 +7,7 @@ from protean.core.exceptions import ObjectNotFoundError
 from .elements import Person, PersonRepository, User
 
 
-class TestDAODeleteFunctionality:
+class TestDAOUpdateFunctionality:
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):

@@ -1,10 +1,13 @@
 """Module with repository implementation for SQLAlchemy
 """
 # Standard Library Imports
+import logging
+
 from abc import ABCMeta
 from typing import Any
 
 # Protean
+from protean.core.exceptions import ObjectNotFoundError
 from protean.core.field.association import Reference
 from protean.core.field.basic import Auto, Boolean, Date, DateTime, Dict, Float, Integer, List, String, Text
 from protean.core.provider.base import BaseProvider
@@ -19,6 +22,8 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext import declarative as sa_dec
 from sqlalchemy.ext.declarative import as_declarative, declared_attr
+
+logging.getLogger('sqlalchemy.engine').setLevel(logging.ERROR)
 
 
 class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
@@ -38,7 +43,6 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
 
     def __init__(cls, classname, bases, dict_):
         # Update the class attrs with the entity attributes
-        from protean.core.repository.factory import repo_factory
 
         if hasattr(cls, 'entity_cls'):
             entity_cls = cls.entity_cls
@@ -47,15 +51,17 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                 # Map the field if not in attributes
                 if field_name not in cls.__dict__:
                     field_cls = type(field_obj)
-                    if field_cls == Reference:
-                        related_ent = repo_factory.get_entity(field_obj.to_cls.__name__)
-                        if field_obj.via:
-                            related_attr = getattr(
-                                related_ent, field_obj.via)
-                        else:
-                            related_attr = related_ent.meta_.id_field
-                        field_name = field_obj.get_attribute_name()
-                        field_cls = type(related_attr)
+
+                    # FIXME Enable References
+                    # if field_cls == Reference:
+                    #     related_ent = current_domain.get_entity(field_obj.to_cls.__name__)
+                    #     if field_obj.via:
+                    #         related_attr = getattr(
+                    #             related_ent, field_obj.via)
+                    #     else:
+                    #         related_attr = related_ent.meta_.id_field
+                    #     field_name = field_obj.get_attribute_name()
+                    #     field_cls = type(related_attr)
 
                     # Get the SA type and default to the text type if no
                     # mapping is found
@@ -111,8 +117,8 @@ class SqlalchemyModel(BaseModel):
         return cls.entity_cls(item_dict)
 
 
-class SARepository(BaseDAO):
-    """Repository implementation for Databases compliant with SQLAlchemy"""
+class SADAO(BaseDAO):
+    """DAO implementation for Databases compliant with SQLAlchemy"""
 
     def _build_filters(self, criteria: Q):
         """ Recursively Build the filters from the criteria object"""
@@ -154,6 +160,7 @@ class SARepository(BaseDAO):
             else:
                 order_cols.append(col)
         qs = qs.order_by(*order_cols)
+        qs_without_limit = qs
         qs = qs.limit(limit).offset(offset)
 
         # Return the results
@@ -162,8 +169,8 @@ class SARepository(BaseDAO):
             result = ResultSet(
                 offset=offset,
                 limit=limit,
-                total=qs.count(),
-                items=items[offset: offset + limit])
+                total=qs_without_limit.count(),
+                items=items)
         except DatabaseError:
             self.conn.rollback()
             raise
@@ -188,23 +195,31 @@ class SARepository(BaseDAO):
     def _update(self, model_obj):
         """ Update a record in the sqlalchemy database"""
         primary_key, data = {}, {}
-        for field_name, field_obj in \
-                self.entity_cls.meta_.declared_fields.items():
+        identifier = None
+
+        for field_name, field_obj in self.entity_cls.meta_.declared_fields.items():
             if field_obj.identifier:
+                identifier = getattr(model_obj, field_name)
                 primary_key = {
-                    field_name: getattr(model_obj, field_name)
+                    field_name: identifier
                 }
             else:
                 if isinstance(field_obj, Reference):
-                    data[field_obj.relation.field_name] = \
-                        field_obj.relation.value
+                    data[field_obj.relation.field_name] = field_obj.relation.value
                 else:
                     data[field_name] = getattr(model_obj, field_name, None)
 
         # Run the update query and commit the results
         try:
-            self.conn.query(self.model_cls).filter_by(
+            result = self.conn.query(self.model_cls).filter_by(
                 **primary_key).update(data)
+
+            if result <= 0:
+                self.conn.rollback()
+                raise ObjectNotFoundError(
+                    f'`{self.entity_cls.__name__}` object with identifier {identifier} '
+                    f'does not exist.')
+
             self.conn.commit()
         except DatabaseError:
             self.conn.rollback()
@@ -217,7 +232,9 @@ class SARepository(BaseDAO):
         # Delete the objects and commit the results
         qs = self.conn.query(self.model_cls).filter(self._build_filters(criteria))
         try:
-            values = args or {}
+            values = {}
+            if args:
+                values = args[0]  # `args[0]` is required because `*args` is sent as a typle
             values.update(kwargs)
             updated_count = qs.update(values)
             self.conn.commit()
@@ -262,6 +279,7 @@ class SARepository(BaseDAO):
 
         try:
             results = self.conn.execute(query)
+            self.conn.commit()
 
             entity_items = []
             for item in results:
@@ -309,11 +327,30 @@ class SAProvider(BaseProvider):
         if session_cls is None:
             session_cls = self.get_session()
 
-        return session_cls()
+        conn = session_cls()
+        conn.execute('PRAGMA case_sensitive_like = ON;')  # FIXME SQlite specific
+        return conn
+
+    def commit(self, changes):
+        raise NotImplementedError
 
     def close_connection(self, conn):
         """ Close the connection to the Database instance """
         conn.close()
+
+    def _data_reset(self):
+        conn = self._engine.connect()
+
+        transaction = conn.begin()
+
+        conn.execute('PRAGMA foreign_keys = OFF;')  # FIXME SQLITE Specific
+
+        for table in self._metadata.sorted_tables:
+            conn.execute(table.delete())
+
+        conn.execute('PRAGMA foreign_keys = ON;')
+
+        transaction.commit()
 
     def get_model(self, entity_cls):
         """Return a fully-baked Model class for a given Entity class"""
@@ -333,9 +370,10 @@ class SAProvider(BaseProvider):
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
         return model_cls
 
-    def get_repository(self, entity_cls):
-        """ Return a repository object configured with a live connection"""
-        return SARepository(self, entity_cls, self.get_model(entity_cls))
+    def get_dao(self, entity_cls):
+        """ Return a DAO object configured with a live connection"""
+        model_cls = self.get_model(entity_cls)
+        return SADAO(self.domain, self, entity_cls, model_cls)
 
     def raw(self, query: Any, data: Any = None):
         """Run raw query on Provider"""

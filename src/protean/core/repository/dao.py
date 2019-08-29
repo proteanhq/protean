@@ -199,7 +199,10 @@ class BaseDAO(metaclass=ABCMeta):
             self._validate_unique(entity_obj, create=False)
 
             # Build the model object and create it
-            model_obj = self._create(self.model_cls.from_entity(entity_obj))
+            if entity_obj.state_.is_persisted:
+                model_obj = self._update(self.model_cls.from_entity(entity_obj))
+            else:
+                model_obj = self._create(self.model_cls.from_entity(entity_obj))
 
             # Update the auto fields of the entity
             for field_name, field_obj in entity_obj.meta_.declared_fields.items():
