@@ -4,6 +4,7 @@ sudo: required
 python:
     - "3.7"
     - "3.7-dev"
+    - "3.8-dev"
 matrix:
     include:
         - os: windows
@@ -15,6 +16,7 @@ matrix:
             - python -m pip install --upgrade pip wheel
     allow_failures:
         - python: 3.7-dev
+        - python: 3.8-dev
 install:
     - pip install -r requirements/test.txt
     - python setup.py install
