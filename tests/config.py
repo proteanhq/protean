@@ -1,5 +1,5 @@
 # Protean
-from protean.utils import IdentityStrategy
+from protean.utils import Database, IdentityStrategy
 
 DEBUG = True
 
@@ -14,6 +14,11 @@ TESTING = True
 DATABASES = {
     'default': {
         'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'
+    },
+    'sqlite': {
+        'PROVIDER': 'protean.impl.repository.sqlalchemy_repo.SAProvider',
+        'DATABASE': Database.SQLITE.value,
+        'DATABASE_URI': 'sqlite:///test.db'
     }
 }
 

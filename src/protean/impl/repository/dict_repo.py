@@ -19,6 +19,7 @@ from protean.core.repository.dao import BaseDAO
 from protean.core.repository.lookup import BaseLookup
 from protean.core.repository.model import BaseModel
 from protean.core.repository.resultset import ResultSet
+from protean.utils import Database
 from protean.utils.query import Q
 
 # Global in-memory store of dict data. Keyed by name, to provide
@@ -47,6 +48,13 @@ class DictModel(BaseModel):
 
 class DictProvider(BaseProvider):
     """Provider class for Dict Repositories"""
+
+    def __init__(self, name, domain, conn_info: dict):
+        """Initialize Provider with Connection/Adapter details"""
+
+        # In case of `DictProvider`, the `DATABASE` value will always be `MEMORY`.
+        conn_info['DATABASE'] = Database.MEMORY.value
+        super().__init__(name, domain, conn_info)
 
     def get_session(self):
         """Return a session object

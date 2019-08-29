@@ -15,6 +15,12 @@ class IdentityStrategy(Enum):
     FUNCTION = auto()
 
 
+class Database(Enum):
+    SQLITE = 'SQLITE'
+    POSTGRESQL = 'POSTGRESQL'
+    MEMORY = 'MEMORY'
+
+
 class classproperty(object):
     def __init__(self, fget):
         self.fget = fget

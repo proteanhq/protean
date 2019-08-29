@@ -7,7 +7,7 @@ from abc import ABCMeta
 from typing import Any
 
 # Protean
-from protean.core.exceptions import ObjectNotFoundError
+from protean.core.exceptions import ObjectNotFoundError, ConfigurationError
 from protean.core.field.association import Reference
 from protean.core.field.basic import Auto, Boolean, Date, DateTime, Dict, Float, Integer, List, String, Text
 from protean.core.provider.base import BaseProvider
@@ -15,6 +15,7 @@ from protean.core.repository.dao import BaseDAO
 from protean.core.repository.lookup import BaseLookup
 from protean.core.repository.model import BaseModel
 from protean.core.repository.resultset import ResultSet
+from protean.utils import Database
 from protean.utils.query import Q
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
 from sqlalchemy import types as sa_types
@@ -24,6 +25,7 @@ from sqlalchemy.ext import declarative as sa_dec
 from sqlalchemy.ext.declarative import as_declarative, declared_attr
 
 logging.getLogger('sqlalchemy.engine').setLevel(logging.ERROR)
+logger = logging.getLogger('protean.repository')
 
 
 class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
@@ -304,6 +306,13 @@ class SAProvider(BaseProvider):
 
     def __init__(self, *args, **kwargs):
         """Initialize and maintain Engine"""
+        # Since SQLAlchemyProvider can cater to multiple databases, it is important
+        #   that we know which database we are dealing with, to run database-specific
+        #   statements like `PRAGMA` for SQLite.
+        if 'DATABASE' not in args[2]:
+            logger.error(f'Missing `DATABASE` information in conn_info: {args[2]}')
+            raise ConfigurationError('Missing `DATABASE` attribute in Connection info')
+
         super().__init__(*args, **kwargs)
 
         self._engine = create_engine(make_url(self.conn_info['DATABASE_URI']))
@@ -328,7 +337,10 @@ class SAProvider(BaseProvider):
             session_cls = self.get_session()
 
         conn = session_cls()
-        conn.execute('PRAGMA case_sensitive_like = ON;')  # FIXME SQlite specific
+
+        if self.conn_info['DATABASE'] == Database.SQLITE.value:
+            conn.execute('PRAGMA case_sensitive_like = ON;')
+
         return conn
 
     def commit(self, changes):
@@ -343,12 +355,14 @@ class SAProvider(BaseProvider):
 
         transaction = conn.begin()
 
-        conn.execute('PRAGMA foreign_keys = OFF;')  # FIXME SQLITE Specific
+        if self.conn_info['DATABASE'] == Database.SQLITE.value:
+            conn.execute('PRAGMA foreign_keys = OFF;')
 
         for table in self._metadata.sorted_tables:
             conn.execute(table.delete())
 
-        conn.execute('PRAGMA foreign_keys = ON;')
+        if self.conn_info['DATABASE'] == Database.SQLITE.value:
+            conn.execute('PRAGMA foreign_keys = ON;')
 
         transaction.commit()
 

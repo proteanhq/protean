@@ -34,7 +34,20 @@ IDENTITY_STRATEGY = IdentityStrategy.UUID
 #  REPOSITORY #
 ###############
 
-# Repository connection information
+# `DATABASES` configuration parameter holds connection information for repositories.
+#   Includes one or more providers that serve as data stores.
+#   Each provider is identifyable with a unique name, that is the key of its connection info.
+#
+# CONNECTION INFO:
+#   `DATABASE_URI`:
+#       Full URI of the database instance to connect to
+#   `DATABASE`:
+#   In cases where a provider supports multiple databases, like SQLAlchemy,
+#     the value of `DATABASE` will be set to the actual product used,
+#     like `POSTGRESQL`, `SQLITE`, and `MYSQL`.
+#
+#   The value of `DATABASE` will be used when database-specific queries need
+#     to be executed, like `PRAGMA` statements for SQLite.
 DATABASES = {}
 
 # Default no. of records to fetch per query
