@@ -15,6 +15,11 @@ class IdentityStrategy(Enum):
     FUNCTION = auto()
 
 
+class IdentityType(Enum):
+    INTEGER = 'INTEGER'
+    STRING = 'STRING'
+
+
 class Database(Enum):
     SQLITE = 'SQLITE'
     POSTGRESQL = 'POSTGRESQL'

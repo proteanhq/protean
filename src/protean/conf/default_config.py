@@ -4,7 +4,7 @@ by the PROTEAN_CONFIG environment variable.
 """
 
 # Protean
-from protean.utils import IdentityStrategy
+from protean.utils import IdentityStrategy, IdentityType
 
 ####################
 # CORE             #
@@ -29,6 +29,16 @@ SECRET_KEY = 'wR5yJVF!PVA3&bBaFK%e3#MQna%DJfyT'
 #   * IdentityStrategy.DATABASE: Let the database generate unique identity during persistence
 #   * IdentityStrategy.FUNCTION: Special function that returns a unique identifier
 IDENTITY_STRATEGY = IdentityStrategy.UUID
+
+# Data type of Auto-generated Identities
+# Options:
+#
+#   * INTEGER
+#   * STRING (Default)
+#
+# Note that when IdentityStrategy is `UUID`, the `UUID` value is stored as a 128-bit integer.
+# This may not work with databases like SQLITE, whose INTEGER value cannot store unsigned 64-bit integers.
+IDENTITY_TYPE = IdentityType.STRING
 
 ###############
 #  REPOSITORY #

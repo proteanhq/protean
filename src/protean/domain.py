@@ -121,7 +121,7 @@ class Domain(_PackageBoundObject):
     from protean.core.serializer import BaseSerializer
     from protean.core.transport.request import BaseRequestObject
     from protean.core.value_object import BaseValueObject
-    from protean.utils import IdentityStrategy
+    from protean.utils import IdentityStrategy, IdentityType
 
     config_class = Config
     domain_context_globals_class = _DomainContextGlobals
@@ -136,6 +136,7 @@ class Domain(_PackageBoundObject):
             "TESTING": False,
             "SECRET_KEY": None,
             "IDENTITY_STRATEGY": IdentityStrategy.UUID,
+            "IDENTITY_TYPE": IdentityType.STRING,
             "DATABASES": {},
             "BROKERS": {},
             "CACHE": {}

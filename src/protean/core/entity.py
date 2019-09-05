@@ -11,7 +11,7 @@ from protean.core.field.association import Association, Reference
 from protean.core.field.basic import Auto, Field
 from protean.core.field.embedded import ValueObjectField
 from protean.globals import current_domain
-from protean.utils import IdentityStrategy, inflection
+from protean.utils import IdentityStrategy, IdentityType, inflection
 
 # Local/Relative Imports
 from ..core.field.association import _ReferenceField  # Relative path to private class
@@ -368,7 +368,11 @@ class BaseEntity(metaclass=_EntityMetaclass):
     def _generate_identity(cls):
         """Generate Unique Identifier, based on strategy"""
         if current_domain.config['IDENTITY_STRATEGY'] == IdentityStrategy.UUID:
-            return uuid4()
+            if current_domain.config['IDENTITY_TYPE'] == IdentityType.INTEGER:
+                return uuid4().int
+            else:
+                # String, by default
+                return uuid4()
 
         return None  # Database will generate the identity
 
