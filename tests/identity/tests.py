@@ -1,3 +1,7 @@
+import pytest
+
+from uuid import UUID
+
 from .elements import Person
 
 
@@ -12,3 +16,12 @@ class TestIdentityType:
         person = Person(first_name='John', last_name='Doe')
         assert person.id is not None
         assert isinstance(person.id, int)
+
+    def test_uuid_identity(self, test_domain_with_uuid_identity):
+        person = Person(first_name='John', last_name='Doe')
+        assert person.id is not None
+
+        try:
+            UUID(str(person.id))
+        except ValueError:
+            pytest.fail("ID is not valid UUID")

@@ -65,6 +65,7 @@ setup(
         'flask==1.0.3',
         'inflect==2.1.0',
         'marshmallow==3.0.0rc8',
+        'psycopg2==2.8.3',
         'python-dateutil==2.8.0',
         'sqlalchemy==1.3.4',
         'werkzeug==0.15.4'

@@ -18,6 +18,7 @@ class IdentityStrategy(Enum):
 class IdentityType(Enum):
     INTEGER = 'INTEGER'
     STRING = 'STRING'
+    UUID = 'UUID'
 
 
 class Database(Enum):

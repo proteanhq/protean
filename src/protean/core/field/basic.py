@@ -195,10 +195,6 @@ class Auto(Field):
 
     def _cast_to_type(self, value):
         """ Perform no validation for auto fields. Return the value as is"""
-        from uuid import UUID
-        if isinstance(value, UUID):
-            value = str(value)
-
         return value
 
 

@@ -101,7 +101,7 @@ class TestIdentityValues:
         new_uuid = uuid4()
         role = Role(id=new_uuid, name='ADMIN')
         assert role.id is not None
-        assert role.id == str(new_uuid)
+        assert role.id == new_uuid
 
 
 class TestEquivalence:
