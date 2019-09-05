@@ -178,27 +178,31 @@ class DictDAO(BaseDAO):
 
     def _set_auto_fields(self, model_obj):
         """Set the values of the auto field using counter"""
+        conn = self.provider.get_connection()
+
         for field_name, field_obj in \
                 self.entity_cls.meta_.auto_fields:
             counter_key = f'{self.schema_name}_{field_name}'
             if not (field_name in model_obj and model_obj[field_name] is not None):
                 # Increment the counter and it should start from 1
-                counter = next(self.conn['counters'][counter_key])
+                counter = next(conn['counters'][counter_key])
                 if not counter:
-                    counter = next(self.conn['counters'][counter_key])
+                    counter = next(conn['counters'][counter_key])
 
                 model_obj[field_name] = counter
         return model_obj
 
     def _create(self, model_obj):
         """Write a record to the dict repository"""
+        conn = self.provider.get_connection()
+
         # Update the value of the counters
         model_obj = self._set_auto_fields(model_obj)
 
         # Add the entity to the repository
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
-        with self.conn['lock']:
-            self.conn['data'][self.schema_name][identifier] = model_obj
+        with conn['lock']:
+            conn['data'][self.schema_name][identifier] = model_obj
 
         return model_obj
 
@@ -234,11 +238,12 @@ class DictDAO(BaseDAO):
 
     def _filter(self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()):
         """Read the repository and return results as per the filer"""
+        conn = self.provider.get_connection()
 
         if criteria.children:
-            items = list(self._filter_items(criteria, self.conn['data'][self.schema_name]).values())
+            items = list(self._filter_items(criteria, conn['data'][self.schema_name]).values())
         else:
-            items = list(self.conn['data'][self.schema_name].values())
+            items = list(conn['data'][self.schema_name].values())
 
         # Sort the filtered results based on the order_by clause
         for o_key in order_by:
@@ -257,27 +262,31 @@ class DictDAO(BaseDAO):
 
     def _update(self, model_obj):
         """Update the entity record in the dictionary """
+        conn = self.provider.get_connection()
+
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
-        with self.conn['lock']:
+        with conn['lock']:
             # Check if object is present
-            if identifier not in self.conn['data'][self.schema_name]:
+            if identifier not in conn['data'][self.schema_name]:
                 raise ObjectNotFoundError(
                     f'`{self.__class__.__name__}` object with identifier {identifier} '
                     f'does not exist.')
 
-            self.conn['data'][self.schema_name][identifier] = model_obj
+            conn['data'][self.schema_name][identifier] = model_obj
         return model_obj
 
     def _update_all(self, criteria: Q, *args, **kwargs):
         """Update all objects satisfying the criteria """
-        items = self._filter_items(criteria, self.conn['data'][self.schema_name])
+        conn = self.provider.get_connection()
+
+        items = self._filter_items(criteria, conn['data'][self.schema_name])
 
         update_count = 0
         for key in items:
             item = items[key]
             item.update(*args)
             item.update(kwargs)
-            self.conn['data'][self.schema_name][key] = item
+            conn['data'][self.schema_name][key] = item
 
             update_count += 1
 
@@ -285,33 +294,36 @@ class DictDAO(BaseDAO):
 
     def _delete(self, model_obj):
         """Delete the entity record in the dictionary """
+        conn = self.provider.get_connection()
+
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
-        with self.conn['lock']:
+        with conn['lock']:
             # Check if object is present
-            if identifier not in self.conn['data'][self.schema_name]:
+            if identifier not in conn['data'][self.schema_name]:
                 raise ObjectNotFoundError(
                     f'`{self.entity_cls.__name__}` object with identifier {identifier} '
                     f'does not exist.')
 
-            del self.conn['data'][self.schema_name][identifier]
+            del conn['data'][self.schema_name][identifier]
         return model_obj
 
     def _delete_all(self, criteria: Q = None):
         """Delete the dictionary object by its criteria"""
+        conn = self.provider.get_connection()
         if criteria:
             # Delete the object from the dictionary and return the deletion count
-            items = self._filter_items(criteria, self.conn['data'][self.schema_name])
+            items = self._filter_items(criteria, conn['data'][self.schema_name])
 
             # Delete all the matching identifiers
-            with self.conn['lock']:
+            with conn['lock']:
                 for identifier in items:
-                    self.conn['data'][self.schema_name].pop(identifier, None)
+                    conn['data'][self.schema_name].pop(identifier, None)
 
             return len(items)
         else:
-            with self.conn['lock']:
-                if self.schema_name in self.conn['data']:
-                    del self.conn['data'][self.schema_name]
+            with conn['lock']:
+                if self.schema_name in conn['data']:
+                    del conn['data'][self.schema_name]
 
     def _raw(self, query: Any, data: Any = None):
         """Run raw query on Repository.
@@ -325,7 +337,8 @@ class DictDAO(BaseDAO):
         # Ensure that we are dealing with a string, for this repository
         assert isinstance(query, str)
 
-        input_db = self.conn['data'][self.schema_name]
+        conn = self.provider.get_connection()
+        input_db = conn['data'][self.schema_name]
         result = None
 
         try:

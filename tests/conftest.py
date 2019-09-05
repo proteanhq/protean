@@ -11,16 +11,19 @@ import pytest
 def pytest_addoption(parser):
     """Additional options for running tests with pytest"""
     parser.addoption(
-        "--slow", action="store_true", default=False, help="run slow tests"
+        "--slow", action="store_true", default=False, help="Run slow tests"
     )
     parser.addoption(
-        "--pending", action="store_true", default=False, help="show pending tests"
+        "--pending", action="store_true", default=False, help="Show pending tests"
+    )
+    parser.addoption(
+        "--postgresql", action="store_true", default=False, help="Run Postgresql tests"
     )
 
 
 def pytest_collection_modifyitems(config, items):
     """Configure special markers on tests, so as to control execution"""
-    run_slow = run_pending = False
+    run_slow = run_pending = run_postgresql = False
 
     if config.getoption("--slow"):
         # --slow given in cli: do not skip slow tests
@@ -29,14 +32,21 @@ def pytest_collection_modifyitems(config, items):
     if config.getoption("--pending"):
         run_pending = True
 
+    if config.getoption("--postgresql"):
+        # --slow given in cli: do not skip slow tests
+        run_postgresql = True
+
     skip_slow = pytest.mark.skip(reason="need --slow option to run")
     skip_pending = pytest.mark.skip(reason="need --pending option to run")
+    skip_postgresql = pytest.mark.skip(reason="need --postgresql option to run")
 
     for item in items:
         if "slow" in item.keywords and run_slow is False:
             item.add_marker(skip_slow)
         if "pending" in item.keywords and run_pending is False:
             item.add_marker(skip_pending)
+        if "postgresql" in item.keywords and run_postgresql is False:
+            item.add_marker(skip_postgresql)
 
 
 @pytest.fixture(autouse=True)

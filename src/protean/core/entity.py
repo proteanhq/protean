@@ -6,7 +6,7 @@ import logging
 from uuid import uuid4
 
 # Protean
-from protean.core.exceptions import NotSupportedError, ValidationError
+from protean.core.exceptions import ConfigurationError, NotSupportedError, ValidationError
 from protean.core.field.association import Association, Reference
 from protean.core.field.basic import Auto, Field
 from protean.core.field.embedded import ValueObjectField
@@ -370,9 +370,12 @@ class BaseEntity(metaclass=_EntityMetaclass):
         if current_domain.config['IDENTITY_STRATEGY'] == IdentityStrategy.UUID:
             if current_domain.config['IDENTITY_TYPE'] == IdentityType.INTEGER:
                 return uuid4().int
-            else:
-                # String, by default
+            elif current_domain.config['IDENTITY_TYPE'] == IdentityType.STRING:
+                return str(uuid4())
+            elif current_domain.config['IDENTITY_TYPE'] == IdentityType.UUID:
                 return uuid4()
+            else:
+                raise ConfigurationError(f'Unknown Identity Type {current_domain.config["IDENTITY_TYPE"]}')
 
         return None  # Database will generate the identity
 

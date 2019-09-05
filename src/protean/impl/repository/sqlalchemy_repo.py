@@ -2,6 +2,7 @@
 """
 # Standard Library Imports
 import logging
+import uuid
 
 from abc import ABCMeta
 from typing import Any
@@ -20,14 +21,51 @@ from protean.utils import Database, IdentityType
 from protean.utils.query import Q
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
 from sqlalchemy import types as sa_types
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext import declarative as sa_dec
 from sqlalchemy.ext.declarative import as_declarative, declared_attr
-
+from sqlalchemy.types import TypeDecorator, CHAR
 
 logging.getLogger('sqlalchemy.engine').setLevel(logging.ERROR)
 logger = logging.getLogger('protean.repository')
+
+
+class GUID(TypeDecorator):
+    """Platform-independent GUID type.
+
+    Uses PostgreSQL's UUID type, otherwise uses
+    CHAR(32), storing as stringified hex values.
+
+    """
+    impl = CHAR
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(UUID())
+        else:
+            return dialect.type_descriptor(CHAR(32))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == 'postgresql':
+            return str(value)
+        else:
+            if not isinstance(value, uuid.UUID):
+                return "%.32x" % uuid.UUID(value).int
+            else:
+                # hexstring
+                return "%.32x" % value.int
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        else:
+            if not isinstance(value, uuid.UUID):
+                value = uuid.UUID(value)
+            return value
 
 
 def _get_identity_type():
@@ -41,9 +79,12 @@ def _get_identity_type():
             return sa_types.Integer
         elif current_domain.config['IDENTITY_TYPE'] == IdentityType.STRING:
             return sa_types.String
+        elif current_domain.config['IDENTITY_TYPE'] == IdentityType.UUID:
+            return GUID
         else:
             raise ConfigurationError(f'Unknown Identity Type {current_domain.config["IDENTITY_TYPE"]}')
-    except RuntimeError:
+    except RuntimeError as exc:
+        logger.error(f'RuntimeError while identifying data type for identities: {exc}')
         return sa_types.String
 
 
@@ -167,7 +208,8 @@ class SADAO(BaseDAO):
     def _filter(self, criteria: Q, offset: int = 0, limit: int = 10,
                 order_by: list = ()) -> ResultSet:
         """ Filter objects from the sqlalchemy database """
-        qs = self.conn.query(self.model_cls)
+        conn = self.provider.get_connection()
+        qs = conn.query(self.model_cls)
 
         # Build the filters from the criteria
         if criteria.children:
@@ -193,24 +235,30 @@ class SADAO(BaseDAO):
                 limit=limit,
                 total=qs_without_limit.count(),
                 items=items)
+            conn.commit()
         except DatabaseError:
-            self.conn.rollback()
+            conn.rollback()
             raise
+        finally:
+            conn.close()
 
         return result
 
     def _create(self, model_obj):
         """ Add a new record to the sqlalchemy database"""
-        self.conn.add(model_obj)
+        conn = self.provider.get_connection()
+        conn.add(model_obj)
 
         try:
             # If the model has Auto fields then flush to get them
             if self.entity_cls.meta_.auto_fields:
-                self.conn.flush()
-            self.conn.commit()
+                conn.flush()
+            conn.commit()
         except DatabaseError:
-            self.conn.rollback()
+            conn.rollback()
             raise
+        finally:
+            conn.close()
 
         return model_obj
 
@@ -232,66 +280,81 @@ class SADAO(BaseDAO):
                     data[field_name] = getattr(model_obj, field_name, None)
 
         # Run the update query and commit the results
+        conn = self.provider.get_connection()
         try:
-            result = self.conn.query(self.model_cls).filter_by(
+            result = conn.query(self.model_cls).filter_by(
                 **primary_key).update(data)
 
             if result <= 0:
-                self.conn.rollback()
+                conn.rollback()
                 raise ObjectNotFoundError(
                     f'`{self.entity_cls.__name__}` object with identifier {identifier} '
                     f'does not exist.')
 
-            self.conn.commit()
+            conn.commit()
         except DatabaseError:
-            self.conn.rollback()
+            conn.rollback()
             raise
+        finally:
+            conn.close()
 
         return model_obj
 
     def _update_all(self, criteria: Q, *args, **kwargs):
         """ Update all objects satisfying the criteria """
         # Delete the objects and commit the results
-        qs = self.conn.query(self.model_cls).filter(self._build_filters(criteria))
+        conn = self.provider.get_connection()
+        qs = conn.query(self.model_cls).filter(self._build_filters(criteria))
         try:
             values = {}
             if args:
                 values = args[0]  # `args[0]` is required because `*args` is sent as a typle
             values.update(kwargs)
             updated_count = qs.update(values)
-            self.conn.commit()
+            conn.commit()
         except DatabaseError:
-            self.conn.rollback()
+            conn.rollback()
             raise
+        finally:
+            conn.close()
+
         return updated_count
 
     def _delete(self, model_obj):
         """ Delete the entity record in the dictionary """
         identifier = getattr(model_obj, self.entity_cls.meta_.id_field.field_name)
         primary_key = {self.entity_cls.meta_.id_field.field_name: identifier}
+
+        conn = self.provider.get_connection()
         try:
-            self.conn.query(self.model_cls).filter_by(**primary_key).delete()
-            self.conn.commit()
+            conn.query(self.model_cls).filter_by(**primary_key).delete()
+            conn.commit()
         except DatabaseError:
-            self.conn.rollback()
+            conn.rollback()
             raise
+        finally:
+            conn.close()
 
         return model_obj
 
     def _delete_all(self, criteria: Q = None):
         """ Delete a record from the sqlalchemy database"""
+        conn = self.provider.get_connection()
+
         del_count = 0
         if criteria:
-            qs = self.conn.query(self.model_cls).filter(self._build_filters(criteria))
+            qs = conn.query(self.model_cls).filter(self._build_filters(criteria))
         else:
-            qs = self.conn.query(self.model_cls)
+            qs = conn.query(self.model_cls)
 
         try:
             del_count = qs.delete()
-            self.conn.commit()
+            conn.commit()
         except DatabaseError:
-            self.conn.rollback()
+            conn.rollback()
             raise
+        finally:
+            conn.close()
 
         return del_count
 
@@ -299,9 +362,10 @@ class SADAO(BaseDAO):
         """Run a raw query on the repository and return entity objects"""
         assert isinstance(query, str)
 
+        conn = self.provider.get_connection()
         try:
-            results = self.conn.execute(query)
-            self.conn.commit()
+            results = conn.execute(query)
+            conn.commit()
 
             entity_items = []
             for item in results:
@@ -315,8 +379,10 @@ class SADAO(BaseDAO):
                 total=len(entity_items),
                 items=entity_items)
         except DatabaseError:
-            self.conn.rollback()
+            conn.rollback()
             raise
+        finally:
+            conn.close()
 
         return result
 
@@ -335,15 +401,29 @@ class SAProvider(BaseProvider):
 
         super().__init__(*args, **kwargs)
 
-        self._engine = create_engine(make_url(self.conn_info['DATABASE_URI']))
+        kwargs = self._get_database_specific_engine_args()
+
+        self._engine = create_engine(make_url(self.conn_info['DATABASE_URI']), **kwargs)
         self._metadata = MetaData(bind=self._engine)
 
         self._model_classes = {}
 
+    def _get_database_specific_engine_args(self):
+        if self.conn_info['DATABASE'] == Database.POSTGRESQL.value:
+            return {"isolation_level": "AUTOCOMMIT"}
+
+        return {}
+
+    def _execute_database_specific_connection_stmts(self, conn):
+        if self.conn_info['DATABASE'] == Database.SQLITE.value:
+            conn.execute('PRAGMA case_sensitive_like = ON;')
+
+        return conn
+
     def get_session(self):
         """Establish a session to the Database"""
         # Create the session
-        session_factory = orm.sessionmaker(bind=self._engine)
+        session_factory = orm.sessionmaker(bind=self._engine, expire_on_commit=False)
         session_cls = orm.scoped_session(session_factory)
 
         return session_cls
@@ -357,9 +437,7 @@ class SAProvider(BaseProvider):
             session_cls = self.get_session()
 
         conn = session_cls()
-
-        if self.conn_info['DATABASE'] == Database.SQLITE.value:
-            conn.execute('PRAGMA case_sensitive_like = ON;')
+        conn = self._execute_database_specific_connection_stmts(conn)
 
         return conn
 

@@ -19,16 +19,11 @@ logger = logging.getLogger('protean.repository')
 
 
 class BaseDAO(metaclass=ABCMeta):
-    """DAO interface to interact with databases
-
-    :param conn: A connection/session to the data source of the model
-    :param model_cls: The model class registered with this data store
-    """
+    """DAO interface to interact with databases"""
 
     def __init__(self, domain, provider, entity_cls, model_cls):
         self.domain = domain
         self.provider = provider
-        self.conn = self.provider.get_connection()
         self.model_cls = model_cls
         self.entity_cls = entity_cls
         self.query = QuerySet(domain, self.entity_cls)
@@ -166,11 +161,12 @@ class BaseDAO(metaclass=ABCMeta):
 
             # Update the auto fields of the entity
             for field_name, field_obj in entity_obj.meta_.declared_fields.items():
-                if isinstance(field_obj, Auto):
+                if isinstance(field_obj, Auto) and not getattr(entity_obj, field_name):
                     if isinstance(model_obj, dict):
                         field_val = model_obj[field_name]
                     else:
                         field_val = getattr(model_obj, field_name)
+
                     setattr(entity_obj, field_name, field_val)
 
             # Set Entity status to saved
