@@ -51,10 +51,6 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """Get the connection object for the repository"""
 
     @abstractmethod
-    def close_connection(self, conn):
-        """Close the connection object for the repository"""
-
-    @abstractmethod
     def get_dao(self, model_cls):
         """Return a DAO object configured with a live connection"""
 

@@ -32,7 +32,7 @@ class TestProviders:
         """Test ``get_connection`` method and check for connection details"""
 
         conn = test_domain.get_provider('default').get_connection()
-        assert all(key in conn for key in ['data', 'lock', 'counters'])
+        assert all(key in conn._db for key in ['data', 'lock', 'counters'])
 
     def test_provider_raw(self, test_domain):
         """Test raw queries"""

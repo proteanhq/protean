@@ -1,7 +1,6 @@
 import logging
 
 # Protean
-from protean.core.exceptions import InvalidOperationError
 from protean.core.field.association import HasMany
 
 logger = logging.getLogger('protean.repository')
@@ -60,81 +59,38 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
     It is also a marker interface for registering repository
     classes with the domain"""
 
-    def __init__(self, domain, uow=None):
+    def __init__(self, domain):
         self.domain = domain
-        self.uow = uow
 
-    def within(self, uow):
-        self.uow = uow
-        return self
+    def add(self, aggregate):
+        # Persist only if the aggregate object is new, or it has changed since last persistence
+        if ((not aggregate.state_.is_persisted) or
+                (aggregate.state_.is_persisted and aggregate.state_.is_changed)):
+            dao = self.domain.get_dao(self.meta_.aggregate_cls)
+            dao.save(aggregate)
 
-    def add(self, aggregate):  # noqa: C901
-        if self.uow:
-            logger.debug("Inside UoW - Recording...")
-            # Handle the aggregate changes first
-            if aggregate.state_.is_persisted and aggregate.state_.is_changed:
-                self.uow.register_update(aggregate)
-            elif not aggregate.state_.is_persisted:
-                self.uow.register_new(aggregate)
-            else:
-                pass  # Ignore if the same unchanged object is added again to the repository
+        # If there are HasMany fields in the aggregate, they may have
+        #   child objects added/removed, but not yet persisted to the database.
+        for field_name, field in aggregate.meta_.declared_fields.items():
+            if isinstance(field, HasMany):
+                has_many_field = getattr(aggregate, field_name)
 
-            # Handle child object changes next
-            for field_name, field in aggregate.meta_.declared_fields.items():
-                if isinstance(field, HasMany):
-                    has_many_field = getattr(aggregate, field_name)
+                for item in has_many_field._temp_cache['added']:
+                    dao = self.domain.get_dao(field.to_cls)
+                    dao.save(item)
+                has_many_field._temp_cache['added'] = list()  # Empty contents of `added` list
 
-                    for item in has_many_field._temp_cache['added']:
-                        if item.state_.is_persisted and item.state_.is_changed:
-                            self.uow.register_update(item)
-                        elif not item.state_.is_persisted:
-                            self.uow.register_new(item)
-                        else:
-                            pass  # Ignore if the same unchanged object is added again to the repository
-                    has_many_field._temp_cache['added'] = list()  # Empty contents of `added` list
-
-                    for item in has_many_field._temp_cache['removed']:
-                        if item.state_.is_persisted:
-                            self.uow.register_delete(item)
-                    has_many_field._temp_cache['removed'] = list()  # Empty contents of `removed` list
-        else:
-            # Persist only if the aggregate object is new, or it has changed since last persistence
-            logger.debug("Outside UoW - Committing...")
-            if ((not aggregate.state_.is_persisted) or
-                    (aggregate.state_.is_persisted and aggregate.state_.is_changed)):
-                dao = self.domain.get_dao(self.meta_.aggregate_cls)
-                dao.save(aggregate)
-
-            # If there are HasMany fields in the aggregate, they may have
-            #   child objects added/removed, but not yet persisted to the database.
-            for field_name, field in aggregate.meta_.declared_fields.items():
-                if isinstance(field, HasMany):
-                    has_many_field = getattr(aggregate, field_name)
-
-                    for item in has_many_field._temp_cache['added']:
-                        dao = self.domain.get_dao(field.to_cls)
-                        dao.save(item)
-                    has_many_field._temp_cache['added'] = list()  # Empty contents of `added` list
-
-                    for item in has_many_field._temp_cache['removed']:
-                        dao = self.domain.get_dao(field.to_cls)
-                        dao.delete(item)
-                    has_many_field._temp_cache['removed'] = list()  # Empty contents of `removed` list
+                for item in has_many_field._temp_cache['removed']:
+                    dao = self.domain.get_dao(field.to_cls)
+                    dao.delete(item)
+                has_many_field._temp_cache['removed'] = list()  # Empty contents of `removed` list
 
         return aggregate
 
     def remove(self, aggregate):
         """Remove object to Repository"""
-        if self.uow:
-            if not aggregate.state_.is_persisted:
-                raise InvalidOperationError("Element has not been persisted yet")
-
-            self.uow.register_delete(aggregate)
-        else:
-            dao = self.domain.get_dao(self.meta_.aggregate_cls)
-            dao.delete(aggregate)
-
-        return aggregate
+        dao = self.domain.get_dao(self.meta_.aggregate_cls)
+        dao.delete(aggregate)
 
     def get(self, identifier):
         """Retrieve object from Repository"""

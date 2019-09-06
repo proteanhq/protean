@@ -39,7 +39,6 @@ class TestProviders:
         conn = test_domain.get_provider('default').get_connection()
         assert conn is not None
         assert isinstance(conn, Session)
-        assert conn.is_active
 
     def test_provider_raw(self, test_domain):
         """Test raw queries"""

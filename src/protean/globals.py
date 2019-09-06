@@ -27,7 +27,13 @@ def _find_domain():
     return top.domain
 
 
+def _find_uow():
+    return _uow_context_stack.top
+
+
 # context locals
 _domain_context_stack = LocalStack()
+_uow_context_stack = LocalStack()
 current_domain = LocalProxy(_find_domain)
+current_uow = LocalProxy(_find_uow)
 g = LocalProxy(partial(_lookup_domain_object, "g"))

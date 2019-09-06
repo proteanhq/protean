@@ -36,11 +36,12 @@ class QuerySet:
     :return Returns a `ResultSet` object that holds the query results
     """
 
-    def __init__(self, domain, entity_cls, criteria=None, offset: int = 0, limit: int = 10,
+    def __init__(self, owner_dao, domain, entity_cls, criteria=None, offset: int = 0, limit: int = 10,
                  order_by: set = None):
         """Initialize either with empty preferences (when invoked on an Entity)
             or carry forward filters and preferences when chained
         """
+        self._owner_dao = owner_dao
         self._domain = domain
         self._entity_cls = entity_cls
         self._criteria = criteria or Q()
@@ -73,9 +74,8 @@ class QuerySet:
         """
         Return a copy of the current QuerySet.
         """
-        clone = self.__class__(self._domain, self._entity_cls, criteria=self._criteria,
-                               offset=self._offset, limit=self._limit,
-                               order_by=self._order_by)
+        clone = self.__class__(self._owner_dao, self._domain, self._entity_cls, criteria=self._criteria,
+                               offset=self._offset, limit=self._limit, order_by=self._order_by)
         return clone
 
     #########################
@@ -153,13 +153,12 @@ class QuerySet:
 
         # Fetch Model class and connected repository from Domain
         model_cls = self._domain.get_model(self._entity_cls)
-        dao = self._domain.get_dao(self._entity_cls)
 
         # order_by clause must be list of keys
         order_by = self._entity_cls.meta_.order_by if not self._order_by else self._order_by
 
         # Call the read method of the dao
-        results = dao._filter(self._criteria, self._offset, self._limit, order_by)
+        results = self._owner_dao._filter(self._criteria, self._offset, self._limit, order_by)
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -184,13 +183,12 @@ class QuerySet:
             updated if objects rows already have the new value).
         """
         updated_item_count = 0
-        dao = self._domain.get_dao(self._entity_cls)
 
         try:
             items = self.all()
 
             for item in items:
-                dao.update(item, *data, **kwargs)
+                self._owner_dao.update(item, *data, **kwargs)
                 updated_item_count += 1
         except Exception:
             # FIXME Log Exception
@@ -216,11 +214,10 @@ class QuerySet:
 
         # Fetch Model class and connected repository from Domain
         model_cls = self._domain.get_model(self._entity_cls)
-        dao = self._domain.get_dao(self._entity_cls)
 
         try:
             # Call the raw method of the repository
-            results = dao._raw(query, data)
+            results = self._owner_dao._raw(query, data)
 
             # Convert the returned results to entity and return it
             entity_items = []
@@ -248,13 +245,12 @@ class QuerySet:
         """
         # Fetch Model class and connected repository from Domain
         deleted_item_count = 0
-        dao = self._domain.get_dao(self._entity_cls)
 
         try:
             items = self.all()
 
             for item in items:
-                dao.delete(item)
+                self._owner_dao.delete(item)
                 deleted_item_count += 1
         except Exception:
             # FIXME Log Exception
@@ -275,10 +271,8 @@ class QuerySet:
         """
         updated_item_count = 0
 
-        dao = self._domain.get_dao(self._entity_cls)
-
         try:
-            updated_item_count = dao._update_all(self._criteria, *args, **kwargs)
+            updated_item_count = self._owner_dao._update_all(self._criteria, *args, **kwargs)
         except Exception:
             # FIXME Log Exception
             raise
@@ -294,9 +288,8 @@ class QuerySet:
         Returns the number of objects matched and deleted.
         """
         deleted_item_count = 0
-        dao = self._domain.get_dao(self._entity_cls)
         try:
-            deleted_item_count = dao._delete_all(self._criteria)
+            deleted_item_count = self._owner_dao._delete_all(self._criteria)
         except Exception:
             # FIXME Log Exception
             raise

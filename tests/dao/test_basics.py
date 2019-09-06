@@ -17,8 +17,8 @@ class TestDAO:
     def test_successful_initialization_of_dao(self, test_domain):
         test_domain.get_dao(Person).query.all()
         provider = test_domain.get_provider('default')
-        current_db = provider.get_connection()
-        assert current_db['data'] == {'person': {}}
+        conn = provider.get_connection()
+        assert isinstance(conn._db['data'], dict)
 
     def test_that_escaped_quotes_in_values_are_handled_properly(self, test_domain):
         test_domain.get_dao(Person).create(id=1, first_name='Athos', last_name='Musketeer', age=2)
