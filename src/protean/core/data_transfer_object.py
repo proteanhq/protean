@@ -1,6 +1,7 @@
 """Data Transfer Object Functionality and Classes"""
 import logging
 
+from protean.domain import DomainObjects
 from protean.utils.container import BaseContainer
 
 logger = logging.getLogger('protean.application')
@@ -37,6 +38,8 @@ class BaseDataTransferObject(BaseContainer):
     The data transfer object may be persisted along with its related entity, or separately in which case its model is
     retrieved from the repository factory. Model is usually initialized with a live DB connection.
     """
+
+    element_type = DomainObjects.DATA_TRANSFER_OBJECT
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseDataTransferObject:

@@ -1,5 +1,7 @@
 import logging
 
+from protean.domain import DomainObjects
+
 logger = logging.getLogger('protean.domain.service')
 
 
@@ -9,6 +11,8 @@ class BaseDomainService:
     This is a placeholder class for now. Methods that are implemented
     in concreate Domain Service classes are inspired from Domain concepts,
     and typically use more than one aggregate to accomplish a task"""
+
+    element_type = DomainObjects.DOMAIN_SERVICE
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseDomainService:

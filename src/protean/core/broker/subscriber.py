@@ -1,6 +1,8 @@
 # Standard Library Imports
 from abc import abstractmethod
 
+from protean.domain import DomainObjects
+
 
 class _SubscriberMetaclass(type):
     """
@@ -55,6 +57,7 @@ class BaseSubscriber(metaclass=_SubscriberMetaclass):
     This is also a marker class that is referenced when subscribers are registered
     with the domain
     """
+    element_type = DomainObjects.SUBSCRIBER
 
     def __init__(self, domain, domain_event_cls):
         self.domain = domain
