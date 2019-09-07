@@ -4,6 +4,7 @@ from enum import Enum
 from protean.core.field.basic import String
 from protean.domain import DomainObjects
 
+
 class DummyElement(Enum):
     FOO = 'FOO'
 
