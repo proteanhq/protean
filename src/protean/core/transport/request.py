@@ -1,4 +1,5 @@
 """Module for Request related Classes"""
+from protean.domain import DomainObjects
 from protean.utils.container import BaseContainer
 
 
@@ -10,6 +11,8 @@ class BaseRequestObject(BaseContainer):
     Mirroring the REST world, a request object is usually associated with an Entity class, which is
     referenced when necessary for performing lifecycle funtions, like validations, persistence etc.
     """
+    element_type = DomainObjects.REQUEST_OBJECT
+
     is_valid = True
 
     def __new__(cls, *args, **kwargs):

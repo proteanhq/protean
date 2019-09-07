@@ -62,36 +62,36 @@ class _DomainRegistry:
         for element_type in DomainObjects:
             self._elements[element_type.value] = defaultdict(dict)
 
-    def register_element(self, element_type, element_cls, provider_name=None, model_cls=None):
-        if element_type.name not in DomainObjects.__members__:
+    def register_element(self, element_cls, provider_name=None, model_cls=None):
+        if element_cls.element_type.name not in DomainObjects.__members__:
             raise NotImplementedError
 
         element_name = fully_qualified_name(element_cls)
 
-        element = self._elements[element_type.value][element_name]
+        element = self._elements[element_cls.element_type.value][element_name]
         if element:
             raise ConfigurationError(f'Element {element_name} has already been registered')
         else:
             element_record = _DomainRegistry.DomainRecord(
                 name=element_cls.__name__,
                 qualname=element_name,
-                class_type=element_type.value,
+                class_type=element_cls.element_type.value,
                 cls=element_cls,
                 provider_name=provider_name,
                 model_cls=model_cls  # FIXME Remove `model_cls` from being stored here
             )
 
-            self._elements[element_type.value][element_name] = element_record
+            self._elements[element_cls.element_type.value][element_name] = element_record
 
-            logger.debug(f'Registered Element {element_name} with Domain as a {element_type.value}')
+            logger.debug(f'Registered Element {element_name} with Domain as a {element_cls.element_type.value}')
 
-    def unregister_element(self, element_type, element_cls):
-        if element_type.name not in DomainObjects.__members__:
+    def unregister_element(self, element_cls):
+        if element_cls.element_type.name not in DomainObjects.__members__:
             raise NotImplementedError
 
         element_name = fully_qualified_name(element_cls)
 
-        self._elements[element_type.value].pop(element_name, None)
+        self._elements[element_cls.element_type.value].pop(element_name, None)
 
 
 class Domain(_PackageBoundObject):
@@ -372,8 +372,7 @@ class Domain(_PackageBoundObject):
             new_cls.meta_.bounded_context = kwargs.pop('bounded_context', None)
 
         # Register element with domain
-        self._domain_registry.register_element(
-            element_type, new_cls, provider_name=provider_name, model_cls=model_cls)
+        self._domain_registry.register_element(new_cls, provider_name=provider_name, model_cls=model_cls)
 
         return new_cls
 
@@ -506,13 +505,7 @@ class Domain(_PackageBoundObject):
 
     def register(self, element_cls, **kwargs):
         """Register an element already subclassed with the correct Hierarchy"""
-        element_types = [
-            element_type
-            for element_type, element_class in self.base_class_mapping.items()
-            if element_class in element_cls.__mro__
-        ]
-
-        if len(element_types) == 0:
+        if getattr(element_cls, 'element_type', None) not in [element for element in DomainObjects]:
             raise NotImplementedError
 
         if (hasattr(element_cls, 'meta_') and
@@ -521,7 +514,7 @@ class Domain(_PackageBoundObject):
             raise NotSupportedError(f'{element_cls.__name__} class has been marked abstract'
                                     ' and cannot be instantiated')
 
-        return self._register_element(DomainObjects[element_types[0]], element_cls, **kwargs)
+        return self._register_element(element_cls.element_type, element_cls, **kwargs)
 
     def unregister(self, element_cls):
         """Unregister a Domain Element.
@@ -529,28 +522,10 @@ class Domain(_PackageBoundObject):
         This method will result in a no-op if the entity class was not found
         in the registry for whatever reason.
         """
-        element_types = [
-            element_type
-            for element_type, element_class in self.base_class_mapping.items()
-            if element_class in element_cls.__bases__
-        ]
-
-        if len(element_types) == 0:
+        if getattr(element_cls, 'element_type', None) not in [element for element in DomainObjects]:
             raise NotImplementedError
 
-        self._domain_registry.unregister_element(DomainObjects[element_types.pop()], element_cls)
-
-    def _derive_element_type(self, element_cls):
-        element_types = [
-            element_type
-            for element_type, element_class in self.base_class_mapping.items()
-            if element_class in element_cls.__bases__
-        ]
-
-        if len(element_types) == 0:
-            raise NotImplementedError
-
-        return DomainObjects[element_types.pop()]
+        self._domain_registry.unregister_element(element_cls.element_type, element_cls)
 
     def _get_element_by_name(self, element_types, element_name):
         """Fetch Domain record with an Element name"""

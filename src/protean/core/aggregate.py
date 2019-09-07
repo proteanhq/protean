@@ -11,6 +11,7 @@ from protean.core.exceptions import ConfigurationError, NotSupportedError, Valid
 from protean.core.field.association import Association, Reference
 from protean.core.field.basic import Auto, Field
 from protean.core.field.embedded import ValueObjectField
+from protean.domain import DomainObjects
 from protean.globals import current_domain
 from protean.utils import IdentityStrategy, IdentityType, inflection
 
@@ -293,6 +294,8 @@ class BaseAggregate(metaclass=_AggregateMetaclass):
     During persistence, the model associated with this entity is retrieved dynamically from
             the repository factory. Model is usually initialized with a live DB connection.
     """
+
+    element_type = DomainObjects.AGGREGATE
 
     def __init__(self, *template, **kwargs):  # noqa: C901
         """

@@ -2,6 +2,7 @@ import logging
 
 # Protean
 from protean.core.field.association import HasMany
+from protean.domain import DomainObjects
 
 logger = logging.getLogger('protean.repository')
 
@@ -58,6 +59,8 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
 
     It is also a marker interface for registering repository
     classes with the domain"""
+
+    element_type = DomainObjects.REPOSITORY
 
     def __init__(self, domain):
         self.domain = domain

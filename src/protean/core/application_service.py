@@ -1,5 +1,7 @@
 import logging
 
+from protean.domain import DomainObjects
+
 logger = logging.getLogger('protean.application')
 
 
@@ -14,6 +16,8 @@ class BaseApplicationService:
     caches, and message brokers, and injecting dependencies into the domain layer. These are automatable
     aspects that can be part of the base class in the future.
     """
+
+    element_type = DomainObjects.APPLICATION_SERVICE
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseApplicationService:

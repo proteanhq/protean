@@ -1,3 +1,4 @@
+from protean.domain import DomainObjects
 from protean.utils.container import BaseContainer
 
 
@@ -25,6 +26,8 @@ class BaseCommand(BaseContainer):
 
         domain.register_element(UserRegistrationCommand)
     """
+
+    element_type = DomainObjects.COMMAND
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseCommand:

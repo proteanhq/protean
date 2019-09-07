@@ -7,6 +7,7 @@ from marshmallow import Schema, fields
 from protean.core.exceptions import NotSupportedError
 from protean.core.field.basic import (Boolean, Date, DateTime, Field, Float, Identifier,
                                       Integer, List, Method, Nested, String, Text)
+from protean.domain import DomainObjects
 
 logger = logging.getLogger('protean.application.serializer')
 
@@ -106,6 +107,10 @@ class _SerializerMetaclass(type):
         for base in bases:
             if hasattr(base, 'Meta') and hasattr(base.Meta, 'abstract'):
                 delattr(base.Meta, 'abstract')
+
+        # Explicit redefinition element_type  necessary because `attrs`
+        #   are reset when a serializer class is initialized.
+        attrs['element_type'] = DomainObjects.SERIALIZER
 
         new_class = type(name, (Schema,), attrs)
 
