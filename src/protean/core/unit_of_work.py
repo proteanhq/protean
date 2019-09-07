@@ -3,13 +3,14 @@ import logging
 
 # Protean
 from protean.core.exceptions import InvalidOperationError
+from protean.globals import _uow_context_stack
 
 logger = logging.getLogger('protean.core.unit_of_work')
 
 
 class UnitOfWork:
     def __init__(self, domain):
-        # Initializae session factories from all providers
+        # Initialize session factories from all providers
         #   Connections will be retrieved at this stage
 
         # Also initialize Identity Map?
@@ -18,16 +19,7 @@ class UnitOfWork:
         self._in_progress = False
 
         self._sessions = {}
-        self._changes = {}
         self._events = []
-        for provider in self.domain.providers_list():
-            self._sessions[provider.name] = provider.get_session()
-
-            self._changes[provider.name] = {
-                'ADDED': {},
-                'UPDATED': {},
-                'REMOVED': {}
-            }
 
     @property
     def in_progress(self):
@@ -46,62 +38,72 @@ class UnitOfWork:
         # Stand in method for `__enter__`
         #   To explicitly begin and end transactions
         self._in_progress = True
+        _uow_context_stack.push(self)
 
     def commit(self):
         # Raise error if there the Unit Of Work is not active
         logger.debug(f'Committing {self}...')
-        if not self._sessions or not self._in_progress:
+        if not self._in_progress:
             raise InvalidOperationError("UnitOfWork is not in progress")
 
         # Commit and destroy session
         try:
-            for provider_name in self._sessions:
-                provider = self.domain.get_provider(provider_name)
-                provider.commit(self._changes[provider_name])
+            for _, session in self._sessions.items():
+                session.commit()
 
             for event in self._events:
                 for broker in self.domain.brokers_list:
                     broker.send_message(event)
 
             logger.debug('Commit Successful')
-            self._sessions = {}
-            self._events = []
-            self._in_progress = False
         except Exception as exc:
             logger.error(f'Error during Commit: {str(exc)}. Rolling back Transaction...')
             self.rollback()
 
-    def rollback(self):
-        # Raise error if there the Unit Of Work is not active
-        if not self._sessions or not self._in_progress:
-            raise InvalidOperationError("UnitOfWork is not in progress")
+        self._reset()
 
-        # Destroy session and self without Committing
-        logger.error('Transaction Rolled Back.')
+    def _reset(self):
+        for _, session in self._sessions.items():
+            session.close()
+
         self._sessions = {}
+        self._events = []
         self._in_progress = False
 
-    def register_new(self, element):
-        identity = getattr(element, element.meta_.id_field.field_name, None)
-        assert identity is not None
+        # Exit from Unit of Work
+        _uow_context_stack.pop()
 
-        self._changes[element.meta_.provider]['ADDED'][identity] = element
+    def rollback(self):
+        # Raise error if there the Unit Of Work is not active
+        if not self._in_progress:
+            raise InvalidOperationError("UnitOfWork is not in progress")
 
-    def register_update(self, element):
-        identity = getattr(element, element.meta_.id_field.field_name, None)
-        assert identity is not None
+        try:
+            for _, session in self._sessions.items():
+                session.rollback()
 
-        self._changes[element.meta_.provider]['UPDATED'][identity] = element
+            logger.debug('Transaction rolled back')
+        except Exception as exc:
+            logger.error(f'Error during Transaction rollback: {str(exc)}')
 
-    def register_delete(self, element):
-        identity = getattr(element, element.meta_.id_field.field_name, None)
-        assert identity is not None
+        self._reset()
 
-        self._changes[element.meta_.provider]['REMOVED'][identity] = element
+    def _get_session(self, provider_name):
+        provider = self.domain.get_provider(provider_name)
+        return provider.get_session()
+
+    def _initialize_session(self, provider_name):
+        new_session = self._get_session(provider_name)
+        self._sessions[provider_name] = new_session
+        if not new_session.is_active:
+            new_session.begin()
+        return new_session
+
+    def get_session(self, provider_name):
+        if provider_name in self._sessions:
+            return self._sessions[provider_name]
+        else:
+            return self._initialize_session(provider_name)
 
     def register_event(self, event):
         self._events.append(event)
-
-    @property
-    def changes_to_be_committed(self):
-        return self._changes

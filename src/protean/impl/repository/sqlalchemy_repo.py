@@ -11,7 +11,7 @@ from typing import Any
 from protean.core.exceptions import ObjectNotFoundError, ConfigurationError
 from protean.core.field.association import Reference
 from protean.core.field.basic import Auto, Boolean, Date, DateTime, Dict, Float, Integer, List, String, Text
-from protean.globals import current_domain
+from protean.globals import current_domain, current_uow
 from protean.core.provider.base import BaseProvider
 from protean.core.repository.dao import BaseDAO
 from protean.core.repository.lookup import BaseLookup
@@ -208,7 +208,7 @@ class SADAO(BaseDAO):
     def _filter(self, criteria: Q, offset: int = 0, limit: int = 10,
                 order_by: list = ()) -> ResultSet:
         """ Filter objects from the sqlalchemy database """
-        conn = self.provider.get_connection()
+        conn = self._get_session()
         qs = conn.query(self.model_cls)
 
         # Build the filters from the criteria
@@ -235,75 +235,71 @@ class SADAO(BaseDAO):
                 limit=limit,
                 total=qs_without_limit.count(),
                 items=items)
-            conn.commit()
-        except DatabaseError:
-            conn.rollback()
+        except DatabaseError as exc:
+            logger.error(f"Error while filtering: {exc}")
             raise
         finally:
-            conn.close()
+            if not current_uow:
+                conn.commit()
+                conn.close()
 
         return result
 
     def _create(self, model_obj):
         """ Add a new record to the sqlalchemy database"""
-        conn = self.provider.get_connection()
-        conn.add(model_obj)
+        conn = self._get_session()
 
         try:
-            # If the model has Auto fields then flush to get them
-            if self.entity_cls.meta_.auto_fields:
-                conn.flush()
-            conn.commit()
-        except DatabaseError:
-            conn.rollback()
+            conn.add(model_obj)
+        except DatabaseError as exc:
+            logger.error(f"Error while creating: {exc}")
             raise
         finally:
-            conn.close()
+            if not current_uow:
+                conn.commit()
+                conn.close()
 
         return model_obj
 
     def _update(self, model_obj):
         """ Update a record in the sqlalchemy database"""
-        primary_key, data = {}, {}
-        identifier = None
+        conn = self._get_session()
+        db_item = None
 
-        for field_name, field_obj in self.entity_cls.meta_.declared_fields.items():
-            if field_obj.identifier:
-                identifier = getattr(model_obj, field_name)
-                primary_key = {
-                    field_name: identifier
-                }
-            else:
-                if isinstance(field_obj, Reference):
-                    data[field_obj.relation.field_name] = field_obj.relation.value
-                else:
-                    data[field_name] = getattr(model_obj, field_name, None)
-
-        # Run the update query and commit the results
-        conn = self.provider.get_connection()
+        # Fetch the record from database
         try:
-            result = conn.query(self.model_cls).filter_by(
-                **primary_key).update(data)
+            identifier = getattr(model_obj, self.entity_cls.meta_.id_field.attribute_name)
+            db_item = conn.query(self.model_cls).get(identifier)  # This will raise exception if object was not found
+        except DatabaseError as exc:
+            logger.error(f"Database Record not found: {exc}")
+            raise
 
-            if result <= 0:
-                conn.rollback()
-                raise ObjectNotFoundError(
-                    f'`{self.entity_cls.__name__}` object with identifier {identifier} '
-                    f'does not exist.')
-
-            conn.commit()
-        except DatabaseError:
+        if db_item is None:
             conn.rollback()
+            conn.close()
+            raise ObjectNotFoundError(
+                f'`{self.entity_cls.__name__}` object with identifier {identifier} '
+                f'does not exist.')
+
+        # Sync DB Record with current changes. When the session is committed, changes are automatically synced
+        try:
+            for attribute in self.entity_cls.meta_.attributes:
+                if (attribute != self.entity_cls.meta_.id_field.attribute_name and
+                        getattr(model_obj, attribute) != getattr(db_item, attribute)):
+                    setattr(db_item, attribute, getattr(model_obj, attribute))
+        except DatabaseError as exc:
+            logger.error(f"Error while updating: {exc}")
             raise
         finally:
-            conn.close()
+            if not current_uow:
+                conn.commit()
+                conn.close()
 
         return model_obj
 
     def _update_all(self, criteria: Q, *args, **kwargs):
         """ Update all objects satisfying the criteria """
-        # Delete the objects and commit the results
-        conn = self.provider.get_connection()
+        conn = self._get_session()
         qs = conn.query(self.model_cls).filter(self._build_filters(criteria))
         try:
             values = {}
@@ -311,35 +307,51 @@ class SADAO(BaseDAO):
                 values = args[0]  # `args[0]` is required because `*args` is sent as a typle
             values.update(kwargs)
             updated_count = qs.update(values)
-            conn.commit()
-        except DatabaseError:
-            conn.rollback()
+        except DatabaseError as exc:
+            logger.error(f"Error while updating all: {exc}")
             raise
         finally:
-            conn.close()
+            if not current_uow:
+                conn.commit()
+                conn.close()
 
         return updated_count
 
     def _delete(self, model_obj):
         """ Delete the entity record in the dictionary """
-        identifier = getattr(model_obj, self.entity_cls.meta_.id_field.field_name)
-        primary_key = {self.entity_cls.meta_.id_field.field_name: identifier}
+        conn = self._get_session()
+        db_item = None
 
-        conn = self.provider.get_connection()
+        # Fetch the record from database
         try:
-            conn.query(self.model_cls).filter_by(**primary_key).delete()
-            conn.commit()
-        except DatabaseError:
+            identifier = getattr(model_obj, self.entity_cls.meta_.id_field.attribute_name)
+            db_item = conn.query(self.model_cls).get(identifier)  # This will raise exception if object was not found
+        except DatabaseError as exc:
+            logger.error(f"Database Record not found: {exc}")
+            raise
+
+        if db_item is None:
             conn.rollback()
+            conn.close()
+            raise ObjectNotFoundError(
+                f'`{self.entity_cls.__name__}` object with identifier {identifier} '
+                f'does not exist.')
+
+        try:
+            conn.delete(db_item)
+        except DatabaseError as exc:
+            logger.error(f"Error while deleting: {exc}")
             raise
         finally:
-            conn.close()
+            if not current_uow:
+                conn.commit()
+                conn.close()
 
         return model_obj
 
     def _delete_all(self, criteria: Q = None):
         """ Delete a record from the sqlalchemy database"""
-        conn = self.provider.get_connection()
+        conn = self._get_session()
 
         del_count = 0
         if criteria:
@@ -349,12 +361,13 @@ class SADAO(BaseDAO):
 
         try:
             del_count = qs.delete()
-            conn.commit()
-        except DatabaseError:
-            conn.rollback()
+        except DatabaseError as exc:
+            logger.error(f"Error while deleting all: {exc}")
             raise
         finally:
-            conn.close()
+            if not current_uow:
+                conn.commit()
+                conn.close()
 
         return del_count
 
@@ -362,10 +375,9 @@ class SADAO(BaseDAO):
         """Run a raw query on the repository and return entity objects"""
         assert isinstance(query, str)
 
-        conn = self.provider.get_connection()
+        conn = self._get_session()
         try:
             results = conn.execute(query)
-            conn.commit()
 
             entity_items = []
             for item in results:
@@ -378,11 +390,13 @@ class SADAO(BaseDAO):
                 limit=len(entity_items),
                 total=len(entity_items),
                 items=entity_items)
-        except DatabaseError:
-            conn.rollback()
+        except DatabaseError as exc:
+            logger.error(f"Error while running raw query: {exc}")
             raise
         finally:
-            conn.close()
+            if not current_uow:
+                conn.commit()
+                conn.close()
 
         return result
 
@@ -414,6 +428,12 @@ class SAProvider(BaseProvider):
 
         return {}
 
+    def _get_database_specific_session_args(self):
+        if self.conn_info['DATABASE'] == Database.POSTGRESQL.value:
+            return {"autocommit": True, "autoflush": False}
+
+        return {}
+
     def _execute_database_specific_connection_stmts(self, conn):
         if self.conn_info['DATABASE'] == Database.SQLITE.value:
             conn.execute('PRAGMA case_sensitive_like = ON;')
@@ -423,7 +443,8 @@ class SAProvider(BaseProvider):
     def get_session(self):
         """Establish a session to the Database"""
         # Create the session
-        session_factory = orm.sessionmaker(bind=self._engine, expire_on_commit=False)
+        kwargs = self._get_database_specific_session_args()
+        session_factory = orm.sessionmaker(bind=self._engine, expire_on_commit=False, **kwargs)
         session_cls = orm.scoped_session(session_factory)
 
         return session_cls
@@ -440,13 +461,6 @@ class SAProvider(BaseProvider):
         conn = self._execute_database_specific_connection_stmts(conn)
 
         return conn
-
-    def commit(self, changes):
-        raise NotImplementedError
-
-    def close_connection(self, conn):
-        """ Close the connection to the Database instance """
-        conn.close()
 
     def _data_reset(self):
         conn = self._engine.connect()

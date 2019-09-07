@@ -104,11 +104,12 @@ class TestDAORetrievalFunctionality:
 
     def test_entity_query_initialization(self, test_domain):
         """Test the initialization of a QuerySet"""
-        query = test_domain.get_dao(Person).query
+        dao = test_domain.get_dao(Person)
+        query = dao.query
 
         assert query is not None
         assert isinstance(query, QuerySet)
-        assert query._criteria == QuerySet(test_domain, Person)._criteria
+        assert query._criteria == QuerySet(dao, test_domain, Person)._criteria
 
     def test_filter_initialization_of_query_from_entity(self, test_domain):
         filters = [

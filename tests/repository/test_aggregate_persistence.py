@@ -13,10 +13,10 @@ class TestAggregatePersistenceWithDictProvider:
         conn = test_domain.get_connection()
         assert conn is not None
 
-        conn['data']['foo'] = 'bar'
+        conn._db['data']['foo'] = 'bar'
 
-        assert 'foo' in conn['data']
-        assert conn['data']['foo'] == 'bar'
+        assert 'foo' in conn._db['data']
+        assert conn._db['data']['foo'] == 'bar'
 
 
 class TestAggregatePersistenceWithRepository:

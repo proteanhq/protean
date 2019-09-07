@@ -638,7 +638,7 @@ class Domain(_PackageBoundObject):
         for provider_name in self.providers:
             yield self.providers[provider_name]
 
-    def repository_for(self, aggregate_cls, uow=None):
+    def repository_for(self, aggregate_cls):
         """Retrieve a Repository registered for the Aggregate"""
         try:
             repository_record = next(
@@ -650,7 +650,7 @@ class Domain(_PackageBoundObject):
                 "or no Repository configured for aggregate class."
             )
 
-        return repository_record.cls(self, uow)
+        return repository_record.cls(self)
 
     def get_dao(self, aggregate_cls):
         """Retrieve a DAO registered for the Aggregate with a live connection"""

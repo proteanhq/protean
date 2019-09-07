@@ -10,6 +10,7 @@ from protean.core.entity import BaseEntity
 from protean.core.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
 from protean.core.field.basic import Auto, Field
 from protean.core.queryset import QuerySet
+from protean.globals import current_uow
 from protean.utils.query import Q
 
 # Local/Relative Imports
@@ -26,8 +27,23 @@ class BaseDAO(metaclass=ABCMeta):
         self.provider = provider
         self.model_cls = model_cls
         self.entity_cls = entity_cls
-        self.query = QuerySet(domain, self.entity_cls)
+        self.query = QuerySet(self, domain, self.entity_cls)
         self.schema_name = entity_cls.meta_.schema_name
+
+        self._outside_uow = False
+
+    def _get_session(self):
+        if current_uow and not self._outside_uow:
+            return current_uow.get_session(self.provider.name)
+        else:
+            new_connection = self.provider.get_connection()
+            if not new_connection.is_active:
+                new_connection.begin()
+            return new_connection
+
+    def outside_uow(self):
+        self._outside_uow = True
+        return self
 
     ###############################
     # Repository-specific methods #
