@@ -62,36 +62,36 @@ class _DomainRegistry:
         for element_type in DomainObjects:
             self._elements[element_type.value] = defaultdict(dict)
 
-    def register_element(self, element_type, element_cls, provider_name=None, model_cls=None):
-        if element_type.name not in DomainObjects.__members__:
+    def register_element(self, element_cls, provider_name=None, model_cls=None):
+        if element_cls.element_type.name not in DomainObjects.__members__:
             raise NotImplementedError
 
         element_name = fully_qualified_name(element_cls)
 
-        element = self._elements[element_type.value][element_name]
+        element = self._elements[element_cls.element_type.value][element_name]
         if element:
             raise ConfigurationError(f'Element {element_name} has already been registered')
         else:
             element_record = _DomainRegistry.DomainRecord(
                 name=element_cls.__name__,
                 qualname=element_name,
-                class_type=element_type.value,
+                class_type=element_cls.element_type.value,
                 cls=element_cls,
                 provider_name=provider_name,
                 model_cls=model_cls  # FIXME Remove `model_cls` from being stored here
             )
 
-            self._elements[element_type.value][element_name] = element_record
+            self._elements[element_cls.element_type.value][element_name] = element_record
 
-            logger.debug(f'Registered Element {element_name} with Domain as a {element_type.value}')
+            logger.debug(f'Registered Element {element_name} with Domain as a {element_cls.element_type.value}')
 
-    def unregister_element(self, element_type, element_cls):
-        if element_type.name not in DomainObjects.__members__:
+    def unregister_element(self, element_cls):
+        if element_cls.element_type.name not in DomainObjects.__members__:
             raise NotImplementedError
 
         element_name = fully_qualified_name(element_cls)
 
-        self._elements[element_type.value].pop(element_name, None)
+        self._elements[element_cls.element_type.value].pop(element_name, None)
 
 
 class Domain(_PackageBoundObject):
@@ -372,8 +372,7 @@ class Domain(_PackageBoundObject):
             new_cls.meta_.bounded_context = kwargs.pop('bounded_context', None)
 
         # Register element with domain
-        self._domain_registry.register_element(
-            element_type, new_cls, provider_name=provider_name, model_cls=model_cls)
+        self._domain_registry.register_element(new_cls, provider_name=provider_name, model_cls=model_cls)
 
         return new_cls
 

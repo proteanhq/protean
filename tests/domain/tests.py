@@ -7,7 +7,7 @@ from protean.domain import DomainObjects
 from protean.utils import fully_qualified_name
 
 # Local/Relative Imports
-from .elements import UserStruct
+from .elements import UserStructVO, UserStructAggregate, UserStructEntity, UserStructFoo, UserStructRequestObject
 
 
 class TestDomainInitialization:
@@ -22,42 +22,38 @@ class TestDomainInitialization:
 class TestDomainRegistration:
 
     def test_that_only_recognized_element_types_can_be_registered(self, test_domain):
-        from enum import Enum
-
-        class DummyElement(Enum):
-            FOO = 'FOO'
 
         with pytest.raises(NotImplementedError):
-            test_domain.registry.register_element(DummyElement.FOO, UserStruct)
+            test_domain.registry.register_element(UserStructFoo)
 
     def test_register_aggregate_with_domain(self, test_domain):
-        test_domain.registry.register_element(DomainObjects.AGGREGATE, UserStruct)
+        test_domain.registry.register_element(UserStructAggregate)
 
         assert test_domain.aggregates != {}
-        assert fully_qualified_name(UserStruct) in test_domain.aggregates
+        assert fully_qualified_name(UserStructAggregate) in test_domain.aggregates
 
     def test_register_entity_with_domain(self, test_domain):
-        test_domain.registry.register_element(DomainObjects.ENTITY, UserStruct)
+        test_domain.registry.register_element(UserStructEntity)
 
-        assert fully_qualified_name(UserStruct) in test_domain.entities
+        assert fully_qualified_name(UserStructEntity) in test_domain.entities
 
     def test_register_value_object_with_domain(self, test_domain):
-        test_domain.registry.register_element(DomainObjects.VALUE_OBJECT, UserStruct)
+        test_domain.registry.register_element(UserStructVO)
 
-        assert fully_qualified_name(UserStruct) in test_domain.value_objects
+        assert fully_qualified_name(UserStructVO) in test_domain.value_objects
 
     def test_register_request_object_with_domain(self, test_domain):
-        test_domain.registry.register_element(DomainObjects.REQUEST_OBJECT, UserStruct)
+        test_domain.registry.register_element(UserStructRequestObject)
 
-        assert fully_qualified_name(UserStruct) in test_domain.request_objects
+        assert fully_qualified_name(UserStructRequestObject) in test_domain.request_objects
 
     def test_that_registering_an_element_again_raises_configuration_error(self, test_domain):
-        test_domain.registry.register_element(DomainObjects.REQUEST_OBJECT, UserStruct)
+        test_domain.registry.register_element(UserStructRequestObject)
 
-        assert fully_qualified_name(UserStruct) in test_domain.request_objects
+        assert fully_qualified_name(UserStructRequestObject) in test_domain.request_objects
 
         with pytest.raises(ConfigurationError):
-            test_domain.registry.register_element(DomainObjects.REQUEST_OBJECT, UserStruct)
+            test_domain.registry.register_element(UserStructRequestObject)
 
     def test_that_a_properly_subclassed_entity_can_be_directly_registered(self, test_domain):
         from protean.core.entity import BaseEntity
