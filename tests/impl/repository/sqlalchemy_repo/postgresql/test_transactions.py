@@ -8,6 +8,7 @@ from protean.core.unit_of_work import UnitOfWork
 from .elements import Person, PersonRepository
 
 
+@pytest.mark.postgresql
 class TestTransactions:
 
     @pytest.fixture(autouse=True)
