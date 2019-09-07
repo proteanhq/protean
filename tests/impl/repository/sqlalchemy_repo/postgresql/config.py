@@ -21,6 +21,6 @@ DATABASES = {
     'default': {
         'PROVIDER': 'protean.impl.repository.sqlalchemy_repo.SAProvider',
         'DATABASE': Database.POSTGRESQL.value,
-        'DATABASE_URI': 'postgresql://master:password@localhost:5432/test_app'
+        'DATABASE_URI': 'postgresql://postgres:@localhost:5432/protean_test'
     }
 }
