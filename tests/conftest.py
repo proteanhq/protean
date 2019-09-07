@@ -45,7 +45,7 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_slow)
         if "pending" in item.keywords and run_pending is False:
             item.add_marker(skip_pending)
-        if ("postgresql" in item.keywords and run_postgresql is False) or os.name == 'nt':
+        if "postgresql" in item.keywords and run_postgresql is False:
             item.add_marker(skip_postgresql)
 
 
