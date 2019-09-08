@@ -15,6 +15,7 @@ from typing import Any, Dict
 import marshmallow
 
 from protean.core.exceptions import ConfigurationError, IncorrectUsageError, NotSupportedError, ObjectNotFoundError
+from protean.globals import current_uow
 from protean.utils import fully_qualified_name
 from werkzeug.datastructures import ImmutableDict
 
@@ -690,14 +691,15 @@ class Domain(_PackageBoundObject):
         for broker_name in self._brokers:
             yield self._brokers[broker_name]
 
-    def publish(self, domain_event, uow=None):
+    def publish(self, domain_event):
         """Publish a domain event to all registered brokers"""
         if self._brokers is None:
             self._initialize_brokers()
 
-        if uow:
-            logger.debug(f'Recording {domain_event.__class__.__name__} with values {domain_event.to_dict()} in {uow}')
-            uow.register_event(domain_event)
+        if current_uow:
+            logger.debug(f'Recording {domain_event.__class__.__name__} '
+                         f'with values {domain_event.to_dict()} in {current_uow}')
+            current_uow.register_event(domain_event)
         else:
             logger.debug(f'Publishing {domain_event.__class__.__name__} with values {domain_event.to_dict()}')
             for broker_name in self._brokers:
