@@ -48,15 +48,18 @@ class DictModel(BaseModel):
 
 
 class DictSession:
-    def __init__(self, provider):
+    def __init__(self, provider, new_connection=False):
         self._provider = provider
         self.is_active = True
 
-        self._db = {
-            'data': copy.deepcopy(_databases),
-            'lock': _locks.setdefault(self._provider.name, Lock()),
-            'counters': _counters
-        }
+        if (current_uow and self._provider.name in current_uow._sessions) and not new_connection:
+            self._db = current_uow._sessions[self._provider.name]._db
+        else:
+            self._db = {
+                'data': copy.deepcopy(_databases),
+                'lock': _locks.setdefault(self._provider.name, Lock()),
+                'counters': _counters
+            }
 
     def add(self, element):
         if element.state_.is_persisted:
@@ -71,9 +74,11 @@ class DictSession:
         dao.delete(element)
 
     def commit(self):
-        global _databases
-
-        _databases = self._db['data']
+        if current_uow and self._provider.name in current_uow._sessions:
+            current_uow._sessions[self._provider.name]._db['data'] = self._db['data']
+        else:
+            global _databases
+            _databases = self._db['data']
 
     def rollback(self):
         pass
@@ -103,7 +108,7 @@ class DictProvider(BaseProvider):
 
     def get_connection(self, session_cls=None):
         """Return the dictionary database object """
-        return DictSession(self)
+        return DictSession(self, new_connection=True)
 
     def _data_reset(self):
         """Reset data"""

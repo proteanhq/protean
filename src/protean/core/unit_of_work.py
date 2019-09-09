@@ -46,6 +46,9 @@ class UnitOfWork:
         if not self._in_progress:
             raise InvalidOperationError("UnitOfWork is not in progress")
 
+        # Exit from Unit of Work
+        _uow_context_stack.pop()
+
         # Commit and destroy session
         try:
             for _, session in self._sessions.items():
@@ -70,13 +73,13 @@ class UnitOfWork:
         self._events = []
         self._in_progress = False
 
-        # Exit from Unit of Work
-        _uow_context_stack.pop()
-
     def rollback(self):
         # Raise error if there the Unit Of Work is not active
         if not self._in_progress:
             raise InvalidOperationError("UnitOfWork is not in progress")
+
+        # Exit from Unit of Work
+        _uow_context_stack.pop()
 
         try:
             for _, session in self._sessions.items():
