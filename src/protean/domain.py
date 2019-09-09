@@ -138,7 +138,11 @@ class Domain(_PackageBoundObject):
             "SECRET_KEY": None,
             "IDENTITY_STRATEGY": IdentityStrategy.UUID,
             "IDENTITY_TYPE": IdentityType.STRING,
-            "DATABASES": {},
+            "DATABASES": {
+                'default': {
+                    'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'
+                }
+            },
             "BROKERS": {},
             "CACHE": {}
         }
@@ -621,10 +625,19 @@ class Domain(_PackageBoundObject):
                 repository for _, repository in self.repositories.items()
                 if repository.cls.meta_.aggregate_cls == aggregate_cls)  # FIXME Avoid comparing classes
         except StopIteration:
-            raise ConfigurationError(
-                "Invalid or Unregistered Aggregate class specified, "
-                "or no Repository configured for aggregate class."
-            )
+            logger.info(f'Constructing a Repository for {aggregate_cls}...')
+
+            from protean.core.repository.base import BaseRepository
+            new_class = type(aggregate_cls.__name__ + 'Repository', (BaseRepository, ), {})
+
+            self._domain_element(
+                DomainObjects.REPOSITORY, _cls=new_class,
+                aggregate_cls=aggregate_cls, bounded_context=aggregate_cls.meta_.bounded_context)
+
+            # FIXME Avoid comparing classes / Fetch a Repository class directly by its aggregate class
+            repository_record = next(
+                repository for _, repository in self.repositories.items()
+                if repository.cls.meta_.aggregate_cls == aggregate_cls)
 
         return repository_record.cls(self)
 

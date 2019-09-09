@@ -1,7 +1,7 @@
 # Protean
 import pytest
 
-from protean.core.exceptions import ConfigurationError, IncorrectUsageError
+from protean.core.exceptions import IncorrectUsageError
 from protean.core.repository.base import BaseRepository
 from protean.utils import fully_qualified_name
 
@@ -56,6 +56,6 @@ class TestRepositoryRegistration:
 
         assert isinstance(test_domain.repository_for(Person), PersonRepository)
 
-    def test_that_trying_to_retrieve_an_unknown_repository_by_aggregate_cls_throws_error(self, test_domain):
-        with pytest.raises(ConfigurationError):
-            test_domain.repository_for(Person)
+    def test_that_fetching_an_unknown_repository_by_aggregate_cls_creates_one_automatically(self, test_domain):
+        repo = test_domain.repository_for(Person)
+        assert repo.__class__.__name__ == 'PersonRepository'
