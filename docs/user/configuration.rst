@@ -58,6 +58,22 @@ The following configuration values are used internally by Protean:
 
     Default: ``IdentityStrategy.UUID``
 
+.. py:data:: DATABASES
+
+    Protean allows you to specify the database provider you want to use with your application. By virtue of using a Ports and Adapters architecture, you can switch between databases at any time, and your application should work seamlessly.
+
+    By default, Protean is packaged with a :ref:`implementation-in-memory-database` that works perfectly well in development environments and within a single bounded context. But it is recommended to use full-fledged database providers in production and for large scale deployments. Protean comes with built-in support for SQLAlchemy and Elasticsearch, but you can easily extend the mechanism to support your :ref:`own broker<plugin-database>`.
+
+    Default:
+
+    .. code-block:: json
+
+        {
+            "default": {
+                "PROVIDER": "protean.impl.repository.dict_repo.DictProvider"
+            }
+        }
+
 .. py:data:: BROKERS
 
     Protean uses Message Brokers for publishing and propogating Domain events within and across Bounded Contexts.

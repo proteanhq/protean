@@ -7,6 +7,14 @@ dev
 
 * Value Object Validations - Bugfix
 * Register Request Object with domain automatically
+* Introduce base Container class for all Protean data objects
+* Publish events honoring Unit of Work, if there is an active session
+* Enable and enrish Logging ability
+* Refactor test case folder structure and isolate configurations
+* Refactor and enrich SQLAlchemy repository
+* Enhancements and fixes for Unit of Work functionality
+* Add support for specifying Data Type of auto-generated Identities
+* Refactor Domain Registration process
 
 0.1 (2019-07-25)
 ----------------

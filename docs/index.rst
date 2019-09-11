@@ -91,12 +91,11 @@ These guides have been heavily influenced by the thoughts and works of DDD pione
 *Protean's guides are not a replacement to the original texts. It is recommended that you go through them to polish your DDD knowledge.*
 
 .. toctree::
-    :maxdepth: 1
-    :caption: Philosophy
+   :maxdepth: 1
+   :caption: Principles
 
-    philosophy/why-protean
-    philosophy/decision-delay
-    philosophy/architecture/dependency-rule
+   philosophy/index
+   blocks/index
 
 .. toctree::
    :maxdepth: 1
@@ -114,14 +113,12 @@ These guides have been heavily influenced by the thoughts and works of DDD pione
    user/persistence
    user/unit-of-work
    user/messaging-medium
-   user/negative-patterns
+   user/logging
 
-API
----
 
 .. toctree::
    :maxdepth: 1
-   :caption: API
+   :caption: Reference
 
    api/domain
    api/entity
@@ -132,13 +129,11 @@ API
    api/in-memory-broker
 
 
-Plugins
--------
-
 .. toctree::
    :maxdepth: 1
    :caption: Plugins
 
+   plugins/database
    plugins/broker
 
 
