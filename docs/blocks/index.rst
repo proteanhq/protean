@@ -9,6 +9,7 @@ Protean takes an opinionated approach to software development, one that encourag
 This section walks you through these mental models, and introduces the core framework pieces used to build application software.
 
 .. toctree::
+    :maxdepth: 1
     :glob:
 
     ddd/*

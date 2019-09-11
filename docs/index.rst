@@ -124,6 +124,7 @@ These guides have been heavily influenced by the thoughts and works of DDD pione
    api/entity
    api/field
    api/queryset
+   api/dao.rst
    api/brokers
    api/utils
    api/in-memory-broker

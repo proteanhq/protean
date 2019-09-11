@@ -54,6 +54,8 @@ Repositories lean towards the domain side and represent domain concepts that are
 
 Repositories in Protean behave like collections. Each Repository is equipped with default `add` and `remove` mechanisms, that can take care of aggregate persistence automatically. You can override them with explicit definitions in your repository class, if necessary. These lifecycle methods are typically invoked in :ref:`application-service` while performing operations.
 
+.. _repository-add:
+
 .. doctest::
 
     @domain.application_service(aggregate_cls='User')
