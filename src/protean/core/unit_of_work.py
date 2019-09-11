@@ -3,19 +3,19 @@ import logging
 
 # Protean
 from protean.core.exceptions import InvalidOperationError
-from protean.globals import _uow_context_stack
+from protean.globals import _uow_context_stack, current_domain
 
 logger = logging.getLogger('protean.core.unit_of_work')
 
 
 class UnitOfWork:
-    def __init__(self, domain):
+    def __init__(self):
         # Initialize session factories from all providers
         #   Connections will be retrieved at this stage
 
         # Also initialize Identity Map?
         #   Repository will first check here before retrieving from Database
-        self.domain = domain
+        self.domain = current_domain
         self._in_progress = False
 
         self._sessions = {}
