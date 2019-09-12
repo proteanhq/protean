@@ -5,7 +5,7 @@ from datetime import datetime
 # Protean
 import pytest
 
-from protean.core.aggregate import _AggregateMetaclass
+from protean.core.entity import _EntityMetaclass
 from protean.core.exceptions import ValidationError
 from protean.utils import fully_qualified_name
 
@@ -15,7 +15,7 @@ from .elements import AccountWithId, Comment, ConcreteRole, Person, Post, Profil
 
 class TestAggregateStructure:
     def test_aggregate_inheritance(self):
-        assert isinstance(Role, _AggregateMetaclass)
+        assert isinstance(Role, _EntityMetaclass)
 
     def test_successful_aggregate_registration(self, test_domain):
         test_domain.register(Role)
