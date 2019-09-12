@@ -3,6 +3,7 @@
 import copy
 import logging
 
+from collections import defaultdict
 from uuid import uuid4
 
 # Protean
@@ -312,7 +313,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
                 f'{self.__class__.__name__} class has been marked abstract'
                 f' and cannot be instantiated')
 
-        self.errors = {}
+        self.errors = defaultdict(list)
 
         # Set up the storage for instance state
         self.state_ = _EntityState()
@@ -333,23 +334,33 @@ class BaseEntity(metaclass=_EntityMetaclass):
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
             loaded_fields.append(field_name)
-            setattr(self, field_name, val)
+            try:
+                setattr(self, field_name, val)
+            except ValidationError as err:
+                for field_name in err.messages:
+                    self.errors[field_name].extend(err.messages[field_name])
 
         # Load Value Objects
         for field_name, field_obj in self.meta_.declared_fields.items():
-            if isinstance(field_obj, (ValueObjectField)):
+            if isinstance(field_obj, (ValueObjectField)) and not getattr(self, field_name):
                 attributes = [
                     (embedded_field.field_name, embedded_field.attribute_name)
                     for embedded_field
                     in field_obj.embedded_fields.values()
                     ]
                 vals = {
-                    name: getattr(self, attr)
+                    name: kwargs.get(attr)
                     for name, attr in attributes
                 }
-                value_object = field_obj.value_object_cls.build(**vals)
-                setattr(self, field_name, value_object)
-                loaded_fields.append(field_name)
+                try:
+                    value_object = field_obj.value_object_cls.build(**vals)
+                    # Set VO value only if the value object is not None/Empty
+                    if value_object:
+                        setattr(self, field_name, value_object)
+                        loaded_fields.append(field_name)
+                except ValidationError as err:
+                    for sub_field_name in err.messages:
+                        self.errors['{}_{}'.format(field_name, sub_field_name)].extend(err.messages[sub_field_name])
 
         if not getattr(self, self.meta_.id_field.field_name, None) and type(self.meta_.id_field) is Auto:
             setattr(self, self.meta_.id_field.field_name, self._generate_identity())
@@ -360,7 +371,11 @@ class BaseEntity(metaclass=_EntityMetaclass):
         for field_name, field_obj in self.meta_.declared_fields.items():
             if field_name not in loaded_fields:
                 if not isinstance(field_obj, (Reference, _ReferenceField, Association)):
-                    setattr(self, field_name, None)
+                    try:
+                        setattr(self, field_name, None)
+                    except ValidationError as err:
+                        for field_name in err.messages:
+                            self.errors[field_name].extend(err.messages[field_name])
 
         # Raise any errors found during load
         if self.errors:
