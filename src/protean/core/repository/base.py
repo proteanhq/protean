@@ -3,6 +3,7 @@ import logging
 # Protean
 from protean.core.field.association import HasMany
 from protean.domain import DomainObjects
+from protean.globals import current_domain
 
 logger = logging.getLogger('protean.repository')
 
@@ -62,14 +63,16 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
 
     element_type = DomainObjects.REPOSITORY
 
-    def __init__(self, domain):
-        self.domain = domain
+    def __new__(cls, *args, **kwargs):
+        if cls is BaseRepository:
+            raise TypeError("BaseRepository cannot be instantiated")
+        return super().__new__(cls)
 
     def add(self, aggregate):
         # Persist only if the aggregate object is new, or it has changed since last persistence
         if ((not aggregate.state_.is_persisted) or
                 (aggregate.state_.is_persisted and aggregate.state_.is_changed)):
-            dao = self.domain.get_dao(self.meta_.aggregate_cls)
+            dao = current_domain.get_dao(self.meta_.aggregate_cls)
             dao.save(aggregate)
 
         # If there are HasMany fields in the aggregate, they may have
@@ -79,12 +82,12 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
                 has_many_field = getattr(aggregate, field_name)
 
                 for item in has_many_field._temp_cache['added']:
-                    dao = self.domain.get_dao(field.to_cls)
+                    dao = current_domain.get_dao(field.to_cls)
                     dao.save(item)
                 has_many_field._temp_cache['added'] = list()  # Empty contents of `added` list
 
                 for item in has_many_field._temp_cache['removed']:
-                    dao = self.domain.get_dao(field.to_cls)
+                    dao = current_domain.get_dao(field.to_cls)
                     dao.delete(item)
                 has_many_field._temp_cache['removed'] = list()  # Empty contents of `removed` list
 
@@ -92,12 +95,12 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
 
     def remove(self, aggregate):
         """Remove object to Repository"""
-        dao = self.domain.get_dao(self.meta_.aggregate_cls)
+        dao = current_domain.get_dao(self.meta_.aggregate_cls)
         dao.delete(aggregate)
 
     def get(self, identifier):
         """Retrieve object from Repository"""
-        dao = self.domain.get_dao(self.meta_.aggregate_cls)
+        dao = current_domain.get_dao(self.meta_.aggregate_cls)
         return dao.get(identifier)
 
     def filter(self, specification):

@@ -15,7 +15,7 @@ class TestRepositoryInitialization:
             BaseRepository()
 
     def test_that_repository_can_be_instantiated(self, test_domain):
-        repo = PersonRepository(test_domain)
+        repo = PersonRepository()
         assert repo is not None
 
 
