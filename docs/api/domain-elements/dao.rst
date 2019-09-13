@@ -8,13 +8,6 @@ Data Access Objects (DAO)
 
 .. autoclass:: protean.core.repository.dao.BaseDAO
 
-.. _api-dao-init:
-
-``__init__()``
-^^^^^^^^^^^^^^
-
-.. automethod:: protean.core.repository.dao.BaseDAO.__init__
-
 .. _api-dao-create:
 
 ``create()``

@@ -4,7 +4,27 @@
 Repositories
 ============
 
+.. _api-repository-class:
 
-A primary function of the repository is to be a representative of domain functionality. In that sense, it contains methods and implementations that cleary identify what the domain is trying to ask/do with the persistence store.
+.. autoclass:: protean.core.repository.base.BaseRepository
 
-A repository works in conjuction with the DAO layer to operate on the persistence store. This differentiation is necessary because the DAO is a concrete implementation per persistence store and is built as a plugin to Protean. But a repository is representative of the domain layer and remains unchanged with changing underlying persistence store implementations.
+.. _api-repository-add:
+
+``add()``
+^^^^^^^^^^^^^^
+
+.. automethod:: protean.core.repository.base.BaseRepository.add
+
+.. _api-repository-remove:
+
+``remove()``
+^^^^^^^^^^^^^^
+
+.. automethod:: protean.core.repository.base.BaseRepository.remove
+
+.. _api-repository-get:
+
+``get()``
+^^^^^^^^^^^^^^
+
+.. automethod:: protean.core.repository.base.BaseRepository.get
