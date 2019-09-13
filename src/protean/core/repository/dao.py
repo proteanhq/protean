@@ -3,7 +3,7 @@
     protean.core.repository.dao
     ~~~~~~~~~
     This module contains the interface definition to be satisfed by concrete DAO implementations.
-    :copyright: 2010 Pallets
+    :copyright: 2019 Protean
     :license: BSD-3-Clause
 """
 # Standard Library Imports

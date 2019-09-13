@@ -91,7 +91,7 @@ When there is an active Unit of Work in progress, changes performed by repositor
 
             # The Unit of Work transaction would have been committed by this point
 
-On the query side, a repository is capable of querying by the aggregate's primary identifier automatically with the `get` method. It also supports a ``filter`` method that accepts a :ref:`specification` object and can filter aggregate data automatically.
+On the query side, a repository is capable of querying by the aggregate's primary identifier automatically with the `get` method.
 
 .. doctest::
 

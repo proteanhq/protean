@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+"""
+    protean.core.repository.base
+    ~~~~~~~~~
+    This module contains the interface definition to be satisfed by concrete Repository implementations.
+    :copyright: 2019 Protean
+    :license: BSD-3-Clause
+"""
 import logging
 
 # Protean
@@ -54,11 +62,13 @@ class RepositoryMeta:
 
 
 class BaseRepository(metaclass=_RepositoryMetaclass):
-    """This class outlines the base repository functions,
-    to be satisifed by all implementing repositories.
+    """This is the baseclass for concrete Repository implementations.
 
-    It is also a marker interface for registering repository
-    classes with the domain"""
+    The three methods in this baseclass to `add`, `get` or `remove` entities are sufficient in most cases
+    to handle application requirements. They have built-in support for handling child relationships and
+    honor Unit of Work constructs. While they can be overriddent, it is generally suggested to call the
+    parent method first before writing custom code.
+    """
 
     element_type = DomainObjects.REPOSITORY
 
@@ -99,6 +109,3 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
         """Retrieve object from Repository"""
         dao = self.domain.get_dao(self.meta_.aggregate_cls)
         return dao.get(identifier)
-
-    def filter(self, specification):
-        """Filter for objects that fit specification"""

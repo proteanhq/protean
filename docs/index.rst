@@ -115,20 +115,11 @@ These guides have been heavily influenced by the thoughts and works of DDD pione
    user/messaging-medium
    user/logging
 
-
 .. toctree::
    :maxdepth: 1
    :caption: Reference
 
-   api/domain
-   api/entity
-   api/field
-   api/queryset
-   api/dao.rst
-   api/brokers
-   api/utils
-   api/in-memory-broker
-
+   api/index
 
 .. toctree::
    :maxdepth: 1
@@ -147,6 +138,14 @@ These guides have been heavily influenced by the thoughts and works of DDD pione
    Code of Conduct <community/code-of-conduct>
    community/contributing
 
+**Pending major improvement areas:**
+
+* Support for Custom Models
+* Support for Specifications
+* Out-of-the-box Support for Command Handlers
+* CQRS Implementation Support
+* EventSourcing Implementation Support
+* Documentation on Architectures
 
 .. |ddd-eric-evans| raw:: html
 
