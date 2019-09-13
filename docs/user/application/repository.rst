@@ -84,8 +84,8 @@ When there is an active Unit of Work in progress, changes performed by repositor
         @classmethod
         def register(cls, request_object: UserRegistration):
             # Initialize a Unit of Work for controlling transactions
-            with UnitOfWork(domain) as uow:  # FIXME
-                repo = domain.repository_for(User).within(uow)  # Register the repository within the UoW  # FIXME
+            with UnitOfWork():
+                repo = domain.repository_for(User)  # Register the repository within the UoW
                 user = User.register(request_object)
                 repo.add(user)
 

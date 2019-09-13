@@ -34,7 +34,7 @@ class TestTransactions:
         person_dao = test_domain.get_dao(Person)
 
         # Initiate a UnitOfWork Session
-        with UnitOfWork(test_domain):
+        with UnitOfWork():
             repo = test_domain.repository_for(Person)
             person2 = Person(first_name='Jane', last_name='Doe')
             repo.add(person2)
@@ -54,7 +54,7 @@ class TestTransactions:
         person_dao = test_domain.get_dao(Person)
 
         # Initiate a UnitOfWork Session
-        with UnitOfWork(test_domain):
+        with UnitOfWork():
             repo = test_domain.repository_for(Person)
             persisted_person = repo.get(person.id)
 
@@ -75,7 +75,7 @@ class TestTransactions:
         person_dao = test_domain.get_dao(Person)
 
         # Initiate a UnitOfWork Session
-        with UnitOfWork(test_domain):
+        with UnitOfWork():
             repo = test_domain.repository_for(Person)
             persisted_person = repo.get(person_to_be_added.id)
             repo.remove(persisted_person)
@@ -96,7 +96,7 @@ class TestTransactions:
         person_dao = test_domain.get_dao(Person)
 
         # Initiate a UnitOfWork Session
-        with UnitOfWork(test_domain):
+        with UnitOfWork():
             repo_with_uow = test_domain.repository_for(Person)
 
             # Create a new person object to be added
@@ -132,7 +132,7 @@ class TestTransactions:
         person_dao = test_domain.get_dao(Person)
 
         # Initiate a UnitOfWork Session
-        uow = UnitOfWork(test_domain)
+        uow = UnitOfWork()
         uow.start()
 
         repo_with_uow = test_domain.repository_for(Person)
@@ -172,7 +172,7 @@ class TestTransactions:
         person_dao = test_domain.get_dao(Person)
 
         # Initiate a UnitOfWork Session
-        uow = UnitOfWork(test_domain)
+        uow = UnitOfWork()
         uow.start()
 
         repo_with_uow = test_domain.repository_for(Person)
@@ -201,7 +201,7 @@ class TestTransactions:
         assert person_dao.get(person_to_be_deleted.id) is not None
 
     def test_session_is_destroyed_after_commit(self, test_domain):
-        uow = UnitOfWork(test_domain)
+        uow = UnitOfWork()
         uow.start()
 
         uow.commit()
@@ -209,7 +209,7 @@ class TestTransactions:
         assert uow.in_progress is False
 
     def test_session_is_destroyed_after_rollback(self, test_domain):
-        uow = UnitOfWork(test_domain)
+        uow = UnitOfWork()
         uow.start()
 
         uow.rollback()

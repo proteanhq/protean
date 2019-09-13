@@ -639,7 +639,7 @@ class Domain(_PackageBoundObject):
                 repository for _, repository in self.repositories.items()
                 if repository.cls.meta_.aggregate_cls == aggregate_cls)
 
-        return repository_record.cls(self)
+        return repository_record.cls()
 
     def get_dao(self, aggregate_cls):
         """Retrieve a DAO registered for the Aggregate with a live connection"""

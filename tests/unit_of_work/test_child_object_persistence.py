@@ -26,7 +26,7 @@ class TestUnitOfWorkRegistration:
     def test_that_an_entity_can_be_added_within_uow(self, test_domain, persisted_post):
         repo = test_domain.repository_for(Post)
 
-        with UnitOfWork(test_domain):
+        with UnitOfWork():
             comment = Comment(content='So La Ti Do')
             persisted_post.comments.add(comment)
 
@@ -50,7 +50,7 @@ class TestUnitOfWorkRegistration:
         post = repo.get(persisted_post.id)
         assert post.comments[0].content == 'So La Ti Do'
 
-        with UnitOfWork(test_domain):
+        with UnitOfWork():
             comment = persisted_post.comments[0]
             comment.content = ('Pa Da Ni Sa')
             persisted_post.comments.add(comment)
@@ -71,7 +71,7 @@ class TestUnitOfWorkRegistration:
         repo = test_domain.repository_for(Post)
         repo.add(persisted_post)
 
-        with UnitOfWork(test_domain):
+        with UnitOfWork():
             comment = persisted_post.comments[0]
             persisted_post.comments.remove(comment)
 
