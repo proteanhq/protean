@@ -25,7 +25,7 @@ Release v\ |version|. (:ref:`Changelog <changelog>`)
 .. image:: https://codecov.io/gh/proteanhq/protean/branch/master/graph/badge.svg
     :target: https://codecov.io/gh/proteanhq/protean
 
-Get started with :ref:`install` and then get a overview with :ref:`quickstart`. There is also a more detailed :ref:`tutorial` that shows how to create a small but complete application with Protean. The rest of the docs describe each component of Protean in detail, with a full reference in the API section.
+Get started with :ref:`install` and then get a overview with :ref:`quickstart`. The rest of the docs describe each component of Protean in detail, with a full reference in the API section.
 
 Overview
 --------
@@ -104,15 +104,12 @@ These guides have been heavily influenced by the thoughts and works of DDD pione
    user/foreword
    user/install
    user/quickstart
-   user/tutorial
    user/composition-root
    user/domain-layer-mechanics
    user/application-layer-mechanics
    user/configuration
-   user/infrastructure
    user/persistence
    user/unit-of-work
-   user/messaging-medium
    user/logging
 
 .. toctree::
