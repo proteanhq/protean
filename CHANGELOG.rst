@@ -5,8 +5,19 @@ Release History
 dev
 ---
 
-* Value Object Validations - Bugfix
-* Register Request Object with domain automatically
+
+0.2 ((2019-09-16)
+-----------------
+
+* New Request Object elements introduced to package information from API/views
+* A base Container class introduced for all Protean data objects for uniformity in behavior
+* Support for specifying Data Type of auto-generated Identities (String, Integer or UUID)
+* Enhancements and fixes for Unit of Work functionality to work well with SQLAlchemy type database plugins
+* Unit of Work transactions now control event publishing and release events to the stream only on a successful commit
+* A Simplified element registration process to the domain
+* Validation bugfixes in Aggregates, Entities and Value Objects
+* Fully functional and configurable logs throughout Protean codebase
+* Test case restructuring for clarity and isolation of configurations
 
 0.1 (2019-07-25)
 ----------------
