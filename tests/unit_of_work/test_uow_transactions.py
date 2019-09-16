@@ -1,10 +1,14 @@
-import pytest
+# Standard Library Imports
 import random
 import string
+
+# Protean
+import pytest
 
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.unit_of_work import UnitOfWork
 
+# Local/Relative Imports
 from .elements import Person, PersonRepository
 
 

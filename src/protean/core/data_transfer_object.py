@@ -1,6 +1,8 @@
 """Data Transfer Object Functionality and Classes"""
+# Standard Library Imports
 import logging
 
+# Protean
 from protean.domain import DomainObjects
 from protean.utils.container import BaseContainer
 

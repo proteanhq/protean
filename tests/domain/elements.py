@@ -1,3 +1,4 @@
+# Standard Library Imports
 from enum import Enum
 
 # Protean

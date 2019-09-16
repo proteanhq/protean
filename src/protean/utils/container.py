@@ -1,6 +1,8 @@
+# Standard Library Imports
 import copy
 import logging
 
+# Protean
 from protean.core.exceptions import NotSupportedError, ValidationError
 from protean.core.field.basic import Field
 

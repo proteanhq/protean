@@ -1,9 +1,10 @@
 """Aggregate Functionality and Classes"""
+# Standard Library Imports
 import logging
 
 # Protean
-from protean.domain import DomainObjects
 from protean.core.entity import BaseEntity
+from protean.domain import DomainObjects
 
 logger = logging.getLogger('protean.domain.aggregate')
 

@@ -1,5 +1,7 @@
+# Standard Library Imports
 import logging
 
+# Protean
 from protean.domain import DomainObjects
 
 logger = logging.getLogger('protean.application')

@@ -8,15 +8,15 @@ from abc import ABCMeta
 from typing import Any
 
 # Protean
-from protean.core.exceptions import ObjectNotFoundError, ConfigurationError
+from protean.core.exceptions import ConfigurationError, ObjectNotFoundError
 from protean.core.field.association import Reference
 from protean.core.field.basic import Auto, Boolean, Date, DateTime, Dict, Float, Integer, List, String, Text
-from protean.globals import current_domain, current_uow
 from protean.core.provider.base import BaseProvider
 from protean.core.repository.dao import BaseDAO
 from protean.core.repository.lookup import BaseLookup
 from protean.core.repository.model import BaseModel
 from protean.core.repository.resultset import ResultSet
+from protean.globals import current_domain, current_uow
 from protean.utils import Database, IdentityType
 from protean.utils.query import Q
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
@@ -26,7 +26,7 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext import declarative as sa_dec
 from sqlalchemy.ext.declarative import as_declarative, declared_attr
-from sqlalchemy.types import TypeDecorator, CHAR
+from sqlalchemy.types import CHAR, TypeDecorator
 
 logging.getLogger('sqlalchemy.engine').setLevel(logging.ERROR)
 logger = logging.getLogger('protean.repository')
