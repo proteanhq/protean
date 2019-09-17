@@ -55,6 +55,7 @@ class TestModelWithVO:
         assert user2_model_obj.password == 'd4e5r6'
 
         # Model's content should reflect only the attributes, not declared_fields
+        # Model's content should reflect only the attributes, not declared_fields
         assert hasattr(user1_model_obj, 'email') is False
         assert hasattr(user2_model_obj, 'email') is False
 

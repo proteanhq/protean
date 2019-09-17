@@ -37,8 +37,8 @@ class DictModel(BaseModel):
     def from_entity(cls, entity) -> 'DictModel':
         """Convert the entity to a dictionary record """
         dict_obj = {}
-        for field_name in entity.meta_.attributes:
-            dict_obj[field_name] = getattr(entity, field_name)
+        for attribute_name in entity.meta_.attributes:
+            dict_obj[attribute_name] = getattr(entity, attribute_name)
         return dict_obj
 
     @classmethod
@@ -119,10 +119,10 @@ class DictProvider(BaseProvider):
 
     def get_model(self, entity_cls):
         """Return associated, fully-baked Model class"""
-        cls = DictModel
-        cls.entity_cls = entity_cls
+        model_cls = type(entity_cls.__name__ + 'Model', (DictModel, ), {})
+        model_cls.entity_cls = entity_cls
 
-        return cls
+        return model_cls
 
     def get_dao(self, entity_cls):
         """Return a DAO object configured with a live connection"""

@@ -31,14 +31,16 @@ def test_domain():
 def setup_db():
     test_domain = initialize_domain()
     # Create all associated tables
-    from .elements import Person, Alien, User
+    from .elements import Person, Alien, User, ComplexUser
     test_domain.register(Person)
     test_domain.register(Alien)
     test_domain.register(User)
+    test_domain.register(ComplexUser)
 
     test_domain.get_dao(Person)
     test_domain.get_dao(Alien)
     test_domain.get_dao(User)
+    test_domain.get_dao(ComplexUser)
 
     for provider in test_domain.providers_list():
         provider._metadata.create_all()
