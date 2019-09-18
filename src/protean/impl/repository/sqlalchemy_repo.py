@@ -1,5 +1,4 @@
-"""Module with repository implementation for SQLAlchemy
-"""
+"""Module with repository implementation for SQLAlchemy"""
 # Standard Library Imports
 import logging
 import uuid
@@ -421,6 +420,7 @@ class SAProvider(BaseProvider):
         self._engine = create_engine(make_url(self.conn_info['DATABASE_URI']), **kwargs)
         self._metadata = MetaData(bind=self._engine)
 
+        # A temporary cache of already constructed model classes
         self._model_classes = {}
 
     def _get_database_specific_engine_args(self):

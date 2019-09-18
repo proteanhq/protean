@@ -17,13 +17,19 @@ def pytest_addoption(parser):
         "--pending", action="store_true", default=False, help="Show pending tests"
     )
     parser.addoption(
+        "--sqlite", action="store_true", default=False, help="Run Sqlite tests"
+    )
+    parser.addoption(
         "--postgresql", action="store_true", default=False, help="Run Postgresql tests"
+    )
+    parser.addoption(
+        "--elasticsearch", action="store_true", default=False, help="Run Elasticsearch tests"
     )
 
 
 def pytest_collection_modifyitems(config, items):
     """Configure special markers on tests, so as to control execution"""
-    run_slow = run_pending = run_postgresql = False
+    run_slow = run_pending = run_sqlite = run_postgresql = run_elasticsearch = False
 
     if config.getoption("--slow"):
         # --slow given in cli: do not skip slow tests
@@ -32,21 +38,33 @@ def pytest_collection_modifyitems(config, items):
     if config.getoption("--pending"):
         run_pending = True
 
+    if config.getoption("--sqlite"):
+        run_sqlite = True
+
     if config.getoption("--postgresql"):
-        # --slow given in cli: do not skip slow tests
         run_postgresql = True
+
+    # if config.getoption("--elasticsearch"):
+    #    run_elasticsearch = True
+    run_elasticsearch = True
 
     skip_slow = pytest.mark.skip(reason="need --slow option to run")
     skip_pending = pytest.mark.skip(reason="need --pending option to run")
+    skip_sqlite = pytest.mark.skip(reason="need --sqlite option to run")
     skip_postgresql = pytest.mark.skip(reason="need --postgresql option to run")
+    skip_elasticsearch = pytest.mark.skip(reason="need --elasticsearch option to run")
 
     for item in items:
         if "slow" in item.keywords and run_slow is False:
             item.add_marker(skip_slow)
         if "pending" in item.keywords and run_pending is False:
             item.add_marker(skip_pending)
+        if "sqlite" in item.keywords and run_sqlite is False:
+            item.add_marker(skip_sqlite)
         if "postgresql" in item.keywords and run_postgresql is False:
             item.add_marker(skip_postgresql)
+        if "elasticsearch" in item.keywords and run_elasticsearch is False:
+            item.add_marker(skip_elasticsearch)
 
 
 @pytest.fixture(autouse=True)

@@ -22,9 +22,10 @@ class IdentityType(Enum):
 
 
 class Database(Enum):
-    SQLITE = 'SQLITE'
-    POSTGRESQL = 'POSTGRESQL'
+    ELASTICSEARCH = 'ELASTICSEARCH'
     MEMORY = 'MEMORY'
+    POSTGRESQL = 'POSTGRESQL'
+    SQLITE = 'SQLITE'
 
 
 class classproperty(object):
