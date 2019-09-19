@@ -20,6 +20,10 @@ class TestModel:
         assert person_model_obj.first_name == 'John'
         assert person_model_obj.last_name == 'Doe'
 
+        # The ID attribute for an Elasticsearch model will be in model_obj.meta.id
+        assert person_model_obj.meta.id is not None
+        assert person_model_obj.meta.id == person.id
+
     def test_conversation_from_model_to_entity(self, test_domain):
         model_cls = test_domain.get_provider('default').get_model(Person)
         person = Person(first_name='John', last_name='Doe')
@@ -27,6 +31,8 @@ class TestModel:
 
         person_copy = model_cls.to_entity(person_model_obj)
         assert person_copy is not None
+
+        assert person_copy.id == person_model_obj.meta.id
 
 
 class TestModelWithVO:

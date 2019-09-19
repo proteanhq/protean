@@ -7,13 +7,13 @@ import pytest
 
 from protean.core.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
 from protean.core.queryset import Q, QuerySet
-from sqlalchemy.orm.session import Session
+from protean.impl.repository.elasticsearch_repo import ESSession
 
 # Local/Relative Imports
 from .elements import Person, User
 
 
-@pytest.mark.postgresql
+@pytest.mark.elasticsearch
 class TestDAO:
     """This class holds tests for DAO class"""
 
@@ -26,7 +26,7 @@ class TestDAO:
         provider = test_domain.get_provider('default')
         conn = provider.get_connection()
         assert conn is not None
-        assert isinstance(conn, Session)
+        assert isinstance(conn, ESSession)
 
     def test_that_escaped_quotes_in_values_are_handled_properly(self, test_domain):
         test_domain.get_dao(Person).create(first_name='Athos', last_name='Musketeer', age=2)
@@ -41,7 +41,7 @@ class TestDAO:
         assert all(person is not None for person in [person1, person2, person3, person4])
 
 
-@pytest.mark.postgresql
+@pytest.mark.elasticsearch
 class TestDAODeleteFunctionality:
 
     @pytest.fixture(autouse=True)
@@ -157,7 +157,7 @@ class TestDAODeleteFunctionality:
             test_domain.get_dao(Person).get(identifier4)
 
 
-@pytest.mark.postgresql
+@pytest.mark.elasticsearch
 class TestDAORetrievalFunctionality:
 
     @pytest.fixture(autouse=True)
@@ -451,7 +451,7 @@ class TestDAORetrievalFunctionality:
             test_domain.get_dao(Person).query.filter(age__notexact=3).all()
 
 
-@pytest.mark.postgresql
+@pytest.mark.elasticsearch
 class TestDAOSaveFunctionality:
 
     @pytest.fixture(autouse=True)
@@ -489,7 +489,7 @@ class TestDAOSaveFunctionality:
         assert person.last_name == 'Janey'
 
 
-@pytest.mark.postgresql
+@pytest.mark.elasticsearch
 class TestDAOUpdateFunctionality:
 
     @pytest.fixture(autouse=True)
@@ -623,7 +623,7 @@ class TestDAOUpdateFunctionality:
         assert u_person4.last_name == 'Fraud'
 
 
-@pytest.mark.postgresql
+@pytest.mark.elasticsearch
 class TestDAOValidations:
     """This class holds tests for DAO class"""
 
@@ -665,7 +665,7 @@ class TestDAOValidations:
         assert error.value.messages == {'age': ['"x" value must be an integer.']}
 
 
-@pytest.mark.postgresql
+@pytest.mark.elasticsearch
 class TestDAOLookup:
     """This class holds tests for Lookup Class"""
     @pytest.fixture

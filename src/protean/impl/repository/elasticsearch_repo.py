@@ -31,7 +31,14 @@ class ElasticsearchModel(Document):
             else:
                 item_dict[attribute_obj.attribute_name] = getattr(
                     entity, attribute_obj.attribute_name)
-        return cls(**item_dict)
+
+        model_obj = cls(**item_dict)
+
+        if 'id' in item_dict:
+            model_obj.meta.id = model_obj.id
+            del model_obj._d_['id']  # pylint: disable=W0212
+
+        return model_obj
 
     @classmethod
     def to_entity(cls, item: 'ElasticsearchModel'):
@@ -39,7 +46,38 @@ class ElasticsearchModel(Document):
         item_dict = {}
         for field_name in cls.entity_cls.meta_.attributes:
             item_dict[field_name] = getattr(item, field_name, None)
-        return cls.entity_cls(item_dict)
+
+        item_dict['id'] = item.meta.id
+        entity_obj = cls.entity_cls(item_dict)
+
+        return entity_obj
+
+
+class ESSession:
+    """A Session wrapper for Elasticsearch Database.
+
+    Elasticsearch does not support Transactions or Sessions, so this class is
+    essential a no-op, and acts as a passthrough for all transactions.
+    """
+    def __init__(self, provider, new_connection=False):
+        self._provider = provider
+
+    def add(self, element):
+        dao = self._provider.get_dao(element.__class__)
+        dao.create(element.to_dict())
+
+    def delete(self, element):
+        dao = self._provider.get_dao(element.__class__)
+        dao.delete(element)
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
 
 
 class ElasticsearchDAO(BaseDAO):
@@ -54,11 +92,37 @@ class ElasticsearchDAO(BaseDAO):
 
     def _create(self, model_obj: Any):
         """Create a new model object from the entity"""
-        return NotImplementedError
+        conn = self._get_session()
+
+        try:
+            model_obj.save(refresh=True, index=model_obj.entity_cls.meta_.schema_name, using=conn)
+        except Exception as exc:
+            logger.error(f"Error while creating: {exc}")
+            raise
+
+        return model_obj
 
     def _update(self, model_obj: Any):
         """Update a model object in the data store and return it"""
-        return NotImplementedError
+        conn = self._get_session()
+
+        # Fetch the record from database
+        try:
+            identifier = getattr(model_obj, self.entity_cls.meta_.id_field.attribute_name)
+            db_item = conn.query(self.model_cls).get(identifier)  # This will raise exception if object was not found
+        except Exception as exc:
+            logger.error(f"Database Record not found: {exc}")
+            raise
+
+
+        try:
+            model_obj.update(refresh=True, **data)
+            model_obj.save(refresh=True, index=model_obj.entity_cls.meta_.schema_name)
+        except Exception as exc:
+            logger.error(f"Error while creating: {exc}")
+            raise
+
+        return model_obj
 
     def _update_all(self, criteria: Q, *args, **kwargs):
         """Updates object directly in the data store and returns update count"""
@@ -107,7 +171,7 @@ class ESProvider(BaseProvider):
 
         Sessions are made available to requests as part of a Context Manager.
         """
-        return Elasticsearch(self.conn_info['DATABASE_URI'])
+        return ESSession(self)
 
     def get_connection(self):
         """Get the connection object for the repository"""
