@@ -158,6 +158,8 @@ class BaseContainer(metaclass=_ContainerMetaclass):
         if self.errors:
             raise ValidationError(self.errors)
 
+        self.defaults()
+
         self.clean()
 
     @classmethod
@@ -167,10 +169,14 @@ class BaseContainer(metaclass=_ContainerMetaclass):
 
         return cls(**values)
 
+    def defaults(self):
+        """Placeholder method for defaults.
+        To be overridden in concrete Containers, when an attribute's default depends on other attribute values.
+        """
+
     def clean(self):
         """Placeholder method for validations.
-        To be overridden in concrete Commands, when complex
-        validations spanning multiple fields are required.
+        To be overridden in concrete Containers, when complex validations spanning multiple fields are required.
         """
 
     def __eq__(self, other):
