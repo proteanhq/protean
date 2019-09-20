@@ -70,8 +70,8 @@ class BaseDAO(metaclass=ABCMeta):
         """Updates object directly in the data store and returns update count"""
 
     @abstractmethod
-    def _delete(self):
-        """Delete a Record from the Repository"""
+    def _delete(self, model_obj: Any):
+        """Delete a model object from the data store"""
 
     @abstractmethod
     def _delete_all(self, criteria: Q = None):

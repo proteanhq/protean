@@ -106,18 +106,8 @@ class ElasticsearchDAO(BaseDAO):
         """Update a model object in the data store and return it"""
         conn = self._get_session()
 
-        # Fetch the record from database
         try:
-            identifier = getattr(model_obj, self.entity_cls.meta_.id_field.attribute_name)
-            db_item = conn.query(self.model_cls).get(identifier)  # This will raise exception if object was not found
-        except Exception as exc:
-            logger.error(f"Database Record not found: {exc}")
-            raise
-
-
-        try:
-            model_obj.update(refresh=True, **data)
-            model_obj.save(refresh=True, index=model_obj.entity_cls.meta_.schema_name)
+            model_obj.save(refresh=True, index=model_obj.entity_cls.meta_.schema_name, using=conn)
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
             raise
@@ -128,9 +118,17 @@ class ElasticsearchDAO(BaseDAO):
         """Updates object directly in the data store and returns update count"""
         return NotImplementedError
 
-    def _delete(self):
+    def _delete(self, model_obj):
         """Delete a Record from the Repository"""
-        return NotImplementedError
+        conn = self._get_session()
+
+        try:
+            model_obj.delete(refresh=True, index=model_obj.entity_cls.meta_.schema_name, using=conn)
+        except Exception as exc:
+            logger.error(f"Error while creating: {exc}")
+            raise
+
+        return model_obj
 
     def _delete_all(self, criteria: Q = None):
         """Delete a Record from the Repository"""
