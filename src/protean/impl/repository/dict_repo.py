@@ -5,7 +5,7 @@ import copy
 import json
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, date
 from itertools import count
 from operator import itemgetter
 from threading import Lock
@@ -421,7 +421,7 @@ class DefaultDictLookup(BaseLookup):
     """Base class with default implementation of expression construction"""
     def process_source(self):
         """Return source with transformations, if any"""
-        if isinstance(self.source, (UUID, datetime)):
+        if isinstance(self.source, (UUID, datetime, date)):
             self.source = str(self.source)
 
         if isinstance(self.source, str):
@@ -432,7 +432,7 @@ class DefaultDictLookup(BaseLookup):
 
     def process_target(self):
         """Return target with transformations, if any"""
-        if isinstance(self.target, (UUID, datetime)):
+        if isinstance(self.target, (UUID, datetime, date)):
             self.target = str(self.target)
 
         if isinstance(self.target, str):
