@@ -1,14 +1,13 @@
 """Module to test SQLAlchemy Provider Class"""
-# Standard Library Imports
+# Protean
 import pytest
 
+from protean.impl.repository.sqlalchemy_repo import SAProvider
 from sqlalchemy.engine.result import ResultProxy
 from sqlalchemy.orm.session import Session
 
-# Protean
-from protean.impl.repository.sqlalchemy_repo import SAProvider
-
-from .elements import Person, Alien
+# Local/Relative Imports
+from .elements import Alien, Person
 
 
 class TestProviders:

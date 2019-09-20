@@ -1,6 +1,7 @@
 # Standard Library Imports
 from abc import abstractmethod
 
+# Protean
 from protean.domain import DomainObjects
 
 

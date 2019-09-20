@@ -1,10 +1,9 @@
 """Utility classes and methods for DB Adapters, Repositories and Query Constructors"""
-import logging
-
 # Standard Library Imports
 import copy
 import functools
 import inspect
+import logging
 
 logger = logging.getLogger('protean.repository')
 

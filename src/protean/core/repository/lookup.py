@@ -8,9 +8,9 @@
     :copyright: 2019 Protean
     :license: BSD-3-Clause
 """
+# Standard Library Imports
 import logging
 
-# Standard Library Imports
 from abc import ABCMeta, abstractmethod
 
 logger = logging.getLogger('protean.repository')

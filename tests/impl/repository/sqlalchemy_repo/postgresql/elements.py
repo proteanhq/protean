@@ -1,9 +1,15 @@
+# Standard Library Imports
+import re
+
 from datetime import datetime
 
 # Protean
 from protean.core.aggregate import BaseAggregate
+from protean.core.exceptions import ValidationError
 from protean.core.field.basic import DateTime, Integer, String
+from protean.core.field.embedded import ValueObjectField
 from protean.core.repository.base import BaseRepository
+from protean.core.value_object import BaseValueObject
 
 
 class Person(BaseAggregate):
@@ -26,3 +32,20 @@ class Alien(BaseAggregate):
 class User(BaseAggregate):
     email = String(max_length=255, required=True, unique=True)
     password = String(max_length=3026)
+
+
+class Email(BaseValueObject):
+    REGEXP = r'\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?'
+
+    # This is the external facing data attribute
+    address = String(max_length=254, required=True)
+
+    def clean(self):
+        """ Business rules of Email address """
+        if not bool(re.match(Email.REGEXP, self.address)):
+            raise ValidationError({'address': ["is invalid"]})
+
+
+class ComplexUser(BaseAggregate):
+    email = ValueObjectField(Email, required=True)
+    password = String(required=True, max_length=255)

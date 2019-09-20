@@ -6,7 +6,7 @@ from protean.core.exceptions import ConfigurationError, IncorrectUsageError
 from protean.utils import fully_qualified_name
 
 # Local/Relative Imports
-from .elements import UserStructVO, UserStructAggregate, UserStructEntity, UserStructFoo, UserStructRequestObject
+from .elements import UserStructAggregate, UserStructEntity, UserStructFoo, UserStructRequestObject, UserStructVO
 
 
 class TestDomainInitialization:

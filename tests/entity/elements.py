@@ -1,5 +1,8 @@
+from enum import Enum
+
 # Protean
 from protean.core.entity import BaseEntity
+from protean.core.exceptions import ValidationError
 from protean.core.field.basic import Auto, Integer, String
 
 
@@ -95,3 +98,25 @@ class OrderedPerson(BaseEntity):
 class OrderedPersonSubclass(Person):
     class Meta:
         order_by = 'last_name'
+
+
+class BuildingStatus(Enum):
+    WIP = 'WIP'
+    DONE = 'DONE'
+
+
+class Building(BaseEntity):
+    name = String(max_length=50)
+    floors = Integer()
+    status = String(choices=BuildingStatus)
+
+    def defaults(self):
+        if not self.status:
+            if self.floors == 4:
+                self.status = BuildingStatus.DONE.value
+            else:
+                self.status = BuildingStatus.WIP.value
+
+    def clean(self):
+        if self.floors >= 4 and self.status != BuildingStatus.DONE.value:
+            raise ValidationError({'status': ['should be DONE']})

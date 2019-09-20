@@ -1,7 +1,6 @@
 """Context Management Framework"""
-import logging
-
 # Standard Library Imports
+import logging
 import sys
 
 # Local/Relative Imports

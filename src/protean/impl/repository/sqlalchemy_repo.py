@@ -8,15 +8,15 @@ from abc import ABCMeta
 from typing import Any
 
 # Protean
-from protean.core.exceptions import ObjectNotFoundError, ConfigurationError
+from protean.core.exceptions import ConfigurationError, ObjectNotFoundError
 from protean.core.field.association import Reference
 from protean.core.field.basic import Auto, Boolean, Date, DateTime, Dict, Float, Integer, List, String, Text
-from protean.globals import current_domain, current_uow
 from protean.core.provider.base import BaseProvider
 from protean.core.repository.dao import BaseDAO
 from protean.core.repository.lookup import BaseLookup
 from protean.core.repository.model import BaseModel
 from protean.core.repository.resultset import ResultSet
+from protean.globals import current_domain, current_uow
 from protean.utils import Database, IdentityType
 from protean.utils.query import Q
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
@@ -26,7 +26,7 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext import declarative as sa_dec
 from sqlalchemy.ext.declarative import as_declarative, declared_attr
-from sqlalchemy.types import TypeDecorator, CHAR
+from sqlalchemy.types import CHAR, TypeDecorator
 
 logging.getLogger('sqlalchemy.engine').setLevel(logging.ERROR)
 logger = logging.getLogger('protean.repository')
@@ -109,10 +109,11 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
 
         if hasattr(cls, 'entity_cls'):
             entity_cls = cls.entity_cls
-            for field_name, field_obj in entity_cls.meta_.declared_fields.items():
+            for _, field_obj in entity_cls.meta_.attributes.items():
+                attribute_name = field_obj.attribute_name
 
                 # Map the field if not in attributes
-                if field_name not in cls.__dict__:
+                if attribute_name not in cls.__dict__:
                     field_cls = type(field_obj)
 
                     # FIXME Enable References
@@ -145,7 +146,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                         type_args['length'] = field_obj.max_length
 
                     # Update the attributes of the class
-                    setattr(cls, field_name,
+                    setattr(cls, attribute_name,
                             Column(sa_type_cls(**type_args), **col_args))
         super().__init__(classname, bases, dict_)
 
@@ -162,13 +163,13 @@ class SqlalchemyModel(BaseModel):
     def from_entity(cls, entity):
         """ Convert the entity to a model object """
         item_dict = {}
-        for field_obj in cls.entity_cls.meta_.attributes.values():
-            if isinstance(field_obj, Reference):
-                item_dict[field_obj.relation.field_name] = \
-                    field_obj.relation.value
+        for attribute_obj in cls.entity_cls.meta_.attributes.values():
+            if isinstance(attribute_obj, Reference):
+                item_dict[attribute_obj.relation.attribute_name] = \
+                    attribute_obj.relation.value
             else:
-                item_dict[field_obj.field_name] = getattr(
-                    entity, field_obj.field_name)
+                item_dict[attribute_obj.attribute_name] = getattr(
+                    entity, attribute_obj.attribute_name)
         return cls(**item_dict)
 
     @classmethod

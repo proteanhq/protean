@@ -19,5 +19,5 @@ include tox.ini .travis.yml appveyor.yml
 
 global-exclude *.py[cod] __pycache__ *.so *.dylib
 
-include *.txt *.yml pytest.ini
+include *.txt *.yml pytest.ini *.bat Makefile
 recursive-include requirements *.txt
