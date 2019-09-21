@@ -1,3 +1,8 @@
+from datetime import datetime
+
+from protean.impl.repository.dict_repo import Exact
+
+
 class TestLookup:
     """This class holds tests for Lookup Class"""
 
@@ -21,3 +26,15 @@ class TestLookup:
     def test_registration_of_a_lookup_to_an_adapter(self):
         from protean.impl.repository.dict_repo import DictProvider
         assert DictProvider.get_lookups().get('sample') == self.SampleLookup
+
+    def test_expression_constructed_for_datetime_fields(self):
+        now = datetime.today()
+        lookup = Exact('datetimefield', now)
+        assert lookup is not None
+        assert lookup.as_expression() == f'"datetimefield" == "{str(now)}"'
+
+    def test_expression_constructed_for_date_fields(self):
+        today = datetime.today().date()
+        lookup = Exact('datefield', today)
+        assert lookup is not None
+        assert lookup.as_expression() == f'"datefield" == "{str(today)}"'

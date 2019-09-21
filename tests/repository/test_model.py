@@ -60,10 +60,11 @@ class TestModelWithVO:
         assert 'email' not in user1_model_obj
         assert 'email' not in user2_model_obj
 
-    def test_conversation_from_model_to_entity(self, test_domain):
+    def test_conversion_from_model_to_entity(self, test_domain):
         model_cls = test_domain.get_provider('default').get_model(User)
         user1 = User(email_address='john.doe@gmail.com', password='d4e5r6')
         user1_model_obj = model_cls.from_entity(user1)
 
         user_copy = model_cls.to_entity(user1_model_obj)
         assert user_copy is not None
+        assert user_copy.id == user1_model_obj['id']
