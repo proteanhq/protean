@@ -1,3 +1,5 @@
+.. _user-persistence:
+
 ===========
 Persistence
 ===========
@@ -72,7 +74,7 @@ You can register an Entity against a specific Provider with the help of ``regist
 
     repo_factory.register(Account)
 
-When no specific provider is given, the provider with name ``default`` will be picked automatically. 
+When no specific provider is given, the provider with name ``default`` will be picked automatically.
 
 To specify a specific provider, pass the key that it has been defined with:
 

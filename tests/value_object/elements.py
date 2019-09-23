@@ -4,7 +4,7 @@ from enum import Enum
 # Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.exceptions import ValidationError
-from protean.core.field.basic import Float, String
+from protean.core.field.basic import Float, Integer, String
 from protean.core.field.embedded import ValueObjectField
 from protean.core.value_object import BaseValueObject
 
@@ -82,3 +82,25 @@ class Balance(BaseValueObject):
 class Account(BaseAggregate):
     balance = ValueObjectField(Balance, required=True)
     kind = String(max_length=15, required=True)
+
+
+class BuildingStatus(Enum):
+    WIP = 'WIP'
+    DONE = 'DONE'
+
+
+class Building(BaseValueObject):
+    name = String(max_length=50)
+    floors = Integer()
+    status = String(choices=BuildingStatus)
+
+    def defaults(self):
+        if not self.status:
+            if self.floors == 4:
+                self.status = BuildingStatus.DONE.value
+            else:
+                self.status = BuildingStatus.WIP.value
+
+    def clean(self):
+        if self.floors >= 4 and self.status != BuildingStatus.DONE.value:
+            raise ValidationError({'status': ['should be DONE']})

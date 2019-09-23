@@ -1,4 +1,13 @@
-"""ResultSet Utility class and traversal methods for Repository results"""
+
+# -*- coding: utf-8 -*-
+"""
+    protean.core.repository.resultset
+    ~~~~~~~~~
+    This module contains a utility class to encapsulate and return Repository results.
+
+    :copyright: 2019 Protean
+    :license: BSD-3-Clause
+"""
 # Standard Library Imports
 import logging
 
@@ -6,7 +15,11 @@ logger = logging.getLogger('protean.repository')
 
 
 class ResultSet(object):
-    """Internal helper class returned by :meth:`Repository._read`
+    """This is an internal helper class returned by DAO query operations.
+
+    The purpose of this class is to prevent DAO-specific data structures from leaking into the domain layer.
+    It can help check whether results exist, traverse the results, fetch the total number of items and also provide
+    basic pagination support.
     """
 
     def __init__(self, offset: int, limit: int, total: int, items: list):
@@ -21,33 +34,33 @@ class ResultSet(object):
 
     @property
     def has_prev(self):
-        """True if a previous page exists"""
+        """Is `True` if the results are a subset of all results"""
         return bool(self.items) and self.offset > 0
 
     @property
     def has_next(self):
-        """True if a next page exists."""
+        """Is `True` if more pages exist"""
         return (self.offset + self.limit) < self.total
 
     @property
     def first(self):
-        """Return the first item from the result"""
+        """Is the first item from results"""
         if self.items:
             return self.items[0]
         else:
             return None
 
     def __bool__(self):
-        """ Return true when the number of items is greater than 0"""
+        """Returns `True` when the resultset is not empty"""
         if self.items:
             return True
         else:
             return False
 
     def __iter__(self):
-        """ Return iterable on items """
+        """Returns an iterable on items, to support traversal"""
         return iter(self.items)
 
     def __len__(self):
-        """Return number of items"""
+        """Returns number of items in the resultset"""
         return len(self.items)

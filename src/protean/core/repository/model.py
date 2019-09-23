@@ -1,11 +1,20 @@
-""" Module containing Model related Class Definitions """
+# -*- coding: utf-8 -*-
+"""
+    protean.core.repository.base
+    ~~~~~~~~~
+    This module contains the definition of a Base Model class.
 
+    :copyright: 2019 Protean
+    :license: BSD-3-Clause
+"""
 # Standard Library Imports
 from abc import ABCMeta, abstractmethod
 
 
 class BaseModel(metaclass=ABCMeta):
-    """Model representing a schema in the database"""
+    """This is a Model representing a data schema in the persistence store. A concrete implementation of this
+    model has to be provided by each persistence store plugin.
+    """
 
     @classmethod
     @abstractmethod

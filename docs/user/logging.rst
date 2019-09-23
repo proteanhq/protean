@@ -4,6 +4,39 @@
 Logging
 =======
 
+Protean uses Python’s builtin logging module to perform system logging. The usage of this module is discussed in detail in Python’s own documentation.
+
+By default, the LOGLEVEL in Protean is set to INFO. But it's straightforward to customize as per your application's needs. A typical logging config would look like this:
+
+.. code-block::
+
+    LOGGING_CONFIG = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'console': {
+                'format': '%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+            }
+        },
+        'handlers': {
+            'console': {
+                'level': 'DEBUG',
+                'class': 'logging.StreamHandler',
+                'formatter': 'console',
+            }
+        },
+        'loggers': {
+            'protean': {
+                'handlers': ['console'],
+                'level': 'DEBUG',
+            },
+            'vfc': {
+                'handlers': ['console'],
+                'level': 'DEBUG',
+            }
+        }
+    }
+
 Loggers
 =======
 

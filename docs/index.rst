@@ -25,7 +25,7 @@ Release v\ |version|. (:ref:`Changelog <changelog>`)
 .. image:: https://codecov.io/gh/proteanhq/protean/branch/master/graph/badge.svg
     :target: https://codecov.io/gh/proteanhq/protean
 
-Get started with :ref:`install` and then get a overview with :ref:`quickstart`. There is also a more detailed :ref:`tutorial` that shows how to create a small but complete application with Protean. The rest of the docs describe each component of Protean in detail, with a full reference in the API section.
+Get started with :ref:`install` and then get a overview with :ref:`quickstart`. The rest of the docs describe each component of Protean in detail, with a full reference in the API section.
 
 Overview
 --------
@@ -91,12 +91,11 @@ These guides have been heavily influenced by the thoughts and works of DDD pione
 *Protean's guides are not a replacement to the original texts. It is recommended that you go through them to polish your DDD knowledge.*
 
 .. toctree::
-    :maxdepth: 1
-    :caption: Philosophy
+   :maxdepth: 1
+   :caption: Principles
 
-    philosophy/why-protean
-    philosophy/decision-delay
-    philosophy/architecture/dependency-rule
+   philosophy/index
+   blocks/index
 
 .. toctree::
    :maxdepth: 1
@@ -105,40 +104,25 @@ These guides have been heavily influenced by the thoughts and works of DDD pione
    user/foreword
    user/install
    user/quickstart
-   user/tutorial
    user/composition-root
    user/domain-layer-mechanics
    user/application-layer-mechanics
    user/configuration
-   user/infrastructure
    user/persistence
    user/unit-of-work
-   user/messaging-medium
-   user/negative-patterns
-
-API
----
+   user/logging
 
 .. toctree::
    :maxdepth: 1
-   :caption: API
+   :caption: Reference
 
-   api/domain
-   api/entity
-   api/field
-   api/queryset
-   api/brokers
-   api/utils
-   api/in-memory-broker
-
-
-Plugins
--------
+   api/index
 
 .. toctree::
    :maxdepth: 1
    :caption: Plugins
 
+   plugins/database
    plugins/broker
 
 
@@ -151,6 +135,14 @@ Plugins
    Code of Conduct <community/code-of-conduct>
    community/contributing
 
+**Pending major improvement areas:**
+
+* Support for Custom Models
+* Support for Specifications
+* Out-of-the-box Support for Command Handlers
+* CQRS Implementation Support
+* EventSourcing Implementation Support
+* Documentation on Architectures
 
 .. |ddd-eric-evans| raw:: html
 

@@ -4,14 +4,12 @@
 Data Access Objects
 ===================
 
-Data Access Objects, or DAOs, are
+Data Access Objects, or DAOs, handle the interaction with underlying persistence stores.
 
-You don't have to deal with DAOs directly unless you are overriding the schema mapping to match the underlying data store. When you do override, you can define a custom DAO for the aggregate, and register it:
+Each persistence store or database will have a corresponding DAO implementation made available through a plugin.
 
-.. code-block:: python
+Protean come pre-packaged with a DAO for a simple In-Memory Database, implemented with the help of dictionaries. There is also a plugin available that uses SQLAlchemy internally and can integrate with all databases that SQLAlchemy supports. In the near future, there is a plan to add plugins for MongoDB and Elasticsearch. You can learn about configuring different plugins in the :ref:`user-persistence` section.
 
-    from protean.core.field.basic import Identifier
+Take a look at the :ref:`API <api-dao>` of DAOs for information on DAO capabilities and available methods.
 
-    @domain.dao
-    class UserSchema:
-        u_id = Identifier()
+Protean does not currently have the ability to specify a database schema explicitly, to be used by the DAO.
