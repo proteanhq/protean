@@ -34,6 +34,7 @@ class DomainObjects(Enum):
     AGGREGATE = 'AGGREGATE'
     APPLICATION_SERVICE = 'APPLICATION_SERVICE'
     COMMAND = 'COMMAND'
+    COMMAND_HANDLER = 'COMMAND_HANDLER'
     DATA_TRANSFER_OBJECT = 'DATA_TRANSFER_OBJECT'
     DOMAIN_EVENT = 'DOMAIN_EVENT'
     DOMAIN_SERVICE = 'DOMAIN_SERVICE'
@@ -114,6 +115,7 @@ class Domain(_PackageBoundObject):
     from protean.core.application_service import BaseApplicationService
     from protean.core.broker.subscriber import BaseSubscriber
     from protean.core.command import BaseCommand
+    from protean.core.command_handler import BaseCommandHandler
     from protean.core.data_transfer_object import BaseDataTransferObject
     from protean.core.domain_event import BaseDomainEvent
     from protean.core.domain_service import BaseDomainService
@@ -152,6 +154,7 @@ class Domain(_PackageBoundObject):
             DomainObjects.AGGREGATE.value: BaseAggregate,
             DomainObjects.APPLICATION_SERVICE.value: BaseApplicationService,
             DomainObjects.COMMAND.value: BaseCommand,
+            DomainObjects.COMMAND_HANDLER.value: BaseCommandHandler,
             DomainObjects.DATA_TRANSFER_OBJECT.value: BaseDataTransferObject,
             DomainObjects.DOMAIN_EVENT.value: BaseDomainEvent,
             DomainObjects.DOMAIN_SERVICE.value: BaseDomainService,
@@ -272,6 +275,10 @@ class Domain(_PackageBoundObject):
         return self._domain_registry._elements[DomainObjects.COMMAND.value]
 
     @property
+    def command_handlers(self):
+        return self._domain_registry._elements[DomainObjects.COMMAND_HANDLER.value]
+
+    @property
     def data_transfer_objects(self):
         return self._domain_registry._elements[DomainObjects.DATA_TRANSFER_OBJECT.value]
 
@@ -371,6 +378,15 @@ class Domain(_PackageBoundObject):
             new_cls.meta_.domain_event_cls = domain_event_cls
             new_cls.meta_.broker = broker_name
 
+        if element_type == DomainObjects.COMMAND_HANDLER and self._validate_command_handler_class(new_cls):
+            command_cls = new_cls.meta_.command_cls or kwargs.pop('command', None)
+            broker_name = new_cls.meta_.broker or 'default'
+            if not command_cls:
+                raise IncorrectUsageError("Command Handlers need to be associated with a Command")
+
+            new_cls.meta_.command_cls = command_cls
+            new_cls.meta_.broker = broker_name
+
         # Enrich element with domain information
         if hasattr(new_cls, 'meta_'):
             new_cls.meta_.aggregate_cls = aggregate_cls or kwargs.pop('aggregate_cls', None)
@@ -427,18 +443,29 @@ class Domain(_PackageBoundObject):
 
         return True
 
+    def _validate_command_handler_class(self, element_cls):
+        # Import here to avoid cyclic dependency
+        from protean.core.command_handler import BaseCommandHandler
+
+        if not issubclass(element_cls, BaseCommandHandler):
+            raise AssertionError(
+                f'Element {element_cls.__name__} must be subclass of `BaseCommandHandler`')
+
+        return True
+
     # _cls should never be specified by keyword, so start it with an
     # underscore.  The presence of _cls is used to detect if this
     # decorator is being called with parameters or not.
     def _domain_element(
             self, element_type, _cls=None, *, aggregate_cls=None,
-            bounded_context=None, domain_event=None):
+            bounded_context=None, domain_event=None, command=None):
         """Returns the registered class after decoarating it and recording its presence in the domain"""
 
         def wrap(cls):
             return self._register_element(
                 element_type, cls,
-                aggregate_cls=aggregate_cls, bounded_context=bounded_context, domain_event=domain_event)
+                aggregate_cls=aggregate_cls, bounded_context=bounded_context,
+                domain_event=domain_event, command=command)
 
         # See if we're being called as @Entity or @Entity().
         if _cls is None:
@@ -462,6 +489,11 @@ class Domain(_PackageBoundObject):
         return self._domain_element(
             DomainObjects.COMMAND, _cls=_cls, **kwargs,
             aggregate_cls=aggregate_cls, bounded_context=bounded_context)
+
+    def command_handler(self, command, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
+        return self._domain_element(
+            DomainObjects.COMMAND_HANDLER, _cls=_cls, **kwargs,
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context, command=command)
 
     def data_transfer_object(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
@@ -669,7 +701,7 @@ class Domain(_PackageBoundObject):
 
         self._brokers = broker_objects
 
-        # Also initialize subscribers for Brokers
+        # Initialize subscribers for Brokers
         for _, subscriber_record in self.subscribers.items():
             subscriber = subscriber_record.cls
             broker_name = subscriber.meta_.broker
@@ -678,6 +710,16 @@ class Domain(_PackageBoundObject):
                 raise ConfigurationError(f"Broker {broker_name} has not been configured.")
 
             self._brokers[broker_name].register(subscriber.meta_.domain_event_cls, subscriber)
+
+        # Initialize command handlers for Brokers
+        for _, command_handler_record in self.command_handlers.items():
+            command_handler = command_handler_record.cls
+            broker_name = command_handler.meta_.broker
+
+            if broker_name not in self._brokers:
+                raise ConfigurationError(f"Broker {broker_name} has not been configured.")
+
+            self._brokers[broker_name].register(command_handler.meta_.command_cls, command_handler)
 
     def has_broker(self, broker_name):
         if self.brokers is None:
@@ -717,3 +759,17 @@ class Domain(_PackageBoundObject):
             logger.debug(f'Publishing {domain_event.__class__.__name__} with values {domain_event.to_dict()}')
             for broker_name in self._brokers:
                 self._brokers[broker_name].send_message(domain_event)
+
+    def publish_command(self, command):
+        """Publish a command to registered command handler"""
+        if self._brokers is None:
+            self._initialize_brokers()
+
+        if current_uow:
+            logger.debug(f'Recording {command.__class__.__name__} '
+                         f'with values {command.to_dict()} in {current_uow}')
+            current_uow.register_command_handler(command)
+        else:
+            logger.debug(f'Publishing {command.__class__.__name__} with values {command.to_dict()}')
+            for broker_name in self._brokers:
+                self._brokers[broker_name].send_message(command)
