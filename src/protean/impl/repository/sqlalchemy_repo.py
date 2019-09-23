@@ -183,6 +183,24 @@ class SqlalchemyModel(BaseModel):
 class SADAO(BaseDAO):
     """DAO implementation for Databases compliant with SQLAlchemy"""
 
+    def _get_session(self):
+        """Returns an active connection to the persistence store.
+
+        - If there is an active transaction, the connection associated with the transaction (in the UoW) is returned
+        - If the DAO has been explicitly instructed to work outside a UoW (with the help of `_outside_uow`), or if
+          there are no active transactions, a new connection is retrieved from the provider and returned.
+
+          Overridden here instead of using the version in `BaseDAO` because the connection needs to be started
+          with a call to `begin()` if it is not yet active (checked with `is_active`)
+        """
+        if current_uow and not self._outside_uow:
+            return current_uow.get_session(self.provider.name)
+        else:
+            new_connection = self.provider.get_connection()
+            if not new_connection.is_active:
+                new_connection.begin()
+            return new_connection
+
     def _build_filters(self, criteria: Q):
         """ Recursively Build the filters from the criteria object"""
         # Decide the function based on the connector type

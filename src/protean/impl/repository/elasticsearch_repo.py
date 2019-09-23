@@ -5,12 +5,14 @@ import logging
 from typing import Any
 
 from elasticsearch import Elasticsearch
-from elasticsearch_dsl import Document
+from elasticsearch_dsl import Document, query, Search
 
 from protean.core.field.association import Reference
 from protean.core.provider.base import BaseProvider
 from protean.core.repository.dao import BaseDAO
+from protean.core.repository.lookup import BaseLookup
 from protean.core.repository.resultset import ResultSet
+from protean.globals import current_domain
 from protean.utils import Database
 from protean.utils.query import Q
 
@@ -82,13 +84,55 @@ class ESSession:
 
 class ElasticsearchDAO(BaseDAO):
 
+    def _build_filters(self, criteria: Q):
+        """ Recursively Build the filters from the criteria object"""
+        # Decide the function based on the connector type
+        params = []
+        for child in criteria.children:
+            if isinstance(child, Q):
+                # Call the function again with the child
+                params.append(self._build_filters(child))
+            else:
+                # Find the lookup class and the key
+                stripped_key, lookup_class = self.provider._extract_lookup(child[0])
+
+                # Instantiate the lookup class and get the expression
+                lookup = lookup_class(stripped_key, child[1])
+                if criteria.negated:
+                    params.append(~lookup.as_expression())
+                else:
+                    params.append(lookup.as_expression())
+
+        return params
+
     def _filter(self, criteria: Q, offset: int = 0, limit: int = 10,
                 order_by: list = ()) -> ResultSet:
         """
         Filter objects from the data store. Method must return a `ResultSet`
         object
         """
-        return NotImplementedError
+        conn = self._get_session()
+
+        # Build the filters from the criteria
+        if criteria.children:
+            q = self._build_filters(criteria)
+
+        # FIXME Implement Ordering functionality
+
+        # Return the results
+        try:
+            s = Search(using=conn).query(q)
+            response = s.execute()
+            result = ResultSet(
+                offset=offset,
+                limit=limit,
+                total=-1,
+                items=[])
+        except Exception as exc:
+            logger.error(f"Error while filtering: {exc}")
+            raise
+
+        return result
 
     def _create(self, model_obj: Any):
         """Create a new model object from the entity"""
@@ -116,7 +160,7 @@ class ElasticsearchDAO(BaseDAO):
 
     def _update_all(self, criteria: Q, *args, **kwargs):
         """Updates object directly in the data store and returns update count"""
-        return NotImplementedError
+        raise NotImplementedError
 
     def _delete(self, model_obj):
         """Delete a Record from the Repository"""
@@ -132,7 +176,7 @@ class ElasticsearchDAO(BaseDAO):
 
     def _delete_all(self, criteria: Q = None):
         """Delete a Record from the Repository"""
-        return NotImplementedError
+        raise NotImplementedError
 
     def _raw(self, query: Any, data: Any = None):
         """Run raw query on Data source.
@@ -140,7 +184,7 @@ class ElasticsearchDAO(BaseDAO):
         Running a raw query on the data store should always returns entity instance objects. If
         the results were not synthesizable back into entity objects, an exception should be thrown.
         """
-        return NotImplementedError
+        raise NotImplementedError
 
 
 class ESProvider(BaseProvider):
@@ -203,9 +247,20 @@ class ESProvider(BaseProvider):
             the database without any intervention. It is left to the consumer to interpret and
             organize the results correctly.
         """
-        return NotImplementedError
+        raise NotImplementedError
 
     def _data_reset(self):
         """Utility method to reset data in DB between tests"""
-        # FIXME Implementation
-        pass
+        conn = Elasticsearch()
+
+        for aggregate_cls in current_domain.aggregates:
+            conn.delete_by_query(index=aggregate_cls.meta_.schema_name, body={"query": {"match_all": {}}})
+
+
+@ESProvider.register_lookup
+class Exact(BaseLookup):
+    """Exact Match Query"""
+    lookup_name = 'exact'
+
+    def as_expression(self):
+        return {'filter': [{'term': {self.process_source(): self.process_target()}}]}

@@ -79,10 +79,7 @@ class BaseDAO(metaclass=ABCMeta):
         if current_uow and not self._outside_uow:
             return current_uow.get_session(self.provider.name)
         else:
-            new_connection = self.provider.get_connection()
-            if not new_connection.is_active:
-                new_connection.begin()
-            return new_connection
+            return self.provider.get_connection()
 
     def outside_uow(self):
         """When called, the DAO is instructed to work outside active transactions."""
