@@ -86,24 +86,23 @@ class ElasticsearchDAO(BaseDAO):
 
     def _build_filters(self, criteria: Q):
         """ Recursively Build the filters from the criteria object"""
-        # Decide the function based on the connector type
-        params = []
-        for child in criteria.children:
-            if isinstance(child, Q):
-                # Call the function again with the child
-                params.append(self._build_filters(child))
-            else:
-                # Find the lookup class and the key
-                stripped_key, lookup_class = self.provider._extract_lookup(child[0])
+        composed_query = query.Q()
 
-                # Instantiate the lookup class and get the expression
-                lookup = lookup_class(stripped_key, child[1])
-                if criteria.negated:
-                    params.append(~lookup.as_expression())
+        if criteria.connector == criteria.AND:
+            for child in criteria.children:
+                if isinstance(child, Q):
+                    composed_query = composed_query & self._build_filters(child)
                 else:
-                    params.append(lookup.as_expression())
+                    stripped_key, lookup_class = self.provider._extract_lookup(child[0])
+                    lookup = lookup_class(stripped_key, child[1])
+                    if criteria.negated:
+                        composed_query = composed_query & ~lookup.as_expression()
+                    else:
+                        composed_query = composed_query & lookup.as_expression()
+        else:
+            pass
 
-        return params
+        return composed_query
 
     def _filter(self, criteria: Q, offset: int = 0, limit: int = 10,
                 order_by: list = ()) -> ResultSet:
@@ -217,7 +216,7 @@ class ESProvider(BaseProvider):
 
     def get_connection(self):
         """Get the connection object for the repository"""
-        return Elasticsearch(self.conn_info['DATABASE_URI'])
+        return Elasticsearch(self.conn_info['DATABASE_URI']['hosts'])
 
     def get_dao(self, entity_cls):
         """Return a DAO object configured with a live connection"""
@@ -253,14 +252,15 @@ class ESProvider(BaseProvider):
         """Utility method to reset data in DB between tests"""
         conn = Elasticsearch()
 
-        for aggregate_cls in current_domain.aggregates:
-            conn.delete_by_query(index=aggregate_cls.meta_.schema_name, body={"query": {"match_all": {}}})
+        for _, aggregate_record in current_domain.aggregates.items():
+            conn.delete_by_query(index=aggregate_record.cls.meta_.schema_name, body={"query": {"match_all": {}}})
 
 
 @ESProvider.register_lookup
 class Exact(BaseLookup):
     """Exact Match Query"""
     lookup_name = 'exact'
+    lookup_type = 'filter'
 
     def as_expression(self):
-        return {'filter': [{'term': {self.process_source(): self.process_target()}}]}
+        return query.Q('term', **{self.process_source(): self.process_target()})
