@@ -162,7 +162,7 @@ class BaseContainer(metaclass=_ContainerMetaclass):
         # `clean()` will return a `defaultdict(list)` if errors are to be raised
         custom_errors = self.clean()
         for field in custom_errors:
-            self.errors[field].append(custom_errors[field])
+            self.errors[field].extend(custom_errors[field])
 
         # Raise any errors found during load
         if self.errors and self.raise_errors:
