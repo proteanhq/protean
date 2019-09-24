@@ -298,7 +298,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
     element_type = DomainObjects.ENTITY
 
-    def __init__(self, *template, **kwargs):  # noqa: C901
+    def __init__(self, *template, raise_errors=True, **kwargs):  # noqa: C901
         """
         Initialise the entity object.
 
@@ -314,6 +314,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
                 f' and cannot be instantiated')
 
         self.errors = defaultdict(list)
+        self.raise_errors = raise_errors
 
         # Set up the storage for instance state
         self.state_ = _EntityState()
@@ -377,14 +378,17 @@ class BaseEntity(metaclass=_EntityMetaclass):
                         for field_name in err.messages:
                             self.errors[field_name].extend(err.messages[field_name])
 
-        # Raise any errors found during load
-        if self.errors:
-            logger.error(self.errors)
-            raise ValidationError(self.errors)
-
         self.defaults()
 
-        self.clean()
+        # `clean()` will return a `defaultdict(list)` if errors are to be raised
+        custom_errors = self.clean()
+        for field in custom_errors:
+            self.errors[field].append(custom_errors[field])
+
+        # Raise any errors found during load
+        if self.errors and self.raise_errors:
+            logger.error(self.errors)
+            raise ValidationError(self.errors)
 
     def defaults(self):
         """Placeholder method for defaults.
@@ -395,6 +399,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         """Placeholder method for validations.
         To be overridden in concrete Containers, when complex validations spanning multiple fields are required.
         """
+        return defaultdict(list)
 
     @classmethod
     def _generate_identity(cls):

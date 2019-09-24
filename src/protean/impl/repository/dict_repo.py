@@ -44,7 +44,7 @@ class DictModel(BaseModel):
     @classmethod
     def to_entity(cls, item: 'DictModel'):
         """Convert the dictionary record to an entity """
-        return cls.entity_cls(item)
+        return cls.entity_cls(item, raise_errors=False)
 
 
 class DictSession:
