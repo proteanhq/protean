@@ -362,7 +362,6 @@ class DefaultLookup(BaseLookup):
 class Exact(DefaultLookup):
     """Exact Match Query"""
     lookup_name = 'exact'
-    lookup_type = 'filter'
 
     def as_expression(self):
         return query.Q('term', **{self.process_source(): self.process_target()})
@@ -372,7 +371,6 @@ class Exact(DefaultLookup):
 class In(DefaultLookup):
     """In Match Query"""
     lookup_name = 'in'
-    lookup_type = 'filter'
 
     def process_target(self):
         """Ensure target is a list or tuple"""
@@ -381,3 +379,66 @@ class In(DefaultLookup):
 
     def as_expression(self):
         return query.Q('terms', **{self.process_source(): self.process_target()})
+
+
+@ESProvider.register_lookup
+class GreaterThan(DefaultLookup):
+    """Greater than Query"""
+    lookup_name = 'gt'
+
+    def as_expression(self):
+        return query.Q('range', **{self.process_source(): {'gt': self.process_target()}})
+
+
+@ESProvider.register_lookup
+class GreaterThanOrEqual(DefaultLookup):
+    """Greater than or Equal Query"""
+    lookup_name = 'gte'
+
+    def as_expression(self):
+        return query.Q('range', **{self.process_source(): {'gte': self.process_target()}})
+
+
+@ESProvider.register_lookup
+class LessThan(DefaultLookup):
+    """Less than Query"""
+    lookup_name = 'lt'
+
+    def as_expression(self):
+        return query.Q('range', **{self.process_source(): {'lt': self.process_target()}})
+
+
+@ESProvider.register_lookup
+class LessThanOrEqual(DefaultLookup):
+    """Less than or Equal Query"""
+    lookup_name = 'lte'
+
+    def as_expression(self):
+        return query.Q('range', **{self.process_source(): {'lte': self.process_target()}})
+
+
+@ESProvider.register_lookup
+class Contains(DefaultLookup):
+    """Exact Contains Query"""
+    lookup_name = 'contains'
+
+    def as_expression(self):
+        return query.Q('wildcard', **{self.process_source(): {'value': f'*{self.process_target()}*'}})
+
+
+@ESProvider.register_lookup
+class Startswith(DefaultLookup):
+    """Exact Contains Query"""
+    lookup_name = 'startswith'
+
+    def as_expression(self):
+        return query.Q('wildcard', **{self.process_source(): {'value': f'{self.process_target()}*'}})
+
+
+@ESProvider.register_lookup
+class Endswith(DefaultLookup):
+    """Exact Contains Query"""
+    lookup_name = 'endswith'
+
+    def as_expression(self):
+        return query.Q('wildcard', **{self.process_source(): {'value': f'*{self.process_target()}'}})

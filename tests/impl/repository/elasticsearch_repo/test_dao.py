@@ -416,9 +416,8 @@ class TestDAORetrievalFunctionality:
         people_lte = test_domain.get_dao(Person).query.filter(age__lte=6)
         people_gt = test_domain.get_dao(Person).query.filter(age__gt=3)
         people_lt = test_domain.get_dao(Person).query.filter(age__lt=6)
-        people_in = test_domain.get_dao(Person).query.filter(first_name__in=['Jean', 'Bart', 'Nobody'])
-        people_exact = test_domain.get_dao(Person).query.filter(last_name__exact='John')
-        people_iexact = test_domain.get_dao(Person).query.filter(last_name__iexact='John')
+        people_in = test_domain.get_dao(Person).query.filter(first_name__keyword__in=['Jean', 'Bart', 'Nobody'])
+        people_exact = test_domain.get_dao(Person).query.filter(last_name__keyword__exact='John')
 
         assert people_gte.total == 3
         assert people_datetime_gte.total == 3
@@ -427,7 +426,6 @@ class TestDAORetrievalFunctionality:
         assert people_lt.total == 1
         assert people_in.total == 2
         assert people_exact.total == 1
-        assert people_iexact.total == 2
 
     def test_filtering_using_contains(self, test_domain):
         # Add multiple entries to the DB
@@ -435,11 +433,9 @@ class TestDAORetrievalFunctionality:
         test_domain.get_dao(Person).create(first_name='Jean', age=3, last_name='john')
         test_domain.get_dao(Person).create(first_name='Bart', age=6, last_name='Carrie')
 
-        people_contains = test_domain.get_dao(Person).query.filter(last_name__contains='Joh')
-        people_icontains = test_domain.get_dao(Person).query.filter(last_name__icontains='Joh')
+        people_contains = test_domain.get_dao(Person).query.filter(last_name__keyword__contains='Joh')
 
         assert people_contains.total == 1
-        assert people_icontains.total == 2
 
     def test_exception_on_usage_of_unsupported_comparison_operator(self, test_domain):
         # Add multiple entries to the DB
