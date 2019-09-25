@@ -180,7 +180,7 @@ class TestDAORetrievalFunctionality:
         test_domain.get_dao(Person).create(first_name='Baby', last_name='Roe', age=2)
 
         # Filter by the last name
-        people = test_domain.get_dao(Person).query.filter(last_name='Doe')
+        people = test_domain.get_dao(Person).query.filter(last_name__keyword='Doe')
         assert people is not None
         assert people.total == 2
         assert len(people.items) == 2

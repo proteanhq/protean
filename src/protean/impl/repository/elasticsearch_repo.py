@@ -2,7 +2,10 @@
 # Standard Library Imports
 import logging
 
+from fnmatch import fnmatch
 from typing import Any
+
+import elasticsearch_dsl
 
 from elasticsearch import Elasticsearch
 from elasticsearch_dsl import Document, query, Search
@@ -17,6 +20,22 @@ from protean.utils import Database
 from protean.utils.query import Q
 
 logger = logging.getLogger('protean.repository')
+
+operators = {
+    'exact': '__eq__',
+    'iexact': 'ilike',
+    'contains': 'contains',
+    'icontains': 'ilike',
+    'startswith': 'startswith',
+    'endswith': 'endswith',
+    'gt': '__gt__',
+    'gte': '__ge__',
+    'lt': '__lt__',
+    'lte': '__le__',
+    'in': 'in_',
+    'overlap': 'overlap',
+    'any': 'any',
+}
 
 
 class ElasticsearchModel(Document):
@@ -100,6 +119,7 @@ class ElasticsearchDAO(BaseDAO):
                     else:
                         composed_query = composed_query & lookup.as_expression()
         else:
+            # FIXME Implement OR condition
             pass
 
         return composed_query
@@ -113,20 +133,23 @@ class ElasticsearchDAO(BaseDAO):
         conn = self._get_session()
 
         # Build the filters from the criteria
+        q = elasticsearch_dsl.Q()
         if criteria.children:
             q = self._build_filters(criteria)
 
-        # FIXME Implement Ordering functionality
+        s = Search(using=conn, index=self.entity_cls.meta_.schema_name).query(q)
+
+        if order_by:
+            s = s.sort(*order_by)
 
         # Return the results
         try:
-            s = Search(using=conn).query(q)
             response = s.execute()
             result = ResultSet(
                 offset=offset,
                 limit=limit,
-                total=-1,
-                items=[])
+                total=len(response.hits),
+                items=response.hits)
         except Exception as exc:
             logger.error(f"Error while filtering: {exc}")
             raise
@@ -198,6 +221,18 @@ class ESProvider(BaseProvider):
         # A temporary cache of already constructed model classes
         self._model_classes = {}
 
+    def _extract_lookup(self, key):
+        """Extract lookup method based on key name format"""
+        parts = key.rsplit('__', 1)
+
+        if len(parts) == 1 or parts[1] not in operators:
+            # 'exact' is the default lookup if there was no explicit comparison op in `key`
+            op = 'exact'
+            attribute = key
+
+        # Construct and assign the lookup class as a filter criteria
+        return attribute, self.get_lookup(op)
+
     def get_session(self):
         """Establish a new session with the database.
 
@@ -231,7 +266,7 @@ class ESProvider(BaseProvider):
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
             attrs = {'entity_cls': entity_cls}
-            model_cls = type(entity_cls.__name__ + 'Model', (ElasticsearchModel, Document, ), attrs)
+            model_cls = type(entity_cls.__name__ + 'Model', (ElasticsearchModel, ), attrs)
 
             self._model_classes[entity_cls.meta_.schema_name] = model_cls
 
