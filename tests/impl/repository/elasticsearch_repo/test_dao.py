@@ -206,13 +206,13 @@ class TestDAORetrievalFunctionality:
         assert people is not None
         assert people.total == 4
         assert len(people.items) == 2
-        assert people.first.id == identifiers[0]
+        assert people.first.id == str(identifiers[0])
         assert people.has_next
         assert not people.has_prev
 
         people = test_domain.get_dao(Person).query.offset(2).limit(2).order_by('created_at').all()
         assert len(people.items) == 2
-        assert people.first.id == identifiers[2]
+        assert people.first.id == str(identifiers[2])
         assert not people.has_next
         assert people.has_prev
 
@@ -228,13 +228,13 @@ class TestDAORetrievalFunctionality:
             test_domain.get_dao(Person).get(uuid4())
 
     def test_entity_retrieval_by_specific_column_value(self, test_domain, identifier, persisted_person):
-        person = test_domain.get_dao(Person).find_by(first_name='John')
+        person = test_domain.get_dao(Person).find_by(first_name__keyword='John')
         assert person is not None
         assert person.id == identifier
 
     def test_failed_entity_retrieval_by_column_value(self, test_domain, persisted_person):
         with pytest.raises(ObjectNotFoundError):
-            test_domain.get_dao(Person).find_by(first_name='JohnnyChase')
+            test_domain.get_dao(Person).find_by(first_name__keyword='JohnnyChase')
 
     def test_entity_retrieval_by_multiple_column_values(self, test_domain):
         identifier1 = uuid4()
@@ -242,7 +242,7 @@ class TestDAORetrievalFunctionality:
         test_domain.get_dao(Person).create(id=identifier1, first_name='Johnny1', last_name='Bravo', age=8)
         test_domain.get_dao(Person).create(id=identifier2, first_name='Johnny2', last_name='Bravo', age=6)
 
-        dog = test_domain.get_dao(Person).find_by(first_name='Johnny1', age=8)
+        dog = test_domain.get_dao(Person).find_by(first_name__keyword='Johnny1', age=8)
         assert dog is not None
         assert dog.id == identifier1
 
@@ -251,14 +251,14 @@ class TestDAORetrievalFunctionality:
         test_domain.get_dao(Person).create(first_name='Johnny2', last_name='Bravo', age=6)
 
         with pytest.raises(ObjectNotFoundError):
-            test_domain.get_dao(Person).find_by(first_name='Johnny1', age=6)
+            test_domain.get_dao(Person).find_by(first_name__keyword='Johnny1', age=6)
 
     def test_error_on_finding_multiple_results(self, test_domain):
         test_domain.get_dao(Person).create(first_name='Johnny1', last_name='Bravo', age=8)
         test_domain.get_dao(Person).create(first_name='Johnny1', last_name='Gravo', age=6)
 
         with pytest.raises(TooManyObjectsError):
-            test_domain.get_dao(Person).find_by(first_name='Johnny1')
+            test_domain.get_dao(Person).find_by(first_name__keyword='Johnny1')
 
     def test_entity_query_initialization(self, test_domain):
         """Test the initialization of a QuerySet"""
@@ -306,7 +306,8 @@ class TestDAORetrievalFunctionality:
         test_domain.get_dao(Person).create(id=identifier3, first_name='Bart', age=6, last_name='Carrie')
 
         # Filter by Person attributes
-        query = test_domain.get_dao(Person).query.filter(first_name='Jean').filter(last_name='John').filter(age=3)
+        query = test_domain.get_dao(Person).query.filter(first_name__keyword='Jean') \
+            .filter(last_name__keyword='John').filter(age=3)
         people = query.all()
 
         assert people is not None
@@ -326,7 +327,7 @@ class TestDAORetrievalFunctionality:
         test_domain.get_dao(Person).create(id=identifier3, first_name='Bart', age=6, last_name='Carrie')
 
         # Filter by Person attributes
-        query = test_domain.get_dao(Person).query.filter(last_name='John')
+        query = test_domain.get_dao(Person).query.filter(last_name__keyword='John')
         people = query.all()
 
         assert people is not None
@@ -346,7 +347,7 @@ class TestDAORetrievalFunctionality:
         test_domain.get_dao(Person).create(id=identifier3, first_name='Bart', age=6, last_name='Carrie')
 
         # Filter by Dog attributes
-        query = test_domain.get_dao(Person).query.filter(last_name='John').order_by('age')
+        query = test_domain.get_dao(Person).query.filter(last_name__keyword='John').order_by('age')
         people = query.all()
 
         assert people is not None
@@ -363,14 +364,14 @@ class TestDAORetrievalFunctionality:
         test_domain.get_dao(Person).create(first_name='Bart', age=6, last_name='Carrie')
 
         # Filter by the LastName
-        people = test_domain.get_dao(Person).query.filter(last_name='John')
-        assert people is not None
+        people = test_domain.get_dao(Person).query.filter(last_name__keyword='John')
+        assert len(people.items) != 0
         assert people.total == 2
         assert len(people.items) == 2
 
         # Order the results by age
-        people = test_domain.get_dao(Person).query.filter(last_name='John').order_by('-age')
-        assert people is not None
+        people = test_domain.get_dao(Person).query.filter(last_name__keyword='John').order_by('-age')
+        assert len(people.items) != 0
         assert people.first.age == 7
         assert people.first.first_name == 'Murdock'
 
@@ -381,8 +382,8 @@ class TestDAORetrievalFunctionality:
         test_domain.get_dao(Person).create(first_name='Bart', age=6, last_name='Carrie')
 
         # Filter by Exclusion
-        dogs = test_domain.get_dao(Person).query.exclude(last_name='John')
-        assert dogs is not None
+        dogs = test_domain.get_dao(Person).query.exclude(last_name__keyword='John')
+        assert len(dogs.items) != 0
         assert dogs.total == 1
         assert len(dogs.items) == 1
         assert dogs.first.age == 6
@@ -395,8 +396,8 @@ class TestDAORetrievalFunctionality:
         test_domain.get_dao(Person).create(first_name='Bart', age=6, last_name='Carrie')
 
         # Filter by the first_name
-        people = test_domain.get_dao(Person).query.exclude(first_name__in=['Murdock', 'Jean'])
-        assert people is not None
+        people = test_domain.get_dao(Person).query.exclude(first_name__keyword__in=['Murdock', 'Jean'])
+        assert len(people.items) != 0
         assert people.total == 1
         assert len(people.items) == 1
         assert people.first.age == 6

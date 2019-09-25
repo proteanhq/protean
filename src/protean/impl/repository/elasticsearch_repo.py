@@ -2,21 +2,23 @@
 # Standard Library Imports
 import logging
 
-from fnmatch import fnmatch
 from typing import Any
+from uuid import UUID
 
 import elasticsearch_dsl
 
 from elasticsearch import Elasticsearch
+from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Document, query, Search
 
+from protean.core.exceptions import ObjectNotFoundError
 from protean.core.field.association import Reference
 from protean.core.provider.base import BaseProvider
 from protean.core.repository.dao import BaseDAO
 from protean.core.repository.lookup import BaseLookup
 from protean.core.repository.resultset import ResultSet
 from protean.globals import current_domain
-from protean.utils import Database
+from protean.utils import Database, IdentityStrategy, IdentityType
 from protean.utils.query import Q
 
 logger = logging.getLogger('protean.repository')
@@ -68,7 +70,14 @@ class ElasticsearchModel(Document):
         for field_name in cls.entity_cls.meta_.attributes:
             item_dict[field_name] = getattr(item, field_name, None)
 
-        item_dict['id'] = item.meta.id
+        identifier = None
+        if (current_domain.config['IDENTITY_STRATEGY'] == IdentityStrategy.UUID and
+                current_domain.config['IDENTITY_TYPE'] == IdentityType.UUID):
+            identifier = UUID(item.meta.id)
+        else:
+            identifier = item.meta.id
+
+        item_dict['id'] = identifier
         entity_obj = cls.entity_cls(item_dict)
 
         return entity_obj
@@ -103,6 +112,40 @@ class ESSession:
 
 class ElasticsearchDAO(BaseDAO):
 
+    def get(self, identifier: Any):
+        """Retrieve a specific Record from the Repository by its `identifier`.
+
+        This method internally uses the `filter` method to fetch records.
+
+        Returns exactly one record that matches the identifier.
+
+        Throws `ObjectNotFoundError` if no record was found for the identifier.
+
+        Throws `TooManyObjectsError` if multiple records were found for the identifier.
+
+        :param identifier: id of the record to be fetched from the data store.
+        """
+        logger.debug(f'Lookup `{self.entity_cls.__name__}` object with identifier {identifier}')
+
+        conn = self._get_session()
+        result = None
+
+        try:
+            result = self.model_cls.get(id=identifier, using=conn, index=self.entity_cls.meta_.schema_name)
+        except NotFoundError:
+            logger.error(f"Record {identifier} was not found")
+            raise ObjectNotFoundError(
+                f'`{self.entity_cls.__name__}` object with identifier {identifier} '
+                f'does not exist.')
+        except Exception as error:
+            logger.error(f"Unkwown error occured when fetching {identifier}: {error}")
+            raise (
+                f'`{self.entity_cls.__name__}` object with identifier {identifier} '
+                f'does not exist.')
+
+        entity = self.model_cls.to_entity(result)
+        return entity
+
     def _build_filters(self, criteria: Q):
         """ Recursively Build the filters from the criteria object"""
         composed_query = query.Q()
@@ -119,8 +162,16 @@ class ElasticsearchDAO(BaseDAO):
                     else:
                         composed_query = composed_query & lookup.as_expression()
         else:
-            # FIXME Implement OR condition
-            pass
+            for child in criteria.children:
+                if isinstance(child, Q):
+                    composed_query = composed_query | self._build_filters(child)
+                else:
+                    stripped_key, lookup_class = self.provider._extract_lookup(child[0])
+                    lookup = lookup_class(stripped_key, child[1])
+                    if criteria.negated:
+                        composed_query = composed_query | ~lookup.as_expression()
+                    else:
+                        composed_query = composed_query | lookup.as_expression()
 
         return composed_query
 
@@ -142,13 +193,15 @@ class ElasticsearchDAO(BaseDAO):
         if order_by:
             s = s.sort(*order_by)
 
+        s = s[offset:offset+limit]
+
         # Return the results
         try:
             response = s.execute()
             result = ResultSet(
                 offset=offset,
                 limit=limit,
-                total=len(response.hits),
+                total=response.hits.total.value,
                 items=response.hits)
         except Exception as exc:
             logger.error(f"Error while filtering: {exc}")
@@ -225,7 +278,10 @@ class ESProvider(BaseProvider):
         """Extract lookup method based on key name format"""
         parts = key.rsplit('__', 1)
 
-        if len(parts) == 1 or parts[1] not in operators:
+        if len(parts) > 1 and parts[1] in operators:
+            op = parts[1]
+            attribute = parts[0]
+        else:
             # 'exact' is the default lookup if there was no explicit comparison op in `key`
             op = 'exact'
             attribute = key
@@ -291,11 +347,37 @@ class ESProvider(BaseProvider):
             conn.delete_by_query(index=aggregate_record.cls.meta_.schema_name, body={"query": {"match_all": {}}})
 
 
+class DefaultLookup(BaseLookup):
+    """Base class with default implementation of expression construction"""
+
+    def process_target(self):
+        """Return target with transformations, if any"""
+        if isinstance(self.target, UUID):
+            self.target = str(self.target)
+
+        return self.target
+
+
 @ESProvider.register_lookup
-class Exact(BaseLookup):
+class Exact(DefaultLookup):
     """Exact Match Query"""
     lookup_name = 'exact'
     lookup_type = 'filter'
 
     def as_expression(self):
         return query.Q('term', **{self.process_source(): self.process_target()})
+
+
+@ESProvider.register_lookup
+class In(DefaultLookup):
+    """In Match Query"""
+    lookup_name = 'in'
+    lookup_type = 'filter'
+
+    def process_target(self):
+        """Ensure target is a list or tuple"""
+        assert isinstance(self.target, (list, tuple))
+        return super().process_target()
+
+    def as_expression(self):
+        return query.Q('terms', **{self.process_source(): self.process_target()})
