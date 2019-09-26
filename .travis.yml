@@ -3,7 +3,6 @@ dist: xenial
 sudo: required
 services:
     - postgresql
-    - elasticsearch
 before_install:
     - curl -s -O https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.3.2-amd64.deb
     - sudo dpkg -i --force-confnew elasticsearch-7.3.2-amd64.deb
