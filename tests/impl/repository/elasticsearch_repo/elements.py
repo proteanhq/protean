@@ -1,11 +1,11 @@
 # Standard Library Imports
 import re
 
+from collections import defaultdict
 from datetime import datetime
 
 # Protean
 from protean.core.aggregate import BaseAggregate
-from protean.core.exceptions import ValidationError
 from protean.core.field.basic import DateTime, Integer, String
 from protean.core.field.embedded import ValueObjectField
 from protean.core.repository.base import BaseRepository
@@ -42,8 +42,12 @@ class Email(BaseValueObject):
 
     def clean(self):
         """ Business rules of Email address """
+        errors = defaultdict(list)
+
         if not bool(re.match(Email.REGEXP, self.address)):
-            raise ValidationError({'address': ["is invalid"]})
+            errors['address'].append("is invalid")
+
+        return errors
 
 
 class ComplexUser(BaseAggregate):
