@@ -9,7 +9,7 @@ before_install:
 before_script:
     - sudo systemctl restart elasticsearch
     - sleep 10
-    - sudo service elasticsearch status
+    - sudo systemctl status elasticsearch
     - psql -c 'create database protean_test;' -U postgres
 python:
     - "3.7"
