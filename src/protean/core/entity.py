@@ -381,7 +381,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         self.defaults()
 
         # `clean()` will return a `defaultdict(list)` if errors are to be raised
-        custom_errors = self.clean()
+        custom_errors = self.clean() or {}
         for field in custom_errors:
             self.errors[field].extend(custom_errors[field])
 

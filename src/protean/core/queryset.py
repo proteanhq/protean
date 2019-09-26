@@ -49,14 +49,14 @@ class QuerySet:
         self._offset = offset or 0
         self._limit = limit or 10
 
-        # `order_by` could be empty, or a string or a set.
-        #   Intialize empty set if `order_by` is None
-        #   Convert string to set if `order_by` is a String
-        #   Safe-cast set to a set if `order_by` is already a set
+        # `order_by` could be empty, or a string or a list.
+        #   Intialize empty list if `order_by` is None
+        #   Convert string to list if `order_by` is a String
+        #   Safe-cast list to a list if `order_by` is already a list
         if order_by:
-            self._order_by = set([order_by]) if isinstance(order_by, str) else set(order_by)
+            self._order_by = [order_by] if isinstance(order_by, str) else order_by
         else:
-            self._order_by = set()
+            self._order_by = []
 
         # `_temp_cache` is a data container for holding temporary
         #   It holds objects that have been added, but not yet persisted,
@@ -126,13 +126,13 @@ class QuerySet:
 
         return clone
 
-    def order_by(self, order_by: Union[set, str]):
+    def order_by(self, order_by: Union[list, str]):
         """Update order_by setting for filter set"""
         clone = self._clone()
         if isinstance(order_by, str):
-            order_by = {order_by}
+            order_by = [order_by]
 
-        clone._order_by = clone._order_by.union(order_by)
+        clone._order_by.extend(item for item in order_by if item not in clone._order_by)
 
         return clone
 

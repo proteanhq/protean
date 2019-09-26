@@ -62,6 +62,7 @@ setup(
     install_requires=[
         'click==7.0',
         'cookiecutter==1.6.0',
+        'elasticsearch-dsl==7.0.0',
         'flask==1.0.3',
         'inflect==2.1.0',
         'marshmallow==3.0.0rc8',

@@ -1,5 +1,4 @@
-"""Module with repository implementation for SQLAlchemy
-"""
+"""Module with repository implementation for SQLAlchemy"""
 # Standard Library Imports
 import logging
 import uuid
@@ -183,6 +182,24 @@ class SqlalchemyModel(BaseModel):
 
 class SADAO(BaseDAO):
     """DAO implementation for Databases compliant with SQLAlchemy"""
+
+    def _get_session(self):
+        """Returns an active connection to the persistence store.
+
+        - If there is an active transaction, the connection associated with the transaction (in the UoW) is returned
+        - If the DAO has been explicitly instructed to work outside a UoW (with the help of `_outside_uow`), or if
+          there are no active transactions, a new connection is retrieved from the provider and returned.
+
+          Overridden here instead of using the version in `BaseDAO` because the connection needs to be started
+          with a call to `begin()` if it is not yet active (checked with `is_active`)
+        """
+        if current_uow and not self._outside_uow:
+            return current_uow.get_session(self.provider.name)
+        else:
+            new_connection = self.provider.get_connection()
+            if not new_connection.is_active:
+                new_connection.begin()
+            return new_connection
 
     def _build_filters(self, criteria: Q):
         """ Recursively Build the filters from the criteria object"""
@@ -421,6 +438,7 @@ class SAProvider(BaseProvider):
         self._engine = create_engine(make_url(self.conn_info['DATABASE_URI']), **kwargs)
         self._metadata = MetaData(bind=self._engine)
 
+        # A temporary cache of already constructed model classes
         self._model_classes = {}
 
     def _get_database_specific_engine_args(self):
