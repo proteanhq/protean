@@ -9,7 +9,7 @@ import elasticsearch_dsl
 
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
-from elasticsearch_dsl import Document, query, Search
+from elasticsearch_dsl import Document, Index, query, Search
 
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.field.association import Reference
@@ -72,7 +72,8 @@ class ElasticsearchModel(Document):
 
         identifier = None
         if (current_domain.config['IDENTITY_STRATEGY'] == IdentityStrategy.UUID and
-                current_domain.config['IDENTITY_TYPE'] == IdentityType.UUID):
+                current_domain.config['IDENTITY_TYPE'] == IdentityType.UUID
+                and isinstance(item.meta.id, str)):
             identifier = UUID(item.meta.id)
         else:
             identifier = item.meta.id
@@ -225,6 +226,17 @@ class ElasticsearchDAO(BaseDAO):
         """Update a model object in the data store and return it"""
         conn = self._get_session()
 
+        # Fetch the record from database
+        try:
+            identifier = model_obj.meta.id
+            # Calling `get` will raise `NotFoundError` if record was not found
+            self.model_cls.get(id=identifier, using=conn, index=self.entity_cls.meta_.schema_name)
+        except NotFoundError as exc:
+            logger.error(f"Database Record not found: {exc}")
+            raise ObjectNotFoundError(
+                f'`{self.entity_cls.__name__}` object with identifier {identifier} '
+                f'does not exist.')
+
         try:
             model_obj.save(refresh=True, index=model_obj.entity_cls.meta_.schema_name, using=conn)
         except Exception as exc:
@@ -242,7 +254,7 @@ class ElasticsearchDAO(BaseDAO):
         conn = self._get_session()
 
         try:
-            model_obj.delete(refresh=True, index=model_obj.entity_cls.meta_.schema_name, using=conn)
+            model_obj.delete(index=model_obj.entity_cls.meta_.schema_name, using=conn, refresh=True)
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
             raise
@@ -250,8 +262,28 @@ class ElasticsearchDAO(BaseDAO):
         return model_obj
 
     def _delete_all(self, criteria: Q = None):
-        """Delete a Record from the Repository"""
-        raise NotImplementedError
+        """Delete all records matching criteria from the Repository"""
+        conn = self._get_session()
+
+        # Build the filters from the criteria
+        q = elasticsearch_dsl.Q()
+        if criteria and criteria.children:
+            q = self._build_filters(criteria)
+
+        s = Search(using=conn, index=self.entity_cls.meta_.schema_name).query(q)
+
+        # Return the results
+        try:
+            response = s.delete()
+
+            # `Search.delete` does not refresh index, so we have to manually refresh
+            index = Index(name=self.entity_cls.meta_.schema_name, using=conn)
+            index.refresh()
+        except Exception as exc:
+            logger.error(f"Error while deleting records: {exc}")
+            raise
+
+        return response.deleted
 
     def _raw(self, query: Any, data: Any = None):
         """Run raw query on Data source.
@@ -344,7 +376,10 @@ class ESProvider(BaseProvider):
         conn = Elasticsearch()
 
         for _, aggregate_record in current_domain.aggregates.items():
-            conn.delete_by_query(index=aggregate_record.cls.meta_.schema_name, body={"query": {"match_all": {}}})
+            conn.delete_by_query(
+                refresh=True,
+                index=aggregate_record.cls.meta_.schema_name,
+                body={"query": {"match_all": {}}})
 
 
 class DefaultLookup(BaseLookup):

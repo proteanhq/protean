@@ -356,13 +356,12 @@ class BaseDAO(metaclass=ABCMeta):
 
                 model_obj = self._create(self.model_cls.from_entity(entity_obj))
 
+            updated_entity_obj = self.model_cls.to_entity(model_obj)
+
             # Update the auto fields of the entity
             for field_name, field_obj in entity_obj.meta_.declared_fields.items():
                 if isinstance(field_obj, Auto):
-                    if isinstance(model_obj, dict):
-                        field_val = model_obj[field_name]
-                    else:
-                        field_val = getattr(model_obj, field_name)
+                    field_val = getattr(updated_entity_obj, field_name)
                     setattr(entity_obj, field_name, field_val)
 
             # Set Entity status to saved to let everybody know it has been persisted

@@ -44,9 +44,8 @@ def pytest_collection_modifyitems(config, items):
     if config.getoption("--postgresql"):
         run_postgresql = True
 
-    # if config.getoption("--elasticsearch"):
-    #    run_elasticsearch = True
-    run_elasticsearch = True
+    if config.getoption("--elasticsearch"):
+       run_elasticsearch = True
 
     skip_slow = pytest.mark.skip(reason="need --slow option to run")
     skip_pending = pytest.mark.skip(reason="need --pending option to run")

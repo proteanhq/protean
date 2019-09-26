@@ -273,7 +273,7 @@ class TestCriteriaConstruction:
         assert repr(query) == ("<QuerySet: entity: <class 'tests.query.elements.Person'>, "
                                "criteria: ('protean.utils.query.Q', (), {'last_name': 'John'}), "
                                "offset: 0, "
-                               "limit: 10, order_by: {'age'}>")
+                               "limit: 10, order_by: ['age']>")
 
     def test_bool_false(self, test_domain):
         """Test that `bool` returns `False` on no records"""

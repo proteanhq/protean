@@ -1,6 +1,8 @@
 # Standard Library Imports
 import os
 
+from elasticsearch_dsl import Index
+
 # Protean
 import pytest
 
@@ -30,12 +32,29 @@ def test_domain():
 @pytest.fixture(scope="session", autouse=True)
 def setup_db():
     test_domain = initialize_domain()
-    # Create all associated tables
+
+    # Create all indexes
+    from .elements import Person, Alien, User, ComplexUser
+    test_domain.register(Person)
+    test_domain.register(Alien)
+    test_domain.register(User)
+    test_domain.register(ComplexUser)
+
+    provider = test_domain.get_provider('default')
+    conn = provider.get_connection()
+
+    for _, aggregate_record in test_domain.aggregates.items():
+        index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
+        if not index.exists():
+            index.create()
 
     yield
 
-    # Drop all tables at the end of test suite
-
+    # Drop all indexes at the end of test suite
+    for _, aggregate_record in test_domain.aggregates.items():
+        index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
+        if index.exists():
+            index.delete()
 
 
 @pytest.fixture(autouse=True)
