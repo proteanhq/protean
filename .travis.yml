@@ -5,7 +5,7 @@ services:
     - postgresql
     - elasticsearch
 before_install:
-  - curl -O https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.3.2-amd64.deb && sudo dpkg -i --force-confnew elasticsearch-7.3.2.deb && sudo service elasticsearch restart
+  - curl -O https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.3.2-amd64.deb && sudo dpkg -i --force-confnew elasticsearch-7.3.2-amd64.deb && sudo service elasticsearch restart
 before_script:
     - sleep 10
     - psql -c 'create database protean_test;' -U postgres
