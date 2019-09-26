@@ -2,6 +2,8 @@
 import copy
 import logging
 
+from collections import defaultdict
+
 # Protean
 from protean.core.exceptions import NotSupportedError, ValidationError
 from protean.core.field.basic import Field
@@ -110,7 +112,7 @@ class BaseContainer(metaclass=_ContainerMetaclass):
             raise TypeError("BaseContainer cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, *template, owner=None, **kwargs):
+    def __init__(self, *template, owner=None, raise_errors=True, **kwargs):
         """
         Initialise the container.
 
@@ -125,7 +127,8 @@ class BaseContainer(metaclass=_ContainerMetaclass):
                 f'{self.__class__.__name__} class has been marked abstract'
                 f' and cannot be instantiated')
 
-        self.errors = {}
+        self.errors = defaultdict(list)
+        self.raise_errors = raise_errors
 
         # Entity/Aggregate to which this Command is connected to
         self.owner = owner
@@ -154,13 +157,17 @@ class BaseContainer(metaclass=_ContainerMetaclass):
             if field_name not in loaded_fields:
                 setattr(self, field_name, None)
 
-        # Raise any errors found during load
-        if self.errors:
-            raise ValidationError(self.errors)
-
         self.defaults()
 
-        self.clean()
+        # `clean()` will return a `defaultdict(list)` if errors are to be raised
+        custom_errors = self.clean()
+        for field in custom_errors:
+            self.errors[field].extend(custom_errors[field])
+
+        # Raise any errors found during load
+        if self.errors and self.raise_errors:
+            logger.error(self.errors)
+            raise ValidationError(self.errors)
 
     @classmethod
     def build(cls, **values):
@@ -178,6 +185,7 @@ class BaseContainer(metaclass=_ContainerMetaclass):
         """Placeholder method for validations.
         To be overridden in concrete Containers, when complex validations spanning multiple fields are required.
         """
+        return defaultdict(list)
 
     def __eq__(self, other):
         """Equaivalence check for commands is based only on data.
@@ -212,7 +220,7 @@ class BaseContainer(metaclass=_ContainerMetaclass):
             for field_name in self.meta_.attributes)
 
     def __setattr__(self, name, value):
-        if name in self.meta_.declared_fields or name in ['errors', 'owner']:
+        if name in self.meta_.declared_fields or name in ['raise_errors', 'errors', 'owner']:
             super().__setattr__(name, value)
         else:
             raise AttributeError("%s has no attribute %s" % (self.__class__.__name__, name))

@@ -1,8 +1,8 @@
+from collections import defaultdict
 from enum import Enum
 
 # Protean
 from protean.core.entity import BaseEntity
-from protean.core.exceptions import ValidationError
 from protean.core.field.basic import Auto, Integer, String
 
 
@@ -118,5 +118,9 @@ class Building(BaseEntity):
                 self.status = BuildingStatus.WIP.value
 
     def clean(self):
+        errors = defaultdict(list)
+
         if self.floors >= 4 and self.status != BuildingStatus.DONE.value:
-            raise ValidationError({'status': ['should be DONE']})
+            errors['status'].append('should be DONE')
+
+        return errors
