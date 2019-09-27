@@ -1,6 +1,9 @@
+import pytest
+
 from protean.impl.repository import elasticsearch_repo as repo
 
 
+@pytest.mark.elasticsearch
 class TestLookup:
     def test_exact_lookup(self, test_domain):
         lookup = repo.Exact('first_name', 'John')

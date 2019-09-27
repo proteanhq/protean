@@ -190,8 +190,9 @@ class Auto(Field):
         value = self._load(value)
         instance.__dict__[self.field_name] = value
 
-        # Mark Entity as Dirty
-        instance.state_.mark_changed()
+        if hasattr(instance, 'state_'):
+            # Mark Entity as Dirty
+            instance.state_.mark_changed()
 
     def _cast_to_type(self, value):
         """ Perform no validation for auto fields. Return the value as is"""

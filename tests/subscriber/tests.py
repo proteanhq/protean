@@ -9,12 +9,12 @@ from protean.utils import fully_qualified_name
 from .elements import NotifySSOSubscriber, Person, PersonAdded
 
 
-class TestApplicationServiceInitialization:
-    def test_that_base_domain_event_class_cannot_be_instantiated(self):
+class TestSubscriberInitialization:
+    def test_that_base_subscriber_class_cannot_be_instantiated(self):
         with pytest.raises(TypeError):
             BaseSubscriber()
 
-    def test_that_domain_event_can_be_instantiated(self, test_domain):
+    def test_that_subscriber_can_be_instantiated(self, test_domain):
         service = NotifySSOSubscriber(test_domain, PersonAdded())
         assert service is not None
 

@@ -5,6 +5,7 @@ from elasticsearch_dsl.query import Bool, Term
 from .elements import Person
 
 
+@pytest.mark.elasticsearch
 class TestESQuery:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):

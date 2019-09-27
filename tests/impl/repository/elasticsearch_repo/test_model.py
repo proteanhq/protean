@@ -1,8 +1,11 @@
+import pytest
+
 from protean.impl.repository.elasticsearch_repo import ElasticsearchModel
 
 from .elements import Email, Person, ComplexUser
 
 
+@pytest.mark.elasticsearch
 class TestModel:
     def test_that_model_class_is_created_automatically(self, test_domain):
         model_cls = test_domain.get_provider('default').get_model(Person)
@@ -35,6 +38,7 @@ class TestModel:
         assert person_copy.id == person_model_obj.meta.id
 
 
+@pytest.mark.elasticsearch
 class TestModelWithVO:
     def test_that_model_class_is_created_automatically(self, test_domain):
         model_cls = test_domain.get_provider('default').get_model(ComplexUser)

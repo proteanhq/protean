@@ -60,10 +60,12 @@ class BaseSubscriber(metaclass=_SubscriberMetaclass):
     """
     element_type = DomainObjects.SUBSCRIBER
 
-    def __init__(self, domain, domain_event_cls):
-        self.domain = domain
-        self.domain_event_cls = domain_event_cls
+    def __new__(cls, *args, **kwargs):
+        if cls is BaseSubscriber:
+            raise TypeError("BaseSubscriber cannot be instantiated")
+        return super().__new__(cls)
 
+    @classmethod
     @abstractmethod
     def notify(self, domain_event):
         """Placeholder method for recieving notifications on domain event"""
