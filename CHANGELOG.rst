@@ -5,6 +5,11 @@ Release History
 dev
 ---
 
+* Add a `defaults` method as part of Container objects when assigned defaults in one field based on another
+* Add support for Command Handlers
+* Avoid raising `ValidationError` when loading data from data stores
+* Add support for Elasticsearch as a repository
+* Add support for using Redis as a broker with RQ background workers
 
 0.2 ((2019-09-16)
 -----------------

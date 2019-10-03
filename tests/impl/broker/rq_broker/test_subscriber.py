@@ -6,6 +6,7 @@ from rq import Queue, Worker
 from tests.impl.broker.rq_broker.elements import NotifySSOSubscriber, Person
 
 
+@pytest.mark.redis
 @pytest.mark.skip(reason='Test fails intermittently')
 class TestSubscriberNotifications:
     @pytest.fixture(scope='module', autouse=True)

@@ -12,6 +12,7 @@ from protean.utils import fully_qualified_name
 from tests.impl.broker.rq_broker.elements import NotifySSOSubscriber, Person, PersonAdded
 
 
+@pytest.mark.redis
 class TestRedisConnection():
     def test_that_configured_broker_is_redis(self):
         assert current_domain.has_broker('default')
@@ -28,10 +29,12 @@ class TestRedisConnection():
         assert conn.ping() is True
 
 
+@pytest.mark.redis
 class TestEventPublish:
     pass
 
 
+@pytest.mark.redis
 class TestEventProcessing:
     @pytest.fixture(autouse=True)
     def register(self):

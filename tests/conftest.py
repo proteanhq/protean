@@ -25,11 +25,14 @@ def pytest_addoption(parser):
     parser.addoption(
         "--elasticsearch", action="store_true", default=False, help="Run Elasticsearch tests"
     )
+    parser.addoption(
+        "--redis", action="store_true", default=False, help="Run Redis based tests"
+    )
 
 
 def pytest_collection_modifyitems(config, items):
     """Configure special markers on tests, so as to control execution"""
-    run_slow = run_pending = run_sqlite = run_postgresql = run_elasticsearch = False
+    run_slow = run_pending = run_sqlite = run_postgresql = run_elasticsearch = run_redis = False
 
     if config.getoption("--slow"):
         # --slow given in cli: do not skip slow tests
@@ -47,11 +50,15 @@ def pytest_collection_modifyitems(config, items):
     if config.getoption("--elasticsearch"):
        run_elasticsearch = True
 
+    if config.getoption("--redis"):
+       run_redis = True
+
     skip_slow = pytest.mark.skip(reason="need --slow option to run")
     skip_pending = pytest.mark.skip(reason="need --pending option to run")
     skip_sqlite = pytest.mark.skip(reason="need --sqlite option to run")
     skip_postgresql = pytest.mark.skip(reason="need --postgresql option to run")
     skip_elasticsearch = pytest.mark.skip(reason="need --elasticsearch option to run")
+    skip_redis = pytest.mark.skip(reason="need --redis option to run")
 
     for item in items:
         if "slow" in item.keywords and run_slow is False:
@@ -64,6 +71,8 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_postgresql)
         if "elasticsearch" in item.keywords and run_elasticsearch is False:
             item.add_marker(skip_elasticsearch)
+        if "redis" in item.keywords and run_redis is False:
+            item.add_marker(skip_redis)
 
 
 @pytest.fixture(autouse=True)
