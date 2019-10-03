@@ -13,6 +13,9 @@ class MemoryBroker(BaseBroker):
     def __init__(self, name, domain, conn_info):
         super().__init__(name, domain, conn_info)
 
+        # In case of `MemoryBroker`, the `IS_ASYNC` value will always be `False`.
+        conn_info['IS_ASYNC'] = False
+
         self._subscribers = defaultdict(set)
         self._command_handlers = {}
 

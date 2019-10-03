@@ -61,7 +61,11 @@ class BaseBroker(metaclass=_BrokerMetaclass):
         self.conn_info = conn_info
 
     @abstractmethod
-    def send_message(self):
+    def get_connection(self):
+        """Get the connection object to the broker"""
+
+    @abstractmethod
+    def send_message(self, initiator_obj):
         """Placeholder method for brokers to accept incoming events"""
 
     @abstractmethod

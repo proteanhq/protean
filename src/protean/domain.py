@@ -145,7 +145,11 @@ class Domain(_PackageBoundObject):
                     'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'
                 }
             },
-            "BROKERS": {},
+            "BROKERS": {
+                'default': {
+                    'PROVIDER': 'protean.impl.broker.memory_broker.MemoryBroker',
+                }
+            },
             "CACHE": {}
         }
     )
@@ -722,18 +726,18 @@ class Domain(_PackageBoundObject):
             self._brokers[broker_name].register(command_handler.meta_.command_cls, command_handler)
 
     def has_broker(self, broker_name):
-        if self.brokers is None:
+        if self._brokers is None:
             self._initialize_brokers()
 
-        return broker_name in self.brokers
+        return broker_name in self._brokers
 
     def get_broker(self, broker_name):
         """Retrieve the broker object with a given broker name"""
-        if self.brokers is None:
+        if self._brokers is None:
             self._initialize_brokers()
 
         try:
-            return self.brokers[broker_name]
+            return self._brokers[broker_name]
         except KeyError:
             raise AssertionError(f'No Broker registered with name {broker_name}')
 
