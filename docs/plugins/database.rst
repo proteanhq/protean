@@ -1,8 +1,8 @@
 .. _plugin-database:
 
-================
-Custom Databases
-================
+=========
+Databases
+=========
 
 
 .. _implementation-in-memory-database:

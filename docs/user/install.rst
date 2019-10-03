@@ -3,11 +3,8 @@
 Installation
 ============
 
-This part of the documentation covers the installation of Protean.
-
-
-$ pip install protean
--------------------------
+From PyPi
+---------
 
 To install Protean, simply run this simple command in your terminal of choice::
 
@@ -16,8 +13,8 @@ To install Protean, simply run this simple command in your terminal of choice::
 We highly recommend |pyenv| to install multiple Python versions side-by-side, which does not interfere with system-default Python installations.
 
 
-Get the Source Code
--------------------
+From Source Code
+----------------
 
 Protean is actively developed on GitHub, where the code is |protean-github|.
 

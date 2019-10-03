@@ -7,9 +7,6 @@ Protean helps you build software on architecture stacks that need to survive in 
 .. image:: https://travis-ci.org/proteanhq/protean.svg?branch=master
     :target: https://travis-ci.org/proteanhq/protean
     :alt: Build Status
-.. image:: https://readthedocs.org/projects/protean/badge/?style=flat
-    :target: https://readthedocs.org/projects/protean
-    :alt: Docs Status
 .. image:: https://codecov.io/gh/proteanhq/protean/branch/master/graph/badge.svg
     :target: https://codecov.io/gh/proteanhq/protean
     :alt: Coverage
