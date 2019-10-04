@@ -8,4 +8,5 @@ This section expands on the technical details of Protean's building blocks.
 
     domain-elements/index
     implementations/index
+    config
     utils

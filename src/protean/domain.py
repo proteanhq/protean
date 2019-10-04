@@ -128,6 +128,33 @@ class Domain(_PackageBoundObject):
 
     config_class = Config
     domain_context_globals_class = _DomainContextGlobals
+
+    #: What environment the app is running in Protean and extensions may
+    #: enable behaviors based on the environment, such as enabling debug
+    #: mode. This maps to the :data:`ENV` config key. This is set by the
+    #: :envvar:`PROTEAN_ENV` environment variable and may not behave as
+    #: expected if set in code.
+    #:
+    #: **Do not enable development when deploying in production.**
+    #:
+    #: Default: ``'production'``
+    env = ConfigAttribute("ENV")
+
+    #: The testing flag.  Set this to ``True`` to enable the test mode of
+    #: Protean extensions (and in the future probably also Protean itself).
+    #: For example this might activate test helpers that have an
+    #: additional runtime cost which should not be enabled by default.
+    #:
+    #: This attribute can also be configured from the config with the
+    #: ``TESTING`` configuration key.  Defaults to ``False``.
+    testing = ConfigAttribute("TESTING")
+
+    #: If a secret key is set, cryptographic components can use this to
+    #: sign cookies and other things. Set this to a complex random value
+    #: when you want to use the secure cookie for instance.
+    #:
+    #: This attribute can also be configured from the config with the
+    #: :data:`SECRET_KEY` configuration key. Defaults to ``None``.
     secret_key = ConfigAttribute("SECRET_KEY")
 
     root_path = None
@@ -136,7 +163,6 @@ class Domain(_PackageBoundObject):
         {
             "ENV": None,
             "DEBUG": None,
-            "TESTING": False,
             "SECRET_KEY": None,
             "IDENTITY_STRATEGY": IdentityStrategy.UUID,
             "IDENTITY_TYPE": IdentityType.STRING,
@@ -149,8 +175,7 @@ class Domain(_PackageBoundObject):
                 'default': {
                     'PROVIDER': 'protean.impl.broker.memory_broker.MemoryBroker',
                 }
-            },
-            "CACHE": {}
+            }
         }
     )
 
@@ -185,6 +210,9 @@ class Domain(_PackageBoundObject):
         # Registry for all domain Objects
         self._domain_registry = _DomainRegistry()
 
+        #: The configuration dictionary as :class:`Config`.  This behaves
+        #: exactly like a regular dictionary but supports additional methods
+        #: to load a config from files.
         self.config = self.make_config(instance_relative_config)
 
         self.providers = None

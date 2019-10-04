@@ -15,8 +15,6 @@ class ConfigAttribute:
         self.__name__ = name
 
     def __get__(self, obj, type=None):
-        if obj is None:
-            return self
         return obj.config[self.__name__]
 
     def __set__(self, obj, value):
@@ -30,7 +28,7 @@ class Config(dict):
 
     Either you can fill the config from a config file::
 
-        app.config.from_pyfile('yourconfig.cfg')
+        domain.config.from_pyfile('yourconfig.cfg')
 
     Or alternatively you can define the configuration options in the
     module that calls :meth:`from_object` or provide an import path to
@@ -40,7 +38,7 @@ class Config(dict):
 
         DEBUG = True
         SECRET_KEY = 'development key'
-        app.config.from_object(__name__)
+        domain.config.from_object(__name__)
 
     In both cases (loading from any Python file or loading from modules),
     only uppercase keys are added to the config.  This makes it possible to use
@@ -51,7 +49,7 @@ class Config(dict):
     Probably the most interesting way to load configurations is from an
     environment variable pointing to a file::
 
-        app.config.from_envvar('YOURAPPLICATION_SETTINGS')
+        domain.config.from_envvar('YOURAPPLICATION_SETTINGS')
 
     In this case before launching the application you have to set this
     environment variable to the file you want to use.  On Linux and OS X
@@ -76,7 +74,7 @@ class Config(dict):
         a configuration file.  This is basically just a shortcut with nicer
         error messages for this line of code::
 
-            app.config.from_pyfile(os.environ['YOURAPPLICATION_SETTINGS'])
+            domain.config.from_pyfile(os.environ['YOURAPPLICATION_SETTINGS'])
 
         :param variable_name: name of the environment variable
         :param silent: set to ``True`` if you want silent failure for missing
@@ -137,9 +135,9 @@ class Config(dict):
 
         Example of module-based configuration::
 
-            app.config.from_object('yourapplication.default_config')
+            domain.config.from_object('yourapplication.default_config')
             from yourapplication import default_config
-            app.config.from_object(default_config)
+            domain.config.from_object(default_config)
 
         Nothing is done to the object before loading. If the object is a
         class and has ``@property`` attributes, it needs to be
@@ -150,7 +148,7 @@ class Config(dict):
         with :meth:`from_pyfile` and ideally from a location not within the
         package because the package might be installed system wide.
 
-        See :ref:`config-dev-prod` for an example of class-based configuration
+        See :ref:`api-config` for an example of class-based configuration
         using :meth:`from_object`.
 
         :param obj: an import name or object
@@ -213,10 +211,10 @@ class Config(dict):
         """Returns a dictionary containing a subset of configuration options
         that match the specified namespace/prefix. Example usage::
 
-            app.config['IMAGE_STORE_TYPE'] = 'fs'
-            app.config['IMAGE_STORE_PATH'] = '/var/app/images'
-            app.config['IMAGE_STORE_BASE_URL'] = 'http://img.website.com'
-            image_store_config = app.config.get_namespace('IMAGE_STORE_')
+            domain.config['IMAGE_STORE_TYPE'] = 'fs'
+            domain.config['IMAGE_STORE_PATH'] = '/var/app/images'
+            domain.config['IMAGE_STORE_BASE_URL'] = 'http://img.website.com'
+            image_store_config = domain.config.get_namespace('IMAGE_STORE_')
 
         The resulting dictionary `image_store_config` would look like::
 

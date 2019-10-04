@@ -10,15 +10,37 @@ from protean.domain import Domain
 # config keys used for the TestConfig
 TEST_KEY = "foo"
 SECRET_KEY = "config"
+non_key = 'not-a-key'
 
 
 def common_object_test(domain):
     assert domain.secret_key == "config"
     assert domain.config["TEST_KEY"] == "foo"
     assert "TestConfig" not in domain.config
+    assert 'non_key' not in domain.config
 
 
 class TestConfig:
+    def test_config_attribute_set(self):
+        domain = Domain(__name__)
+        domain.config.from_pyfile(__file__.rsplit(".", 1)[0] + ".py")
+        domain.secret_key = 'Baz'
+
+        assert domain.secret_key == 'Baz'
+        assert domain.config['SECRET_KEY'] == 'Baz'
+
+    def test_config_repr(self):
+        domain = Domain(__name__)
+        domain.config.from_pyfile(__file__.rsplit(".", 1)[0] + ".py")
+
+        assert repr(domain.config) == (
+            "<Config {'ENV': 'production', 'DEBUG': False, 'SECRET_KEY': 'config', "
+            "'IDENTITY_STRATEGY': <IdentityStrategy.UUID: 1>, "
+            "'IDENTITY_TYPE': <IdentityType.STRING: 'STRING'>, "
+            "'DATABASES': {'default': {'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'}}, "
+            "'BROKERS': {'default': {'PROVIDER': 'protean.impl.broker.memory_broker.MemoryBroker'}}, "
+            "'TEST_KEY': 'foo'}>")
+
     def test_config_from_file(self):
         domain = Domain(__name__)
         domain.config.from_pyfile(__file__.rsplit(".", 1)[0] + ".py")
@@ -37,15 +59,15 @@ class TestConfig:
 
     def test_config_from_mapping(self):
         domain = Domain(__name__)
-        domain.config.from_mapping({"SECRET_KEY": "config", "TEST_KEY": "foo"})
+        domain.config.from_mapping({"SECRET_KEY": "config", "TEST_KEY": "foo", "non_key": "not-a-key"})
         common_object_test(domain)
 
         domain = Domain(__name__)
-        domain.config.from_mapping([("SECRET_KEY", "config"), ("TEST_KEY", "foo")])
+        domain.config.from_mapping([("SECRET_KEY", "config"), ("TEST_KEY", "foo"), ("non_key", "not-a-key")])
         common_object_test(domain)
 
         domain = Domain(__name__)
-        domain.config.from_mapping(SECRET_KEY="config", TEST_KEY="foo")
+        domain.config.from_mapping(SECRET_KEY="config", TEST_KEY="foo", non_key="not-a-key")
         common_object_test(domain)
 
         domain = Domain(__name__)

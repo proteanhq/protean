@@ -2,13 +2,12 @@
 from protean.utils import Database, IdentityStrategy, IdentityType
 
 DEBUG = True
+TESTING = True
+ENV = 'development'
 
 # A secret key for this particular Protean installation. Used in secret-key
 # hashing algorithms.
 SECRET_KEY = 'j2t#8U!vy877Rn2W6gQQyz%HmXN3@egV'
-
-# Flag indicates that we are testing
-TESTING = True
 
 # Database Configuration
 DATABASES = {
