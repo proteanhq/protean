@@ -1,17 +1,18 @@
+# Standard Library Imports
 import logging
 import logging.config
 import os
 
 from collections import defaultdict
 
-from redis import Redis
-from rq import get_current_connection, push_connection, Queue, Worker
-
+# Protean
 from protean.core.broker.base import BaseBroker
 from protean.core.domain_event import BaseDomainEvent
-from protean.domain import DomainObjects, Domain
+from protean.domain import Domain, DomainObjects
 from protean.utils import fully_qualified_name
 from protean.utils.inflection import underscore
+from redis import Redis
+from rq import Queue, Worker, get_current_connection, push_connection
 
 logger = logging.getLogger('protean.impl.broker.rq')
 

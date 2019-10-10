@@ -1,8 +1,10 @@
+# Standard Library Imports
 import multiprocessing
+
+# Protean
 import pytest
 
 from rq import Queue, Worker
-
 from tests.impl.broker.rq_broker.elements import NotifySSOSubscriber, Person
 
 

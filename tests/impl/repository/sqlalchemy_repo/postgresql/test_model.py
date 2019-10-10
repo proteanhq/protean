@@ -1,6 +1,8 @@
+# Protean
 from protean.impl.repository.sqlalchemy_repo import SqlalchemyModel
 
-from .elements import Email, Person, ComplexUser
+# Local/Relative Imports
+from .elements import ComplexUser, Email, Person
 
 
 class TestModel:

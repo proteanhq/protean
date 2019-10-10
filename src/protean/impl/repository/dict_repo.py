@@ -5,7 +5,7 @@ import copy
 import json
 
 from collections import defaultdict
-from datetime import datetime, date
+from datetime import date, datetime
 from itertools import count
 from operator import itemgetter
 from threading import Lock

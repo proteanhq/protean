@@ -2,8 +2,8 @@
 Release History
 ===============
 
-dev
----
+0.3 (2019-10-09)
+----------------
 
 * Add a `defaults` method as part of Container objects when assigned defaults in one field based on another
 * Add support for Command Handlers

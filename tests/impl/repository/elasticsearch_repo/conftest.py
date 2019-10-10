@@ -1,10 +1,10 @@
 # Standard Library Imports
 import os
 
-from elasticsearch_dsl import Index
-
 # Protean
 import pytest
+
+from elasticsearch_dsl import Index
 
 
 def initialize_domain():

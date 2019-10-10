@@ -1,11 +1,11 @@
 # Standard Library Imports
 import os
 
-from redis import Redis
-from rq import get_current_connection, push_connection, pop_connection
-
 # Protean
 import pytest
+
+from redis import Redis
+from rq import get_current_connection, pop_connection, push_connection
 
 
 def initialize_domain():

@@ -6,7 +6,6 @@ from uuid import uuid4
 import pytest
 
 from elasticsearch import Elasticsearch
-
 from protean.core.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
 from protean.core.queryset import Q, QuerySet
 

@@ -6,7 +6,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.utils import fully_qualified_name
 
 # Local/Relative Imports
-from .elements import AddPersonCommand, AddNewPersonCommandHandler
+from .elements import AddNewPersonCommandHandler, AddPersonCommand
 
 
 class TestCommandHandlerInitialization:

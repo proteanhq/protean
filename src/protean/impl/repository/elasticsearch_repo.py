@@ -5,12 +5,12 @@ import logging
 from typing import Any
 from uuid import UUID
 
+# Protean
 import elasticsearch_dsl
 
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
-from elasticsearch_dsl import Document, Index, query, Search
-
+from elasticsearch_dsl import Document, Index, Search, query
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.field.association import Reference
 from protean.core.provider.base import BaseProvider

@@ -1,8 +1,10 @@
+# Protean
 import pytest
 
 from protean.impl.repository.elasticsearch_repo import ElasticsearchModel
 
-from .elements import Email, Person, ComplexUser
+# Local/Relative Imports
+from .elements import ComplexUser, Email, Person
 
 
 @pytest.mark.elasticsearch

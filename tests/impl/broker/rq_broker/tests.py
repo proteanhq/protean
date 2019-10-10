@@ -1,14 +1,13 @@
-import rq
+# Protean
 import pytest
+import rq
 
 from mock import patch
-from redis import Redis
-from rq import Queue
-
 from protean.globals import current_domain
 from protean.impl.broker.rq_broker import RqBroker
 from protean.utils import fully_qualified_name
-
+from redis import Redis
+from rq import Queue
 from tests.impl.broker.rq_broker.elements import NotifySSOSubscriber, Person, PersonAdded
 
 

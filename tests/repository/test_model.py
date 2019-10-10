@@ -1,5 +1,7 @@
+# Protean
 from protean.impl.repository.dict_repo import DictModel
 
+# Local/Relative Imports
 from .elements import Email, Person, User
 
 

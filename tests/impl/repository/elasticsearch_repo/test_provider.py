@@ -2,9 +2,9 @@
 # Protean
 import pytest
 
-from protean.impl.repository.elasticsearch_repo import ESProvider
 from elasticsearch import Elasticsearch
 from elasticsearch_dsl.response import Response
+from protean.impl.repository.elasticsearch_repo import ESProvider
 
 # Local/Relative Imports
 from .elements import Alien, Person
