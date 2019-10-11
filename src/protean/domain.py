@@ -72,7 +72,8 @@ class _DomainRegistry:
 
         element = self._elements[element_cls.element_type.value][element_name]
         if element:
-            raise ConfigurationError(f'Element {element_name} has already been registered')
+            # raise ConfigurationError(f'Element {element_name} has already been registered')
+            logger.info(f'A--->Element {element_name} has already been registered')
         else:
             element_record = _DomainRegistry.DomainRecord(
                 name=element_cls.__name__,
@@ -87,7 +88,7 @@ class _DomainRegistry:
 
             logger.debug(f'Registered Element {element_name} with Domain as a {element_cls.element_type.value}')
 
-    def unregister_element(self, element_cls):
+    def dei_element(self, element_cls):
         if element_cls.element_type.name not in DomainObjects.__members__:
             raise NotImplementedError
 
@@ -98,7 +99,7 @@ class _DomainRegistry:
 
 class Domain(_PackageBoundObject):
     """The domain object is a one-stop gateway to:
-    * Registrating Domain Objects/Concepts
+    * Registering Domain Objects/Concepts
     * Querying/Retrieving Domain Artifacts like Entities, Services, etc.
     * Retrieve injected infrastructure adapters
 
@@ -164,6 +165,7 @@ class Domain(_PackageBoundObject):
             "ENV": None,
             "DEBUG": None,
             "SECRET_KEY": None,
+            "AUTOLOAD_DOMAIN": False,
             "IDENTITY_STRATEGY": IdentityStrategy.UUID,
             "IDENTITY_TYPE": IdentityType.STRING,
             "DATABASES": {
@@ -221,7 +223,47 @@ class Domain(_PackageBoundObject):
         #: A list of functions that are called when the domain context
         #: is destroyed.  This is the place to store code that cleans up and
         #: disconnects from databases, for example.
-        self.teardown_domain_context_funcs = []
+        self.teardown_domain_context_functions = []
+
+    def init(self):
+        if self.config['AUTOLOAD_DOMAIN'] is True:
+            import importlib.util
+            import inspect
+            import os
+            import pathlib
+            import sys
+
+            domain_path = inspect.stack()[1][1]
+            dir_name = pathlib.PurePath(pathlib.Path(domain_path).resolve()).parent
+            path = pathlib.Path(dir_name)
+            system_folder_path = path.parent
+
+            logger.info(f'Loading domain from {dir_name}...')
+
+            for root, dirs, files in os.walk(dir_name):
+                if pathlib.PurePath(root).name not in ['__pycache__']:
+                    package_path = root[len(str(system_folder_path))+1:]
+                    module_name = package_path.replace(os.sep, '.')
+
+                    for file in files:
+                        file_base_name = os.path.basename(file)
+
+                        if file_base_name != '__init__':
+                            sub_module_name = os.path.splitext(file_base_name)[0]
+                            file_module_name = module_name + '.' + sub_module_name
+                        else:
+                            file_module_name = module_name
+                        full_file_path = os.path.join(root, file)
+
+                        try:
+                            if full_file_path != domain_path:
+                                spec = importlib.util.spec_from_file_location(file_module_name, full_file_path)
+                                module = importlib.util.module_from_spec(spec)
+                                spec.loader.exec_module(module)
+                                sys.modules[spec.name] = module
+                                logger.info(f'Loaded {file_module_name}')
+                        except ModuleNotFoundError as exc:
+                            logger.info(f'Error while autoloading modules: {exc}')
 
     def make_config(self, instance_relative=False):
         """Used to create the config attribute by the Domain constructor.
@@ -273,7 +315,7 @@ class Domain(_PackageBoundObject):
 
         The return values of teardown functions are ignored.
         """
-        self.teardown_domain_context_funcs.append(f)
+        self.teardown_domain_context_functions.append(f)
         return f
 
     def do_teardown_domain_context(self, exc=_sentinel):
@@ -287,7 +329,7 @@ class Domain(_PackageBoundObject):
         """
         if exc is _sentinel:
             exc = sys.exc_info()[1]
-        for func in reversed(self.teardown_domain_context_funcs):
+        for func in reversed(self.teardown_domain_context_functions):
             func(exc)
 
     @property
@@ -364,12 +406,12 @@ class Domain(_PackageBoundObject):
                 new_dict = element_cls.__dict__.copy()
                 new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
 
-                # Hacky code to switch between `marshmallow.Schema` and `BaseSerializer`
+                # Hack to switch between `marshmallow.Schema` and `BaseSerializer`
                 #   while creating the derived class for Serializers
                 #
                 # This becomes necessary because we need to derive the undecorated class
-                #   from `BaseSerializer`, but once derived, the base heirarchy only reflects
-                #   `marshmallow.Schema` (This is a metaclass, so it disrupts heirarchy).
+                #   from `BaseSerializer`, but once derived, the base hierarchy only reflects
+                #   `marshmallow.Schema` (This is a metaclass, so it disrupts hierarchy).
                 if element_type == DomainObjects.SERIALIZER:
                     from protean.core.serializer import BaseSerializer
                     base_cls = BaseSerializer
@@ -585,8 +627,8 @@ class Domain(_PackageBoundObject):
 
         return self._register_element(element_cls.element_type, element_cls, **kwargs)
 
-    def unregister(self, element_cls):
-        """Unregister a Domain Element.
+    def delist(self, element_cls):
+        """Delist a Domain Element.
 
         This method will result in a no-op if the entity class was not found
         in the registry for whatever reason.
@@ -594,7 +636,7 @@ class Domain(_PackageBoundObject):
         if getattr(element_cls, 'element_type', None) not in [element for element in DomainObjects]:
             raise NotImplementedError
 
-        self._domain_registry.unregister_element(element_cls.element_type, element_cls)
+        self._domain_registry.dei_element(element_cls.element_type, element_cls)
 
     def _get_element_by_name(self, element_types, element_name):
         """Fetch Domain record with an Element name"""
@@ -687,7 +729,7 @@ class Domain(_PackageBoundObject):
         try:
             repository_record = next(
                 repository for _, repository in self.repositories.items()
-                if repository.cls.meta_.aggregate_cls == aggregate_cls)  # FIXME Avoid comparing classes
+                if repository.cls.meta_.aggregate_cls.__name__ == aggregate_cls.__name__)
         except StopIteration:
             logger.info(f'Constructing a Repository for {aggregate_cls}...')
 
@@ -701,7 +743,7 @@ class Domain(_PackageBoundObject):
             # FIXME Avoid comparing classes / Fetch a Repository class directly by its aggregate class
             repository_record = next(
                 repository for _, repository in self.repositories.items()
-                if repository.cls.meta_.aggregate_cls == aggregate_cls)
+                if repository.cls.meta_.aggregate_cls.__name__ == aggregate_cls.__name__)
 
         return repository_record.cls()
 
