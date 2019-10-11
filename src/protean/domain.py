@@ -73,7 +73,7 @@ class _DomainRegistry:
         element = self._elements[element_cls.element_type.value][element_name]
         if element:
             # raise ConfigurationError(f'Element {element_name} has already been registered')
-            logger.info(f'A--->Element {element_name} has already been registered')
+            logger.debug(f'Element {element_name} was already in the registry')
         else:
             element_record = _DomainRegistry.DomainRecord(
                 name=element_cls.__name__,
@@ -88,7 +88,7 @@ class _DomainRegistry:
 
             logger.debug(f'Registered Element {element_name} with Domain as a {element_cls.element_type.value}')
 
-    def dei_element(self, element_cls):
+    def delist_element(self, element_cls):
         if element_cls.element_type.name not in DomainObjects.__members__:
             raise NotImplementedError
 
