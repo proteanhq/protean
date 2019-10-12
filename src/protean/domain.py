@@ -238,7 +238,7 @@ class Domain(_PackageBoundObject):
             path = pathlib.Path(dir_name)
             system_folder_path = path.parent
 
-            logger.info(f'Loading domain from {dir_name}...')
+            logger.debug(f'Loading domain from {dir_name}...')
 
             for root, dirs, files in os.walk(dir_name):
                 if pathlib.PurePath(root).name not in ['__pycache__']:
@@ -261,9 +261,9 @@ class Domain(_PackageBoundObject):
                                 module = importlib.util.module_from_spec(spec)
                                 spec.loader.exec_module(module)
                                 sys.modules[spec.name] = module
-                                logger.info(f'Loaded {file_module_name}')
+                                logger.debug(f'Loaded {file_module_name}')
                         except ModuleNotFoundError as exc:
-                            logger.info(f'Error while autoloading modules: {exc}')
+                            logger.debug(f'Error while autoloading modules: {exc}')
 
     def make_config(self, instance_relative=False):
         """Used to create the config attribute by the Domain constructor.
