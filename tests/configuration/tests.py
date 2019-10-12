@@ -35,6 +35,7 @@ class TestConfig:
 
         assert repr(domain.config) == (
             "<Config {'ENV': 'production', 'DEBUG': False, 'SECRET_KEY': 'config', "
+            "'AUTOLOAD_DOMAIN': False, "
             "'IDENTITY_STRATEGY': <IdentityStrategy.UUID: 1>, "
             "'IDENTITY_TYPE': <IdentityType.STRING: 'STRING'>, "
             "'DATABASES': {'default': {'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'}}, "

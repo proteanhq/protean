@@ -69,7 +69,7 @@ class RegisterLookupMixin:
         return lookup
 
     @classmethod
-    def _unregister_lookup(cls, lookup, lookup_name=None):
+    def _delist_lookup(cls, lookup, lookup_name=None):
         """
         Remove given lookup from cls lookups. For use in tests only as it's
         not thread-safe.

@@ -46,6 +46,7 @@ class TestDomainRegistration:
 
         assert fully_qualified_name(UserStructRequestObject) in test_domain.request_objects
 
+    @pytest.mark.xfail(reason='Temporarily disabled raising ConfigurationError - Need to control with flag')
     def test_that_registering_an_element_again_raises_configuration_error(self, test_domain):
         test_domain.registry.register_element(UserStructRequestObject)
 
