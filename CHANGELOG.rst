@@ -2,8 +2,8 @@
 Release History
 ===============
 
-dev
----
+0.3.1 (2019-10-15)
+------------------
 
 * Auto Traverse Domain Modules and load elements
 
