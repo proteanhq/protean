@@ -231,7 +231,6 @@ class Domain(_PackageBoundObject):
             import inspect
             import os
             import pathlib
-            import sys
 
             domain_path = inspect.stack()[1][1]
             dir_name = pathlib.PurePath(pathlib.Path(domain_path).resolve()).parent
@@ -260,7 +259,6 @@ class Domain(_PackageBoundObject):
                                 spec = importlib.util.spec_from_file_location(file_module_name, full_file_path)
                                 module = importlib.util.module_from_spec(spec)
                                 spec.loader.exec_module(module)
-                                sys.modules[spec.name] = module
                                 logger.debug(f'Loaded {file_module_name}')
                         except ModuleNotFoundError as exc:
                             logger.debug(f'Error while autoloading modules: {exc}')
