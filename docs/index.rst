@@ -1,7 +1,7 @@
 Protean
 =======
 
-Release v\ |version|. (:ref:`Changelog <changelog>`)
+Release v\ |version| (:ref:`Changelog <changelog>`)
 
 .. image:: https://travis-ci.org/proteanhq/protean.svg?branch=master
     :target: https://travis-ci.org/proteanhq/protean
@@ -15,7 +15,7 @@ Release v\ |version|. (:ref:`Changelog <changelog>`)
 
 *The Pragmatic Framework for Ambitious Applications*
 
-Get started with :ref:`install` and then get your hands dirty with :ref:`quickstart` guide. The rest of the docs describe each component of Protean in detail.
+Get started with :ref:`install` and then get your hands dirty with :ref:`quickstart` guide. The rest of the docs describe different aspects of Protean in detail.
 
 Overview
 --------
@@ -26,11 +26,17 @@ At its core, Protean is more a programming model than a framework. It encourages
 
 Read the full philosophy in :ref:`foreword`.
 
-Protean is an excellent fit for you if you are:
+Protean is an excellent fit for your project if you are:
 
-- Building applications for complex and uncharted domains, where you  learn on-the-go
+- Tackling greenfield projects in complex and uncharted domains
 - Porting complicated Legacy applications onto newer technology stacks
 - Creating products that need to adapt and evolve over a long period
+
+Protean helps you develop faster and better, and cleaner code by:
+- Providing a toolkit to model the code as closely as possible after the domain
+- Allowing you to delay important decisions until the Last Responsible Moment (LRM)
+- Aligning your development team with good practices that result in quality software
+- Helping you remain technology-agnostic with the help of a Plugin-based Architecture
 
 *Protean is free, open source, and always will be.*
 
@@ -41,7 +47,8 @@ Key Features
 
 Protean is geared towards building multi-layered applications, that take advantage of the diverse options available at each level of the software stack.
 
-- Lightweight and overridable APIs
+- Very light framework footprint
+- Overridable and Extendable APIs
 - Non-opinionated and non-enforcing Application Code structure
 - Abstract implementations for well-understood design patterns
 - Expressive Domain Language for both developers as well as Business Users
@@ -50,9 +57,9 @@ Protean is geared towards building multi-layered applications, that take advanta
 - Support for a variety of SQL and NoSQL Databases
 - Ready to use plugins for popular API frameworks like Flask and Pyramid
 - Extendable interfaces to build custom plugins for the technology you want to use
-- Container support for Docker (Coming soon)
-- Kubernetes driven deployment mechanisms (Coming soon)
-- Out-of-the-box support for deploying into AWS, Azure and GCP (Coming soon)
+- Container support for Docker *(Coming soon)*
+- Kubernetes driven deployment mechanisms *(Coming soon)*
+- Out-of-the-box support for deploying into AWS, Azure and GCP *(Coming soon)*
 
 *Protean officially supports Python 3.7+.*
 
@@ -67,7 +74,7 @@ These guides have been heavily influenced by the thoughts and works of DDD pione
 * |implementing-ddd-vaughn-vernon|
 * |ddd-distilled-vaughn-vernon|
 
-*Protean's guides are not a replacement to these original texts. It is recommended that you go through them to hone and complete your DDD knowledge.*
+*Guides are not a replacement to these original texts. It is recommended that you go through them to hone and complete your DDD knowledge.*
 
 .. toctree::
    :maxdepth: 1
