@@ -48,7 +48,7 @@ Key Features
 Protean is geared towards building multi-layered applications, that take advantage of the diverse options available at each level of the software stack.
 
 - Very light framework footprint
-- Overridable and Extendable APIs
+- APIs that can be extended or overridden
 - Non-opinionated and non-enforcing Application Code structure
 - Abstract implementations for well-understood design patterns
 - Expressive Domain Language for both developers as well as Business Users
