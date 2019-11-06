@@ -42,21 +42,21 @@ This concept also means that as a general rule of Aggregate design, you should m
 
 The main point to remember is that business rules are the drivers for determining what must be whole, complete, and consistent at the end of a single transaction.
 
-You can define abstract Aggregate structures that can be reused in multiple parts of the application. This is useful when an often repeating paradigm, like string `created` and `updated` timestamps, is present with all Aggregates in the system. You can inherit from the custom base Aggregate class, and all base attributes will be inhertied.
+You can define abstract Aggregate structures that can be reused in multiple parts of the application. This is useful when an often repeating paradigm, like string `created` and `updated` timestamps, is present with all Aggregates in the system. You can inherit from the custom base Aggregate class, and all base attributes will be inherited.
 
 .. testcode::
 
     from protean.core.aggregate import BaseAggregate
     from protean.core.field.basic import String
 
-    class CustomBaseClass(BaseAggregate):
+    class CustomBaseAggregate(BaseAggregate):
         foo = String(max_length=25)
 
         class Meta:
             abstract = True
 
     @domain.aggregate
-    class ConcreateSubclass(CustomBaseClass):
+    class ConcreteElement(CustomBaseAggregate):
         bar = String(max_length=25)
 
 Rules

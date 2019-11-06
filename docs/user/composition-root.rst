@@ -4,7 +4,7 @@
 Composing a Domain
 ==================
 
-A typical domain is made up of many elements that work together to codify a concept. In accordance with DDD principles, these elements are not aware of the underlying technology layers.
+A domain is typically made up of many elements that work together to codify a concept. In accordance with DDD principles, these elements are not aware of the underlying technology layers.
 
 Any external dependencies are made available dynamically during runtime. For example, an aggregate's repository is made available to the Application Service during runtime, using which it can save new aggregates or fetch existing aggregates from the underlying data store.
 
@@ -52,7 +52,7 @@ Next, the `domain` object is referenced by the rest of the application to regist
 When to compose
 ===============
 
-Such composing from many loosely coupled classes should take place *as close to the application’s entry point as possible*. In simple console applications, the `Main` method is a good entry point. But for most web applications that spin up their own runtime, we will have to depend on the callbacks or hooks the framework provides, to compose the object graph.
+The composition from many loosely coupled classes should take place *as close to the application’s entry point as possible*. In simple console applications, the `Main` method is a good entry point. But for most web applications that spin up their own runtime, we will have to depend on the callbacks or hooks the framework provides, to compose the object graph.
 
 Accordingly, depending on the software stack you will ultimately use, you will decide when to compose the object graph. For example, if you are using Flask as the API framework, you would compose the `domain` along with the `app` object.
 
@@ -91,3 +91,5 @@ Accordingly, depending on the software stack you will ultimately use, you will d
         return app
 
 Observe the activation of the domain with the help of ``@app.before_request`` decorator above. This is Flask-specific. Such activation will depend on your application's entry point, and will depend on the frameworks you use. Refer to :ref:`plugin-api` section to understand how to do this for your application framework.
+
+A domain is activated by pushing up its context to the top of the domain stack. Subsequent calls to `protean.globals.current_domain` will return the currently active domain. Once the task has been completed, it is recommended that the domain stack is reset to its original state by calling `context.pop()`.

@@ -10,6 +10,7 @@ This section walks you through the different domain elements you can use to buil
     :maxdepth: 1
     :glob:
 
+    aggregate
     brokers
     dao
     domain

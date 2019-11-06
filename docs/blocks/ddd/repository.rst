@@ -11,7 +11,7 @@ Repositories are typically associated with Domain Aggregates.
 Repositories and DAO
 --------------------
 
-There are multiple ways of organizing repositories in DDD projects in order to be database-agnostic in the domain layer. One way is to define a repository interface and consume the interface in persistence calls in the domain layer. Concrete implementions that satisfy to this interface are provided for different databases. Another way is to implement repositories as two layers: An outer repository layer that is close to the domain and contains domain concepts, and an inner DAO layer that talks to the persistence store. Protean adopts the latter approach.
+There are multiple ways of organizing repositories in DDD projects in order to be database-agnostic in the domain layer. One way is to define a repository interface and consume the interface in persistence calls in the domain layer. Concrete implementations that satisfy to this interface are provided for different databases. Another way is to implement repositories as two layers: An outer repository layer that is close to the domain and contains domain concepts, and an inner DAO layer that talks to the persistence store. Protean adopts the latter approach.
 
 The Repository Layer does not know how a persistence store is queried or how the data is stored. It does care about representing domain concepts. For example, if you want to query all users over the age of 21, the repository layer would contain a method called `find_adults`, while the underlying DAO layer would contain the actual definition of an adult (`age >= 18`).
 
@@ -58,6 +58,6 @@ Data Access Objects (DAO)
 
 This discussion would not be complete without an introduction to the DAO layer of Protean.
 
-DAOs in Protean are architected as plugins, and activated with the help of configuration flags. Each Persistence Store implementation will have a corresponding DAO implementation of its own. For example, there would be two different plugins for Mongo and Elasticsearch. There are also cases where the DAO would make use of an ORM to support connections to multiple databases at one go, like SQLAlchemy.
+Data Access Objects in Protean are made available as plugins, and activated with the help of configuration flags. Each Persistence Store implementation will have a corresponding DAO implementation of its own. For example, there would be two different plugins for Mongo and Elasticsearch. There are also cases where the DAO would make use of an ORM to support connections to multiple databases at one go, like SQLAlchemy.
 
-You can check different available implementations :ref:`here <plugin-database>`, and read about configuring DAOs in the :ref:`user-persistence` section.
+You can check different available implementations :ref:`here <plugin-database>`, and read about configuring Data Access Objects in the :ref:`user-persistence` section.

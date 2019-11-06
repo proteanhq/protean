@@ -273,27 +273,29 @@ class BaseEntity(metaclass=_EntityMetaclass):
     Provides helper methods to custom define entity attributes, and query attribute names
     during runtime.
 
-    Basic Usage::
+    You can define an Entity with the help of `entity` annotation::
 
-        @Entity
-        class Dog:
+        @domain.entity
+        class User:
             id = field.Integer(identifier=True)
-            name = field.String(required=True, max_length=50)
+            first_name = field.String(required=True, max_length=50)
+            last_name = field.String(required=True, max_length=50)
             age = field.Integer(default=5)
-            owner = field.String(required=True, max_length=15)
 
     (or)
 
-        class Dog(BaseEntity):
+    Or, you can directly subclass from `BaseEntity`::
+
+        class User(BaseEntity):
             id = field.Integer(identifier=True)
-            name = field.String(required=True, max_length=50)
+            first_name = field.String(required=True, max_length=50)
+            last_name = field.String(required=True, max_length=50)
             age = field.Integer(default=5)
-            owner = field.String(required=True, max_length=15)
 
-        domain.register_element(Dog)
+        domain.register_element(User)
 
-    During persistence, the model associated with this entity is retrieved dynamically from
-            the repository factory. Model is usually initialized with a live DB connection.
+    During persistence, the model associated with this entity is retrieved dynamically from the repository factory,
+    initialized with a live connection to the datastore.
     """
 
     element_type = DomainObjects.ENTITY
@@ -302,10 +304,20 @@ class BaseEntity(metaclass=_EntityMetaclass):
         """
         Initialise the entity object.
 
-        During initialization, set value on fields if vaidation passes.
+        During initialization, set value on fields if validation passes.
 
-        This initialization technique supports keyword arguments as well as dictionaries. You
-            can even use a template for initial data.
+        This initialization technique supports keyword arguments as well as dictionaries. The objects initialized
+        in the following example have the same structure::
+
+            user1 = User({'first_name': 'John', 'last_name': 'Doe'})
+
+            user2 = User(first_name='John', last_name='Doe')
+
+        You can also specify a template for initial data and override specific attributes::
+
+            base_user = User({'age': 15})
+
+            user = User(base_user.to_dict(), first_name='John', last_name='Doe')
         """
 
         if self.meta_.abstract is True:
