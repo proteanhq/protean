@@ -79,7 +79,7 @@ The following configuration values are used internally by Protean:
     * **DATABASE**: Use a database sequence to gather unique identifiers. The Database Sequence is specified as part of the Entity's ``Meta`` information.
     * **FUNCTION**: Use a function to generate a unique identifier. The function name needs to be supplied to the ``IDENTITY_FUNCTION`` parameter.
 
-    Options are defined in :ref:`api-identity-strategy`.
+    Options are defined in :ref:`identity`.
 
     Default: ``IdentityStrategy.UUID``
 

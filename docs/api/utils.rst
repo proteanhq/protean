@@ -1,5 +1,5 @@
-.. _api-identity-strategy:
+.. _api-utils:
 
-=================
-Identity Strategy
-=================
+=========
+Utilities
+=========

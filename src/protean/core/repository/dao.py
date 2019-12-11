@@ -2,7 +2,7 @@
 """
     protean.core.repository.dao
     ~~~~~~~~~
-    This module contains the interface definition to be satisfed by concrete DAO implementations.
+    This module contains the interface definition to be satisfied by concrete DAO implementations.
     :copyright: 2019 Protean
     :license: BSD-3-Clause
 """
@@ -352,7 +352,7 @@ class BaseDAO(metaclass=ABCMeta):
                 if entity_obj.state_.is_new:
                     if not getattr(entity_obj, entity_obj.meta_.id_field.field_name, None):
                         setattr(entity_obj, entity_obj.meta_.id_field.field_name,
-                                self.entity_cls._generate_identity())
+                                self.entity_cls.generate_identity())
 
                 model_obj = self._create(self.model_cls.from_entity(entity_obj))
 
