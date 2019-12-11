@@ -361,12 +361,12 @@ class BaseEntity(metaclass=_EntityMetaclass):
                     for embedded_field
                     in field_obj.embedded_fields.values()
                     ]
-                vals = {
+                values = {
                     name: kwargs.get(attr)
                     for name, attr in attributes
                 }
                 try:
-                    value_object = field_obj.value_object_cls.build(**vals)
+                    value_object = field_obj.value_object_cls.build(**values)
                     # Set VO value only if the value object is not None/Empty
                     if value_object:
                         setattr(self, field_name, value_object)
@@ -376,7 +376,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
                         self.errors['{}_{}'.format(field_name, sub_field_name)].extend(err.messages[sub_field_name])
 
         if not getattr(self, self.meta_.id_field.field_name, None) and type(self.meta_.id_field) is Auto:
-            setattr(self, self.meta_.id_field.field_name, self._generate_identity())
+            setattr(self, self.meta_.id_field.field_name, self.generate_identity())
             loaded_fields.append(self.meta_.id_field.field_name)
 
         # Now load the remaining fields with a None value, which will fail
@@ -414,8 +414,8 @@ class BaseEntity(metaclass=_EntityMetaclass):
         return defaultdict(list)
 
     @classmethod
-    def _generate_identity(cls):
-        """Generate Unique Identifier, based on strategy"""
+    def generate_identity(cls):
+        """Generate Unique Identifier, based on configured strategy"""
         if current_domain.config['IDENTITY_STRATEGY'] == IdentityStrategy.UUID:
             if current_domain.config['IDENTITY_TYPE'] == IdentityType.INTEGER:
                 return uuid4().int
@@ -429,7 +429,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         return None  # Database will generate the identity
 
     def __eq__(self, other):
-        """Equaivalence check to be based only on Identity"""
+        """Equivalence check to be based only on Identity"""
 
         # FIXME Enhanced Equality Checks
         #   * Ensure IDs have values and both of them are not null

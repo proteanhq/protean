@@ -91,6 +91,7 @@ These guides have been heavily influenced by the thoughts and works of DDD pione
    user/install
    user/quickstart
    user/composition-root
+   user/identity
    user/domain-layer-mechanics
    user/application-layer-mechanics
    user/configuration
