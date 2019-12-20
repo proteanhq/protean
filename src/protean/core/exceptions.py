@@ -19,6 +19,14 @@ class TooManyObjectsError(Exception):
     """Expected one object, but found many"""
 
 
+class InsufficientDataError(Exception):
+    """Object was not supplied with sufficient data"""
+
+
+class InvalidDataError(Exception):
+    """Data (type, value) is invalid"""
+
+
 class InvalidStateError(Exception):
     """Object is in invalid state for the given operation"""
 

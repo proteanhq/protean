@@ -50,3 +50,12 @@ def singleton(cls):
         return wrapper_singleton.instance
     wrapper_singleton.instance = None
     return wrapper_singleton
+
+
+def convert_str_values_to_list(value):
+    if not value:
+        return []
+    elif isinstance(value, str):
+        return [value]
+    else:
+        return list(value)

@@ -1,5 +1,5 @@
 # Protean
-from protean.utils import Database, IdentityStrategy, IdentityType
+from protean.utils import IdentityStrategy, IdentityType
 
 DEBUG = True
 TESTING = True
@@ -13,11 +13,6 @@ SECRET_KEY = 'tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA'
 DATABASES = {
     'default': {
         'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'
-    },
-    'sqlite': {
-        'PROVIDER': 'protean.impl.repository.sqlalchemy_repo.SAProvider',
-        'DATABASE': Database.SQLITE.value,
-        'DATABASE_URI': 'sqlite:///test.db'
     }
 }
 
@@ -42,13 +37,13 @@ IDENTITY_TYPE = IdentityType.STRING
 # Messaging Mediums
 BROKERS = {
     'default': {
-        'PROVIDER': 'protean.impl.broker.memory_broker.MemoryBroker'
+        'protean.impl.broker.memory_broker.MemoryBroker'
     }
 }
 
 EMAIL_PROVIDERS = {
     'default': {
-        "PROVIDER": 'protean.impl.email.dummy.DummyEmailBackend'
-    },
-    "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com'
+        "PROVIDER": 'protean.impl.email.dummy.DummyEmailBackend',
+        "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com'
+    }
 }

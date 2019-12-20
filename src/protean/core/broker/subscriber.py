@@ -53,7 +53,7 @@ class SubscriberMeta:
 
 
 class BaseSubscriber(metaclass=_SubscriberMetaclass):
-    """Base Subsciber class that should implemented by all Domain Subscribers.
+    """Base Subscriber class that should implemented by all Domain Subscribers.
 
     This is also a marker class that is referenced when subscribers are registered
     with the domain
@@ -68,5 +68,5 @@ class BaseSubscriber(metaclass=_SubscriberMetaclass):
     @classmethod
     @abstractmethod
     def notify(self, domain_event):
-        """Placeholder method for recieving notifications on domain event"""
+        """Placeholder method for receiving notifications on domain event"""
         pass
