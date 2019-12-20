@@ -12,7 +12,10 @@ class BaseEmailProvider:
     Concrete implementations must overwrite `send_messages()`.
     ```
     """
-    def __init__(self, fail_silently=False, **kwargs):
+    def __init__(self, name, domain, conn_info, fail_silently=False, **kwargs):
+        self.name = name
+        self.domain = domain
+        self.conn_info = conn_info
         self.fail_silently = fail_silently
 
     @abstractmethod
@@ -88,7 +91,7 @@ class BaseEmail(metaclass=_EmailMetaclass):
 
     def __init__(self, subject='', template='', data='',
                  from_email=None, to=None, bcc=None, cc=None,
-                 reply_to=None, provider=None, **kwargs):
+                 reply_to=None, **kwargs):
         """
         Initialize a single email message (which can be sent to multiple
         recipients).
@@ -97,7 +100,8 @@ class BaseEmail(metaclass=_EmailMetaclass):
         self.cc = convert_str_values_to_list(cc)
         self.bcc = convert_str_values_to_list(bcc)
 
-        self.from_email = from_email or current_domain.config['EMAIL_PROVIDERS']['DEFAULT_FROM_EMAIL']
+        provider = current_domain.get_email_provider(self.meta_.provider)
+        self.from_email = from_email or provider.conn_info['DEFAULT_FROM_EMAIL']
         self.reply_to = convert_str_values_to_list(reply_to) if reply_to else self.from_email
 
         self.subject = subject
@@ -105,6 +109,13 @@ class BaseEmail(metaclass=_EmailMetaclass):
         self.data = data
         self.kwargs = kwargs
         self.provider = provider
+
+        # Construct body from template and data
+        self.body = self._construct_body_from_template()
+
+    def _construct_body_from_template(self):
+        # FIXME Superimpose data on template
+        return self.template
 
     @property
     def mime_message(self):

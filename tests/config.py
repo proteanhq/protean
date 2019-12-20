@@ -48,7 +48,7 @@ BROKERS = {
 
 EMAIL_PROVIDERS = {
     'default': {
-        "PROVIDER": 'protean.impl.email.dummy.DummyEmailBackend'
-    },
-    "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com'
+        "PROVIDER": 'protean.impl.email.dummy.DummyEmailProvider',
+        "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com'
+    }
 }

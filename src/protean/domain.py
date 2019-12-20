@@ -182,9 +182,9 @@ class Domain(_PackageBoundObject):
             },
             "EMAIL_PROVIDERS": {
                 'default': {
-                    "PROVIDER": 'protean.impl.email.dummy.DummyEmailBackend'
-                },
-                "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com'
+                    "PROVIDER": 'protean.impl.email.dummy.DummyEmailProvider',
+                    "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com'
+                }
             }
         }
     )
@@ -898,16 +898,6 @@ class Domain(_PackageBoundObject):
 
         self._email_providers = email_provider_objects
 
-        # Initialize Email Classes for Email Providers
-        for _, email_record in self.emails.items():
-            subscriber = email_record.cls
-            provider_name = subscriber.meta_.provider
-
-            if provider_name not in self._email_providers:
-                raise ConfigurationError(f"Provider {provider_name} has not been configured.")
-
-            self._email_providers[provider_name].register(subscriber.meta_.domain_event_cls, subscriber)
-
     def has_email_provider(self, provider_name):
         if self._email_providers is None:
             self._initialize_email_providers()
@@ -944,4 +934,4 @@ class Domain(_PackageBoundObject):
             current_uow.register_email(email)
         else:
             logger.debug(f'Pushing {email.__class__.__name__} with content {repr(email)}')
-            self._email_providers[email.provider_name].send_message(email)
+            self._email_providers[email.meta_.provider].send_email(email)

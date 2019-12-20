@@ -11,6 +11,9 @@ class DummyEmailProvider(BaseEmailProvider):
     An email backend to simulate Email messages
     """
 
+    def __init__(self, name, domain, conn_info):
+        super().__init__(name, domain, conn_info)
+
     def send_email(self, messages, dynamic_template=False):
         """Output message into log"""
 
