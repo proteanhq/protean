@@ -1,3 +1,5 @@
+# cSpell: disable
+
 # Protean
 from protean.utils import IdentityStrategy, IdentityType
 
@@ -37,13 +39,14 @@ IDENTITY_TYPE = IdentityType.STRING
 # Messaging Mediums
 BROKERS = {
     'default': {
-        'protean.impl.broker.memory_broker.MemoryBroker'
+        'PROVIDER': 'protean.impl.broker.memory_broker.MemoryBroker'
     }
 }
 
 EMAIL_PROVIDERS = {
     'default': {
-        "PROVIDER": 'protean.impl.email.dummy.DummyEmailProvider',
-        "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com'
+        "PROVIDER": 'protean.impl.email.sendgrid_email.SendgridEmailProvider',
+        "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com',
+        "API_KEY": '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'
     }
 }

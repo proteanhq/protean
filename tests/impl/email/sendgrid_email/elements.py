@@ -19,6 +19,7 @@ class Person(BaseAggregate):
     def add_newcomer(cls, person_dict):
         """Factory method to add a new Person to the system"""
         newcomer = Person(
+            email=person_dict['email'],
             first_name=person_dict['first_name'],
             last_name=person_dict['last_name'],
             age=person_dict['age'],
@@ -37,14 +38,7 @@ class PersonAdded(BaseDomainEvent):
 class WelcomeEmail(BaseEmail):
     """Emailer to welcome new additions"""
     SUBJECT = 'Welcome to ABC!'
-    TEMPLATE = """
-        Hi %FIRST_NAME%!
-
-        Welcome to ABC!
-
-        Regards,
-        Team
-    """
+    TEMPLATE_ID = 'd-2709347159b04353aae539cdf4b1217a'
 
     def __init__(self, to=None, data=None):
         if to is None or data is None:
@@ -53,7 +47,7 @@ class WelcomeEmail(BaseEmail):
         if not isinstance(data, dict):
             raise InvalidDataError("`data` should be a dict")
 
-        super().__init__(subject=self.SUBJECT, template=self.TEMPLATE, data=data, to=to)
+        super().__init__(subject=self.SUBJECT, template_id=self.TEMPLATE_ID, data=data, to=to)
 
 
 class WelcomeNewPerson(BaseSubscriber):

@@ -72,7 +72,7 @@ class EmailMeta:
     """
 
     def __init__(self, entity_name, meta):
-        self.provider = getattr(meta, 'provider', None)
+        self.provider = getattr(meta, 'provider', 'default')
 
 
 class BaseEmail(metaclass=_EmailMetaclass):
@@ -91,7 +91,7 @@ class BaseEmail(metaclass=_EmailMetaclass):
 
     def __init__(self, subject='', template='', data='',
                  from_email=None, to=None, bcc=None, cc=None,
-                 reply_to=None, **kwargs):
+                 reply_to=None, template_id='', **kwargs):
         """
         Initialize a single email message (which can be sent to multiple
         recipients).
@@ -106,12 +106,14 @@ class BaseEmail(metaclass=_EmailMetaclass):
 
         self.subject = subject
         self.template = template
+        self.template_id = template_id
         self.data = data
         self.kwargs = kwargs
         self.provider = provider
 
         # Construct body from template and data
-        self.body = self._construct_body_from_template()
+        if self.template and not self.template_id:
+            self.body = self._construct_body_from_template()
 
     def _construct_body_from_template(self):
         # FIXME Superimpose data on template
@@ -121,12 +123,12 @@ class BaseEmail(metaclass=_EmailMetaclass):
     def mime_message(self):
         """ Convert the message to a mime compliant email string """
         return '\n'.join(
-            [self.from_email, str(self.to), self.subject[:25], self.body[:25]])
+            [self.from_email, str(self.to), self.subject[:25]])
 
     def __repr__(self):
         """ Convert the message to a mime compliant email string """
         return '\n'.join(
-            [self.from_email, str(self.to), self.subject[:25], self.body[:25]])
+            [self.from_email, str(self.to), self.subject[:25]])
 
     @property
     def recipients(self):
