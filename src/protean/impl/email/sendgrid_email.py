@@ -20,19 +20,15 @@ class SendgridEmailProvider(BaseEmailProvider):
 
         email = Mail(
             from_email=message.from_email or self.conn_info['DEFAULT_FROM_EMAIL'],
-            to_emails=message.to,
-            subject=message.subject)
-        email.content = Content(
-            MimeType.html,
-            '<strong>Test, Test, and Test again</strong>')
+            to_emails=message.to)
         email.dynamic_template_data = message.data
         email.template_id = TemplateId(message.template_id)
 
         try:
             response = self.sg_client.send(email)
-            print(response.status_code)
-            print(response.body)
-            print(response.headers)
+
+            if response.status_code != 202:
+                logger.error(f'Error encountered while sending Email: {response.status_code}')
         except Exception as e:
             logger.error(f'Error encountered while sending Email: {e}')
 

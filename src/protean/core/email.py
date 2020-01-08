@@ -101,23 +101,15 @@ class BaseEmail(metaclass=_EmailMetaclass):
         self.bcc = convert_str_values_to_list(bcc)
 
         provider = current_domain.get_email_provider(self.meta_.provider)
+        self.provider = provider
         self.from_email = from_email or provider.conn_info['DEFAULT_FROM_EMAIL']
+
         self.reply_to = convert_str_values_to_list(reply_to) if reply_to else self.from_email
 
         self.subject = subject
-        self.template = template
         self.template_id = template_id
         self.data = data
         self.kwargs = kwargs
-        self.provider = provider
-
-        # Construct body from template and data
-        if self.template and not self.template_id:
-            self.body = self._construct_body_from_template()
-
-    def _construct_body_from_template(self):
-        # FIXME Superimpose data on template
-        return self.template
 
     @property
     def mime_message(self):

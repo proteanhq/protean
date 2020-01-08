@@ -1,3 +1,5 @@
+import pytest
+
 from mock import patch
 from protean.impl.email.sendgrid_email import SendgridEmailProvider
 
@@ -5,6 +7,7 @@ from protean.impl.email.sendgrid_email import SendgridEmailProvider
 from .elements import Person, PersonAdded, WelcomeEmail, WelcomeNewPerson
 
 
+@pytest.mark.sendgrid
 class TestEmailTriggering:
     @patch.object(SendgridEmailProvider, 'send_email')
     def test_that_email_is_pushed_via_aggregate_command_method(self, mock, test_domain):
