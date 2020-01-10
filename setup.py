@@ -69,14 +69,10 @@ setup(
         'psycopg2==2.8.3',
         'python-dateutil==2.8.0',
         'rq==1.1.0',
+        'sendgrid==6.1.0',
         'sqlalchemy==1.3.4',
         'werkzeug==0.15.4'
     ],
-    extras_require={
-        # eg:
-        #   'rst': ['docutils>=0.11'],
-        #   ':python_version=="2.6"': ['argparse'],
-    },
     entry_points={
         'console_scripts': [
             'protean = protean.cli:main',

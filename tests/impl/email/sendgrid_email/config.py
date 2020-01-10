@@ -1,5 +1,7 @@
+# cSpell: disable
+
 # Protean
-from protean.utils import Database, IdentityStrategy, IdentityType
+from protean.utils import IdentityStrategy, IdentityType
 
 DEBUG = True
 TESTING = True
@@ -13,11 +15,6 @@ SECRET_KEY = 'tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA'
 DATABASES = {
     'default': {
         'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'
-    },
-    'sqlite': {
-        'PROVIDER': 'protean.impl.repository.sqlalchemy_repo.SAProvider',
-        'DATABASE': Database.SQLITE.value,
-        'DATABASE_URI': 'sqlite:///test.db'
     }
 }
 
@@ -48,7 +45,8 @@ BROKERS = {
 
 EMAIL_PROVIDERS = {
     'default': {
-        "PROVIDER": 'protean.impl.email.dummy.DummyEmailProvider',
-        "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com'
+        "PROVIDER": 'protean.impl.email.sendgrid_email.SendgridEmailProvider',
+        "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com',
+        "API_KEY": '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'
     }
 }

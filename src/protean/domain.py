@@ -38,6 +38,7 @@ class DomainObjects(Enum):
     DATA_TRANSFER_OBJECT = 'DATA_TRANSFER_OBJECT'
     DOMAIN_EVENT = 'DOMAIN_EVENT'
     DOMAIN_SERVICE = 'DOMAIN_SERVICE'
+    EMAIL = 'EMAIL'
     ENTITY = 'ENTITY'
     REPOSITORY = 'REPOSITORY'
     REQUEST_OBJECT = 'REQUEST_OBJECT'
@@ -120,6 +121,7 @@ class Domain(_PackageBoundObject):
     from protean.core.data_transfer_object import BaseDataTransferObject
     from protean.core.domain_event import BaseDomainEvent
     from protean.core.domain_service import BaseDomainService
+    from protean.core.email import BaseEmail
     from protean.core.entity import BaseEntity
     from protean.core.repository.base import BaseRepository
     from protean.core.serializer import BaseSerializer
@@ -177,6 +179,12 @@ class Domain(_PackageBoundObject):
                 'default': {
                     'PROVIDER': 'protean.impl.broker.memory_broker.MemoryBroker',
                 }
+            },
+            "EMAIL_PROVIDERS": {
+                'default': {
+                    "PROVIDER": 'protean.impl.email.dummy.DummyEmailProvider',
+                    "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com'
+                }
             }
         }
     )
@@ -190,6 +198,7 @@ class Domain(_PackageBoundObject):
             DomainObjects.DOMAIN_EVENT.value: BaseDomainEvent,
             DomainObjects.DOMAIN_SERVICE.value: BaseDomainService,
             DomainObjects.ENTITY.value: BaseEntity,
+            DomainObjects.EMAIL.value: BaseEmail,
             DomainObjects.REPOSITORY.value: BaseRepository,
             DomainObjects.REQUEST_OBJECT.value: BaseRequestObject,
             DomainObjects.SERIALIZER.value: marshmallow.Schema,
@@ -219,6 +228,7 @@ class Domain(_PackageBoundObject):
 
         self.providers = None
         self._brokers = None
+        self._email_providers = None
 
         #: A list of functions that are called when the domain context
         #: is destroyed.  This is the place to store code that cleans up and
@@ -363,6 +373,10 @@ class Domain(_PackageBoundObject):
         return self._domain_registry._elements[DomainObjects.DOMAIN_SERVICE.value]
 
     @property
+    def emails(self):
+        return self._domain_registry._elements[DomainObjects.EMAIL.value]
+
+    @property
     def entities(self):
         return self._domain_registry._elements[DomainObjects.ENTITY.value]
 
@@ -459,6 +473,10 @@ class Domain(_PackageBoundObject):
             new_cls.meta_.command_cls = command_cls
             new_cls.meta_.broker = broker_name
 
+        if element_type == DomainObjects.EMAIL and self._validate_email_class(new_cls):
+            provider_name = new_cls.meta_.provider or 'default'
+            new_cls.meta_.provider = provider_name
+
         # Enrich element with domain information
         if hasattr(new_cls, 'meta_'):
             new_cls.meta_.aggregate_cls = aggregate_cls or kwargs.pop('aggregate_cls', None)
@@ -525,6 +543,16 @@ class Domain(_PackageBoundObject):
 
         return True
 
+    def _validate_email_class(self, element_cls):
+        # Import here to avoid cyclic dependency
+        from protean.core.email import BaseEmail
+
+        if not issubclass(element_cls, BaseEmail):
+            raise AssertionError(
+                f'Element {element_cls.__name__} must be subclass of `BaseEmail`')
+
+        return True
+
     # _cls should never be specified by keyword, so start it with an
     # underscore.  The presence of _cls is used to detect if this
     # decorator is being called with parameters or not.
@@ -585,6 +613,11 @@ class Domain(_PackageBoundObject):
     def entity(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.ENTITY, _cls=_cls, **kwargs,
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
+
+    def email(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
+        return self._domain_element(
+            DomainObjects.EMAIL, _cls=_cls, **kwargs,
             aggregate_cls=aggregate_cls, bounded_context=bounded_context)
 
     def repository(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
@@ -845,3 +878,60 @@ class Domain(_PackageBoundObject):
             logger.debug(f'Publishing {command.__class__.__name__} with values {command.to_dict()}')
             for broker_name in self._brokers:
                 self._brokers[broker_name].send_message(command)
+
+    def _initialize_email_providers(self):
+        """Read config file and initialize email providers"""
+        configured_email_providers = self.config['EMAIL_PROVIDERS']
+        email_provider_objects = {}
+
+        if configured_email_providers and isinstance(configured_email_providers, dict):
+            if 'default' not in configured_email_providers:
+                raise ConfigurationError(
+                    "You must define a 'default' email provider")
+
+            for provider_name, conn_info in configured_email_providers.items():
+                provider_full_path = conn_info['PROVIDER']
+                provider_module, provider_class = provider_full_path.rsplit('.', maxsplit=1)
+
+                provider_cls = getattr(importlib.import_module(provider_module), provider_class)
+                email_provider_objects[provider_name] = provider_cls(provider_name, self, conn_info)
+
+        self._email_providers = email_provider_objects
+
+    def has_email_provider(self, provider_name):
+        if self._email_providers is None:
+            self._initialize_email_providers()
+
+        return provider_name in self._email_providers
+
+    def get_email_provider(self, provider_name):
+        """Retrieve the email provider object with a given provider name"""
+        if self._email_providers is None:
+            self._initialize_email_providers()
+
+        try:
+            return self._email_providers[provider_name]
+        except KeyError:
+            raise AssertionError(f'No Provider registered with name {provider_name}')
+
+    @property
+    def email_providers_list(self):
+        """A generator that helps users iterator through email providers"""
+        if self._email_providers is None:
+            self._initialize_email_providers()
+
+        for provider_name in self._email_providers:
+            yield self._email_providers[provider_name]
+
+    def send_email(self, email):
+        """Push email through registered provider"""
+        if self._email_providers is None:
+            self._initialize_email_providers()
+
+        if current_uow:
+            logger.debug(f'Recording email {email.__class__.__name__} '
+                         f'to be sent to {repr(email)} in {current_uow}')
+            current_uow.register_email(email)
+        else:
+            logger.debug(f'Pushing {email.__class__.__name__} with content {repr(email)}')
+            self._email_providers[email.meta_.provider].send_email(email)
