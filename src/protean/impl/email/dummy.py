@@ -17,5 +17,5 @@ class DummyEmailProvider(BaseEmailProvider):
     def send_email(self, message, dynamic_template=False):
         """Output message into log"""
 
-        logger.info('Email message dispatched: %s' % message.mime_message())
+        logger.debug('Email message dispatched: %s' % message.mime_message)
         return True

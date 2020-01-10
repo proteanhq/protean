@@ -28,7 +28,9 @@ class InvalidDataError(Exception):
 
 
 class InvalidStateError(Exception):
-    """Object is in invalid state for the given operation"""
+    """Object is in invalid state for the given operation
+
+    Equivalent to 409 (Conflict)"""
 
 
 class InvalidOperationError(Exception):

@@ -2,7 +2,7 @@
 import logging
 
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Content, Mail, MimeType, TemplateId
+from sendgrid.helpers.mail import Mail, TemplateId
 
 from protean.core.email import BaseEmailProvider
 
@@ -29,6 +29,8 @@ class SendgridEmailProvider(BaseEmailProvider):
 
             if response.status_code != 202:
                 logger.error(f'Error encountered while sending Email: {response.status_code}')
+
+            logger.debug(f'Email pushed to SendGrid successfully: {message.mime_message}')
         except Exception as e:
             logger.error(f'Error encountered while sending Email: {e}')
 

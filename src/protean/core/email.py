@@ -89,7 +89,7 @@ class BaseEmail(metaclass=_EmailMetaclass):
             raise TypeError("BaseEmail cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, subject='', template='', data='',
+    def __init__(self, subject='', data='',
                  from_email=None, to=None, bcc=None, cc=None,
                  reply_to=None, template_id='', **kwargs):
         """
