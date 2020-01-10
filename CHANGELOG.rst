@@ -2,6 +2,18 @@
 Release History
 ===============
 
+0.3.3 (2020-01-10)
+------------------
+
+* Email Notifications Functionality
+* Support for SendGrid
+* Allow ad-hoc Identity Generation
+
+0.3.2 (2019-10-17)
+------------------
+
+* Auto-traversal bug fixes
+
 0.3.1 (2019-10-15)
 ------------------
 
