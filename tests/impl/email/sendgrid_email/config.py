@@ -47,6 +47,6 @@ EMAIL_PROVIDERS = {
     'default': {
         "PROVIDER": 'protean.impl.email.sendgrid_email.SendgridEmailProvider',
         "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com',
-        "API_KEY": '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'
+        "API_KEY": 'this-is-a-fake-key'
     }
 }
