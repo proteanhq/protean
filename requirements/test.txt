@@ -1,6 +1,6 @@
 -r dev.txt
 
-mock==4.0.0
+mock==4.0.1
 pluggy==0.13.1
 pytest-cov==2.8.1
 pytest-mock==2.0.0
