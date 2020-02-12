@@ -4,7 +4,7 @@ import pytest
 from protean.core.exceptions import InvalidOperationError, ValidationError
 
 # Local/Relative Imports
-from .elements import Account, Balance, Currency, Email, MyOrgEmail, User
+from .elements import Account, Balance, Currency, Email, MyOrgEmail, PolymorphicConnection, PolymorphicOwner, User
 
 
 class TestEquivalence:
@@ -225,3 +225,20 @@ class TestBalanceVOEmbedding:
 
         assert 'balance' in email_exception.value.messages
         assert email_exception.value.messages['balance'] == ['is required']
+
+
+class TestNamedEmbedding:
+    def test_that_explicit_names_are_used(self):
+        assert len(PolymorphicConnection.meta_.declared_fields) == 2
+        assert 'connected_id' in PolymorphicConnection.meta_.declared_fields
+        assert 'connected_type' in PolymorphicConnection.meta_.declared_fields
+
+    def test_that_explicit_names_are_preserved_in_aggregate(self):
+        assert len(PolymorphicOwner.meta_.declared_fields) == 2
+        assert 'id' in PolymorphicOwner.meta_.declared_fields
+        assert 'connector' in PolymorphicOwner.meta_.declared_fields
+
+        owner = PolymorphicOwner()
+        assert owner.meta_.attributes is not None
+        assert 'connected_id' in owner.meta_.attributes
+        assert 'connected_type' in owner.meta_.attributes

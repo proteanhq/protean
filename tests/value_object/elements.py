@@ -4,7 +4,7 @@ from enum import Enum
 
 # Protean
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import Float, Integer, String
+from protean.core.field.basic import Float, Identifier, Integer, String
 from protean.core.field.embedded import ValueObjectField
 from protean.core.value_object import BaseValueObject
 
@@ -108,3 +108,12 @@ class Building(BaseValueObject):
         if self.floors >= 4 and self.status != BuildingStatus.DONE.value:
             errors['status'].append('should be DONE')
         return errors
+
+
+class PolymorphicConnection(BaseValueObject):
+    connected_id = Identifier(referenced_as='connected_id')
+    connected_type = String(referenced_as='connected_type', max_length=15)
+
+
+class PolymorphicOwner(BaseAggregate):
+    connector = ValueObjectField(PolymorphicConnection)

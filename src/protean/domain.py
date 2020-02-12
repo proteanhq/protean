@@ -762,7 +762,7 @@ class Domain(_PackageBoundObject):
                 repository for _, repository in self.repositories.items()
                 if repository.cls.meta_.aggregate_cls.__name__ == aggregate_cls.__name__)
         except StopIteration:
-            logger.info(f'Constructing a Repository for {aggregate_cls}...')
+            logger.debug(f'Constructing a Repository for {aggregate_cls}...')
 
             from protean.core.repository.base import BaseRepository
             new_class = type(aggregate_cls.__name__ + 'Repository', (BaseRepository, ), {})

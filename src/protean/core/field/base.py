@@ -50,13 +50,14 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
     # These values will trigger the self.required check.
     empty_values = (None, '', [], (), {})
 
-    def __init__(self, identifier: bool = False, default: Any = None,
+    def __init__(self, referenced_as: str = None,
+                 identifier: bool = False, default: Any = None,
                  required: bool = False, unique: bool = False,
                  label: str = None, choices: enum.Enum = None,
                  validators: Iterable = (), value=None, error_messages: dict = None):
 
         # Nothing to be passed into FieldCacheMixin for initialization
-        super().__init__(**{})
+        super().__init__(referenced_as=referenced_as)
 
         self.identifier = identifier
         self.default = default

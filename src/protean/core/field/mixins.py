@@ -35,6 +35,7 @@ class FieldDescriptorMixin:
         # These are set up when the owner (Entity class) adds the field to itself
         self.field_name = None
         self.attribute_name = None
+        self.referenced_as = kwargs.pop('referenced_as', None)
         self.label = None
 
     def __set_name__(self, entity_cls, name):
@@ -54,7 +55,7 @@ class FieldDescriptorMixin:
         Defaults to the field name in this base class, but can be overridden.
         Handy when defining complex objects with shadow attributes, like Foreign keys.
         """
-        return self.field_name
+        return self.referenced_as if self.referenced_as else self.field_name
 
     def __get__(self, instance, owner):
         """Placeholder for handling `getattr` operations on attributes"""

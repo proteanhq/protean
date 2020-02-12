@@ -116,7 +116,7 @@ class BaseContainer(metaclass=_ContainerMetaclass):
         """
         Initialise the container.
 
-        During initialization, set value on fields if vaidation passes.
+        During initialization, set value on fields if validation passes.
 
         This initialization technique supports keyword arguments as well as dictionaries. You
             can even use a template for initial data.
@@ -188,7 +188,7 @@ class BaseContainer(metaclass=_ContainerMetaclass):
         return defaultdict(list)
 
     def __eq__(self, other):
-        """Equaivalence check for commands is based only on data.
+        """Equivalence check for commands is based only on data.
 
         Two Commands are considered equal if they have the same data.
         """

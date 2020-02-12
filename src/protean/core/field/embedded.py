@@ -1,4 +1,4 @@
-"""Module for defining embeddable fields"""
+"""Module for defining embedded fields"""
 
 # Protean
 from protean.core.field.base import Field
@@ -47,7 +47,12 @@ class ValueObjectField(Field):
 
         self.embedded_fields = {}
         for field_name, field_obj in self._value_object_cls.meta_.declared_fields.items():
-            self.embedded_fields[field_name] = _ShadowField(self, field_name, field_obj.__class__)
+            self.embedded_fields[field_name] = _ShadowField(
+                self, field_name, field_obj.__class__,
+                # FIXME Pass all other kwargs here
+                #   Because we want the shadow field to mimic the behavior of the actual field
+                #   Which means that ShadowField somehow has to become an Integer, Float, String, etc.
+                referenced_as=field_obj.referenced_as)
 
     @property
     def value_object_cls(self):
@@ -68,7 +73,10 @@ class ValueObjectField(Field):
         super().__set_name__(entity_cls, name)
         # Refresh underlying embedded field names
         for embedded_field in self.embedded_fields.values():
-            embedded_field.attribute_name = self.field_name + '_' + embedded_field.field_name
+            if embedded_field.referenced_as:
+                embedded_field.attribute_name = embedded_field.referenced_as
+            else:
+                embedded_field.attribute_name = self.field_name + '_' + embedded_field.field_name
 
     def get_shadow_fields(self):
         """Return shadow field
