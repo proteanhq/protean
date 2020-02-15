@@ -183,7 +183,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
         """
 
         # Check if value is one among recognized empty values, or is False (for complex objects)
-        if value in self.empty_values or not value:
+        if value in self.empty_values:
             # If a default has been set for the field return it
             if self.default is not None:
                 default = self.default

@@ -10,6 +10,7 @@ import pytest
 
 from protean.core.exceptions import ValidationError
 from protean.core.field.basic import Auto, Boolean, Date, DateTime, Dict, Float, Integer, List, String, Text
+from protean.core.aggregate import BaseAggregate
 
 
 class TestStringField:
@@ -165,6 +166,23 @@ class TestBooleanField:
         with pytest.raises(ValidationError):
             married = Boolean()
             married._load('x')
+
+    def test_default_value(self):
+        """Test that Boolean fields accept default values properly"""
+
+        class Youth(BaseAggregate):
+            name = String(max_length=50)
+            married = Boolean(default=False)
+
+        class Adult(BaseAggregate):
+            name = String(max_length=50)
+            married = Boolean(default=True)
+
+        youth = Youth(name='Baby Doe')
+        adult = Adult(name='John Doe')
+
+        assert youth.married is False
+        assert adult.married is True
 
 
 class TestListField:

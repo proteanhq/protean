@@ -138,7 +138,7 @@ class DictProvider(BaseProvider):
             stripped_key, lookup_class = self._extract_lookup(key)
             lookup = lookup_class(record_value[stripped_key], value)
 
-            if record_value[stripped_key]:  # Do not evaluate if the value is None
+            if record_value[stripped_key] is not None:
                 if negated:
                     match &= not eval(lookup.as_expression())
                 else:
@@ -366,7 +366,7 @@ class DictDAO(BaseDAO):
         """Run raw query on Repository.
 
         For this stand-in repository, the query string is a json string that contains kwargs
-        criteria with straigh-forward equality checks. Individual criteria are always ANDed
+        criteria with straight-forward equality checks. Individual criteria are always AND-ed
         and the result is always a subset of the full repository.
 
         We will ignore the `data` parameter for this kind of repository.
