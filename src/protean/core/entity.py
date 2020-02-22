@@ -191,7 +191,7 @@ class EntityMeta:
     def unique_fields(self):
         """ Return the unique fields for this entity """
         return [(field_name, field_obj)
-                for field_name, field_obj in self.declared_fields.items()
+                for field_name, field_obj in self.attributes.items()
                 if not isinstance(field_obj, Association) and field_obj.unique]
 
     @property

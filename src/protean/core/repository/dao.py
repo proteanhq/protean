@@ -121,7 +121,7 @@ class BaseDAO(metaclass=ABCMeta):
 
         Method invocation should update the existing data in the persistent store, by its unique identifier.
 
-        This method is invoked by DAO's `update` wrapper method and should not be called directly.
+        This method is invoked by the DAO's `update` wrapper method and should not be called directly.
 
         Returns the updated model object.
 
