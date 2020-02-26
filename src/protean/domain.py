@@ -856,6 +856,14 @@ class Domain(_PackageBoundObject):
         if self._brokers is None:
             self._initialize_brokers()
 
+        # Log event into a table before pushing to brokers. This will give a chance to recover from errors.
+        #   There is a pseudo-check to ensure `EventLog` is registered in the domain, to ensure that apps
+        #   know about this functionality and opt for it explicitly.
+        from protean.infra.event_log import EventLog
+        if 'protean.infra.event_log.EventLog' in self._domain_registry._elements[DomainObjects.AGGREGATE.value]:
+            event_dao = self.get_dao(EventLog)
+            event_dao.create(kind=domain_event.__class__.__name__, payload=domain_event.to_dict())
+
         if current_uow:
             logger.debug(f'Recording {domain_event.__class__.__name__} '
                          f'with values {domain_event.to_dict()} in {current_uow}')

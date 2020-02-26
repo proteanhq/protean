@@ -66,5 +66,5 @@ class WelcomeNewPerson(BaseSubscriber):
         domain_event_cls = PersonAdded
 
     def notify(self, domain_event):
-        email = WelcomeEmail(to=domain_event.person.email, data=domain_event.person.to_dict())
+        email = WelcomeEmail(to=domain_event.person['email'], data=domain_event.person)
         current_domain.send_email(email)
