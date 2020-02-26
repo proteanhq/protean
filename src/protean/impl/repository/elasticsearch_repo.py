@@ -139,7 +139,7 @@ class ElasticsearchDAO(BaseDAO):
                 f'`{self.entity_cls.__name__}` object with identifier {identifier} '
                 f'does not exist.')
         except Exception as error:
-            logger.error(f"Unkwown error occured when fetching {identifier}: {error}")
+            logger.error(f"Unknown error occurred when fetching {identifier}: {error}")
             raise (
                 f'`{self.entity_cls.__name__}` object with identifier {identifier} '
                 f'does not exist.')

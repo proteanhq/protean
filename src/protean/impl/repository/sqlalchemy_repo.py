@@ -322,7 +322,7 @@ class SADAO(BaseDAO):
         try:
             values = {}
             if args:
-                values = args[0]  # `args[0]` is required because `*args` is sent as a typle
+                values = args[0]  # `args[0]` is required because `*args` is sent as a tuple
             values.update(kwargs)
             updated_count = qs.update(values)
         except DatabaseError as exc:
@@ -453,7 +453,7 @@ class SAProvider(BaseProvider):
 
         return {}
 
-    def _execute_database_specific_connection_stmts(self, conn):
+    def _execute_database_specific_connection_statements(self, conn):
         if self.conn_info['DATABASE'] == Database.SQLITE.value:
             conn.execute('PRAGMA case_sensitive_like = ON;')
 
@@ -477,7 +477,7 @@ class SAProvider(BaseProvider):
             session_cls = self.get_session()
 
         conn = session_cls()
-        conn = self._execute_database_specific_connection_stmts(conn)
+        conn = self._execute_database_specific_connection_statements(conn)
 
         return conn
 

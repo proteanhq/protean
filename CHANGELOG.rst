@@ -6,7 +6,9 @@ DEV
 ---
 
 * Add support for referencing embedded fields with a defined name
-* Fix bug with setting `default=False` on Boolean fields and filtering for `False` in field values
+* Fix to allow `default=False` on Boolean fields and subsequent filtering for `False` in field values
+* Fix to use Entity attributes to derive field names of unique fields, instead of `declared_fields`
+* Add support for logging events into a universal `EventLog` table before publishing to brokers
 
 0.3.3 (2020-01-10)
 ------------------
@@ -43,7 +45,7 @@ DEV
 * Enhancements and fixes for Unit of Work functionality to work well with SQLAlchemy type database plugins
 * Unit of Work transactions now control event publishing and release events to the stream only on a successful commit
 * A Simplified element registration process to the domain
-* Validation bugfixes in Aggregates, Entities and Value Objects
+* Validation bug fixes in Aggregates, Entities and Value Objects
 * Fully functional and configurable logs throughout Protean codebase
 * Test case restructuring for clarity and isolation of configurations
 
@@ -74,8 +76,8 @@ DEV
 * Replace `page` and `per_page` with `limit` and `offset`
 * Add Command utility to generate Protean project template
 * Provide command line utilities for `--version` and `test`
-* Bugfix: Handled quotes and escape properly in string values in Dictionary repository
-* Add documentation for Overriding Entity Lifecycle methods
+* Bug fix: Handled quotes and escape properly in string values in Dictionary repository
+* Add documentation for Overriding Entity Life cycle methods
 * Add ability to mark tests as slow and run slow tests in travis
 
 0.0.10 (2019-04-05)
@@ -92,14 +94,14 @@ DEV
 * Rename ``Lookup`` class to ``BaseLookup``
 * Associate Lookups with Concrete Provider classes
 * Provide option to fully bake a model class in case it needs to be decorated for a specific database, via the ``get_model`` method in concrete Provider class
-* Add support for Entity Namespacing
+* Add support for Entity Namespaces
 * Refactor Repository Factory for better consistency of registry
 
 0.0.9 (2019-03-08)
 ------------------
 
 * Minor fixes for issues found while migrating SQLAlchemy plugin to 0.0.8 version
-* `delete` method should query by value of `id_field` instead of hardcoded `id`
+* `delete` method should query by value of `id_field` instead of hard-coded `id`
 
 0.0.8 (2019-02-27)
 ------------------
