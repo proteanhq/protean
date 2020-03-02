@@ -67,6 +67,6 @@ class BaseSubscriber(metaclass=_SubscriberMetaclass):
 
     @classmethod
     @abstractmethod
-    def notify(self, domain_event):
+    def notify(cls, domain_event):
         """Placeholder method for receiving notifications on domain event"""
         pass

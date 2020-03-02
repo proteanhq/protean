@@ -40,6 +40,7 @@ class DomainObjects(Enum):
     DOMAIN_SERVICE = 'DOMAIN_SERVICE'
     EMAIL = 'EMAIL'
     ENTITY = 'ENTITY'
+    MODEL = 'MODEL'
     REPOSITORY = 'REPOSITORY'
     REQUEST_OBJECT = 'REQUEST_OBJECT'
     SERIALIZER = 'SERIALIZER'
@@ -57,15 +58,13 @@ class _DomainRegistry:
         qualname: str
         class_type: str
         cls: Any
-        provider_name: str
-        model_cls: Any
 
     def __post_init__(self):
         """Initialize placeholders for element types"""
         for element_type in DomainObjects:
             self._elements[element_type.value] = defaultdict(dict)
 
-    def register_element(self, element_cls, provider_name=None, model_cls=None):
+    def register_element(self, element_cls):
         if element_cls.element_type.name not in DomainObjects.__members__:
             raise NotImplementedError
 
@@ -80,9 +79,7 @@ class _DomainRegistry:
                 name=element_cls.__name__,
                 qualname=element_name,
                 class_type=element_cls.element_type.value,
-                cls=element_cls,
-                provider_name=provider_name,
-                model_cls=model_cls  # FIXME Remove `model_cls` from being stored here
+                cls=element_cls
             )
 
             self._elements[element_cls.element_type.value][element_name] = element_record
@@ -123,6 +120,7 @@ class Domain(_PackageBoundObject):
     from protean.core.domain_service import BaseDomainService
     from protean.core.email import BaseEmail
     from protean.core.entity import BaseEntity
+    from protean.core.repository.model import BaseModel
     from protean.core.repository.base import BaseRepository
     from protean.core.serializer import BaseSerializer
     from protean.core.transport.request import BaseRequestObject
@@ -199,6 +197,7 @@ class Domain(_PackageBoundObject):
             DomainObjects.DOMAIN_SERVICE.value: BaseDomainService,
             DomainObjects.ENTITY.value: BaseEntity,
             DomainObjects.EMAIL.value: BaseEmail,
+            DomainObjects.MODEL.value: BaseModel,
             DomainObjects.REPOSITORY.value: BaseRepository,
             DomainObjects.REQUEST_OBJECT.value: BaseRequestObject,
             DomainObjects.SERIALIZER.value: marshmallow.Schema,
@@ -230,12 +229,16 @@ class Domain(_PackageBoundObject):
         self._brokers = None
         self._email_providers = None
 
+        # Cache for holding Model to Entity/Aggregate associations
+        self._models = {}
+
         #: A list of functions that are called when the domain context
         #: is destroyed.  This is the place to store code that cleans up and
         #: disconnects from databases, for example.
         self.teardown_domain_context_functions = []
 
     def init(self):
+        # FIXME Add Documentation
         if self.config['AUTOLOAD_DOMAIN'] is True:
             import importlib.util
             import inspect
@@ -377,6 +380,10 @@ class Domain(_PackageBoundObject):
         return self._domain_registry._elements[DomainObjects.EMAIL.value]
 
     @property
+    def models(self):
+        return self._domain_registry._elements[DomainObjects.MODEL.value]
+
+    @property
     def entities(self):
         return self._domain_registry._elements[DomainObjects.ENTITY.value]
 
@@ -446,7 +453,7 @@ class Domain(_PackageBoundObject):
         if (element_type in (DomainObjects.AGGREGATE, DomainObjects.ENTITY) and
                 self._validate_persistence_class(new_cls)):
             provider_name = provider_name or new_cls.meta_.provider or 'default'
-            model_cls = None  # FIXME Add ability to specify model_cls explicitly
+            model_cls = model_cls or new_cls.meta_.model or None
 
         aggregate_cls = None
         if ((element_type == DomainObjects.REPOSITORY and self._validate_repository_class(new_cls))
@@ -455,11 +462,16 @@ class Domain(_PackageBoundObject):
             if not aggregate_cls:
                 raise IncorrectUsageError("Repositories and Serializers need to be associated with an Aggregate")
 
+        if (element_type == DomainObjects.MODEL and self._validate_model_class(new_cls)):
+            entity_cls = new_cls.Meta.entity_cls or kwargs.pop('entity_cls', None)
+            if not entity_cls:
+                raise IncorrectUsageError("Models need to be associated with an Entity or Aggregate")
+
         if element_type == DomainObjects.SUBSCRIBER and self._validate_subscriber_class(new_cls):
             domain_event_cls = new_cls.meta_.domain_event_cls or kwargs.pop('domain_event', None)
             broker_name = new_cls.meta_.broker or 'default'
             if not domain_event_cls:
-                raise IncorrectUsageError("Subscribers need to be associated with Domain Event")
+                raise IncorrectUsageError("Subscribers need to be associated with a Domain Event")
 
             new_cls.meta_.domain_event_cls = domain_event_cls
             new_cls.meta_.broker = broker_name
@@ -483,7 +495,12 @@ class Domain(_PackageBoundObject):
             new_cls.meta_.bounded_context = kwargs.pop('bounded_context', None)
 
         # Register element with domain
-        self._domain_registry.register_element(new_cls, provider_name=provider_name, model_cls=model_cls)
+        self._domain_registry.register_element(new_cls)
+
+        # Associate Model class with Aggregate/Entity for future reference
+        if (element_type == DomainObjects.MODEL):
+            entity_cls = new_cls.Meta.entity_cls or kwargs.pop('entity_cls', None)
+            self._models[fully_qualified_name(entity_cls)] = new_cls
 
         return new_cls
 
@@ -510,6 +527,16 @@ class Domain(_PackageBoundObject):
         if not issubclass(element_cls, BaseRepository):
             raise AssertionError(
                 f'Element {element_cls.__name__} must be subclass of `BaseRepository`')
+
+        return True
+
+    def _validate_model_class(self, element_cls):
+        # Import here to avoid cyclic dependency
+        from protean.core.repository.model import BaseModel
+
+        if not issubclass(element_cls, BaseModel):
+            raise AssertionError(
+                f'Element {element_cls.__name__} must be subclass of `BaseModel`')
 
         return True
 
@@ -620,6 +647,11 @@ class Domain(_PackageBoundObject):
             DomainObjects.EMAIL, _cls=_cls, **kwargs,
             aggregate_cls=aggregate_cls, bounded_context=bounded_context)
 
+    def model(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
+        return self._domain_element(
+            DomainObjects.MODEL, _cls=_cls, **kwargs,
+            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
+
     def repository(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.REPOSITORY, _cls=_cls, **kwargs,
@@ -691,16 +723,22 @@ class Domain(_PackageBoundObject):
 
     def get_model(self, aggregate_cls):
         """Retrieve Model class connected to Entity"""
-        aggregate_record = self._get_element_by_class(
-            (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
-            aggregate_cls)
+        # If a model was associated with the aggregate record, give it a higher priority
+        #   and do not bake a new model class from aggregate/entity attributes
+        if fully_qualified_name(aggregate_cls) in self._models:
+            model_cls = self._models[fully_qualified_name(aggregate_cls)]
+        else:
+            aggregate_record = self._get_element_by_class(
+                (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
+                aggregate_cls)
 
-        # We should ask the Provider to give a fully baked model
-        #   that has been initialized properly for this aggregate
-        provider = self.get_provider(aggregate_record.provider_name)
-        baked_model_cls = provider.get_model(aggregate_record.cls)
+            # No model was associated with the aggregate/entity explicitly.
+            #   So ask the Provider to bake a new model, initialized properly for this aggregate
+            #   and return it
+            provider = self.get_provider(aggregate_record.cls.meta_.provider)
+            model_cls = provider.get_model(aggregate_record.cls)
 
-        return baked_model_cls
+        return model_cls
 
     def _initialize_providers(self):
         """Read config file and initialize providers"""
@@ -783,7 +821,7 @@ class Domain(_PackageBoundObject):
         aggregate_record = self._get_element_by_class(
             (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
             aggregate_cls)
-        provider = self.get_provider(aggregate_record.provider_name)
+        provider = self.get_provider(aggregate_record.cls.meta_.provider)
 
         return provider.get_dao(aggregate_record.cls)
 

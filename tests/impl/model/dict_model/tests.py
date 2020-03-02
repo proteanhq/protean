@@ -1,18 +1,24 @@
+import pytest
+
 # Protean
 from protean.impl.repository.dict_repo import DictModel
 
 # Local/Relative Imports
-from .elements import Email, Person, User
+from .elements import Email, Person, User, Provider, ProviderCustomModel
 
 
 class TestModel:
+    @pytest.fixture(autouse=True)
+    def register_person_aggregate(self, test_domain):
+        test_domain.register(Person)
+
     def test_that_model_class_is_created_automatically(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(Person)
+        model_cls = test_domain.get_model(Person)
         assert issubclass(model_cls, DictModel)
         assert model_cls.__name__ == 'PersonModel'
 
     def test_conversation_from_entity_to_model(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(Person)
+        model_cls = test_domain.get_model(Person)
 
         person = Person(first_name='John', last_name='Doe')
 
@@ -25,7 +31,7 @@ class TestModel:
         assert person_model_obj['last_name'] == 'Doe'
 
     def test_conversation_from_model_to_entity(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(Person)
+        model_cls = test_domain.get_model(Person)
         person = Person(first_name='John', last_name='Doe')
         person_model_obj = model_cls.from_entity(person)
 
@@ -34,13 +40,17 @@ class TestModel:
 
 
 class TestModelWithVO:
+    @pytest.fixture(autouse=True)
+    def register_user_aggregate(self, test_domain):
+        test_domain.register(User)
+
     def test_that_model_class_is_created_automatically(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(User)
+        model_cls = test_domain.get_model(User)
         assert issubclass(model_cls, DictModel)
         assert model_cls.__name__ == 'UserModel'
 
     def test_conversation_from_entity_to_model(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(User)
+        model_cls = test_domain.get_model(User)
 
         user1 = User(email_address='john.doe@gmail.com', password='d4e5r6')
         user2 = User(email=Email(address='john.doe@gmail.com'), password='d4e5r6')
@@ -63,10 +73,19 @@ class TestModelWithVO:
         assert 'email' not in user2_model_obj
 
     def test_conversion_from_model_to_entity(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(User)
+        model_cls = test_domain.get_model(User)
         user1 = User(email_address='john.doe@gmail.com', password='d4e5r6')
         user1_model_obj = model_cls.from_entity(user1)
 
         user_copy = model_cls.to_entity(user1_model_obj)
         assert user_copy is not None
         assert user_copy.id == user1_model_obj['id']
+
+
+class TestCustomModel:
+    def test_that_custom_model_is_associated_with_entity(self, test_domain):
+        test_domain.register(Provider)
+        test_domain.register(ProviderCustomModel)
+
+        model_cls = test_domain.get_model(Provider)
+        assert model_cls.__name__ == 'ProviderCustomModel'

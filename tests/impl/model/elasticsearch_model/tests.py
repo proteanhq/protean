@@ -4,18 +4,22 @@ import pytest
 from protean.impl.repository.elasticsearch_repo import ElasticsearchModel
 
 # Local/Relative Imports
-from .elements import ComplexUser, Email, Person
+from .elements import ComplexUser, Email, Person, Provider, ProviderCustomModel
 
 
 @pytest.mark.elasticsearch
-class TestModel:
+class TestDefaultModel:
+    @pytest.fixture(autouse=True)
+    def register_person_aggregate(self, test_domain):
+        test_domain.register(Person)
+
     def test_that_model_class_is_created_automatically(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(Person)
+        model_cls = test_domain.get_model(Person)
         assert issubclass(model_cls, ElasticsearchModel)
         assert model_cls.__name__ == 'PersonModel'
 
     def test_conversation_from_entity_to_model(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(Person)
+        model_cls = test_domain.get_model(Person)
         person = Person(first_name='John', last_name='Doe')
         person_model_obj = model_cls.from_entity(person)
 
@@ -30,7 +34,7 @@ class TestModel:
         assert person_model_obj.meta.id == person.id
 
     def test_conversation_from_model_to_entity(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(Person)
+        model_cls = test_domain.get_model(Person)
         person = Person(first_name='John', last_name='Doe')
         person_model_obj = model_cls.from_entity(person)
 
@@ -42,13 +46,17 @@ class TestModel:
 
 @pytest.mark.elasticsearch
 class TestModelWithVO:
+    @pytest.fixture(autouse=True)
+    def register_complex_user_aggregate(self, test_domain):
+        test_domain.register(ComplexUser)
+
     def test_that_model_class_is_created_automatically(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(ComplexUser)
+        model_cls = test_domain.get_model(ComplexUser)
         assert issubclass(model_cls, ElasticsearchModel)
         assert model_cls.__name__ == 'ComplexUserModel'
 
     def test_conversation_from_entity_to_model(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(ComplexUser)
+        model_cls = test_domain.get_model(ComplexUser)
 
         user1 = ComplexUser(email_address='john.doe@gmail.com', password='d4e5r6')
         user2 = ComplexUser(email=Email(address='john.doe@gmail.com'), password='d4e5r6')
@@ -72,9 +80,19 @@ class TestModelWithVO:
         assert hasattr(user2_model_obj, 'email') is False
 
     def test_conversation_from_model_to_entity(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(ComplexUser)
+        model_cls = test_domain.get_model(ComplexUser)
         user1 = ComplexUser(email_address='john.doe@gmail.com', password='d4e5r6')
         user1_model_obj = model_cls.from_entity(user1)
 
         user_copy = model_cls.to_entity(user1_model_obj)
         assert user_copy is not None
+
+
+@pytest.mark.elasticsearch
+class TestCustomModel:
+    def test_that_custom_model_is_associated_with_entity(self, test_domain):
+        test_domain.register(Provider)
+        test_domain.register(ProviderCustomModel)
+
+        model_cls = test_domain.get_model(Provider)
+        assert model_cls.__name__ == 'ProviderCustomModel'

@@ -1,3 +1,5 @@
+import pytest
+
 # Protean
 from protean.impl.repository.sqlalchemy_repo import SqlalchemyModel
 
@@ -6,13 +8,17 @@ from .elements import ComplexUser, Email, Person
 
 
 class TestModel:
+    @pytest.fixture(autouse=True)
+    def register_person_aggregate(self, test_domain):
+        test_domain.register(Person)
+
     def test_that_model_class_is_created_automatically(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(Person)
+        model_cls = test_domain.get_model(Person)
         assert issubclass(model_cls, SqlalchemyModel)
         assert model_cls.__name__ == 'PersonModel'
 
     def test_conversation_from_entity_to_model(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(Person)
+        model_cls = test_domain.get_model(Person)
         person = Person(first_name='John', last_name='Doe')
         person_model_obj = model_cls.from_entity(person)
 
@@ -23,7 +29,7 @@ class TestModel:
         assert person_model_obj.last_name == 'Doe'
 
     def test_conversation_from_model_to_entity(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(Person)
+        model_cls = test_domain.get_model(Person)
         person = Person(first_name='John', last_name='Doe')
         person_model_obj = model_cls.from_entity(person)
 
@@ -32,13 +38,17 @@ class TestModel:
 
 
 class TestModelWithVO:
+    @pytest.fixture(autouse=True)
+    def register_complex_user_aggregate(self, test_domain):
+        test_domain.register(ComplexUser)
+
     def test_that_model_class_is_created_automatically(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(ComplexUser)
+        model_cls = test_domain.get_model(ComplexUser)
         assert issubclass(model_cls, SqlalchemyModel)
         assert model_cls.__name__ == 'ComplexUserModel'
 
     def test_conversation_from_entity_to_model(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(ComplexUser)
+        model_cls = test_domain.get_model(ComplexUser)
 
         user1 = ComplexUser(email_address='john.doe@gmail.com', password='d4e5r6')
         user2 = ComplexUser(email=Email(address='john.doe@gmail.com'), password='d4e5r6')
@@ -61,7 +71,7 @@ class TestModelWithVO:
         assert hasattr(user2_model_obj, 'email') is False
 
     def test_conversation_from_model_to_entity(self, test_domain):
-        model_cls = test_domain.get_provider('default').get_model(ComplexUser)
+        model_cls = test_domain.get_model(ComplexUser)
         user1 = ComplexUser(email_address='john.doe@gmail.com', password='d4e5r6')
         user1_model_obj = model_cls.from_entity(user1)
 

@@ -171,6 +171,7 @@ class EntityMeta:
         self.schema_name = (getattr(meta, 'schema_name', None) or
                             inflection.underscore(entity_name))
         self.provider = getattr(meta, 'provider', None) or 'default'
+        self.model = getattr(meta, 'model', None)
 
         # `order_by` can be provided either as a string or a tuple
         ordering = getattr(meta, 'order_by', ())
