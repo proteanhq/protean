@@ -467,6 +467,9 @@ class Domain(_PackageBoundObject):
             if not entity_cls:
                 raise IncorrectUsageError("Models need to be associated with an Entity or Aggregate")
 
+            # Associate model with aggregate/entity class
+            self._models[fully_qualified_name(entity_cls)] = new_cls
+
         if element_type == DomainObjects.SUBSCRIBER and self._validate_subscriber_class(new_cls):
             domain_event_cls = new_cls.meta_.domain_event_cls or kwargs.pop('domain_event', None)
             broker_name = new_cls.meta_.broker or 'default'
@@ -496,11 +499,6 @@ class Domain(_PackageBoundObject):
 
         # Register element with domain
         self._domain_registry.register_element(new_cls)
-
-        # Associate Model class with Aggregate/Entity for future reference
-        if (element_type == DomainObjects.MODEL):
-            entity_cls = new_cls.Meta.entity_cls or kwargs.pop('entity_cls', None)
-            self._models[fully_qualified_name(entity_cls)] = new_cls
 
         return new_cls
 
@@ -585,14 +583,16 @@ class Domain(_PackageBoundObject):
     # decorator is being called with parameters or not.
     def _domain_element(
             self, element_type, _cls=None, *, aggregate_cls=None,
-            bounded_context=None, domain_event=None, command=None):
+            bounded_context=None, domain_event=None, command=None,
+            entity_cls=None):
         """Returns the registered class after decoarating it and recording its presence in the domain"""
 
         def wrap(cls):
             return self._register_element(
                 element_type, cls,
                 aggregate_cls=aggregate_cls, bounded_context=bounded_context,
-                domain_event=domain_event, command=command)
+                domain_event=domain_event, command=command,
+                entity_cls=entity_cls)
 
         # See if we're being called as @Entity or @Entity().
         if _cls is None:
@@ -676,6 +676,10 @@ class Domain(_PackageBoundObject):
         return self._domain_element(
             DomainObjects.VALUE_OBJECT, _cls=_cls, **kwargs,
             aggregate_cls=aggregate_cls, bounded_context=bounded_context)
+
+    def register_model(self, model_cls, **kwargs):
+        """Register a model class"""
+        return self._register_element(DomainObjects.MODEL, model_cls, **kwargs)
 
     def register(self, element_cls, **kwargs):
         """Register an element already subclassed with the correct Hierarchy"""

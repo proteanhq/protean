@@ -90,9 +90,21 @@ class TestModelWithVO:
 
 @pytest.mark.elasticsearch
 class TestCustomModel:
-    def test_that_custom_model_is_associated_with_entity(self, test_domain):
+    def test_that_custom_model_can_be_associated_with_entity(self, test_domain):
         test_domain.register(Provider)
-        test_domain.register(ProviderCustomModel)
+        test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
 
         model_cls = test_domain.get_model(Provider)
         assert model_cls.__name__ == 'ProviderCustomModel'
+
+    def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
+        from elasticsearch_dsl import Text, Keyword
+        from protean.impl.repository.elasticsearch_repo import ElasticsearchModel
+
+        @test_domain.model(entity_cls=Provider)
+        class ProviderInlineModel(ElasticsearchModel):
+            name = Text(fields={'raw': Keyword()})
+            about = Text()
+
+        model_cls = test_domain.get_model(Provider)
+        assert model_cls.__name__ == 'ProviderInlineModel'

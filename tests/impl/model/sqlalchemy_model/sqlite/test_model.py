@@ -4,7 +4,7 @@ import pytest
 from protean.impl.repository.sqlalchemy_repo import SqlalchemyModel
 
 # Local/Relative Imports
-from .elements import ComplexUser, Email, Person
+from .elements import ComplexUser, Email, Person, Provider, ProviderCustomModel
 
 
 class TestModel:
@@ -77,3 +77,23 @@ class TestModelWithVO:
 
         user_copy = model_cls.to_entity(user1_model_obj)
         assert user_copy is not None
+
+
+class TestCustomModel:
+    def test_that_custom_model_can_be_associated_with_entity(self, test_domain):
+        test_domain.register(Provider)
+        test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
+
+        model_cls = test_domain.get_model(Provider)
+        assert model_cls.__name__ == 'ProviderCustomModel'
+
+    def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
+        from sqlalchemy import types as sa_types
+        from protean.impl.repository.sqlalchemy_repo import SqlalchemyModel
+
+        @test_domain.model(entity_cls=Provider)
+        class ProviderInlineModel(SqlalchemyModel):
+            name = sa_types.Text()
+
+        model_cls = test_domain.get_model(Provider)
+        assert model_cls.__name__ == 'ProviderInlineModel'

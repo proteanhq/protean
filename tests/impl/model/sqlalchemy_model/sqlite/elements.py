@@ -1,16 +1,17 @@
+# Standard Library Imports
 import re
 
 from collections import defaultdict
 from datetime import datetime
 
-from elasticsearch_dsl import Text, Keyword
+from sqlalchemy import types as sa_types
 
+# Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import DateTime, Integer, String
-from protean.core.field.basic import Text as ProteanText
 from protean.core.field.embedded import ValueObjectField
 from protean.core.value_object import BaseValueObject
-from protean.impl.repository.elasticsearch_repo import ElasticsearchModel
+from protean.impl.repository.sqlalchemy_repo import SqlalchemyModel
 
 
 class Person(BaseAggregate):
@@ -18,12 +19,6 @@ class Person(BaseAggregate):
     last_name = String(max_length=50, required=True)
     age = Integer(default=21)
     created_at = DateTime(default=datetime.now())
-
-
-class Alien(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
 
 
 class User(BaseAggregate):
@@ -42,7 +37,7 @@ class Email(BaseValueObject):
         errors = defaultdict(list)
 
         if not bool(re.match(Email.REGEXP, self.address)):
-            errors['address'].append("is invalid")
+            errors['address'].append('is invalid')
 
         return errors
 
@@ -53,10 +48,15 @@ class ComplexUser(BaseAggregate):
 
 
 class Provider(BaseAggregate):
-    name = ProteanText()
-    about = ProteanText()
+    name = String()
+    age = Integer()
+
+    class Meta:
+        schema_name = 'adults'
 
 
-class ProviderCustomModel(ElasticsearchModel):
-    name = Text(fields={'raw': Keyword()})
-    about = Text()
+class ProviderCustomModel(SqlalchemyModel):
+    name = sa_types.Text()
+
+    class Meta:
+        entity_cls = Provider
