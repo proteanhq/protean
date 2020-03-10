@@ -4,9 +4,10 @@ import pytest
 from protean.impl.repository.sqlalchemy_repo import SqlalchemyModel
 
 # Local/Relative Imports
-from .elements import ComplexUser, Email, Person
+from .elements import ComplexUser, Email, Person, Provider, Receiver
 
 
+@pytest.mark.postgresql
 class TestModel:
     @pytest.fixture(autouse=True)
     def register_person_aggregate(self, test_domain):
@@ -36,7 +37,16 @@ class TestModel:
         person_copy = model_cls.to_entity(person_model_obj)
         assert person_copy is not None
 
+    def test_dynamically_constructed_model_attributes(self, test_domain):
+        from sqlalchemy import String
 
+        model_cls = test_domain.get_model(Person)
+
+        assert model_cls.__name__ == 'PersonModel'
+        assert type(model_cls.first_name.type) is String
+
+
+@pytest.mark.postgresql
 class TestModelWithVO:
     @pytest.fixture(autouse=True)
     def register_complex_user_aggregate(self, test_domain):
@@ -67,7 +77,6 @@ class TestModelWithVO:
         assert user2_model_obj.password == 'd4e5r6'
 
         # Model's content should reflect only the attributes, not declared_fields
-        # Model's content should reflect only the attributes, not declared_fields
         assert hasattr(user1_model_obj, 'email') is False
         assert hasattr(user2_model_obj, 'email') is False
 
@@ -78,3 +87,29 @@ class TestModelWithVO:
 
         user_copy = model_cls.to_entity(user1_model_obj)
         assert user_copy is not None
+
+
+@pytest.mark.postgresql
+class TestCustomModel:
+    def test_that_custom_model_can_be_associated_with_entity(self, test_domain):
+        model_cls = test_domain.get_model(Provider)
+        assert model_cls.__name__ == 'ProviderCustomModel'
+
+    def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
+        from sqlalchemy import Column, Text
+
+        test_domain.register(Receiver)
+
+        @test_domain.model(entity_cls=Receiver)
+        class ReceiverInlineModel:
+            name = Column(Text)
+
+        test_domain.get_dao(Receiver)
+
+        provider = test_domain.get_provider('default')
+        provider._metadata.create_all()
+
+        model_cls = test_domain.get_model(Receiver)
+        assert model_cls.__name__ == 'ReceiverInlineModel'
+
+        assert type(model_cls.name.type) is Text
