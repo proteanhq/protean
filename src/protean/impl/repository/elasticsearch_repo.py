@@ -40,6 +40,13 @@ operators = {
 }
 
 
+def derive_schema_name(model_cls):
+    if hasattr(model_cls.meta_, 'schema_name'):
+        return model_cls.meta_.schema_name
+    else:
+        return model_cls.meta_.entity_cls.meta_.schema_name
+
+
 class ElasticsearchModel(Document):
     """A model for the Elasticsearch index"""
 
@@ -47,7 +54,7 @@ class ElasticsearchModel(Document):
     def from_entity(cls, entity) -> 'ElasticsearchModel':
         """Convert the entity to a Elasticsearch record """
         item_dict = {}
-        for attribute_obj in cls.entity_cls.meta_.attributes.values():
+        for attribute_obj in cls.meta_.entity_cls.meta_.attributes.values():
             if isinstance(attribute_obj, Reference):
                 item_dict[attribute_obj.relation.attribute_name] = \
                     attribute_obj.relation.value
@@ -67,7 +74,7 @@ class ElasticsearchModel(Document):
     def to_entity(cls, item: 'ElasticsearchModel'):
         """Convert the elasticsearch document to an entity """
         item_dict = {}
-        for field_name in cls.entity_cls.meta_.attributes:
+        for field_name in cls.meta_.entity_cls.meta_.attributes:
             item_dict[field_name] = getattr(item, field_name, None)
 
         identifier = None
@@ -79,7 +86,7 @@ class ElasticsearchModel(Document):
             identifier = item.meta.id
 
         item_dict['id'] = identifier
-        entity_obj = cls.entity_cls(item_dict)
+        entity_obj = cls.meta_.entity_cls(item_dict)
 
         return entity_obj
 
@@ -215,7 +222,7 @@ class ElasticsearchDAO(BaseDAO):
         conn = self._get_session()
 
         try:
-            model_obj.save(refresh=True, index=model_obj.entity_cls.meta_.schema_name, using=conn)
+            model_obj.save(refresh=True, index=model_obj.meta_.entity_cls.meta_.schema_name, using=conn)
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
             raise
@@ -238,7 +245,7 @@ class ElasticsearchDAO(BaseDAO):
                 f'does not exist.')
 
         try:
-            model_obj.save(refresh=True, index=model_obj.entity_cls.meta_.schema_name, using=conn)
+            model_obj.save(refresh=True, index=model_obj.meta_.entity_cls.meta_.schema_name, using=conn)
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
             raise
@@ -254,7 +261,7 @@ class ElasticsearchDAO(BaseDAO):
         conn = self._get_session()
 
         try:
-            model_obj.delete(index=model_obj.entity_cls.meta_.schema_name, using=conn, refresh=True)
+            model_obj.delete(index=model_obj.meta_.entity_cls.meta_.schema_name, using=conn, refresh=True)
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
             raise
@@ -341,21 +348,60 @@ class ESProvider(BaseProvider):
         """Get the connection object for the repository"""
         return Elasticsearch(self.conn_info['DATABASE_URI']['hosts'])
 
-    def get_dao(self, entity_cls):
+    def get_dao(self, entity_cls, model_cls):
         """Return a DAO object configured with a live connection"""
-        model_cls = self.get_model(entity_cls)
         return ElasticsearchDAO(self.domain, self, entity_cls, model_cls)
 
-    def get_model(self, entity_cls):
+    def decorate_model_class(self, entity_cls, model_cls):
+        schema_name = derive_schema_name(model_cls)
+
+        # Return the model class if it was already seen/decorated
+        if schema_name in self._model_classes:
+            return self._model_classes[schema_name]
+
+        # If `model_cls` is already subclassed from SqlAlchemyModel,
+        #   this method call is a no-op
+        if issubclass(model_cls, ElasticsearchModel):
+            return model_cls
+        else:
+            custom_attrs = {
+                key: value for (key, value) in vars(model_cls).items()
+                if key not in ['Meta', '__module__', '__doc__', '__weakref__']}
+
+            from protean.core.repository.model import ModelMeta
+            meta_ = ModelMeta()
+            meta_.entity_cls = entity_cls
+
+            custom_attrs.update({
+                'meta_': meta_
+            })
+            # FIXME Ensure the custom model attributes are constructed properly
+            decorated_model_cls = type(model_cls.__name__, (ElasticsearchModel, model_cls, ), custom_attrs)
+
+            # Memoize the constructed model class
+            self._model_classes[schema_name] = decorated_model_cls
+
+            return decorated_model_cls
+
+    def construct_model_class(self, entity_cls):
         """Return a fully-baked Model class for a given Entity class"""
         model_cls = None
 
+        # Return the model class if it was already seen/decorated
         if entity_cls.meta_.schema_name in self._model_classes:
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
-            attrs = {'entity_cls': entity_cls}
+            from protean.core.repository.model import ModelMeta
+            meta_ = ModelMeta()
+            meta_.entity_cls = entity_cls
+
+            attrs = {
+                'meta_': meta_
+            }
+            # FIXME Ensure the custom model attributes are constructed properly
             model_cls = type(entity_cls.__name__ + 'Model', (ElasticsearchModel, ), attrs)
 
+            # Memoize the constructed model class
             self._model_classes[entity_cls.meta_.schema_name] = model_cls
 
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
