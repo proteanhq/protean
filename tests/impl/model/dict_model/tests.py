@@ -92,15 +92,12 @@ class TestCustomModel:
 
     def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
         from protean.core.field.basic import Text
-        from protean.impl.repository.dict_repo import DictModel
 
+        test_domain.register(Provider)
         @test_domain.model(entity_cls=Provider)
-        class ProviderInlineModel(DictModel):
+        class ProviderInlineModel:
             name = Text()
             about = Text()
-
-            class Meta:
-                entity_cls = Provider
 
         model_cls = test_domain.get_model(Provider)
         assert model_cls.__name__ == 'ProviderInlineModel'

@@ -30,6 +30,13 @@ _locks = defaultdict(Lock)
 _counters = defaultdict(count)
 
 
+def derive_schema_name(model_cls):
+    if hasattr(model_cls.meta_, 'schema_name'):
+        return model_cls.meta_.schema_name
+    else:
+        return model_cls.meta_.entity_cls.meta_.schema_name
+
+
 class DictModel(BaseModel):
     """A model for the dictionary repository"""
 
@@ -44,7 +51,7 @@ class DictModel(BaseModel):
     @classmethod
     def to_entity(cls, item: 'DictModel'):
         """Convert the dictionary record to an entity """
-        return cls.entity_cls(item, raise_errors=False)
+        return cls.meta_.entity_cls(item, raise_errors=False)
 
 
 class DictSession:
@@ -97,6 +104,9 @@ class DictProvider(BaseProvider):
         conn_info['DATABASE'] = Database.MEMORY.value
         super().__init__(name, domain, conn_info)
 
+        # A temporary cache of already constructed model classes
+        self._model_classes = {}
+
     def get_session(self):
         """Return a session object
 
@@ -117,16 +127,63 @@ class DictProvider(BaseProvider):
         _locks = defaultdict(Lock)
         _counters = defaultdict(count)
 
-    def get_model(self, entity_cls):
-        """Return associated, fully-baked Model class"""
-        model_cls = type(entity_cls.__name__ + 'Model', (DictModel, ), {})
-        model_cls.entity_cls = entity_cls
+    def decorate_model_class(self, entity_cls, model_cls):
+        schema_name = derive_schema_name(model_cls)
 
+        # Return the model class if it was already seen/decorated
+        if schema_name in self._model_classes:
+            return self._model_classes[schema_name]
+
+        # If `model_cls` is already subclassed from DictModel,
+        #   this method call is a no-op
+        if issubclass(model_cls, DictModel):
+            return model_cls
+        else:
+            custom_attrs = {
+                key: value for (key, value) in vars(model_cls).items()
+                if key not in ['Meta', '__module__', '__doc__', '__weakref__']}
+
+            from protean.core.repository.model import ModelMeta
+            meta_ = ModelMeta()
+            meta_.entity_cls = entity_cls
+
+            custom_attrs.update({
+                'meta_': meta_
+            })
+            # FIXME Ensure the custom model attributes are constructed properly
+            decorated_model_cls = type(model_cls.__name__, (DictModel, model_cls, ), custom_attrs)
+
+            # Memoize the constructed model class
+            self._model_classes[schema_name] = decorated_model_cls
+
+            return decorated_model_cls
+
+    def construct_model_class(self, entity_cls):
+        """Return associated, fully-baked Model class"""
+        model_cls = None
+
+        # Return the model class if it was already seen/decorated
+        if entity_cls.meta_.schema_name in self._model_classes:
+            model_cls = self._model_classes[entity_cls.meta_.schema_name]
+        else:
+            from protean.core.repository.model import ModelMeta
+            meta_ = ModelMeta()
+            meta_.entity_cls = entity_cls
+
+            attrs = {
+                'meta_': meta_
+            }
+            # FIXME Ensure the custom model attributes are constructed properly
+            model_cls = type(entity_cls.__name__ + 'Model', (DictModel, ), attrs)
+
+            # Memoize the constructed model class
+            self._model_classes[entity_cls.meta_.schema_name] = model_cls
+
+        # Set Entity Class as a class level attribute for the Model, to be able to reference later.
         return model_cls
 
-    def get_dao(self, entity_cls):
+    def get_dao(self, entity_cls, model_cls):
         """Return a DAO object configured with a live connection"""
-        model_cls = self.get_model(entity_cls)
         return DictDAO(self.domain, self, entity_cls, model_cls)
 
     def _evaluate_lookup(self, key, value, negated, db):

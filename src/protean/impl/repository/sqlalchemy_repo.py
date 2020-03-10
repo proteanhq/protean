@@ -151,7 +151,6 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
 
 
 def derive_schema_name(model_cls):
-    # FIXME Switch `Meta` attribute access to follow a universal method: either `meta_` or `Meta`
     if hasattr(model_cls.meta_, 'schema_name'):
         return model_cls.meta_.schema_name
     else:
