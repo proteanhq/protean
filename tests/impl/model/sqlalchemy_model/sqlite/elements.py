@@ -4,14 +4,14 @@ import re
 from collections import defaultdict
 from datetime import datetime
 
-from sqlalchemy import types as sa_types
+from sqlalchemy import Column, Text
 
 # Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import DateTime, Integer, String
 from protean.core.field.embedded import ValueObjectField
+from protean.core.repository.model import BaseModel
 from protean.core.value_object import BaseValueObject
-from protean.impl.repository.sqlalchemy_repo import SqlalchemyModel
 
 
 class Person(BaseAggregate):
@@ -51,12 +51,15 @@ class Provider(BaseAggregate):
     name = String()
     age = Integer()
 
-    class Meta:
-        schema_name = 'adults'
 
-
-class ProviderCustomModel(SqlalchemyModel):
-    name = sa_types.Text()
+class ProviderCustomModel(BaseModel):
+    name = Column(Text)
 
     class Meta:
         entity_cls = Provider
+        schema_name = 'adults'
+
+
+class Receiver(BaseAggregate):
+    name = String()
+    age = Integer()

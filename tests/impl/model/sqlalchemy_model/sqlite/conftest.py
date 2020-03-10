@@ -18,35 +18,36 @@ def initialize_domain():
 
     return domain
 
+domain = initialize_domain()
 
 @pytest.fixture(autouse=True)
 def test_domain():
-    domain = initialize_domain()
-
     with domain.domain_context():
         yield domain
 
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_db():
-    test_domain = initialize_domain()
     # Create all associated tables
-    from .elements import Person, User, ComplexUser
-    test_domain.register(Person)
-    test_domain.register(User)
-    test_domain.register(ComplexUser)
+    from .elements import Person, User, ComplexUser, Provider, ProviderCustomModel
+    domain.register(Person)
+    domain.register(User)
+    domain.register(ComplexUser)
+    domain.register(Provider)
+    domain.register_model(ProviderCustomModel, entity_cls=Provider)
 
-    test_domain.get_dao(Person)
-    test_domain.get_dao(User)
-    test_domain.get_dao(ComplexUser)
+    domain.get_dao(Person)
+    domain.get_dao(User)
+    domain.get_dao(ComplexUser)
+    domain.get_dao(Provider)
 
-    for provider in test_domain.providers_list():
+    for provider in domain.providers_list():
         provider._metadata.create_all()
 
     yield
 
     # Drop all tables at the end of test suite
-    for provider in test_domain.providers_list():
+    for provider in domain.providers_list():
         provider._metadata.drop_all()
 
 

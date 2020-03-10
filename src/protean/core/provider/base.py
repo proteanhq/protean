@@ -51,12 +51,16 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """Get the connection object for the repository"""
 
     @abstractmethod
-    def get_dao(self, entity_cls):
+    def get_dao(self, entity_cls, model_cls):
         """Return a DAO object configured with a live connection"""
 
     @abstractmethod
-    def get_model(self, entity_cls):
-        """Return associated Model Class"""
+    def decorate_model_class(self, entity_cls, model_cls):
+        """Return decorated Model Class for custom-defined models"""
+
+    @abstractmethod
+    def construct_model_class(self, entity_cls):
+        """Return dynamically constructed Model Class"""
 
     @abstractmethod
     def raw(self, query: Any, data: Any = None):

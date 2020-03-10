@@ -231,6 +231,7 @@ class Domain(_PackageBoundObject):
 
         # Cache for holding Model to Entity/Aggregate associations
         self._models = {}
+        self._constructed_models = {}
 
         #: A list of functions that are called when the domain context
         #: is destroyed.  This is the place to store code that cleans up and
@@ -463,11 +464,21 @@ class Domain(_PackageBoundObject):
                 raise IncorrectUsageError("Repositories and Serializers need to be associated with an Aggregate")
 
         if (element_type == DomainObjects.MODEL and self._validate_model_class(new_cls)):
-            entity_cls = new_cls.Meta.entity_cls or kwargs.pop('entity_cls', None)
+            # Associate aggregate/entity class with model if `entity_cls` was supplied as an explicit parameter
+            from protean.core.repository.model import ModelMeta
+            if hasattr(new_cls, 'Meta'):
+                new_cls.meta_ = ModelMeta(new_cls.Meta)
+            else:
+                new_cls.meta_ = ModelMeta()
+
+            entity_cls = new_cls.meta_.entity_cls or kwargs.pop('entity_cls', None)
             if not entity_cls:
                 raise IncorrectUsageError("Models need to be associated with an Entity or Aggregate")
 
-            # Associate model with aggregate/entity class
+            if not new_cls.meta_.entity_cls:
+                new_cls.meta_.entity_cls = entity_cls
+
+            # Remember model association with aggregate/entity class, for easy fetching
             self._models[fully_qualified_name(entity_cls)] = new_cls
 
         if element_type == DomainObjects.SUBSCRIBER and self._validate_subscriber_class(new_cls):
@@ -727,21 +738,33 @@ class Domain(_PackageBoundObject):
 
     def get_model(self, aggregate_cls):
         """Retrieve Model class connected to Entity"""
+        # Return model if already constructed
+        if fully_qualified_name(aggregate_cls) in self._constructed_models:
+            return self._constructed_models[fully_qualified_name(aggregate_cls)]
+
+        # Fixate on the provider associated with the aggregate class
+        aggregate_record = self._get_element_by_class(
+            (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
+            aggregate_cls)
+        provider = self.get_provider(aggregate_record.cls.meta_.provider)
+
         # If a model was associated with the aggregate record, give it a higher priority
         #   and do not bake a new model class from aggregate/entity attributes
+        custom_model_cls = None
         if fully_qualified_name(aggregate_cls) in self._models:
-            model_cls = self._models[fully_qualified_name(aggregate_cls)]
-        else:
-            aggregate_record = self._get_element_by_class(
-                (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
-                aggregate_cls)
+            custom_model_cls = self._models[fully_qualified_name(aggregate_cls)]
 
+        if custom_model_cls:
+            # Get the decorated model class.
+            #   This is a no-op if the provider decides that the model is fully-baked
+            model_cls = provider.decorate_model_class(aggregate_record.cls, custom_model_cls)
+        else:
             # No model was associated with the aggregate/entity explicitly.
             #   So ask the Provider to bake a new model, initialized properly for this aggregate
             #   and return it
-            provider = self.get_provider(aggregate_record.cls.meta_.provider)
-            model_cls = provider.get_model(aggregate_record.cls)
+            model_cls = provider.construct_model_class(aggregate_record.cls)
 
+        self._constructed_models[fully_qualified_name(aggregate_cls)] = model_cls
         return model_cls
 
     def _initialize_providers(self):
@@ -822,12 +845,16 @@ class Domain(_PackageBoundObject):
 
     def get_dao(self, aggregate_cls):
         """Retrieve a DAO registered for the Aggregate with a live connection"""
+        # Fixate on the provider associated with the aggregate class
         aggregate_record = self._get_element_by_class(
             (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
             aggregate_cls)
         provider = self.get_provider(aggregate_record.cls.meta_.provider)
 
-        return provider.get_dao(aggregate_record.cls)
+        # Fixate on Model class at the domain level because an explicit model may have been registered
+        model_cls = self.get_model(aggregate_record.cls)
+
+        return provider.get_dao(aggregate_record.cls, model_cls)
 
     def _initialize_brokers(self):
         """Read config file and initialize brokers"""

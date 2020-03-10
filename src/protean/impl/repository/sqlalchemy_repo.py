@@ -106,8 +106,8 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
             DateTime: sa_types.DateTime,
         }
 
-        if hasattr(cls, 'entity_cls'):
-            entity_cls = cls.entity_cls
+        if 'meta_' in dict_:
+            entity_cls = dict_['meta_'].entity_cls
             for _, field_obj in entity_cls.meta_.attributes.items():
                 attribute_name = field_obj.attribute_name
 
@@ -150,19 +150,27 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
         super().__init__(classname, bases, dict_)
 
 
+def derive_schema_name(model_cls):
+    # FIXME Switch `Meta` attribute access to follow a universal method: either `meta_` or `Meta`
+    if hasattr(model_cls.meta_, 'schema_name'):
+        return model_cls.meta_.schema_name
+    else:
+        return model_cls.meta_.entity_cls.meta_.schema_name
+
+
 @as_declarative(metaclass=DeclarativeMeta)
 class SqlalchemyModel(BaseModel):
     """Model representation for the Sqlalchemy Database """
 
     @declared_attr
     def __tablename__(cls):
-        return cls.entity_cls.meta_.schema_name
+        return derive_schema_name(cls)
 
     @classmethod
     def from_entity(cls, entity):
         """ Convert the entity to a model object """
         item_dict = {}
-        for attribute_obj in cls.entity_cls.meta_.attributes.values():
+        for attribute_obj in cls.meta_.entity_cls.meta_.attributes.values():
             if isinstance(attribute_obj, Reference):
                 item_dict[attribute_obj.relation.attribute_name] = \
                     attribute_obj.relation.value
@@ -175,9 +183,9 @@ class SqlalchemyModel(BaseModel):
     def to_entity(cls, model_obj: 'SqlalchemyModel'):
         """ Convert the model object to an entity """
         item_dict = {}
-        for field_name in cls.entity_cls.meta_.attributes:
+        for field_name in cls.meta_.entity_cls.meta_.attributes:
             item_dict[field_name] = getattr(model_obj, field_name, None)
-        return cls.entity_cls(item_dict, raise_errors=False)
+        return cls.meta_.entity_cls(item_dict, raise_errors=False)
 
 
 class SADAO(BaseDAO):
@@ -497,27 +505,65 @@ class SAProvider(BaseProvider):
 
         transaction.commit()
 
-    def get_model(self, entity_cls):
+    def decorate_model_class(self, entity_cls, model_cls):
+        schema_name = derive_schema_name(model_cls)
+
+        # Return the model class if it was already seen/decorated
+        if schema_name in self._model_classes:
+            return self._model_classes[schema_name]
+
+        # If `model_cls` is already subclassed from SqlAlchemyModel,
+        #   this method call is a no-op
+        if issubclass(model_cls, SqlalchemyModel):
+            return model_cls
+        else:
+            custom_attrs = {
+                key: value for (key, value) in vars(model_cls).items()
+                if key not in ['Meta', '__module__', '__doc__', '__weakref__']}
+
+            from protean.core.repository.model import ModelMeta
+            meta_ = ModelMeta()
+            meta_.entity_cls = entity_cls
+
+            custom_attrs.update({
+                'meta_': meta_,
+                'metadata': self._metadata
+            })
+            # FIXME Ensure the custom model attributes are constructed properly
+            decorated_model_cls = type(model_cls.__name__, (SqlalchemyModel, model_cls, ), custom_attrs)
+
+            # Memoize the constructed model class
+            self._model_classes[schema_name] = decorated_model_cls
+
+            return decorated_model_cls
+
+    def construct_model_class(self, entity_cls):
         """Return a fully-baked Model class for a given Entity class"""
         model_cls = None
 
+        # Return the model class if it was already seen/decorated
         if entity_cls.meta_.schema_name in self._model_classes:
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
+            from protean.core.repository.model import ModelMeta
+            meta_ = ModelMeta()
+            meta_.entity_cls = entity_cls
+
             attrs = {
-                'entity_cls': entity_cls,
+                'meta_': meta_,
                 'metadata': self._metadata
             }
+            # FIXME Ensure the custom model attributes are constructed properly
             model_cls = type(entity_cls.__name__ + 'Model', (SqlalchemyModel, ), attrs)
 
+            # Memoize the constructed model class
             self._model_classes[entity_cls.meta_.schema_name] = model_cls
 
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
         return model_cls
 
-    def get_dao(self, entity_cls):
+    def get_dao(self, entity_cls, model_cls):
         """ Return a DAO object configured with a live connection"""
-        model_cls = self.get_model(entity_cls)
         return SADAO(self.domain, self, entity_cls, model_cls)
 
     def raw(self, query: Any, data: Any = None):
