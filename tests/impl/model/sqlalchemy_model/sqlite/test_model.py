@@ -36,6 +36,14 @@ class TestModel:
         person_copy = model_cls.to_entity(person_model_obj)
         assert person_copy is not None
 
+    def test_dynamically_constructed_model_attributes(self, test_domain):
+        from sqlalchemy import String
+
+        model_cls = test_domain.get_model(Person)
+
+        assert model_cls.__name__ == 'PersonModel'
+        assert type(model_cls.first_name.type) is String
+
 
 class TestModelWithVO:
     @pytest.fixture(autouse=True)
@@ -87,11 +95,12 @@ class TestCustomModel:
     def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
         from sqlalchemy import Column, Text
 
+        test_domain.register(Receiver)
+
         @test_domain.model(entity_cls=Receiver)
         class ReceiverInlineModel:
             name = Column(Text)
 
-        test_domain.register(Receiver)
         test_domain.get_dao(Receiver)
 
         provider = test_domain.get_provider('default')
@@ -99,3 +108,5 @@ class TestCustomModel:
 
         model_cls = test_domain.get_model(Receiver)
         assert model_cls.__name__ == 'ReceiverInlineModel'
+
+        assert type(model_cls.name.type) is Text

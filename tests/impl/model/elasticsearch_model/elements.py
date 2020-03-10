@@ -60,3 +60,8 @@ class Provider(BaseAggregate):
 class ProviderCustomModel(ElasticsearchModel):
     name = Text(fields={'raw': Keyword()})
     about = Text()
+
+
+class Receiver(BaseAggregate):
+    name = String()
+    age = Integer()

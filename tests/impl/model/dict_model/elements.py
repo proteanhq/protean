@@ -11,7 +11,7 @@ from protean.core.field.embedded import ValueObjectField
 from protean.core.repository.base import BaseRepository
 from protean.core.value_object import BaseValueObject
 from protean.globals import current_domain
-from protean.impl.repository.dict_repo import DictModel
+from protean.core.repository.model import BaseModel
 
 
 class Person(BaseAggregate):
@@ -50,13 +50,18 @@ class User(BaseAggregate):
 
 
 class Provider(BaseAggregate):
-    name = Text()
-    about = Text()
+    name = String()
+    age = Integer()
 
 
-class ProviderCustomModel(DictModel):
+class ProviderCustomModel(BaseModel):
     name = Text()
-    about = Text()
 
     class Meta:
         entity_cls = Provider
+        schema_name = 'adults'
+
+
+class Receiver(BaseAggregate):
+    name = String()
+    age = Integer()

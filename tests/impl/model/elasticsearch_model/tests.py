@@ -4,7 +4,7 @@ import pytest
 from protean.impl.repository.elasticsearch_repo import ElasticsearchModel
 
 # Local/Relative Imports
-from .elements import ComplexUser, Email, Person, Provider, ProviderCustomModel
+from .elements import ComplexUser, Email, Person, Provider, ProviderCustomModel, Receiver
 
 
 @pytest.mark.elasticsearch
@@ -42,6 +42,27 @@ class TestDefaultModel:
         assert person_copy is not None
 
         assert person_copy.id == person_model_obj.meta.id
+
+    def test_dynamically_constructed_model_attributes(self, test_domain):
+        from elasticsearch_dsl import Index
+
+        test_domain.register(Receiver)
+
+        # Ensure that index is created for `Receiver` - START
+        provider = test_domain.get_provider('default')
+        conn = provider.get_connection()
+
+        for _, aggregate_record in test_domain.aggregates.items():
+            index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
+            if not index.exists():
+                index.create()
+        # Ensure that index is created for `Receiver` - END
+
+        model_cls = test_domain.get_model(Receiver)
+        assert model_cls.__name__ == 'ReceiverModel'
+
+        # FIXME Verify default constructed fields
+        # assert model_cls.name._params is None
 
 
 @pytest.mark.elasticsearch
@@ -98,13 +119,23 @@ class TestCustomModel:
         assert model_cls.__name__ == 'ProviderCustomModel'
 
     def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
-        from elasticsearch_dsl import Text, Keyword
+        from elasticsearch_dsl import Index, Keyword, Text
 
-        test_domain.register(Provider)
-        @test_domain.model(entity_cls=Provider)
-        class ProviderInlineModel:
+        test_domain.register(Receiver)
+        @test_domain.model(entity_cls=Receiver)
+        class ReceiverInlineModel:
             name = Text(fields={'raw': Keyword()})
-            about = Text()
 
-        model_cls = test_domain.get_model(Provider)
-        assert model_cls.__name__ == 'ProviderInlineModel'
+        # Ensure that index is created for `Receiver` - START
+        provider = test_domain.get_provider('default')
+        conn = provider.get_connection()
+
+        for _, aggregate_record in test_domain.aggregates.items():
+            index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
+            if not index.exists():
+                index.create()
+        # Ensure that index is created for `Receiver` - END
+
+        model_cls = test_domain.get_model(Receiver)
+        assert model_cls.__name__ == 'ReceiverInlineModel'
+        assert model_cls.name._params['fields'] == {'raw': Keyword()}

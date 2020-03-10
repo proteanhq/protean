@@ -4,7 +4,7 @@ import pytest
 from protean.impl.repository.dict_repo import DictModel
 
 # Local/Relative Imports
-from .elements import Email, Person, User, Provider, ProviderCustomModel
+from .elements import Email, Person, User, Provider, ProviderCustomModel, Receiver
 
 
 class TestModel:
@@ -93,11 +93,14 @@ class TestCustomModel:
     def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
         from protean.core.field.basic import Text
 
-        test_domain.register(Provider)
-        @test_domain.model(entity_cls=Provider)
-        class ProviderInlineModel:
-            name = Text()
+        test_domain.register(Receiver)
+        @test_domain.model(entity_cls=Receiver)
+        class ReceiverInlineModel:
             about = Text()
 
-        model_cls = test_domain.get_model(Provider)
-        assert model_cls.__name__ == 'ProviderInlineModel'
+        model_cls = test_domain.get_model(Receiver)
+        assert model_cls.__name__ == 'ReceiverInlineModel'
+
+        # FIXME This test will fail in the future
+        #   when models are validated for fields to be present in corresponding entities/aggregates
+        assert hasattr(model_cls, 'about')
