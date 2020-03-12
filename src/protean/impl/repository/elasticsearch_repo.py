@@ -75,7 +75,12 @@ class ElasticsearchModel(Document):
         """Convert the elasticsearch document to an entity """
         item_dict = {}
         for field_name in cls.meta_.entity_cls.meta_.attributes:
-            item_dict[field_name] = getattr(item, field_name, None)
+            value = getattr(item, field_name, None)
+            if isinstance(value, elasticsearch_dsl.utils.AttrList):
+                value = value._l_
+            elif isinstance(value, elasticsearch_dsl.utils.AttrDict):
+                value = value._d_
+            item_dict[field_name] = value
 
         identifier = None
         if (current_domain.config['IDENTITY_STRATEGY'] == IdentityStrategy.UUID and
@@ -422,10 +427,12 @@ class ESProvider(BaseProvider):
         conn = Elasticsearch()
 
         for _, aggregate_record in current_domain.aggregates.items():
-            conn.delete_by_query(
-                refresh=True,
-                index=aggregate_record.cls.meta_.schema_name,
-                body={"query": {"match_all": {}}})
+            provider = current_domain.get_provider(aggregate_record.cls.meta_.provider)
+            if provider.conn_info['DATABASE'] == Database.ELASTICSEARCH.value:
+                conn.delete_by_query(
+                    refresh=True,
+                    index=aggregate_record.cls.meta_.schema_name,
+                    body={"query": {"match_all": {}}})
 
 
 class DefaultLookup(BaseLookup):
