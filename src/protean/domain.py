@@ -928,6 +928,7 @@ class Domain(_PackageBoundObject):
         # Log event into a table before pushing to brokers. This will give a chance to recover from errors.
         #   There is a pseudo-check to ensure `EventLog` is registered in the domain, to ensure that apps
         #   know about this functionality and opt for it explicitly.
+        #   # FIXME Check for Event Log enablement in config
         from protean.infra.event_log import EventLog
         if 'protean.infra.event_log.EventLog' in self._domain_registry._elements[DomainObjects.AGGREGATE.value]:
             event_dao = self.get_dao(EventLog)

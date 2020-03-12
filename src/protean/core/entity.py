@@ -502,10 +502,11 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
         vo_field_values = {}
         for vo_field_name, vo_field_obj in vo_fields.items():
-            vo_field_values = {
-                vo_field_name + '_' + field_name: getattr(vo_field_obj, field_name, None)
-                for field_name, field_obj in vo_field_obj.meta_.declared_fields.items()
-            }
+            if vo_field_obj:
+                vo_field_values.update({
+                    vo_field_name + '_' + field_name: getattr(vo_field_obj, field_name, None)
+                    for field_name, field_obj in vo_field_obj.meta_.declared_fields.items()
+                })
 
         return {**field_values, **vo_field_values}
 
