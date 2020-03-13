@@ -1,3 +1,5 @@
+# cSpell: disable
+
 # Protean
 from protean.utils import Database, IdentityStrategy, IdentityType
 
@@ -21,6 +23,6 @@ DATABASES = {
     'default': {
         'PROVIDER': 'protean.impl.repository.sqlalchemy_repo.SAProvider',
         'DATABASE': Database.SQLITE.value,
-        'DATABASE_URI': 'sqlite:///test.db'
-    }
+        'DATABASE_URI': 'sqlite:///test.db',
+    },
 }

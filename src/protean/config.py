@@ -89,7 +89,7 @@ class Config(dict):
                 "The environment variable %r is not set "
                 "and as such configuration could not be "
                 "loaded.  Set this variable and make it "
-                "point to a configuration file" % variable_name
+                "point to a configuration file" % variable_name,
             )
         return self.from_pyfile(rv, silent=silent)
 
@@ -198,7 +198,7 @@ class Config(dict):
                 mappings.append(mapping[0])
         elif len(mapping) > 1:
             raise TypeError(
-                "expected at most 1 positional argument, got %d" % len(mapping)
+                "expected at most 1 positional argument, got %d" % len(mapping),
             )
         mappings.append(kwargs.items())
         for mapping in mappings:

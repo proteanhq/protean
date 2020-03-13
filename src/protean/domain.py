@@ -79,7 +79,7 @@ class _DomainRegistry:
                 name=element_cls.__name__,
                 qualname=element_name,
                 class_type=element_cls.element_type.value,
-                cls=element_cls
+                cls=element_cls,
             )
 
             self._elements[element_cls.element_type.value][element_name] = element_record
@@ -170,21 +170,21 @@ class Domain(_PackageBoundObject):
             "IDENTITY_TYPE": IdentityType.STRING,
             "DATABASES": {
                 'default': {
-                    'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'
-                }
+                    'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider',
+                },
             },
             "BROKERS": {
                 'default': {
                     'PROVIDER': 'protean.impl.broker.memory_broker.MemoryBroker',
-                }
+                },
             },
             "EMAIL_PROVIDERS": {
                 'default': {
                     "PROVIDER": 'protean.impl.email.dummy.DummyEmailProvider',
-                    "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com'
-                }
-            }
-        }
+                    "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com',
+                },
+            },
+        },
     )
 
     base_class_mapping = {
@@ -212,7 +212,7 @@ class Domain(_PackageBoundObject):
             instance_relative_config=False):
 
         _PackageBoundObject.__init__(
-            self, domain_name, root_path=root_path
+            self, domain_name, root_path=root_path,
         )
 
         self.domain_name = domain_name
@@ -445,7 +445,7 @@ class Domain(_PackageBoundObject):
             logger.debug("Error during Element registration:", repr(exc))
             raise IncorrectUsageError(
                 "Invalid class {element_cls.__name__} for type {element_type.value}"
-                " (Error: {exc})"
+                " (Error: {exc})",
                 )
 
         # Decorate Aggregate classes with Provider and Model info
@@ -928,7 +928,7 @@ class Domain(_PackageBoundObject):
         # Log event into a table before pushing to brokers. This will give a chance to recover from errors.
         #   There is a pseudo-check to ensure `EventLog` is registered in the domain, to ensure that apps
         #   know about this functionality and opt for it explicitly.
-        #   # FIXME Check for Event Log enablement in config
+        #   # FIXME Check if Event Log is enabled in config
         from protean.infra.event_log import EventLog
         if 'protean.infra.event_log.EventLog' in self._domain_registry._elements[DomainObjects.AGGREGATE.value]:
             event_dao = self.get_dao(EventLog)

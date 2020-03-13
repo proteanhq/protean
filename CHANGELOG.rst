@@ -9,6 +9,10 @@ DEV
 * Fix to allow `default=False` on Boolean fields and subsequent filtering for `False` in field values
 * Fix to use Entity attributes to derive field names of unique fields, instead of `declared_fields`
 * Add support for logging events into a universal `EventLog` table before publishing to brokers
+* Add support for custom models associated with Aggregates/Entities
+* Use Elasticsearch specific List and Dict attributes to reconstruct entity
+* Bugfix - Verify that ValueField object is not empty before trying to access its attributes
+* Bugfix - Fix how Elasticsearch connection is fetched while resetting data
 
 0.3.3 (2020-01-10)
 ------------------

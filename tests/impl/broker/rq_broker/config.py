@@ -12,13 +12,13 @@ SECRET_KEY = 'tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA'
 # Database Configuration
 DATABASES = {
     'default': {
-        'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'
+        'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider',
     },
     'sqlite': {
         'PROVIDER': 'protean.impl.repository.sqlalchemy_repo.SAProvider',
         'DATABASE': Database.SQLITE.value,
-        'DATABASE_URI': 'sqlite:///test.db'
-    }
+        'DATABASE_URI': 'sqlite:///test.db',
+    },
 }
 
 # Identity strategy to use when persisting Entities/Aggregates.
@@ -44,8 +44,8 @@ BROKERS = {
     'default': {
         'PROVIDER': 'protean.impl.broker.rq_broker.RqBroker',
         'URI': 'redis://127.0.0.1:6379/2',
-        'IS_ASYNC': True
-    }
+        'IS_ASYNC': True,
+    },
 }
 
 LOGGING_CONFIG = {
@@ -54,14 +54,14 @@ LOGGING_CONFIG = {
     'formatters': {
         'console': {
             'format': '%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
-        }
+        },
     },
     'handlers': {
         'console': {
             'level': 'DEBUG',
             'class': 'logging.StreamHandler',
             'formatter': 'console',
-        }
+        },
     },
     'loggers': {
         'protean': {
@@ -71,6 +71,6 @@ LOGGING_CONFIG = {
         'rq.worker': {
             'handlers': ['console'],
             'level': 'DEBUG',
-        }
-    }
+        },
+    },
 }

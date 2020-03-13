@@ -219,7 +219,7 @@ class BaseDAO(metaclass=ABCMeta):
 
         # Filter on the ID field of the entity
         filters = {
-            self.entity_cls.meta_.id_field.field_name: identifier
+            self.entity_cls.meta_.id_field.field_name: identifier,
         }
 
         results = self.query.filter(**filters).all()
@@ -230,7 +230,7 @@ class BaseDAO(metaclass=ABCMeta):
 
         if len(results) > 1:
             raise TooManyObjectsError(
-                f'More than one object of `{self.entity_cls.__name__}` exist with identifier {identifier}'
+                f'More than one object of `{self.entity_cls.__name__}` exist with identifier {identifier}',
             )
 
         # Return the first result, because `filter` would have returned an array
@@ -262,7 +262,7 @@ class BaseDAO(metaclass=ABCMeta):
         if len(results) > 1:
             raise TooManyObjectsError(
                 f'More than one object of `{self.entity_cls.__name__}` exist '
-                f'with values {[item for item in kwargs.items()]}'
+                f'with values {[item for item in kwargs.items()]}',
             )
 
         # Return the first result, because `filter` would have returned an array

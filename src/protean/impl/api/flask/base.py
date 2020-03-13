@@ -90,10 +90,10 @@ class Protean(object):
         # Standard routes
         self.app.add_url_rule(
             url, view_func=view.as_view(f'list_{endpoint}'),
-            methods=['GET', ])
+            methods=['GET'])
         self.app.add_url_rule(
             url, view_func=view.as_view(f'create_{endpoint}'),
-            methods=['POST', ])
+            methods=['POST'])
 
         # Make sure that the url ends with a
         url = f'{url}/' if not url.endswith('/') else url
@@ -120,7 +120,7 @@ class Protean(object):
             'tenant_id': derive_tenant(request.url),
             'user_agent': user_agent,
             'user_agent_hash': hashed_user_agent.hexdigest(),
-            'remote_addr': request.remote_addr
+            'remote_addr': request.remote_addr,
         }
         context.set_context(details)
 

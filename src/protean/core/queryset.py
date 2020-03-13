@@ -50,7 +50,7 @@ class QuerySet:
         self._limit = limit or 10
 
         # `order_by` could be empty, or a string or a list.
-        #   Intialize empty list if `order_by` is None
+        #   Initialize empty list if `order_by` is None
         #   Convert string to list if `order_by` is a String
         #   Safe-cast list to a list if `order_by` is already a list
         if order_by:
@@ -67,7 +67,7 @@ class QuerySet:
         #   to be up-to-date with temporary changes.
         self._temp_cache = {
             'added': list(),
-            'removed': list()
+            'removed': list(),
         }
 
     def _clone(self):

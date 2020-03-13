@@ -137,7 +137,7 @@ class GenericAPIResource(APIResource):
             raise AssertionError(
                 "'%s' should either include a `entity_cls` attribute, "
                 "or override the `get_entity_cls()` method."
-                % self.__class__.__name__
+                % self.__class__.__name__,
             )
         return self.entity_cls
 
@@ -160,7 +160,7 @@ class GenericAPIResource(APIResource):
             raise AssertionError(
                 "'%s' should either include a `serializer_cls` attribute, "
                 "or override the `get_serializer_cls()` method."
-                % self.__class__.__name__
+                % self.__class__.__name__,
             )
         return self.serializer_cls
 
@@ -169,7 +169,7 @@ class GenericAPIResource(APIResource):
         Extra context provided to the serializer class.
         """
         return {
-            'view': self
+            'view': self,
         }
 
     def _process_request(self, usecase_cls, request_object_cls, payload,
@@ -204,7 +204,7 @@ class GenericAPIResource(APIResource):
             result = {
                 INFLECTOR.plural(resource): items.data,
                 'total': response_object.value.total,
-                'page': page
+                'page': page,
             }
             return result, response_object.code.value
 
@@ -269,7 +269,7 @@ class UpdateAPIResource(GenericAPIResource):
         """
         payload = {
             'identifier': identifier,
-            'data': request.payload
+            'data': request.payload,
         }
         return self._process_request(
             self.usecase_cls, self.request_object_cls, payload=payload)

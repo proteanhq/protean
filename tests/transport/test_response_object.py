@@ -75,7 +75,7 @@ class TestResponseFailure:
 
         expected_value = {
             'code': 400,
-            'errors': [{'exception': 'Something went wrong. Please try later!!'}]
+            'errors': [{'exception': 'Something went wrong. Please try later!!'}],
         }
         assert response.value == expected_value
 
@@ -102,6 +102,6 @@ class TestResponseFailure:
         assert response is not None
         assert response.code == Status.UNPROCESSABLE_ENTITY
         expected_value = {
-            'code': 422, 'errors': [{'field': 'is required'}]
+            'code': 422, 'errors': [{'field': 'is required'}],
         }
         assert response.value == expected_value

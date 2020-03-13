@@ -51,7 +51,7 @@ class TestDataTransferObjectRegistration:
 
 
 class TestDTOProperties:
-    def test_two_dtos_with_equal_values_are_considered_equal(self):
+    def test_two_DTOs_with_equal_values_are_considered_equal(self):
         person1 = PersonBasicDetails(first_name='John', last_name='Doe', email='johndoe@gmail.com')
         person2 = PersonBasicDetails(first_name='John', last_name='Doe', email='johndoe@gmail.com')
 
@@ -73,7 +73,7 @@ class TestDTOProperties:
             'id': person.id,
             'first_name': 'John', 'last_name': 'Doe', 'email': 'johndoe@gmail.com',
             'age': 34, 'address1': '3214 Ave', 'address2': None, 'city': 'Houston',
-            'province': 'TX', 'country': 'US'
+            'province': 'TX', 'country': 'US',
         }
 
     @pytest.mark.xfail

@@ -176,7 +176,7 @@ class EntityMeta:
         # `order_by` can be provided either as a string or a tuple
         ordering = getattr(meta, 'order_by', ())
         if isinstance(ordering, str):
-            self.order_by = ordering,
+            self.order_by = (ordering,)
         else:
             self.order_by = tuple(ordering)
 
@@ -339,7 +339,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
                 raise AssertionError(
                     f'Positional argument "{dictionary}" passed must be a dict.'
                     f'This argument serves as a template for loading common '
-                    f'values.'
+                    f'values.',
                 )
             for field_name, val in dictionary.items():
                 if field_name not in kwargs:
@@ -470,7 +470,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
                 raise AssertionError(
                     f'Positional argument "{data}" passed must be a dict.'
                     f'This argument serves as a template for loading common '
-                    f'values.'
+                    f'values.',
                 )
             for field_name, val in data.items():
                 setattr(self, field_name, val)
@@ -518,7 +518,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         identifier = getattr(self, self.meta_.id_field.field_name)
         return '%s object (%s)' % (
             self.__class__.__name__,
-            '{}: {}'.format(self.meta_.id_field.field_name, identifier)
+            '{}: {}'.format(self.meta_.id_field.field_name, identifier),
         )
 
     def clone(self):

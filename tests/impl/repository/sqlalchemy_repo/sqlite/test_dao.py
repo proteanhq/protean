@@ -46,7 +46,7 @@ class TestDAODeleteFunctionality:
         test_domain.register(Person)
 
     def test_delete_an_object_in_repository_by_id(self, test_domain):
-        """ Delete an object in the reposoitory by ID"""
+        """ Delete an object in the repository by ID"""
         person = test_domain.get_dao(Person).create(id='3', first_name='John', last_name='Doe', age=22)
 
         persisted_person = test_domain.get_dao(Person).get('3')
@@ -76,7 +76,7 @@ class TestDAODeleteFunctionality:
         assert person_records.total == 0
 
     def test_deleting_a_persisted_entity(self, test_domain):
-        """ Delete an object in the reposoitory by ID"""
+        """ Delete an object in the repository by ID"""
         person = test_domain.get_dao(Person).create(id='3', first_name='Jim', last_name='Carrey')
         deleted_person = test_domain.get_dao(Person).delete(person)
         assert deleted_person is not None
@@ -251,7 +251,7 @@ class TestDAORetrievalFunctionality:
             test_domain.get_dao(Person).query.offset(1),
             test_domain.get_dao(Person).query.limit(25),
             test_domain.get_dao(Person).query.order_by('first_name'),
-            test_domain.get_dao(Person).query.exclude(first_name='Bravo')
+            test_domain.get_dao(Person).query.exclude(first_name='Bravo'),
         ]
 
         for filter in filters:
@@ -265,7 +265,7 @@ class TestDAORetrievalFunctionality:
             person_query.offset(5 * 5),
             person_query.limit(5),
             person_query.order_by('first_name'),
-            person_query.exclude(last_name='Murdock')
+            person_query.exclude(last_name='Murdock'),
         ]
 
         for filter in filters:

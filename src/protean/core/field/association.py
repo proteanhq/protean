@@ -273,14 +273,14 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
         """Cannot set values through an association"""
         raise exceptions.NotSupportedError(
             "Object does not support the operation being performed",
-            self.field_name
+            self.field_name,
         )
 
     def __delete__(self, instance):
         """Cannot pop values for an association"""
         raise exceptions.NotSupportedError(
             "Object does not support the operation being performed",
-            self.field_name
+            self.field_name,
         )
 
     def get_cache_name(self):

@@ -35,7 +35,7 @@ class EntitySerializer(BaseSerializer):
         Float: ma.fields.Float,
         List: ma.fields.List,
         Dict: ma.fields.Dict,
-        Auto: ma.fields.Integer
+        Auto: ma.fields.Integer,
     }
 
     def __init__(self, *args, **kwargs):

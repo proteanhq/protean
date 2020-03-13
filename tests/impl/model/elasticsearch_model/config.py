@@ -1,3 +1,5 @@
+# cSpell: disable
+
 # Protean
 from protean.utils import Database, IdentityStrategy, IdentityType
 
@@ -21,6 +23,6 @@ DATABASES = {
     'default': {
         'PROVIDER': 'protean.impl.repository.elasticsearch_repo.ESProvider',
         'DATABASE': Database.ELASTICSEARCH.value,
-        'DATABASE_URI': {'hosts': ['localhost']}
-    }
+        'DATABASE_URI': {'hosts': ['localhost']},
+    },
 }

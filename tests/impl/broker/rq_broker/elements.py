@@ -26,7 +26,7 @@ class Person(BaseAggregate):
                 id=newcomer.id,
                 first_name=newcomer.first_name,
                 last_name=newcomer.last_name,
-                age=newcomer.age
+                age=newcomer.age,
             ))
 
         return newcomer

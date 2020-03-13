@@ -70,7 +70,7 @@ def get_root_path(import_name):
                 "not provide file name information or because "
                 "it's a namespace package.  In this case "
                 "the root path needs to be explicitly "
-                "provided." % import_name
+                "provided." % import_name,
             )
 
     # filepath is import_name.py for a module, or __init__.py for a package.

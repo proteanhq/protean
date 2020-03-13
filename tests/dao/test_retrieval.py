@@ -119,7 +119,7 @@ class TestDAORetrievalFunctionality:
             test_domain.get_dao(Person).query.offset(1),
             test_domain.get_dao(Person).query.limit(25),
             test_domain.get_dao(Person).query.order_by('first_name'),
-            test_domain.get_dao(Person).query.exclude(first_name='Bravo')
+            test_domain.get_dao(Person).query.exclude(first_name='Bravo'),
         ]
 
         for filter in filters:
@@ -133,7 +133,7 @@ class TestDAORetrievalFunctionality:
             person_query.offset(5 * 5),
             person_query.limit(5),
             person_query.order_by('first_name'),
-            person_query.exclude(last_name='Murdock')
+            person_query.exclude(last_name='Murdock'),
         ]
 
         for filter in filters:

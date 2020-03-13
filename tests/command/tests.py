@@ -19,7 +19,7 @@ class TestCommandInitialization:
         command = UserRegistrationCommand(
             email='john.doe@gmail.com',
             username='john.doe',
-            password='secret1!'
+            password='secret1!',
         )
         assert command is not None
 
@@ -57,5 +57,5 @@ class TestCommandProperties:
         assert command.to_dict() == {
             'email': 'john.doe@gmail.com',
             'username': 'john.doe',
-            'password': 'secret1!'
+            'password': 'secret1!',
         }

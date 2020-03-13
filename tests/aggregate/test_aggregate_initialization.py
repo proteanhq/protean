@@ -112,7 +112,7 @@ class TestAggregateInitialization:
         except ValidationError as err:
             assert err.messages == {
                 'first_name': ['is required'],
-                'age': ['"old" value must be an integer.']
+                'age': ['"old" value must be an integer.'],
                 }
 
 
@@ -134,7 +134,7 @@ class TestAggregateFieldValues:
     def test_that_validation_error_is_raised_when_specified_string_length_is_breached(self):
         """Test validation of String length checks"""
         with pytest.raises(ValidationError):
-            Role(name='ABCDEFGHIJKLMNOPQR')
+            Role(name='THIS_IS_A_VERY_LONG_ROLE_NAME')
 
     def test_that_values_are_validated_against_specified_data_types(self):
         """Test validation of data types of values"""

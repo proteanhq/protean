@@ -20,7 +20,7 @@ def read(*names, **kwargs):
     """Helper method to read files"""
     return io.open(
         join(dirname(__file__), *names),
-        encoding=kwargs.get('encoding', 'utf8')
+        encoding=kwargs.get('encoding', 'utf8'),
     ).read()
 
 
@@ -31,7 +31,7 @@ setup(
     description='Protean Application Framework',
     long_description='%s\n%s' % (
         re.compile('^.. start-badges.*^.. end-badges', re.M | re.S).sub('', read('README.rst')),
-        re.sub(':[a-z]+:`~?(.*?)`', r'``\1``', read('CHANGELOG.rst'))
+        re.sub(':[a-z]+:`~?(.*?)`', r'``\1``', read('CHANGELOG.rst')),
     ),
     author='Subhash Bhushan C',
     author_email='subhash@team8solutions.com',
@@ -54,7 +54,7 @@ setup(
         'Programming Language :: Python :: 3 :: Only',
         'Topic :: Software Development :: Libraries',
         'Topic :: Software Development :: Libraries :: Application Frameworks',
-        'Topic :: Software Development :: Libraries :: Python Modules'
+        'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     keywords=[
         # eg: 'keyword1', 'keyword2', 'keyword3',
@@ -71,11 +71,11 @@ setup(
         'rq==1.1.0',
         'sendgrid==6.1.0',
         'sqlalchemy==1.3.4',
-        'werkzeug==0.15.4'
+        'werkzeug==0.15.4',
     ],
     entry_points={
         'console_scripts': [
             'protean = protean.cli:main',
-        ]
+        ],
     },
 )

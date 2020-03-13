@@ -1,3 +1,5 @@
+# cSpell: disable
+
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
@@ -16,7 +18,7 @@ extensions = [
     'sphinx.ext.viewcode',
 ]
 if os.getenv('SPELLCHECK'):
-    extensions += 'sphinxcontrib.spelling',
+    extensions += 'sphinxcontrib.spelling'
     spelling_show_suggestions = True
     spelling_lang = 'en_US'
 
@@ -56,7 +58,7 @@ napoleon_use_rtype = False
 napoleon_use_param = False
 
 html_theme_options = {
-    'style_nav_header_background': '#CF5400'
+    'style_nav_header_background': '#CF5400',
 }
 html_static_path = ['_static']
 html_css_files = ['css/custom.css']

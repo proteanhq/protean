@@ -114,7 +114,7 @@ class TestConfig:
             msg = str(e.value)
             assert msg.startswith(
                 "[Errno 2] Unable to load configuration "
-                "file (No such file or directory):"
+                "file (No such file or directory):",
             )
             assert msg.endswith("missing.cfg'")
             assert not domain.config.from_envvar("FOO_SETTINGS", silent=True)
@@ -127,7 +127,7 @@ class TestConfig:
             domain.config.from_pyfile("missing.cfg")
         msg = str(e.value)
         assert msg.startswith(
-            "[Errno 2] Unable to load configuration " "file (No such file or directory):"
+            "[Errno 2] Unable to load configuration " "file (No such file or directory):",
         )
         assert msg.endswith("missing.cfg'")
         assert not domain.config.from_pyfile("missing.cfg", silent=True)
@@ -138,7 +138,7 @@ class TestConfig:
             domain.config.from_json("missing.json")
         msg = str(e.value)
         assert msg.startswith(
-            "[Errno 2] Unable to load configuration " "file (No such file or directory):"
+            "[Errno 2] Unable to load configuration " "file (No such file or directory):",
         )
         assert msg.endswith("missing.json'")
         assert not domain.config.from_json("missing.json", silent=True)
@@ -174,7 +174,7 @@ class TestConfig:
         assert "foo option 1" == foo_options["foo_option_1"]
         assert "foo option 2" == foo_options["foo_option_2"]
         bar_options = domain.config.get_namespace(
-            "BAR_", lowercase=False, trim_namespace=False
+            "BAR_", lowercase=False, trim_namespace=False,
         )
         assert 2 == len(bar_options)
         assert "bar stuff 1" == bar_options["BAR_STUFF_1"]

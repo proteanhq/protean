@@ -136,7 +136,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                     col_args = {
                         'primary_key': field_obj.identifier,
                         'nullable': not field_obj.required,
-                        'unique': field_obj.unique
+                        'unique': field_obj.unique,
                     }
 
                     # Update the arguments based on the field type
@@ -526,10 +526,10 @@ class SAProvider(BaseProvider):
 
             custom_attrs.update({
                 'meta_': meta_,
-                'metadata': self._metadata
+                'metadata': self._metadata,
             })
             # FIXME Ensure the custom model attributes are constructed properly
-            decorated_model_cls = type(model_cls.__name__, (SqlalchemyModel, model_cls, ), custom_attrs)
+            decorated_model_cls = type(model_cls.__name__, (SqlalchemyModel, model_cls), custom_attrs)
 
             # Memoize the constructed model class
             self._model_classes[schema_name] = decorated_model_cls
@@ -550,7 +550,7 @@ class SAProvider(BaseProvider):
 
             attrs = {
                 'meta_': meta_,
-                'metadata': self._metadata
+                'metadata': self._metadata,
             }
             # FIXME Ensure the custom model attributes are constructed properly
             model_cls = type(entity_cls.__name__ + 'Model', (SqlalchemyModel, ), attrs)

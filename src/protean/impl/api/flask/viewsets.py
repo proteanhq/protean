@@ -47,7 +47,7 @@ class GenericAPIResourceSet(GenericAPIResource):
         """
         payload = {
             'identifier': identifier,
-            'data': request.payload
+            'data': request.payload,
         }
         return self._process_request(
             self.update_usecase, self.update_request_object, payload=payload)

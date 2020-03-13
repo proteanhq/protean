@@ -140,7 +140,7 @@ class BaseContainer(metaclass=_ContainerMetaclass):
                 raise AssertionError(
                     f'Positional argument "{dictionary}" passed must be a dict.'
                     f'This argument serves as a template for loading common '
-                    f'values.'
+                    f'values.',
                 )
             for field_name, val in dictionary.items():
                 loaded_fields.append(field_name)
@@ -208,7 +208,7 @@ class BaseContainer(metaclass=_ContainerMetaclass):
     def __str__(self):
         return '%s object (%s)' % (
             self.__class__.__name__,
-            '{}'.format(self.to_dict())
+            '{}'.format(self.to_dict()),
         )
 
     def __bool__(self):

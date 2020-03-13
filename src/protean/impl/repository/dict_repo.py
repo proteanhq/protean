@@ -65,7 +65,7 @@ class DictSession:
             self._db = {
                 'data': copy.deepcopy(_databases),
                 'lock': _locks.setdefault(self._provider.name, Lock()),
-                'counters': _counters
+                'counters': _counters,
             }
 
     def add(self, element):
@@ -148,10 +148,10 @@ class DictProvider(BaseProvider):
             meta_.entity_cls = entity_cls
 
             custom_attrs.update({
-                'meta_': meta_
+                'meta_': meta_,
             })
             # FIXME Ensure the custom model attributes are constructed properly
-            decorated_model_cls = type(model_cls.__name__, (DictModel, model_cls, ), custom_attrs)
+            decorated_model_cls = type(model_cls.__name__, (DictModel, model_cls), custom_attrs)
 
             # Memoize the constructed model class
             self._model_classes[schema_name] = decorated_model_cls
@@ -171,7 +171,7 @@ class DictProvider(BaseProvider):
             meta_.entity_cls = entity_cls
 
             attrs = {
-                'meta_': meta_
+                'meta_': meta_,
             }
             # FIXME Ensure the custom model attributes are constructed properly
             model_cls = type(entity_cls.__name__ + 'Model', (DictModel, ), attrs)
@@ -470,7 +470,7 @@ operators = {
     'gte': '>= ',
     'lt': '<',
     'lte': '<=',
-    'in': 'in'
+    'in': 'in',
 }
 
 

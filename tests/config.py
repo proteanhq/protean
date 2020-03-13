@@ -12,13 +12,13 @@ SECRET_KEY = 'tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA'
 # Database Configuration
 DATABASES = {
     'default': {
-        'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'
+        'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider',
     },
     'sqlite': {
         'PROVIDER': 'protean.impl.repository.sqlalchemy_repo.SAProvider',
         'DATABASE': Database.SQLITE.value,
-        'DATABASE_URI': 'sqlite:///test.db'
-    }
+        'DATABASE_URI': 'sqlite:///test.db',
+    },
 }
 
 # Identity strategy to use when persisting Entities/Aggregates.
@@ -42,13 +42,13 @@ IDENTITY_TYPE = IdentityType.STRING
 # Messaging Mediums
 BROKERS = {
     'default': {
-        'PROVIDER': 'protean.impl.broker.memory_broker.MemoryBroker'
-    }
+        'PROVIDER': 'protean.impl.broker.memory_broker.MemoryBroker',
+    },
 }
 
 EMAIL_PROVIDERS = {
     'default': {
         "PROVIDER": 'protean.impl.email.dummy.DummyEmailProvider',
-        "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com'
-    }
+        "DEFAULT_FROM_EMAIL": 'admin@team8solutions.com',
+    },
 }

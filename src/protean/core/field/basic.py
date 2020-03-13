@@ -27,7 +27,7 @@ class String(Field):
         self.max_length = max_length
         self.default_validators = [
             validators.MinLengthValidator(self.min_length),
-            validators.MaxLengthValidator(self.max_length)
+            validators.MaxLengthValidator(self.max_length),
         ]
         super().__init__(**kwargs)
 
@@ -68,7 +68,7 @@ class Integer(Field):
         self.max_value = max_value
         self.default_validators = [
             validators.MinValueValidator(self.min_value),
-            validators.MaxValueValidator(self.max_value)
+            validators.MaxValueValidator(self.max_value),
         ]
         super().__init__(**kwargs)
 
@@ -96,7 +96,7 @@ class Float(Field):
         self.max_value = max_value
         self.default_validators = [
             validators.MinValueValidator(self.min_value),
-            validators.MaxValueValidator(self.max_value)
+            validators.MaxValueValidator(self.max_value),
         ]
         super().__init__(**kwargs)
 

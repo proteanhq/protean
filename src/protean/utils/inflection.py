@@ -36,8 +36,8 @@ def dasherize(word):
 
     Example::
 
-        >>> dasherize("puni_puni")
-        "puni-puni"
+        >>> dasherize("lower_case")
+        "lower-case"
 
     """
     return word.replace('_', '-')
@@ -85,7 +85,7 @@ def titleize(word):
     return re.sub(
         r"\b('?[a-z])",
         lambda match: match.group(1).capitalize(),
-        humanize(underscore(word))
+        humanize(underscore(word)),
     )
 
 

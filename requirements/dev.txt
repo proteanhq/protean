@@ -3,6 +3,7 @@
 check-manifest==0.41
 coverage==5.0.3
 docutils>=0.15
+flake8-commas==2.0.0
 pytest-flake8==1.0.4
 sphinx==2.4.4
 sphinx_rtd_theme==0.4.3
