@@ -424,7 +424,7 @@ class ESProvider(BaseProvider):
 
     def _data_reset(self):
         """Utility method to reset data in DB between tests"""
-        conn = Elasticsearch()
+        conn = self.get_connection()
 
         for _, aggregate_record in current_domain.aggregates.items():
             provider = current_domain.get_provider(aggregate_record.cls.meta_.provider)
