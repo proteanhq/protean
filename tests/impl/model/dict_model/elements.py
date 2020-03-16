@@ -9,9 +9,9 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import Integer, String, Text
 from protean.core.field.embedded import ValueObjectField
 from protean.core.repository.base import BaseRepository
+from protean.core.repository.model import BaseModel
 from protean.core.value_object import BaseValueObject
 from protean.globals import current_domain
-from protean.core.repository.model import BaseModel
 
 
 class Person(BaseAggregate):

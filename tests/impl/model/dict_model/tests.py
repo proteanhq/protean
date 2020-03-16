@@ -1,10 +1,10 @@
+# Protean
 import pytest
 
-# Protean
 from protean.impl.repository.dict_repo import DictModel
 
 # Local/Relative Imports
-from .elements import Email, Person, User, Provider, ProviderCustomModel, Receiver
+from .elements import Email, Person, Provider, ProviderCustomModel, Receiver, User
 
 
 class TestModel:

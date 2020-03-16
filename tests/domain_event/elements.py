@@ -5,8 +5,8 @@ from protean.core.command import BaseCommand
 from protean.core.domain_event import BaseDomainEvent
 from protean.core.field.basic import Integer, String
 from protean.core.field.embedded import AggregateField
-from protean.globals import current_domain
 from protean.core.unit_of_work import UnitOfWork
+from protean.globals import current_domain
 
 
 class PersonCommand(BaseCommand):

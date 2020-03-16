@@ -8,9 +8,9 @@ from datetime import datetime
 # Protean
 import pytest
 
+from protean.core.aggregate import BaseAggregate
 from protean.core.exceptions import ValidationError
 from protean.core.field.basic import Auto, Boolean, Date, DateTime, Dict, Float, Integer, List, String, Text
-from protean.core.aggregate import BaseAggregate
 
 
 class TestStringField:

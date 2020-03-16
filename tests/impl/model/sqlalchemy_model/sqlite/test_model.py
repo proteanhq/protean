@@ -1,6 +1,6 @@
+# Protean
 import pytest
 
-# Protean
 from protean.impl.repository.sqlalchemy_repo import SqlalchemyModel
 
 # Local/Relative Imports
