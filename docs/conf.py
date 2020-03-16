@@ -28,7 +28,7 @@ project = 'Protean'
 year = '2019'
 author = 'Subhash Bhushan C'
 copyright = '{0}, {1}'.format(year, author)
-version = release = '0.3.3'
+version = release = '0.4.0'
 
 pygments_style = 'autumn'
 templates_path = ['.']
