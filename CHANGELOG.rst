@@ -1,9 +1,8 @@
-
 Release History
 ===============
 
-DEV
----
+0.4 (2020-03-16)
+----------------
 
 * Add support for referencing embedded fields with a defined name
 * Fix to allow `default=False` on Boolean fields and subsequent filtering for `False` in field values
