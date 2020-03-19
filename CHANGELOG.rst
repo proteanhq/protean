@@ -1,7 +1,7 @@
 Release History
 ===============
 
-0.4 (2020-03-16)
+0.4.0 (2020-03-16)
 ----------------
 
 * Add support for referencing embedded fields with a defined name
