@@ -9,12 +9,12 @@ def perform_import(val):
     If the given setting is a string import notation,
     then perform the necessary import or imports.
     """
-    if val is None:
-        return None
-    elif isinstance(val, str):
-        return import_from_string(val)
-    elif isinstance(val, (list, tuple)):
-        return [import_from_string(item) for item in val]
+    if val is not None:
+        if isinstance(val, str):
+            return import_from_string(val)
+        elif isinstance(val, (list, tuple)):
+            return [import_from_string(item) for item in val]
+
     return val
 
 

@@ -160,8 +160,6 @@ class AggregateField(Field):
     def __get__(self, instance, owner):
         if hasattr(instance, '__dict__'):
             return instance.__dict__.get(self.field_name, self.value).to_dict()
-        else:
-            return None
 
     def __set_name__(self, element_cls, name):
         super().__set_name__(element_cls, name)

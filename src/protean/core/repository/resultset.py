@@ -47,15 +47,10 @@ class ResultSet(object):
         """Is the first item from results"""
         if self.items:
             return self.items[0]
-        else:
-            return None
 
     def __bool__(self):
         """Returns `True` when the resultset is not empty"""
-        if self.items:
-            return True
-        else:
-            return False
+        return bool(self.items)
 
     def __iter__(self):
         """Returns an iterable on items, to support traversal"""
