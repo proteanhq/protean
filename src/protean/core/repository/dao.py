@@ -421,7 +421,7 @@ class BaseDAO(metaclass=ABCMeta):
         filters, excludes = {}, {}
 
         # Construct filter criteria based on unique fields defined in Entity class
-        for field_name, field_obj in self.entity_cls.meta_.unique_fields:
+        for field_name, field_obj in self.entity_cls.meta_.unique_fields.items():
             lookup_value = getattr(entity_obj, field_name, None)
 
             # Ignore empty lookup values

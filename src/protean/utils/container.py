@@ -92,6 +92,13 @@ class ContainerMeta:
         self.declared_fields = {}
 
     @property
+    def mandatory_fields(self):
+        """ Return the mandatory fields for this entity """
+        return {field_name: field_obj
+                for field_name, field_obj in self.attributes.items()
+                if field_obj.required}
+
+    @property
     def attributes(self):
         attributes_dict = {}
         for field_name, field_obj in self.declared_fields.items():
@@ -171,8 +178,8 @@ class BaseContainer(metaclass=_ContainerMetaclass):
 
     @classmethod
     def build(cls, **values):
-        assert all(attr in values
-                   for attr in cls.meta_.declared_fields.keys())
+        if values:
+            assert all(attr in list(cls.meta_.declared_fields.keys()) for attr in values.keys())
 
         return cls(**values)
 
