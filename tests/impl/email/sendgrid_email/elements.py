@@ -45,7 +45,7 @@ class WelcomeEmail(BaseEmail):
             raise InsufficientDataError("`to` and `data` fields are mandatory")
 
         if not isinstance(data, dict):
-            raise InvalidDataError("`data` should be a dict")
+            raise InvalidDataError({'data': ['should be a dict']})
 
         super().__init__(subject=self.SUBJECT, template_id=self.TEMPLATE_ID, data=data, to=to)
 

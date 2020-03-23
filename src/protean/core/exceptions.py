@@ -26,6 +26,10 @@ class InsufficientDataError(Exception):
 class InvalidDataError(Exception):
     """Data (type, value) is invalid"""
 
+    def __init__(self, messages, **kwargs):
+        self.messages = messages
+        super().__init__(**kwargs)
+
 
 class InvalidStateError(Exception):
     """Object is in invalid state for the given operation

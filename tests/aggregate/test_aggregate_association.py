@@ -36,7 +36,7 @@ class TestHasOne:
         assert account.author.id == author.id
         assert account.author == author
 
-    def test_successful_has_one_intiliazation_with_a_class_containing_via_and_no_reference(self, test_domain):
+    def test_successful_has_one_initialization_with_a_class_containing_via_and_no_reference(self, test_domain):
         account = AccountVia(email='john.doe@gmail.com', password='a1b2c3')
         test_domain.get_dao(AccountVia).save(account)
         profile = ProfileVia(profile_id='12345', about_me='Lorem Ipsum', account_email=account.email)
@@ -44,7 +44,7 @@ class TestHasOne:
 
         assert account.profile == profile
 
-    def test_successful_has_one_intiliazation_with_a_class_containing_via_and_reference(self, test_domain):
+    def test_successful_has_one_initialization_with_a_class_containing_via_and_reference(self, test_domain):
         account = AccountViaWithReference(email='john.doe@gmail.com', password='a1b2c3', username='johndoe')
         test_domain.get_dao(AccountViaWithReference).save(account)
         profile = ProfileViaWithReference(about_me='Lorem Ipsum', ac=account)
@@ -87,13 +87,13 @@ class TestHasMany:
         assert comment2.post.id == post.id
         assert 'comments' not in post.__dict__
         assert len(post.comments) == 2
-        assert 'comments' in post.__dict__  # Avaiable after access
+        assert 'comments' in post.__dict__  # Available after access
 
         assert isinstance(post.comments, QuerySet)
         assert isinstance(post.comments.all(), ResultSet)
         assert all(comment.id in [101, 102] for comment in post.comments)  # `__iter__` magic here
 
-    def test_successful_has_one_intiliazation_with_a_class_containing_via_and_no_reference(self, test_domain):
+    def test_successful_has_one_initialization_with_a_class_containing_via_and_no_reference(self, test_domain):
         post = PostVia(content='Lorem Ipsum')
         test_domain.get_dao(PostVia).save(post)
         comment1 = CommentVia(id=101, content='First Comment', posting_id=post.id)
@@ -105,13 +105,13 @@ class TestHasMany:
         assert comment2.posting_id == post.id
         assert 'comments' not in post.__dict__
         assert len(post.comments) == 2
-        assert 'comments' in post.__dict__  # Avaiable after access
+        assert 'comments' in post.__dict__  # Available after access
 
         assert isinstance(post.comments, QuerySet)
         assert isinstance(post.comments.all(), ResultSet)
         assert all(comment.id in [101, 102] for comment in post.comments)  # `__iter__` magic here
 
-    def test_successful_has_one_intiliazation_with_a_class_containing_via_and_reference(self, test_domain):
+    def test_successful_has_one_initialization_with_a_class_containing_via_and_reference(self, test_domain):
         post = PostViaWithReference(content='Lorem Ipsum')
         test_domain.get_dao(PostViaWithReference).save(post)
         comment1 = CommentViaWithReference(id=101, content='First Comment', posting=post)
@@ -123,7 +123,7 @@ class TestHasMany:
         assert comment2.posting_id == post.id
         assert 'comments' not in post.__dict__
         assert len(post.comments) == 2
-        assert 'comments' in post.__dict__  # Avaiable after access
+        assert 'comments' in post.__dict__  # Available after access
 
         assert isinstance(post.comments, QuerySet)
         assert isinstance(post.comments.all(), ResultSet)

@@ -1,4 +1,5 @@
 # Protean
+from protean.core.exceptions import InvalidDataError, ValidationError
 from protean.domain import DomainObjects
 from protean.utils.container import BaseContainer
 
@@ -34,3 +35,9 @@ class BaseCommand(BaseContainer):
         if cls is BaseCommand:
             raise TypeError("BaseCommand cannot be instantiated")
         return super().__new__(cls)
+
+    def __init__(self, *args, **kwargs):
+        try:
+            super().__init__(*args, **kwargs)
+        except ValidationError as exception:
+            raise InvalidDataError(exception.messages)

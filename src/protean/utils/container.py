@@ -5,7 +5,7 @@ import logging
 from collections import defaultdict
 
 # Protean
-from protean.core.exceptions import NotSupportedError, ValidationError
+from protean.core.exceptions import InvalidDataError, NotSupportedError, ValidationError
 from protean.core.field.basic import Field
 
 logger = logging.getLogger('protean.domain')
@@ -230,7 +230,7 @@ class BaseContainer(metaclass=_ContainerMetaclass):
         if name in self.meta_.declared_fields or name in ['raise_errors', 'errors', 'owner']:
             super().__setattr__(name, value)
         else:
-            raise AttributeError("%s has no attribute %s" % (self.__class__.__name__, name))
+            raise InvalidDataError({name: ['is invalid']})
 
     def to_dict(self):
         """ Return data as a dictionary """

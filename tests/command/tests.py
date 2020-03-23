@@ -2,7 +2,7 @@
 import pytest
 
 from protean.core.command import BaseCommand
-from protean.core.exceptions import InvalidOperationError
+from protean.core.exceptions import InvalidDataError, InvalidOperationError
 from protean.core.field.basic import String
 from protean.utils import fully_qualified_name
 
@@ -22,6 +22,23 @@ class TestCommandInitialization:
             password='secret1!',
         )
         assert command is not None
+
+    def test_that_invalid_data_input_throws_an_exception(self):
+        with pytest.raises(InvalidDataError) as exception1:
+            UserRegistrationCommand(
+                foo='bar',
+                username='john.doe',
+                password='secret1!',
+            )
+        assert exception1.value.messages == {'foo': ['is invalid']}
+
+        with pytest.raises(InvalidDataError) as exception2:
+            UserRegistrationCommand(
+                email='john.doe@gmail.com',
+                username='123456789012345678901234567890123456789012345678901234567890',
+                password='secret1!',
+            )
+        assert exception2.value.messages == {'username': ['value has more than 50 characters']}
 
 
 class TestCommandRegistration:
