@@ -117,7 +117,7 @@ class _EntityMetaclass(type):
                 if isinstance(field, ValueObjectField):
                     shadow_fields = field.get_shadow_fields()
                     for shadow_field_name, shadow_field in shadow_fields:
-                        setattr(new_class, shadow_field_name, shadow_field)
+                        new_class.meta_.value_object_fields[shadow_field_name] = shadow_field
 
     def _set_id_field(new_class):
         """Lookup the id field for this entity and assign"""
@@ -182,6 +182,7 @@ class EntityMeta:
 
         # Initialize Options
         self.declared_fields = {}
+        self.value_object_fields = {}
         self.id_field = None
 
         # Domain Attributes
@@ -361,7 +362,10 @@ class BaseEntity(metaclass=_EntityMetaclass):
                 for field_name in err.messages:
                     self.errors[field_name].extend(err.messages[field_name])
 
-        # Load Value Objects
+        # Load Value Objects from associated fields
+        #   This block will dynamically construct value objects from field values
+        #   and associated the vo with the entity
+        # If the value object was already provided, it will not be overridden.
         for field_name, field_obj in self.meta_.declared_fields.items():
             if isinstance(field_obj, (ValueObjectField)) and not getattr(self, field_name):
                 attributes = [
