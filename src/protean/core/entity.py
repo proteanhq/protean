@@ -408,6 +408,10 @@ class BaseEntity(metaclass=_EntityMetaclass):
                         for field_name in err.messages:
                             self.errors[field_name].extend(err.messages[field_name])
 
+        for field_name, field_obj in self.meta_.attributes.items():
+            if field_name not in loaded_fields and not hasattr(self, field_name):
+                setattr(self, field_name, None)
+
         self.defaults()
 
         # `clean()` will return a `defaultdict(list)` if errors are to be raised
