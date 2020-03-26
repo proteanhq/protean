@@ -233,8 +233,9 @@ class Method(Field):
 class Nested(Field):
     """Helper field for nested objects associated with serializer fields"""
 
-    def __init__(self, schema_name, **kwargs):
+    def __init__(self, schema_name, many=False, **kwargs):
         self.schema_name = schema_name
+        self.many = many
         super().__init__(**kwargs)
 
     def _cast_to_type(self, value):

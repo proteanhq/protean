@@ -92,7 +92,7 @@ class _SerializerMetaclass(type):
             elif isinstance(field_obj, List):
                 schema_fields[field_name] = fields.List(fields.String())  # FIXME Accept type param in List field
             elif isinstance(field_obj, Nested):
-                schema_fields[field_name] = fields.Nested(field_obj.schema_name)
+                schema_fields[field_name] = fields.Nested(field_obj.schema_name, many=field_obj.many)
             else:
                 raise NotSupportedError("{} Field not supported".format(type(field_obj)))
 
