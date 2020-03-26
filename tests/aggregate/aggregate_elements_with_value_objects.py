@@ -12,7 +12,7 @@ class FileType(Enum):
 
 
 class File(BaseValueObject):
-    url = String(required=True, max_length=1024)
+    url = String(max_length=1024)
     type = String(max_length=15, choices=FileType)
 
     class Meta:
@@ -21,4 +21,4 @@ class File(BaseValueObject):
 
 class Resource(BaseAggregate):
     title = String(required=True, max_length=50)
-    associated_file = ValueObjectField(File, required=True)
+    associated_file = ValueObjectField(File)

@@ -1,6 +1,13 @@
 Release History
 ===============
 
+DEV
+---
+
+* Bugfix #304 - Remove shadow object linkages with aggregates
+* Raise InvalidDataError on invalid attributes to Commands
+* Treat meta attributes like auto_fields and mandatory_fields as dicts instead of tuples
+
 0.4.0 (2020-03-16)
 ----------------
 

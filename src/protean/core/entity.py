@@ -398,6 +398,11 @@ class BaseEntity(metaclass=_EntityMetaclass):
                 if not isinstance(field_obj, (Reference, _ReferenceField, Association)):
                     try:
                         setattr(self, field_name, None)
+
+                        # If field is a VO, set underlying attributes to None as well
+                        if isinstance(field_obj, ValueObjectField):
+                            for embedded_field in field_obj.embedded_fields.values():
+                                setattr(self, embedded_field.attribute_name, None)
                     except ValidationError as err:
                         for field_name in err.messages:
                             self.errors[field_name].extend(err.messages[field_name])

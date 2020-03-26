@@ -76,3 +76,9 @@ class TestCommandProperties:
             'username': 'john.doe',
             'password': 'secret1!',
         }
+
+    def test_different_commands_are_distinct(self):
+        command1 = UserRegistrationCommand(email='john.doe@gmail.com', username='john.doe', password='secret1!')
+        command2 = UserRegistrationCommand(email='jane.doe@gmail.com', username='jane.doe', password='not-so-secret!')
+
+        assert command1 != command2

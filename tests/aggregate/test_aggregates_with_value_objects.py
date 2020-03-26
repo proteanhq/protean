@@ -24,3 +24,13 @@ class TestAggregatesWithValueObjects:
         assert resource1.associated_file_url == '/server/1.pdf'
         assert resource2.associated_file.url == '/server/2.pdf'
         assert resource2.associated_file_url == '/server/2.pdf'
+
+    def test_that_attributes_from_embedded_objects_are_attached(self):
+        resource1 = Resource(
+            title='Resource 1',
+            associated_file=File(url='/server/1.pdf', type='PDF'))
+        assert all(key in resource1.__dict__ for key in ['title', 'associated_file',
+                                                         'associated_file_url', 'associated_file_type'])
+
+        resource2 = Resource(title='Resource 2')
+        assert all(key in resource2.__dict__ for key in ['title', 'associated_file_url', 'associated_file_type'])
