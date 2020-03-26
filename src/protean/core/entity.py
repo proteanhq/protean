@@ -107,7 +107,7 @@ class _EntityMetaclass(type):
             for _, field in new_class.meta_.declared_fields.items():
                 if isinstance(field, Reference):
                     shadow_field_name, shadow_field = field.get_shadow_field()
-                    setattr(new_class, shadow_field_name, shadow_field)
+                    new_class.meta_.reference_fields[shadow_field_name] = shadow_field
                     shadow_field.__set_name__(new_class, shadow_field_name)
 
     def _set_up_value_object_fields(new_class):
@@ -183,6 +183,7 @@ class EntityMeta:
         # Initialize Options
         self.declared_fields = {}
         self.value_object_fields = {}
+        self.reference_fields = {}
         self.id_field = None
 
         # Domain Attributes
