@@ -7,6 +7,10 @@ DEV
 * Bugfix #304 - Remove shadow object linkages with aggregates
 * Raise InvalidDataError on invalid attributes to Commands
 * Treat meta attributes like auto_fields and mandatory_fields as dicts instead of tuples
+* Add support for nested serializers/schemas with Marshmallow
+* Bugfix to not link shadow fields with Aggregate/Entity classes directly
+* Bugfix to set initialize Shadow (Reference) and Value Object attributes correctly
+* Store Reference and Value Object fields in 1Entity.meta_` for later use
 
 0.4.0 (2020-03-16)
 ----------------

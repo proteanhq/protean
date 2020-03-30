@@ -165,7 +165,7 @@ class Domain(_PackageBoundObject):
             "ENV": None,
             "DEBUG": None,
             "SECRET_KEY": None,
-            "AUTOLOAD_DOMAIN": False,
+            "AUTOLOAD_DOMAIN": True,
             "IDENTITY_STRATEGY": IdentityStrategy.UUID,
             "IDENTITY_TYPE": IdentityType.STRING,
             "DATABASES": {
@@ -239,17 +239,39 @@ class Domain(_PackageBoundObject):
         self.teardown_domain_context_functions = []
 
     def init(self):
-        # FIXME Add Documentation
+        """ Parse the domain folder, and attach elements dynamically to the domain.
+
+        Protean parses all files in the domain file's folder, as well as under it,
+        to load elements. So, all domain files are to be nested under the file contain
+        the domain definition.
+
+        One can use the `AUTOLOAD_DOMAIN` flag in Protean config, `True` by default,
+        to control this functionality.
+
+        When enabled, Protean is responsible for loading domain elements and ensuring
+        all functionality is activated.
+
+        The developer is responsible for activating functionality manually when
+        autoloading is disabled. Element activation can be done by importing them
+        in central areas of domain execution, like Application Services.
+
+        For example, asynchronous aspects of a domain like its Subscribers and
+        Event Handlers should be imported in their relevant Application Services
+        and Aggregates.
+
+        This method bubbles up circular import issues, if present, in the domain code.
+        """
         if self.config['AUTOLOAD_DOMAIN'] is True:
             import importlib.util
             import inspect
             import os
             import pathlib
 
-            domain_path = inspect.stack()[1][1]
+            # Fetch the domain file and derive the system path
+            domain_path = inspect.stack()[1][1]  # Find the file in which the domain is defined
             dir_name = pathlib.PurePath(pathlib.Path(domain_path).resolve()).parent
-            path = pathlib.Path(dir_name)
-            system_folder_path = path.parent
+            path = pathlib.Path(dir_name)  # Resolve the domain file's directory
+            system_folder_path = path.parent  # Get the directory of the domain file to traverse from
 
             logger.debug(f'Loading domain from {dir_name}...')
 
@@ -261,6 +283,7 @@ class Domain(_PackageBoundObject):
                     for file in files:
                         file_base_name = os.path.basename(file)
 
+                        # Construct the module path to import from
                         if file_base_name != '__init__':
                             sub_module_name = os.path.splitext(file_base_name)[0]
                             file_module_name = module_name + '.' + sub_module_name
@@ -269,13 +292,16 @@ class Domain(_PackageBoundObject):
                         full_file_path = os.path.join(root, file)
 
                         try:
-                            if full_file_path != domain_path:
+                            if full_file_path != domain_path:  # Don't load the domain file itself again
                                 spec = importlib.util.spec_from_file_location(file_module_name, full_file_path)
                                 module = importlib.util.module_from_spec(spec)
                                 spec.loader.exec_module(module)
+
                                 logger.debug(f'Loaded {file_module_name}')
                         except ModuleNotFoundError as exc:
-                            logger.debug(f'Error while autoloading modules: {exc}')
+                            logger.error(f'Error while loading a module: {exc}')
+                        except ModuleNotFoundError as exc:
+                            logger.error(f'Error while autoloading modules: {exc}')
 
     def make_config(self, instance_relative=False):
         """Used to create the config attribute by the Domain constructor.
