@@ -69,6 +69,13 @@ The following configuration values are used internally by Protean:
 
     Default: ``True``
 
+.. py:data:: AGGREGATE_CHILDREN_LIMIT
+
+    The default number of entity objects to fetch from the underlying data store
+    when loaded via the aggregate.
+
+    Default: ``100``
+
 .. py:data:: IDENTITY_STRATEGY
 
     What Strategy to use generate Unique Identifiers.

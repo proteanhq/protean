@@ -35,13 +35,14 @@ class TestConfig:
 
         assert repr(domain.config) == (
             "<Config {'ENV': 'production', 'DEBUG': False, 'SECRET_KEY': 'config', "
-            "'AUTOLOAD_DOMAIN': False, "
+            "'AUTOLOAD_DOMAIN': True, "
             "'IDENTITY_STRATEGY': <IdentityStrategy.UUID: 1>, "
             "'IDENTITY_TYPE': <IdentityType.STRING: 'STRING'>, "
             "'DATABASES': {'default': {'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'}}, "
             "'BROKERS': {'default': {'PROVIDER': 'protean.impl.broker.memory_broker.MemoryBroker'}}, "
             "'EMAIL_PROVIDERS': {'default': {'PROVIDER': 'protean.impl.email.dummy.DummyEmailProvider', "
             "'DEFAULT_FROM_EMAIL': 'admin@team8solutions.com'}}, "
+            "'AGGREGATE_CHILDREN_LIMIT': 100, "
             "'TEST_KEY': 'foo'}>")
 
     def test_config_from_file(self):

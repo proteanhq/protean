@@ -309,5 +309,16 @@ class HasMany(Association):
     """
 
     def _fetch_objects(self, key, value):
-        """Fetch Multiple linked objects"""
-        return current_domain.get_dao(self.to_cls).query.filter(**{key: value})
+        """ Fetch linked entities.
+
+        This method returns a well-formed query, containing the foreign-key constraint.
+        The query will NOT be fired at this stage, and records will only be fetched
+        when the consumer accesses the `HasMany` field values.
+
+        The number of underlying entities fetched at one time is limited by the
+        config attribute `AGGREGATE_CHILDREN_LIMIT`. By default, the value is `100`.
+        Be aware that increasing this limit will mean more entity objects will be
+        loaded into memory along with the aggregate.
+        """
+        children_dao = current_domain.get_dao(self.to_cls)
+        return children_dao.query.filter(**{key: value}).limit(current_domain.config['AGGREGATE_CHILDREN_LIMIT'])

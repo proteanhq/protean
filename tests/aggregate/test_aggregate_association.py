@@ -75,6 +75,11 @@ class TestHasMany:
         test_domain.register(CommentVia)
         test_domain.register(CommentViaWithReference)
 
+    @pytest.fixture
+    def persisted_post(self, test_domain):
+        post = test_domain.get_dao(Post).create(title='Test Post', slug='test-post', content='Do Re Mi Fa')
+        return post
+
     def test_successful_initialization_of_entity_with_has_many_association(self, test_domain):
         post = Post(content='Lorem Ipsum')
         test_domain.get_dao(Post).save(post)
@@ -144,3 +149,25 @@ class TestHasMany:
         for _ in range(3):
             getattr(post, 'comments')
         assert filter_mock.call_count == 1
+
+    def test_that_entities_up_to_configured_limit_value_are_retrieved(self, test_domain, persisted_post):
+        for i in range(1, 13):
+            comment = Comment(content=f'Comment {i}', post_id=persisted_post.id)  # FIXME This should not be necessary
+            test_domain.get_dao(Comment).save(comment)
+            persisted_post.comments.add(comment)
+            test_domain.get_dao(Post).save(persisted_post)
+
+        updated_post = test_domain.get_dao(Post).get(persisted_post.id)
+        assert updated_post.comments.total == 12
+        assert len(updated_post.comments.items) == 12
+
+    def test_that_entities_beyond_configured_limit_value_are_not_retrieved(self, test_domain, persisted_post):
+        for i in range(1, 20):
+            comment = Comment(content=f'Comment {i}', post_id=persisted_post.id)  # FIXME This should not be necessary
+            test_domain.get_dao(Comment).save(comment)
+            persisted_post.comments.add(comment)
+            test_domain.get_dao(Post).save(persisted_post)
+
+        updated_post = test_domain.get_dao(Post).get(persisted_post.id)
+        assert updated_post.comments.total == 19
+        assert len(updated_post.comments.items) == 15
