@@ -165,9 +165,20 @@ class TestHasMany:
         for i in range(1, 20):
             comment = Comment(content=f'Comment {i}', post_id=persisted_post.id)  # FIXME This should not be necessary
             test_domain.get_dao(Comment).save(comment)
-            persisted_post.comments.add(comment)
-            test_domain.get_dao(Post).save(persisted_post)
 
         updated_post = test_domain.get_dao(Post).get(persisted_post.id)
         assert updated_post.comments.total == 19
         assert len(updated_post.comments.items) == 15
+
+    def test_filtering_on_has_many_association(self, test_domain, persisted_post):
+        comments = []
+
+        for i in range(1, 13):
+            comment = Comment(content=f'Comment {i}', post_id=persisted_post.id)  # FIXME This should not be necessary
+            comments.append(comment)
+            test_domain.get_dao(Comment).save(comment)
+
+        post = test_domain.get_dao(Post).get(persisted_post.id)
+        specific_comment = post.comments.filter(content='Comment 2').all()
+        assert specific_comment.total == 1
+        assert specific_comment.items[0] == comments[1]
