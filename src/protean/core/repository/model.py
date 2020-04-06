@@ -1,12 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-    protean.core.repository.model
-    ~~~~~~~~~
-    This module contains the definition of a Base Model class.
-
-    :copyright: 2019 Protean
-    :license: BSD-3-Clause
-"""
 # Standard Library Imports
 from abc import abstractmethod
 

@@ -1,11 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-    protean.core.repository.base
-    ~~~~~~~~~
-    This module contains the interface definition to be satisfed by concrete Repository implementations.
-    :copyright: 2019 Protean
-    :license: BSD-3-Clause
-"""
 # Standard Library Imports
 import logging
 

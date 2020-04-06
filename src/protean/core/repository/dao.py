@@ -1,11 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-    protean.core.repository.dao
-    ~~~~~~~~~
-    This module contains the interface definition to be satisfied by concrete DAO implementations.
-    :copyright: 2019 Protean
-    :license: BSD-3-Clause
-"""
 # Standard Library Imports
 import logging
 

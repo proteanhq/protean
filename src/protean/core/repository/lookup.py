@@ -1,13 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-    protean.core.repository.base
-    ~~~~~~~~~
-    This module contains the classes and functions for Lookup methods, to translate domain-friendly queries
-    into a format that the persistent store understands.
-
-    :copyright: 2019 Protean
-    :license: BSD-3-Clause
-"""
 # Standard Library Imports
 import logging
 

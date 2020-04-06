@@ -1,13 +1,3 @@
-
-# -*- coding: utf-8 -*-
-"""
-    protean.core.repository.resultset
-    ~~~~~~~~~
-    This module contains a utility class to encapsulate and return Repository results.
-
-    :copyright: 2019 Protean
-    :license: BSD-3-Clause
-"""
 # Standard Library Imports
 import logging
 
