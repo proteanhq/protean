@@ -1,5 +1,5 @@
 ********************************************************
-Protean: The Clean Architecture, MultiPurpose Framework
+Protean: The Domain-Centric, Antifragile Framework
 ********************************************************
 
 Protean helps you build software on architecture stacks that need to survive in the ever changing technology landscape.
