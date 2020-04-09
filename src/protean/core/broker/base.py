@@ -1,5 +1,10 @@
 # Standard Library Imports
 from abc import abstractmethod
+from collections import defaultdict
+from collections.abc import Iterable
+
+from protean.domain import DomainObjects
+from protean.utils import fully_qualified_name
 
 
 class _BrokerMetaclass(type):
@@ -50,7 +55,7 @@ class BrokerMeta:
 
 class BaseBroker(metaclass=_BrokerMetaclass):
     """This class outlines the base broker functions,
-    to be satisifed by all implementing brokers.
+    to be satisfied by all implementing brokers.
 
     It is also a marker interface for registering broker
     classes with the domain"""
@@ -60,6 +65,9 @@ class BaseBroker(metaclass=_BrokerMetaclass):
         self.domain = domain
         self.conn_info = conn_info
 
+        self._subscribers = defaultdict(set)
+        self._command_handlers = {}
+
     @abstractmethod
     def get_connection(self):
         """Get the connection object to the broker"""
@@ -68,6 +76,18 @@ class BaseBroker(metaclass=_BrokerMetaclass):
     def send_message(self, initiator_obj):
         """Placeholder method for brokers to accept incoming events"""
 
-    @abstractmethod
-    def register(self, domain_event, subscriber_cls):
-        """Placeholder method for subscribers to register with broker"""
+    def register(self, initiator_cls, consumer_cls):
+        """Registers Domain Events and Commands with Subscribers/Command Handlers
+
+        Arguments:
+            initiator_cls {list} -- One or more Domain Events or Commands
+            consumer_cls {Subscriber/CommandHandler} -- The consumer class connected to the Domain Event or Command
+        """
+        if not isinstance(initiator_cls, Iterable):
+            initiator_cls = [initiator_cls]
+
+        for initiator in initiator_cls:
+            if initiator.element_type == DomainObjects.DOMAIN_EVENT:
+                self._subscribers[fully_qualified_name(initiator)].add(consumer_cls)
+            else:
+                self._command_handlers[fully_qualified_name(initiator)] = consumer_cls

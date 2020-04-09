@@ -3,12 +3,10 @@ import logging
 import logging.config
 import os
 
-from collections import defaultdict
-
 # Protean
 from protean.core.broker.base import BaseBroker
 from protean.core.domain_event import BaseDomainEvent
-from protean.domain import Domain, DomainObjects
+from protean.domain import Domain
 from protean.utils import fully_qualified_name
 from protean.utils.inflection import underscore
 from redis import Redis
@@ -36,9 +34,6 @@ class RqBroker(BaseBroker):
     def __init__(self, name, domain, conn_info):
         super().__init__(name, domain, conn_info)
 
-        self._subscribers = defaultdict(set)
-        self._command_handlers = {}
-
         # Initialize Redis Connection
         push_connection(Redis.from_url(self.conn_info['URI']))
 
@@ -56,9 +51,3 @@ class RqBroker(BaseBroker):
         else:
             self._command_handlers[fully_qualified_name(initiator_obj.__class__)]
             q.enqueue(underscore(initiator_obj.__class__.__name__), initiator_obj.to_dict())
-
-    def register(self, initiator_cls, consumer_cls):
-        if initiator_cls.element_type == DomainObjects.DOMAIN_EVENT:
-            self._subscribers[fully_qualified_name(initiator_cls)].add(consumer_cls)
-        else:
-            self._command_handlers[fully_qualified_name(initiator_cls)] = consumer_cls

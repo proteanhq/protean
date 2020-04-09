@@ -11,6 +11,7 @@ DEV
 * Bugfix to not link shadow fields with Aggregate/Entity classes directly
 * Bugfix to set initialize Shadow (Reference) and Value Object attributes correctly
 * Store Reference and Value Object fields in 1Entity.meta_` for later use
+* Allow Subscribers and Handlers to hook into multiple Domain Events
 
 0.4.0 (2020-03-16)
 ----------------
