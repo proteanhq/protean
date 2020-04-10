@@ -5,7 +5,7 @@ import logging
 # Protean
 from marshmallow import Schema, fields
 from protean.core.exceptions import NotSupportedError
-from protean.core.field.basic import (Boolean, Date, DateTime, Field, Float, Identifier,
+from protean.core.field.basic import (Boolean, Date, DateTime, Dict, Field, Float, Identifier,
                                       Integer, List, Method, Nested, String, Text)
 from protean.domain import DomainObjects
 
@@ -91,6 +91,8 @@ class _SerializerMetaclass(type):
                 schema_fields[field_name] = fields.Method(field_obj.method_name)
             elif isinstance(field_obj, List):
                 schema_fields[field_name] = fields.List(fields.String())  # FIXME Accept type param in List field
+            elif isinstance(field_obj, Dict):  # FIXME Accept type param in Dict field
+                schema_fields[field_name] = fields.Dict(keys=fields.Str(), values=fields.Boolean())
             elif isinstance(field_obj, Nested):
                 schema_fields[field_name] = fields.Nested(field_obj.schema_name, many=field_obj.many)
             else:
