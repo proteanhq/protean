@@ -1,7 +1,7 @@
 # Development Requirements
 
 check-manifest==0.41
-coverage==5.0.4
+coverage==5.1
 docutils>=0.15
 flake8-commas==2.0.0
 pytest-flake8==1.0.4
