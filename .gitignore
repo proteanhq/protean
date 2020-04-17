@@ -130,6 +130,7 @@ output/*/index.html
 .appveyor.token
 *.bak
 .testmondata
+*.rdb
 
 # VS Code
 .vscode

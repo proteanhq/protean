@@ -251,10 +251,6 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
             id_value = getattr(instance, instance.meta_.id_field.field_name)
             reference_obj = self._fetch_objects(self._linked_attribute(owner), id_value)
 
-            if not reference_obj:
-                # No Objects were found in the remote entity with this Entity's ID
-                reference_obj = current_domain.get_dao(self.to_cls).query
-
             self._set_own_value(instance, reference_obj)
 
         return reference_obj

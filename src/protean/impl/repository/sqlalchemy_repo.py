@@ -443,7 +443,19 @@ class SAProvider(BaseProvider):
         kwargs = self._get_database_specific_engine_args()
 
         self._engine = create_engine(make_url(self.conn_info['DATABASE_URI']), **kwargs)
-        self._metadata = MetaData(bind=self._engine)
+
+        if self.conn_info['DATABASE'] == Database.POSTGRESQL.value:
+            # Nest database tables under a schema, so that we have complete control
+            #   on creating/dropping db structures. We cannot control structures in the
+            #   the default `public` schema.
+            #
+            # Use `SCHEMA` value if specified as part of the conn info. Otherwise, construct
+            #   and use default schema name as `DB`_schema.
+            schema = self.conn_info['SCHEMA'] if 'SCHEMA' in self.conn_info else 'public'
+
+            self._metadata = MetaData(bind=self._engine, schema=schema)
+        else:
+            self._metadata = MetaData(bind=self._engine)
 
         # A temporary cache of already constructed model classes
         self._model_classes = {}
