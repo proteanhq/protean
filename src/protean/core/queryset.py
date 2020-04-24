@@ -382,6 +382,19 @@ class QuerySet:
                 (item.id in [value.id for value in self._data.items] and
                  item.state_.is_persisted and item.state_.is_changed)):
             if item.id not in [value.id for value in self._temp_cache['added']]:
+                # FIXME Re-evaluate for UoW support
+
+                # If the child was already present, first remove that record
+                if item.id in [value.id for value in self._data.items]:
+                    for value in self._data.items:
+                        if value.id == item.id:
+                            self._temp_cache['removed'].append(value)
+                            break
+
+                # This updates the parent's unique identifier in the child
+                #   so that the foreign key relationship is preserved
+                for criteria in self._criteria.children:
+                    setattr(item, criteria[0], criteria[1])
                 self._temp_cache['added'].append(item)
 
     def remove(self, item):

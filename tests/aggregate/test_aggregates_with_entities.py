@@ -23,7 +23,6 @@ class TestAggregatesWithEntities:
 
         assert comment in persisted_post.comments
 
-    @pytest.mark.skip(reason='Yet to be implemented')
     def test_that_the_parent_is_associated_with_child_once_added_to_parent(self, persisted_post):
         comment = Comment(content='So La Ti Do')
         persisted_post.comments.add(comment)

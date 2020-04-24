@@ -115,11 +115,8 @@ class Reference(FieldCacheMixin, Field):
 
         # Remove the earlier attribute if it is still attached
         old_attribute_name = '{}_{}'.format(self.field_name, 'id')
-        old_value = getattr(instance, old_attribute_name, None)
         if hasattr(instance, old_attribute_name):
             delattr(instance, old_attribute_name)
-            delattr(instance.__class__, old_attribute_name)
-            self._set_relation_value(instance, old_value)
 
         # Update domain records because we enriched the class structure
         current_domain._replace_element_by_class(instance.__class__)
@@ -221,6 +218,21 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
         self.to_cls = to_cls
         self.via = via
 
+        # FIXME Refactor for general use across all types of associations. Currently used only with `HasOne`
+        self.change = None  # Used to store type of change in the association
+        self.change_old_value = None  # Used to preserve the old value that was removed
+
+        # Value holder
+        self._value = None
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, value):
+        self._value = value if value else None
+
     def _cast_to_type(self, value):
         """Verify type of value assigned to the association field"""
         # FIXME Verify that the value being assigned is compatible with the associated Entity
@@ -282,6 +294,10 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
     def get_cache_name(self):
         return self.field_name
 
+    @property
+    def has_changed(self):
+        return self.change is not None
+
 
 class HasOne(Association):
     """
@@ -291,9 +307,44 @@ class HasOne(Association):
     to fetch and populate. This behavior can be changed by using the `via` argument.
     """
 
+    def __set__(self, instance, value):
+        """Setup relationship to be persisted/updated"""
+        # If `to_cls` was specified as a string, take this opportunity to fetch
+        #   and update the correct entity class against it, if not already done
+        if isinstance(self.to_cls, str):
+            self.to_cls = fetch_entity_cls_from_registry(self.to_cls)
+
+            # FIXME Test that `to_cls` contains a corresponding `Reference` field
+
+        if value is not None:
+            # This updates the parent's unique identifier in the child
+            #   so that the foreign key relationship is preserved
+            id_value = getattr(instance, instance.meta_.id_field.field_name)
+            linked_attribute = self._linked_attribute(instance.__class__)
+            setattr(value, linked_attribute, id_value)  # This overwrites any existing linkage, which is correct
+
+        if self.value is None:
+            self.change = 'ADDED'
+        elif value is None:
+            self.change = 'DELETED'
+            self.change_old_value = self.value
+        elif self.value.id != value.id:
+            self.change = 'UPDATED'
+            self.change_old_value = self.value
+        elif self.value.id == value.id and value.state_.is_changed:
+            self.change = 'UPDATED'
+            self.change_old_value = self.value
+        else:
+            self.change = None  # The same object has been assigned, No-Op
+
+        self._set_own_value(instance, value)
+
     def _fetch_objects(self, key, value):
-        """Fetch Multiple linked objects"""
-        return current_domain.get_dao(self.to_cls).find_by(**{key: value})
+        """Fetch single linked object"""
+        try:
+            return current_domain.get_dao(self.to_cls).find_by(**{key: value})
+        except exceptions.ObjectNotFoundError:
+            return None
 
 
 class HasMany(Association):

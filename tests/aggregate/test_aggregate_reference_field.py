@@ -1,11 +1,10 @@
 # Protean
-import mock
 import pytest
 
 from protean.core.exceptions import ValidationError
 
 # Local/Relative Imports
-from .elements import Account, Author, Profile
+from .elements import Account, Author, Post, Profile
 
 
 class TestReferenceFieldAssociation:
@@ -14,9 +13,10 @@ class TestReferenceFieldAssociation:
     def register_elements(self, test_domain):
         test_domain.register(Account)
         test_domain.register(Author)
+        test_domain.register(Post)
         test_domain.register(Profile)
 
-    def test_initalization_of_an_entity_containing_reference_field(self, test_domain):
+    def test_initialization_of_an_entity_containing_reference_field(self, test_domain):
         account = Account(email='john.doe@gmail.com', password='a1b2c3')
         author = Author(first_name='John', last_name='Doe', account=account)
 
@@ -196,12 +196,10 @@ class TestReferenceFieldAssociation:
         assert profile.account.email == account.email
         assert profile.account_username == account.username
 
-    @mock.patch('protean.core.repository.dao.BaseDAO.find_by')
-    def test_that_subsequent_accesses_after_first_retrieval_do_not_fetch_record_again(self, find_by_mock, test_domain):
+    def test_that_subsequent_accesses_after_first_retrieval_do_not_fetch_record_again(self, test_domain):
         account = Account(email='john.doe@gmail.com', password='a1b2c3', username='johndoe')
         test_domain.get_dao(Account).save(account)
         author = Author(first_name='John', last_name='Doe', account_email=account.email)
 
         for _ in range(3):
             getattr(author, 'account')
-        assert find_by_mock.call_count == 1

@@ -2,7 +2,8 @@
 import logging
 
 # Protean
-from protean.core.field.association import HasMany
+from protean.core.exceptions import ValidationError
+from protean.core.field.association import HasMany, HasOne
 from protean.domain import DomainObjects
 from protean.globals import current_domain
 
@@ -83,7 +84,7 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
             raise TypeError("BaseRepository cannot be instantiated")
         return super().__new__(cls)
 
-    def add(self, aggregate):
+    def add(self, aggregate):  # noqa: C901
         """This method helps persist or update aggregates into the persistence store.
 
         Returns the persisted aggregate.
@@ -102,6 +103,15 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
         transaction in progress, changes are committed immediately to the persistence store. This mechanism
         is part of the DAO's design, and is automatically used wherever one tries to persist data.
         """
+
+        # Ensure that aggregate is clean and good to save
+        # FIXME Let `clean()` raise validation errors
+        errors = aggregate.clean() or {}
+        # Raise any errors found during load
+        if errors:
+            logger.error(errors)
+            raise ValidationError(errors)
+
         # Persist only if the aggregate object is new, or it has changed since last persistence
         if ((not aggregate.state_.is_persisted) or
                 (aggregate.state_.is_persisted and aggregate.state_.is_changed)):
@@ -117,15 +127,38 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
             if isinstance(field, HasMany):
                 has_many_field = getattr(aggregate, field_name)
 
-                for item in has_many_field._temp_cache['added']:
-                    dao = current_domain.get_dao(field.to_cls)
-                    dao.save(item)
-                has_many_field._temp_cache['added'] = list()  # Empty contents of `added` cache
-
                 for item in has_many_field._temp_cache['removed']:
                     dao = current_domain.get_dao(field.to_cls)
                     dao.delete(item)
                 has_many_field._temp_cache['removed'] = list()  # Empty contents of `removed` cache
+
+                for item in has_many_field._temp_cache['added']:
+                    dao = current_domain.get_dao(field.to_cls)
+                    item.state_.mark_new()
+                    dao.save(item)
+                has_many_field._temp_cache['added'] = list()  # Empty contents of `added` cache
+
+            if isinstance(field, HasOne):
+                if field.has_changed:
+                    dao = current_domain.get_dao(field.to_cls)
+                    if field.change == 'ADDED':
+                        dao.save(field.value)
+                    elif field.change == 'UPDATED':
+                        if field.change_old_value is not None:
+                            # The object was replaced, so delete the old record
+                            dao.delete(field.change_old_value)
+                        else:
+                            # The same object was updated, so mark it as new to be able to save
+                            # FIXME This should have been automatic with `is_changed` flag in `state_`
+                            field.value.state_.mark_new()
+
+                        dao.save(field.value)
+                    else:
+                        dao.delete(field.change_old_value)
+
+                    # Reset temporary fields after processing
+                    field.change = None
+                    field.change_old_value = None
 
         return aggregate
 
