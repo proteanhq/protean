@@ -23,7 +23,6 @@ class TestUnitOfWorkRegistration:
         post = test_domain.get_dao(Post).create(title='Test Post', slug='test-post', content='Do Re Mi Fa')
         return post
 
-    @pytest.mark.xfail
     def test_that_an_entity_can_be_added_within_uow(self, test_domain, persisted_post):
         repo = test_domain.repository_for(Post)
 
@@ -39,9 +38,9 @@ class TestUnitOfWorkRegistration:
             # assert len(post_dao.outside_uow().get(persisted_post.id).comments) == 0
 
         post = repo.get(persisted_post.id)
+        assert len(post.comments) == 1
         assert post.comments[0].content == 'So La Ti Do'
 
-    @pytest.mark.xfail
     def test_that_an_entity_can_be_updated_within_uow(self, test_domain, persisted_post):
         comment = Comment(content='So La Ti Do')
         persisted_post.comments.add(comment)
@@ -66,7 +65,6 @@ class TestUnitOfWorkRegistration:
         post = repo.get(persisted_post.id)
         assert post.comments[0].content == 'Pa Da Ni Sa'
 
-    @pytest.mark.xfail
     def test_that_an_entity_can_be_removed_within_uow(self, test_domain, persisted_post):
         comment = Comment(content='So La Ti Do')
         persisted_post.comments.add(comment)

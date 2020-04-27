@@ -749,7 +749,7 @@ class Domain(_PackageBoundObject):
             if element_name in self._domain_registry._elements[element_type.value]:
                 return self._domain_registry._elements[element_type.value][element_name]
         else:
-            raise ObjectNotFoundError("Element {element_name} not registered in domain {self.domain_name}")
+            raise ObjectNotFoundError(f"Element {element_name} not registered in domain {self.domain_name}")
 
     def _get_element_by_class(self, element_types, element_cls):
         """Fetch Domain record with Element class details"""
@@ -849,6 +849,11 @@ class Domain(_PackageBoundObject):
 
     def repository_for(self, aggregate_cls):
         """Retrieve a Repository registered for the Aggregate"""
+        from protean.core.aggregate import BaseAggregate
+        if not issubclass(aggregate_cls, BaseAggregate):
+            raise AssertionError(
+                f'Element {aggregate_cls.__name__} must be subclass of `BaseAggregate`')
+
         try:
             repository_record = next(
                 repository for _, repository in self.repositories.items()

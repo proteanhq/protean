@@ -260,6 +260,9 @@ class _EntityState:
     def is_destroyed(self):
         return self._destroyed
 
+    def mark_new(self):
+        self._new = True
+
     def mark_saved(self):
         self._new = False
         self._changed = False
@@ -388,9 +391,15 @@ class BaseEntity(metaclass=_EntityMetaclass):
                     for sub_field_name in err.messages:
                         self.errors['{}_{}'.format(field_name, sub_field_name)].extend(err.messages[sub_field_name])
 
+        # Load Identities
         if not getattr(self, self.meta_.id_field.field_name, None) and type(self.meta_.id_field) is Auto:
             setattr(self, self.meta_.id_field.field_name, self.generate_identity())
             loaded_fields.append(self.meta_.id_field.field_name)
+
+        # Load Associations
+        for field_name, field_obj in self.meta_.declared_fields.items():
+            if isinstance(field_obj, Association):
+                getattr(self, field_name)  # This refreshes the values in associations
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields

@@ -19,6 +19,7 @@ class TestHasOne:
         test_domain.register(Author)
         test_domain.register(AccountVia)
         test_domain.register(AccountViaWithReference)
+        test_domain.register(Post)
         test_domain.register(Profile)
         test_domain.register(ProfileVia)
         test_domain.register(ProfileViaWithReference)
@@ -33,8 +34,9 @@ class TestHasOne:
         assert author.account.email == account.email
         assert author.account_email == account.email
 
-        assert account.author.id == author.id
-        assert account.author == author
+        refreshed_account = test_domain.get_dao(Account).get(account.email)
+        assert refreshed_account.author.id == author.id
+        assert refreshed_account.author == author
 
     def test_successful_has_one_initialization_with_a_class_containing_via_and_no_reference(self, test_domain):
         account = AccountVia(email='john.doe@gmail.com', password='a1b2c3')
@@ -42,7 +44,8 @@ class TestHasOne:
         profile = ProfileVia(profile_id='12345', about_me='Lorem Ipsum', account_email=account.email)
         test_domain.get_dao(ProfileVia).save(profile)
 
-        assert account.profile == profile
+        refreshed_account = test_domain.get_dao(AccountVia).get(account.email)
+        assert refreshed_account.profile == profile
 
     def test_successful_has_one_initialization_with_a_class_containing_via_and_reference(self, test_domain):
         account = AccountViaWithReference(email='john.doe@gmail.com', password='a1b2c3', username='johndoe')
@@ -50,18 +53,22 @@ class TestHasOne:
         profile = ProfileViaWithReference(about_me='Lorem Ipsum', ac=account)
         test_domain.get_dao(ProfileViaWithReference).save(profile)
 
-        assert account.profile == profile
+        refreshed_account = test_domain.get_dao(AccountViaWithReference).get(account.email)
+        assert refreshed_account.profile == profile
 
-    @mock.patch('protean.core.repository.dao.BaseDAO.find_by')
-    def test_that_subsequent_access_after_first_retrieval_do_not_fetch_record_again(self, find_by_mock, test_domain):
+    @mock.patch('protean.core.field.association.Association._fetch_objects')
+    def test_that_subsequent_access_after_first_retrieval_do_not_fetch_record_again(self, mock, test_domain):
         account = AccountViaWithReference(email='john.doe@gmail.com', password='a1b2c3', username='johndoe')
         test_domain.get_dao(AccountViaWithReference).save(account)
         profile = ProfileViaWithReference(about_me='Lorem Ipsum', ac=account)
         test_domain.get_dao(ProfileViaWithReference).save(profile)
 
+        mock.return_value = profile
+
+        refreshed_account = test_domain.get_dao(AccountViaWithReference).get(account.email)
         for _ in range(3):
-            getattr(account, 'profile')
-        assert find_by_mock.call_count == 1
+            getattr(refreshed_account, 'profile')
+        assert mock.call_count == 0  # This is because `profile` would have been loaded when account was fetched
 
 
 class TestHasMany:
@@ -90,13 +97,14 @@ class TestHasMany:
 
         assert comment1.post.id == post.id
         assert comment2.post.id == post.id
-        assert 'comments' not in post.__dict__
-        assert len(post.comments) == 2
-        assert 'comments' in post.__dict__  # Available after access
 
-        assert isinstance(post.comments, QuerySet)
-        assert isinstance(post.comments.all(), ResultSet)
-        assert all(comment.id in [101, 102] for comment in post.comments)  # `__iter__` magic here
+        refreshed_post = test_domain.get_dao(Post).get(post.id)
+        assert len(refreshed_post.comments) == 2
+        assert 'comments' in refreshed_post.__dict__  # Available after access
+
+        assert isinstance(refreshed_post.comments, QuerySet)
+        assert isinstance(refreshed_post.comments.all(), ResultSet)
+        assert all(comment.id in [101, 102] for comment in refreshed_post.comments)  # `__iter__` magic here
 
     def test_successful_has_one_initialization_with_a_class_containing_via_and_no_reference(self, test_domain):
         post = PostVia(content='Lorem Ipsum')
@@ -108,13 +116,14 @@ class TestHasMany:
 
         assert comment1.posting_id == post.id
         assert comment2.posting_id == post.id
-        assert 'comments' not in post.__dict__
-        assert len(post.comments) == 2
-        assert 'comments' in post.__dict__  # Available after access
 
-        assert isinstance(post.comments, QuerySet)
-        assert isinstance(post.comments.all(), ResultSet)
-        assert all(comment.id in [101, 102] for comment in post.comments)  # `__iter__` magic here
+        refreshed_post = test_domain.get_dao(PostVia).get(post.id)
+        assert len(refreshed_post.comments) == 2
+        assert 'comments' in refreshed_post.__dict__  # Available after access
+
+        assert isinstance(refreshed_post.comments, QuerySet)
+        assert isinstance(refreshed_post.comments.all(), ResultSet)
+        assert all(comment.id in [101, 102] for comment in refreshed_post.comments)  # `__iter__` magic here
 
     def test_successful_has_one_initialization_with_a_class_containing_via_and_reference(self, test_domain):
         post = PostViaWithReference(content='Lorem Ipsum')
@@ -126,19 +135,16 @@ class TestHasMany:
 
         assert comment1.posting_id == post.id
         assert comment2.posting_id == post.id
-        assert 'comments' not in post.__dict__
-        assert len(post.comments) == 2
-        assert 'comments' in post.__dict__  # Available after access
 
-        assert isinstance(post.comments, QuerySet)
-        assert isinstance(post.comments.all(), ResultSet)
-        assert all(comment.id in [101, 102] for comment in post.comments)  # `__iter__` magic here
+        refreshed_post = test_domain.get_dao(PostViaWithReference).get(post.id)
+        assert len(refreshed_post.comments) == 2
+        assert 'comments' in refreshed_post.__dict__  # Available after access
 
-    @mock.patch('protean.core.queryset.QuerySet.filter')
-    @mock.patch('protean.core.repository.dao.BaseDAO.exists')
-    def test_that_subsequent_access_after_first_retrieval_do_not_fetch_record_again(self, exists_mock,
-                                                                                    filter_mock, test_domain):
-        exists_mock.return_value = False
+        assert isinstance(refreshed_post.comments, QuerySet)
+        assert isinstance(refreshed_post.comments.all(), ResultSet)
+        assert all(comment.id in [101, 102] for comment in refreshed_post.comments)  # `__iter__` magic here
+
+    def test_that_subsequent_access_after_first_retrieval_do_not_fetch_record_again(self, test_domain):
         post = PostViaWithReference(content='Lorem Ipsum')
         test_domain.get_dao(PostViaWithReference).save(post)
         comment1 = CommentViaWithReference(id=101, content='First Comment', posting=post)
@@ -146,9 +152,11 @@ class TestHasMany:
         test_domain.get_dao(CommentViaWithReference).save(comment1)
         test_domain.get_dao(CommentViaWithReference).save(comment2)
 
-        for _ in range(3):
-            getattr(post, 'comments')
-        assert filter_mock.call_count == 1
+        refreshed_post = test_domain.get_dao(PostViaWithReference).get(post.id)
+        with mock.patch('protean.core.field.association.HasMany._fetch_objects') as mock_fetch_objects:
+            for _ in range(3):
+                getattr(refreshed_post, 'comments')
+        assert mock_fetch_objects.call_count == 0
 
     def test_that_entities_up_to_configured_limit_value_are_retrieved(self, test_domain, persisted_post):
         for i in range(1, 13):
