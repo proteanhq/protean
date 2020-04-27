@@ -46,3 +46,5 @@ On shoulders of giants...
 Protean is not built in a vacuum. Principles and philosophies that Protean espouses are contributions from multiple sources, especially the Open Source Community. It not only refers to well-published architectural ideas and design patterns but also heavily draws inspiration from concrete implementations.
 
 Specifically, Protean is majorly influenced by the venerable Django Framework, and that reflects in many aspects of its underlying constructs and documentation. Thank you, Django, and the Python community, for showing what's possible.
+
+[ ~ Dependencies scanned by PyUp.io ~ ]
