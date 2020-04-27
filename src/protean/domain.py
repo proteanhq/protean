@@ -893,6 +893,7 @@ class Domain(_PackageBoundObject):
         configured_brokers = self.config['BROKERS']
         broker_objects = {}
 
+        logger.debug("Initializing brokers...")
         if configured_brokers and isinstance(configured_brokers, dict):
             if 'default' not in configured_brokers:
                 raise ConfigurationError(

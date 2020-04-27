@@ -40,4 +40,4 @@ class TestDomainEventNotification:
         test_domain.register(NotifySSOSubscriber)
 
         newcomer = Person.add_newcomer({'first_name': 'John', 'last_name': 'Doe', 'age': 21})
-        mock.assert_called_once_with(PersonAdded(person=newcomer))
+        mock.assert_called_once_with(PersonAdded(person=newcomer).to_dict())

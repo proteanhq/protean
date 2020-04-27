@@ -43,4 +43,4 @@ class TestDomainEventNotification:
 
         command = AddPersonCommand(first_name='John', last_name='Doe', age=21)
         test_domain.publish_command(command)
-        mock.assert_called_once_with(command)
+        mock.assert_called_once_with(command.to_dict())
