@@ -112,12 +112,6 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
             logger.error(errors)
             raise ValidationError(errors)
 
-        # Persist only if the aggregate object is new, or it has changed since last persistence
-        if ((not aggregate.state_.is_persisted) or
-                (aggregate.state_.is_persisted and aggregate.state_.is_changed)):
-            dao = current_domain.get_dao(self.meta_.aggregate_cls)
-            dao.save(aggregate)
-
         # If there are HasMany fields in the aggregate, sync child objects added/removed,
         #   but not yet persisted to the database.
         #
@@ -159,6 +153,12 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
                     # Reset temporary fields after processing
                     field.change = None
                     field.change_old_value = None
+
+        # Persist only if the aggregate object is new, or it has changed since last persistence
+        if ((not aggregate.state_.is_persisted) or
+                (aggregate.state_.is_persisted and aggregate.state_.is_changed)):
+            dao = current_domain.get_dao(self.meta_.aggregate_cls)
+            dao.save(aggregate)
 
         return aggregate
 
