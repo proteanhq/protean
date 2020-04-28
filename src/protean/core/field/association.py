@@ -187,6 +187,10 @@ class Reference(FieldCacheMixin, Field):
             instance.__dict__[self.field_name] = value
             self.set_cached_value(instance, value)
 
+        # Mark Entity as Dirty
+        if hasattr(instance, 'state_'):
+            instance.state_.mark_changed()
+
     def _set_relation_value(self, instance, value):
         self.relation.value = value
         if value is None:
@@ -271,6 +275,10 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
         self.value = value
         instance.__dict__[self.field_name] = value
         self.set_cached_value(instance, value)
+
+        # Mark Entity as Dirty
+        if hasattr(instance, 'state_'):
+            instance.state_.mark_changed()
 
     @abstractmethod
     def _fetch_objects(self, key, value):
