@@ -70,6 +70,7 @@ setup(
         'psycopg2>=2.8.4',
         'python-dateutil>=2.8.1',
         'rq>=1.3.0',
+        'celery[redis]>=4.4.2',
         'sendgrid>=6.1.3',
         'sqlalchemy>=1.3.15',
         'werkzeug>=1.0.0',

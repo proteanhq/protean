@@ -1,10 +1,15 @@
 # Standard Library Imports
+import logging
+import logging.config
+
 from abc import abstractmethod
 from collections import defaultdict
 from collections.abc import Iterable
 
 from protean.domain import DomainObjects
 from protean.utils import fully_qualified_name
+
+logger = logging.getLogger('protean.core.broker.base')
 
 
 class _BrokerMetaclass(type):
@@ -89,5 +94,6 @@ class BaseBroker(metaclass=_BrokerMetaclass):
         for initiator in initiator_cls:
             if initiator.element_type == DomainObjects.DOMAIN_EVENT:
                 self._subscribers[fully_qualified_name(initiator)].add(consumer_cls)
+                logger.debug(f"Registered Subscriber {consumer_cls.__name__} with broker {self.name}")
             else:
                 self._command_handlers[fully_qualified_name(initiator)] = consumer_cls

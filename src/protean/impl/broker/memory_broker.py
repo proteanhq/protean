@@ -16,7 +16,7 @@ class MemoryBroker(BaseBroker):
         if isinstance(initiator_obj, BaseDomainEvent):
             for subscriber in self._subscribers[fully_qualified_name(initiator_obj.__class__)]:
                 subscriber_object = subscriber(current_domain, initiator_obj.__class__)
-                subscriber_object.notify(initiator_obj)
+                subscriber_object.notify(initiator_obj.to_dict())
         else:
             command_handler = self._command_handlers[fully_qualified_name(initiator_obj.__class__)]
-            command_handler.notify(initiator_obj)
+            command_handler.notify(initiator_obj.to_dict())
