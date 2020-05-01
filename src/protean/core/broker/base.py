@@ -6,6 +6,7 @@ from abc import abstractmethod
 from collections import defaultdict
 from collections.abc import Iterable
 
+# Protean
 from protean.domain import DomainObjects
 from protean.utils import fully_qualified_name
 

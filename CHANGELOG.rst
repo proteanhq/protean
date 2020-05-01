@@ -1,8 +1,8 @@
 Release History
 ===============
 
-DEV
----
+0.5.0 (2020-05-01)
+------------------
 
 * Bugfix #304 - Remove shadow object linkages with aggregates
 * Raise InvalidDataError on invalid attributes to Commands
@@ -10,11 +10,15 @@ DEV
 * Add support for nested serializers/schemas with Marshmallow
 * Bugfix to not link shadow fields with Aggregate/Entity classes directly
 * Bugfix to set initialize Shadow (Reference) and Value Object attributes correctly
-* Store Reference and Value Object fields in 1Entity.meta_` for later use
+* Store Reference and Value Object fields in `Entity.meta_` for later use
 * Allow Subscribers and Handlers to hook into multiple Domain Events
+* Bugfix to avoid fetching child records without foreign key linkages
+* Add support for Dict serialization
+* Allow persisting and management of child entities via the Aggregate object
+* Add support for using Celery as the background worker
 
 0.4.0 (2020-03-16)
-----------------
+------------------
 
 * Add support for referencing embedded fields with a defined name
 * Fix to allow `default=False` on Boolean fields and subsequent filtering for `False` in field values

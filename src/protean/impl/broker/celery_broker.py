@@ -4,10 +4,9 @@ import logging.config
 
 from collections.abc import Iterable
 
+# Protean
 from celery import Celery, Task
 from kombu import Queue
-
-# Protean
 from protean.core.broker.base import BaseBroker
 from protean.core.domain_event import BaseDomainEvent
 from protean.domain import DomainObjects

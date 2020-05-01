@@ -1,5 +1,7 @@
+# Standard Library Imports
 from enum import Enum
 
+# Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import String
 from protean.core.field.embedded import ValueObjectField

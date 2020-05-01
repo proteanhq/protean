@@ -1,10 +1,9 @@
+# Protean
 import pytest
 
 from celery import Task
-
 from protean.globals import current_domain
 from protean.impl.broker.celery_broker import CeleryBroker, ProteanTask
-
 from tests.impl.broker.celery_broker.elements import NotifySSOSubscriber, Person
 
 
