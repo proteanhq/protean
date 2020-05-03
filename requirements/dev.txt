@@ -1,6 +1,6 @@
 # Development Requirements
 
-check-manifest==0.41
+check-manifest==0.42
 coverage==5.1
 docutils>=0.15
 flake8-commas==2.0.0
