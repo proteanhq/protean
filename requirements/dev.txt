@@ -4,7 +4,7 @@ check-manifest==0.42
 coverage==5.1
 docutils>=0.15
 flake8-commas==2.0.0
-pytest-flake8==1.0.5
+pytest-flake8==1.0.6
 sphinx==3.0.3
 sphinx_rtd_theme==0.4.3
 tox==3.15.0
