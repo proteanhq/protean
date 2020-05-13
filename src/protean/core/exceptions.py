@@ -1,6 +1,18 @@
 """
 Custom Protean exception classes
 """
+import logging
+
+logger = logging.getLogger('protean')
+
+
+class ProteanException(Exception):
+    """Base class for all Exceptions raised within Protean"""
+
+    def __init__(self, messages, **kwargs):
+        logger.exception(messages)
+        self.messages = messages
+        super().__init__(**kwargs)
 
 
 class ConfigurationError(Exception):
@@ -23,12 +35,8 @@ class InsufficientDataError(Exception):
     """Object was not supplied with sufficient data"""
 
 
-class InvalidDataError(Exception):
+class InvalidDataError(ProteanException):
     """Data (type, value) is invalid"""
-
-    def __init__(self, messages, **kwargs):
-        self.messages = messages
-        super().__init__(**kwargs)
 
 
 class InvalidStateError(Exception):
@@ -49,17 +57,13 @@ class IncorrectUsageError(Exception):
     """Usage of a Domain Element violates principles"""
 
 
-class ValidationError(Exception):
+class ValidationError(ProteanException):
     """Raised when validation fails on a field. Validators and custom fields should
     raise this exception.
 
     :param errors: An error message or a list of error messages or a
     dictionary of error message where key is field name and value is error
     """
-
-    def __init__(self, messages, **kwargs):
-        self.messages = messages
-        super().__init__(**kwargs)
 
 
 class UsecaseExecutionError(Exception):

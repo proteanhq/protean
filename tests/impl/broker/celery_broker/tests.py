@@ -7,6 +7,7 @@ from protean.impl.broker.celery_broker import CeleryBroker
 from tests.impl.broker.celery_broker.elements import NotifySSOSubscriber, Person, PersonAdded
 
 
+@pytest.mark.redis
 class TestRedisConnection():
     def test_that_configured_broker_is_celery_with_redis(self):
         assert current_domain.has_broker('default')
@@ -17,6 +18,7 @@ class TestRedisConnection():
         assert broker.celery_app is not None
 
 
+@pytest.mark.redis
 class TestEventProcessing:
 
     @pytest.fixture(autouse=True)

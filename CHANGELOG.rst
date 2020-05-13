@@ -1,6 +1,11 @@
 Release History
 ===============
 
+DEV
+---
+
+* Log Protean exceptions to print helpful debug messages
+
 0.5.0 (2020-05-01)
 ------------------
 
