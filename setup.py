@@ -24,6 +24,57 @@ def read(*names, **kwargs):
     ).read()
 
 
+install_requires = [
+    'click>=7.0',
+    'cookiecutter>=1.7.0',
+    'inflect>=4.1.0',
+    'python-dateutil>=2.8.1',
+    'werkzeug>=1.0.0',
+]
+
+elasticsearch_requires = ['elasticsearch-dsl>=7.1.0']
+redis_requires = ['redis==3.5.2', 'rq>=1.3.0']
+postgresql_requires = ['psycopg2>=2.8.4', 'sqlalchemy>=1.3.15']
+celery_requires = ['celery[redis]>=4.4.2']
+sendgrid_requires = ['sendgrid>=6.1.3']
+flask_requires = ['flask>=1.1.1']
+marshmallow_requires = ['marshmallow>=3.5.1']
+
+testing_requires = (
+    elasticsearch_requires
+    + redis_requires
+    + postgresql_requires
+    + celery_requires
+    + sendgrid_requires
+    + flask_requires
+    + marshmallow_requires
+    + [
+        'flake8-commas==2.0.0',
+        'mock==4.0.2',
+        'passlib==1.7.2',
+        'pluggy==0.13.1',
+        'pyjwt==1.7.1',
+        'pytest-cov==2.8.1',
+        'pytest-flake8==1.0.6',
+        'pytest-mock==3.1.0',
+        'pytest-travis-fold==1.3.0',
+        'pytest==5.4.2',
+    ]
+)
+
+docs_requires = testing_requires + [
+    'sphinx==3.0.3',
+    'sphinx_rtd_theme==0.4.3',
+]
+
+dev_requires = docs_requires + [
+    'check-manifest==0.42',
+    'coverage==5.1',
+    'docutils==0.16',
+    'tox==3.15.0',
+    'twine==3.1.1',
+]
+
 setup(
     name='protean',
     version='0.5.0',
@@ -46,9 +97,7 @@ setup(
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: BSD License',
-        'Operating System :: Unix',
-        'Operating System :: POSIX :: Linux',
-        'Operating System :: OS/2',
+        'Operating System :: OS Independent',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
@@ -58,23 +107,27 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     keywords=[
-        # eg: 'keyword1', 'keyword2', 'keyword3',
+        "domain-driven design",
+        "ddd",
+        "cqrs",
+        "cqs",
+        "ports and adapters",
     ],
-    install_requires=[
-        'click>=7.0',
-        'cookiecutter>=1.7.0',
-        'elasticsearch-dsl>=7.1.0',
-        'flask>=1.1.1',
-        'inflect>=4.1.0',
-        'marshmallow>=3.5.1',
-        'psycopg2>=2.8.4',
-        'python-dateutil>=2.8.1',
-        'rq>=1.3.0',
-        'celery[redis]>=4.4.2',
-        'sendgrid>=6.1.3',
-        'sqlalchemy>=1.3.15',
-        'werkzeug>=1.0.0',
-    ],
+    install_requires=install_requires,
+    extras_require={
+        "elasticsearch": elasticsearch_requires,
+        "redis": redis_requires,
+        "postgresql": postgresql_requires,
+        "celery": celery_requires,
+        "sendgrid": sendgrid_requires,
+        "flask": flask_requires,
+        "marshmallow": marshmallow_requires,
+        "test": testing_requires,
+        "tests": testing_requires,
+        "testing": testing_requires,
+        "dev": dev_requires,
+        "docs": docs_requires,
+    },
     entry_points={
         'console_scripts': [
             'protean = protean.cli:main',
