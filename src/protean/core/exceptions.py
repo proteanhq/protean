@@ -23,7 +23,7 @@ class ConfigurationError(Exception):
     """
 
 
-class ObjectNotFoundError(Exception):
+class ObjectNotFoundError(ProteanException):
     """Object was not found, can raise 404"""
 
 
