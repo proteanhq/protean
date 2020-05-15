@@ -435,25 +435,29 @@ class Domain(_PackageBoundObject):
         #  ```
 
         try:
-            if not issubclass(element_cls, self.base_class_mapping[element_type.value]):
-                new_dict = element_cls.__dict__.copy()
-                new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
-
-                # Hack to switch between `marshmallow.Schema` and `BaseSerializer`
-                #   while creating the derived class for Serializers
-                #
-                # This becomes necessary because we need to derive the undecorated class
-                #   from `BaseSerializer`, but once derived, the base hierarchy only reflects
-                #   `marshmallow.Schema` (This is a metaclass, so it disrupts hierarchy).
-                if element_type == DomainObjects.SERIALIZER:
-                    from protean.core.serializer import BaseSerializer
-                    base_cls = BaseSerializer
-                else:
-                    base_cls = self.base_class_mapping[element_type.value]
-
-                new_cls = type(element_cls.__name__, (base_cls, ), new_dict)
+            if element_type.value == DomainObjects.VALUE_OBJECT.value:
+                from protean.core.value_object import ValueObjectFactory
+                new_cls = ValueObjectFactory.prep_class(element_cls, **kwargs)
             else:
-                new_cls = element_cls  # Element was already subclassed properly
+                if not issubclass(element_cls, self.base_class_mapping[element_type.value]):
+                    new_dict = element_cls.__dict__.copy()
+                    new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
+
+                    # Hack to switch between `marshmallow.Schema` and `BaseSerializer`
+                    #   while creating the derived class for Serializers
+                    #
+                    # This becomes necessary because we need to derive the undecorated class
+                    #   from `BaseSerializer`, but once derived, the base hierarchy only reflects
+                    #   `marshmallow.Schema` (This is a metaclass, so it disrupts hierarchy).
+                    if element_type == DomainObjects.SERIALIZER:
+                        from protean.core.serializer import BaseSerializer
+                        base_cls = BaseSerializer
+                    else:
+                        base_cls = self.base_class_mapping[element_type.value]
+
+                    new_cls = type(element_cls.__name__, (base_cls, ), new_dict)
+                else:
+                    new_cls = element_cls  # Element was already subclassed properly
         except BaseException as exc:
             logger.debug("Error during Element registration:", repr(exc))
             raise IncorrectUsageError(

@@ -10,22 +10,22 @@ class DummyElement(Enum):
     FOO = 'FOO'
 
 
-class UserStruct:
+class User:
     username = String(max_length=50)
     password = String(max_length=255)
 
 
-class UserStructAggregate(UserStruct):
+class UserAggregate(User):
     element_type = DomainObjects.AGGREGATE
 
 
-class UserStructEntity(UserStruct):
+class UserEntity(User):
     element_type = DomainObjects.ENTITY
 
 
-class UserStructVO(UserStruct):
+class UserVO(User):
     element_type = DomainObjects.VALUE_OBJECT
 
 
-class UserStructFoo(UserStruct):
+class UserFoo(User):
     element_type = DummyElement.FOO

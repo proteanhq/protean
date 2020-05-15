@@ -94,6 +94,7 @@ class TestCustomModel:
         from protean.core.field.basic import Text
 
         test_domain.register(Receiver)
+
         @test_domain.model(entity_cls=Receiver)
         class ReceiverInlineModel:
             about = Text()

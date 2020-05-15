@@ -122,6 +122,7 @@ class TestCustomModel:
         from elasticsearch_dsl import Index, Keyword, Text
 
         test_domain.register(Receiver)
+
         @test_domain.model(entity_cls=Receiver)
         class ReceiverInlineModel:
             name = Text(fields={'raw': Keyword()})

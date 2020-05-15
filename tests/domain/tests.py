@@ -2,11 +2,11 @@
 import pytest
 
 from protean import Domain
-from protean.core.exceptions import ConfigurationError, IncorrectUsageError
+from protean.core.exceptions import IncorrectUsageError
 from protean.utils import fully_qualified_name
 
 # Local/Relative Imports
-from .elements import UserStructAggregate, UserStructEntity, UserStructFoo, UserStructVO
+from .elements import UserAggregate, UserEntity, UserFoo, UserVO
 
 
 class TestDomainInitialization:
@@ -23,23 +23,23 @@ class TestDomainRegistration:
     def test_that_only_recognized_element_types_can_be_registered(self, test_domain):
 
         with pytest.raises(NotImplementedError):
-            test_domain.registry.register_element(UserStructFoo)
+            test_domain.registry.register_element(UserFoo)
 
     def test_register_aggregate_with_domain(self, test_domain):
-        test_domain.registry.register_element(UserStructAggregate)
+        test_domain.registry.register_element(UserAggregate)
 
         assert test_domain.aggregates != {}
-        assert fully_qualified_name(UserStructAggregate) in test_domain.aggregates
+        assert fully_qualified_name(UserAggregate) in test_domain.aggregates
 
     def test_register_entity_with_domain(self, test_domain):
-        test_domain.registry.register_element(UserStructEntity)
+        test_domain.registry.register_element(UserEntity)
 
-        assert fully_qualified_name(UserStructEntity) in test_domain.entities
+        assert fully_qualified_name(UserEntity) in test_domain.entities
 
     def test_register_value_object_with_domain(self, test_domain):
-        test_domain.registry.register_element(UserStructVO)
+        test_domain.registry.register_element(UserVO)
 
-        assert fully_qualified_name(UserStructVO) in test_domain.value_objects
+        assert fully_qualified_name(UserVO) in test_domain.value_objects
 
     def test_that_a_properly_subclassed_entity_can_be_directly_registered(self, test_domain):
         from protean.core.entity import BaseEntity
@@ -99,11 +99,16 @@ class TestDomainAnnotations:
     def test_auto_register_value_object_with_annotation(self, test_domain):
         from protean.core.field.basic import String
 
-        @test_domain.value_object
-        class FooBar:
-            foo = String(max_length=50)
+        @test_domain.aggregate
+        class Foo:
+            foo = String()
 
-        assert fully_qualified_name(FooBar) in test_domain.value_objects
+        @test_domain.value_object(aggregate_cls=Foo)
+        class Bar:
+            bar = String()
+
+        assert fully_qualified_name(Bar) in test_domain.value_objects
+        assert Bar.meta_.aggregate_cls == Foo
 
     def test_register_entity_against_an_aggregate(self, test_domain):
         from protean.core.field.basic import String
