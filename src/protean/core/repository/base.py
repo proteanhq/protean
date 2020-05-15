@@ -2,7 +2,7 @@
 import logging
 
 # Protean
-from protean.core.exceptions import ValidationError
+from protean.core.exceptions import IncorrectUsageError, ValidationError
 from protean.core.field.association import HasMany, HasOne
 from protean.domain import DomainObjects
 from protean.globals import current_domain
@@ -197,3 +197,43 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
         """
         dao = current_domain.get_dao(self.meta_.aggregate_cls)
         return dao.get(identifier)
+
+
+class RepositoryFactory:
+    @classmethod
+    def prep_class(cls, element_cls, **kwargs):
+        if issubclass(element_cls, BaseRepository):
+            new_element_cls = element_cls
+        else:
+            try:
+                new_dict = element_cls.__dict__.copy()
+                new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
+
+                new_element_cls = type(element_cls.__name__, (BaseRepository, ), new_dict)
+            except BaseException as exc:
+                logger.debug("Error during Element registration:", repr(exc))
+                raise IncorrectUsageError(
+                    "Invalid class {element_cls.__name__} for type {element_type.value}"
+                    " (Error: {exc})",
+                    )
+
+        cls._validate_repository_class(new_element_cls)
+
+        if hasattr(new_element_cls, 'meta_'):
+            if not (hasattr(new_element_cls.meta_, 'aggregate_cls') and new_element_cls.meta_.aggregate_cls):
+                new_element_cls.meta_.aggregate_cls = kwargs.pop('aggregate_cls', None)
+
+            new_element_cls.meta_.bounded_context = kwargs.pop('bounded_context', None)
+
+        if not new_element_cls.meta_.aggregate_cls:
+            raise IncorrectUsageError("Repositories need to be associated with an Aggregate")
+
+        return new_element_cls
+
+    @classmethod
+    def _validate_repository_class(cls, new_cls):
+        if not issubclass(new_cls, BaseRepository):
+            raise AssertionError(
+                f'Element {new_cls.__name__} must be subclass of `BaseRepository`')
+
+        return True

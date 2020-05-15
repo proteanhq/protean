@@ -56,10 +56,17 @@ class ValueObjectFactory:
         if issubclass(element_cls, BaseValueObject):
             new_element_cls = element_cls
         else:
-            new_dict = element_cls.__dict__.copy()
-            new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
+            try:
+                new_dict = element_cls.__dict__.copy()
+                new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
 
-            new_element_cls = type(element_cls.__name__, (BaseValueObject, ), new_dict)
+                new_element_cls = type(element_cls.__name__, (BaseValueObject, ), new_dict)
+            except BaseException as exc:
+                logger.debug("Error during Element registration:", repr(exc))
+                raise IncorrectUsageError(
+                    "Invalid class {element_cls.__name__} for type {element_type.value}"
+                    " (Error: {exc})",
+                    )
 
         if hasattr(new_element_cls, 'meta_'):
             if not (hasattr(new_element_cls.meta_, 'aggregate_cls') and new_element_cls.meta_.aggregate_cls):

@@ -434,11 +434,14 @@ class Domain(_PackageBoundObject):
         #       class Account:
         #  ```
 
-        try:
-            if element_type.value == DomainObjects.VALUE_OBJECT.value:
-                from protean.core.value_object import ValueObjectFactory
-                new_cls = ValueObjectFactory.prep_class(element_cls, **kwargs)
-            else:
+        if element_type.value == DomainObjects.VALUE_OBJECT.value:
+            from protean.core.value_object import ValueObjectFactory
+            new_cls = ValueObjectFactory.prep_class(element_cls, **kwargs)
+        elif element_type.value == DomainObjects.REPOSITORY.value:
+            from protean.core.repository.base import RepositoryFactory
+            new_cls = RepositoryFactory.prep_class(element_cls, **kwargs)
+        else:
+            try:
                 if not issubclass(element_cls, self.base_class_mapping[element_type.value]):
                     new_dict = element_cls.__dict__.copy()
                     new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
@@ -458,72 +461,67 @@ class Domain(_PackageBoundObject):
                     new_cls = type(element_cls.__name__, (base_cls, ), new_dict)
                 else:
                     new_cls = element_cls  # Element was already subclassed properly
-        except BaseException as exc:
-            logger.debug("Error during Element registration:", repr(exc))
-            raise IncorrectUsageError(
-                "Invalid class {element_cls.__name__} for type {element_type.value}"
-                " (Error: {exc})",
-                )
+            except BaseException as exc:
+                logger.debug("Error during Element registration:", repr(exc))
+                raise IncorrectUsageError(
+                    "Invalid class {element_cls.__name__} for type {element_type.value}"
+                    " (Error: {exc})",
+                    )
 
-        # Decorate Aggregate classes with Provider and Model info
-        provider_name = None
-        model_cls = None
-        if (element_type in (DomainObjects.AGGREGATE, DomainObjects.ENTITY) and
-                self._validate_persistence_class(new_cls)):
-            provider_name = provider_name or new_cls.meta_.provider or 'default'
-            model_cls = model_cls or new_cls.meta_.model or None
+            # Decorate Aggregate classes with Provider and Model info
+            provider_name = None
+            model_cls = None
+            aggregate_cls = None
 
-        aggregate_cls = None
-        if ((element_type == DomainObjects.REPOSITORY and self._validate_repository_class(new_cls))
-                or (element_type == DomainObjects.SERIALIZER)):
-            aggregate_cls = new_cls.meta_.aggregate_cls or kwargs.pop('aggregate_cls', None)
-            if not aggregate_cls:
-                raise IncorrectUsageError("Repositories and Serializers need to be associated with an Aggregate")
+            if (element_type in (DomainObjects.AGGREGATE, DomainObjects.ENTITY) and
+                    self._validate_persistence_class(new_cls)):
+                provider_name = provider_name or new_cls.meta_.provider or 'default'
+                model_cls = model_cls or new_cls.meta_.model or None
 
-        if (element_type == DomainObjects.MODEL and self._validate_model_class(new_cls)):
-            # Associate aggregate/entity class with model if `entity_cls` was supplied as an explicit parameter
-            from protean.core.repository.model import ModelMeta
-            if hasattr(new_cls, 'Meta'):
-                new_cls.meta_ = ModelMeta(new_cls.Meta)
-            else:
-                new_cls.meta_ = ModelMeta()
+            if (element_type == DomainObjects.MODEL and self._validate_model_class(new_cls)):
+                # Associate aggregate/entity class with model if `entity_cls` was supplied as an explicit parameter
+                from protean.core.repository.model import ModelMeta
+                if hasattr(new_cls, 'Meta'):
+                    new_cls.meta_ = ModelMeta(new_cls.Meta)
+                else:
+                    new_cls.meta_ = ModelMeta()
 
-            entity_cls = new_cls.meta_.entity_cls or kwargs.pop('entity_cls', None)
-            if not entity_cls:
-                raise IncorrectUsageError("Models need to be associated with an Entity or Aggregate")
+                entity_cls = new_cls.meta_.entity_cls or kwargs.pop('entity_cls', None)
+                if not entity_cls:
+                    raise IncorrectUsageError("Models need to be associated with an Entity or Aggregate")
 
-            if not new_cls.meta_.entity_cls:
-                new_cls.meta_.entity_cls = entity_cls
+                if not new_cls.meta_.entity_cls:
+                    new_cls.meta_.entity_cls = entity_cls
 
-            # Remember model association with aggregate/entity class, for easy fetching
-            self._models[fully_qualified_name(entity_cls)] = new_cls
+                # Remember model association with aggregate/entity class, for easy fetching
+                self._models[fully_qualified_name(entity_cls)] = new_cls
 
-        if element_type == DomainObjects.SUBSCRIBER and self._validate_subscriber_class(new_cls):
-            domain_event_cls = new_cls.meta_.domain_event_cls or kwargs.pop('domain_event', None)
-            broker_name = new_cls.meta_.broker or 'default'
-            if not domain_event_cls:
-                raise IncorrectUsageError("Subscribers need to be associated with a Domain Event")
+            if element_type == DomainObjects.SUBSCRIBER and self._validate_subscriber_class(new_cls):
+                domain_event_cls = new_cls.meta_.domain_event_cls or kwargs.pop('domain_event', None)
+                broker_name = new_cls.meta_.broker or 'default'
+                if not domain_event_cls:
+                    raise IncorrectUsageError("Subscribers need to be associated with a Domain Event")
 
-            new_cls.meta_.domain_event_cls = domain_event_cls
-            new_cls.meta_.broker = broker_name
+                new_cls.meta_.domain_event_cls = domain_event_cls
+                new_cls.meta_.broker = broker_name
 
-        if element_type == DomainObjects.COMMAND_HANDLER and self._validate_command_handler_class(new_cls):
-            command_cls = new_cls.meta_.command_cls or kwargs.pop('command', None)
-            broker_name = new_cls.meta_.broker or 'default'
-            if not command_cls:
-                raise IncorrectUsageError("Command Handlers need to be associated with a Command")
+            if element_type == DomainObjects.COMMAND_HANDLER and self._validate_command_handler_class(new_cls):
+                command_cls = new_cls.meta_.command_cls or kwargs.pop('command', None)
+                broker_name = new_cls.meta_.broker or 'default'
+                if not command_cls:
+                    raise IncorrectUsageError("Command Handlers need to be associated with a Command")
 
-            new_cls.meta_.command_cls = command_cls
-            new_cls.meta_.broker = broker_name
+                new_cls.meta_.command_cls = command_cls
+                new_cls.meta_.broker = broker_name
 
-        if element_type == DomainObjects.EMAIL and self._validate_email_class(new_cls):
-            provider_name = new_cls.meta_.provider or 'default'
-            new_cls.meta_.provider = provider_name
+            if element_type == DomainObjects.EMAIL and self._validate_email_class(new_cls):
+                provider_name = new_cls.meta_.provider or 'default'
+                new_cls.meta_.provider = provider_name
 
-        # Enrich element with domain information
-        if hasattr(new_cls, 'meta_'):
-            new_cls.meta_.aggregate_cls = aggregate_cls or kwargs.pop('aggregate_cls', None)
-            new_cls.meta_.bounded_context = kwargs.pop('bounded_context', None)
+            # Enrich element with domain information
+            if hasattr(new_cls, 'meta_'):
+                new_cls.meta_.aggregate_cls = aggregate_cls or kwargs.pop('aggregate_cls', None)
+                new_cls.meta_.bounded_context = kwargs.pop('bounded_context', None)
 
         # Register element with domain
         self._domain_registry.register_element(new_cls)
@@ -543,16 +541,6 @@ class Domain(_PackageBoundObject):
             raise NotSupportedError(
                 f'{element_cls.__name__} class has been marked abstract'
                 f' and cannot be instantiated')
-
-        return True
-
-    def _validate_repository_class(self, element_cls):
-        # Import here to avoid cyclic dependency
-        from protean.core.repository.base import BaseRepository
-
-        if not issubclass(element_cls, BaseRepository):
-            raise AssertionError(
-                f'Element {element_cls.__name__} must be subclass of `BaseRepository`')
 
         return True
 
