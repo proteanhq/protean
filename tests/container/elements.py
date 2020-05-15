@@ -6,7 +6,7 @@ from protean.utils.container import BaseContainer
 class CustomBaseContainer(BaseContainer):
     def __new__(cls, *args, **kwargs):
         if cls is CustomBaseContainer:
-            raise TypeError("BaseDataTransferObject cannot be instantiated")
+            raise TypeError("CustomBaseContainer cannot be instantiated")
         return super().__new__(cls)
 
 

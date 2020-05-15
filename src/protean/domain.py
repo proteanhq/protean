@@ -115,7 +115,6 @@ class Domain(_PackageBoundObject):
     from protean.core.broker.subscriber import BaseSubscriber
     from protean.core.command import BaseCommand
     from protean.core.command_handler import BaseCommandHandler
-    from protean.core.data_transfer_object import BaseDataTransferObject
     from protean.core.domain_event import BaseDomainEvent
     from protean.core.domain_service import BaseDomainService
     from protean.core.email import BaseEmail
@@ -193,7 +192,6 @@ class Domain(_PackageBoundObject):
             DomainObjects.APPLICATION_SERVICE.value: BaseApplicationService,
             DomainObjects.COMMAND.value: BaseCommand,
             DomainObjects.COMMAND_HANDLER.value: BaseCommandHandler,
-            DomainObjects.DATA_TRANSFER_OBJECT.value: BaseDataTransferObject,
             DomainObjects.DOMAIN_EVENT.value: BaseDomainEvent,
             DomainObjects.DOMAIN_SERVICE.value: BaseDomainService,
             DomainObjects.ENTITY.value: BaseEntity,
