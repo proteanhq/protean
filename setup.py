@@ -24,14 +24,6 @@ def read(*names, **kwargs):
     ).read()
 
 
-install_requires = [
-    'click>=7.0',
-    'cookiecutter>=1.7.0',
-    'inflect>=4.1.0',
-    'python-dateutil>=2.8.1',
-    'werkzeug>=1.0.0',
-]
-
 elasticsearch_requires = ['elasticsearch-dsl>=7.1.0']
 redis_requires = ['redis==3.5.2', 'rq>=1.3.0']
 postgresql_requires = ['psycopg2>=2.8.4', 'sqlalchemy>=1.3.15']
@@ -39,6 +31,14 @@ celery_requires = ['celery[redis]>=4.4.2']
 sendgrid_requires = ['sendgrid>=6.1.3']
 flask_requires = ['flask>=1.1.1']
 marshmallow_requires = ['marshmallow>=3.5.1']
+
+install_requires = marshmallow_requires + [
+    'click>=7.0',
+    'cookiecutter>=1.7.0',
+    'inflect>=4.1.0',
+    'python-dateutil>=2.8.1',
+    'werkzeug>=1.0.0',
+]
 
 testing_requires = (
     elasticsearch_requires
@@ -127,6 +127,7 @@ setup(
         "testing": testing_requires,
         "dev": dev_requires,
         "docs": docs_requires,
+        "all": dev_requires,
     },
     entry_points={
         'console_scripts': [
