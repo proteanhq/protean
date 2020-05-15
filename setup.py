@@ -26,6 +26,7 @@ def read(*names, **kwargs):
 
 elasticsearch_requires = ['elasticsearch-dsl>=7.1.0']
 redis_requires = ['redis==3.5.2', 'rq>=1.3.0']
+sqlite_requires = ['sqlalchemy>=1.3.15']
 postgresql_requires = ['psycopg2>=2.8.4', 'sqlalchemy>=1.3.15']
 celery_requires = ['celery[redis]>=4.4.2']
 sendgrid_requires = ['sendgrid>=6.1.3']
@@ -40,27 +41,27 @@ install_requires = marshmallow_requires + [
     'werkzeug>=1.0.0',
 ]
 
-testing_requires = (
-    elasticsearch_requires
+all_external_requires = [elasticsearch_requires
     + redis_requires
     + postgresql_requires
     + celery_requires
     + sendgrid_requires
     + flask_requires
     + marshmallow_requires
-    + [
-        'flake8-commas==2.0.0',
-        'mock==4.0.2',
-        'passlib==1.7.2',
-        'pluggy==0.13.1',
-        'pyjwt==1.7.1',
-        'pytest-cov==2.8.1',
-        'pytest-flake8==1.0.6',
-        'pytest-mock==3.1.0',
-        'pytest-travis-fold==1.3.0',
-        'pytest==5.4.2',
-    ]
-)
+]
+
+testing_requires = all_external_requires + [
+    'flake8-commas==2.0.0',
+    'mock==4.0.2',
+    'passlib==1.7.2',
+    'pluggy==0.13.1',
+    'pyjwt==1.7.1',
+    'pytest-cov==2.8.1',
+    'pytest-flake8==1.0.6',
+    'pytest-mock==3.1.0',
+    'pytest-travis-fold==1.3.0',
+    'pytest==5.4.2',
+]
 
 docs_requires = testing_requires + [
     'sphinx==3.0.3',
@@ -118,10 +119,12 @@ setup(
         "elasticsearch": elasticsearch_requires,
         "redis": redis_requires,
         "postgresql": postgresql_requires,
+        "sqlite": sqlite_requires,
         "celery": celery_requires,
         "sendgrid": sendgrid_requires,
         "flask": flask_requires,
         "marshmallow": marshmallow_requires,
+        "external": all_external_requires,
         "test": testing_requires,
         "tests": testing_requires,
         "testing": testing_requires,
