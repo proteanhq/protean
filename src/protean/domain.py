@@ -434,12 +434,15 @@ class Domain(_PackageBoundObject):
         #       class Account:
         #  ```
 
-        if element_type.value == DomainObjects.VALUE_OBJECT.value:
+        if element_type == DomainObjects.VALUE_OBJECT:
             from protean.core.value_object import ValueObjectFactory
             new_cls = ValueObjectFactory.prep_class(element_cls, **kwargs)
-        elif element_type.value == DomainObjects.REPOSITORY.value:
+        elif element_type == DomainObjects.REPOSITORY:
             from protean.core.repository.base import RepositoryFactory
             new_cls = RepositoryFactory.prep_class(element_cls, **kwargs)
+        elif element_type == DomainObjects.AGGREGATE:
+            from protean.core.aggregate import AggregateFactory
+            new_cls = AggregateFactory.prep_class(element_cls, **kwargs)
         else:
             try:
                 if not issubclass(element_cls, self.base_class_mapping[element_type.value]):
@@ -473,7 +476,7 @@ class Domain(_PackageBoundObject):
             model_cls = None
             aggregate_cls = None
 
-            if (element_type in (DomainObjects.AGGREGATE, DomainObjects.ENTITY) and
+            if (element_type == DomainObjects.ENTITY and
                     self._validate_persistence_class(new_cls)):
                 provider_name = provider_name or new_cls.meta_.provider or 'default'
                 model_cls = model_cls or new_cls.meta_.model or None
@@ -600,7 +603,7 @@ class Domain(_PackageBoundObject):
     def _domain_element(
             self, element_type, _cls=None, *, aggregate_cls=None,
             bounded_context=None, domain_event=None, command=None,
-            entity_cls=None):
+            entity_cls=None, provider=None, model=None):
         """Returns the registered class after decoarating it and recording its presence in the domain"""
 
         def wrap(cls):
@@ -608,7 +611,7 @@ class Domain(_PackageBoundObject):
                 element_type, cls,
                 aggregate_cls=aggregate_cls, bounded_context=bounded_context,
                 domain_event=domain_event, command=command,
-                entity_cls=entity_cls)
+                entity_cls=entity_cls, provider=provider, model=model)
 
         # See if we're being called as @Entity or @Entity().
         if _cls is None:
