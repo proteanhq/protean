@@ -35,14 +35,12 @@ class DomainObjects(Enum):
     APPLICATION_SERVICE = 'APPLICATION_SERVICE'
     COMMAND = 'COMMAND'
     COMMAND_HANDLER = 'COMMAND_HANDLER'
-    DATA_TRANSFER_OBJECT = 'DATA_TRANSFER_OBJECT'
     DOMAIN_EVENT = 'DOMAIN_EVENT'
     DOMAIN_SERVICE = 'DOMAIN_SERVICE'
     EMAIL = 'EMAIL'
     ENTITY = 'ENTITY'
     MODEL = 'MODEL'
     REPOSITORY = 'REPOSITORY'
-    REQUEST_OBJECT = 'REQUEST_OBJECT'
     SERIALIZER = 'SERIALIZER'
     SUBSCRIBER = 'SUBSCRIBER'
     VALUE_OBJECT = 'VALUE_OBJECT'
@@ -122,7 +120,6 @@ class Domain(_PackageBoundObject):
     from protean.core.repository.model import BaseModel
     from protean.core.repository.base import BaseRepository
     from protean.core.serializer import BaseSerializer
-    from protean.core.transport.request import BaseRequestObject
     from protean.core.value_object import BaseValueObject
     from protean.utils import IdentityStrategy, IdentityType
 
@@ -198,7 +195,6 @@ class Domain(_PackageBoundObject):
             DomainObjects.EMAIL.value: BaseEmail,
             DomainObjects.MODEL.value: BaseModel,
             DomainObjects.REPOSITORY.value: BaseRepository,
-            DomainObjects.REQUEST_OBJECT.value: BaseRequestObject,
             DomainObjects.SERIALIZER.value: marshmallow.Schema,
             DomainObjects.SUBSCRIBER.value: BaseSubscriber,
             DomainObjects.VALUE_OBJECT.value: BaseValueObject,
@@ -390,10 +386,6 @@ class Domain(_PackageBoundObject):
         return self._domain_registry._elements[DomainObjects.COMMAND_HANDLER.value]
 
     @property
-    def data_transfer_objects(self):
-        return self._domain_registry._elements[DomainObjects.DATA_TRANSFER_OBJECT.value]
-
-    @property
     def domain_events(self):
         return self._domain_registry._elements[DomainObjects.DOMAIN_EVENT.value]
 
@@ -412,10 +404,6 @@ class Domain(_PackageBoundObject):
     @property
     def entities(self):
         return self._domain_registry._elements[DomainObjects.ENTITY.value]
-
-    @property
-    def request_objects(self):
-        return self._domain_registry._elements[DomainObjects.REQUEST_OBJECT.value]
 
     @property
     def repositories(self):
@@ -658,11 +646,6 @@ class Domain(_PackageBoundObject):
             DomainObjects.COMMAND_HANDLER, _cls=_cls, **kwargs,
             aggregate_cls=aggregate_cls, bounded_context=bounded_context, command=command)
 
-    def data_transfer_object(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
-        return self._domain_element(
-            DomainObjects.DATA_TRANSFER_OBJECT, _cls=_cls, **kwargs,
-            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
-
     def domain_event(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.DOMAIN_EVENT, _cls=_cls, **kwargs,
@@ -691,11 +674,6 @@ class Domain(_PackageBoundObject):
     def repository(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
         return self._domain_element(
             DomainObjects.REPOSITORY, _cls=_cls, **kwargs,
-            aggregate_cls=aggregate_cls, bounded_context=bounded_context)
-
-    def request_object(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
-        return self._domain_element(
-            DomainObjects.REQUEST_OBJECT, _cls=_cls, **kwargs,
             aggregate_cls=aggregate_cls, bounded_context=bounded_context)
 
     def serializer(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):

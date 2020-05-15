@@ -5,6 +5,9 @@ DEV
 ---
 
 * Log Protean exceptions to print helpful debug messages
+* Support for installation of optional dependencies
+* Remove support for Data Transfer Object
+* Remove support for Request and Response Objects
 
 0.5.0 (2020-05-01)
 ------------------

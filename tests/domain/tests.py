@@ -6,7 +6,7 @@ from protean.core.exceptions import ConfigurationError, IncorrectUsageError
 from protean.utils import fully_qualified_name
 
 # Local/Relative Imports
-from .elements import UserStructAggregate, UserStructEntity, UserStructFoo, UserStructRequestObject, UserStructVO
+from .elements import UserStructAggregate, UserStructEntity, UserStructFoo, UserStructVO
 
 
 class TestDomainInitialization:
@@ -40,20 +40,6 @@ class TestDomainRegistration:
         test_domain.registry.register_element(UserStructVO)
 
         assert fully_qualified_name(UserStructVO) in test_domain.value_objects
-
-    def test_register_request_object_with_domain(self, test_domain):
-        test_domain.registry.register_element(UserStructRequestObject)
-
-        assert fully_qualified_name(UserStructRequestObject) in test_domain.request_objects
-
-    @pytest.mark.xfail(reason='Temporarily disabled raising ConfigurationError - Need to control with flag')
-    def test_that_registering_an_element_again_raises_configuration_error(self, test_domain):
-        test_domain.registry.register_element(UserStructRequestObject)
-
-        assert fully_qualified_name(UserStructRequestObject) in test_domain.request_objects
-
-        with pytest.raises(ConfigurationError):
-            test_domain.registry.register_element(UserStructRequestObject)
 
     def test_that_a_properly_subclassed_entity_can_be_directly_registered(self, test_domain):
         from protean.core.entity import BaseEntity
@@ -109,15 +95,6 @@ class TestDomainAnnotations:
             foo = String(max_length=50)
 
         assert fully_qualified_name(FooBar) in test_domain.entities
-
-    def test_auto_register_request_object_with_annotation(self, test_domain):
-        from protean.core.field.basic import String
-
-        @test_domain.request_object
-        class FooBar:
-            foo = String(max_length=50)
-
-        assert fully_qualified_name(FooBar) in test_domain.request_objects
 
     def test_auto_register_value_object_with_annotation(self, test_domain):
         from protean.core.field.basic import String

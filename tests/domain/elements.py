@@ -27,9 +27,5 @@ class UserStructVO(UserStruct):
     element_type = DomainObjects.VALUE_OBJECT
 
 
-class UserStructRequestObject(UserStruct):
-    element_type = DomainObjects.REQUEST_OBJECT
-
-
 class UserStructFoo(UserStruct):
     element_type = DummyElement.FOO
