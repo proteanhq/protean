@@ -24,7 +24,7 @@ class TestEntityMeta:
         assert hasattr(Person.meta_, 'id_field')
 
         # Domain attributes
-        assert hasattr(Person.meta_, 'aggregate')
+        assert hasattr(Person.meta_, 'aggregate_cls')
         assert hasattr(Person.meta_, 'bounded_context')
 
     def test_entity_meta_has_declared_fields_on_construction(self):

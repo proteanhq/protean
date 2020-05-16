@@ -443,6 +443,9 @@ class Domain(_PackageBoundObject):
         elif element_type == DomainObjects.AGGREGATE:
             from protean.core.aggregate import AggregateFactory
             new_cls = AggregateFactory.prep_class(element_cls, **kwargs)
+        elif element_type == DomainObjects.ENTITY:
+            from protean.core.entity import EntityFactory
+            new_cls = EntityFactory.prep_class(element_cls, **kwargs)
         else:
             try:
                 if not issubclass(element_cls, self.base_class_mapping[element_type.value]):
@@ -471,15 +474,7 @@ class Domain(_PackageBoundObject):
                     " (Error: {exc})",
                     )
 
-            # Decorate Aggregate classes with Provider and Model info
-            provider_name = None
-            model_cls = None
             aggregate_cls = None
-
-            if (element_type == DomainObjects.ENTITY and
-                    self._validate_persistence_class(new_cls)):
-                provider_name = provider_name or new_cls.meta_.provider or 'default'
-                model_cls = model_cls or new_cls.meta_.model or None
 
             if (element_type == DomainObjects.MODEL and self._validate_model_class(new_cls)):
                 # Associate aggregate/entity class with model if `entity_cls` was supplied as an explicit parameter
@@ -530,22 +525,6 @@ class Domain(_PackageBoundObject):
         self._domain_registry.register_element(new_cls)
 
         return new_cls
-
-    def _validate_persistence_class(self, element_cls):
-        # Import here to avoid cyclic dependency
-        from protean.core.aggregate import BaseAggregate
-        from protean.core.entity import BaseEntity
-
-        if not issubclass(element_cls, BaseAggregate) and not issubclass(element_cls, BaseEntity):
-            raise AssertionError(
-                f'Element {element_cls.__name__} must be subclass of `BaseAggregate`')
-
-        if element_cls.meta_.abstract is True:
-            raise NotSupportedError(
-                f'{element_cls.__name__} class has been marked abstract'
-                f' and cannot be instantiated')
-
-        return True
 
     def _validate_model_class(self, element_cls):
         # Import here to avoid cyclic dependency

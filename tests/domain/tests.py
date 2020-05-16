@@ -41,28 +41,6 @@ class TestDomainRegistration:
 
         assert fully_qualified_name(UserVO) in test_domain.value_objects
 
-    def test_that_a_properly_subclassed_entity_can_be_directly_registered(self, test_domain):
-        from protean.core.entity import BaseEntity
-        from protean.core.field.basic import String
-
-        class FooBar(BaseEntity):
-            foo = String(max_length=50)
-
-        test_domain.register(FooBar)
-
-        assert fully_qualified_name(FooBar) in test_domain.entities
-
-    def test_that_a_properly_subclassed_aggregate_can_be_directly_registered(self, test_domain):
-        from protean.core.aggregate import BaseAggregate
-        from protean.core.field.basic import String
-
-        class FooBar(BaseAggregate):
-            foo = String(max_length=50)
-
-        test_domain.register(FooBar)
-
-        assert fully_qualified_name(FooBar) in test_domain.aggregates
-
     def test_that_an_improperly_subclassed_element_cannot_be_registered(self, test_domain):
         from protean.core.field.basic import String
 
@@ -77,47 +55,8 @@ class TestDomainRegistration:
 
 
 class TestDomainAnnotations:
-
-    def test_auto_register_aggregate_with_annotation(self, test_domain):
-        from protean.core.field.basic import String
-
-        @test_domain.aggregate
-        class FooBar:
-            foo = String(max_length=50)
-
-        assert fully_qualified_name(FooBar) in test_domain.aggregates
-
-    def test_auto_register_entity_with_annotation(self, test_domain):
-        from protean.core.field.basic import String
-
-        @test_domain.entity
-        class FooBar:
-            foo = String(max_length=50)
-
-        assert fully_qualified_name(FooBar) in test_domain.entities
-
-    def test_auto_register_value_object_with_annotation(self, test_domain):
-        from protean.core.field.basic import String
-
-        @test_domain.aggregate
-        class Foo:
-            foo = String()
-
-        @test_domain.value_object(aggregate_cls=Foo)
-        class Bar:
-            bar = String()
-
-        assert fully_qualified_name(Bar) in test_domain.value_objects
-        assert Bar.meta_.aggregate_cls == Foo
-
-    def test_register_entity_against_an_aggregate(self, test_domain):
-        from protean.core.field.basic import String
-
-        @test_domain.entity(aggregate_cls='foo')
-        class FooBar:
-            foo = String(max_length=50)
-
-        assert FooBar.meta_.aggregate_cls == 'foo'
+    # Individual test cases for registering domain elements with
+    #   domain decorators are present in their respective test folders.
 
     def test_that_only_recognized_element_types_can_be_registered(self, test_domain):
         from enum import Enum

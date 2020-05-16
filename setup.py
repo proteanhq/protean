@@ -41,14 +41,14 @@ install_requires = marshmallow_requires + [
     'werkzeug>=1.0.0',
 ]
 
-all_external_requires = [elasticsearch_requires
+all_external_requires = [
+    elasticsearch_requires
     + redis_requires
     + postgresql_requires
     + celery_requires
     + sendgrid_requires
     + flask_requires
-    + marshmallow_requires
-]
+    + marshmallow_requires]
 
 testing_requires = all_external_requires + [
     'flake8-commas==2.0.0',

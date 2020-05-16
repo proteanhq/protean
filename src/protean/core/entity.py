@@ -7,7 +7,7 @@ from collections import defaultdict
 from uuid import uuid4
 
 # Protean
-from protean.core.exceptions import ConfigurationError, NotSupportedError, ValidationError
+from protean.core.exceptions import ConfigurationError, IncorrectUsageError, NotSupportedError, ValidationError
 from protean.core.field.association import Association, Reference
 from protean.core.field.basic import Auto, Field
 from protean.core.field.embedded import ValueObjectField
@@ -43,7 +43,7 @@ class _EntityMetaclass(type):
         if not parents:
             return super().__new__(mcs, name, bases, attrs)
 
-        # Remove `abstract` in base classes if defined
+        # Remove `abstract` if defined in base classes
         for base in bases:
             if hasattr(base, 'Meta') and hasattr(base.Meta, 'abstract'):
                 delattr(base.Meta, 'abstract')
@@ -51,9 +51,9 @@ class _EntityMetaclass(type):
         new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
 
         # Gather `Meta` class/object if defined
-        attr_meta = attrs.pop('Meta', None)
-        meta = attr_meta or getattr(new_class, 'Meta', None)
-        setattr(new_class, 'meta_', EntityMeta(name, meta))
+        attr_meta = attrs.pop('Meta', None)  # Gather Metadata defined in inner `Meta` class
+        entity_meta = EntityMeta(name, attr_meta)  # Initialize the Metadata container
+        setattr(new_class, 'meta_', entity_meta)  # Associate the Metadata container with new class
 
         # Load declared fields
         new_class._load_fields(attrs)
@@ -187,8 +187,8 @@ class EntityMeta:
         self.id_field = None
 
         # Domain Attributes
-        self.aggregate = None
-        self.bounded_context = None
+        self.aggregate_cls = getattr(meta, 'aggregate_cls', None)
+        self.bounded_context = getattr(meta, 'bounded_context', None)
 
     @property
     def mandatory_fields(self):
@@ -557,3 +557,59 @@ class BaseEntity(metaclass=_EntityMetaclass):
         clone_copy.state_ = _EntityState()
 
         return clone_copy
+
+
+class EntityFactory:
+    @classmethod
+    def prep_class(cls, element_cls, **kwargs):
+        if issubclass(element_cls, BaseEntity):
+            new_element_cls = element_cls
+        else:
+            try:
+                new_dict = element_cls.__dict__.copy()
+                new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
+
+                new_element_cls = type(element_cls.__name__, (BaseEntity, ), new_dict)
+            except BaseException as exc:
+                logger.debug("Error during Element registration:", repr(exc))
+                raise IncorrectUsageError(
+                    "Invalid class {element_cls.__name__} for type {element_type.value}"
+                    " (Error: {exc})",
+                    )
+
+        cls._validate_entity_class(new_element_cls)
+
+        new_element_cls.meta_.provider = (
+            kwargs.pop('provider', None)
+            or (hasattr(new_element_cls, 'meta_') and new_element_cls.meta_.provider)
+            or 'default')
+        new_element_cls.meta_.model = (
+            kwargs.pop('model', None)
+            or (hasattr(new_element_cls, 'meta_') and new_element_cls.meta_.model)
+            or None)
+        new_element_cls.meta_.bounded_context = (
+            kwargs.pop('bounded_context', None)
+            or (hasattr(new_element_cls, 'meta_') and new_element_cls.meta_.bounded_context))
+        new_element_cls.meta_.aggregate_cls = (
+            kwargs.pop('aggregate_cls', None)
+            or (hasattr(new_element_cls, 'meta_') and new_element_cls.meta_.aggregate_cls)
+            or None)
+
+        if not new_element_cls.meta_.aggregate_cls:
+            raise IncorrectUsageError(
+                f"Entity `{new_element_cls.__name__}` needs to be associated with an Aggregate")
+
+        return new_element_cls
+
+    @classmethod
+    def _validate_entity_class(cls, element_cls):
+        if not issubclass(element_cls, BaseEntity):
+            raise AssertionError(
+                f'Element {element_cls.__name__} must be subclass of `BaseEntity`')
+
+        if element_cls.meta_.abstract is True:
+            raise NotSupportedError(
+                f'{element_cls.__name__} class has been marked abstract'
+                f' and cannot be instantiated')
+
+        return True

@@ -89,18 +89,20 @@ class TestHasMany:
 
     def test_successful_initialization_of_entity_with_has_many_association(self, test_domain):
         post = Post(content='Lorem Ipsum')
-        test_domain.get_dao(Post).save(post)
-        comment1 = Comment(id=101, content='First Comment', post=post)
-        comment2 = Comment(id=102, content='Second Comment', post=post)
-        test_domain.get_dao(Comment).save(comment1)
-        test_domain.get_dao(Comment).save(comment2)
+        test_domain.repository_for(Post).add(post)
 
-        assert comment1.post.id == post.id
-        assert comment2.post.id == post.id
+        comment1 = Comment(id=101, content='First Comment')
+        comment2 = Comment(id=102, content='Second Comment')
 
-        refreshed_post = test_domain.get_dao(Post).get(post.id)
+        post.comments.add(comment1)
+        post.comments.add(comment2)
+        test_domain.repository_for(Post).add(post)
+
+        refreshed_post = test_domain.repository_for(Post).get(post.id)
         assert len(refreshed_post.comments) == 2
         assert 'comments' in refreshed_post.__dict__  # Available after access
+        assert refreshed_post.comments[0].post_id == post.id
+        assert refreshed_post.comments[1].post_id == post.id
 
         assert isinstance(refreshed_post.comments, QuerySet)
         assert isinstance(refreshed_post.comments.all(), ResultSet)
