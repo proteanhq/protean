@@ -45,11 +45,11 @@ class NotifySSOSubscriber(BaseSubscriber):
     """
 
     class Meta:
-        domain_event_cls = PersonAdded
+        domain_event = PersonAdded
 
     @classmethod
     def notify(cls, domain_event_dict):
         print("Received Domain Event: ", domain_event_dict)
-        print("Domain Event class: ", cls.meta_.domain_event_cls)
+        print("Domain Event class: ", cls.meta_.domain_event)
 
         print("Current domain: ", current_domain.domain_name)

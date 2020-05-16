@@ -446,6 +446,12 @@ class Domain(_PackageBoundObject):
         elif element_type == DomainObjects.ENTITY:
             from protean.core.entity import EntityFactory
             new_cls = EntityFactory.prep_class(element_cls, **kwargs)
+        elif element_type == DomainObjects.SUBSCRIBER:
+            from protean.core.broker.subscriber import SubscriberFactory
+            new_cls = SubscriberFactory.prep_class(element_cls, **kwargs)
+        elif element_type == DomainObjects.DOMAIN_EVENT:
+            from protean.core.domain_event import DomainEventFactory
+            new_cls = DomainEventFactory.prep_class(element_cls, **kwargs)
         else:
             try:
                 if not issubclass(element_cls, self.base_class_mapping[element_type.value]):
@@ -494,15 +500,6 @@ class Domain(_PackageBoundObject):
                 # Remember model association with aggregate/entity class, for easy fetching
                 self._models[fully_qualified_name(entity_cls)] = new_cls
 
-            if element_type == DomainObjects.SUBSCRIBER and self._validate_subscriber_class(new_cls):
-                domain_event_cls = new_cls.meta_.domain_event_cls or kwargs.pop('domain_event', None)
-                broker_name = new_cls.meta_.broker or 'default'
-                if not domain_event_cls:
-                    raise IncorrectUsageError("Subscribers need to be associated with a Domain Event")
-
-                new_cls.meta_.domain_event_cls = domain_event_cls
-                new_cls.meta_.broker = broker_name
-
             if element_type == DomainObjects.COMMAND_HANDLER and self._validate_command_handler_class(new_cls):
                 command_cls = new_cls.meta_.command_cls or kwargs.pop('command', None)
                 broker_name = new_cls.meta_.broker or 'default'
@@ -543,16 +540,6 @@ class Domain(_PackageBoundObject):
         if not issubclass(element_cls, BaseSerializer):
             raise AssertionError(
                 f'Element {element_cls.__name__} must be subclass of `BaseSerializer`')
-
-        return True
-
-    def _validate_subscriber_class(self, element_cls):
-        # Import here to avoid cyclic dependency
-        from protean.core.broker.subscriber import BaseSubscriber
-
-        if not issubclass(element_cls, BaseSubscriber):
-            raise AssertionError(
-                f'Element {element_cls.__name__} must be subclass of `BaseSubscriber`')
 
         return True
 
@@ -866,7 +853,7 @@ class Domain(_PackageBoundObject):
             if broker_name not in self._brokers:
                 raise ConfigurationError(f"Broker {broker_name} has not been configured.")
 
-            self._brokers[broker_name].register(subscriber.meta_.domain_event_cls, subscriber)
+            self._brokers[broker_name].register(subscriber.meta_.domain_event, subscriber)
 
         # Initialize command handlers for Brokers
         for _, command_handler_record in self.command_handlers.items():

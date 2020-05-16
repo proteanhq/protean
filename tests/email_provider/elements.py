@@ -34,6 +34,9 @@ class Person(BaseAggregate):
 class PersonAdded(BaseDomainEvent):
     person = AggregateField(Person)
 
+    class Meta:
+        aggregate_cls = Person
+
 
 class WelcomeEmail(BaseEmail):
     """Emailer to welcome new additions"""
@@ -63,7 +66,7 @@ class WelcomeNewPerson(BaseSubscriber):
     """
 
     class Meta:
-        domain_event_cls = PersonAdded
+        domain_event = PersonAdded
 
     def notify(self, domain_event):
         email = WelcomeEmail(to=domain_event['person']['email'], data=domain_event['person'])

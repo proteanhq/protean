@@ -29,7 +29,7 @@ class TestDomainEventRegistration:
         assert fully_qualified_name(PersonAdded) in test_domain.domain_events
 
     def test_that_domain_event_can_be_registered_via_annotations(self, test_domain):
-        @test_domain.domain_event
+        @test_domain.domain_event(aggregate_cls=Person)
         class AnnotatedDomainEvent:
             def special_method(self):
                 pass

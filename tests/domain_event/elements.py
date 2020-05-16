@@ -38,6 +38,9 @@ class Person(BaseAggregate):
 class PersonAdded(BaseDomainEvent):
     person = AggregateField(Person)
 
+    class Meta:
+        aggregate_cls = Person
+
 
 class PersonService(BaseApplicationService):
     @classmethod

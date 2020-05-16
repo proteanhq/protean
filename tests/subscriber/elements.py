@@ -30,6 +30,9 @@ class Person(BaseAggregate):
 class PersonAdded(BaseDomainEvent):
     person = AggregateField(Person)
 
+    class Meta:
+        aggregate_cls = Person
+
 
 class NotifySSOSubscriber(BaseSubscriber):
     """Subscriber that notifies an external SSO system
@@ -37,7 +40,7 @@ class NotifySSOSubscriber(BaseSubscriber):
     """
 
     class Meta:
-        domain_event_cls = PersonAdded
+        domain_event = PersonAdded
 
     def notify(self, domain_event):
         print("Received Domain Event: ", domain_event)
