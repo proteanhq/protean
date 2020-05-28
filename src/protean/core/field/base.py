@@ -196,7 +196,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
             # run validations against an empty value
             # Because of this behavior, we preserve the data sanctity for int and float objects,
             # and return 0 or 0.0, as need be.
-            else:
+            elif value is None:
                 return value
 
         # If choices exist then validate that value is be one of the choices

@@ -71,6 +71,13 @@ class TestIntegerField:
         age = Integer()
         assert age is not None
 
+    def test_various_input_values(self):
+        age = Integer()
+        assert age._load(12) == 12
+        assert age._load('12') == 12
+        assert age._load(None) is None
+        assert age._load('') is None
+
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
         with pytest.raises(ValidationError):

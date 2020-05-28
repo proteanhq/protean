@@ -75,6 +75,9 @@ class Integer(Field):
     def _cast_to_type(self, value):
         """ Convert the value to an int and raise error on failures"""
         try:
+            if isinstance(value, str):
+                if value.strip() == '':
+                    return None
             return int(value)
         except (ValueError, TypeError):
             self.fail('invalid', value=value)
