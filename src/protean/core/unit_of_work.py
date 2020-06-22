@@ -2,7 +2,7 @@
 import logging
 
 # Protean
-from protean.core.exceptions import InvalidOperationError
+from protean.core.exceptions import InvalidOperationError, ValidationError
 from protean.globals import _uow_context_stack, current_domain
 
 logger = logging.getLogger('protean.core.unit_of_work')
@@ -62,6 +62,7 @@ class UnitOfWork:
         except Exception as exc:
             logger.error(f'Error during Commit: {str(exc)}. Rolling back Transaction...')
             self.rollback()
+            raise ValidationError({'_entity': [f'Error during Data Commit: - {repr(exc)}']})
 
         self._reset()
 

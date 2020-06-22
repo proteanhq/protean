@@ -10,7 +10,7 @@ class ProteanException(Exception):
     """Base class for all Exceptions raised within Protean"""
 
     def __init__(self, messages, **kwargs):
-        logger.exception(messages)
+        logger.debug(f"Exception:: {messages}")
         self.messages = messages
         super().__init__(**kwargs)
 
