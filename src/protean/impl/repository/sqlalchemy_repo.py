@@ -101,7 +101,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
             Integer: sa_types.Integer,
             Float: sa_types.Float,
             List: sa_types.PickleType,
-            Dict: sa_types.JSON,
+            Dict: sa_types.PickleType,
             Date: sa_types.Date,
             DateTime: sa_types.DateTime,
         }
