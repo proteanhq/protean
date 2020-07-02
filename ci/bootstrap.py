@@ -28,7 +28,9 @@ if __name__ == "__main__":
         subprocess.check_call([join(bin_path, "pip"), "install", "jinja2"])
     activate = join(bin_path, "activate_this.py")
     # noinspection PyCompatibility
-    exec(compile(open(activate, "rb").read(), activate, "exec"), dict(__file__=activate))
+    exec(
+        compile(open(activate, "rb").read(), activate, "exec"), dict(__file__=activate)
+    )
 
     import jinja2
 
@@ -44,9 +46,15 @@ if __name__ == "__main__":
     tox_environments = [
         line.strip()
         # WARNING: 'tox' must be installed globally or in the project's virtualenv
-        for line in subprocess.check_output(['tox', '--listenvs'], universal_newlines=True).splitlines()
+        for line in subprocess.check_output(
+            ["tox", "--listenvs"], universal_newlines=True
+        ).splitlines()
     ]
-    tox_environments = [line for line in tox_environments if line not in ['clean', 'report', 'docs', 'check']]
+    tox_environments = [
+        line
+        for line in tox_environments
+        if line not in ["clean", "report", "docs", "check"]
+    ]
 
     for name in os.listdir(join("ci", "templates")):
         with open(join(base_path, name), "w") as fh:
