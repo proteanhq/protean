@@ -1,13 +1,17 @@
 Release History
 ===============
 
-DEV
----
+0.5.1 (2020-07-02)
+------------------
 
 * Log Protean exceptions to print helpful debug messages
 * Support for installation of optional dependencies
 * Remove support for Data Transfer Object
 * Remove support for Request and Response Objects
+* Bugfix - Throw Exceptions on Unit of Work commit failures
+* Use `black` as code formatter, with a git pre-commit hook
+* Add 3.9 to test matrix and cleanup Travis yml
+* Bugfix - Fix broken Sphinx docs build
 
 0.5.0 (2020-05-01)
 ------------------
