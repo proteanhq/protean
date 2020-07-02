@@ -50,9 +50,9 @@ Code Contributions
 Bug reports
 ^^^^^^^^^^^
 
-Before you raise one, though, please check through the `GitHub issues`_, 
-**both open and closed**, to confirm that the bug hasn’t been reported before. 
-Duplicate bug reports are a huge drain on the time of other contributors, 
+Before you raise one, though, please check through the `GitHub issues`_,
+**both open and closed**, to confirm that the bug hasn’t been reported before.
+Duplicate bug reports are a huge drain on the time of other contributors,
 and should be avoided as much as possible.
 
 When `reporting a bug <https://github.com/proteanhq/protean/issues>`_ please include:
@@ -66,16 +66,16 @@ Documentation improvements
 
 Protean could always use more documentation, whether as part of the
 official Protean docs, in docstrings, or even on the web in blog posts,
-articles, and such. The documentation files live in the docs/ directory of the codebase. 
+articles, and such. The documentation files live in the docs/ directory of the codebase.
 They’re written in reStructuredText, and use Sphinx to generate the full suite of documentation.
 
-When contributing documentation, please do your best to follow the style of the 
-documentation files. This means a soft-limit of 79 characters wide in your text files 
+When contributing documentation, please do your best to follow the style of the
+documentation files. This means a soft-limit of 79 characters wide in your text files
 and a semi-formal, yet friendly and approachable, prose style.
 
 When presenting Python code, use single-quoted strings ('hello' instead of "hello").
 
-All Documentation changes will need to go through 
+All Documentation changes will need to go through
 the normal pull request process.
 
 Feature requests and feedback
@@ -117,6 +117,13 @@ To set up `protean` for local development:
     git push origin name-of-your-bugfix-or-feature
 
 6. Submit a pull request through the GitHub website.
+
+Code Formatting
+^^^^^^^^^^^^^^^
+
+Protean uses [black](https://github.com/psf/black) as the default code formatter.
+
+You can configure [editor](https://github.com/psf/black#editor-integration) with `black`, but is also run automatically on commit with the help of `pre-commit` git hook. Protean uses `pre-commit` to configure and install the hook locally, so you can simply run `pre-commit install` after install all dev requirement packages.
 
 Testing
 ^^^^^^^

@@ -72,6 +72,7 @@ dev_requires = docs_requires + [
     "check-manifest==0.42",
     "coverage==5.1",
     "docutils==0.16",
+    "pre-commit==2.6.0",
     "tox==3.15.0",
     "twine==3.1.1",
 ]
