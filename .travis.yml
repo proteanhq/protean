@@ -21,6 +21,9 @@ before_install:
 before_script:
   - psql -c 'create database protean_test;' -U postgres
   - sleep 10
+install:
+  - pip install codecov pre-commit
+  - pip install .[test]
 matrix:
   include:
     - name: "lint"
@@ -37,10 +40,10 @@ matrix:
       python: 3.9-dev
   allow_failures:
     - python: 3.9-dev
-install:
-  - pip install .[test]
 script:
   - pytest --slow --postgresql --elasticsearch --redis --cov=protean --cov-config .coveragerc tests
 after_success:
-  - pip install codecov
   - codecov
+notifications:
+  on_success: change
+  on_failure: always
