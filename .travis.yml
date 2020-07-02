@@ -25,24 +25,18 @@ before_script:
 install:
   - pip install codecov pre-commit
   - pip install .[test]
-python:
-  - "3.7"
-  - "3.7-dev"
-  - "3.8"
-  - "3.8-dev"
-  - "3.9-dev"
 jobs:
   include:
     - name: "lint"
       python: 3.7
       env:
         - TEST_CMD="pre-commit run --all-files"
-    - name: "3.6"
-      python: 3.6
     - name: "3.7"
       python: 3.7
     - name: "3.8"
       python: 3.8
+    - name: "3.8-dev"
+      python: 3.8-dev
     - name: "3.9"
       python: 3.9-dev
   allow_failures:
