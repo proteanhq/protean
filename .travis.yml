@@ -1,15 +1,16 @@
 # cSpell: disable
 
 language: python
+os:
+  - linux
 cache:
   pip: true
   directories:
     - $HOME/.cache/pre-commit
 dist: xenial
-sudo: required
 services:
   - postgresql
-  - redis-server
+  - redis
 before_install:
   - curl -s -O https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.3.2-amd64.deb
   - sudo dpkg -i --force-confnew elasticsearch-7.3.2-amd64.deb
@@ -24,12 +25,18 @@ before_script:
 install:
   - pip install codecov pre-commit
   - pip install .[test]
-matrix:
+python:
+  - "3.7"
+  - "3.7-dev"
+  - "3.8"
+  - "3.8-dev"
+  - "3.9-dev"
+jobs:
   include:
     - name: "lint"
-        python: 3.7
-        env:
-          - TEST_CMD="pre-commit run --all-files"
+      python: 3.7
+      env:
+        - TEST_CMD="pre-commit run --all-files"
     - name: "3.6"
       python: 3.6
     - name: "3.7"
