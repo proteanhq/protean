@@ -62,20 +62,24 @@ testing_requires = all_external_requires + [
     "pytest==5.4.2",
 ]
 
-docs_requires = testing_requires + [
+docs_requires = [
     "sphinx==3.0.3",
     "sphinx_rtd_theme==0.4.3",
 ]
 
-dev_requires = docs_requires + [
-    "black==19.10b0",
-    "check-manifest==0.42",
-    "coverage==5.1",
-    "docutils==0.16",
-    "pre-commit==2.6.0",
-    "tox==3.15.0",
-    "twine==3.1.1",
-]
+dev_requires = (
+    docs_requires
+    + testing_requires
+    + [
+        "black==19.10b0",
+        "check-manifest==0.42",
+        "coverage==5.1",
+        "docutils==0.16",
+        "pre-commit==2.6.0",
+        "tox==3.15.0",
+        "twine==3.1.1",
+    ]
+)
 
 setup(
     name="protean",
