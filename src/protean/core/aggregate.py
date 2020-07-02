@@ -3,8 +3,8 @@
 import logging
 
 # Protean
-from protean.core.exceptions import IncorrectUsageError, NotSupportedError
 from protean.core.entity import BaseEntity
+from protean.core.exceptions import IncorrectUsageError, NotSupportedError
 from protean.domain import DomainObjects
 
 logger = logging.getLogger("protean.domain.aggregate")

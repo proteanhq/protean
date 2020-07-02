@@ -4,9 +4,11 @@ graft ci
 graft tests
 
 include .bumpversion.cfg
-include .coveragerc
 include .cookiecutterrc
+include .coveragerc
 include .editorconfig
+include .git-blame-ignore-revs
+include .pre-commit-config.yaml
 
 include AUTHORS.rst
 include CHANGELOG.rst
