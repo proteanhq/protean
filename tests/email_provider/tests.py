@@ -16,7 +16,7 @@ class TestEmailInitialization:
             BaseEmail()
 
     def test_that_email_can_be_instantiated(self):
-        email = WelcomeEmail(to='john.doe@gmail.com', data={'foo': 'bar'})
+        email = WelcomeEmail(to="john.doe@gmail.com", data={"foo": "bar"})
         assert email is not None
 
 
@@ -36,11 +36,18 @@ class TestEmailRegistration:
 
 
 class TestEmailTriggering:
-    @patch.object(DummyEmailProvider, 'send_email')
+    @patch.object(DummyEmailProvider, "send_email")
     def test_that_email_is_pushed_via_aggregate_command_method(self, mock, test_domain):
         test_domain.register(PersonAdded)
         test_domain.register(WelcomeEmail)
         test_domain.register(WelcomeNewPerson)
 
-        Person.add_newcomer({'email': 'john.doe@gmail.com', 'first_name': 'John', 'last_name': 'Doe', 'age': 21})
+        Person.add_newcomer(
+            {
+                "email": "john.doe@gmail.com",
+                "first_name": "John",
+                "last_name": "Doe",
+                "age": 21,
+            }
+        )
         mock.assert_called_once()

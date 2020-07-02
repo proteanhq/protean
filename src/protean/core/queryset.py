@@ -9,7 +9,7 @@ from typing import Any, Union
 # Protean
 from protean.utils.query import Q
 
-logger = logging.getLogger('protean.repository.queryset')
+logger = logging.getLogger("protean.repository.queryset")
 
 
 class QuerySet:
@@ -36,8 +36,16 @@ class QuerySet:
     :return Returns a `ResultSet` object that holds the query results
     """
 
-    def __init__(self, owner_dao, domain, entity_cls, criteria=None, offset: int = 0, limit: int = 10,
-                 order_by: set = None):
+    def __init__(
+        self,
+        owner_dao,
+        domain,
+        entity_cls,
+        criteria=None,
+        offset: int = 0,
+        limit: int = 10,
+        order_by: set = None,
+    ):
         """Initialize either with empty preferences (when invoked on an Entity)
             or carry forward filters and preferences when chained
         """
@@ -66,16 +74,23 @@ class QuerySet:
         # The data set returned from Queryset is manipulated automatically
         #   to be up-to-date with temporary changes.
         self._temp_cache = {
-            'added': list(),
-            'removed': list(),
+            "added": list(),
+            "removed": list(),
         }
 
     def _clone(self):
         """
         Return a copy of the current QuerySet.
         """
-        clone = self.__class__(self._owner_dao, self._domain, self._entity_cls, criteria=self._criteria,
-                               offset=self._offset, limit=self._limit, order_by=self._order_by)
+        clone = self.__class__(
+            self._owner_dao,
+            self._domain,
+            self._entity_cls,
+            criteria=self._criteria,
+            offset=self._offset,
+            limit=self._limit,
+            order_by=self._order_by,
+        )
         return clone
 
     #########################
@@ -146,7 +161,7 @@ class QuerySet:
             * Iteration
             * Slicing
         """
-        logger.debug(f'Query `{self.__class__.__name__}` objects with filters {self}')
+        logger.debug(f"Query `{self.__class__.__name__}` objects with filters {self}")
 
         # Destroy any cached results
         self._result_cache = None
@@ -155,10 +170,14 @@ class QuerySet:
         model_cls = self._domain.get_model(self._entity_cls)
 
         # order_by clause must be list of keys
-        order_by = self._entity_cls.meta_.order_by if not self._order_by else self._order_by
+        order_by = (
+            self._entity_cls.meta_.order_by if not self._order_by else self._order_by
+        )
 
         # Call the read method of the dao
-        results = self._owner_dao._filter(self._criteria, self._offset, self._limit, order_by)
+        results = self._owner_dao._filter(
+            self._criteria, self._offset, self._limit, order_by
+        )
 
         # Convert the returned results to entity and return it
         entity_items = []
@@ -207,7 +226,9 @@ class QuerySet:
 
         All other query options like `order_by`, `offset` and `limit` are ignored for this action.
         """
-        logger.debug(f'Query `{self.__class__.__name__}` objects with raw query {query}')
+        logger.debug(
+            f"Query `{self.__class__.__name__}` objects with raw query {query}"
+        )
 
         # Destroy any cached results
         self._result_cache = None
@@ -272,7 +293,9 @@ class QuerySet:
         updated_item_count = 0
 
         try:
-            updated_item_count = self._owner_dao._update_all(self._criteria, *args, **kwargs)
+            updated_item_count = self._owner_dao._update_all(
+                self._criteria, *args, **kwargs
+            )
         except Exception:
             # FIXME Log Exception
             raise
@@ -306,13 +329,15 @@ class QuerySet:
         temp_data = copy.deepcopy(active_data)
 
         # Add objects in temporary cache
-        for item in self._temp_cache['added']:
+        for item in self._temp_cache["added"]:
             temp_data.items.append(item)
             temp_data.total += 1
 
         # Remove objects in temporary cache
-        for item in self._temp_cache['removed']:
-            temp_data.items[:] = [value for value in temp_data.items if value.id != item.id]
+        for item in self._temp_cache["removed"]:
+            temp_data.items[:] = [
+                value for value in temp_data.items if value.id != item.id
+            ]
             temp_data.total -= 1
 
         return temp_data
@@ -331,10 +356,14 @@ class QuerySet:
 
     def __repr__(self):
         """Support friendly print of query criteria"""
-        return ("<%s: entity: %s, criteria: %s, offset: %s, limit: %s, order_by: %s>" %
-                (self.__class__.__name__, self._entity_cls,
-                 self._criteria.deconstruct(),
-                 self._offset, self._limit, self._order_by))
+        return "<%s: entity: %s, criteria: %s, offset: %s, limit: %s, order_by: %s>" % (
+            self.__class__.__name__,
+            self._entity_cls,
+            self._criteria.deconstruct(),
+            self._offset,
+            self._limit,
+            self._order_by,
+        )
 
     def __getitem__(self, k):
         """Support slicing of results"""
@@ -378,26 +407,28 @@ class QuerySet:
     #######################
 
     def add(self, item):
-        if (item.id not in [value.id for value in self._data.items] or
-                (item.id in [value.id for value in self._data.items] and
-                 item.state_.is_persisted and item.state_.is_changed)):
-            if item.id not in [value.id for value in self._temp_cache['added']]:
+        if item.id not in [value.id for value in self._data.items] or (
+            item.id in [value.id for value in self._data.items]
+            and item.state_.is_persisted
+            and item.state_.is_changed
+        ):
+            if item.id not in [value.id for value in self._temp_cache["added"]]:
                 # FIXME Re-evaluate for UoW support
 
                 # If the child was already present, first remove that record
                 if item.id in [value.id for value in self._data.items]:
                     for value in self._data.items:
                         if value.id == item.id:
-                            self._temp_cache['removed'].append(value)
+                            self._temp_cache["removed"].append(value)
                             break
 
                 # This updates the parent's unique identifier in the child
                 #   so that the foreign key relationship is preserved
                 for criteria in self._criteria.children:
                     setattr(item, criteria[0], criteria[1])
-                self._temp_cache['added'].append(item)
+                self._temp_cache["added"].append(item)
 
     def remove(self, item):
         if item.id in [value.id for value in self._data.items]:
-            if item.id not in [value.id for value in self._temp_cache['removed']]:
-                self._temp_cache['removed'].append(item)
+            if item.id not in [value.id for value in self._temp_cache["removed"]]:
+                self._temp_cache["removed"].append(item)

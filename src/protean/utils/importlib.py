@@ -23,7 +23,7 @@ def import_from_string(val):
     Attempt to import a class from a string representation.
     """
     try:
-        module_path, class_name = val.rsplit('.', 1)
+        module_path, class_name = val.rsplit(".", 1)
         module = import_module(module_path)
         return getattr(module, class_name)
     except (ImportError, AttributeError) as e:

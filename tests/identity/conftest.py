@@ -8,7 +8,8 @@ import pytest
 @pytest.fixture
 def test_domain_with_string_identity():
     from protean.domain import Domain
-    domain = Domain('Test')
+
+    domain = Domain("Test")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -24,7 +25,8 @@ def test_domain_with_string_identity():
 @pytest.fixture
 def test_domain_with_int_identity():
     from protean.domain import Domain
-    domain = Domain('Test')
+
+    domain = Domain("Test")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -40,7 +42,8 @@ def test_domain_with_int_identity():
 @pytest.fixture
 def test_domain_with_uuid_identity():
     from protean.domain import Domain
-    domain = Domain('Test')
+
+    domain = Domain("Test")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -52,10 +55,11 @@ def test_domain_with_uuid_identity():
     with domain.domain_context():
         yield domain
 
+
 @pytest.fixture(autouse=True)
 def run_around_tests(test_domain):
 
     yield
 
-    if test_domain.has_provider('default'):
-        test_domain.get_provider('default')._data_reset()
+    if test_domain.has_provider("default"):
+        test_domain.get_provider("default")._data_reset()

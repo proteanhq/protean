@@ -10,7 +10,8 @@ from rq import get_current_connection, pop_connection, push_connection
 
 def initialize_domain():
     from protean.domain import Domain
-    domain = Domain('RQ Tests')
+
+    domain = Domain("RQ Tests")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -40,7 +41,7 @@ def test_domain_for_worker():
 @pytest.fixture(scope="session", autouse=True)
 def setup_redis():
     # Initialize Connection to Redis
-    push_connection(Redis.from_url('redis://127.0.0.1:6379/2'))
+    push_connection(Redis.from_url("redis://127.0.0.1:6379/2"))
 
     yield
 
@@ -56,5 +57,5 @@ def run_around_tests(test_domain):
     conn = get_current_connection()
     conn.flushall()
 
-    if test_domain.has_provider('default'):
-        test_domain.get_provider('default')._data_reset()
+    if test_domain.has_provider("default"):
+        test_domain.get_provider("default")._data_reset()

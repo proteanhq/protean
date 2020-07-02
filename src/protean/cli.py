@@ -32,7 +32,7 @@ def test():
     import pytest
     import sys
 
-    errno = pytest.main(['-vv', '--cache-clear', '--flake8'])
+    errno = pytest.main(["-vv", "--cache-clear", "--flake8"])
 
     sys.exit(errno)
 
@@ -42,4 +42,4 @@ def new():
     from cookiecutter.main import cookiecutter
 
     # Create project from the cookiecutter-protean.git repo template
-    cookiecutter('gh:proteanhq/cookiecutter-protean')
+    cookiecutter("gh:proteanhq/cookiecutter-protean")

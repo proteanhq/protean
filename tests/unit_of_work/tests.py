@@ -6,7 +6,6 @@ from protean.core.unit_of_work import UnitOfWork
 
 
 class TestUnitOfWorkInitialization:
-
     def test_uow_can_be_initiated_with_context_manager(self, test_domain):
         with UnitOfWork() as uow:
             assert uow is not None
@@ -20,7 +19,9 @@ class TestUnitOfWorkInitialization:
         uow.start()
         assert uow.in_progress is True
 
-    def test_that_uow_throws_exception_on_commit_or_rollback_without_being_started(self, test_domain):
+    def test_that_uow_throws_exception_on_commit_or_rollback_without_being_started(
+        self, test_domain
+    ):
         uow = UnitOfWork()
 
         with pytest.raises(InvalidOperationError):

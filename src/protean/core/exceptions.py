@@ -3,7 +3,7 @@ Custom Protean exception classes
 """
 import logging
 
-logger = logging.getLogger('protean')
+logger = logging.getLogger("protean")
 
 
 class ProteanException(Exception):

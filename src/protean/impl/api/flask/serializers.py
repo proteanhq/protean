@@ -18,9 +18,10 @@ class BaseSerializer(ma.Schema):
 
 class EntitySerializerOpts(ma.schema.SchemaOpts):
     """ Options for the entity serializer"""
+
     def __init__(self, meta):
         super().__init__(meta)
-        self.entity_cls = getattr(meta, 'entity', None)
+        self.entity_cls = getattr(meta, "entity", None)
 
 
 class EntitySerializer(BaseSerializer):
@@ -42,14 +43,13 @@ class EntitySerializer(BaseSerializer):
         super().__init__(*args, **kwargs)
 
         # Updates the declared fields with the fields of the Entity class
-        if not self.opts.entity_cls or not \
-                issubclass(self.opts.entity_cls, BaseEntity):
+        if not self.opts.entity_cls or not issubclass(self.opts.entity_cls, BaseEntity):
             raise ConfigurationError(
-                '`Meta.entity` option must be set and a subclass of `BaseEntity`.')
+                "`Meta.entity` option must be set and a subclass of `BaseEntity`."
+            )
 
         entity_fields = OrderedDict()
-        for field_name, field_obj in \
-                self.opts.entity_cls.meta_.declared_fields.items():
+        for field_name, field_obj in self.opts.entity_cls.meta_.declared_fields.items():
             if self.opts.fields and field_name not in self.opts.fields:
                 continue
             elif self.opts.exclude and field_name in self.opts.exclude:
@@ -69,7 +69,7 @@ class EntitySerializer(BaseSerializer):
         if e_field_type in self.field_mapping:
             field_opts = {}
             if e_field_type == List:
-                field_opts['cls_or_instance'] = ma.fields.String
+                field_opts["cls_or_instance"] = ma.fields.String
             return self.field_mapping[e_field_type](**field_opts)
         else:
             return ma.fields.String()

@@ -15,10 +15,10 @@ class Person(BaseAggregate):
     def add_newcomer(cls, person_dict):
         """Factory method to add a new Person to the system"""
         newcomer = Person(
-            first_name=person_dict['first_name'],
-            last_name=person_dict['last_name'],
-            age=person_dict['age'],
-            )
+            first_name=person_dict["first_name"],
+            last_name=person_dict["last_name"],
+            age=person_dict["age"],
+        )
 
         # Publish Event via the domain
         current_domain.publish(
@@ -27,7 +27,8 @@ class Person(BaseAggregate):
                 first_name=newcomer.first_name,
                 last_name=newcomer.last_name,
                 age=newcomer.age,
-            ))
+            )
+        )
 
         return newcomer
 

@@ -23,7 +23,7 @@ class TestEntityRegistration:
 
     def test_setting_provider_in_decorator_based_registration(self, test_domain):
         @test_domain.aggregate
-        class Post():
+        class Post:
             name = String(max_length=50)
 
         @test_domain.entity
@@ -35,9 +35,11 @@ class TestEntityRegistration:
 
         assert Comment.meta_.aggregate_cls == Post
 
-    def test_setting_provider_in_decorator_based_registration_with_parameters(self, test_domain):
+    def test_setting_provider_in_decorator_based_registration_with_parameters(
+        self, test_domain
+    ):
         @test_domain.aggregate
-        class Post():
+        class Post:
             name = String(max_length=50)
 
         @test_domain.entity(aggregate_cls=Post)
@@ -51,8 +53,8 @@ class TestEntityRegistration:
         #   when the domain tries to resolve the aggregate.
         from protean.core.field.basic import String
 
-        @test_domain.entity(aggregate_cls='foo')
+        @test_domain.entity(aggregate_cls="foo")
         class FooBar:
             foo = String(max_length=50)
 
-        assert FooBar.meta_.aggregate_cls == 'foo'
+        assert FooBar.meta_.aggregate_cls == "foo"

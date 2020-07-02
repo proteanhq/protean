@@ -7,7 +7,8 @@ import pytest
 
 def initialize_domain():
     from protean.domain import Domain
-    domain = Domain('SQLAlchemy Test - SQLite')
+
+    domain = Domain("SQLAlchemy Test - SQLite")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -30,5 +31,5 @@ def test_domain():
 @pytest.fixture(autouse=True)
 def run_around_tests(test_domain):
     yield
-    if test_domain.has_provider('default'):
-        test_domain.get_provider('default')._data_reset()
+    if test_domain.has_provider("default"):
+        test_domain.get_provider("default")._data_reset()

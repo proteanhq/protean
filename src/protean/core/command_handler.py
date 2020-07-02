@@ -27,15 +27,15 @@ class _CommandHandlerMetaclass(type):
 
         # Remove `abstract` in base classes if defined
         for base in bases:
-            if hasattr(base, 'Meta') and hasattr(base.Meta, 'abstract'):
-                delattr(base.Meta, 'abstract')
+            if hasattr(base, "Meta") and hasattr(base.Meta, "abstract"):
+                delattr(base.Meta, "abstract")
 
         new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
 
         # Gather `Meta` class/object if defined
-        attr_meta = attrs.pop('Meta', None)
-        meta = attr_meta or getattr(new_class, 'Meta', None)
-        setattr(new_class, 'meta_', CommandHandlerMeta(name, meta))
+        attr_meta = attrs.pop("Meta", None)
+        meta = attr_meta or getattr(new_class, "Meta", None)
+        setattr(new_class, "meta_", CommandHandlerMeta(name, meta))
 
         return new_class
 
@@ -48,8 +48,8 @@ class CommandHandlerMeta:
     """
 
     def __init__(self, entity_name, meta):
-        self.command_cls = getattr(meta, 'command_cls', None)
-        self.broker = getattr(meta, 'broker', None)
+        self.command_cls = getattr(meta, "command_cls", None)
+        self.broker = getattr(meta, "broker", None)
 
 
 class BaseCommandHandler(metaclass=_CommandHandlerMetaclass):
@@ -58,6 +58,7 @@ class BaseCommandHandler(metaclass=_CommandHandlerMetaclass):
     This is also a marker class that is referenced when command handlers are registered
     with the domain
     """
+
     element_type = DomainObjects.COMMAND_HANDLER
 
     def __new__(cls, *args, **kwargs):

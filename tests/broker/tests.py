@@ -11,7 +11,7 @@ class TestBroker:
             BaseBroker()
 
     def test_that_a_concrete_broker_can_be_initialized_successfully(self, test_domain):
-        broker = MemoryBroker('dummy_name', test_domain, {})
+        broker = MemoryBroker("dummy_name", test_domain, {})
 
         assert broker is not None
 

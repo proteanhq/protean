@@ -16,12 +16,14 @@ class TestHasOnePersistence:
 
     @pytest.fixture(autouse=True)
     def persist_post(self, test_domain, register_elements):
-        post = test_domain.get_dao(Post).create(title='Test Post', slug='test-post', content='Do Re Mi Fa')
+        post = test_domain.get_dao(Post).create(
+            title="Test Post", slug="test-post", content="Do Re Mi Fa"
+        )
         return post
 
     @pytest.fixture
     def persisted_post(self, test_domain):
-        return test_domain.get_dao(Post).find_by(title='Test Post')
+        return test_domain.get_dao(Post).find_by(title="Test Post")
 
     def test_that_has_one_entity_can_be_added(self, persisted_post):
         post_repo = current_domain.repository_for(Post)
@@ -37,7 +39,9 @@ class TestHasOnePersistence:
         assert isinstance(refreshed_post.post_meta, PostMeta)
         assert refreshed_post.post_meta == meta
 
-    def test_that_adding_another_has_one_entity_replaces_existing_child(self, persisted_post):
+    def test_that_adding_another_has_one_entity_replaces_existing_child(
+        self, persisted_post
+    ):
         post_repo = current_domain.repository_for(Post)
 
         meta1 = PostMeta(likes=1)
@@ -85,13 +89,15 @@ class TestHasManyPersistence:
 
     @pytest.fixture
     def persisted_post(self, test_domain):
-        post = test_domain.get_dao(Post).create(title='Test Post', slug='test-post', content='Do Re Mi Fa')
+        post = test_domain.get_dao(Post).create(
+            title="Test Post", slug="test-post", content="Do Re Mi Fa"
+        )
         return post
 
     def test_that_a_has_many_entity_can_be_added(self, persisted_post):
         post_repo = current_domain.repository_for(Post)
 
-        comment = Comment(content='So La Ti Do')
+        comment = Comment(content="So La Ti Do")
         persisted_post.comments.add(comment)
 
         post_repo.add(persisted_post)
@@ -104,8 +110,8 @@ class TestHasManyPersistence:
     def test_that_multiple_has_many_entities_can_be_added(self, persisted_post):
         post_repo = current_domain.repository_for(Post)
 
-        comment1 = Comment(content='So La Ti Do')
-        comment2 = Comment(content='Do Re Mi Fa')
+        comment1 = Comment(content="So La Ti Do")
+        comment2 = Comment(content="Do Re Mi Fa")
         persisted_post.comments.add(comment1)
         persisted_post.comments.add(comment2)
 
@@ -117,12 +123,13 @@ class TestHasManyPersistence:
         assert len(refreshed_post.comments) == 2
         assert all(
             comment in [comment for comment in refreshed_post.comments]
-            for comment in [comment1, comment2])
+            for comment in [comment1, comment2]
+        )
 
     def test_that_a_has_many_entity_can_be_removed(self, persisted_post):
         post_repo = current_domain.repository_for(Post)
 
-        comment = Comment(content='So La Ti Do')
+        comment = Comment(content="So La Ti Do")
         persisted_post.comments.add(comment)
 
         post_repo.add(persisted_post)
@@ -137,11 +144,13 @@ class TestHasManyPersistence:
         assert refreshed_post.comments is not None
         assert len(refreshed_post.comments) == 0
 
-    def test_that_a_has_many_entity_can_be_removed_from_among_many(self, persisted_post):
+    def test_that_a_has_many_entity_can_be_removed_from_among_many(
+        self, persisted_post
+    ):
         post_repo = current_domain.repository_for(Post)
 
-        comment1 = Comment(content='So La Ti Do')
-        comment2 = Comment(content='Do Re Mi Fa')
+        comment1 = Comment(content="So La Ti Do")
+        comment2 = Comment(content="Do Re Mi Fa")
         persisted_post.comments.add(comment1)
         persisted_post.comments.add(comment2)
 

@@ -7,7 +7,7 @@ from protean.core.exceptions import IncorrectUsageError, NotSupportedError
 from protean.core.entity import BaseEntity
 from protean.domain import DomainObjects
 
-logger = logging.getLogger('protean.domain.aggregate')
+logger = logging.getLogger("protean.domain.aggregate")
 
 
 class BaseAggregate(BaseEntity):
@@ -55,29 +55,31 @@ class AggregateFactory:
         else:
             try:
                 new_dict = element_cls.__dict__.copy()
-                new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
+                new_dict.pop("__dict__", None)  # Remove __dict__ to prevent recursion
 
-                new_element_cls = type(element_cls.__name__, (BaseAggregate, ), new_dict)
+                new_element_cls = type(element_cls.__name__, (BaseAggregate,), new_dict)
             except BaseException as exc:
                 logger.debug("Error during Element registration:", repr(exc))
                 raise IncorrectUsageError(
                     "Invalid class {element_cls.__name__} for type {element_type.value}"
                     " (Error: {exc})",
-                    )
+                )
 
         cls._validate_aggregate_class(new_element_cls)
 
         new_element_cls.meta_.provider = (
-            kwargs.pop('provider', None)
-            or (hasattr(new_element_cls, 'meta_') and new_element_cls.meta_.provider)
-            or 'default')
+            kwargs.pop("provider", None)
+            or (hasattr(new_element_cls, "meta_") and new_element_cls.meta_.provider)
+            or "default"
+        )
         new_element_cls.meta_.model = (
-            kwargs.pop('model', None)
-            or (hasattr(new_element_cls, 'meta_') and new_element_cls.meta_.model)
-            or None)
-        new_element_cls.meta_.bounded_context = (
-            kwargs.pop('bounded_context', None)
-            or (hasattr(new_element_cls, 'meta_') and new_element_cls.meta_.bounded_context))
+            kwargs.pop("model", None)
+            or (hasattr(new_element_cls, "meta_") and new_element_cls.meta_.model)
+            or None
+        )
+        new_element_cls.meta_.bounded_context = kwargs.pop("bounded_context", None) or (
+            hasattr(new_element_cls, "meta_") and new_element_cls.meta_.bounded_context
+        )
 
         return new_element_cls
 
@@ -85,11 +87,13 @@ class AggregateFactory:
     def _validate_aggregate_class(cls, element_cls):
         if not issubclass(element_cls, BaseAggregate):
             raise AssertionError(
-                f'Element {element_cls.__name__} must be subclass of `BaseAggregate`')
+                f"Element {element_cls.__name__} must be subclass of `BaseAggregate`"
+            )
 
         if element_cls.meta_.abstract is True:
             raise NotSupportedError(
-                f'{element_cls.__name__} class has been marked abstract'
-                f' and cannot be instantiated')
+                f"{element_cls.__name__} class has been marked abstract"
+                f" and cannot be instantiated"
+            )
 
         return True

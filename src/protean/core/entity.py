@@ -7,7 +7,12 @@ from collections import defaultdict
 from uuid import uuid4
 
 # Protean
-from protean.core.exceptions import ConfigurationError, IncorrectUsageError, NotSupportedError, ValidationError
+from protean.core.exceptions import (
+    ConfigurationError,
+    IncorrectUsageError,
+    NotSupportedError,
+    ValidationError,
+)
 from protean.core.field.association import Association, Reference
 from protean.core.field.basic import Auto, Field
 from protean.core.field.embedded import ValueObjectField
@@ -18,7 +23,7 @@ from protean.utils import IdentityStrategy, IdentityType, inflection
 # Local/Relative Imports
 from ..core.field.association import _ReferenceField  # Relative path to private class
 
-logger = logging.getLogger('protean.domain.entity')
+logger = logging.getLogger("protean.domain.entity")
 
 
 class _EntityMetaclass(type):
@@ -45,15 +50,19 @@ class _EntityMetaclass(type):
 
         # Remove `abstract` if defined in base classes
         for base in bases:
-            if hasattr(base, 'Meta') and hasattr(base.Meta, 'abstract'):
-                delattr(base.Meta, 'abstract')
+            if hasattr(base, "Meta") and hasattr(base.Meta, "abstract"):
+                delattr(base.Meta, "abstract")
 
         new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
 
         # Gather `Meta` class/object if defined
-        attr_meta = attrs.pop('Meta', None)  # Gather Metadata defined in inner `Meta` class
+        attr_meta = attrs.pop(
+            "Meta", None
+        )  # Gather Metadata defined in inner `Meta` class
         entity_meta = EntityMeta(name, attr_meta)  # Initialize the Metadata container
-        setattr(new_class, 'meta_', entity_meta)  # Associate the Metadata container with new class
+        setattr(
+            new_class, "meta_", entity_meta
+        )  # Associate the Metadata container with new class
 
         # Load declared fields
         new_class._load_fields(attrs)
@@ -78,14 +87,15 @@ class _EntityMetaclass(type):
         This is necessary in order to maintain the correct order of fields.
         """
         for base in reversed(bases):
-            if hasattr(base, 'meta_') and \
-                    hasattr(base.meta_, 'declared_fields'):
+            if hasattr(base, "meta_") and hasattr(base.meta_, "declared_fields"):
                 base_class_fields = {
-                    field_name: field_obj for (field_name, field_obj)
-                    in base.meta_.declared_fields.items()
-                    if (field_name not in attrs and
-                        not isinstance(field_obj, Association) and
-                        not field_obj.identifier)
+                    field_name: field_obj
+                    for (field_name, field_obj) in base.meta_.declared_fields.items()
+                    if (
+                        field_name not in attrs
+                        and not isinstance(field_obj, Association)
+                        and not field_obj.identifier
+                    )
                 }
                 new_class._load_fields(base_class_fields)
 
@@ -117,7 +127,9 @@ class _EntityMetaclass(type):
                 if isinstance(field, ValueObjectField):
                     shadow_fields = field.get_shadow_fields()
                     for shadow_field_name, shadow_field in shadow_fields:
-                        new_class.meta_.value_object_fields[shadow_field_name] = shadow_field
+                        new_class.meta_.value_object_fields[
+                            shadow_field_name
+                        ] = shadow_field
 
     def _set_id_field(new_class):
         """Lookup the id field for this entity and assign"""
@@ -126,8 +138,10 @@ class _EntityMetaclass(type):
         if new_class.meta_.declared_fields:
             try:
                 new_class.meta_.id_field = next(
-                    field for _, field in new_class.meta_.declared_fields.items()
-                    if isinstance(field, (Field, Reference)) and field.identifier)
+                    field
+                    for _, field in new_class.meta_.declared_fields.items()
+                    if isinstance(field, (Field, Reference)) and field.identifier
+                )
             except StopIteration:
                 # If no id field is declared then create one
                 new_class._create_id_field()
@@ -136,11 +150,11 @@ class _EntityMetaclass(type):
         """Create and return a default ID field that is Auto generated"""
         id_field = Auto(identifier=True)
 
-        setattr(new_class, 'id', id_field)
-        id_field.__set_name__(new_class, 'id')
+        setattr(new_class, "id", id_field)
+        id_field.__set_name__(new_class, "id")
 
         # Ensure ID field is updated properly in Meta attribute
-        new_class.meta_.declared_fields['id'] = id_field
+        new_class.meta_.declared_fields["id"] = id_field
         new_class.meta_.id_field = id_field
 
 
@@ -167,14 +181,15 @@ class EntityMeta:
     """
 
     def __init__(self, entity_name, meta):
-        self.abstract = getattr(meta, 'abstract', None) or False
-        self.schema_name = (getattr(meta, 'schema_name', None) or
-                            inflection.underscore(entity_name))
-        self.provider = getattr(meta, 'provider', None) or 'default'
-        self.model = getattr(meta, 'model', None)
+        self.abstract = getattr(meta, "abstract", None) or False
+        self.schema_name = getattr(meta, "schema_name", None) or inflection.underscore(
+            entity_name
+        )
+        self.provider = getattr(meta, "provider", None) or "default"
+        self.model = getattr(meta, "model", None)
 
         # `order_by` can be provided either as a string or a tuple
-        ordering = getattr(meta, 'order_by', ())
+        ordering = getattr(meta, "order_by", ())
         if isinstance(ordering, str):
             self.order_by = (ordering,)
         else:
@@ -187,28 +202,34 @@ class EntityMeta:
         self.id_field = None
 
         # Domain Attributes
-        self.aggregate_cls = getattr(meta, 'aggregate_cls', None)
-        self.bounded_context = getattr(meta, 'bounded_context', None)
+        self.aggregate_cls = getattr(meta, "aggregate_cls", None)
+        self.bounded_context = getattr(meta, "bounded_context", None)
 
     @property
     def mandatory_fields(self):
         """ Return the mandatory fields for this entity """
-        return {field_name: field_obj
-                for field_name, field_obj in self.attributes.items()
-                if not isinstance(field_obj, Association) and field_obj.required}
+        return {
+            field_name: field_obj
+            for field_name, field_obj in self.attributes.items()
+            if not isinstance(field_obj, Association) and field_obj.required
+        }
 
     @property
     def unique_fields(self):
         """ Return the unique fields for this entity """
-        return {field_name: field_obj
-                for field_name, field_obj in self.attributes.items()
-                if not isinstance(field_obj, Association) and field_obj.unique}
+        return {
+            field_name: field_obj
+            for field_name, field_obj in self.attributes.items()
+            if not isinstance(field_obj, Association) and field_obj.unique
+        }
 
     @property
     def auto_fields(self):
-        return {field_name: field_obj
-                for field_name, field_obj in self.declared_fields.items()
-                if isinstance(field_obj, Auto)}
+        return {
+            field_name: field_obj
+            for field_name, field_obj in self.declared_fields.items()
+            if isinstance(field_obj, Auto)
+        }
 
     @property
     def attributes(self):
@@ -267,7 +288,9 @@ class _EntityState:
         self._new = False
         self._changed = False
 
-    mark_retrieved = mark_saved  # Alias as placeholder so that future change wont affect interface
+    mark_retrieved = (
+        mark_saved  # Alias as placeholder so that future change wont affect interface
+    )
 
     def mark_changed(self):
         if not (self._new or self._destroyed):
@@ -335,8 +358,9 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
         if self.meta_.abstract is True:
             raise NotSupportedError(
-                f'{self.__class__.__name__} class has been marked abstract'
-                f' and cannot be instantiated')
+                f"{self.__class__.__name__} class has been marked abstract"
+                f" and cannot be instantiated"
+            )
 
         self.errors = defaultdict(list)
         self.raise_errors = raise_errors
@@ -350,8 +374,8 @@ class BaseEntity(metaclass=_EntityMetaclass):
             if not isinstance(dictionary, dict):
                 raise AssertionError(
                     f'Positional argument "{dictionary}" passed must be a dict.'
-                    f'This argument serves as a template for loading common '
-                    f'values.',
+                    f"This argument serves as a template for loading common "
+                    f"values.",
                 )
             for field_name, val in dictionary.items():
                 if field_name not in kwargs:
@@ -371,16 +395,14 @@ class BaseEntity(metaclass=_EntityMetaclass):
         #   and associated the vo with the entity
         # If the value object was already provided, it will not be overridden.
         for field_name, field_obj in self.meta_.declared_fields.items():
-            if isinstance(field_obj, (ValueObjectField)) and not getattr(self, field_name):
+            if isinstance(field_obj, (ValueObjectField)) and not getattr(
+                self, field_name
+            ):
                 attributes = [
                     (embedded_field.field_name, embedded_field.attribute_name)
-                    for embedded_field
-                    in field_obj.embedded_fields.values()
-                    ]
-                values = {
-                    name: kwargs.get(attr)
-                    for name, attr in attributes
-                }
+                    for embedded_field in field_obj.embedded_fields.values()
+                ]
+                values = {name: kwargs.get(attr) for name, attr in attributes}
                 try:
                     value_object = field_obj.value_object_cls.build(**values)
                     # Set VO value only if the value object is not None/Empty
@@ -389,10 +411,15 @@ class BaseEntity(metaclass=_EntityMetaclass):
                         loaded_fields.append(field_name)
                 except ValidationError as err:
                     for sub_field_name in err.messages:
-                        self.errors['{}_{}'.format(field_name, sub_field_name)].extend(err.messages[sub_field_name])
+                        self.errors["{}_{}".format(field_name, sub_field_name)].extend(
+                            err.messages[sub_field_name]
+                        )
 
         # Load Identities
-        if not getattr(self, self.meta_.id_field.field_name, None) and type(self.meta_.id_field) is Auto:
+        if (
+            not getattr(self, self.meta_.id_field.field_name, None)
+            and type(self.meta_.id_field) is Auto
+        ):
             setattr(self, self.meta_.id_field.field_name, self.generate_identity())
             loaded_fields.append(self.meta_.id_field.field_name)
 
@@ -447,15 +474,17 @@ class BaseEntity(metaclass=_EntityMetaclass):
     @classmethod
     def generate_identity(cls):
         """Generate Unique Identifier, based on configured strategy"""
-        if current_domain.config['IDENTITY_STRATEGY'] == IdentityStrategy.UUID:
-            if current_domain.config['IDENTITY_TYPE'] == IdentityType.INTEGER:
+        if current_domain.config["IDENTITY_STRATEGY"] == IdentityStrategy.UUID:
+            if current_domain.config["IDENTITY_TYPE"] == IdentityType.INTEGER:
                 return uuid4().int
-            elif current_domain.config['IDENTITY_TYPE'] == IdentityType.STRING:
+            elif current_domain.config["IDENTITY_TYPE"] == IdentityType.STRING:
                 return str(uuid4())
-            elif current_domain.config['IDENTITY_TYPE'] == IdentityType.UUID:
+            elif current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID:
                 return uuid4()
             else:
-                raise ConfigurationError(f'Unknown Identity Type {current_domain.config["IDENTITY_TYPE"]}')
+                raise ConfigurationError(
+                    f'Unknown Identity Type {current_domain.config["IDENTITY_TYPE"]}'
+                )
 
         return None  # Database will generate the identity
 
@@ -499,8 +528,8 @@ class BaseEntity(metaclass=_EntityMetaclass):
             if not isinstance(data, dict):
                 raise AssertionError(
                     f'Positional argument "{data}" passed must be a dict.'
-                    f'This argument serves as a template for loading common '
-                    f'values.',
+                    f"This argument serves as a template for loading common "
+                    f"values.",
                 )
             for field_name, val in data.items():
                 setattr(self, field_name, val)
@@ -521,34 +550,38 @@ class BaseEntity(metaclass=_EntityMetaclass):
             field_name: getattr(self, field_name, None)
             for field_name, field_obj in self.meta_.declared_fields.items()
             if not isinstance(field_obj, ValueObjectField)
-            }
+        }
 
         # FIXME Simplify fetching and appending Value Object dict values
         vo_fields = {
             field_name: getattr(self, field_name, None)
             for field_name, field_obj in self.meta_.declared_fields.items()
             if isinstance(field_obj, ValueObjectField)
-            }
+        }
 
         vo_field_values = {}
         for vo_field_name, vo_field_obj in vo_fields.items():
             if vo_field_obj:
-                vo_field_values.update({
-                    vo_field_name + '_' + field_name: getattr(vo_field_obj, field_name, None)
-                    for field_name, field_obj in vo_field_obj.meta_.declared_fields.items()
-                })
+                vo_field_values.update(
+                    {
+                        vo_field_name
+                        + "_"
+                        + field_name: getattr(vo_field_obj, field_name, None)
+                        for field_name, field_obj in vo_field_obj.meta_.declared_fields.items()
+                    }
+                )
 
         return {**field_values, **vo_field_values}
 
     def __repr__(self):
         """Friendly repr for Entity"""
-        return '<%s: %s>' % (self.__class__.__name__, self)
+        return "<%s: %s>" % (self.__class__.__name__, self)
 
     def __str__(self):
         identifier = getattr(self, self.meta_.id_field.field_name)
-        return '%s object (%s)' % (
+        return "%s object (%s)" % (
             self.__class__.__name__,
-            '{}: {}'.format(self.meta_.id_field.field_name, identifier),
+            "{}: {}".format(self.meta_.id_field.field_name, identifier),
         )
 
     def clone(self):
@@ -567,37 +600,44 @@ class EntityFactory:
         else:
             try:
                 new_dict = element_cls.__dict__.copy()
-                new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
+                new_dict.pop("__dict__", None)  # Remove __dict__ to prevent recursion
 
-                new_element_cls = type(element_cls.__name__, (BaseEntity, ), new_dict)
+                new_element_cls = type(element_cls.__name__, (BaseEntity,), new_dict)
             except BaseException as exc:
                 logger.debug("Error during Element registration:", repr(exc))
                 raise IncorrectUsageError(
                     "Invalid class {element_cls.__name__} for type {element_type.value}"
                     " (Error: {exc})",
-                    )
+                )
 
         cls._validate_entity_class(new_element_cls)
 
         new_element_cls.meta_.provider = (
-            kwargs.pop('provider', None)
-            or (hasattr(new_element_cls, 'meta_') and new_element_cls.meta_.provider)
-            or 'default')
+            kwargs.pop("provider", None)
+            or (hasattr(new_element_cls, "meta_") and new_element_cls.meta_.provider)
+            or "default"
+        )
         new_element_cls.meta_.model = (
-            kwargs.pop('model', None)
-            or (hasattr(new_element_cls, 'meta_') and new_element_cls.meta_.model)
-            or None)
-        new_element_cls.meta_.bounded_context = (
-            kwargs.pop('bounded_context', None)
-            or (hasattr(new_element_cls, 'meta_') and new_element_cls.meta_.bounded_context))
+            kwargs.pop("model", None)
+            or (hasattr(new_element_cls, "meta_") and new_element_cls.meta_.model)
+            or None
+        )
+        new_element_cls.meta_.bounded_context = kwargs.pop("bounded_context", None) or (
+            hasattr(new_element_cls, "meta_") and new_element_cls.meta_.bounded_context
+        )
         new_element_cls.meta_.aggregate_cls = (
-            kwargs.pop('aggregate_cls', None)
-            or (hasattr(new_element_cls, 'meta_') and new_element_cls.meta_.aggregate_cls)
-            or None)
+            kwargs.pop("aggregate_cls", None)
+            or (
+                hasattr(new_element_cls, "meta_")
+                and new_element_cls.meta_.aggregate_cls
+            )
+            or None
+        )
 
         if not new_element_cls.meta_.aggregate_cls:
             raise IncorrectUsageError(
-                f"Entity `{new_element_cls.__name__}` needs to be associated with an Aggregate")
+                f"Entity `{new_element_cls.__name__}` needs to be associated with an Aggregate"
+            )
 
         return new_element_cls
 
@@ -605,11 +645,13 @@ class EntityFactory:
     def _validate_entity_class(cls, element_cls):
         if not issubclass(element_cls, BaseEntity):
             raise AssertionError(
-                f'Element {element_cls.__name__} must be subclass of `BaseEntity`')
+                f"Element {element_cls.__name__} must be subclass of `BaseEntity`"
+            )
 
         if element_cls.meta_.abstract is True:
             raise NotSupportedError(
-                f'{element_cls.__name__} class has been marked abstract'
-                f' and cannot be instantiated')
+                f"{element_cls.__name__} class has been marked abstract"
+                f" and cannot be instantiated"
+            )
 
         return True

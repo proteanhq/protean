@@ -14,8 +14,8 @@ class Post(BaseAggregate):
     content = Text(required=True)
     posted_at = DateTime(required=True, default=datetime.now())
 
-    post_meta = HasOne('tests.repository.child_entities.PostMeta')
-    comments = HasMany('tests.repository.child_entities.Comment')
+    post_meta = HasOne("tests.repository.child_entities.PostMeta")
+    comments = HasMany("tests.repository.child_entities.Comment")
 
 
 class PostMeta(BaseEntity):

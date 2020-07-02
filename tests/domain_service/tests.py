@@ -30,4 +30,6 @@ class TestDomainServiceRegistration:
             def special_method(self):
                 pass
 
-        assert fully_qualified_name(AnnotatedDomainService) in test_domain.domain_services
+        assert (
+            fully_qualified_name(AnnotatedDomainService) in test_domain.domain_services
+        )

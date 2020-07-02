@@ -14,10 +14,10 @@ class Person(BaseAggregate):
     def add_newcomer(cls, person_dict):
         """Factory method to add a new Person to the system"""
         newcomer = Person(
-            first_name=person_dict['first_name'],
-            last_name=person_dict['last_name'],
-            age=person_dict['age'],
-            )
+            first_name=person_dict["first_name"],
+            last_name=person_dict["last_name"],
+            age=person_dict["age"],
+        )
 
         return newcomer
 

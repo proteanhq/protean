@@ -4,7 +4,11 @@
 from protean.core.field.base import Field
 
 # Local/Relative Imports
-from .utils import fetch_aggregate_cls_from_domain, fetch_entity_cls_from_domain, fetch_value_object_cls_from_domain
+from .utils import (
+    fetch_aggregate_cls_from_domain,
+    fetch_entity_cls_from_domain,
+    fetch_value_object_cls_from_domain,
+)
 
 
 class _ShadowField(Field):
@@ -46,13 +50,19 @@ class ValueObjectField(Field):
         self._value_object_cls = value_object_cls
 
         self.embedded_fields = {}
-        for field_name, field_obj in self._value_object_cls.meta_.declared_fields.items():
+        for (
+            field_name,
+            field_obj,
+        ) in self._value_object_cls.meta_.declared_fields.items():
             self.embedded_fields[field_name] = _ShadowField(
-                self, field_name, field_obj.__class__,
+                self,
+                field_name,
+                field_obj.__class__,
                 # FIXME Pass all other kwargs here
                 #   Because we want the shadow field to mimic the behavior of the actual field
                 #   Which means that ShadowField somehow has to become an Integer, Float, String, etc.
-                referenced_as=field_obj.referenced_as)
+                referenced_as=field_obj.referenced_as,
+            )
 
     @property
     def value_object_cls(self):
@@ -62,7 +72,9 @@ class ValueObjectField(Field):
         #   If it is, register the class
         try:
             if isinstance(self._value_object_cls, str):
-                self._value_object_cls = fetch_value_object_cls_from_domain(self._value_object_cls)
+                self._value_object_cls = fetch_value_object_cls_from_domain(
+                    self._value_object_cls
+                )
         except AssertionError:
             # Preserve ``value_object_cls`` as a string and we will hook up the entity later
             pass
@@ -76,7 +88,9 @@ class ValueObjectField(Field):
             if embedded_field.referenced_as:
                 embedded_field.attribute_name = embedded_field.referenced_as
             else:
-                embedded_field.attribute_name = self.field_name + '_' + embedded_field.field_name
+                embedded_field.attribute_name = (
+                    self.field_name + "_" + embedded_field.field_name
+                )
 
     def get_shadow_fields(self):
         """Return shadow field
@@ -88,13 +102,15 @@ class ValueObjectField(Field):
 
     def _cast_to_type(self, value):
         if not isinstance(value, self._value_object_cls):
-            self.fail('invalid', value=value)
+            self.fail("invalid", value=value)
         return value
 
     def __set__(self, instance, value):
         """Override `__set__` to coordinate between value object and its embedded fields"""
         if isinstance(self.value_object_cls, str):
-            self.value_object_cls = fetch_value_object_cls_from_domain(self.value_object_cls)
+            self.value_object_cls = fetch_value_object_cls_from_domain(
+                self.value_object_cls
+            )
 
             # Refresh attribute name, now that we know `value_object_cls` class
             self.attribute_name = self.get_attribute_name()
@@ -150,7 +166,9 @@ class AggregateField(Field):
         #   If it is, register the class
         try:
             if isinstance(self._aggregate_cls, str):
-                self._aggregate_cls = fetch_aggregate_cls_from_domain(self._aggregate_cls)
+                self._aggregate_cls = fetch_aggregate_cls_from_domain(
+                    self._aggregate_cls
+                )
         except AssertionError:
             # Preserve ``aggregate_cls`` as a string and we will hook up the entity later
             pass
@@ -158,7 +176,7 @@ class AggregateField(Field):
         return self._aggregate_cls
 
     def __get__(self, instance, owner):
-        if hasattr(instance, '__dict__'):
+        if hasattr(instance, "__dict__"):
             return instance.__dict__.get(self.field_name, self.value).to_dict()
 
     def __set_name__(self, element_cls, name):
@@ -166,7 +184,7 @@ class AggregateField(Field):
 
     def _cast_to_type(self, value):
         if not isinstance(value, self._aggregate_cls):
-            self.fail('invalid', value=value)
+            self.fail("invalid", value=value)
         return value
 
 
@@ -197,5 +215,5 @@ class EntityField(Field):
 
     def _cast_to_type(self, value):
         if not isinstance(value, self._entity_cls):
-            self.fail('invalid', value=value)
+            self.fail("invalid", value=value)
         return value

@@ -9,7 +9,8 @@ from redis import Redis
 
 def initialize_domain():
     from protean.domain import Domain
-    domain = Domain('RQ Tests')
+
+    domain = Domain("RQ Tests")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -55,5 +56,5 @@ def run_around_tests(test_domain):
     # Flush all in Redis
     # FIXME
 
-    if test_domain.has_provider('default'):
-        test_domain.get_provider('default')._data_reset()
+    if test_domain.has_provider("default"):
+        test_domain.get_provider("default")._data_reset()

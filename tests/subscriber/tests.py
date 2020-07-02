@@ -35,9 +35,13 @@ class TestApplicationServiceRegistration:
 
 
 class TestDomainEventNotification:
-    @patch.object(NotifySSOSubscriber, 'notify')
-    def test_that_domain_event_is_received_from_aggregate_command_method(self, mock, test_domain):
+    @patch.object(NotifySSOSubscriber, "notify")
+    def test_that_domain_event_is_received_from_aggregate_command_method(
+        self, mock, test_domain
+    ):
         test_domain.register(NotifySSOSubscriber)
 
-        newcomer = Person.add_newcomer({'first_name': 'John', 'last_name': 'Doe', 'age': 21})
+        newcomer = Person.add_newcomer(
+            {"first_name": "John", "last_name": "Doe", "age": 21}
+        )
         mock.assert_called_once_with(PersonAdded(person=newcomer).to_dict())

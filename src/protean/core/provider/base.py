@@ -21,11 +21,11 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
 
     def _extract_lookup(self, key):
         """Extract lookup method based on key name format"""
-        parts = key.split('__')
+        parts = key.split("__")
         # 'exact' is the default lookup if there was no explicit comparison op in `key`
         #   Assume there is only one `__` in the key.
         #   FIXME Change for child attribute query support
-        op = 'exact' if len(parts) == 1 else parts[1]
+        op = "exact" if len(parts) == 1 else parts[1]
 
         # Construct and assign the lookup class as a filter criteria
         return parts[0], self.get_lookup(op)

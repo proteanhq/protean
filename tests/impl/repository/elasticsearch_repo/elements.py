@@ -35,7 +35,7 @@ class User(BaseAggregate):
 
 
 class Email(BaseValueObject):
-    REGEXP = r'\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?'
+    REGEXP = r"\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?"
 
     # This is the external facing data attribute
     address = String(max_length=254, required=True)
@@ -45,7 +45,7 @@ class Email(BaseValueObject):
         errors = defaultdict(list)
 
         if not bool(re.match(Email.REGEXP, self.address)):
-            errors['address'].append("is invalid")
+            errors["address"].append("is invalid")
 
         return errors
 

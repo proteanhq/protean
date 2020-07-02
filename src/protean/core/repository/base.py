@@ -7,7 +7,7 @@ from protean.core.field.association import HasMany, HasOne
 from protean.domain import DomainObjects
 from protean.globals import current_domain
 
-logger = logging.getLogger('protean.repository')
+logger = logging.getLogger("protean.repository")
 
 
 class _RepositoryMetaclass(type):
@@ -32,15 +32,15 @@ class _RepositoryMetaclass(type):
 
         # Remove `abstract` in base classes if defined
         for base in bases:
-            if hasattr(base, 'Meta') and hasattr(base.Meta, 'abstract'):
-                delattr(base.Meta, 'abstract')
+            if hasattr(base, "Meta") and hasattr(base.Meta, "abstract"):
+                delattr(base.Meta, "abstract")
 
         new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
 
         # Gather `Meta` class/object if defined
-        attr_meta = attrs.pop('Meta', None)
-        meta = attr_meta or getattr(new_class, 'Meta', None)
-        setattr(new_class, 'meta_', RepositoryMeta(meta))
+        attr_meta = attrs.pop("Meta", None)
+        meta = attr_meta or getattr(new_class, "Meta", None)
+        setattr(new_class, "meta_", RepositoryMeta(meta))
 
         return new_class
 
@@ -60,7 +60,7 @@ class RepositoryMeta:
         #   Repository will be fetched via its associated aggregate.
         #
         # FIXME Validate that `aggregate_cls` is a Aggregate domain element
-        self.aggregate_cls = getattr(meta, 'aggregate_cls', None)
+        self.aggregate_cls = getattr(meta, "aggregate_cls", None)
 
 
 class BaseRepository(metaclass=_RepositoryMetaclass):
@@ -121,23 +121,27 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
             if isinstance(field, HasMany):
                 has_many_field = getattr(aggregate, field_name)
 
-                for item in has_many_field._temp_cache['removed']:
+                for item in has_many_field._temp_cache["removed"]:
                     dao = current_domain.get_dao(field.to_cls)
                     dao.delete(item)
-                has_many_field._temp_cache['removed'] = list()  # Empty contents of `removed` cache
+                has_many_field._temp_cache[
+                    "removed"
+                ] = list()  # Empty contents of `removed` cache
 
-                for item in has_many_field._temp_cache['added']:
+                for item in has_many_field._temp_cache["added"]:
                     dao = current_domain.get_dao(field.to_cls)
                     item.state_.mark_new()
                     dao.save(item)
-                has_many_field._temp_cache['added'] = list()  # Empty contents of `added` cache
+                has_many_field._temp_cache[
+                    "added"
+                ] = list()  # Empty contents of `added` cache
 
             if isinstance(field, HasOne):
                 if field.has_changed:
                     dao = current_domain.get_dao(field.to_cls)
-                    if field.change == 'ADDED':
+                    if field.change == "ADDED":
                         dao.save(field.value)
-                    elif field.change == 'UPDATED':
+                    elif field.change == "UPDATED":
                         if field.change_old_value is not None:
                             # The object was replaced, so delete the old record
                             dao.delete(field.change_old_value)
@@ -155,8 +159,9 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
                     field.change_old_value = None
 
         # Persist only if the aggregate object is new, or it has changed since last persistence
-        if ((not aggregate.state_.is_persisted) or
-                (aggregate.state_.is_persisted and aggregate.state_.is_changed)):
+        if (not aggregate.state_.is_persisted) or (
+            aggregate.state_.is_persisted and aggregate.state_.is_changed
+        ):
             dao = current_domain.get_dao(self.meta_.aggregate_cls)
             dao.save(aggregate)
 
@@ -207,26 +212,33 @@ class RepositoryFactory:
         else:
             try:
                 new_dict = element_cls.__dict__.copy()
-                new_dict.pop('__dict__', None)  # Remove __dict__ to prevent recursion
+                new_dict.pop("__dict__", None)  # Remove __dict__ to prevent recursion
 
-                new_element_cls = type(element_cls.__name__, (BaseRepository, ), new_dict)
+                new_element_cls = type(
+                    element_cls.__name__, (BaseRepository,), new_dict
+                )
             except BaseException as exc:
                 logger.debug("Error during Element registration:", repr(exc))
                 raise IncorrectUsageError(
                     "Invalid class {element_cls.__name__} for type {element_type.value}"
                     " (Error: {exc})",
-                    )
+                )
 
         cls._validate_repository_class(new_element_cls)
 
-        if hasattr(new_element_cls, 'meta_'):
-            if not (hasattr(new_element_cls.meta_, 'aggregate_cls') and new_element_cls.meta_.aggregate_cls):
-                new_element_cls.meta_.aggregate_cls = kwargs.pop('aggregate_cls', None)
+        if hasattr(new_element_cls, "meta_"):
+            if not (
+                hasattr(new_element_cls.meta_, "aggregate_cls")
+                and new_element_cls.meta_.aggregate_cls
+            ):
+                new_element_cls.meta_.aggregate_cls = kwargs.pop("aggregate_cls", None)
 
-            new_element_cls.meta_.bounded_context = kwargs.pop('bounded_context', None)
+            new_element_cls.meta_.bounded_context = kwargs.pop("bounded_context", None)
 
         if not new_element_cls.meta_.aggregate_cls:
-            raise IncorrectUsageError("Repositories need to be associated with an Aggregate")
+            raise IncorrectUsageError(
+                "Repositories need to be associated with an Aggregate"
+            )
 
         return new_element_cls
 
@@ -234,6 +246,7 @@ class RepositoryFactory:
     def _validate_repository_class(cls, new_cls):
         if not issubclass(new_cls, BaseRepository):
             raise AssertionError(
-                f'Element {new_cls.__name__} must be subclass of `BaseRepository`')
+                f"Element {new_cls.__name__} must be subclass of `BaseRepository`"
+            )
 
         return True

@@ -8,9 +8,18 @@ from flask.views import MethodView
 from protean.conf import active_config
 from protean.core.tasklet import Tasklet
 from protean.core.transport import Status
-from protean.core.usecase.generic import (CreateRequestObject, CreateUseCase, DeleteRequestObject,
-                                          DeleteUseCase, ListRequestObject, ListUseCase, ShowRequestObject,
-                                          ShowUseCase, UpdateRequestObject, UpdateUseCase)
+from protean.core.usecase.generic import (
+    CreateRequestObject,
+    CreateUseCase,
+    DeleteRequestObject,
+    DeleteUseCase,
+    ListRequestObject,
+    ListUseCase,
+    ShowRequestObject,
+    ShowUseCase,
+    UpdateRequestObject,
+    UpdateUseCase,
+)
 from protean.impl.api.flask.utils import immutable_dict_2_dict
 from protean.utils import inflection
 from protean.utils.importlib import perform_import
@@ -27,9 +36,9 @@ class APIResource(MethodView):
 
     def _lookup_method(self):
         """ Lookup the class method to be called for this request"""
-        func = request.url_rule.rule.rsplit('/', 1)[-1]
+        func = request.url_rule.rule.rsplit("/", 1)[-1]
         meth = None
-        if func and (func[0] != '<' and func[1] != '>'):
+        if func and (func[0] != "<" and func[1] != ">"):
             meth = getattr(self, func, None)
 
         if not meth:
@@ -37,36 +46,33 @@ class APIResource(MethodView):
 
         # If the request method is HEAD and we don't have a handler for it
         # retry with GET.
-        if meth is None and request.method == 'HEAD':
-            meth = getattr(self, 'get', None)
+        if meth is None and request.method == "HEAD":
+            meth = getattr(self, "get", None)
 
-        assert meth is not None, 'Unimplemented method %r' % request.method
+        assert meth is not None, "Unimplemented method %r" % request.method
         return meth
 
     def parse_payload(self):
         """ Load the data from form, json and query to `request.payload` """
 
         # Parse the request content based on the content type
-        content_type = (request.content_type or
-                        active_config.DEFAULT_CONTENT_TYPE)
+        content_type = request.content_type or active_config.DEFAULT_CONTENT_TYPE
         mime_type, _ = parse_options_header(content_type)
 
-        if request.method in ['POST', 'PUT', 'PATCH']:
-            if mime_type == 'application/x-www-form-urlencoded':
+        if request.method in ["POST", "PUT", "PATCH"]:
+            if mime_type == "application/x-www-form-urlencoded":
                 request.payload = immutable_dict_2_dict(request.form)
-            elif mime_type == 'multipart/form-data':
+            elif mime_type == "multipart/form-data":
                 request.payload = immutable_dict_2_dict(request.form)
-                request.payload.update(
-                    immutable_dict_2_dict(request.files))
-            elif mime_type == 'application/json':
-                request.payload = request.get_json(
-                    force=True, silent=True) or {}
+                request.payload.update(immutable_dict_2_dict(request.files))
+            elif mime_type == "application/json":
+                request.payload = request.get_json(force=True, silent=True) or {}
 
-        elif request.method == 'GET':
+        elif request.method == "GET":
             request.payload = immutable_dict_2_dict(request.args)
 
         # If a customer parser is defined then run that
-        parser = getattr(self, 'parser', None)
+        parser = getattr(self, "parser", None)
         if parser:
             parser = perform_import(parser)
             parser()
@@ -75,7 +81,7 @@ class APIResource(MethodView):
         """ Render the response to the expected format """
 
         # Get the renderer to be used for this view
-        renderer = getattr(self, 'renderer', None)
+        renderer = getattr(self, "renderer", None)
         if not renderer:
             renderer = perform_import(active_config.DEFAULT_RENDERER)
 
@@ -136,8 +142,7 @@ class GenericAPIResource(APIResource):
         if not self.entity_cls:
             raise AssertionError(
                 "'%s' should either include a `entity_cls` attribute, "
-                "or override the `get_entity_cls()` method."
-                % self.__class__.__name__,
+                "or override the `get_entity_cls()` method." % self.__class__.__name__,
             )
         return self.entity_cls
 
@@ -169,11 +174,17 @@ class GenericAPIResource(APIResource):
         Extra context provided to the serializer class.
         """
         return {
-            'view': self,
+            "view": self,
         }
 
-    def _process_request(self, usecase_cls, request_object_cls, payload,
-                         many=False, no_serialization=False):
+    def _process_request(
+        self,
+        usecase_cls,
+        request_object_cls,
+        payload,
+        many=False,
+        no_serialization=False,
+    ):
         """ Process the request by running the Protean Tasklet """
         # Get the schema class and derive resource name
         entity_cls = self.get_entity_cls()
@@ -186,8 +197,8 @@ class GenericAPIResource(APIResource):
 
         # Run the use case and return the results
         response_object = Tasklet.perform(
-            entity_cls, usecase_cls, request_object_cls, payload,
-            raise_error=True)
+            entity_cls, usecase_cls, request_object_cls, payload, raise_error=True
+        )
 
         # If no serialization is set just return the response object
         if no_serialization:
@@ -203,8 +214,8 @@ class GenericAPIResource(APIResource):
             page = int(response_object.value.offset / response_object.value.limit) + 1
             result = {
                 INFLECTOR.plural(resource): items.data,
-                'total': response_object.value.total,
-                'page': page,
+                "total": response_object.value.total,
+                "page": page,
             }
             return result, response_object.code.value
 
@@ -224,9 +235,10 @@ class ShowAPIResource(GenericAPIResource):
         Expected Parameters:
              identifier = <string>, identifies the entity
         """
-        payload = {'identifier': identifier}
+        payload = {"identifier": identifier}
         return self._process_request(
-            self.usecase_cls, self.request_object_cls, payload=payload)
+            self.usecase_cls, self.request_object_cls, payload=payload
+        )
 
 
 class ListAPIResource(GenericAPIResource):
@@ -239,8 +251,11 @@ class ListAPIResource(GenericAPIResource):
         """List the entities.
         """
         return self._process_request(
-            self.usecase_cls, self.request_object_cls,
-            payload=request.payload, many=True)
+            self.usecase_cls,
+            self.request_object_cls,
+            payload=request.payload,
+            many=True,
+        )
 
 
 class CreateAPIResource(GenericAPIResource):
@@ -253,7 +268,8 @@ class CreateAPIResource(GenericAPIResource):
         """Create the entity.
         """
         return self._process_request(
-            self.usecase_cls, self.request_object_cls, payload=request.payload)
+            self.usecase_cls, self.request_object_cls, payload=request.payload
+        )
 
 
 class UpdateAPIResource(GenericAPIResource):
@@ -268,11 +284,12 @@ class UpdateAPIResource(GenericAPIResource):
              identifier = <string>, identifies the entity
         """
         payload = {
-            'identifier': identifier,
-            'data': request.payload,
+            "identifier": identifier,
+            "data": request.payload,
         }
         return self._process_request(
-            self.usecase_cls, self.request_object_cls, payload=payload)
+            self.usecase_cls, self.request_object_cls, payload=payload
+        )
 
 
 class DeleteAPIResource(GenericAPIResource):
@@ -286,6 +303,7 @@ class DeleteAPIResource(GenericAPIResource):
          Expected Parameters:
              identifier = <string>, identifies the entity
         """
-        payload = {'identifier': identifier}
+        payload = {"identifier": identifier}
         return self._process_request(
-            self.usecase_cls, self.request_object_cls, payload=payload)
+            self.usecase_cls, self.request_object_cls, payload=payload
+        )

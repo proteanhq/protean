@@ -59,6 +59,8 @@ class FurtherAbstractRole(ConcreteRole):
 
     class Meta:
         abstract = True
+
+
 # Aggregates to test Abstraction # END #
 
 
@@ -67,66 +69,67 @@ class DbRole(BaseAggregate):
     bar = String(max_length=25)
 
     class Meta:
-        schema_name = 'foosball'
+        schema_name = "foosball"
 
 
 class SqlRole(Role):
-
     class Meta:
-        schema_name = 'roles'
+        schema_name = "roles"
 
 
 class DifferentDbRole(Role):
-
     class Meta:
-        provider = 'non-default'
+        provider = "non-default"
 
 
 class SqlDifferentDbRole(Role):
-
     class Meta:
-        provider = 'non-default-sql'
+        provider = "non-default-sql"
 
 
 class OrderedRole(BaseAggregate):
     bar = String(max_length=25)
 
     class Meta:
-        order_by = 'bar'
+        order_by = "bar"
 
 
 class OrderedRoleSubclass(Role):
     bar = String(max_length=25)
 
     class Meta:
-        order_by = 'bar'
+        order_by = "bar"
+
+
 # Aggregates to test Meta Info overriding # END #
 
 
 # Aggregates to test associations # START #
 class Post(BaseAggregate):
     content = Text(required=True)
-    comments = HasMany('tests.aggregate.elements.Comment')
-    author = Reference('tests.aggregate.elements.Author')
+    comments = HasMany("tests.aggregate.elements.Comment")
+    author = Reference("tests.aggregate.elements.Author")
 
 
 class PostVia(BaseAggregate):
     content = Text(required=True)
-    comments = HasMany('tests.aggregate.elements.CommentVia', via='posting_id')
-    author = Reference('tests.aggregate.elements.Author')
+    comments = HasMany("tests.aggregate.elements.CommentVia", via="posting_id")
+    author = Reference("tests.aggregate.elements.Author")
 
 
 class PostViaWithReference(BaseAggregate):
     content = Text(required=True)
-    comments = HasMany('tests.aggregate.elements.CommentViaWithReference', via='posting_id')
-    author = Reference('tests.aggregate.elements.Author')
+    comments = HasMany(
+        "tests.aggregate.elements.CommentViaWithReference", via="posting_id"
+    )
+    author = Reference("tests.aggregate.elements.Author")
 
 
 class Comment(BaseEntity):
     content = Text()
     added_on = DateTime()
 
-    post = Reference('tests.aggregate.elements.Post')
+    post = Reference("tests.aggregate.elements.Post")
 
     class Meta:
         aggregate_cls = Post
@@ -144,7 +147,7 @@ class CommentVia(BaseEntity):
 class CommentViaWithReference(BaseEntity):
     content = Text()
     added_on = DateTime()
-    posting = Reference('tests.aggregate.elements.PostVia')
+    posting = Reference("tests.aggregate.elements.PostVia")
 
     class Meta:
         aggregate_cls = PostViaWithReference
@@ -154,14 +157,14 @@ class Account(BaseAggregate):
     email = String(required=True, max_length=255, unique=True, identifier=True)
     password = String(required=True, max_length=255)
     username = String(max_length=255, unique=True)
-    author = HasOne('tests.aggregate.elements.Author')
+    author = HasOne("tests.aggregate.elements.Author")
 
 
 class Author(BaseEntity):
     first_name = String(required=True, max_length=25)
     last_name = String(max_length=25)
-    posts = HasMany('tests.aggregate.elements.Post')
-    account = Reference('tests.aggregate.elements.Account')
+    posts = HasMany("tests.aggregate.elements.Post")
+    account = Reference("tests.aggregate.elements.Account")
 
     class Meta:
         aggregate_cls = Account
@@ -171,31 +174,31 @@ class AccountWithId(BaseAggregate):
     email = String(required=True, max_length=255, unique=True)
     password = String(required=True, max_length=255)
     username = String(max_length=255, unique=True)
-    author = HasOne('tests.aggregate.elements.Author')
+    author = HasOne("tests.aggregate.elements.Author")
 
 
 class AccountVia(BaseAggregate):
     email = String(required=True, max_length=255, unique=True, identifier=True)
     password = String(required=True, max_length=255)
     username = String(max_length=255, unique=True)
-    profile = HasOne('tests.aggregate.elements.ProfileVia', via='account_email')
+    profile = HasOne("tests.aggregate.elements.ProfileVia", via="account_email")
 
 
 class AccountViaWithReference(BaseAggregate):
     email = String(required=True, max_length=255, unique=True, identifier=True)
     password = String(required=True, max_length=255)
     username = String(max_length=255, unique=True)
-    profile = HasOne('tests.aggregate.elements.ProfileViaWithReference', via='ac_email')
+    profile = HasOne("tests.aggregate.elements.ProfileViaWithReference", via="ac_email")
 
 
 class Profile(BaseAggregate):
     about_me = Text()
-    account = Reference('tests.aggregate.elements.Account', via='username')
+    account = Reference("tests.aggregate.elements.Account", via="username")
 
 
 class ProfileWithAccountId(BaseAggregate):
     about_me = Text()
-    account = Reference('tests.aggregate.elements.AccountWithId')
+    account = Reference("tests.aggregate.elements.AccountWithId")
 
 
 class ProfileVia(BaseAggregate):
@@ -206,6 +209,7 @@ class ProfileVia(BaseAggregate):
 
 class ProfileViaWithReference(BaseAggregate):
     about_me = Text()
-    ac = Reference('tests.aggregate.elements.AccountViaWithReference')
+    ac = Reference("tests.aggregate.elements.AccountViaWithReference")
+
 
 # Aggregates to test associations # END #

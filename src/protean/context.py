@@ -9,7 +9,7 @@ from .globals import _domain_context_stack
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
 
-logger = logging.getLogger('protean.application')
+logger = logging.getLogger("protean.application")
 
 
 class _DomainContextGlobals(object):
@@ -101,7 +101,10 @@ class DomainContext(object):
                 self.domain.do_teardown_domain_context(exc)
         finally:
             rv = _domain_context_stack.pop()
-        assert rv is self, "Popped wrong domain context.  (%r instead of %r)" % (rv, self)
+        assert rv is self, "Popped wrong domain context.  (%r instead of %r)" % (
+            rv,
+            self,
+        )
 
     def __enter__(self):
         self.push()
@@ -111,4 +114,4 @@ class DomainContext(object):
         self.pop(exc_value)
 
         if exc_type is not None:
-            raise(exc_type, exc_value, tb)
+            raise (exc_type, exc_value, tb)

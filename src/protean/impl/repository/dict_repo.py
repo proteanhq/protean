@@ -31,7 +31,7 @@ _counters = defaultdict(count)
 
 
 def derive_schema_name(model_cls):
-    if hasattr(model_cls.meta_, 'schema_name'):
+    if hasattr(model_cls.meta_, "schema_name"):
         return model_cls.meta_.schema_name
     else:
         return model_cls.meta_.entity_cls.meta_.schema_name
@@ -41,7 +41,7 @@ class DictModel(BaseModel):
     """A model for the dictionary repository"""
 
     @classmethod
-    def from_entity(cls, entity) -> 'DictModel':
+    def from_entity(cls, entity) -> "DictModel":
         """Convert the entity to a dictionary record """
         dict_obj = {}
         for attribute_name in entity.meta_.attributes:
@@ -49,7 +49,7 @@ class DictModel(BaseModel):
         return dict_obj
 
     @classmethod
-    def to_entity(cls, item: 'DictModel'):
+    def to_entity(cls, item: "DictModel"):
         """Convert the dictionary record to an entity """
         return cls.meta_.entity_cls(item, raise_errors=False)
 
@@ -59,13 +59,15 @@ class DictSession:
         self._provider = provider
         self.is_active = True
 
-        if (current_uow and self._provider.name in current_uow._sessions) and not new_connection:
+        if (
+            current_uow and self._provider.name in current_uow._sessions
+        ) and not new_connection:
             self._db = current_uow._sessions[self._provider.name]._db
         else:
             self._db = {
-                'data': copy.deepcopy(_databases),
-                'lock': _locks.setdefault(self._provider.name, Lock()),
-                'counters': _counters,
+                "data": copy.deepcopy(_databases),
+                "lock": _locks.setdefault(self._provider.name, Lock()),
+                "counters": _counters,
             }
 
     def add(self, element):
@@ -82,10 +84,10 @@ class DictSession:
 
     def commit(self):
         if current_uow and self._provider.name in current_uow._sessions:
-            current_uow._sessions[self._provider.name]._db['data'] = self._db['data']
+            current_uow._sessions[self._provider.name]._db["data"] = self._db["data"]
         else:
             global _databases
-            _databases = self._db['data']
+            _databases = self._db["data"]
 
     def rollback(self):
         pass
@@ -101,7 +103,7 @@ class DictProvider(BaseProvider):
         """Initialize Provider with Connection/Adapter details"""
 
         # In case of `DictProvider`, the `DATABASE` value will always be `MEMORY`.
-        conn_info['DATABASE'] = Database.MEMORY.value
+        conn_info["DATABASE"] = Database.MEMORY.value
         super().__init__(name, domain, conn_info)
 
         # A temporary cache of already constructed model classes
@@ -140,18 +142,21 @@ class DictProvider(BaseProvider):
             return model_cls
         else:
             custom_attrs = {
-                key: value for (key, value) in vars(model_cls).items()
-                if key not in ['Meta', '__module__', '__doc__', '__weakref__']}
+                key: value
+                for (key, value) in vars(model_cls).items()
+                if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
+            }
 
             from protean.core.repository.model import ModelMeta
+
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls
 
-            custom_attrs.update({
-                'meta_': meta_,
-            })
+            custom_attrs.update({"meta_": meta_})
             # FIXME Ensure the custom model attributes are constructed properly
-            decorated_model_cls = type(model_cls.__name__, (DictModel, model_cls), custom_attrs)
+            decorated_model_cls = type(
+                model_cls.__name__, (DictModel, model_cls), custom_attrs
+            )
 
             # Memoize the constructed model class
             self._model_classes[schema_name] = decorated_model_cls
@@ -167,14 +172,15 @@ class DictProvider(BaseProvider):
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
             from protean.core.repository.model import ModelMeta
+
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls
 
             attrs = {
-                'meta_': meta_,
+                "meta_": meta_,
             }
             # FIXME Ensure the custom model attributes are constructed properly
-            model_cls = type(entity_cls.__name__ + 'Model', (DictModel, ), attrs)
+            model_cls = type(entity_cls.__name__ + "Model", (DictModel,), attrs)
 
             # Memoize the constructed model class
             self._model_classes[entity_cls.meta_.schema_name] = model_cls
@@ -219,11 +225,11 @@ class DictProvider(BaseProvider):
         conn = self.get_connection()
         items = []
 
-        for schema_name in conn._db['data']:
-            input_db = conn._db['data'][schema_name]
+        for schema_name in conn._db["data"]:
+            input_db = conn._db["data"][schema_name]
             try:
                 # Ensures that the string contains double quotes around keys and values
-                query = query.replace("'", "\"")
+                query = query.replace("'", '"')
                 criteria = json.loads(query)
 
                 for key, value in criteria.items():
@@ -248,14 +254,13 @@ class DictDAO(BaseDAO):
         """Set the values of the auto field using counter"""
         conn = self._get_session()
 
-        for field_name, field_obj in \
-                self.entity_cls.meta_.auto_fields:
-            counter_key = f'{self.schema_name}_{field_name}'
+        for field_name, field_obj in self.entity_cls.meta_.auto_fields:
+            counter_key = f"{self.schema_name}_{field_name}"
             if not (field_name in model_obj and model_obj[field_name] is not None):
                 # Increment the counter and it should start from 1
-                counter = next(conn._db['counters'][counter_key])
+                counter = next(conn._db["counters"][counter_key])
                 if not counter:
-                    counter = next(conn._db['counters'][counter_key])
+                    counter = next(conn._db["counters"][counter_key])
 
                 model_obj[field_name] = counter
 
@@ -270,8 +275,8 @@ class DictDAO(BaseDAO):
 
         # Add the entity to the repository
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
-        with conn._db['lock']:
-            conn._db['data'][self.schema_name][identifier] = model_obj
+        with conn._db["lock"]:
+            conn._db["data"][self.schema_name][identifier] = model_obj
 
         if not current_uow:
             conn.commit()
@@ -293,8 +298,9 @@ class DictDAO(BaseDAO):
                 if isinstance(child, Q):
                     input_db = self._filter_items(child, input_db)
                 else:
-                    input_db = self.provider._evaluate_lookup(child[0], child[1],
-                                                              negated, input_db)
+                    input_db = self.provider._evaluate_lookup(
+                        child[0], child[1], negated, input_db
+                    )
         else:
             # Grow database records over successive iterations
             #   Whatever is left at the end satisfy any criteria (OR)
@@ -303,25 +309,33 @@ class DictDAO(BaseDAO):
                 if isinstance(child, Q):
                     results = self._filter_items(child, db)
                 else:
-                    results = self.provider._evaluate_lookup(child[0], child[1], negated, db)
+                    results = self.provider._evaluate_lookup(
+                        child[0], child[1], negated, db
+                    )
 
                 input_db = {**input_db, **results}
 
         return input_db
 
-    def _filter(self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()):
+    def _filter(
+        self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()
+    ):
         """Read the repository and return results as per the filer"""
         conn = self._get_session()
 
         if criteria.children:
-            items = list(self._filter_items(criteria, conn._db['data'][self.schema_name]).values())
+            items = list(
+                self._filter_items(
+                    criteria, conn._db["data"][self.schema_name]
+                ).values()
+            )
         else:
-            items = list(conn._db['data'][self.schema_name].values())
+            items = list(conn._db["data"][self.schema_name].values())
 
         # Sort the filtered results based on the order_by clause
         for o_key in order_by:
             reverse = False
-            if o_key.startswith('-'):
+            if o_key.startswith("-"):
                 reverse = True
                 o_key = o_key[1:]
             items = sorted(items, key=itemgetter(o_key), reverse=reverse)
@@ -330,7 +344,8 @@ class DictDAO(BaseDAO):
             offset=offset,
             limit=limit,
             total=len(items),
-            items=items[offset: offset + limit])
+            items=items[offset : offset + limit],
+        )
 
         return result
 
@@ -339,14 +354,15 @@ class DictDAO(BaseDAO):
         conn = self._get_session()
 
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
-        with conn._db['lock']:
+        with conn._db["lock"]:
             # Check if object is present
-            if identifier not in conn._db['data'][self.schema_name]:
+            if identifier not in conn._db["data"][self.schema_name]:
                 raise ObjectNotFoundError(
-                    f'`{self.__class__.__name__}` object with identifier {identifier} '
-                    f'does not exist.')
+                    f"`{self.__class__.__name__}` object with identifier {identifier} "
+                    f"does not exist."
+                )
 
-            conn._db['data'][self.schema_name][identifier] = model_obj
+            conn._db["data"][self.schema_name][identifier] = model_obj
 
         if not current_uow:
             conn.commit()
@@ -358,14 +374,14 @@ class DictDAO(BaseDAO):
         """Update all objects satisfying the criteria """
         conn = self._get_session()
 
-        items = self._filter_items(criteria, conn._db['data'][self.schema_name])
+        items = self._filter_items(criteria, conn._db["data"][self.schema_name])
 
         update_count = 0
         for key in items:
             item = items[key]
             item.update(*args)
             item.update(kwargs)
-            conn._db['data'][self.schema_name][key] = item
+            conn._db["data"][self.schema_name][key] = item
 
             update_count += 1
 
@@ -380,14 +396,15 @@ class DictDAO(BaseDAO):
         conn = self._get_session()
 
         identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
-        with conn._db['lock']:
+        with conn._db["lock"]:
             # Check if object is present
-            if identifier not in conn._db['data'][self.schema_name]:
+            if identifier not in conn._db["data"][self.schema_name]:
                 raise ObjectNotFoundError(
-                    f'`{self.entity_cls.__name__}` object with identifier {identifier} '
-                    f'does not exist.')
+                    f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                    f"does not exist."
+                )
 
-            del conn._db['data'][self.schema_name][identifier]
+            del conn._db["data"][self.schema_name][identifier]
 
         if not current_uow:
             conn.commit()
@@ -402,16 +419,16 @@ class DictDAO(BaseDAO):
 
         if criteria:
             # Delete the object from the dictionary and return the deletion count
-            items = self._filter_items(criteria, conn._db['data'][self.schema_name])
+            items = self._filter_items(criteria, conn._db["data"][self.schema_name])
 
             # Delete all the matching identifiers
-            with conn._db['lock']:
+            with conn._db["lock"]:
                 for identifier in items:
-                    conn._db['data'][self.schema_name].pop(identifier, None)
+                    conn._db["data"][self.schema_name].pop(identifier, None)
         else:
-            with conn._db['lock']:
-                if self.schema_name in conn._db['data']:
-                    del conn._db['data'][self.schema_name]
+            with conn._db["lock"]:
+                if self.schema_name in conn._db["data"]:
+                    del conn._db["data"][self.schema_name]
 
         if not current_uow:
             conn.commit()
@@ -432,12 +449,12 @@ class DictDAO(BaseDAO):
         assert isinstance(query, str)
 
         conn = self._get_session()
-        input_db = conn._db['data'][self.schema_name]
+        input_db = conn._db["data"][self.schema_name]
         result = None
 
         try:
             # Ensures that the string contains double quotes around keys and values
-            query = query.replace("'", "\"")
+            query = query.replace("'", '"')
             criteria = json.loads(query)
 
             for key, value in criteria.items():
@@ -445,10 +462,8 @@ class DictDAO(BaseDAO):
 
             items = list(input_db.values())
             result = ResultSet(
-                offset=1,
-                limit=len(items),
-                total=len(items),
-                items=items)
+                offset=1, limit=len(items), total=len(items), items=items
+            )
 
         except json.JSONDecodeError:
             # FIXME Log Exception
@@ -462,20 +477,21 @@ class DictDAO(BaseDAO):
 
 
 operators = {
-    'exact': '==',
-    'iexact': '==',
-    'contains': 'in',
-    'icontains': 'in',
-    'gt': '>',
-    'gte': '>= ',
-    'lt': '<',
-    'lte': '<=',
-    'in': 'in',
+    "exact": "==",
+    "iexact": "==",
+    "contains": "in",
+    "icontains": "in",
+    "gt": ">",
+    "gte": ">= ",
+    "lt": "<",
+    "lte": "<=",
+    "in": "in",
 }
 
 
 class DefaultDictLookup(BaseLookup):
     """Base class with default implementation of expression construction"""
+
     def process_source(self):
         """Return source with transformations, if any"""
         if isinstance(self.source, (UUID, datetime, date)):
@@ -483,8 +499,8 @@ class DefaultDictLookup(BaseLookup):
 
         if isinstance(self.source, str):
             # Replace single and double quotes with escaped single-quote
-            self.source = self.source.replace("'", "\'").replace('"', "\'")
-            return "\"{source}\"".format(source=self.source)
+            self.source = self.source.replace("'", "'").replace('"', "'")
+            return '"{source}"'.format(source=self.source)
         return self.source
 
     def process_target(self):
@@ -494,26 +510,30 @@ class DefaultDictLookup(BaseLookup):
 
         if isinstance(self.target, str):
             # Replace single and double quotes with escaped single-quote
-            self.target = self.target.replace("'", "\'").replace('"', "\'")
-            return "\"{target}\"".format(target=self.target)
+            self.target = self.target.replace("'", "'").replace('"', "'")
+            return '"{target}"'.format(target=self.target)
         return self.target
 
     def as_expression(self):
-        return '{source} {op} {target}'.format(source=self.process_source(),
-                                               op=operators[self.lookup_name],
-                                               target=self.process_target())
+        return "{source} {op} {target}".format(
+            source=self.process_source(),
+            op=operators[self.lookup_name],
+            target=self.process_target(),
+        )
 
 
 @DictProvider.register_lookup
 class Exact(DefaultDictLookup):
     """Exact Match Query"""
-    lookup_name = 'exact'
+
+    lookup_name = "exact"
 
 
 @DictProvider.register_lookup
 class IExact(DefaultDictLookup):
     """Exact Case-Insensitive Match Query"""
-    lookup_name = 'iexact'
+
+    lookup_name = "iexact"
 
     def process_source(self):
         """Return source in lowercase"""
@@ -529,19 +549,23 @@ class IExact(DefaultDictLookup):
 @DictProvider.register_lookup
 class Contains(DefaultDictLookup):
     """Exact Contains Query"""
-    lookup_name = 'contains'
+
+    lookup_name = "contains"
 
     def as_expression(self):
         """Check for Target string to be in Source string"""
-        return '%s %s %s' % (self.process_target(),
-                             operators[self.lookup_name],
-                             self.process_source())
+        return "%s %s %s" % (
+            self.process_target(),
+            operators[self.lookup_name],
+            self.process_source(),
+        )
 
 
 @DictProvider.register_lookup
 class IContains(DefaultDictLookup):
     """Exact Case-Insensitive Contains Query"""
-    lookup_name = 'icontains'
+
+    lookup_name = "icontains"
 
     def process_source(self):
         """Return source in lowercase"""
@@ -555,39 +579,46 @@ class IContains(DefaultDictLookup):
 
     def as_expression(self):
         """Check for Target string to be in Source string"""
-        return '%s %s %s' % (self.process_target(),
-                             operators[self.lookup_name],
-                             self.process_source())
+        return "%s %s %s" % (
+            self.process_target(),
+            operators[self.lookup_name],
+            self.process_source(),
+        )
 
 
 @DictProvider.register_lookup
 class GreaterThan(DefaultDictLookup):
     """Greater than Query"""
-    lookup_name = 'gt'
+
+    lookup_name = "gt"
 
 
 @DictProvider.register_lookup
 class GreaterThanOrEqual(DefaultDictLookup):
     """Greater than or Equal Query"""
-    lookup_name = 'gte'
+
+    lookup_name = "gte"
 
 
 @DictProvider.register_lookup
 class LessThan(DefaultDictLookup):
     """Less than Query"""
-    lookup_name = 'lt'
+
+    lookup_name = "lt"
 
 
 @DictProvider.register_lookup
 class LessThanOrEqual(DefaultDictLookup):
     """Less than or Equal Query"""
-    lookup_name = 'lte'
+
+    lookup_name = "lte"
 
 
 @DictProvider.register_lookup
 class In(DefaultDictLookup):
     """In Query"""
-    lookup_name = 'in'
+
+    lookup_name = "in"
 
     def process_target(self):
         """Ensure target is a list or tuple"""

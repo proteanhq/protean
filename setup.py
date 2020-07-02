@@ -19,26 +19,25 @@ from setuptools import find_packages, setup
 def read(*names, **kwargs):
     """Helper method to read files"""
     return io.open(
-        join(dirname(__file__), *names),
-        encoding=kwargs.get('encoding', 'utf8'),
+        join(dirname(__file__), *names), encoding=kwargs.get("encoding", "utf8"),
     ).read()
 
 
-elasticsearch_requires = ['elasticsearch-dsl>=7.1.0']
-redis_requires = ['redis==3.5.2', 'rq>=1.3.0']
-sqlite_requires = ['sqlalchemy>=1.3.15']
-postgresql_requires = ['psycopg2>=2.8.4', 'sqlalchemy>=1.3.15']
-celery_requires = ['celery[redis]>=4.4.2']
-sendgrid_requires = ['sendgrid>=6.1.3']
-flask_requires = ['flask>=1.1.1']
-marshmallow_requires = ['marshmallow>=3.5.1']
+elasticsearch_requires = ["elasticsearch-dsl>=7.1.0"]
+redis_requires = ["redis==3.5.2", "rq>=1.3.0"]
+sqlite_requires = ["sqlalchemy>=1.3.15"]
+postgresql_requires = ["psycopg2>=2.8.4", "sqlalchemy>=1.3.15"]
+celery_requires = ["celery[redis]>=4.4.2"]
+sendgrid_requires = ["sendgrid>=6.1.3"]
+flask_requires = ["flask>=1.1.1"]
+marshmallow_requires = ["marshmallow>=3.5.1"]
 
 install_requires = marshmallow_requires + [
-    'click>=7.0',
-    'cookiecutter>=1.7.0',
-    'inflect>=4.1.0',
-    'python-dateutil>=2.8.1',
-    'werkzeug>=1.0.0',
+    "click>=7.0",
+    "cookiecutter>=1.7.0",
+    "inflect>=4.1.0",
+    "python-dateutil>=2.8.1",
+    "werkzeug>=1.0.0",
 ]
 
 all_external_requires = [
@@ -48,72 +47,70 @@ all_external_requires = [
     + celery_requires
     + sendgrid_requires
     + flask_requires
-    + marshmallow_requires]
+    + marshmallow_requires
+]
 
 testing_requires = all_external_requires + [
-    'flake8-commas==2.0.0',
-    'mock==4.0.2',
-    'passlib==1.7.2',
-    'pluggy==0.13.1',
-    'pyjwt==1.7.1',
-    'pytest-cov==2.8.1',
-    'pytest-flake8==1.0.6',
-    'pytest-mock==3.1.0',
-    'pytest-travis-fold==1.3.0',
-    'pytest==5.4.2',
+    "mock==4.0.2",
+    "passlib==1.7.2",
+    "pluggy==0.13.1",
+    "pyjwt==1.7.1",
+    "pytest-cov==2.8.1",
+    "pytest-flake8==1.0.6",
+    "pytest-mock==3.1.0",
+    "pytest-travis-fold==1.3.0",
+    "pytest==5.4.2",
 ]
 
 docs_requires = testing_requires + [
-    'sphinx==3.0.3',
-    'sphinx_rtd_theme==0.4.3',
+    "sphinx==3.0.3",
+    "sphinx_rtd_theme==0.4.3",
 ]
 
 dev_requires = docs_requires + [
-    'check-manifest==0.42',
-    'coverage==5.1',
-    'docutils==0.16',
-    'tox==3.15.0',
-    'twine==3.1.1',
+    "black==19.10b0",
+    "check-manifest==0.42",
+    "coverage==5.1",
+    "docutils==0.16",
+    "tox==3.15.0",
+    "twine==3.1.1",
 ]
 
 setup(
-    name='protean',
-    version='0.5.0',
-    license='BSD 3-Clause License',
-    description='Protean Application Framework',
-    long_description='%s\n%s' % (
-        re.compile('^.. start-badges.*^.. end-badges', re.M | re.S).sub('', read('README.rst')),
-        re.sub(':[a-z]+:`~?(.*?)`', r'``\1``', read('CHANGELOG.rst')),
+    name="protean",
+    version="0.5.0",
+    license="BSD 3-Clause License",
+    description="Protean Application Framework",
+    long_description="%s\n%s"
+    % (
+        re.compile("^.. start-badges.*^.. end-badges", re.M | re.S).sub(
+            "", read("README.rst")
+        ),
+        re.sub(":[a-z]+:`~?(.*?)`", r"``\1``", read("CHANGELOG.rst")),
     ),
-    author='Subhash Bhushan C',
-    author_email='subhash@team8solutions.com',
-    url='https://github.com/proteanhq/protean',
-    packages=find_packages('src'),
-    package_dir={'': 'src'},
-    py_modules=[splitext(basename(path))[0] for path in glob('src/*.py')],
+    author="Subhash Bhushan C",
+    author_email="subhash@team8solutions.com",
+    url="https://github.com/proteanhq/protean",
+    packages=find_packages("src"),
+    package_dir={"": "src"},
+    py_modules=[splitext(basename(path))[0] for path in glob("src/*.py")],
     include_package_data=True,
     zip_safe=False,
     classifiers=[
         # complete classifier list: http://pypi.python.org/pypi?%3Aaction=list_classifiers
-        'Development Status :: 2 - Pre-Alpha',
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: BSD License',
-        'Operating System :: OS Independent',
-        'Programming Language :: Python',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3 :: Only',
-        'Topic :: Software Development :: Libraries',
-        'Topic :: Software Development :: Libraries :: Application Frameworks',
-        'Topic :: Software Development :: Libraries :: Python Modules',
+        "Development Status :: 2 - Pre-Alpha",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: BSD License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3 :: Only",
+        "Topic :: Software Development :: Libraries",
+        "Topic :: Software Development :: Libraries :: Application Frameworks",
+        "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-    keywords=[
-        "domain-driven design",
-        "ddd",
-        "cqrs",
-        "cqs",
-        "ports and adapters",
-    ],
+    keywords=["domain-driven design", "ddd", "cqrs", "cqs", "ports and adapters"],
     install_requires=install_requires,
     extras_require={
         "elasticsearch": elasticsearch_requires,
@@ -132,9 +129,5 @@ setup(
         "docs": docs_requires,
         "all": dev_requires,
     },
-    entry_points={
-        'console_scripts': [
-            'protean = protean.cli:main',
-        ],
-    },
+    entry_points={"console_scripts": ["protean = protean.cli:main"]},
 )

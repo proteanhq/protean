@@ -6,7 +6,11 @@ from typing import Any
 
 # Protean
 from protean.core.entity import BaseEntity
-from protean.core.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
+from protean.core.exceptions import (
+    ObjectNotFoundError,
+    TooManyObjectsError,
+    ValidationError,
+)
 from protean.core.field.basic import Auto, Field
 from protean.core.queryset import QuerySet
 from protean.globals import current_uow
@@ -15,7 +19,7 @@ from protean.utils.query import Q
 # Local/Relative Imports
 from .resultset import ResultSet
 
-logger = logging.getLogger('protean.repository')
+logger = logging.getLogger("protean.repository")
 
 
 class BaseDAO(metaclass=ABCMeta):
@@ -85,8 +89,9 @@ class BaseDAO(metaclass=ABCMeta):
     ###############################
 
     @abstractmethod
-    def _filter(self, criteria: Q, offset: int = 0, limit: int = 10,
-                order_by: list = ()) -> ResultSet:
+    def _filter(
+        self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()
+    ) -> ResultSet:
         """
         Filter objects from the data store. Method must return a `ResultSet`
         object
@@ -207,7 +212,9 @@ class BaseDAO(metaclass=ABCMeta):
 
         :param identifier: id of the record to be fetched from the data store.
         """
-        logger.debug(f'Lookup `{self.entity_cls.__name__}` object with identifier {identifier}')
+        logger.debug(
+            f"Lookup `{self.entity_cls.__name__}` object with identifier {identifier}"
+        )
 
         # Filter on the ID field of the entity
         filters = {
@@ -217,18 +224,19 @@ class BaseDAO(metaclass=ABCMeta):
         results = self.query.filter(**filters).all()
         if not results:
             raise ObjectNotFoundError(
-                f'`{self.entity_cls.__name__}` object with identifier {identifier} '
-                f'does not exist.')
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
+            )
 
         if len(results) > 1:
             raise TooManyObjectsError(
-                f'More than one object of `{self.entity_cls.__name__}` exist with identifier {identifier}',
+                f"More than one object of `{self.entity_cls.__name__}` exist with identifier {identifier}",
             )
 
         # Return the first result, because `filter` would have returned an array
         return results.first
 
-    def find_by(self, **kwargs) -> 'BaseEntity':
+    def find_by(self, **kwargs) -> "BaseEntity":
         """Find a specific entity record that matches one or more criteria.
 
         This method internally uses the `filter` method to fetch records.
@@ -240,21 +248,23 @@ class BaseDAO(metaclass=ABCMeta):
 
         :param kwargs: named arguments of attribute names and values to filter on.
         """
-        logger.debug(f'Lookup `{self.entity_cls.__name__}` object with values '
-                     f'{kwargs}')
+        logger.debug(
+            f"Lookup `{self.entity_cls.__name__}` object with values " f"{kwargs}"
+        )
 
         # Filter for item in the data store
         results = self.query.filter(**kwargs).all()
 
         if not results:
             raise ObjectNotFoundError(
-                f'`{self.entity_cls.__name__}` object with values {[item for item in kwargs.items()]} '
-                f'does not exist.')
+                f"`{self.entity_cls.__name__}` object with values {[item for item in kwargs.items()]} "
+                f"does not exist."
+            )
 
         if len(results) > 1:
             raise TooManyObjectsError(
-                f'More than one object of `{self.entity_cls.__name__}` exist '
-                f'with values {[item for item in kwargs.items()]}',
+                f"More than one object of `{self.entity_cls.__name__}` exist "
+                f"with values {[item for item in kwargs.items()]}",
             )
 
         # Return the first result, because `filter` would have returned an array
@@ -274,7 +284,7 @@ class BaseDAO(metaclass=ABCMeta):
         # Invokes the __bool__ method on `ResultSet`.
         return bool(results)
 
-    def create(self, *args, **kwargs) -> 'BaseEntity':
+    def create(self, *args, **kwargs) -> "BaseEntity":
         """Create a new record in the data store.
 
         Performs validations for unique attributes before creating the entity
@@ -287,7 +297,8 @@ class BaseDAO(metaclass=ABCMeta):
         :param kwargs: named attribute names and values
         """
         logger.debug(
-            f'Creating new `{self.entity_cls.__name__}` object using data {kwargs}')
+            f"Creating new `{self.entity_cls.__name__}` object using data {kwargs}"
+        )
 
         try:
             # Build the entity from input arguments
@@ -315,7 +326,7 @@ class BaseDAO(metaclass=ABCMeta):
 
             return entity_obj
         except ValidationError as exc:
-            logger.error(f'Failed creating entity because of {exc}')
+            logger.error(f"Failed creating entity because of {exc}")
             raise
 
     def save(self, entity_obj):
@@ -332,8 +343,7 @@ class BaseDAO(metaclass=ABCMeta):
 
         :param entity_obj: Entity object to be persisted
         """
-        logger.debug(
-            f'Saving `{self.entity_cls.__name__}` object')
+        logger.debug(f"Saving `{self.entity_cls.__name__}` object")
 
         try:
             # Build the model object and create it
@@ -342,9 +352,14 @@ class BaseDAO(metaclass=ABCMeta):
             else:
                 # If this is a new entity, generate ID
                 if entity_obj.state_.is_new:
-                    if not getattr(entity_obj, entity_obj.meta_.id_field.field_name, None):
-                        setattr(entity_obj, entity_obj.meta_.id_field.field_name,
-                                self.entity_cls.generate_identity())
+                    if not getattr(
+                        entity_obj, entity_obj.meta_.id_field.field_name, None
+                    ):
+                        setattr(
+                            entity_obj,
+                            entity_obj.meta_.id_field.field_name,
+                            self.entity_cls.generate_identity(),
+                        )
 
                 model_obj = self._create(self.model_cls.from_entity(entity_obj))
 
@@ -361,10 +376,10 @@ class BaseDAO(metaclass=ABCMeta):
 
             return entity_obj
         except Exception as exc:
-            logger.error(f'Failed saving entity because of {exc}')
+            logger.error(f"Failed saving entity because of {exc}")
             raise
 
-    def update(self, entity_obj, *data, **kwargs) -> 'BaseEntity':
+    def update(self, entity_obj, *data, **kwargs) -> "BaseEntity":
         """Update a record in the data store.
 
         Performs validations for unique attributes before creating the entity.
@@ -382,7 +397,9 @@ class BaseDAO(metaclass=ABCMeta):
         :param data: Dictionary of values to be updated for the entity
         :param kwargs: keyword arguments of attribute pairs to be updated
         """
-        logger.debug(f'Updating existing `{self.entity_cls.__name__}` object with id {entity_obj.id}')
+        logger.debug(
+            f"Updating existing `{self.entity_cls.__name__}` object with id {entity_obj.id}"
+        )
 
         try:
             # Update entity's data attributes
@@ -398,7 +415,7 @@ class BaseDAO(metaclass=ABCMeta):
 
             return entity_obj
         except Exception as exc:
-            logger.error(f'Failed updating entity because of {exc}')
+            logger.error(f"Failed updating entity because of {exc}")
             raise
 
     def _validate_unique(self, entity_obj, create=True):
@@ -431,9 +448,11 @@ class BaseDAO(metaclass=ABCMeta):
         for filter_key, lookup_value in filters.items():
             if self.exists(excludes, **{filter_key: lookup_value}):
                 field_obj = self.entity_cls.meta_.declared_fields[filter_key]
-                field_obj.fail('unique',
-                               entity_name=self.entity_cls.__name__,
-                               field_name=filter_key)
+                field_obj.fail(
+                    "unique",
+                    entity_name=self.entity_cls.__name__,
+                    field_name=filter_key,
+                )
 
     def delete(self, entity_obj):
         """Delete a record in the data store.
@@ -455,7 +474,7 @@ class BaseDAO(metaclass=ABCMeta):
 
             return entity_obj
         except Exception as exc:
-            logger.error(f'Failed entity deletion because of {exc}')
+            logger.error(f"Failed entity deletion because of {exc}")
             raise
 
     def delete_all(self):
@@ -467,5 +486,5 @@ class BaseDAO(metaclass=ABCMeta):
         try:
             self._delete_all()
         except Exception as exc:
-            logger.error(f'Failed deletion of all records because of {exc}')
+            logger.error(f"Failed deletion of all records because of {exc}")
             raise

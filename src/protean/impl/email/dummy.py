@@ -5,7 +5,7 @@ import logging
 # Protean
 from protean.core.email import BaseEmailProvider
 
-logger = logging.getLogger('protean.impl.email')
+logger = logging.getLogger("protean.impl.email")
 
 
 class DummyEmailProvider(BaseEmailProvider):
@@ -19,5 +19,5 @@ class DummyEmailProvider(BaseEmailProvider):
     def send_email(self, message, dynamic_template=False):
         """Output message into log"""
 
-        logger.debug('Email message dispatched: %s' % message.mime_message)
+        logger.debug("Email message dispatched: %s" % message.mime_message)
         return True

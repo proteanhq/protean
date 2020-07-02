@@ -16,6 +16,7 @@ from .views import APIResource
 
 class ProteanRequest(Request):
     """ Custom request object to store protean specific code"""
+
     payload = None
 
 
@@ -62,15 +63,21 @@ class Protean(object):
         app.after_request(self._cleanup_protean)
 
         # Register error handlers for the app
-        app.register_error_handler(
-            UsecaseExecutionError, self._handle_exception)
+        app.register_error_handler(UsecaseExecutionError, self._handle_exception)
         self.exception_handler = perform_import(active_config.EXCEPTION_HANDLER)
 
         # Update the current configuration
         app.config.from_object(active_config)
 
-    def register_viewset(self, view, endpoint, url, pk_name='identifier',
-                         pk_type='string', additional_routes=None):
+    def register_viewset(
+        self,
+        view,
+        endpoint,
+        url,
+        pk_name="identifier",
+        pk_type="string",
+        additional_routes=None,
+    ):
         """Register a Viewset
 
         Additional routes (apart from the standard five) can be specified via
@@ -85,42 +92,49 @@ class Protean(object):
             if isinstance(route, (list, tuple)):
                 route, route_name = route
             self.app.add_url_rule(
-                '{}{}'.format(url, route), view_func=view.as_view(route_name))
+                "{}{}".format(url, route), view_func=view.as_view(route_name)
+            )
 
         # Standard routes
         self.app.add_url_rule(
-            url, view_func=view.as_view(f'list_{endpoint}'),
-            methods=['GET'])
+            url, view_func=view.as_view(f"list_{endpoint}"), methods=["GET"]
+        )
         self.app.add_url_rule(
-            url, view_func=view.as_view(f'create_{endpoint}'),
-            methods=['POST'])
+            url, view_func=view.as_view(f"create_{endpoint}"), methods=["POST"]
+        )
 
         # Make sure that the url ends with a
-        url = f'{url}/' if not url.endswith('/') else url
-        self.app.add_url_rule('%s<%s:%s>' % (url, pk_type, pk_name),
-                              view_func=view.as_view(f'show_{endpoint}'),
-                              methods=['GET'])
-        self.app.add_url_rule('%s<%s:%s>' % (url, pk_type, pk_name),
-                              view_func=view.as_view(f'update_{endpoint}'),
-                              methods=['PUT'])
-        self.app.add_url_rule('%s<%s:%s>' % (url, pk_type, pk_name),
-                              view_func=view.as_view(f'delete_{endpoint}'),
-                              methods=['DELETE'])
+        url = f"{url}/" if not url.endswith("/") else url
+        self.app.add_url_rule(
+            "%s<%s:%s>" % (url, pk_type, pk_name),
+            view_func=view.as_view(f"show_{endpoint}"),
+            methods=["GET"],
+        )
+        self.app.add_url_rule(
+            "%s<%s:%s>" % (url, pk_type, pk_name),
+            view_func=view.as_view(f"update_{endpoint}"),
+            methods=["PUT"],
+        )
+        self.app.add_url_rule(
+            "%s<%s:%s>" % (url, pk_type, pk_name),
+            view_func=view.as_view(f"delete_{endpoint}"),
+            methods=["DELETE"],
+        )
 
     @staticmethod
     def _load_protean():
         """ Load the protean context with details from the request"""
 
-        user_agent = request.headers.get('User-Agent', '')
+        user_agent = request.headers.get("User-Agent", "")
         hashed_user_agent = hashlib.sha256(user_agent.encode())
 
         details = {
-            'host_url': request.host_url,
-            'url': request.url,
-            'tenant_id': derive_tenant(request.url),
-            'user_agent': user_agent,
-            'user_agent_hash': hashed_user_agent.hexdigest(),
-            'remote_addr': request.remote_addr,
+            "host_url": request.host_url,
+            "url": request.url,
+            "tenant_id": derive_tenant(request.url),
+            "user_agent": user_agent,
+            "user_agent_hash": hashed_user_agent.hexdigest(),
+            "remote_addr": request.remote_addr,
         }
         context.set_context(details)
 
@@ -140,7 +154,7 @@ class Protean(object):
             view_func = current_app.view_functions[request.url_rule.endpoint]
             view_class = view_func.view_class
             if issubclass(view_class, APIResource):
-                renderer = getattr(view_class, 'renderer', renderer)
+                renderer = getattr(view_class, "renderer", renderer)
 
         # If user has defined an exception handler then call that
         if self.exception_handler:

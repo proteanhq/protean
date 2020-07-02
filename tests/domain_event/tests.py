@@ -38,9 +38,11 @@ class TestDomainEventRegistration:
 
 
 class TestDomainEventTriggering:
-    @patch.object(MemoryBroker, 'send_message')
+    @patch.object(MemoryBroker, "send_message")
     def test_that_domain_event_is_raised_in_aggregate_command_method(self, mock):
-        newcomer = Person.add_newcomer({'first_name': 'John', 'last_name': 'Doe', 'age': 21})
+        newcomer = Person.add_newcomer(
+            {"first_name": "John", "last_name": "Doe", "age": 21}
+        )
         mock.assert_called_once_with(PersonAdded(person=newcomer))
 
     def test_that_domain_event_is_persisted(self, test_domain):
@@ -48,12 +50,12 @@ class TestDomainEventTriggering:
         test_domain.register(EventLog)
         test_domain.register(EventLogRepository)
 
-        command = PersonCommand(first_name='John', last_name='Doe', age=21)
+        command = PersonCommand(first_name="John", last_name="Doe", age=21)
         person = PersonService.add(command)
 
         event_repo = current_domain.repository_for(EventLog)
         event = event_repo.get_most_recent_event_by_type(kind=PersonAdded)
 
         assert event is not None
-        assert event.kind == 'PersonAdded'
-        assert event.payload['person'] == person.to_dict()
+        assert event.kind == "PersonAdded"
+        assert event.payload["person"] == person.to_dict()

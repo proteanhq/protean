@@ -9,8 +9,8 @@ from protean.core.value_object import BaseValueObject
 
 
 class FileType(Enum):
-    PDF = 'PDF'
-    PPT = 'PPT'
+    PDF = "PDF"
+    PPT = "PPT"
 
 
 class File(BaseValueObject):
@@ -18,7 +18,7 @@ class File(BaseValueObject):
     type = String(max_length=15, choices=FileType)
 
     class Meta:
-        aggregate_cls = 'Resource'
+        aggregate_cls = "Resource"
 
 
 class Resource(BaseAggregate):

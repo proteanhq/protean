@@ -21,27 +21,27 @@ from protean.globals import current_domain
 from protean.utils import Database, IdentityStrategy, IdentityType
 from protean.utils.query import Q
 
-logger = logging.getLogger('protean.repository')
+logger = logging.getLogger("protean.repository")
 
 operators = {
-    'exact': '__eq__',
-    'iexact': 'ilike',
-    'contains': 'contains',
-    'icontains': 'ilike',
-    'startswith': 'startswith',
-    'endswith': 'endswith',
-    'gt': '__gt__',
-    'gte': '__ge__',
-    'lt': '__lt__',
-    'lte': '__le__',
-    'in': 'in_',
-    'overlap': 'overlap',
-    'any': 'any',
+    "exact": "__eq__",
+    "iexact": "ilike",
+    "contains": "contains",
+    "icontains": "ilike",
+    "startswith": "startswith",
+    "endswith": "endswith",
+    "gt": "__gt__",
+    "gte": "__ge__",
+    "lt": "__lt__",
+    "lte": "__le__",
+    "in": "in_",
+    "overlap": "overlap",
+    "any": "any",
 }
 
 
 def derive_schema_name(model_cls):
-    if hasattr(model_cls.meta_, 'schema_name'):
+    if hasattr(model_cls.meta_, "schema_name"):
         return model_cls.meta_.schema_name
     else:
         return model_cls.meta_.entity_cls.meta_.schema_name
@@ -51,27 +51,29 @@ class ElasticsearchModel(Document):
     """A model for the Elasticsearch index"""
 
     @classmethod
-    def from_entity(cls, entity) -> 'ElasticsearchModel':
+    def from_entity(cls, entity) -> "ElasticsearchModel":
         """Convert the entity to a Elasticsearch record """
         item_dict = {}
         for attribute_obj in cls.meta_.entity_cls.meta_.attributes.values():
             if isinstance(attribute_obj, Reference):
-                item_dict[attribute_obj.relation.attribute_name] = \
-                    attribute_obj.relation.value
+                item_dict[
+                    attribute_obj.relation.attribute_name
+                ] = attribute_obj.relation.value
             else:
                 item_dict[attribute_obj.attribute_name] = getattr(
-                    entity, attribute_obj.attribute_name)
+                    entity, attribute_obj.attribute_name
+                )
 
         model_obj = cls(**item_dict)
 
-        if 'id' in item_dict:
+        if "id" in item_dict:
             model_obj.meta.id = model_obj.id
-            del model_obj._d_['id']  # pylint: disable=W0212
+            del model_obj._d_["id"]  # pylint: disable=W0212
 
         return model_obj
 
     @classmethod
-    def to_entity(cls, item: 'ElasticsearchModel'):
+    def to_entity(cls, item: "ElasticsearchModel"):
         """Convert the elasticsearch document to an entity """
         item_dict = {}
         for field_name in cls.meta_.entity_cls.meta_.attributes:
@@ -83,14 +85,16 @@ class ElasticsearchModel(Document):
             item_dict[field_name] = value
 
         identifier = None
-        if (current_domain.config['IDENTITY_STRATEGY'] == IdentityStrategy.UUID and
-                current_domain.config['IDENTITY_TYPE'] == IdentityType.UUID
-                and isinstance(item.meta.id, str)):
+        if (
+            current_domain.config["IDENTITY_STRATEGY"] == IdentityStrategy.UUID
+            and current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID
+            and isinstance(item.meta.id, str)
+        ):
             identifier = UUID(item.meta.id)
         else:
             identifier = item.meta.id
 
-        item_dict['id'] = identifier
+        item_dict["id"] = identifier
         entity_obj = cls.meta_.entity_cls(item_dict)
 
         return entity_obj
@@ -102,6 +106,7 @@ class ESSession:
     Elasticsearch does not support Transactions or Sessions, so this class is
     essential a no-op, and acts as a passthrough for all transactions.
     """
+
     def __init__(self, provider, new_connection=False):
         self._provider = provider
 
@@ -124,7 +129,6 @@ class ESSession:
 
 
 class ElasticsearchDAO(BaseDAO):
-
     def get(self, identifier: Any):
         """Retrieve a specific Record from the Repository by its `identifier`.
 
@@ -138,23 +142,29 @@ class ElasticsearchDAO(BaseDAO):
 
         :param identifier: id of the record to be fetched from the data store.
         """
-        logger.debug(f'Lookup `{self.entity_cls.__name__}` object with identifier {identifier}')
+        logger.debug(
+            f"Lookup `{self.entity_cls.__name__}` object with identifier {identifier}"
+        )
 
         conn = self._get_session()
         result = None
 
         try:
-            result = self.model_cls.get(id=identifier, using=conn, index=self.entity_cls.meta_.schema_name)
+            result = self.model_cls.get(
+                id=identifier, using=conn, index=self.entity_cls.meta_.schema_name
+            )
         except NotFoundError:
             logger.error(f"Record {identifier} was not found")
             raise ObjectNotFoundError(
-                f'`{self.entity_cls.__name__}` object with identifier {identifier} '
-                f'does not exist.')
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
+            )
         except Exception as error:
             logger.error(f"Unknown error occurred when fetching {identifier}: {error}")
             raise (
-                f'`{self.entity_cls.__name__}` object with identifier {identifier} '
-                f'does not exist.')
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
+            )
 
         entity = self.model_cls.to_entity(result)
         return entity
@@ -188,8 +198,9 @@ class ElasticsearchDAO(BaseDAO):
 
         return composed_query
 
-    def _filter(self, criteria: Q, offset: int = 0, limit: int = 10,
-                order_by: list = ()) -> ResultSet:
+    def _filter(
+        self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()
+    ) -> ResultSet:
         """
         Filter objects from the data store. Method must return a `ResultSet`
         object
@@ -206,7 +217,7 @@ class ElasticsearchDAO(BaseDAO):
         if order_by:
             s = s.sort(*order_by)
 
-        s = s[offset:offset+limit]
+        s = s[offset : offset + limit]
 
         # Return the results
         try:
@@ -215,7 +226,8 @@ class ElasticsearchDAO(BaseDAO):
                 offset=offset,
                 limit=limit,
                 total=response.hits.total.value,
-                items=response.hits)
+                items=response.hits,
+            )
         except Exception as exc:
             logger.error(f"Error while filtering: {exc}")
             raise
@@ -227,7 +239,11 @@ class ElasticsearchDAO(BaseDAO):
         conn = self._get_session()
 
         try:
-            model_obj.save(refresh=True, index=model_obj.meta_.entity_cls.meta_.schema_name, using=conn)
+            model_obj.save(
+                refresh=True,
+                index=model_obj.meta_.entity_cls.meta_.schema_name,
+                using=conn,
+            )
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
             raise
@@ -242,15 +258,22 @@ class ElasticsearchDAO(BaseDAO):
         try:
             identifier = model_obj.meta.id
             # Calling `get` will raise `NotFoundError` if record was not found
-            self.model_cls.get(id=identifier, using=conn, index=self.entity_cls.meta_.schema_name)
+            self.model_cls.get(
+                id=identifier, using=conn, index=self.entity_cls.meta_.schema_name
+            )
         except NotFoundError as exc:
             logger.error(f"Database Record not found: {exc}")
             raise ObjectNotFoundError(
-                f'`{self.entity_cls.__name__}` object with identifier {identifier} '
-                f'does not exist.')
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
+            )
 
         try:
-            model_obj.save(refresh=True, index=model_obj.meta_.entity_cls.meta_.schema_name, using=conn)
+            model_obj.save(
+                refresh=True,
+                index=model_obj.meta_.entity_cls.meta_.schema_name,
+                using=conn,
+            )
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
             raise
@@ -266,7 +289,11 @@ class ElasticsearchDAO(BaseDAO):
         conn = self._get_session()
 
         try:
-            model_obj.delete(index=model_obj.meta_.entity_cls.meta_.schema_name, using=conn, refresh=True)
+            model_obj.delete(
+                index=model_obj.meta_.entity_cls.meta_.schema_name,
+                using=conn,
+                refresh=True,
+            )
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
             raise
@@ -307,12 +334,11 @@ class ElasticsearchDAO(BaseDAO):
 
 
 class ESProvider(BaseProvider):
-
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Provider with Connection/Adapter details"""
 
         # In case of `ESProvider`, the `DATABASE` value will always be `ELASTICSEARCH`.
-        conn_info['DATABASE'] = Database.ELASTICSEARCH.value
+        conn_info["DATABASE"] = Database.ELASTICSEARCH.value
         super().__init__(name, domain, conn_info)
 
         # A temporary cache of already constructed model classes
@@ -320,14 +346,14 @@ class ESProvider(BaseProvider):
 
     def _extract_lookup(self, key):
         """Extract lookup method based on key name format"""
-        parts = key.rsplit('__', 1)
+        parts = key.rsplit("__", 1)
 
         if len(parts) > 1 and parts[1] in operators:
             op = parts[1]
             attribute = parts[0]
         else:
             # 'exact' is the default lookup if there was no explicit comparison op in `key`
-            op = 'exact'
+            op = "exact"
             attribute = key
 
         # Construct and assign the lookup class as a filter criteria
@@ -351,7 +377,7 @@ class ESProvider(BaseProvider):
 
     def get_connection(self):
         """Get the connection object for the repository"""
-        return Elasticsearch(self.conn_info['DATABASE_URI']['hosts'])
+        return Elasticsearch(self.conn_info["DATABASE_URI"]["hosts"])
 
     def get_dao(self, entity_cls, model_cls):
         """Return a DAO object configured with a live connection"""
@@ -370,18 +396,21 @@ class ESProvider(BaseProvider):
             return model_cls
         else:
             custom_attrs = {
-                key: value for (key, value) in vars(model_cls).items()
-                if key not in ['Meta', '__module__', '__doc__', '__weakref__']}
+                key: value
+                for (key, value) in vars(model_cls).items()
+                if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
+            }
 
             from protean.core.repository.model import ModelMeta
+
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls
 
-            custom_attrs.update({
-                'meta_': meta_,
-            })
+            custom_attrs.update({"meta_": meta_})
             # FIXME Ensure the custom model attributes are constructed properly
-            decorated_model_cls = type(model_cls.__name__, (ElasticsearchModel, model_cls), custom_attrs)
+            decorated_model_cls = type(
+                model_cls.__name__, (ElasticsearchModel, model_cls), custom_attrs
+            )
 
             # Memoize the constructed model class
             self._model_classes[schema_name] = decorated_model_cls
@@ -397,14 +426,17 @@ class ESProvider(BaseProvider):
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
             from protean.core.repository.model import ModelMeta
+
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls
 
             attrs = {
-                'meta_': meta_,
+                "meta_": meta_,
             }
             # FIXME Ensure the custom model attributes are constructed properly
-            model_cls = type(entity_cls.__name__ + 'Model', (ElasticsearchModel, ), attrs)
+            model_cls = type(
+                entity_cls.__name__ + "Model", (ElasticsearchModel,), attrs
+            )
 
             # Memoize the constructed model class
             self._model_classes[entity_cls.meta_.schema_name] = model_cls
@@ -428,11 +460,12 @@ class ESProvider(BaseProvider):
 
         for _, aggregate_record in current_domain.aggregates.items():
             provider = current_domain.get_provider(aggregate_record.cls.meta_.provider)
-            if provider.conn_info['DATABASE'] == Database.ELASTICSEARCH.value:
+            if provider.conn_info["DATABASE"] == Database.ELASTICSEARCH.value:
                 conn.delete_by_query(
                     refresh=True,
                     index=aggregate_record.cls.meta_.schema_name,
-                    body={"query": {"match_all": {}}})
+                    body={"query": {"match_all": {}}},
+                )
 
 
 class DefaultLookup(BaseLookup):
@@ -449,16 +482,18 @@ class DefaultLookup(BaseLookup):
 @ESProvider.register_lookup
 class Exact(DefaultLookup):
     """Exact Match Query"""
-    lookup_name = 'exact'
+
+    lookup_name = "exact"
 
     def as_expression(self):
-        return query.Q('term', **{self.process_source(): self.process_target()})
+        return query.Q("term", **{self.process_source(): self.process_target()})
 
 
 @ESProvider.register_lookup
 class In(DefaultLookup):
     """In Match Query"""
-    lookup_name = 'in'
+
+    lookup_name = "in"
 
     def process_target(self):
         """Ensure target is a list or tuple"""
@@ -466,67 +501,91 @@ class In(DefaultLookup):
         return super().process_target()
 
     def as_expression(self):
-        return query.Q('terms', **{self.process_source(): self.process_target()})
+        return query.Q("terms", **{self.process_source(): self.process_target()})
 
 
 @ESProvider.register_lookup
 class GreaterThan(DefaultLookup):
     """Greater than Query"""
-    lookup_name = 'gt'
+
+    lookup_name = "gt"
 
     def as_expression(self):
-        return query.Q('range', **{self.process_source(): {'gt': self.process_target()}})
+        return query.Q(
+            "range", **{self.process_source(): {"gt": self.process_target()}}
+        )
 
 
 @ESProvider.register_lookup
 class GreaterThanOrEqual(DefaultLookup):
     """Greater than or Equal Query"""
-    lookup_name = 'gte'
+
+    lookup_name = "gte"
 
     def as_expression(self):
-        return query.Q('range', **{self.process_source(): {'gte': self.process_target()}})
+        return query.Q(
+            "range", **{self.process_source(): {"gte": self.process_target()}}
+        )
 
 
 @ESProvider.register_lookup
 class LessThan(DefaultLookup):
     """Less than Query"""
-    lookup_name = 'lt'
+
+    lookup_name = "lt"
 
     def as_expression(self):
-        return query.Q('range', **{self.process_source(): {'lt': self.process_target()}})
+        return query.Q(
+            "range", **{self.process_source(): {"lt": self.process_target()}}
+        )
 
 
 @ESProvider.register_lookup
 class LessThanOrEqual(DefaultLookup):
     """Less than or Equal Query"""
-    lookup_name = 'lte'
+
+    lookup_name = "lte"
 
     def as_expression(self):
-        return query.Q('range', **{self.process_source(): {'lte': self.process_target()}})
+        return query.Q(
+            "range", **{self.process_source(): {"lte": self.process_target()}}
+        )
 
 
 @ESProvider.register_lookup
 class Contains(DefaultLookup):
     """Exact Contains Query"""
-    lookup_name = 'contains'
+
+    lookup_name = "contains"
 
     def as_expression(self):
-        return query.Q('wildcard', **{self.process_source(): {'value': f'*{self.process_target()}*'}})
+        return query.Q(
+            "wildcard",
+            **{self.process_source(): {"value": f"*{self.process_target()}*"}},
+        )
 
 
 @ESProvider.register_lookup
 class Startswith(DefaultLookup):
     """Exact Contains Query"""
-    lookup_name = 'startswith'
+
+    lookup_name = "startswith"
 
     def as_expression(self):
-        return query.Q('wildcard', **{self.process_source(): {'value': f'{self.process_target()}*'}})
+        return query.Q(
+            "wildcard",
+            **{self.process_source(): {"value": f"{self.process_target()}*"}},
+        )
 
 
 @ESProvider.register_lookup
 class Endswith(DefaultLookup):
     """Exact Contains Query"""
-    lookup_name = 'endswith'
+
+    lookup_name = "endswith"
 
     def as_expression(self):
-        return query.Q('wildcard', **{self.process_source(): {'value': f'*{self.process_target()}'}})
+        return query.Q(
+            "wildcard",
+            **{self.process_source(): {"value": f"*{self.process_target()}"}},
+        )

@@ -18,7 +18,12 @@ class EventLogRepository(BaseRepository):
     @classmethod
     def get_most_recent_event_by_type(cls, kind: str) -> EventLog:
         event_dao = current_domain.get_dao(EventLog)
-        return event_dao.query.filter(kind=kind.__name__).order_by('-timestamp').all().first
+        return (
+            event_dao.query.filter(kind=kind.__name__)
+            .order_by("-timestamp")
+            .all()
+            .first
+        )
 
     class Meta:
         aggregate_cls = EventLog

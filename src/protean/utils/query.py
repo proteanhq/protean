@@ -5,7 +5,7 @@ import functools
 import inspect
 import logging
 
-logger = logging.getLogger('protean.repository')
+logger = logging.getLogger("protean.repository")
 
 
 def subclasses(cls):
@@ -17,6 +17,7 @@ def subclasses(cls):
 
 class RegisterLookupMixin:
     """Helper Mixin to register Lookups to an Adapter"""
+
     @classmethod
     def _get_lookup(cls, lookup_name):
         return cls.get_lookups().get(lookup_name, None)
@@ -25,16 +26,21 @@ class RegisterLookupMixin:
     @functools.lru_cache(maxsize=None)
     def get_lookups(cls):
         """Fetch all Lookups"""
-        class_lookups = [parent.__dict__.get('class_lookups', {}) for parent in inspect.getmro(cls)]
+        class_lookups = [
+            parent.__dict__.get("class_lookups", {}) for parent in inspect.getmro(cls)
+        ]
         return cls.merge_dicts(class_lookups)
 
     def get_lookup(self, lookup_name):
         """Fetch Lookup by name"""
         from protean.core.repository.lookup import BaseLookup
+
         lookup = self._get_lookup(lookup_name)
 
         # If unable to find Lookup, or if Lookup is the wrong class, raise Error
-        if lookup is None or (lookup is not None and not issubclass(lookup, BaseLookup)):
+        if lookup is None or (
+            lookup is not None and not issubclass(lookup, BaseLookup)
+        ):
             raise NotImplementedError
 
         return lookup
@@ -60,7 +66,7 @@ class RegisterLookupMixin:
         """Register a Lookup to a class"""
         if lookup_name is None:
             lookup_name = lookup.lookup_name
-        if 'class_lookups' not in cls.__dict__:
+        if "class_lookups" not in cls.__dict__:
             cls.class_lookups = {}
 
         cls.class_lookups[lookup_name] = lookup
@@ -87,9 +93,10 @@ class Node:
     connection (the root) with the children being either leaf nodes or other
     Node instances.
     """
+
     # Standard connector type. Clients usually won't use this at all and
     # subclasses will usually override the value.
-    default = 'DEFAULT'
+    default = "DEFAULT"
 
     def __init__(self, children=None, connector=None, negated=False):
         """Construct a new Node. If no connector is given, use the default."""
@@ -114,8 +121,8 @@ class Node:
         return obj
 
     def __str__(self):
-        template = '(NOT (%s: %s))' if self.negated else '(%s: %s)'
-        return template % (self.connector, ', '.join(str(c) for c in self.children))
+        template = "(NOT (%s: %s))" if self.negated else "(%s: %s)"
+        return template % (self.connector, ", ".join(str(c) for c in self.children))
 
     def __repr__(self):
         return "<%s: %s>" % (self.__class__.__name__, self)
@@ -140,9 +147,9 @@ class Node:
 
     def __eq__(self, other):
         return (
-            self.__class__ == other.__class__ and
-            (self.connector, self.negated) == (other.connector, other.negated) and
-            self.children == other.children
+            self.__class__ == other.__class__
+            and (self.connector, self.negated) == (other.connector, other.negated)
+            and self.children == other.children
         )
 
     def add(self, data, conn_type, squash=True):
@@ -167,8 +174,11 @@ class Node:
             return data
         if self.connector == conn_type:
             # We can reuse self.children to append or squash the node other.
-            if (isinstance(data, Node) and not data.negated and
-                    (data.connector == conn_type or len(data) == 1)):
+            if (
+                isinstance(data, Node)
+                and not data.negated
+                and (data.connector == conn_type or len(data) == 1)
+            ):
                 # We can squash the other node's children directly into this
                 # node. We are just doing (AB)(CD) == (ABCD) here, with the
                 # addition that if the length of the other node is 1 the
@@ -183,8 +193,7 @@ class Node:
                 self.children.append(data)
                 return data
         else:
-            obj = self._new_instance(self.children, self.connector,
-                                     self.negated)
+            obj = self._new_instance(self.children, self.connector, self.negated)
             self.connector = conn_type
             self.children = [obj, data]
             return data
@@ -199,16 +208,19 @@ class Q(Node):
     Encapsulate filters as objects that can then be combined logically (using
     `&` and `|`).
     """
+
     # Connection types
-    AND = 'AND'
-    OR = 'OR'
+    AND = "AND"
+    OR = "OR"
     default = AND
     conditional = True
 
     def __init__(self, *args, _connector=None, _negated=False, **kwargs):
-        super().__init__(children=[*args, *sorted(kwargs.items())],
-                         connector=_connector,
-                         negated=_negated)
+        super().__init__(
+            children=[*args, *sorted(kwargs.items())],
+            connector=_connector,
+            negated=_negated,
+        )
 
     def _combine(self, other, conn):
         if not isinstance(other, Q):
@@ -241,7 +253,7 @@ class Q(Node):
 
     def deconstruct(self):
         """Deconstruct a Q Object"""
-        path = '%s.%s' % (self.__class__.__module__, self.__class__.__name__)
+        path = "%s.%s" % (self.__class__.__module__, self.__class__.__name__)
         args, kwargs = (), {}
 
         if len(self.children) == 1 and not isinstance(self.children[0], Q):
@@ -250,7 +262,7 @@ class Q(Node):
         else:
             args = tuple(self.children)
             if self.connector != self.default:
-                kwargs = {'_connector': self.connector}
+                kwargs = {"_connector": self.connector}
         if self.negated:
-            kwargs['_negated'] = True
+            kwargs["_negated"] = True
         return path, args, kwargs

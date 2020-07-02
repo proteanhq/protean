@@ -16,16 +16,16 @@ class IdentityStrategy(Enum):
 
 
 class IdentityType(Enum):
-    INTEGER = 'INTEGER'
-    STRING = 'STRING'
-    UUID = 'UUID'
+    INTEGER = "INTEGER"
+    STRING = "STRING"
+    UUID = "UUID"
 
 
 class Database(Enum):
-    ELASTICSEARCH = 'ELASTICSEARCH'
-    MEMORY = 'MEMORY'
-    POSTGRESQL = 'POSTGRESQL'
-    SQLITE = 'SQLITE'
+    ELASTICSEARCH = "ELASTICSEARCH"
+    MEMORY = "MEMORY"
+    POSTGRESQL = "POSTGRESQL"
+    SQLITE = "SQLITE"
 
 
 class classproperty(object):
@@ -38,16 +38,18 @@ class classproperty(object):
 
 def fully_qualified_name(cls):
     """Return Fully Qualified name along with module"""
-    return '.'.join([cls.__module__, cls.__name__])
+    return ".".join([cls.__module__, cls.__name__])
 
 
 def singleton(cls):
     """Make a class a Singleton class (only one instance)"""
+
     @functools.wraps(cls)
     def wrapper_singleton(*args, **kwargs):
         if not wrapper_singleton.instance:
             wrapper_singleton.instance = cls(*args, **kwargs)
         return wrapper_singleton.instance
+
     wrapper_singleton.instance = None
     return wrapper_singleton
 

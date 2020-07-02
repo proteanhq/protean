@@ -15,7 +15,7 @@ class TestSubscriberNotifications:
 
     @pytest.fixture
     def broker(self):
-        return current_domain.get_broker('default')
+        return current_domain.get_broker("default")
 
     @pytest.fixture
     def decorated_task_obj(self, broker):
@@ -29,7 +29,10 @@ class TestSubscriberNotifications:
         assert isinstance(decorated_task_obj, ProteanTask)
         assert isinstance(decorated_task_obj, Task)
 
-        assert decorated_task_obj.name == 'tests.impl.broker.celery_broker.elements.notify_sso_subscriber'
+        assert (
+            decorated_task_obj.name
+            == "tests.impl.broker.celery_broker.elements.notify_sso_subscriber"
+        )
         assert decorated_task_obj.name in broker.celery_app.tasks
 
     @pytest.mark.skip(reason="Yet to implement")

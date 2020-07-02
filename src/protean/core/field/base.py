@@ -14,8 +14,8 @@ from protean.core import exceptions
 from .mixins import FieldDescriptorMixin
 
 MISSING_ERROR_MESSAGE = (
-    'ValidationError raised by `{class_name}`, but error key `{key}` does '
-    'not exist in the `error_messages` dictionary.'
+    "ValidationError raised by `{class_name}`, but error key `{key}` does "
+    "not exist in the `error_messages` dictionary."
 )
 
 
@@ -37,24 +37,32 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
 
     # Default error messages for various kinds of errors.
     default_error_messages = {
-        'invalid': 'Value is not a valid type for this field.',
-        'unique': '`{entity_name:s}` with this `{field_name:s}` already exists.',
-        'required': 'is required',
-        'invalid_choice': 'Value `{value!r}` is not a valid choice. '
-                          'Must be one of {choices!r}',
+        "invalid": "Value is not a valid type for this field.",
+        "unique": "`{entity_name:s}` with this `{field_name:s}` already exists.",
+        "required": "is required",
+        "invalid_choice": "Value `{value!r}` is not a valid choice. "
+        "Must be one of {choices!r}",
     }
 
     # Default validators for a Field
     default_validators = []
 
     # These values will trigger the self.required check.
-    empty_values = (None, '', [], (), {})
+    empty_values = (None, "", [], (), {})
 
-    def __init__(self, referenced_as: str = None,
-                 identifier: bool = False, default: Any = None,
-                 required: bool = False, unique: bool = False,
-                 label: str = None, choices: enum.Enum = None,
-                 validators: Iterable = (), value=None, error_messages: dict = None):
+    def __init__(
+        self,
+        referenced_as: str = None,
+        identifier: bool = False,
+        default: Any = None,
+        required: bool = False,
+        unique: bool = False,
+        label: str = None,
+        choices: enum.Enum = None,
+        validators: Iterable = (),
+        value=None,
+        error_messages: dict = None,
+    ):
 
         # Nothing to be passed into FieldCacheMixin for initialization
         super().__init__(referenced_as=referenced_as)
@@ -91,12 +99,12 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
         # Collect default error message from self and parent classes
         messages = {}
         for cls in reversed(self.__class__.__mro__):
-            messages.update(getattr(cls, 'default_error_messages', {}))
+            messages.update(getattr(cls, "default_error_messages", {}))
         messages.update(error_messages or {})
         self.error_messages = messages
 
     def __get__(self, instance, owner):
-        if hasattr(instance, '__dict__'):
+        if hasattr(instance, "__dict__"):
             return instance.__dict__.get(self.field_name, self.value)
 
     def __set__(self, instance, value):
@@ -104,7 +112,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
         instance.__dict__[self.field_name] = value
 
         # Mark Entity as Dirty
-        if hasattr(instance, 'state_'):
+        if hasattr(instance, "state_"):
             instance.state_.mark_changed()
 
     def __delete__(self, instance):
@@ -125,15 +133,14 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
             msg = self.error_messages[key]
         except KeyError:
             class_name = self.__class__.__name__
-            msg = MISSING_ERROR_MESSAGE.format(class_name=class_name,
-                                               key=key)
+            msg = MISSING_ERROR_MESSAGE.format(class_name=class_name, key=key)
             raise AssertionError(msg)
         if isinstance(msg, str):
             msg = msg.format(**kwargs)
 
         # If a field is being used by itself (not owned by an entity/aggregate),
         #   it's field_name will be blank.
-        field_name = self.field_name or 'unlinked'
+        field_name = self.field_name or "unlinked"
         raise exceptions.ValidationError({field_name: [msg]})
 
     @property
@@ -165,7 +172,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
             try:
                 validator(value)
             except exceptions.ValidationError as err:
-                field_name = self.field_name or 'unlinked'
+                field_name = self.field_name or "unlinked"
                 errors[field_name].append(err.messages)
 
         if errors:
@@ -190,7 +197,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
 
             # If no default is set and this field is required
             elif self.required:
-                self.fail('required')
+                self.fail("required")
 
             # In all other cases just return the passed value, as we do not want to
             # run validations against an empty value
@@ -206,9 +213,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
                 value_list = [value]
             for v in value_list:
                 if v not in self.choice_dict:
-                    self.fail(
-                        'invalid_choice', value=v,
-                        choices=list(self.choice_dict))
+                    self.fail("invalid_choice", value=v, choices=list(self.choice_dict))
 
         # Cast and Validate the value for this Field
         value = self._cast_to_type(value)

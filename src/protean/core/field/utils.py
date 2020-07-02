@@ -9,7 +9,9 @@ def fetch_entity_cls_from_registry(entity):
     # Defensive check to ensure we only process if `to_cls` is a string
     if isinstance(entity, str):
         try:
-            return current_domain._get_element_by_name((DomainObjects.AGGREGATE, DomainObjects.ENTITY), entity).cls
+            return current_domain._get_element_by_name(
+                (DomainObjects.AGGREGATE, DomainObjects.ENTITY), entity
+            ).cls
         except AssertionError:
             # Entity has not been registered (yet)
             # FIXME print a helpful debug message
@@ -23,7 +25,9 @@ def fetch_value_object_cls_from_domain(value_object):
     # Defensive check to ensure we only process if `value_object_cls` is a string
     if isinstance(value_object, str):
         try:
-            return current_domain._get_element_by_name(DomainObjects.VALUE_OBJECT, value_object).cls
+            return current_domain._get_element_by_name(
+                DomainObjects.VALUE_OBJECT, value_object
+            ).cls
         except AssertionError:
             # Value Object has not been registered (yet)
             # FIXME print a helpful debug message
@@ -37,7 +41,9 @@ def fetch_aggregate_cls_from_domain(aggregate):
     # Defensive check to ensure we only process if `aggregate_cls` is a string
     if isinstance(aggregate, str):
         try:
-            return current_domain._get_element_by_name(DomainObjects.AGGREGATE, aggregate).cls
+            return current_domain._get_element_by_name(
+                DomainObjects.AGGREGATE, aggregate
+            ).cls
         except AssertionError:
             # Aggregate has not been registered (yet)
             # FIXME print a helpful debug message

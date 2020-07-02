@@ -10,24 +10,24 @@ from protean.domain import Domain
 # config keys used for the TestConfig
 TEST_KEY = "foo"
 SECRET_KEY = "config"
-non_key = 'not-a-key'
+non_key = "not-a-key"
 
 
 def common_object_test(domain):
     assert domain.secret_key == "config"
     assert domain.config["TEST_KEY"] == "foo"
     assert "TestConfig" not in domain.config
-    assert 'non_key' not in domain.config
+    assert "non_key" not in domain.config
 
 
 class TestConfig:
     def test_config_attribute_set(self):
         domain = Domain(__name__)
         domain.config.from_pyfile(__file__.rsplit(".", 1)[0] + ".py")
-        domain.secret_key = 'Baz'
+        domain.secret_key = "Baz"
 
-        assert domain.secret_key == 'Baz'
-        assert domain.config['SECRET_KEY'] == 'Baz'
+        assert domain.secret_key == "Baz"
+        assert domain.config["SECRET_KEY"] == "Baz"
 
     def test_config_repr(self):
         domain = Domain(__name__)
@@ -43,7 +43,8 @@ class TestConfig:
             "'EMAIL_PROVIDERS': {'default': {'PROVIDER': 'protean.impl.email.dummy.DummyEmailProvider', "
             "'DEFAULT_FROM_EMAIL': 'admin@team8solutions.com'}}, "
             "'AGGREGATE_CHILDREN_LIMIT': 100, "
-            "'TEST_KEY': 'foo'}>")
+            "'TEST_KEY': 'foo'}>"
+        )
 
     def test_config_from_file(self):
         domain = Domain(__name__)
@@ -58,20 +59,26 @@ class TestConfig:
     def test_config_from_json(self):
         domain = Domain(__name__)
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        domain.config.from_json(os.path.join(current_dir, 'config.json'))
+        domain.config.from_json(os.path.join(current_dir, "config.json"))
         common_object_test(domain)
 
     def test_config_from_mapping(self):
         domain = Domain(__name__)
-        domain.config.from_mapping({"SECRET_KEY": "config", "TEST_KEY": "foo", "non_key": "not-a-key"})
+        domain.config.from_mapping(
+            {"SECRET_KEY": "config", "TEST_KEY": "foo", "non_key": "not-a-key"}
+        )
         common_object_test(domain)
 
         domain = Domain(__name__)
-        domain.config.from_mapping([("SECRET_KEY", "config"), ("TEST_KEY", "foo"), ("non_key", "not-a-key")])
+        domain.config.from_mapping(
+            [("SECRET_KEY", "config"), ("TEST_KEY", "foo"), ("non_key", "not-a-key")]
+        )
         common_object_test(domain)
 
         domain = Domain(__name__)
-        domain.config.from_mapping(SECRET_KEY="config", TEST_KEY="foo", non_key="not-a-key")
+        domain.config.from_mapping(
+            SECRET_KEY="config", TEST_KEY="foo", non_key="not-a-key"
+        )
         common_object_test(domain)
 
         domain = Domain(__name__)
@@ -128,7 +135,8 @@ class TestConfig:
             domain.config.from_pyfile("missing.cfg")
         msg = str(e.value)
         assert msg.startswith(
-            "[Errno 2] Unable to load configuration " "file (No such file or directory):",
+            "[Errno 2] Unable to load configuration "
+            "file (No such file or directory):",
         )
         assert msg.endswith("missing.cfg'")
         assert not domain.config.from_pyfile("missing.cfg", silent=True)
@@ -139,7 +147,8 @@ class TestConfig:
             domain.config.from_json("missing.json")
         msg = str(e.value)
         assert msg.startswith(
-            "[Errno 2] Unable to load configuration " "file (No such file or directory):",
+            "[Errno 2] Unable to load configuration "
+            "file (No such file or directory):",
         )
         assert msg.endswith("missing.json'")
         assert not domain.config.from_json("missing.json", silent=True)

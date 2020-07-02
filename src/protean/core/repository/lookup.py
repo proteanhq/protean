@@ -3,7 +3,7 @@ import logging
 
 from abc import ABCMeta, abstractmethod
 
-logger = logging.getLogger('protean.repository')
+logger = logging.getLogger("protean.repository")
 
 
 class BaseLookup(metaclass=ABCMeta):
@@ -17,6 +17,7 @@ class BaseLookup(metaclass=ABCMeta):
 
     Lookups are identified by their names, and the names are stored in the `lookup_name` class variable.
     """
+
     lookup_name = None
 
     def __init__(self, source, target):

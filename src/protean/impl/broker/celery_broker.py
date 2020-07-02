@@ -13,22 +13,20 @@ from protean.domain import DomainObjects
 from protean.utils import fully_qualified_name
 from protean.utils.inflection import underscore
 
-logger = logging.getLogger('protean.impl.broker.celery')
+logger = logging.getLogger("protean.impl.broker.celery")
 
 
 class ProteanTask(Task):
     """The default base class for all Task classes constructed from Subscribers/Command Handlers.
     """
+
     pass
 
 
 class CeleryBroker(BaseBroker):
     def __init__(self, name, domain, conn_info):
         super().__init__(name, domain, conn_info)
-        self.celery_app = Celery(
-            broker=conn_info['URI'],
-            backend=conn_info['URI'],
-        )
+        self.celery_app = Celery(broker=conn_info["URI"], backend=conn_info["URI"],)
 
         self.celery_app.conf.update(enable_utc=True)
 
@@ -48,14 +46,16 @@ class CeleryBroker(BaseBroker):
         """
         attrs = consumer_cls.__dict__
         custom_attrs = {
-            'run': attrs['notify'],  # `notify` is the method to run on event
-            'name': underscore(fully_qualified_name(consumer_cls)),  # `name` will be the same as the task's queue
+            "run": attrs["notify"],  # `notify` is the method to run on event
+            "name": underscore(
+                fully_qualified_name(consumer_cls)
+            ),  # `name` will be the same as the task's queue
         }
         attrs = {**attrs, **custom_attrs}
 
         # Construct `decorated_cls` dynamically from `ProteanTask`.
         #   `ProteanTask` acts as the base class for all celery tasks.
-        decorated_cls = type(consumer_cls.__name__ + 'Task', (ProteanTask, ), {**attrs})
+        decorated_cls = type(consumer_cls.__name__ + "Task", (ProteanTask,), {**attrs})
 
         # Register Task class with Celery app
         decorated_cls_instance = self.celery_app.register_task(decorated_cls())
@@ -79,17 +79,27 @@ class CeleryBroker(BaseBroker):
 
         for initiator in initiator_cls:
             if initiator.element_type == DomainObjects.DOMAIN_EVENT:
-                self._subscribers[fully_qualified_name(initiator)].add(decorated_cls_instance)
-                logger.debug(f"Registered Subscriber {decorated_cls_instance.__class__.__name__} with queue "
-                             "{self.celery_app.tasks} as Celery Task")
+                self._subscribers[fully_qualified_name(initiator)].add(
+                    decorated_cls_instance
+                )
+                logger.debug(
+                    f"Registered Subscriber {decorated_cls_instance.__class__.__name__} with queue "
+                    "{self.celery_app.tasks} as Celery Task"
+                )
             else:
-                self._command_handlers[fully_qualified_name(initiator)] = decorated_cls_instance
+                self._command_handlers[
+                    fully_qualified_name(initiator)
+                ] = decorated_cls_instance
 
     def send_message(self, initiator_obj):
         if isinstance(initiator_obj, BaseDomainEvent):
-            for subscriber in self._subscribers[fully_qualified_name(initiator_obj.__class__)]:
-                if self.conn_info['IS_ASYNC']:
-                    subscriber.apply_async([initiator_obj.to_dict()], queue=subscriber.name)
+            for subscriber in self._subscribers[
+                fully_qualified_name(initiator_obj.__class__)
+            ]:
+                if self.conn_info["IS_ASYNC"]:
+                    subscriber.apply_async(
+                        [initiator_obj.to_dict()], queue=subscriber.name
+                    )
                 else:
                     subscriber.apply([initiator_obj.to_dict()])
         else:

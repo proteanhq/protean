@@ -73,7 +73,7 @@ class Reference(FieldCacheMixin, Field):
 
     def get_attribute_name(self):
         """Return attribute name suffixed with via if defined, or `_id`"""
-        return '{}_{}'.format(self.field_name, self.linked_attribute)
+        return "{}_{}".format(self.field_name, self.linked_attribute)
 
     def get_shadow_field(self):
         """Return shadow field
@@ -95,7 +95,7 @@ class Reference(FieldCacheMixin, Field):
         and the attribute name is reset correctly.
         """
         if isinstance(self.to_cls, str):
-            return 'id'
+            return "id"
         else:
             return self.via or self.to_cls.meta_.id_field.attribute_name
 
@@ -114,7 +114,7 @@ class Reference(FieldCacheMixin, Field):
         self.relation.__set_name__(instance, self.attribute_name)
 
         # Remove the earlier attribute if it is still attached
-        old_attribute_name = '{}_{}'.format(self.field_name, 'id')
+        old_attribute_name = "{}_{}".format(self.field_name, "id")
         if hasattr(instance, old_attribute_name):
             delattr(instance, old_attribute_name)
 
@@ -130,7 +130,7 @@ class Reference(FieldCacheMixin, Field):
             self._resolve_to_cls(instance)
 
         reference_obj = None
-        if hasattr(instance, 'state_'):
+        if hasattr(instance, "state_"):
             try:
                 reference_obj = self.get_cached_value(instance)
             except KeyError:
@@ -171,10 +171,13 @@ class Reference(FieldCacheMixin, Field):
                 if getattr(value, value.meta_.id_field.field_name) is None:
                     raise ValueError(
                         "Target Object must be saved before being referenced",
-                        self.field_name)
+                        self.field_name,
+                    )
                 else:
                     self._set_own_value(instance, value)
-                    self._set_relation_value(instance, getattr(value, self.linked_attribute))
+                    self._set_relation_value(
+                        instance, getattr(value, self.linked_attribute)
+                    )
         else:
             self._reset_values(instance)
 
@@ -188,7 +191,7 @@ class Reference(FieldCacheMixin, Field):
             self.set_cached_value(instance, value)
 
         # Mark Entity as Dirty
-        if hasattr(instance, 'state_'):
+        if hasattr(instance, "state_"):
             instance.state_.mark_changed()
 
     def _set_relation_value(self, instance, value):
@@ -248,7 +251,11 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
            FIXME Explore converting this method into an attribute, and treating it
            uniformly at `association` level.
         """
-        return self.via or (utils.inflection.underscore(owner.__name__) + '_' + owner.meta_.id_field.attribute_name)
+        return self.via or (
+            utils.inflection.underscore(owner.__name__)
+            + "_"
+            + owner.meta_.id_field.attribute_name
+        )
 
     def __get__(self, instance, owner):
         """Retrieve associated objects"""
@@ -277,7 +284,7 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
         self.set_cached_value(instance, value)
 
         # Mark Entity as Dirty
-        if hasattr(instance, 'state_'):
+        if hasattr(instance, "state_"):
             instance.state_.mark_changed()
 
     @abstractmethod
@@ -288,15 +295,13 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
     def __set__(self, instance, value):
         """Cannot set values through an association"""
         raise exceptions.NotSupportedError(
-            "Object does not support the operation being performed",
-            self.field_name,
+            "Object does not support the operation being performed", self.field_name,
         )
 
     def __delete__(self, instance):
         """Cannot pop values for an association"""
         raise exceptions.NotSupportedError(
-            "Object does not support the operation being performed",
-            self.field_name,
+            "Object does not support the operation being performed", self.field_name,
         )
 
     def get_cache_name(self):
@@ -329,18 +334,20 @@ class HasOne(Association):
             #   so that the foreign key relationship is preserved
             id_value = getattr(instance, instance.meta_.id_field.field_name)
             linked_attribute = self._linked_attribute(instance.__class__)
-            setattr(value, linked_attribute, id_value)  # This overwrites any existing linkage, which is correct
+            setattr(
+                value, linked_attribute, id_value
+            )  # This overwrites any existing linkage, which is correct
 
         if self.value is None:
-            self.change = 'ADDED'
+            self.change = "ADDED"
         elif value is None:
-            self.change = 'DELETED'
+            self.change = "DELETED"
             self.change_old_value = self.value
         elif self.value.id != value.id:
-            self.change = 'UPDATED'
+            self.change = "UPDATED"
             self.change_old_value = self.value
         elif self.value.id == value.id and value.state_.is_changed:
-            self.change = 'UPDATED'
+            self.change = "UPDATED"
             self.change_old_value = self.value
         else:
             self.change = None  # The same object has been assigned, No-Op
@@ -376,4 +383,6 @@ class HasMany(Association):
         loaded into memory along with the aggregate.
         """
         children_dao = current_domain.get_dao(self.to_cls)
-        return children_dao.query.filter(**{key: value}).limit(current_domain.config['AGGREGATE_CHILDREN_LIMIT'])
+        return children_dao.query.filter(**{key: value}).limit(
+            current_domain.config["AGGREGATE_CHILDREN_LIMIT"]
+        )

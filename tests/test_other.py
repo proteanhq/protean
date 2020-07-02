@@ -15,17 +15,18 @@ def test_perform_import():
     assert mod is None
 
     # Test import of string
-    mod = perform_import('protean.core.entity')
+    mod = perform_import("protean.core.entity")
     assert mod == entity
 
     # Test import list
-    mod = perform_import(['protean.core.entity.BaseEntity',
-                          'protean.core.entity._EntityMetaclass'])
+    mod = perform_import(
+        ["protean.core.entity.BaseEntity", "protean.core.entity._EntityMetaclass"]
+    )
     assert mod == [entity.BaseEntity, entity._EntityMetaclass]
 
     # Test Failed import
     with pytest.raises(ImportError):
-        perform_import('protean.core.entity.xxxx')
+        perform_import("protean.core.entity.xxxx")
 
     # Test Direct import
     mod = perform_import(entity)

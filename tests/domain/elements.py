@@ -7,7 +7,7 @@ from protean.domain import DomainObjects
 
 
 class DummyElement(Enum):
-    FOO = 'FOO'
+    FOO = "FOO"
 
 
 class User:

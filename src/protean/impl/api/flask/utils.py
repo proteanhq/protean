@@ -8,8 +8,8 @@ def immutable_dict_2_dict(imm_dict):
     m_dict = {}
 
     for key, val in imm_dict.to_dict(flat=False).items():
-        if len(val) > 1 or key.endswith('[]'):
-            m_dict[key.strip('[]')] = val
+        if len(val) > 1 or key.endswith("[]"):
+            m_dict[key.strip("[]")] = val
         else:
             m_dict[key] = val[0]
 

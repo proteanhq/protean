@@ -11,21 +11,20 @@ class DummyStringField(Field):
     """This is a dummy Field class for testing"""
 
     default_error_messages = {
-        'invalid_type': 'Field value must be of str type.',
+        "invalid_type": "Field value must be of str type.",
     }
 
     def _cast_to_type(self, value: str):
         """ Value must me a string type"""
         if type(value) != str:
-            self.fail('invalid_type')
+            self.fail("invalid_type")
         return value
 
 
 class MinLengthValidator:
     def __init__(self, min_length):
         self.min_length = min_length
-        self.error = f'Ensure this value has at least ' \
-                     f'{self.min_length} character.'
+        self.error = f"Ensure this value has at least " f"{self.min_length} character."
 
     def __call__(self, value):
         if len(value) < self.min_length:
@@ -33,7 +32,6 @@ class MinLengthValidator:
 
 
 class TestField:
-
     def test_init(self):
         """Test successful String Field initialization"""
 
@@ -50,12 +48,12 @@ class TestField:
     def test_defaults(self):
         """ Test default value is set when no value is supplied"""
         # Test with default value as constant
-        name = DummyStringField(default='dummy')
-        assert name._load('') == 'dummy'
+        name = DummyStringField(default="dummy")
+        assert name._load("") == "dummy"
 
         # Test with default value as callable
-        name = DummyStringField(default=lambda: 'dummy')
-        assert name._load('') == 'dummy'
+        name = DummyStringField(default=lambda: "dummy")
+        assert name._load("") == "dummy"
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
@@ -67,9 +65,8 @@ class TestField:
         """ Test custom validators defined for the field"""
 
         with pytest.raises(ValidationError):
-            name = DummyStringField(
-                validators=[MinLengthValidator(min_length=5)])
-            name._load('Dum')
+            name = DummyStringField(validators=[MinLengthValidator(min_length=5)])
+            name._load("Dum")
 
     def test_error_message(self):
         """ Test that proper error message is generated"""
@@ -79,36 +76,41 @@ class TestField:
             name = DummyStringField(required=True)
             name._load(None)
         except ValidationError as err:
-            assert err.messages == {
-                'unlinked': [name.error_messages['required']]}
+            assert err.messages == {"unlinked": [name.error_messages["required"]]}
 
         # Test overriding of error message
         try:
             name = DummyStringField()
             name._load(1)
         except ValidationError as err:
-            assert err.messages == {
-                'unlinked': ['Field value must be of str type.']}
+            assert err.messages == {"unlinked": ["Field value must be of str type."]}
 
         # Test multiple error messages
         try:
             name = DummyStringField(
-                validators=[MinLengthValidator(min_length=5),
-                            MinLengthValidator(min_length=5)])
-            name._load('Dum')
+                validators=[
+                    MinLengthValidator(min_length=5),
+                    MinLengthValidator(min_length=5),
+                ]
+            )
+            name._load("Dum")
         except ValidationError as err:
             assert err.messages == {
-                'unlinked': ['Ensure this value has at least 5 character.',
-                             'Ensure this value has at least 5 character.']}
+                "unlinked": [
+                    "Ensure this value has at least 5 character.",
+                    "Ensure this value has at least 5 character.",
+                ]
+            }
 
     def test_default_validators(self):
         """ Test that default validators for a Field are called"""
+
         def medium_string_validator(value):
             """Function checks the max length of a field"""
             if len(value) > 15:
-                raise ValidationError(
-                    'Value cannot be more than 15 characters long.')
+                raise ValidationError("Value cannot be more than 15 characters long.")
+
         DummyStringField.default_validators = [medium_string_validator]
         with pytest.raises(ValidationError):
             name = DummyStringField()
-            name._load('Dummy Dummy Dummy')
+            name._load("Dummy Dummy Dummy")

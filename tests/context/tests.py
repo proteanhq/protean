@@ -5,11 +5,11 @@ from protean.globals import _domain_context_stack, current_domain, g
 
 
 class TestDomainContext:
-
     @pytest.fixture
     def test_domain(self):
         from protean.domain import Domain
-        domain = Domain('Test')
+
+        domain = Domain("Test")
 
         yield domain
 
@@ -52,7 +52,9 @@ class TestDomainContext:
 
         assert cleanup_stuff == [None]
 
-    def test_domain_tearing_down_with_handled_exception_by_except_block(self, test_domain):
+    def test_domain_tearing_down_with_handled_exception_by_except_block(
+        self, test_domain
+    ):
         cleanup_stuff = []
 
         @test_domain.teardown_domain_context
@@ -68,7 +70,9 @@ class TestDomainContext:
         assert cleanup_stuff == [None]
 
     @pytest.mark.skip  # FIXME Could provide a domain level handler to catch and act on exceptions
-    def test_domain_tearing_down_with_handled_exception_by_domain_handler(self, test_domain):
+    def test_domain_tearing_down_with_handled_exception_by_domain_handler(
+        self, test_domain
+    ):
         # app.config["PROPAGATE_EXCEPTIONS"] = True
         # cleanup_stuff = []
 
@@ -100,9 +104,12 @@ class TestDomainContext:
                 pass
 
             from protean.domain import DomainObjects
+
             with test_domain.domain_context():
                 try:
-                    test_domain._get_element_by_class((DomainObjects.AGGREGATE, ), FooBar)
+                    test_domain._get_element_by_class(
+                        (DomainObjects.AGGREGATE,), FooBar
+                    )
                 except Exception:
                     raise Exception("ElementNotFound")
 

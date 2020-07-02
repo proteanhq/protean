@@ -14,6 +14,7 @@ class BaseEmailProvider:
     Concrete implementations must overwrite `send_messages()`.
     ```
     """
+
     def __init__(self, name, domain, conn_info, fail_silently=False, **kwargs):
         self.name = name
         self.domain = domain
@@ -27,8 +28,9 @@ class BaseEmailProvider:
         messages sent.
         """
         raise NotImplementedError(
-            'Concrete implementations of BaseEmailBackend '
-            'must override send_messages() method')
+            "Concrete implementations of BaseEmailBackend "
+            "must override send_messages() method"
+        )
 
 
 class _EmailMetaclass(type):
@@ -53,15 +55,15 @@ class _EmailMetaclass(type):
 
         # Remove `abstract` in base classes if defined
         for base in bases:
-            if hasattr(base, 'Meta') and hasattr(base.Meta, 'abstract'):
-                delattr(base.Meta, 'abstract')
+            if hasattr(base, "Meta") and hasattr(base.Meta, "abstract"):
+                delattr(base.Meta, "abstract")
 
         new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
 
         # Gather `Meta` class/object if defined
-        attr_meta = attrs.pop('Meta', None)
-        meta = attr_meta or getattr(new_class, 'Meta', None)
-        setattr(new_class, 'meta_', EmailMeta(name, meta))
+        attr_meta = attrs.pop("Meta", None)
+        meta = attr_meta or getattr(new_class, "Meta", None)
+        setattr(new_class, "meta_", EmailMeta(name, meta))
 
         return new_class
 
@@ -74,7 +76,7 @@ class EmailMeta:
     """
 
     def __init__(self, entity_name, meta):
-        self.provider = getattr(meta, 'provider', 'default')
+        self.provider = getattr(meta, "provider", "default")
 
 
 class BaseEmail(metaclass=_EmailMetaclass):
@@ -91,9 +93,18 @@ class BaseEmail(metaclass=_EmailMetaclass):
             raise TypeError("BaseEmail cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, subject='', data='',
-                 from_email=None, to=None, bcc=None, cc=None,
-                 reply_to=None, template_id='', **kwargs):
+    def __init__(
+        self,
+        subject="",
+        data="",
+        from_email=None,
+        to=None,
+        bcc=None,
+        cc=None,
+        reply_to=None,
+        template_id="",
+        **kwargs
+    ):
         """
         Initialize a single email message (which can be sent to multiple
         recipients).
@@ -104,9 +115,11 @@ class BaseEmail(metaclass=_EmailMetaclass):
 
         provider = current_domain.get_email_provider(self.meta_.provider)
         self.provider = provider
-        self.from_email = from_email or provider.conn_info['DEFAULT_FROM_EMAIL']
+        self.from_email = from_email or provider.conn_info["DEFAULT_FROM_EMAIL"]
 
-        self.reply_to = convert_str_values_to_list(reply_to) if reply_to else self.from_email
+        self.reply_to = (
+            convert_str_values_to_list(reply_to) if reply_to else self.from_email
+        )
 
         self.subject = subject
         self.template_id = template_id
@@ -116,13 +129,11 @@ class BaseEmail(metaclass=_EmailMetaclass):
     @property
     def mime_message(self):
         """ Convert the message to a mime compliant email string """
-        return '\n'.join(
-            [self.from_email, str(self.to), self.subject[:25]])
+        return "\n".join([self.from_email, str(self.to), self.subject[:25]])
 
     def __repr__(self):
         """ Convert the message to a mime compliant email string """
-        return '\n'.join(
-            [self.from_email, str(self.to), self.subject[:25]])
+        return "\n".join([self.from_email, str(self.to), self.subject[:25]])
 
     @property
     def recipients(self):

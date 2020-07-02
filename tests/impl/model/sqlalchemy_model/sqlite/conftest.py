@@ -7,7 +7,8 @@ import pytest
 
 def initialize_domain():
     from protean.domain import Domain
-    domain = Domain('SQLAlchemy Test - SQLite')
+
+    domain = Domain("SQLAlchemy Test - SQLite")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -18,7 +19,9 @@ def initialize_domain():
 
     return domain
 
+
 domain = initialize_domain()
+
 
 @pytest.fixture(autouse=True)
 def test_domain():
@@ -30,6 +33,7 @@ def test_domain():
 def setup_db():
     # Create all associated tables
     from .elements import Person, User, ComplexUser, Provider, ProviderCustomModel
+
     domain.register(Person)
     domain.register(User)
     domain.register(ComplexUser)
@@ -54,5 +58,5 @@ def setup_db():
 @pytest.fixture(autouse=True)
 def run_around_tests(test_domain):
     yield
-    if test_domain.has_provider('default'):
-        test_domain.get_provider('default')._data_reset()
+    if test_domain.has_provider("default"):
+        test_domain.get_provider("default")._data_reset()

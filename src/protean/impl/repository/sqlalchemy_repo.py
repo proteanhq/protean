@@ -9,7 +9,18 @@ from typing import Any
 # Protean
 from protean.core.exceptions import ConfigurationError, ObjectNotFoundError
 from protean.core.field.association import Reference
-from protean.core.field.basic import Auto, Boolean, Date, DateTime, Dict, Float, Integer, List, String, Text
+from protean.core.field.basic import (
+    Auto,
+    Boolean,
+    Date,
+    DateTime,
+    Dict,
+    Float,
+    Integer,
+    List,
+    String,
+    Text,
+)
 from protean.core.provider.base import BaseProvider
 from protean.core.repository.dao import BaseDAO
 from protean.core.repository.lookup import BaseLookup
@@ -27,8 +38,8 @@ from sqlalchemy.ext import declarative as sa_dec
 from sqlalchemy.ext.declarative import as_declarative, declared_attr
 from sqlalchemy.types import CHAR, TypeDecorator
 
-logging.getLogger('sqlalchemy.engine').setLevel(logging.ERROR)
-logger = logging.getLogger('protean.repository')
+logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
+logger = logging.getLogger("protean.repository")
 
 
 class GUID(TypeDecorator):
@@ -38,10 +49,11 @@ class GUID(TypeDecorator):
     CHAR(32), storing as stringified hex values.
 
     """
+
     impl = CHAR
 
     def load_dialect_impl(self, dialect):
-        if dialect.name == 'postgresql':
+        if dialect.name == "postgresql":
             return dialect.type_descriptor(UUID())
         else:
             return dialect.type_descriptor(CHAR(32))
@@ -49,7 +61,7 @@ class GUID(TypeDecorator):
     def process_bind_param(self, value, dialect):
         if value is None:
             return value
-        elif dialect.name == 'postgresql':
+        elif dialect.name == "postgresql":
             return str(value)
         else:
             if not isinstance(value, uuid.UUID):
@@ -74,16 +86,18 @@ def _get_identity_type():
     Default to `Identity.STRING`
     """
     try:
-        if current_domain.config['IDENTITY_TYPE'] == IdentityType.INTEGER:
+        if current_domain.config["IDENTITY_TYPE"] == IdentityType.INTEGER:
             return sa_types.Integer
-        elif current_domain.config['IDENTITY_TYPE'] == IdentityType.STRING:
+        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.STRING:
             return sa_types.String
-        elif current_domain.config['IDENTITY_TYPE'] == IdentityType.UUID:
+        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID:
             return GUID
         else:
-            raise ConfigurationError(f'Unknown Identity Type {current_domain.config["IDENTITY_TYPE"]}')
+            raise ConfigurationError(
+                f'Unknown Identity Type {current_domain.config["IDENTITY_TYPE"]}'
+            )
     except RuntimeError as exc:
-        logger.error(f'RuntimeError while identifying data type for identities: {exc}')
+        logger.error(f"RuntimeError while identifying data type for identities: {exc}")
         return sa_types.String
 
 
@@ -106,8 +120,8 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
             DateTime: sa_types.DateTime,
         }
 
-        if 'meta_' in dict_:
-            entity_cls = dict_['meta_'].entity_cls
+        if "meta_" in dict_:
+            entity_cls = dict_["meta_"].entity_cls
             for _, field_obj in entity_cls.meta_.attributes.items():
                 attribute_name = field_obj.attribute_name
 
@@ -134,24 +148,27 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
 
                     # Build the column arguments
                     col_args = {
-                        'primary_key': field_obj.identifier,
-                        'nullable': not field_obj.required,
-                        'unique': field_obj.unique,
+                        "primary_key": field_obj.identifier,
+                        "nullable": not field_obj.required,
+                        "unique": field_obj.unique,
                     }
 
                     # Update the arguments based on the field type
                     type_args = {}
                     if issubclass(field_cls, String):
-                        type_args['length'] = field_obj.max_length
+                        type_args["length"] = field_obj.max_length
 
                     # Update the attributes of the class
-                    setattr(cls, attribute_name,
-                            Column(sa_type_cls(**type_args), **col_args))
+                    setattr(
+                        cls,
+                        attribute_name,
+                        Column(sa_type_cls(**type_args), **col_args),
+                    )
         super().__init__(classname, bases, dict_)
 
 
 def derive_schema_name(model_cls):
-    if hasattr(model_cls.meta_, 'schema_name'):
+    if hasattr(model_cls.meta_, "schema_name"):
         return model_cls.meta_.schema_name
     else:
         return model_cls.meta_.entity_cls.meta_.schema_name
@@ -171,15 +188,17 @@ class SqlalchemyModel(BaseModel):
         item_dict = {}
         for attribute_obj in cls.meta_.entity_cls.meta_.attributes.values():
             if isinstance(attribute_obj, Reference):
-                item_dict[attribute_obj.relation.attribute_name] = \
-                    attribute_obj.relation.value
+                item_dict[
+                    attribute_obj.relation.attribute_name
+                ] = attribute_obj.relation.value
             else:
                 item_dict[attribute_obj.attribute_name] = getattr(
-                    entity, attribute_obj.attribute_name)
+                    entity, attribute_obj.attribute_name
+                )
         return cls(**item_dict)
 
     @classmethod
-    def to_entity(cls, model_obj: 'SqlalchemyModel'):
+    def to_entity(cls, model_obj: "SqlalchemyModel"):
         """ Convert the model object to an entity """
         item_dict = {}
         for field_name in cls.meta_.entity_cls.meta_.attributes:
@@ -230,8 +249,9 @@ class SADAO(BaseDAO):
 
         return func(*params)
 
-    def _filter(self, criteria: Q, offset: int = 0, limit: int = 10,
-                order_by: list = ()) -> ResultSet:
+    def _filter(
+        self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()
+    ) -> ResultSet:
         """ Filter objects from the sqlalchemy database """
         conn = self._get_session()
         qs = conn.query(self.model_cls)
@@ -243,8 +263,8 @@ class SADAO(BaseDAO):
         # Apply the order by clause if present
         order_cols = []
         for order_col in order_by:
-            col = getattr(self.model_cls, order_col.lstrip('-'))
-            if order_col.startswith('-'):
+            col = getattr(self.model_cls, order_col.lstrip("-"))
+            if order_col.startswith("-"):
                 order_cols.append(col.desc())
             else:
                 order_cols.append(col)
@@ -256,10 +276,8 @@ class SADAO(BaseDAO):
         try:
             items = qs.all()
             result = ResultSet(
-                offset=offset,
-                limit=limit,
-                total=qs_without_limit.count(),
-                items=items)
+                offset=offset, limit=limit, total=qs_without_limit.count(), items=items
+            )
         except DatabaseError as exc:
             logger.error(f"Error while filtering: {exc}")
             raise
@@ -293,8 +311,12 @@ class SADAO(BaseDAO):
 
         # Fetch the record from database
         try:
-            identifier = getattr(model_obj, self.entity_cls.meta_.id_field.attribute_name)
-            db_item = conn.query(self.model_cls).get(identifier)  # This will raise exception if object was not found
+            identifier = getattr(
+                model_obj, self.entity_cls.meta_.id_field.attribute_name
+            )
+            db_item = conn.query(self.model_cls).get(
+                identifier
+            )  # This will raise exception if object was not found
         except DatabaseError as exc:
             logger.error(f"Database Record not found: {exc}")
             raise
@@ -303,14 +325,18 @@ class SADAO(BaseDAO):
             conn.rollback()
             conn.close()
             raise ObjectNotFoundError(
-                f'`{self.entity_cls.__name__}` object with identifier {identifier} '
-                f'does not exist.')
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
+            )
 
         # Sync DB Record with current changes. When the session is committed, changes are automatically synced
         try:
             for attribute in self.entity_cls.meta_.attributes:
-                if (attribute != self.entity_cls.meta_.id_field.attribute_name and
-                        getattr(model_obj, attribute) != getattr(db_item, attribute)):
+                if attribute != self.entity_cls.meta_.id_field.attribute_name and getattr(
+                    model_obj, attribute
+                ) != getattr(
+                    db_item, attribute
+                ):
                     setattr(db_item, attribute, getattr(model_obj, attribute))
         except DatabaseError as exc:
             logger.error(f"Error while updating: {exc}")
@@ -329,7 +355,9 @@ class SADAO(BaseDAO):
         try:
             values = {}
             if args:
-                values = args[0]  # `args[0]` is required because `*args` is sent as a tuple
+                values = args[
+                    0
+                ]  # `args[0]` is required because `*args` is sent as a tuple
             values.update(kwargs)
             updated_count = qs.update(values)
         except DatabaseError as exc:
@@ -349,8 +377,12 @@ class SADAO(BaseDAO):
 
         # Fetch the record from database
         try:
-            identifier = getattr(model_obj, self.entity_cls.meta_.id_field.attribute_name)
-            db_item = conn.query(self.model_cls).get(identifier)  # This will raise exception if object was not found
+            identifier = getattr(
+                model_obj, self.entity_cls.meta_.id_field.attribute_name
+            )
+            db_item = conn.query(self.model_cls).get(
+                identifier
+            )  # This will raise exception if object was not found
         except DatabaseError as exc:
             logger.error(f"Database Record not found: {exc}")
             raise
@@ -359,8 +391,9 @@ class SADAO(BaseDAO):
             conn.rollback()
             conn.close()
             raise ObjectNotFoundError(
-                f'`{self.entity_cls.__name__}` object with identifier {identifier} '
-                f'does not exist.')
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
+            )
 
         try:
             conn.delete(db_item)
@@ -414,7 +447,8 @@ class SADAO(BaseDAO):
                 offset=0,
                 limit=len(entity_items),
                 total=len(entity_items),
-                items=entity_items)
+                items=entity_items,
+            )
         except DatabaseError as exc:
             logger.error(f"Error while running raw query: {exc}")
             raise
@@ -434,24 +468,26 @@ class SAProvider(BaseProvider):
         # Since SQLAlchemyProvider can cater to multiple databases, it is important
         #   that we know which database we are dealing with, to run database-specific
         #   statements like `PRAGMA` for SQLite.
-        if 'DATABASE' not in args[2]:
-            logger.error(f'Missing `DATABASE` information in conn_info: {args[2]}')
-            raise ConfigurationError('Missing `DATABASE` attribute in Connection info')
+        if "DATABASE" not in args[2]:
+            logger.error(f"Missing `DATABASE` information in conn_info: {args[2]}")
+            raise ConfigurationError("Missing `DATABASE` attribute in Connection info")
 
         super().__init__(*args, **kwargs)
 
         kwargs = self._get_database_specific_engine_args()
 
-        self._engine = create_engine(make_url(self.conn_info['DATABASE_URI']), **kwargs)
+        self._engine = create_engine(make_url(self.conn_info["DATABASE_URI"]), **kwargs)
 
-        if self.conn_info['DATABASE'] == Database.POSTGRESQL.value:
+        if self.conn_info["DATABASE"] == Database.POSTGRESQL.value:
             # Nest database tables under a schema, so that we have complete control
             #   on creating/dropping db structures. We cannot control structures in the
             #   the default `public` schema.
             #
             # Use `SCHEMA` value if specified as part of the conn info. Otherwise, construct
             #   and use default schema name as `DB`_schema.
-            schema = self.conn_info['SCHEMA'] if 'SCHEMA' in self.conn_info else 'public'
+            schema = (
+                self.conn_info["SCHEMA"] if "SCHEMA" in self.conn_info else "public"
+            )
 
             self._metadata = MetaData(bind=self._engine, schema=schema)
         else:
@@ -461,20 +497,20 @@ class SAProvider(BaseProvider):
         self._model_classes = {}
 
     def _get_database_specific_engine_args(self):
-        if self.conn_info['DATABASE'] == Database.POSTGRESQL.value:
+        if self.conn_info["DATABASE"] == Database.POSTGRESQL.value:
             return {"isolation_level": "AUTOCOMMIT"}
 
         return {}
 
     def _get_database_specific_session_args(self):
-        if self.conn_info['DATABASE'] == Database.POSTGRESQL.value:
+        if self.conn_info["DATABASE"] == Database.POSTGRESQL.value:
             return {"autocommit": True, "autoflush": False}
 
         return {}
 
     def _execute_database_specific_connection_statements(self, conn):
-        if self.conn_info['DATABASE'] == Database.SQLITE.value:
-            conn.execute('PRAGMA case_sensitive_like = ON;')
+        if self.conn_info["DATABASE"] == Database.SQLITE.value:
+            conn.execute("PRAGMA case_sensitive_like = ON;")
 
         return conn
 
@@ -482,7 +518,9 @@ class SAProvider(BaseProvider):
         """Establish a session to the Database"""
         # Create the session
         kwargs = self._get_database_specific_session_args()
-        session_factory = orm.sessionmaker(bind=self._engine, expire_on_commit=False, **kwargs)
+        session_factory = orm.sessionmaker(
+            bind=self._engine, expire_on_commit=False, **kwargs
+        )
         session_cls = orm.scoped_session(session_factory)
 
         return session_cls
@@ -505,14 +543,14 @@ class SAProvider(BaseProvider):
 
         transaction = conn.begin()
 
-        if self.conn_info['DATABASE'] == Database.SQLITE.value:
-            conn.execute('PRAGMA foreign_keys = OFF;')
+        if self.conn_info["DATABASE"] == Database.SQLITE.value:
+            conn.execute("PRAGMA foreign_keys = OFF;")
 
         for table in self._metadata.sorted_tables:
             conn.execute(table.delete())
 
-        if self.conn_info['DATABASE'] == Database.SQLITE.value:
-            conn.execute('PRAGMA foreign_keys = ON;')
+        if self.conn_info["DATABASE"] == Database.SQLITE.value:
+            conn.execute("PRAGMA foreign_keys = ON;")
 
         transaction.commit()
 
@@ -529,19 +567,21 @@ class SAProvider(BaseProvider):
             return model_cls
         else:
             custom_attrs = {
-                key: value for (key, value) in vars(model_cls).items()
-                if key not in ['Meta', '__module__', '__doc__', '__weakref__']}
+                key: value
+                for (key, value) in vars(model_cls).items()
+                if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
+            }
 
             from protean.core.repository.model import ModelMeta
+
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls
 
-            custom_attrs.update({
-                'meta_': meta_,
-                'metadata': self._metadata,
-            })
+            custom_attrs.update({"meta_": meta_, "metadata": self._metadata})
             # FIXME Ensure the custom model attributes are constructed properly
-            decorated_model_cls = type(model_cls.__name__, (SqlalchemyModel, model_cls), custom_attrs)
+            decorated_model_cls = type(
+                model_cls.__name__, (SqlalchemyModel, model_cls), custom_attrs
+            )
 
             # Memoize the constructed model class
             self._model_classes[schema_name] = decorated_model_cls
@@ -557,15 +597,16 @@ class SAProvider(BaseProvider):
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
             from protean.core.repository.model import ModelMeta
+
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls
 
             attrs = {
-                'meta_': meta_,
-                'metadata': self._metadata,
+                "meta_": meta_,
+                "metadata": self._metadata,
             }
             # FIXME Ensure the custom model attributes are constructed properly
-            model_cls = type(entity_cls.__name__ + 'Model', (SqlalchemyModel, ), attrs)
+            model_cls = type(entity_cls.__name__ + "Model", (SqlalchemyModel,), attrs)
 
             # Memoize the constructed model class
             self._model_classes[entity_cls.meta_.schema_name] = model_cls
@@ -588,19 +629,19 @@ class SAProvider(BaseProvider):
 
 
 operators = {
-    'exact': '__eq__',
-    'iexact': 'ilike',
-    'contains': 'contains',
-    'icontains': 'ilike',
-    'startswith': 'startswith',
-    'endswith': 'endswith',
-    'gt': '__gt__',
-    'gte': '__ge__',
-    'lt': '__lt__',
-    'lte': '__le__',
-    'in': 'in_',
-    'overlap': 'overlap',
-    'any': 'any',
+    "exact": "__eq__",
+    "iexact": "ilike",
+    "contains": "contains",
+    "icontains": "ilike",
+    "startswith": "startswith",
+    "endswith": "endswith",
+    "gt": "__gt__",
+    "gte": "__ge__",
+    "lt": "__lt__",
+    "lte": "__le__",
+    "in": "in_",
+    "overlap": "overlap",
+    "any": "any",
 }
 
 
@@ -622,33 +663,36 @@ class DefaultLookup(BaseLookup):
         return self.target
 
     def as_expression(self):
-        lookup_func = getattr(self.process_source(),
-                              operators[self.lookup_name])
+        lookup_func = getattr(self.process_source(), operators[self.lookup_name])
         return lookup_func(self.process_target())
 
 
 @SAProvider.register_lookup
 class Exact(DefaultLookup):
     """Exact Match Query"""
-    lookup_name = 'exact'
+
+    lookup_name = "exact"
 
 
 @SAProvider.register_lookup
 class IExact(DefaultLookup):
     """Exact Case-Insensitive Match Query"""
-    lookup_name = 'iexact'
+
+    lookup_name = "iexact"
 
 
 @SAProvider.register_lookup
 class Contains(DefaultLookup):
     """Exact Contains Query"""
-    lookup_name = 'contains'
+
+    lookup_name = "contains"
 
 
 @SAProvider.register_lookup
 class IContains(DefaultLookup):
     """Exact Case-Insensitive Contains Query"""
-    lookup_name = 'icontains'
+
+    lookup_name = "icontains"
 
     def process_target(self):
         """Return target in lowercase"""
@@ -659,43 +703,50 @@ class IContains(DefaultLookup):
 @SAProvider.register_lookup
 class Startswith(DefaultLookup):
     """Exact Contains Query"""
-    lookup_name = 'startswith'
+
+    lookup_name = "startswith"
 
 
 @SAProvider.register_lookup
 class Endswith(DefaultLookup):
     """Exact Contains Query"""
-    lookup_name = 'endswith'
+
+    lookup_name = "endswith"
 
 
 @SAProvider.register_lookup
 class GreaterThan(DefaultLookup):
     """Greater than Query"""
-    lookup_name = 'gt'
+
+    lookup_name = "gt"
 
 
 @SAProvider.register_lookup
 class GreaterThanOrEqual(DefaultLookup):
     """Greater than or Equal Query"""
-    lookup_name = 'gte'
+
+    lookup_name = "gte"
 
 
 @SAProvider.register_lookup
 class LessThan(DefaultLookup):
     """Less than Query"""
-    lookup_name = 'lt'
+
+    lookup_name = "lt"
 
 
 @SAProvider.register_lookup
 class LessThanOrEqual(DefaultLookup):
     """Less than or Equal Query"""
-    lookup_name = 'lte'
+
+    lookup_name = "lte"
 
 
 @SAProvider.register_lookup
 class In(DefaultLookup):
     """In Query"""
-    lookup_name = 'in'
+
+    lookup_name = "in"
 
     def process_target(self):
         """Ensure target is a list or tuple"""
@@ -706,7 +757,8 @@ class In(DefaultLookup):
 @SAProvider.register_lookup
 class Overlap(DefaultLookup):
     """In Query"""
-    lookup_name = 'in'
+
+    lookup_name = "in"
 
     def process_target(self):
         """Ensure target is a list or tuple"""
@@ -717,7 +769,8 @@ class Overlap(DefaultLookup):
 @SAProvider.register_lookup
 class Any(DefaultLookup):
     """In Query"""
-    lookup_name = 'in'
+
+    lookup_name = "in"
 
     def process_target(self):
         """Ensure target is a list or tuple"""

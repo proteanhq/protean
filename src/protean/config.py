@@ -153,7 +153,7 @@ class Config(dict):
 
         :param obj: an import name or object
         """
-        if isinstance(obj, (str, )):
+        if isinstance(obj, (str,)):
             obj = import_string(obj)
         for key in dir(obj):
             if key.isupper():
@@ -240,7 +240,7 @@ class Config(dict):
             if not k.startswith(namespace):
                 continue
             if trim_namespace:
-                key = k[len(namespace):]
+                key = k[len(namespace) :]
             else:
                 key = k
             if lowercase:

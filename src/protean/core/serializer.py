@@ -5,11 +5,24 @@ import logging
 # Protean
 from marshmallow import Schema, fields
 from protean.core.exceptions import NotSupportedError
-from protean.core.field.basic import (Boolean, Date, DateTime, Dict, Field, Float, Identifier,
-                                      Integer, List, Method, Nested, String, Text)
+from protean.core.field.basic import (
+    Boolean,
+    Date,
+    DateTime,
+    Dict,
+    Field,
+    Float,
+    Identifier,
+    Integer,
+    List,
+    Method,
+    Nested,
+    String,
+    Text,
+)
 from protean.domain import DomainObjects
 
-logger = logging.getLogger('protean.application.serializer')
+logger = logging.getLogger("protean.application.serializer")
 
 
 class _SerializerMetaclass(type):
@@ -34,11 +47,13 @@ class _SerializerMetaclass(type):
             declared_fields = {}
 
             for base in reversed(bases):
-                if hasattr(base, 'meta_') and \
-                        hasattr(base.meta_, 'declared_fields'):
+                if hasattr(base, "meta_") and hasattr(base.meta_, "declared_fields"):
                     base_class_fields = {
-                        field_name: field_obj for (field_name, field_obj)
-                        in base.meta_.declared_fields.items()
+                        field_name: field_obj
+                        for (
+                            field_name,
+                            field_obj,
+                        ) in base.meta_.declared_fields.items()
                         if field_name not in attrs and not field_obj.identifier
                     }
                     declared_fields.update(base_class_fields)
@@ -90,13 +105,21 @@ class _SerializerMetaclass(type):
             elif isinstance(field_obj, Method):
                 schema_fields[field_name] = fields.Method(field_obj.method_name)
             elif isinstance(field_obj, List):
-                schema_fields[field_name] = fields.List(fields.String())  # FIXME Accept type param in List field
+                schema_fields[field_name] = fields.List(
+                    fields.String()
+                )  # FIXME Accept type param in List field
             elif isinstance(field_obj, Dict):  # FIXME Accept type param in Dict field
-                schema_fields[field_name] = fields.Dict(keys=fields.Str(), values=fields.Boolean())
+                schema_fields[field_name] = fields.Dict(
+                    keys=fields.Str(), values=fields.Boolean()
+                )
             elif isinstance(field_obj, Nested):
-                schema_fields[field_name] = fields.Nested(field_obj.schema_name, many=field_obj.many)
+                schema_fields[field_name] = fields.Nested(
+                    field_obj.schema_name, many=field_obj.many
+                )
             else:
-                raise NotSupportedError("{} Field not supported".format(type(field_obj)))
+                raise NotSupportedError(
+                    "{} Field not supported".format(type(field_obj))
+                )
 
         # Remove Protean fields from Serializer class
         for field_name in schema_fields:
@@ -107,19 +130,19 @@ class _SerializerMetaclass(type):
 
         # Remove `abstract` in base classes if defined
         for base in bases:
-            if hasattr(base, 'Meta') and hasattr(base.Meta, 'abstract'):
-                delattr(base.Meta, 'abstract')
+            if hasattr(base, "Meta") and hasattr(base.Meta, "abstract"):
+                delattr(base.Meta, "abstract")
 
         # Explicit redefinition element_type  necessary because `attrs`
         #   are reset when a serializer class is initialized.
-        attrs['element_type'] = DomainObjects.SERIALIZER
+        attrs["element_type"] = DomainObjects.SERIALIZER
 
         new_class = type(name, (Schema,), attrs)
 
         # Gather `Meta` class/object if defined
-        attr_meta = attrs.pop('Meta', None)
-        meta = attr_meta or getattr(new_class, 'Meta', None)
-        setattr(new_class, 'meta_', SerializerMeta(meta, declared_fields))
+        attr_meta = attrs.pop("Meta", None)
+        meta = attr_meta or getattr(new_class, "Meta", None)
+        setattr(new_class, "meta_", SerializerMeta(meta, declared_fields))
 
         return new_class
 
@@ -135,7 +158,7 @@ class SerializerMeta:
     """
 
     def __init__(self, meta, declared_fields):
-        self.aggregate_cls = getattr(meta, 'aggregate_cls', None)
+        self.aggregate_cls = getattr(meta, "aggregate_cls", None)
 
         # Initialize Options
         self.declared_fields = declared_fields if declared_fields else {}

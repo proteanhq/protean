@@ -7,7 +7,8 @@ import pytest
 
 def initialize_domain():
     from protean.domain import Domain
-    domain = Domain('SQLAlchemy Test - Postgresql')
+
+    domain = Domain("SQLAlchemy Test - Postgresql")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -32,6 +33,7 @@ def setup_db():
     test_domain = initialize_domain()
     # Create all associated tables
     from .elements import Person, Alien, User, ComplexUser
+
     test_domain.register(Person)
     test_domain.register(Alien)
     test_domain.register(User)
@@ -55,5 +57,5 @@ def setup_db():
 @pytest.fixture(autouse=True)
 def run_around_tests(test_domain):
     yield
-    if test_domain.has_provider('default'):
-        test_domain.get_provider('default')._data_reset()
+    if test_domain.has_provider("default"):
+        test_domain.get_provider("default")._data_reset()

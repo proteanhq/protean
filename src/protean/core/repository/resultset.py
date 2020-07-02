@@ -1,7 +1,7 @@
 # Standard Library Imports
 import logging
 
-logger = logging.getLogger('protean.repository')
+logger = logging.getLogger("protean.repository")
 
 
 class ResultSet(object):

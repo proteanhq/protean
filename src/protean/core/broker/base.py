@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from protean.domain import DomainObjects
 from protean.utils import fully_qualified_name
 
-logger = logging.getLogger('protean.core.broker.base')
+logger = logging.getLogger("protean.core.broker.base")
 
 
 class _BrokerMetaclass(type):
@@ -35,15 +35,15 @@ class _BrokerMetaclass(type):
 
         # Remove `abstract` in base classes if defined
         for base in bases:
-            if hasattr(base, 'Meta') and hasattr(base.Meta, 'abstract'):
-                delattr(base.Meta, 'abstract')
+            if hasattr(base, "Meta") and hasattr(base.Meta, "abstract"):
+                delattr(base.Meta, "abstract")
 
         new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
 
         # Gather `Meta` class/object if defined
-        attr_meta = attrs.pop('Meta', None)
-        meta = attr_meta or getattr(new_class, 'Meta', None)
-        setattr(new_class, 'meta_', BrokerMeta(name, meta))
+        attr_meta = attrs.pop("Meta", None)
+        meta = attr_meta or getattr(new_class, "Meta", None)
+        setattr(new_class, "meta_", BrokerMeta(name, meta))
 
         return new_class
 
@@ -56,7 +56,7 @@ class BrokerMeta:
     """
 
     def __init__(self, entity_name, meta):
-        self.aggregate_cls = getattr(meta, 'aggregate_cls', None)
+        self.aggregate_cls = getattr(meta, "aggregate_cls", None)
 
 
 class BaseBroker(metaclass=_BrokerMetaclass):
@@ -95,6 +95,8 @@ class BaseBroker(metaclass=_BrokerMetaclass):
         for initiator in initiator_cls:
             if initiator.element_type == DomainObjects.DOMAIN_EVENT:
                 self._subscribers[fully_qualified_name(initiator)].add(consumer_cls)
-                logger.debug(f"Registered Subscriber {consumer_cls.__name__} with broker {self.name}")
+                logger.debug(
+                    f"Registered Subscriber {consumer_cls.__name__} with broker {self.name}"
+                )
             else:
                 self._command_handlers[fully_qualified_name(initiator)] = consumer_cls

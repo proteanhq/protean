@@ -22,12 +22,20 @@ class TestApplicationServiceRegistration:
     def test_that_application_service_can_be_registered_with_domain(self, test_domain):
         test_domain.register(DummyApplicationService)
 
-        assert fully_qualified_name(DummyApplicationService) in test_domain.application_services
+        assert (
+            fully_qualified_name(DummyApplicationService)
+            in test_domain.application_services
+        )
 
-    def test_that_application_service_can_be_registered_via_annotations(self, test_domain):
+    def test_that_application_service_can_be_registered_via_annotations(
+        self, test_domain
+    ):
         @test_domain.application_service
         class AnnotatedApplicationService:
             def special_method(self):
                 pass
 
-        assert fully_qualified_name(AnnotatedApplicationService) in test_domain.application_services
+        assert (
+            fully_qualified_name(AnnotatedApplicationService)
+            in test_domain.application_services
+        )

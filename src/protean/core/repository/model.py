@@ -12,10 +12,10 @@ class ModelMeta:
     - ``entity_cls``: The Entity that this model is associated with
     """
 
-    def __init__(self,  meta=None):
+    def __init__(self, meta=None):
         if meta:
-            self.entity_cls = getattr(meta, 'entity_cls', None)
-            self.schema = getattr(meta, 'schema', None)
+            self.entity_cls = getattr(meta, "entity_cls", None)
+            self.schema = getattr(meta, "schema", None)
         else:
             self.entity_cls = None
             self.schema = None
@@ -25,6 +25,7 @@ class BaseModel:
     """This is a Model representing a data schema in the persistence store. A concrete implementation of this
     model has to be provided by each persistence store plugin.
     """
+
     element_type = DomainObjects.MODEL
 
     def __new__(cls, *args, **kwargs):

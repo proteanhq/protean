@@ -16,22 +16,22 @@ class TestModel:
     def test_that_model_class_is_created_automatically(self, test_domain):
         model_cls = test_domain.get_model(Person)
         assert issubclass(model_cls, SqlalchemyModel)
-        assert model_cls.__name__ == 'PersonModel'
+        assert model_cls.__name__ == "PersonModel"
 
     def test_conversation_from_entity_to_model(self, test_domain):
         model_cls = test_domain.get_model(Person)
-        person = Person(first_name='John', last_name='Doe')
+        person = Person(first_name="John", last_name="Doe")
         person_model_obj = model_cls.from_entity(person)
 
         assert person_model_obj is not None
         assert isinstance(person_model_obj, SqlalchemyModel)
         assert person_model_obj.age == 21
-        assert person_model_obj.first_name == 'John'
-        assert person_model_obj.last_name == 'Doe'
+        assert person_model_obj.first_name == "John"
+        assert person_model_obj.last_name == "Doe"
 
     def test_conversation_from_model_to_entity(self, test_domain):
         model_cls = test_domain.get_model(Person)
-        person = Person(first_name='John', last_name='Doe')
+        person = Person(first_name="John", last_name="Doe")
         person_model_obj = model_cls.from_entity(person)
 
         person_copy = model_cls.to_entity(person_model_obj)
@@ -42,7 +42,7 @@ class TestModel:
 
         model_cls = test_domain.get_model(Person)
 
-        assert model_cls.__name__ == 'PersonModel'
+        assert model_cls.__name__ == "PersonModel"
         assert type(model_cls.first_name.type) is String
 
 
@@ -55,34 +55,36 @@ class TestModelWithVO:
     def test_that_model_class_is_created_automatically(self, test_domain):
         model_cls = test_domain.get_model(ComplexUser)
         assert issubclass(model_cls, SqlalchemyModel)
-        assert model_cls.__name__ == 'ComplexUserModel'
+        assert model_cls.__name__ == "ComplexUserModel"
 
     def test_conversation_from_entity_to_model(self, test_domain):
         model_cls = test_domain.get_model(ComplexUser)
 
-        user1 = ComplexUser(email_address='john.doe@gmail.com', password='d4e5r6')
-        user2 = ComplexUser(email=Email(address='john.doe@gmail.com'), password='d4e5r6')
+        user1 = ComplexUser(email_address="john.doe@gmail.com", password="d4e5r6")
+        user2 = ComplexUser(
+            email=Email(address="john.doe@gmail.com"), password="d4e5r6"
+        )
 
         user1_model_obj = model_cls.from_entity(user1)
         user2_model_obj = model_cls.from_entity(user2)
 
         assert user1_model_obj is not None
         assert isinstance(user1_model_obj, SqlalchemyModel)
-        assert user1_model_obj.email_address == 'john.doe@gmail.com'
-        assert user1_model_obj.password == 'd4e5r6'
+        assert user1_model_obj.email_address == "john.doe@gmail.com"
+        assert user1_model_obj.password == "d4e5r6"
 
         assert user2_model_obj is not None
         assert isinstance(user2_model_obj, SqlalchemyModel)
-        assert user2_model_obj.email_address == 'john.doe@gmail.com'
-        assert user2_model_obj.password == 'd4e5r6'
+        assert user2_model_obj.email_address == "john.doe@gmail.com"
+        assert user2_model_obj.password == "d4e5r6"
 
         # Model's content should reflect only the attributes, not declared_fields
-        assert hasattr(user1_model_obj, 'email') is False
-        assert hasattr(user2_model_obj, 'email') is False
+        assert hasattr(user1_model_obj, "email") is False
+        assert hasattr(user2_model_obj, "email") is False
 
     def test_conversation_from_model_to_entity(self, test_domain):
         model_cls = test_domain.get_model(ComplexUser)
-        user1 = ComplexUser(email_address='john.doe@gmail.com', password='d4e5r6')
+        user1 = ComplexUser(email_address="john.doe@gmail.com", password="d4e5r6")
         user1_model_obj = model_cls.from_entity(user1)
 
         user_copy = model_cls.to_entity(user1_model_obj)
@@ -93,7 +95,7 @@ class TestModelWithVO:
 class TestCustomModel:
     def test_that_custom_model_can_be_associated_with_entity(self, test_domain):
         model_cls = test_domain.get_model(Provider)
-        assert model_cls.__name__ == 'ProviderCustomModel'
+        assert model_cls.__name__ == "ProviderCustomModel"
 
     def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
         from sqlalchemy import Column, Text
@@ -106,10 +108,10 @@ class TestCustomModel:
 
         test_domain.get_dao(Receiver)
 
-        provider = test_domain.get_provider('default')
+        provider = test_domain.get_provider("default")
         provider._metadata.create_all()
 
         model_cls = test_domain.get_model(Receiver)
-        assert model_cls.__name__ == 'ReceiverInlineModel'
+        assert model_cls.__name__ == "ReceiverInlineModel"
 
         assert type(model_cls.name.type) is Text

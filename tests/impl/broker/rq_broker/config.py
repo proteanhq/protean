@@ -3,21 +3,19 @@ from protean.utils import Database, IdentityStrategy, IdentityType
 
 DEBUG = True
 TESTING = True
-ENV = 'development'
+ENV = "development"
 
 # A secret key for this particular Protean installation. Used in secret-key
 # hashing algorithms.
-SECRET_KEY = 'tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA'
+SECRET_KEY = "tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA"
 
 # Database Configuration
 DATABASES = {
-    'default': {
-        'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider',
-    },
-    'sqlite': {
-        'PROVIDER': 'protean.impl.repository.sqlalchemy_repo.SAProvider',
-        'DATABASE': Database.SQLITE.value,
-        'DATABASE_URI': 'sqlite:///test.db',
+    "default": {"PROVIDER": "protean.impl.repository.dict_repo.DictProvider"},
+    "sqlite": {
+        "PROVIDER": "protean.impl.repository.sqlalchemy_repo.SAProvider",
+        "DATABASE": Database.SQLITE.value,
+        "DATABASE_URI": "sqlite:///test.db",
     },
 }
 
@@ -41,36 +39,28 @@ IDENTITY_TYPE = IdentityType.STRING
 
 # Messaging Mediums
 BROKERS = {
-    'default': {
-        'PROVIDER': 'protean.impl.broker.rq_broker.RqBroker',
-        'URI': 'redis://127.0.0.1:6379/2',
-        'IS_ASYNC': True,
+    "default": {
+        "PROVIDER": "protean.impl.broker.rq_broker.RqBroker",
+        "URI": "redis://127.0.0.1:6379/2",
+        "IS_ASYNC": True,
     },
 }
 
 LOGGING_CONFIG = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'console': {
-            'format': '%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "console": {"format": "%(asctime)s %(name)-12s %(levelname)-8s %(message)s"},
+    },
+    "handlers": {
+        "console": {
+            "level": "DEBUG",
+            "class": "logging.StreamHandler",
+            "formatter": "console",
         },
     },
-    'handlers': {
-        'console': {
-            'level': 'DEBUG',
-            'class': 'logging.StreamHandler',
-            'formatter': 'console',
-        },
-    },
-    'loggers': {
-        'protean': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
-        },
-        'rq.worker': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
-        },
+    "loggers": {
+        "protean": {"handlers": ["console"], "level": "DEBUG"},
+        "rq.worker": {"handlers": ["console"], "level": "DEBUG"},
     },
 }

@@ -5,7 +5,7 @@ import logging
 from protean.core.exceptions import InvalidOperationError, ValidationError
 from protean.globals import _uow_context_stack, current_domain
 
-logger = logging.getLogger('protean.core.unit_of_work')
+logger = logging.getLogger("protean.core.unit_of_work")
 
 
 class UnitOfWork:
@@ -42,7 +42,7 @@ class UnitOfWork:
 
     def commit(self):
         # Raise error if there the Unit Of Work is not active
-        logger.debug(f'Committing {self}...')
+        logger.debug(f"Committing {self}...")
         if not self._in_progress:
             raise InvalidOperationError("UnitOfWork is not in progress")
 
@@ -58,11 +58,15 @@ class UnitOfWork:
                 for broker in self.domain.brokers_list:
                     broker.send_message(event)
 
-            logger.debug('Commit Successful')
+            logger.debug("Commit Successful")
         except Exception as exc:
-            logger.error(f'Error during Commit: {str(exc)}. Rolling back Transaction...')
+            logger.error(
+                f"Error during Commit: {str(exc)}. Rolling back Transaction..."
+            )
             self.rollback()
-            raise ValidationError({'_entity': [f'Error during Data Commit: - {repr(exc)}']})
+            raise ValidationError(
+                {"_entity": [f"Error during Data Commit: - {repr(exc)}"]}
+            )
 
         self._reset()
 
@@ -86,9 +90,9 @@ class UnitOfWork:
             for _, session in self._sessions.items():
                 session.rollback()
 
-            logger.debug('Transaction rolled back')
+            logger.debug("Transaction rolled back")
         except Exception as exc:
-            logger.error(f'Error during Transaction rollback: {str(exc)}')
+            logger.error(f"Error during Transaction rollback: {str(exc)}")
 
         self._reset()
 

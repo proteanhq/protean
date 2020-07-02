@@ -50,7 +50,7 @@ class Adult(Person):
     pass
 
     class Meta:
-        schema_name = 'adults'
+        schema_name = "adults"
 
 
 class NotAPerson(BaseEntity):
@@ -66,25 +66,22 @@ class DbPerson(BaseEntity):
     age = Integer(default=21)
 
     class Meta:
-        schema_name = 'pepes'
+        schema_name = "pepes"
 
 
 class SqlPerson(Person):
-
     class Meta:
-        schema_name = 'people'
+        schema_name = "people"
 
 
 class DifferentDbPerson(Person):
-
     class Meta:
-        provider = 'non-default'
+        provider = "non-default"
 
 
 class SqlDifferentDbPerson(Person):
-
     class Meta:
-        provider = 'non-default-sql'
+        provider = "non-default-sql"
 
 
 class OrderedPerson(BaseEntity):
@@ -93,17 +90,17 @@ class OrderedPerson(BaseEntity):
     age = Integer(default=21)
 
     class Meta:
-        order_by = 'first_name'
+        order_by = "first_name"
 
 
 class OrderedPersonSubclass(Person):
     class Meta:
-        order_by = 'last_name'
+        order_by = "last_name"
 
 
 class BuildingStatus(Enum):
-    WIP = 'WIP'
-    DONE = 'DONE'
+    WIP = "WIP"
+    DONE = "DONE"
 
 
 class Building(BaseEntity):
@@ -122,6 +119,6 @@ class Building(BaseEntity):
         errors = defaultdict(list)
 
         if self.floors >= 4 and self.status != BuildingStatus.DONE.value:
-            errors['status'].append('should be DONE')
+            errors["status"].append("should be DONE")
 
         return errors

@@ -4,7 +4,7 @@ import logging
 # Protean
 from protean.domain import DomainObjects
 
-logger = logging.getLogger('protean.domain.service')
+logger = logging.getLogger("protean.domain.service")
 
 
 class BaseDomainService:

@@ -23,7 +23,7 @@ class TestSerializerInitialization:
         assert UserSchema.meta_.aggregate_cls == User
 
         assert UserSchema.meta_.declared_fields is not None
-        assert all(key in UserSchema.meta_.declared_fields for key in ['name', 'age'])
+        assert all(key in UserSchema.meta_.declared_fields for key in ["name", "age"])
 
 
 class TestSerializerRegistration:
@@ -46,6 +46,6 @@ class TestSerializerRegistration:
 
 class TestSerializerDump:
     def test_that_serializer_dumps_data_from_domain_element(self):
-        user = User(name='John Doe', age=24)
+        user = User(name="John Doe", age=24)
         json_result = UserSchema().dump(user)
-        assert json_result == {'age': 24, 'name': 'John Doe'}
+        assert json_result == {"age": 24, "name": "John Doe"}

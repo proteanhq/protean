@@ -10,7 +10,6 @@ from .elements import UserAggregate, UserEntity, UserFoo, UserVO
 
 
 class TestDomainInitialization:
-
     def test_that_a_domain_can_be_initialized_successfully(self):
         domain = Domain(__name__)
         assert domain is not None
@@ -19,7 +18,6 @@ class TestDomainInitialization:
 
 
 class TestDomainRegistration:
-
     def test_that_only_recognized_element_types_can_be_registered(self, test_domain):
 
         with pytest.raises(NotImplementedError):
@@ -41,7 +39,9 @@ class TestDomainRegistration:
 
         assert fully_qualified_name(UserVO) in test_domain.value_objects
 
-    def test_that_an_improperly_subclassed_element_cannot_be_registered(self, test_domain):
+    def test_that_an_improperly_subclassed_element_cannot_be_registered(
+        self, test_domain
+    ):
         from protean.core.field.basic import String
 
         class Foo:
@@ -63,10 +63,10 @@ class TestDomainAnnotations:
         from protean.core.field.basic import String
 
         class DummyElement(Enum):
-            FOO = 'FOO'
+            FOO = "FOO"
 
         class FooBar:
             foo = String(max_length=50)
 
         with pytest.raises(IncorrectUsageError):
-            test_domain._register_element(DummyElement.FOO, FooBar, aggregate_cls='foo')
+            test_domain._register_element(DummyElement.FOO, FooBar, aggregate_cls="foo")

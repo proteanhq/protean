@@ -7,21 +7,41 @@ import os
 import pytest
 
 
-
 def pytest_addoption(parser):
     """Additional options for running tests with pytest"""
-    parser.addoption("--slow", action="store_true", default=False, help="Run slow tests")
-    parser.addoption("--pending", action="store_true", default=False, help="Show pending tests")
-    parser.addoption("--sqlite", action="store_true", default=False, help="Run Sqlite tests")
-    parser.addoption("--postgresql", action="store_true", default=False, help="Run Postgresql tests")
-    parser.addoption("--elasticsearch", action="store_true", default=False, help="Run Elasticsearch tests")
-    parser.addoption("--redis", action="store_true", default=False, help="Run Redis based tests")
-    parser.addoption("--sendgrid", action="store_true", default=False, help="Run Sendgrid tests")
+    parser.addoption(
+        "--slow", action="store_true", default=False, help="Run slow tests"
+    )
+    parser.addoption(
+        "--pending", action="store_true", default=False, help="Show pending tests"
+    )
+    parser.addoption(
+        "--sqlite", action="store_true", default=False, help="Run Sqlite tests"
+    )
+    parser.addoption(
+        "--postgresql", action="store_true", default=False, help="Run Postgresql tests"
+    )
+    parser.addoption(
+        "--elasticsearch",
+        action="store_true",
+        default=False,
+        help="Run Elasticsearch tests",
+    )
+    parser.addoption(
+        "--redis", action="store_true", default=False, help="Run Redis based tests"
+    )
+    parser.addoption(
+        "--sendgrid", action="store_true", default=False, help="Run Sendgrid tests"
+    )
 
 
 def pytest_collection_modifyitems(config, items):
     """Configure special markers on tests, so as to control execution"""
-    run_slow = run_pending = run_sqlite = run_postgresql = run_elasticsearch = run_redis = run_sendgrid = False
+    run_slow = (
+        run_pending
+    ) = (
+        run_sqlite
+    ) = run_postgresql = run_elasticsearch = run_redis = run_sendgrid = False
 
     if config.getoption("--slow"):
         # --slow given in cli: do not skip slow tests
@@ -37,13 +57,13 @@ def pytest_collection_modifyitems(config, items):
         run_postgresql = True
 
     if config.getoption("--elasticsearch"):
-       run_elasticsearch = True
+        run_elasticsearch = True
 
     if config.getoption("--redis"):
-       run_redis = True
+        run_redis = True
 
     if config.getoption("--sendgrid"):
-       run_sendgrid = True
+        run_sendgrid = True
 
     skip_slow = pytest.mark.skip(reason="need --slow option to run")
     skip_pending = pytest.mark.skip(reason="need --pending option to run")
@@ -73,7 +93,8 @@ def pytest_collection_modifyitems(config, items):
 @pytest.fixture(autouse=True)
 def test_domain():
     from protean.domain import Domain
-    domain = Domain('Test')
+
+    domain = Domain("Test")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -91,5 +112,5 @@ def run_around_tests(test_domain):
 
     yield
 
-    if test_domain.has_provider('default'):
-        test_domain.get_provider('default')._data_reset()
+    if test_domain.has_provider("default"):
+        test_domain.get_provider("default")._data_reset()

@@ -4,7 +4,7 @@ import os
 import pkgutil
 import sys
 
-logger = logging.getLogger('protean.application')
+logger = logging.getLogger("protean.application")
 
 
 def get_env():

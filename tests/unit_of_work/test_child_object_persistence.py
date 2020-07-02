@@ -20,14 +20,16 @@ class TestUnitOfWorkRegistration:
 
     @pytest.fixture
     def persisted_post(self, test_domain):
-        post = test_domain.get_dao(Post).create(title='Test Post', slug='test-post', content='Do Re Mi Fa')
+        post = test_domain.get_dao(Post).create(
+            title="Test Post", slug="test-post", content="Do Re Mi Fa"
+        )
         return post
 
     def test_that_an_entity_can_be_added_within_uow(self, test_domain, persisted_post):
         repo = test_domain.repository_for(Post)
 
         with UnitOfWork():
-            comment = Comment(content='So La Ti Do')
+            comment = Comment(content="So La Ti Do")
             persisted_post.comments.add(comment)
 
             repo = test_domain.repository_for(Post)
@@ -39,21 +41,23 @@ class TestUnitOfWorkRegistration:
 
         post = repo.get(persisted_post.id)
         assert len(post.comments) == 1
-        assert post.comments[0].content == 'So La Ti Do'
+        assert post.comments[0].content == "So La Ti Do"
 
-    def test_that_an_entity_can_be_updated_within_uow(self, test_domain, persisted_post):
-        comment = Comment(content='So La Ti Do')
+    def test_that_an_entity_can_be_updated_within_uow(
+        self, test_domain, persisted_post
+    ):
+        comment = Comment(content="So La Ti Do")
         persisted_post.comments.add(comment)
 
         repo = test_domain.repository_for(Post)
         repo.add(persisted_post)
 
         post = repo.get(persisted_post.id)
-        assert post.comments[0].content == 'So La Ti Do'
+        assert post.comments[0].content == "So La Ti Do"
 
         with UnitOfWork():
             comment = persisted_post.comments[0]
-            comment.content = ('Pa Da Ni Sa')
+            comment.content = "Pa Da Ni Sa"
             persisted_post.comments.add(comment)
 
             repo = test_domain.repository_for(Post)
@@ -63,10 +67,12 @@ class TestUnitOfWorkRegistration:
             # assert comment.id in uow.changes_to_be_committed['default']['UPDATED']
 
         post = repo.get(persisted_post.id)
-        assert post.comments[0].content == 'Pa Da Ni Sa'
+        assert post.comments[0].content == "Pa Da Ni Sa"
 
-    def test_that_an_entity_can_be_removed_within_uow(self, test_domain, persisted_post):
-        comment = Comment(content='So La Ti Do')
+    def test_that_an_entity_can_be_removed_within_uow(
+        self, test_domain, persisted_post
+    ):
+        comment = Comment(content="So La Ti Do")
         persisted_post.comments.add(comment)
 
         repo = test_domain.repository_for(Post)

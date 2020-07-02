@@ -19,11 +19,11 @@ class Person(BaseAggregate):
     def add_newcomer(cls, person_dict):
         """Factory method to add a new Person to the system"""
         newcomer = Person(
-            email=person_dict['email'],
-            first_name=person_dict['first_name'],
-            last_name=person_dict['last_name'],
-            age=person_dict['age'],
-            )
+            email=person_dict["email"],
+            first_name=person_dict["first_name"],
+            last_name=person_dict["last_name"],
+            age=person_dict["age"],
+        )
 
         # Publish Event via the domain
         current_domain.publish(PersonAdded(person=newcomer))
@@ -40,7 +40,8 @@ class PersonAdded(BaseDomainEvent):
 
 class WelcomeEmail(BaseEmail):
     """Emailer to welcome new additions"""
-    SUBJECT = 'Welcome to ABC!'
+
+    SUBJECT = "Welcome to ABC!"
     TEMPLATE = """
         Hi %FIRST_NAME%!
 
@@ -55,7 +56,7 @@ class WelcomeEmail(BaseEmail):
             raise InsufficientDataError("`to` and `data` fields are mandatory")
 
         if not isinstance(data, dict):
-            raise InvalidDataError({'data': ['should be a dict']})
+            raise InvalidDataError({"data": ["should be a dict"]})
 
         super().__init__(subject=self.SUBJECT, template=self.TEMPLATE, data=data, to=to)
 
@@ -69,5 +70,7 @@ class WelcomeNewPerson(BaseSubscriber):
         domain_event = PersonAdded
 
     def notify(self, domain_event):
-        email = WelcomeEmail(to=domain_event['person']['email'], data=domain_event['person'])
+        email = WelcomeEmail(
+            to=domain_event["person"]["email"], data=domain_event["person"]
+        )
         current_domain.send_email(email)

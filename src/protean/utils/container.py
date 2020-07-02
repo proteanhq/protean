@@ -8,7 +8,7 @@ from collections import defaultdict
 from protean.core.exceptions import InvalidDataError, NotSupportedError, ValidationError
 from protean.core.field.basic import Field
 
-logger = logging.getLogger('protean.domain')
+logger = logging.getLogger("protean.domain")
 
 
 class _ContainerMetaclass(type):
@@ -31,15 +31,15 @@ class _ContainerMetaclass(type):
 
         # Remove `abstract` in base classes if defined
         for base in bases:
-            if hasattr(base, 'Meta') and hasattr(base.Meta, 'abstract'):
-                delattr(base.Meta, 'abstract')
+            if hasattr(base, "Meta") and hasattr(base.Meta, "abstract"):
+                delattr(base.Meta, "abstract")
 
         new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
 
         # Gather `Meta` class/object if defined
-        attr_meta = attrs.pop('Meta', None)
-        meta = attr_meta or getattr(new_class, 'Meta', None)
-        setattr(new_class, 'meta_', ContainerMeta(name, meta))
+        attr_meta = attrs.pop("Meta", None)
+        meta = attr_meta or getattr(new_class, "Meta", None)
+        setattr(new_class, "meta_", ContainerMeta(name, meta))
 
         # Load declared fields
         new_class._load_fields(attrs)
@@ -55,11 +55,10 @@ class _ContainerMetaclass(type):
         This is necessary in order to maintain the correct order of fields.
         """
         for base in reversed(bases):
-            if hasattr(base, 'meta_') and \
-                    hasattr(base.meta_, 'declared_fields'):
+            if hasattr(base, "meta_") and hasattr(base.meta_, "declared_fields"):
                 base_class_fields = {
-                    field_name: field_obj for (field_name, field_obj)
-                    in base.meta_.declared_fields.items()
+                    field_name: field_obj
+                    for (field_name, field_obj) in base.meta_.declared_fields.items()
                     if field_name not in attrs and not field_obj.identifier
                 }
                 new_class._load_fields(base_class_fields)
@@ -86,11 +85,11 @@ class ContainerMeta:
     """
 
     def __init__(self, entity_name, meta):
-        self.abstract = getattr(meta, 'abstract', None) or False
+        self.abstract = getattr(meta, "abstract", None) or False
 
         # FIXME These attributes should be decided per domain element
         #   Was added here to be able to move Domain Event Factory into its own file
-        self.aggregate_cls = getattr(meta, 'aggregate_cls', None)
+        self.aggregate_cls = getattr(meta, "aggregate_cls", None)
 
         # Initialize Options
         self.declared_fields = {}
@@ -98,9 +97,11 @@ class ContainerMeta:
     @property
     def mandatory_fields(self):
         """ Return the mandatory fields for this entity """
-        return {field_name: field_obj
-                for field_name, field_obj in self.attributes.items()
-                if field_obj.required}
+        return {
+            field_name: field_obj
+            for field_name, field_obj in self.attributes.items()
+            if field_obj.required
+        }
 
     @property
     def attributes(self):
@@ -135,8 +136,9 @@ class BaseContainer(metaclass=_ContainerMetaclass):
 
         if self.meta_.abstract is True:
             raise NotSupportedError(
-                f'{self.__class__.__name__} class has been marked abstract'
-                f' and cannot be instantiated')
+                f"{self.__class__.__name__} class has been marked abstract"
+                f" and cannot be instantiated"
+            )
 
         self.errors = defaultdict(list)
         self.raise_errors = raise_errors
@@ -150,8 +152,8 @@ class BaseContainer(metaclass=_ContainerMetaclass):
             if not isinstance(dictionary, dict):
                 raise AssertionError(
                     f'Positional argument "{dictionary}" passed must be a dict.'
-                    f'This argument serves as a template for loading common '
-                    f'values.',
+                    f"This argument serves as a template for loading common "
+                    f"values.",
                 )
             for field_name, val in dictionary.items():
                 loaded_fields.append(field_name)
@@ -183,7 +185,9 @@ class BaseContainer(metaclass=_ContainerMetaclass):
     @classmethod
     def build(cls, **values):
         if values:
-            assert all(attr in list(cls.meta_.declared_fields.keys()) for attr in values.keys())
+            assert all(
+                attr in list(cls.meta_.declared_fields.keys()) for attr in values.keys()
+            )
 
         return cls(**values)
 
@@ -214,12 +218,12 @@ class BaseContainer(metaclass=_ContainerMetaclass):
 
     def __repr__(self):
         """Friendly repr for Command"""
-        return '<%s: %s>' % (self.__class__.__name__, self)
+        return "<%s: %s>" % (self.__class__.__name__, self)
 
     def __str__(self):
-        return '%s object (%s)' % (
+        return "%s object (%s)" % (
             self.__class__.__name__,
-            '{}'.format(self.to_dict()),
+            "{}".format(self.to_dict()),
         )
 
     def __bool__(self):
@@ -228,18 +232,25 @@ class BaseContainer(metaclass=_ContainerMetaclass):
         """
         return any(
             bool(getattr(self, field_name, None))
-            for field_name in self.meta_.attributes)
+            for field_name in self.meta_.attributes
+        )
 
     def __setattr__(self, name, value):
-        if name in self.meta_.declared_fields or name in ['raise_errors', 'errors', 'owner']:
+        if name in self.meta_.declared_fields or name in [
+            "raise_errors",
+            "errors",
+            "owner",
+        ]:
             super().__setattr__(name, value)
         else:
-            raise InvalidDataError({name: ['is invalid']})
+            raise InvalidDataError({name: ["is invalid"]})
 
     def to_dict(self):
         """ Return data as a dictionary """
-        return {field_name: getattr(self, field_name, None)
-                for field_name in self.meta_.attributes}
+        return {
+            field_name: getattr(self, field_name, None)
+            for field_name in self.meta_.attributes
+        }
 
     def clone(self):
         """Deepclone the command"""

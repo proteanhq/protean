@@ -26,17 +26,19 @@ class Email(BaseValueObject):
 
         """
         if not cls.validate(address):
-            raise ValueError('Email address is invalid')
+            raise ValueError("Email address is invalid")
 
         return cls(address=address)
 
     @classmethod
     def validate(cls, address):
         """ Business rules of Email address """
-        if (type(address) is not str or
-                '@' not in address or
-                address.count('@') > 1 or
-                len(address) > 255):
+        if (
+            type(address) is not str
+            or "@" not in address
+            or address.count("@") > 1
+            or len(address) > 255
+        ):
             return False
 
         return True
@@ -53,9 +55,10 @@ class MyOrgEmail(Email):
 
 class Currency(Enum):
     """ Set of choices for the status"""
-    USD = 'USD'
-    INR = 'INR'
-    CAD = 'CAD'
+
+    USD = "USD"
+    INR = "INR"
+    CAD = "CAD"
 
 
 class Balance(BaseValueObject):
@@ -70,15 +73,14 @@ class Balance(BaseValueObject):
     def clean(self):
         errors = defaultdict(list)
         if self.amount and self.amount < -1000000000000.0:
-            errors['amount'].append('cannot be less than 1 Trillion')
+            errors["amount"].append("cannot be less than 1 Trillion")
         return errors
 
     def replace(self, **kwargs):
         # FIXME Find a way to do this generically and move method to `BaseValueObject`
-        currency = kwargs.pop('currency', None)
-        amount = kwargs.pop('amount', None)
-        return Balance(currency=currency or self.currency,
-                       amount=amount or self.amount)
+        currency = kwargs.pop("currency", None)
+        amount = kwargs.pop("amount", None)
+        return Balance(currency=currency or self.currency, amount=amount or self.amount)
 
 
 class Account(BaseAggregate):
@@ -87,8 +89,8 @@ class Account(BaseAggregate):
 
 
 class BuildingStatus(Enum):
-    WIP = 'WIP'
-    DONE = 'DONE'
+    WIP = "WIP"
+    DONE = "DONE"
 
 
 class Building(BaseValueObject):
@@ -106,13 +108,13 @@ class Building(BaseValueObject):
     def clean(self):
         errors = defaultdict(list)
         if self.floors >= 4 and self.status != BuildingStatus.DONE.value:
-            errors['status'].append('should be DONE')
+            errors["status"].append("should be DONE")
         return errors
 
 
 class PolymorphicConnection(BaseValueObject):
-    connected_id = Identifier(referenced_as='connected_id')
-    connected_type = String(referenced_as='connected_type', max_length=15)
+    connected_id = Identifier(referenced_as="connected_id")
+    connected_type = String(referenced_as="connected_type", max_length=15)
 
 
 class PolymorphicOwner(BaseAggregate):

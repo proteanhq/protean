@@ -9,7 +9,8 @@ from elasticsearch_dsl import Index
 
 def initialize_domain():
     from protean.domain import Domain
-    domain = Domain('Elasticsearch Tests')
+
+    domain = Domain("Elasticsearch Tests")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -35,13 +36,14 @@ def setup_db():
 
     # Create all indexes
     from .elements import Person, Alien, User, ComplexUser, Provider
+
     test_domain.register(Person)
     test_domain.register(Alien)
     test_domain.register(User)
     test_domain.register(ComplexUser)
     test_domain.register(Provider)
 
-    provider = test_domain.get_provider('default')
+    provider = test_domain.get_provider("default")
     conn = provider.get_connection()
 
     for _, aggregate_record in test_domain.aggregates.items():
@@ -61,5 +63,5 @@ def setup_db():
 @pytest.fixture(autouse=True)
 def run_around_tests(test_domain):
     yield
-    if test_domain.has_provider('default'):
-        test_domain.get_provider('default')._data_reset()
+    if test_domain.has_provider("default"):
+        test_domain.get_provider("default")._data_reset()

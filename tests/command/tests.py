@@ -17,28 +17,26 @@ class TestCommandInitialization:
 
     def test_that_a_concrete_dto_can_be_instantiated(self):
         command = UserRegistrationCommand(
-            email='john.doe@gmail.com',
-            username='john.doe',
-            password='secret1!',
+            email="john.doe@gmail.com", username="john.doe", password="secret1!",
         )
         assert command is not None
 
     def test_that_invalid_data_input_throws_an_exception(self):
         with pytest.raises(InvalidDataError) as exception1:
             UserRegistrationCommand(
-                foo='bar',
-                username='john.doe',
-                password='secret1!',
+                foo="bar", username="john.doe", password="secret1!",
             )
-        assert exception1.value.messages == {'foo': ['is invalid']}
+        assert exception1.value.messages == {"foo": ["is invalid"]}
 
         with pytest.raises(InvalidDataError) as exception2:
             UserRegistrationCommand(
-                email='john.doe@gmail.com',
-                username='123456789012345678901234567890123456789012345678901234567890',
-                password='secret1!',
+                email="john.doe@gmail.com",
+                username="123456789012345678901234567890123456789012345678901234567890",
+                password="secret1!",
             )
-        assert exception2.value.messages == {'username': ['value has more than 50 characters']}
+        assert exception2.value.messages == {
+            "username": ["value has more than 50 characters"]
+        }
 
 
 class TestCommandRegistration:
@@ -58,27 +56,39 @@ class TestCommandRegistration:
 
 class TestCommandProperties:
     def test_two_commands_with_equal_values_are_considered_equal(self):
-        command1 = UserRegistrationCommand(email='john.doe@gmail.com', username='john.doe', password='secret1!')
-        command2 = UserRegistrationCommand(email='john.doe@gmail.com', username='john.doe', password='secret1!')
+        command1 = UserRegistrationCommand(
+            email="john.doe@gmail.com", username="john.doe", password="secret1!"
+        )
+        command2 = UserRegistrationCommand(
+            email="john.doe@gmail.com", username="john.doe", password="secret1!"
+        )
 
         assert command1 == command2
 
     @pytest.mark.xfail
     def test_that_commands_are_immutable(self):
-        command = UserRegistrationCommand(email='john.doe@gmail.com', username='john.doe', password='secret1!')
+        command = UserRegistrationCommand(
+            email="john.doe@gmail.com", username="john.doe", password="secret1!"
+        )
         with pytest.raises(InvalidOperationError):
-            command.username = 'jane.doe'
+            command.username = "jane.doe"
 
     def test_output_to_dict(self):
-        command = UserRegistrationCommand(email='john.doe@gmail.com', username='john.doe', password='secret1!')
+        command = UserRegistrationCommand(
+            email="john.doe@gmail.com", username="john.doe", password="secret1!"
+        )
         assert command.to_dict() == {
-            'email': 'john.doe@gmail.com',
-            'username': 'john.doe',
-            'password': 'secret1!',
+            "email": "john.doe@gmail.com",
+            "username": "john.doe",
+            "password": "secret1!",
         }
 
     def test_different_commands_are_distinct(self):
-        command1 = UserRegistrationCommand(email='john.doe@gmail.com', username='john.doe', password='secret1!')
-        command2 = UserRegistrationCommand(email='jane.doe@gmail.com', username='jane.doe', password='not-so-secret!')
+        command1 = UserRegistrationCommand(
+            email="john.doe@gmail.com", username="john.doe", password="secret1!"
+        )
+        command2 = UserRegistrationCommand(
+            email="jane.doe@gmail.com", username="jane.doe", password="not-so-secret!"
+        )
 
         assert command1 != command2

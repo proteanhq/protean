@@ -8,10 +8,10 @@ from protean.core.exceptions import ValidationError
 
 class MinLengthValidator:
     """ Validate the minimum length for the field value"""
+
     def __init__(self, min_length):
         self.min_length = min_length
-        self.message = f'value has less than ' \
-            f'{self.min_length} characters'
+        self.message = f"value has less than " f"{self.min_length} characters"
 
     def __call__(self, value):
         if self.min_length and len(value) < self.min_length:
@@ -20,10 +20,10 @@ class MinLengthValidator:
 
 class MaxLengthValidator:
     """ Validate the maximum length for the field value"""
+
     def __init__(self, max_length):
         self.max_length = max_length
-        self.message = f'value has more than ' \
-            f'{self.max_length} characters'
+        self.message = f"value has more than " f"{self.max_length} characters"
 
     def __call__(self, value):
         if self.max_length and len(value) > self.max_length:
@@ -32,9 +32,10 @@ class MaxLengthValidator:
 
 class MinValueValidator:
     """ Validate the minimum value for the field"""
+
     def __init__(self, min_value):
         self.min_value = min_value
-        self.message = f'value is lesser than {self.min_value}'
+        self.message = f"value is lesser than {self.min_value}"
 
     def __call__(self, value):
         if self.min_value and value < self.min_value:
@@ -43,9 +44,10 @@ class MinValueValidator:
 
 class MaxValueValidator:
     """ Validate the maximum value for the field"""
+
     def __init__(self, max_value):
         self.max_value = max_value
-        self.message = f'value is greater than {self.max_value}'
+        self.message = f"value is greater than {self.max_value}"
 
     def __call__(self, value):
         if self.max_value and value > self.max_value:
@@ -54,13 +56,16 @@ class MaxValueValidator:
 
 class RegexValidator:
     """Validate the regex against given value"""
-    regex = ''
-    message = 'invalid value'
-    code = 'invalid'
+
+    regex = ""
+    message = "invalid value"
+    code = "invalid"
     inverse_match = False
     flags = 0
 
-    def __init__(self, regex=None, message=None, code=None, inverse_match=None, flags=None):
+    def __init__(
+        self, regex=None, message=None, code=None, inverse_match=None, flags=None
+    ):
         if regex is not None:
             self.regex = regex
         if message is not None:
@@ -72,7 +77,9 @@ class RegexValidator:
         if flags is not None:
             self.flags = flags
         if self.flags and not isinstance(self.regex, str):
-            raise TypeError("If the flags are set, regex must be a regular expression string.")
+            raise TypeError(
+                "If the flags are set, regex must be a regular expression string."
+            )
 
         self.regex = re.compile(self.regex, self.flags)
 
