@@ -121,9 +121,9 @@ To set up `protean` for local development:
 Code Formatting
 ^^^^^^^^^^^^^^^
 
-Protean uses [black](https://github.com/psf/black) as the default code formatter.
+Protean uses `black <https://github.com/psf/black>`_ as the default code formatter.
 
-You can configure [editor](https://github.com/psf/black#editor-integration) with `black`, but is also run automatically on commit with the help of `pre-commit` git hook. Protean uses `pre-commit` to configure and install the hook locally, so you can simply run `pre-commit install` after install all dev requirement packages.
+You can configure `editor <https://github.com/psf/black#editor-integration>`_ with `black`, but is also run automatically on commit with the help of `pre-commit` git hook. Protean uses `pre-commit` to configure and install the hook locally, so you can simply run `pre-commit install` after install all dev requirement packages.
 
 Testing
 ^^^^^^^

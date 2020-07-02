@@ -119,7 +119,6 @@ These guides have been heavily influenced by the thoughts and works of DDD pione
    :caption: Community
 
    community/changelog
-   community/styleguide
    Code of Conduct <community/code-of-conduct>
    community/contributing
 
