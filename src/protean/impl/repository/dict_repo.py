@@ -129,6 +129,10 @@ class DictProvider(BaseProvider):
         _locks = defaultdict(Lock)
         _counters = defaultdict(count)
 
+        # Discard any active Unit of Work
+        if current_uow and current_uow.in_progress:
+            current_uow.rollback()
+
     def decorate_model_class(self, entity_cls, model_cls):
         schema_name = derive_schema_name(model_cls)
 

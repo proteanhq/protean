@@ -12,6 +12,7 @@ from protean.core.unit_of_work import UnitOfWork
 from .elements import Person, PersonRepository
 
 
+@pytest.mark.sqlite
 class TestTransactions:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):

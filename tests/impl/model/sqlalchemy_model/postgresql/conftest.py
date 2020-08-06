@@ -31,28 +31,40 @@ def test_domain():
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_db():
-    # Create all associated tables
-    from .elements import Person, User, ComplexUser, Provider, ProviderCustomModel
+    with domain.domain_context():
+        # Create all associated tables
+        from .elements import (
+            Person,
+            User,
+            ComplexUser,
+            Provider,
+            ProviderCustomModel,
+        )
+        from .test_containers import ArrayUser, IntegerArrayUser
 
-    domain.register(Person)
-    domain.register(User)
-    domain.register(ComplexUser)
-    domain.register(Provider)
-    domain.register_model(ProviderCustomModel, entity_cls=Provider)
+        domain.register(Person)
+        domain.register(User)
+        domain.register(ComplexUser)
+        domain.register(Provider)
+        domain.register(ArrayUser)
+        domain.register(IntegerArrayUser)
+        domain.register_model(ProviderCustomModel, entity_cls=Provider)
 
-    domain.get_dao(Person)
-    domain.get_dao(User)
-    domain.get_dao(ComplexUser)
-    domain.get_dao(Provider)
+        domain.get_dao(Person)
+        domain.get_dao(User)
+        domain.get_dao(ComplexUser)
+        domain.get_dao(Provider)
+        domain.get_dao(ArrayUser)
+        domain.get_dao(IntegerArrayUser)
 
-    for provider in domain.providers_list():
-        provider._metadata.create_all()
+        for provider in domain.providers_list():
+            provider._metadata.create_all()
 
-    yield
+        yield
 
-    # Drop all tables at the end of test suite
-    for provider in domain.providers_list():
-        provider._metadata.drop_all()
+        # Drop all tables at the end of test suite
+        for provider in domain.providers_list():
+            provider._metadata.drop_all()
 
 
 @pytest.fixture(autouse=True)

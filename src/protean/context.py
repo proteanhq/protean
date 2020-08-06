@@ -82,11 +82,11 @@ class DomainContext(object):
         self.g = domain.domain_context_globals_class()
 
         # Use a basic "refcount" to track number of domain contexts
-        self._refcnt = 0
+        self._ref_count = 0
 
     def push(self):
         """Binds the domain context to the current context."""
-        self._refcnt += 1
+        self._ref_count += 1
         if hasattr(sys, "exc_clear"):
             sys.exc_clear()
         _domain_context_stack.push(self)
@@ -94,8 +94,8 @@ class DomainContext(object):
     def pop(self, exc=_sentinel):
         """Pops the domain context."""
         try:
-            self._refcnt -= 1
-            if self._refcnt <= 0:
+            self._ref_count -= 1
+            if self._ref_count <= 0:
                 if exc is _sentinel:
                     exc = sys.exc_info()[1]
                 self.domain.do_teardown_domain_context(exc)

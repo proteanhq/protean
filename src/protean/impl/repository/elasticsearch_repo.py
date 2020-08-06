@@ -254,9 +254,10 @@ class ElasticsearchDAO(BaseDAO):
         """Update a model object in the data store and return it"""
         conn = self._get_session()
 
+        identifier = model_obj.meta.id
+
         # Fetch the record from database
         try:
-            identifier = model_obj.meta.id
             # Calling `get` will raise `NotFoundError` if record was not found
             self.model_cls.get(
                 id=identifier, using=conn, index=self.entity_cls.meta_.schema_name

@@ -16,7 +16,7 @@ ENV = "development"
 SECRET_KEY = "nU5JSWCP#4c#Annek2mx9V&g5uWUJfh@"
 
 IDENTITY_STRATEGY = IdentityStrategy.UUID
-IDENTITY_TYPE = IdentityType.STRING
+IDENTITY_TYPE = IdentityType.UUID
 
 # Define the databases
 DATABASES = {

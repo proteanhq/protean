@@ -42,7 +42,7 @@ jobs:
   allow_failures:
     - python: 3.9-dev
 script:
-  - pytest --slow --postgresql --elasticsearch --redis --cov=protean --cov-config .coveragerc tests
+  - pytest --slow --sqlite --postgresql --elasticsearch --redis --cov=protean --cov-config .coveragerc tests
 after_success:
   - codecov
 notifications:

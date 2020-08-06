@@ -16,6 +16,7 @@ from sqlalchemy.orm.session import Session
 from .elements import Person, User
 
 
+@pytest.mark.sqlite
 class TestDAO:
     """This class holds tests for DAO class"""
 
@@ -59,6 +60,7 @@ class TestDAO:
         )
 
 
+@pytest.mark.sqlite
 class TestDAODeleteFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
@@ -200,6 +202,7 @@ class TestDAODeleteFunctionality:
             test_domain.get_dao(Person).get(4)
 
 
+@pytest.mark.sqlite
 class TestDAORetrievalFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
@@ -573,6 +576,7 @@ class TestDAORetrievalFunctionality:
             test_domain.get_dao(Person).query.filter(age__notexact=3).all()
 
 
+@pytest.mark.sqlite
 class TestDAOSaveFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
@@ -611,6 +615,7 @@ class TestDAOSaveFunctionality:
         assert person.last_name == "Janey"
 
 
+@pytest.mark.sqlite
 class TestDAOUpdateFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
@@ -777,6 +782,7 @@ class TestDAOUpdateFunctionality:
         assert u_person4.last_name == "Fraud"
 
 
+@pytest.mark.sqlite
 class TestDAOValidations:
     """This class holds tests for DAO class"""
 
@@ -831,6 +837,7 @@ class TestDAOValidations:
         assert error.value.messages == {"age": ['"x" value must be an integer.']}
 
 
+@pytest.mark.sqlite
 class TestDAOLookup:
     """This class holds tests for Lookup Class"""
 

@@ -1,0 +1,89 @@
+import pytest
+
+from datetime import datetime
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.exceptions import ValidationError
+from protean.core.field.basic import (
+    Auto,
+    Boolean,
+    Date,
+    DateTime,
+    String,
+    Array,
+    Integer,
+    Float,
+    Identifier,
+)
+
+
+class ArrayUser(BaseAggregate):
+    email = String(max_length=255, required=True, unique=True)
+    roles = Array()  # Defaulted to String Content Type
+
+
+class IntegerArrayUser(BaseAggregate):
+    email = String(max_length=255, required=True, unique=True)
+    roles = Array(content_type=Integer)
+
+
+@pytest.mark.postgresql
+def test_basic_array_data_type_support(test_domain):
+    test_domain.register(ArrayUser)
+
+    model_cls = test_domain.get_model(ArrayUser)
+    user = ArrayUser(email="john.doe@gmail.com", roles=["ADMIN", "USER"])
+    user_model_obj = model_cls.from_entity(user)
+
+    user_copy = model_cls.to_entity(user_model_obj)
+    assert user_copy is not None
+    assert user_copy.roles == ["ADMIN", "USER"]
+
+
+@pytest.mark.postgresql
+def test_array_content_type_validation(test_domain):
+    test_domain.register(ArrayUser)
+    test_domain.register(IntegerArrayUser)
+
+    for kwargs in [
+        {"email": "john.doe@gmail.com", "roles": [1, 2]},
+        {"email": "john.doe@gmail.com", "roles": ["1", 2]},
+        {"email": "john.doe@gmail.com", "roles": [1.0, 2.0]},
+        {"email": "john.doe@gmail.com", "roles": [datetime.utcnow()]},
+    ]:
+        with pytest.raises(ValidationError) as exception:
+            ArrayUser(**kwargs)
+        assert exception.value.messages == {"roles": ["Invalid value"]}
+
+    model_cls = test_domain.get_model(IntegerArrayUser)
+    user = IntegerArrayUser(email="john.doe@gmail.com", roles=[1, 2])
+    user_model_obj = model_cls.from_entity(user)
+
+    user_copy = model_cls.to_entity(user_model_obj)
+    assert user_copy is not None
+    assert user_copy.roles == [1, 2]
+
+    for kwargs in [
+        {"email": "john.doe@gmail.com", "roles": ["ADMIN", "USER"]},
+        {"email": "john.doe@gmail.com", "roles": ["1", "2"]},
+        {"email": "john.doe@gmail.com", "roles": [datetime.utcnow()]},
+    ]:
+        with pytest.raises(ValidationError) as exception:
+            IntegerArrayUser(**kwargs)
+        assert exception.value.messages == {"roles": ["Invalid value"]}
+
+
+@pytest.mark.postgresql
+def test_that_only_specific_primitive_types_are_allowed_as_content_types(test_domain):
+    Array(content_type=String)
+    Array(content_type=Identifier)
+    Array(content_type=Integer)
+    Array(content_type=Float)
+    Array(content_type=Boolean)
+    Array(content_type=Date)
+    Array(content_type=DateTime)
+
+    with pytest.raises(ValidationError) as error:
+        Array(content_type=Auto)
+
+    assert error.value.messages == {"content_type": ["Content type not supported"]}
