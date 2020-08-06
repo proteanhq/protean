@@ -10,6 +10,7 @@ from typing import Any
 from protean.core.exceptions import ConfigurationError, ObjectNotFoundError
 from protean.core.field.association import Reference
 from protean.core.field.basic import (
+    JSON,
     Array,
     Auto,
     Boolean,
@@ -18,7 +19,6 @@ from protean.core.field.basic import (
     Dict,
     Float,
     Integer,
-    JSON,
     List,
     String,
     Text,

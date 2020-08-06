@@ -1,6 +1,12 @@
 Release History
 ===============
 
+0.5.2 (2020-08-06)
+------------------
+
+* Introduce support for Postgresql Array and JSON columns
+* Allow restricting `List` datatype to specific content types
+
 0.5.1 (2020-07-02)
 ------------------
 

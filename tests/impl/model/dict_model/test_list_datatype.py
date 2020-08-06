@@ -1,11 +1,12 @@
-import pytest
-
+# Standard Library Imports
 from datetime import datetime
+
+# Protean
+import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.exceptions import ValidationError
 from protean.core.field.basic import (
-    List,
     Auto,
     Boolean,
     Date,
@@ -13,6 +14,7 @@ from protean.core.field.basic import (
     Float,
     Identifier,
     Integer,
+    List,
     String,
 )
 

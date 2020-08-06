@@ -1,13 +1,11 @@
-import pytest
-
+# Standard Library Imports
 from datetime import datetime
 
+# Protean
+import pytest
+
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import (
-    DateTime,
-    JSON,
-    String,
-)
+from protean.core.field.basic import JSON, DateTime, String
 
 
 class Event(BaseAggregate):
