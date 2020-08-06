@@ -79,7 +79,7 @@ class UnitOfWork:
         self._in_progress = False
 
     def rollback(self):
-        # Raise error if there the Unit Of Work is not active
+        # Raise error if the Unit Of Work is not active
         if not self._in_progress:
             raise InvalidOperationError("UnitOfWork is not in progress")
 

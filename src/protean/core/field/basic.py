@@ -5,7 +5,7 @@ import datetime
 
 # Protean
 from dateutil.parser import parse as date_parser
-from protean.core.exceptions import InvalidOperationError
+from protean.core.exceptions import InvalidOperationError, ValidationError
 from protean.core.field import validators
 from protean.core.field.base import Field
 
@@ -149,6 +149,52 @@ class List(Field):
         return value
 
 
+class Array(Field):
+    """Concrete field implementation for the Array type.
+
+    This field is supported only for Postgresql database.
+    """
+
+    default_error_messages = {
+        "invalid": '"{value}" value must be of list type.',
+        "invalid_content": "Invalid value",
+    }
+
+    def __init__(self, content_type=String, **kwargs):
+        if content_type not in [
+            String,
+            Integer,
+            Identifier,
+            Float,
+            Date,
+            DateTime,
+            Boolean,
+        ]:
+            raise ValidationError({"content_type": ["Content type not supported"]})
+        self.content_type = content_type
+
+        super().__init__(**kwargs)
+
+    def _cast_to_type(self, value):
+        """ Raise error if the value is not a list """
+        if not isinstance(value, list):
+            self.fail("invalid", value=value)
+
+        # Try to cast value into the destination type.
+        #   Throw error if the underlying type does not support value.
+        new_value = []
+        try:
+            for item in value:
+                new_value.append(self.content_type()._load(item))
+        except ValidationError:
+            self.fail("invalid_content", value=value)
+
+        if new_value != value:
+            self.fail("invalid_content", value=value)
+
+        return value
+
+
 class Set(Field):
     """Concrete field implementation for the Set type.
     """
@@ -166,6 +212,23 @@ class Set(Field):
 
 class Dict(Field):
     """Concrete field implementation for the Dict type.
+    """
+
+    default_error_messages = {
+        "invalid": '"{value}" value must be of dict type.',
+    }
+
+    def _cast_to_type(self, value):
+        """ Raise error if the value is not a dict """
+        if not isinstance(value, dict):
+            self.fail("invalid", value=value)
+        return value
+
+
+class JSON(Field):
+    """Concrete field implementation for the JSON type.
+
+    This field is supported only for Postgresql database.
     """
 
     default_error_messages = {

@@ -10,6 +10,7 @@ from sqlalchemy.orm.session import Session
 from .elements import Alien, Person
 
 
+@pytest.mark.sqlite
 class TestProviders:
     """This class holds tests for Providers Singleton"""
 

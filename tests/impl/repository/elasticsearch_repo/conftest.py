@@ -19,44 +19,44 @@ def initialize_domain():
     if os.path.exists(config_path):
         domain.config.from_pyfile(config_path)
 
-    domain.domain_context().push()
     return domain
 
 
 @pytest.fixture
 def test_domain():
     domain = initialize_domain()
-
-    yield domain
+    with domain.domain_context():
+        yield domain
 
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_db():
-    test_domain = initialize_domain()
+    domain = initialize_domain()
 
-    # Create all indexes
-    from .elements import Person, Alien, User, ComplexUser
+    with domain.domain_context():
+        # Create all indexes
+        from .elements import Person, Alien, User, ComplexUser
 
-    test_domain.register(Person)
-    test_domain.register(Alien)
-    test_domain.register(User)
-    test_domain.register(ComplexUser)
+        domain.register(Person)
+        domain.register(Alien)
+        domain.register(User)
+        domain.register(ComplexUser)
 
-    provider = test_domain.get_provider("default")
-    conn = provider.get_connection()
+        provider = domain.get_provider("default")
+        conn = provider.get_connection()
 
-    for _, aggregate_record in test_domain.aggregates.items():
-        index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
-        if not index.exists():
-            index.create()
+        for _, aggregate_record in domain.aggregates.items():
+            index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
+            if not index.exists():
+                index.create()
 
-    yield
+        yield
 
-    # Drop all indexes at the end of test suite
-    for _, aggregate_record in test_domain.aggregates.items():
-        index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
-        if index.exists():
-            index.delete()
+        # Drop all indexes at the end of test suite
+        for _, aggregate_record in domain.aggregates.items():
+            index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
+            if index.exists():
+                index.delete()
 
 
 @pytest.fixture(autouse=True)

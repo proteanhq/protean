@@ -10,6 +10,7 @@ from typing import Any
 from protean.core.exceptions import ConfigurationError, ObjectNotFoundError
 from protean.core.field.association import Reference
 from protean.core.field.basic import (
+    Array,
     Auto,
     Boolean,
     Date,
@@ -17,6 +18,7 @@ from protean.core.field.basic import (
     Dict,
     Float,
     Integer,
+    JSON,
     List,
     String,
     Text,
@@ -108,16 +110,18 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
         # Update the class attrs with the entity attributes
 
         field_mapping = {
+            Array: sa_types.ARRAY,
             Auto: _get_identity_type(),
-            String: sa_types.String,
-            Text: sa_types.Text,
             Boolean: sa_types.Boolean,
-            Integer: sa_types.Integer,
-            Float: sa_types.Float,
-            List: sa_types.PickleType,
-            Dict: sa_types.PickleType,
             Date: sa_types.Date,
             DateTime: sa_types.DateTime,
+            Dict: sa_types.PickleType,
+            Float: sa_types.Float,
+            Integer: sa_types.Integer,
+            JSON: sa_types.JSON,
+            List: sa_types.PickleType,
+            String: sa_types.String,
+            Text: sa_types.Text,
         }
 
         if "meta_" in dict_:
@@ -154,15 +158,18 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                     }
 
                     # Update the arguments based on the field type
-                    type_args = {}
+                    type_args = []
+                    type_kwargs = {}
                     if issubclass(field_cls, String):
-                        type_args["length"] = field_obj.max_length
+                        type_kwargs["length"] = field_obj.max_length
+                    if issubclass(field_cls, Array):
+                        type_args.append(field_mapping.get(field_obj.content_type))
 
                     # Update the attributes of the class
                     setattr(
                         cls,
                         attribute_name,
-                        Column(sa_type_cls(**type_args), **col_args),
+                        Column(sa_type_cls(*type_args, **type_kwargs), **col_args),
                     )
         super().__init__(classname, bases, dict_)
 
@@ -214,10 +221,10 @@ class SADAO(BaseDAO):
 
         - If there is an active transaction, the connection associated with the transaction (in the UoW) is returned
         - If the DAO has been explicitly instructed to work outside a UoW (with the help of `_outside_uow`), or if
-          there are no active transactions, a new connection is retrieved from the provider and returned.
+            there are no active transactions, a new connection is retrieved from the provider and returned.
 
-          Overridden here instead of using the version in `BaseDAO` because the connection needs to be started
-          with a call to `begin()` if it is not yet active (checked with `is_active`)
+        Overridden here instead of using the version in `BaseDAO` because the connection needs to be started
+            with a call to `begin()` if it is not yet active (checked with `is_active`)
         """
         if current_uow and not self._outside_uow:
             return current_uow.get_session(self.provider.name)
@@ -497,22 +504,27 @@ class SAProvider(BaseProvider):
         self._model_classes = {}
 
     def _get_database_specific_engine_args(self):
+        """ Supplies additional database-specific arguments to SQLAlchemy Engine.
+
+        Return: a dictionary with database-specific SQLAlchemy Engine arguments.
+        """
         if self.conn_info["DATABASE"] == Database.POSTGRESQL.value:
             return {"isolation_level": "AUTOCOMMIT"}
 
         return {}
 
     def _get_database_specific_session_args(self):
+        """ Set Database specific session parameters.
+
+        Depending on the database in use, this method supplies
+        additional arguments while constructing sessions.
+
+        Return: a dictionary with additional arguments and values.
+        """
         if self.conn_info["DATABASE"] == Database.POSTGRESQL.value:
             return {"autocommit": True, "autoflush": False}
 
         return {}
-
-    def _execute_database_specific_connection_statements(self, conn):
-        if self.conn_info["DATABASE"] == Database.SQLITE.value:
-            conn.execute("PRAGMA case_sensitive_like = ON;")
-
-        return conn
 
     def get_session(self):
         """Establish a session to the Database"""
@@ -524,6 +536,23 @@ class SAProvider(BaseProvider):
         session_cls = orm.scoped_session(session_factory)
 
         return session_cls
+
+    def _execute_database_specific_connection_statements(self, conn):
+        """ Execute connection statements depending on the database in use.
+
+        Each database has a unique set of commands and associated format to control
+        connection-related parameters. Since we use SQLAlchemy, statements should
+        be run dynamically based on the database in use.
+
+        Arguments:
+        * conn: An active connection object to the database
+
+        Return: None
+        """
+        if self.conn_info["DATABASE"] == Database.SQLITE.value:
+            conn.execute("PRAGMA case_sensitive_like = ON;")
+
+        return conn
 
     def get_connection(self, session_cls=None):
         """ Create the connection to the Database instance"""
@@ -553,6 +582,10 @@ class SAProvider(BaseProvider):
             conn.execute("PRAGMA foreign_keys = ON;")
 
         transaction.commit()
+
+        # Discard any active Unit of Work
+        if current_uow and current_uow.in_progress:
+            current_uow.rollback()
 
     def decorate_model_class(self, entity_cls, model_cls):
         schema_name = derive_schema_name(model_cls)

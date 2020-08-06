@@ -7,6 +7,7 @@ from protean.impl.repository.sqlalchemy_repo import SqlalchemyModel
 from .elements import ComplexUser, Email, Person, Provider, Receiver
 
 
+@pytest.mark.sqlite
 class TestModel:
     @pytest.fixture(autouse=True)
     def register_person_aggregate(self, test_domain):
@@ -45,6 +46,7 @@ class TestModel:
         assert type(model_cls.first_name.type) is String
 
 
+@pytest.mark.sqlite
 class TestModelWithVO:
     @pytest.fixture(autouse=True)
     def register_complex_user_aggregate(self, test_domain):
@@ -89,6 +91,7 @@ class TestModelWithVO:
         assert user_copy is not None
 
 
+@pytest.mark.sqlite
 class TestCustomModel:
     def test_that_custom_model_can_be_associated_with_entity(self, test_domain):
         model_cls = test_domain.get_model(Provider)
