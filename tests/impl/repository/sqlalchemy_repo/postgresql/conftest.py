@@ -34,15 +34,19 @@ def setup_db():
         # Create all associated tables
         from .elements import Person, Alien, User, ComplexUser
 
-        domain.register(Person)
-        domain.register(Alien)
-        domain.register(User)
-        domain.register(ComplexUser)
+        from .test_persistence import Event
 
-        domain.get_dao(Person)
+        domain.register(Alien)
+        domain.register(ComplexUser)
+        domain.register(Event)
+        domain.register(Person)
+        domain.register(User)
+
         domain.get_dao(Alien)
-        domain.get_dao(User)
         domain.get_dao(ComplexUser)
+        domain.get_dao(Event)
+        domain.get_dao(Person)
+        domain.get_dao(User)
 
         for provider in domain.providers_list():
             provider._metadata.create_all()

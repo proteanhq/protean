@@ -5,15 +5,15 @@ from datetime import datetime
 from protean.core.aggregate import BaseAggregate
 from protean.core.exceptions import ValidationError
 from protean.core.field.basic import (
+    Array,
     Auto,
     Boolean,
     Date,
     DateTime,
-    String,
-    Array,
-    Integer,
     Float,
     Identifier,
+    Integer,
+    String,
 )
 
 

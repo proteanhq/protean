@@ -151,6 +151,8 @@ class List(Field):
 
 class Array(Field):
     """Concrete field implementation for the Array type.
+
+    This field is supported only for Postgresql database.
     """
 
     default_error_messages = {
@@ -210,6 +212,23 @@ class Set(Field):
 
 class Dict(Field):
     """Concrete field implementation for the Dict type.
+    """
+
+    default_error_messages = {
+        "invalid": '"{value}" value must be of dict type.',
+    }
+
+    def _cast_to_type(self, value):
+        """ Raise error if the value is not a dict """
+        if not isinstance(value, dict):
+            self.fail("invalid", value=value)
+        return value
+
+
+class JSON(Field):
+    """Concrete field implementation for the JSON type.
+
+    This field is supported only for Postgresql database.
     """
 
     default_error_messages = {

@@ -40,22 +40,26 @@ def setup_db():
             Provider,
             ProviderCustomModel,
         )
-        from .test_containers import ArrayUser, IntegerArrayUser
+        from .test_array_datatype import ArrayUser, IntegerArrayUser
+        from .test_json_datatype import Event
 
-        domain.register(Person)
-        domain.register(User)
-        domain.register(ComplexUser)
-        domain.register(Provider)
         domain.register(ArrayUser)
+        domain.register(ComplexUser)
+        domain.register(Event)
         domain.register(IntegerArrayUser)
+        domain.register(Person)
+        domain.register(Provider)
+        domain.register(User)
+
         domain.register_model(ProviderCustomModel, entity_cls=Provider)
 
-        domain.get_dao(Person)
-        domain.get_dao(User)
-        domain.get_dao(ComplexUser)
-        domain.get_dao(Provider)
         domain.get_dao(ArrayUser)
+        domain.get_dao(ComplexUser)
+        domain.get_dao(Event)
         domain.get_dao(IntegerArrayUser)
+        domain.get_dao(Person)
+        domain.get_dao(Provider)
+        domain.get_dao(User)
 
         for provider in domain.providers_list():
             provider._metadata.create_all()
