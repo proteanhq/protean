@@ -1,13 +1,14 @@
 # Standard Library Imports
 from datetime import datetime
 
+from sqlalchemy import types as sa_types
+
 # Protean
 import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.exceptions import ValidationError
 from protean.core.field.basic import (
-    Array,
     Auto,
     Boolean,
     Date,
@@ -15,25 +16,35 @@ from protean.core.field.basic import (
     Float,
     Identifier,
     Integer,
+    List,
     String,
 )
 
 
 class ArrayUser(BaseAggregate):
     email = String(max_length=255, required=True, unique=True)
-    roles = Array()  # Defaulted to String Content Type
+    roles = List()  # Defaulted to String Content Type
 
 
 class IntegerArrayUser(BaseAggregate):
     email = String(max_length=255, required=True, unique=True)
-    roles = Array(content_type=Integer)
+    roles = List(content_type=Integer)
 
 
 @pytest.mark.postgresql
-def test_basic_array_data_type_support(test_domain):
+def test_array_data_type_association(test_domain):
     test_domain.register(ArrayUser)
 
     model_cls = test_domain.get_model(ArrayUser)
+    type(model_cls.roles.property.columns[0].type) == sa_types.ARRAY
+
+
+@pytest.mark.postgresql
+def test_basic_array_data_type_operations(test_domain):
+    test_domain.register(ArrayUser)
+
+    model_cls = test_domain.get_model(ArrayUser)
+
     user = ArrayUser(email="john.doe@gmail.com", roles=["ADMIN", "USER"])
     user_model_obj = model_cls.from_entity(user)
 
@@ -77,15 +88,15 @@ def test_array_content_type_validation(test_domain):
 
 @pytest.mark.postgresql
 def test_that_only_specific_primitive_types_are_allowed_as_content_types(test_domain):
-    Array(content_type=String)
-    Array(content_type=Identifier)
-    Array(content_type=Integer)
-    Array(content_type=Float)
-    Array(content_type=Boolean)
-    Array(content_type=Date)
-    Array(content_type=DateTime)
+    List(content_type=String)
+    List(content_type=Identifier)
+    List(content_type=Integer)
+    List(content_type=Float)
+    List(content_type=Boolean)
+    List(content_type=Date)
+    List(content_type=DateTime)
 
     with pytest.raises(ValidationError) as error:
-        Array(content_type=Auto)
+        List(content_type=Auto)
 
     assert error.value.messages == {"content_type": ["Content type not supported"]}
