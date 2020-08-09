@@ -25,7 +25,7 @@ if os.getenv("SPELLCHECK"):
 source_suffix = ".rst"
 master_doc = "index"
 project = "Protean"
-year = "2019"
+year = "2020"
 author = "Subhash Bhushan C"
 copyright = "{0}, {1}".format(year, author)
 version = release = "0.5.2"
