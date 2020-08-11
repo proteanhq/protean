@@ -59,3 +59,20 @@ class TestDomainEventTriggering:
         assert event is not None
         assert event.kind == "PersonAdded"
         assert event.payload["person"] == person.to_dict()
+
+    def test_that_all_domain_events_are_retrievable(self, test_domain):
+        test_domain.register(Person)
+        test_domain.register(EventLog)
+        test_domain.register(EventLogRepository)
+
+        command = PersonCommand(first_name="John", last_name="Doe", age=21)
+        person = PersonService.add(command)
+
+        event_repo = current_domain.repository_for(EventLog)
+        events = event_repo.get_all_events_of_type(kind=PersonAdded)
+
+        assert events is not None
+        assert isinstance(events, list)
+        assert len(events) == 1
+        assert events[0].kind == "PersonAdded"
+        assert events[0].payload["person"] == person.to_dict()

@@ -25,5 +25,15 @@ class EventLogRepository(BaseRepository):
             .first
         )
 
+    @classmethod
+    def get_all_events_of_type(cls, kind: str) -> EventLog:
+        event_dao = current_domain.get_dao(EventLog)
+        return (
+            event_dao.query.filter(kind=kind.__name__)
+            .order_by("-timestamp")
+            .all()
+            .items
+        )
+
     class Meta:
         aggregate_cls = EventLog
