@@ -41,7 +41,7 @@ from sqlalchemy.ext import declarative as sa_dec
 from sqlalchemy.ext.declarative import as_declarative, declared_attr
 from sqlalchemy.types import CHAR, TypeDecorator
 
-logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
 logger = logging.getLogger("protean.repository")
 
 
@@ -134,6 +134,8 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                 # Map the field if not in attributes
                 if attribute_name not in cls.__dict__:
                     field_cls = type(field_obj)
+                    type_args = []
+                    type_kwargs = {}
 
                     # Get the SA type
                     sa_type_cls = field_mapping.get(field_cls)
@@ -144,6 +146,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                             sa_type_cls = field_mapping.get(JSON)
                         if field_cls == List:
                             sa_type_cls = field_mapping.get(Array)
+                            type_args.append(field_mapping.get(field_obj.content_type))
 
                     # Default to the text type if no mapping is found
                     if not sa_type_cls:
@@ -157,12 +160,8 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                     }
 
                     # Update the arguments based on the field type
-                    type_args = []
-                    type_kwargs = {}
                     if issubclass(field_cls, String):
                         type_kwargs["length"] = field_obj.max_length
-                    if issubclass(field_cls, (Array, List)):
-                        type_args.append(field_mapping.get(field_obj.content_type))
 
                     # Update the attributes of the class
                     setattr(
