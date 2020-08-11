@@ -133,20 +133,17 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                 if attribute_name not in cls.__dict__:
                     field_cls = type(field_obj)
 
-                    # FIXME Enable References
-                    # if field_cls == Reference:
-                    #     related_ent = current_domain.get_entity(field_obj.to_cls.__name__)
-                    #     if field_obj.via:
-                    #         related_attr = getattr(
-                    #             related_ent, field_obj.via)
-                    #     else:
-                    #         related_attr = related_ent.meta_.id_field
-                    #     field_name = field_obj.get_attribute_name()
-                    #     field_cls = type(related_attr)
-
-                    # Get the SA type and default to the text type if no
-                    # mapping is found
+                    # Get the SA type
                     sa_type_cls = field_mapping.get(field_cls)
+
+                    # Upgrade to Postgresql specific Data Types
+                    if cls.metadata.bind.dialect.name == "postgresql":
+                        if field_cls == Dict:
+                            sa_type_cls = field_mapping.get(JSON)
+                        if field_cls == List:
+                            sa_type_cls = field_mapping.get(Array)
+
+                    # Default to the text type if no mapping is found
                     if not sa_type_cls:
                         sa_type_cls = sa_types.String
 
@@ -162,7 +159,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                     type_kwargs = {}
                     if issubclass(field_cls, String):
                         type_kwargs["length"] = field_obj.max_length
-                    if issubclass(field_cls, Array):
+                    if issubclass(field_cls, (Array, List)):
                         type_args.append(field_mapping.get(field_obj.content_type))
 
                     # Update the attributes of the class

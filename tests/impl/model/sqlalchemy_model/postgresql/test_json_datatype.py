@@ -1,24 +1,36 @@
 # Standard Library Imports
 from datetime import datetime
+from typing import Dict
+
+from sqlalchemy import types as sa_types
 
 # Protean
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import JSON, DateTime, String
+from protean.core.field.basic import Dict, DateTime, String
 
 
 class Event(BaseAggregate):
     name = String(max_length=255)
     created_at = DateTime(default=datetime.utcnow())
-    payload = JSON()
+    payload = Dict()
 
 
 @pytest.mark.postgresql
-def test_basic_array_data_type_support(test_domain):
+def test_json_data_type_association(test_domain):
     test_domain.register(Event)
 
     model_cls = test_domain.get_model(Event)
+    type(model_cls.payload.property.columns[0].type) == sa_types.JSON
+
+
+@pytest.mark.postgresql
+def test_basic_array_data_type_operations(test_domain):
+    test_domain.register(Event)
+
+    model_cls = test_domain.get_model(Event)
+
     event = Event(
         name="UserCreated", payload={"email": "john.doe@gmail.com", "password": "*****"}
     )
