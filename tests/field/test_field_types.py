@@ -221,9 +221,9 @@ class TestListField:
 
     def test_type_validation(self):
         """ Test type checking validation for the Field"""
+        numbers = List(content_type=Integer)
         with pytest.raises(ValidationError):
-            tags = Boolean()
-            tags._load("x")
+            numbers._load("x")
 
     def test_choice(self):
         """ Test choices validations for the list field """
