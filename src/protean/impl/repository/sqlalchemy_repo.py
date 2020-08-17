@@ -32,7 +32,7 @@ from protean.utils import Database, IdentityType
 from protean.utils.query import Q
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
 from sqlalchemy import types as sa_types
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSON
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext import declarative as sa_dec
@@ -142,9 +142,9 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                     # Upgrade to Postgresql specific Data Types
                     if cls.metadata.bind.dialect.name == "postgresql":
                         if field_cls == Dict and not field_obj.pickled:
-                            sa_type_cls = sa_types.JSON
+                            sa_type_cls = JSON
                         if field_cls == List and not field_obj.pickled:
-                            sa_type_cls = sa_types.ARRAY
+                            sa_type_cls = ARRAY
 
                     # Default to the text type if no mapping is found
                     if not sa_type_cls:
@@ -669,7 +669,6 @@ operators = {
     "lt": "__lt__",
     "lte": "__le__",
     "in": "in_",
-    "overlap": "overlap",
     "any": "any",
 }
 
@@ -784,24 +783,7 @@ class In(DefaultLookup):
 
 
 @SAProvider.register_lookup
-class Overlap(DefaultLookup):
-    """In Query"""
-
-    lookup_name = "in"
-
-    def process_target(self):
-        """Ensure target is a list or tuple"""
-        assert isinstance(self.target, (list, tuple))
-        return super().process_target()
-
-
-@SAProvider.register_lookup
 class Any(DefaultLookup):
     """In Query"""
 
-    lookup_name = "in"
-
-    def process_target(self):
-        """Ensure target is a list or tuple"""
-        assert isinstance(self.target, (list, tuple))
-        return super().process_target()
+    lookup_name = "any"

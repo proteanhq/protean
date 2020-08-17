@@ -42,8 +42,10 @@ def setup_db():
         )
         from .test_array_datatype import ArrayUser, IntegerArrayUser
         from .test_json_datatype import Event
+        from .test_lookups import GenericPostgres
 
         domain.register(ArrayUser)
+        domain.register(GenericPostgres)
         domain.register(ComplexUser)
         domain.register(Event)
         domain.register(IntegerArrayUser)
@@ -54,6 +56,7 @@ def setup_db():
         domain.register_model(ProviderCustomModel, entity_cls=Provider)
 
         domain.get_dao(ArrayUser)
+        domain.get_dao(GenericPostgres)
         domain.get_dao(ComplexUser)
         domain.get_dao(Event)
         domain.get_dao(IntegerArrayUser)
