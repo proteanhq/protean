@@ -23,7 +23,7 @@ class TestLookups:
         lookup = Any("ids", identifier, model_cls)
         expr = lookup.as_expression()
 
-        assert str(expr.compile()) == ":param_1 = ANY (public.any_user.ids)"
+        assert str(expr.compile()) == ":param_1 = ANY (public.generic_postgres.ids)"
         assert expr.compile().params == {"param_1": "foobar"}
 
     def test_in_lookup(self, test_domain):
@@ -34,7 +34,8 @@ class TestLookups:
         expr = lookup.as_expression()
 
         assert (
-            str(expr.compile()) == "public.any_user.role IN (:role_1, :role_2, :role_3)"
+            str(expr.compile())
+            == "public.generic_postgres.role IN (:role_1, :role_2, :role_3)"
         )
         assert expr.compile().params == {
             "role_1": "foo",
@@ -50,7 +51,8 @@ class TestLookups:
         expr = lookup.as_expression()
 
         assert (
-            str(expr.compile()) == "public.any_user.role IN (:role_1, :role_2, :role_3)"
+            str(expr.compile())
+            == "public.generic_postgres.role IN (:role_1, :role_2, :role_3)"
         )
         assert expr.compile().params == {
             "role_1": "foo",
