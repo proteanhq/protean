@@ -10,8 +10,6 @@ from typing import Any
 from protean.core.exceptions import ConfigurationError, ObjectNotFoundError
 from protean.core.field.association import Reference
 from protean.core.field.basic import (
-    JSON,
-    Array,
     Auto,
     Boolean,
     Date,
@@ -111,7 +109,6 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
         # Update the class attrs with the entity attributes
 
         field_mapping = {
-            Array: sa_types.ARRAY,
             Auto: _get_identity_type(),
             Boolean: sa_types.Boolean,
             Date: sa_types.Date,
@@ -120,7 +117,6 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
             Float: sa_types.Float,
             Identifier: _get_identity_type(),
             Integer: sa_types.Integer,
-            JSON: sa_types.JSON,
             List: sa_types.PickleType,
             String: sa_types.String,
             Text: sa_types.Text,
@@ -140,13 +136,15 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                     # Get the SA type
                     sa_type_cls = field_mapping.get(field_cls)
 
+                    if field_cls == List:
+                        type_args.append(field_mapping.get(field_obj.content_type))
+
                     # Upgrade to Postgresql specific Data Types
                     if cls.metadata.bind.dialect.name == "postgresql":
-                        if field_cls == Dict:
-                            sa_type_cls = field_mapping.get(JSON)
-                        if field_cls == List:
-                            sa_type_cls = field_mapping.get(Array)
-                            type_args.append(field_mapping.get(field_obj.content_type))
+                        if field_cls == Dict and not field_obj.pickled:
+                            sa_type_cls = sa_types.JSON
+                        if field_cls == List and not field_obj.pickled:
+                            sa_type_cls = sa_types.ARRAY
 
                     # Default to the text type if no mapping is found
                     if not sa_type_cls:

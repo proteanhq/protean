@@ -1,7 +1,7 @@
 import pytest
 from protean.core.entity import BaseEntity
 from protean.core.exceptions import ValidationError
-from protean.core.field.basic import Array, Boolean, Dict, Integer, JSON, List
+from protean.core.field.basic import Boolean, Dict, Integer, List
 
 
 class TestFields:
@@ -9,15 +9,6 @@ class TestFields:
     def test_list_default(self):
         class Lottery(BaseEntity):
             numbers = List(content_type=Integer)
-
-        lottery = Lottery()
-        assert lottery.numbers is not None
-        assert lottery.numbers == []
-
-    @pytest.mark.xfail  # To be addressed as part of https://github.com/proteanhq/protean/issues/335
-    def test_array_default(self):
-        class Lottery(BaseEntity):
-            numbers = Array(content_type=Integer)
 
         lottery = Lottery()
         assert lottery.numbers is not None
@@ -37,15 +28,6 @@ class TestFields:
     def test_dict_default(self):
         class Lottery(BaseEntity):
             numbers = Dict()
-
-        lottery = Lottery()
-        assert lottery.numbers is not None
-        assert lottery.numbers == {}
-
-    @pytest.mark.xfail  # To be addressed as part of https://github.com/proteanhq/protean/issues/335
-    def test_json_default(self):
-        class Lottery(BaseEntity):
-            numbers = JSON()
 
         lottery = Lottery()
         assert lottery.numbers is not None

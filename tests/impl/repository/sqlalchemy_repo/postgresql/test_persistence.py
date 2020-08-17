@@ -5,13 +5,13 @@ from datetime import datetime
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import JSON, DateTime, String
+from protean.core.field.basic import Dict, DateTime, String
 
 
 class Event(BaseAggregate):
     name = String(max_length=255)
     created_at = DateTime(default=datetime.utcnow())
-    payload = JSON()
+    payload = Dict()
 
 
 @pytest.mark.postgresql
