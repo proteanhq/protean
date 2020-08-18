@@ -1,8 +1,8 @@
-# Protean
 # Standard Library Imports
 from datetime import datetime, timedelta
 from uuid import uuid4
 
+# Protean
 import pytest
 
 from elasticsearch import Elasticsearch

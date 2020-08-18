@@ -8,6 +8,7 @@ from redis import Redis
 
 
 def initialize_domain():
+    # Protean
     from protean.domain import Domain
 
     domain = Domain("RQ Tests")

@@ -8,6 +8,7 @@ from protean.impl.repository.dict_repo import Exact
 class TestLookup:
     """This class holds tests for Lookup Class"""
 
+    # Protean
     from protean.core.repository.lookup import BaseLookup
     from protean.impl.repository.dict_repo import DictProvider
 
@@ -25,6 +26,7 @@ class TestLookup:
         assert lookup.as_expression() == "src <<<>>> trg"
 
     def test_registration_of_a_lookup_to_an_adapter(self):
+        # Protean
         from protean.impl.repository.dict_repo import DictProvider
 
         assert DictProvider.get_lookups().get("sample") == self.SampleLookup

@@ -42,6 +42,7 @@ class TestDomainRegistration:
     def test_that_an_improperly_subclassed_element_cannot_be_registered(
         self, test_domain
     ):
+        # Protean
         from protean.core.field.basic import String
 
         class Foo:
@@ -59,7 +60,10 @@ class TestDomainAnnotations:
     #   domain decorators are present in their respective test folders.
 
     def test_that_only_recognized_element_types_can_be_registered(self, test_domain):
+        # Standard Library Imports
         from enum import Enum
+
+        # Protean
         from protean.core.field.basic import String
 
         class DummyElement(Enum):

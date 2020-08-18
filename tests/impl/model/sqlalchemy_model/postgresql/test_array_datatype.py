@@ -1,8 +1,6 @@
 # Standard Library Imports
 from datetime import datetime
 
-from sqlalchemy import types as sa_types
-
 # Protean
 import pytest
 
@@ -19,6 +17,7 @@ from protean.core.field.basic import (
     List,
     String,
 )
+from sqlalchemy import types as sa_types
 
 
 class ArrayUser(BaseAggregate):

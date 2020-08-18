@@ -16,8 +16,8 @@ from protean.core.field.basic import (
     DateTime,
     Dict,
     Float,
-    Integer,
     Identifier,
+    Integer,
     List,
     String,
     Text,
@@ -32,7 +32,7 @@ from protean.utils import Database, IdentityType
 from protean.utils.query import Q
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
 from sqlalchemy import types as sa_types
-from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSON
+from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext import declarative as sa_dec
@@ -601,6 +601,7 @@ class SAProvider(BaseProvider):
                 if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
             }
 
+            # Protean
             from protean.core.repository.model import ModelMeta
 
             meta_ = ModelMeta()
@@ -625,6 +626,7 @@ class SAProvider(BaseProvider):
         if entity_cls.meta_.schema_name in self._model_classes:
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
+            # Protean
             from protean.core.repository.model import ModelMeta
 
             meta_ = ModelMeta()

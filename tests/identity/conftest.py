@@ -7,6 +7,7 @@ import pytest
 
 @pytest.fixture
 def test_domain_with_string_identity():
+    # Protean
     from protean.domain import Domain
 
     domain = Domain("Test")
@@ -24,6 +25,7 @@ def test_domain_with_string_identity():
 
 @pytest.fixture
 def test_domain_with_int_identity():
+    # Protean
     from protean.domain import Domain
 
     domain = Domain("Test")
@@ -41,6 +43,7 @@ def test_domain_with_int_identity():
 
 @pytest.fixture
 def test_domain_with_uuid_identity():
+    # Protean
     from protean.domain import Domain
 
     domain = Domain("Test")

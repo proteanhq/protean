@@ -30,6 +30,7 @@ def derive_tenant(url):
 
     """
 
+    # Standard Library Imports
     from urllib.parse import urlparse
 
     host = urlparse(url).hostname

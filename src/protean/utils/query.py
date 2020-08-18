@@ -33,6 +33,7 @@ class RegisterLookupMixin:
 
     def get_lookup(self, lookup_name):
         """Fetch Lookup by name"""
+        # Protean
         from protean.core.repository.lookup import BaseLookup
 
         lookup = self._get_lookup(lookup_name)

@@ -12,7 +12,7 @@ import re
 from glob import glob
 from os.path import basename, dirname, join, splitext
 
-# ThirdParty Library Imports
+# Protean
 from setuptools import find_packages, setup
 
 

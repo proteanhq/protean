@@ -4,6 +4,7 @@ from protean.utils import fully_qualified_name
 
 class TestVORegistration:
     def test_auto_register_value_object_with_annotation(self, test_domain):
+        # Protean
         from protean.core.field.basic import String
 
         @test_domain.aggregate

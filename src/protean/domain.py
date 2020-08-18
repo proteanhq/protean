@@ -117,6 +117,7 @@ class Domain(_PackageBoundObject):
     :param domain_name: the name of the domain
     """
 
+    # Protean
     from protean.core.aggregate import BaseAggregate
     from protean.core.application_service import BaseApplicationService
     from protean.core.broker.subscriber import BaseSubscriber
@@ -126,8 +127,8 @@ class Domain(_PackageBoundObject):
     from protean.core.domain_service import BaseDomainService
     from protean.core.email import BaseEmail
     from protean.core.entity import BaseEntity
-    from protean.core.repository.model import BaseModel
     from protean.core.repository.base import BaseRepository
+    from protean.core.repository.model import BaseModel
     from protean.core.serializer import BaseSerializer
     from protean.core.value_object import BaseValueObject
     from protean.utils import IdentityStrategy, IdentityType
@@ -264,6 +265,7 @@ class Domain(_PackageBoundObject):
         This method bubbles up circular import issues, if present, in the domain code.
         """
         if self.config["AUTOLOAD_DOMAIN"] is True:
+            # Standard Library Imports
             import importlib.util
             import inspect
             import os
@@ -450,26 +452,32 @@ class Domain(_PackageBoundObject):
         #  ```
 
         if element_type == DomainObjects.VALUE_OBJECT:
+            # Protean
             from protean.core.value_object import ValueObjectFactory
 
             new_cls = ValueObjectFactory.prep_class(element_cls, **kwargs)
         elif element_type == DomainObjects.REPOSITORY:
+            # Protean
             from protean.core.repository.base import RepositoryFactory
 
             new_cls = RepositoryFactory.prep_class(element_cls, **kwargs)
         elif element_type == DomainObjects.AGGREGATE:
+            # Protean
             from protean.core.aggregate import AggregateFactory
 
             new_cls = AggregateFactory.prep_class(element_cls, **kwargs)
         elif element_type == DomainObjects.ENTITY:
+            # Protean
             from protean.core.entity import EntityFactory
 
             new_cls = EntityFactory.prep_class(element_cls, **kwargs)
         elif element_type == DomainObjects.SUBSCRIBER:
+            # Protean
             from protean.core.broker.subscriber import SubscriberFactory
 
             new_cls = SubscriberFactory.prep_class(element_cls, **kwargs)
         elif element_type == DomainObjects.DOMAIN_EVENT:
+            # Protean
             from protean.core.domain_event import DomainEventFactory
 
             new_cls = DomainEventFactory.prep_class(element_cls, **kwargs)
@@ -490,6 +498,7 @@ class Domain(_PackageBoundObject):
                     #   from `BaseSerializer`, but once derived, the base hierarchy only reflects
                     #   `marshmallow.Schema` (This is a metaclass, so it disrupts hierarchy).
                     if element_type == DomainObjects.SERIALIZER:
+                        # Protean
                         from protean.core.serializer import BaseSerializer
 
                         base_cls = BaseSerializer
@@ -512,6 +521,7 @@ class Domain(_PackageBoundObject):
                 new_cls
             ):
                 # Associate aggregate/entity class with model if `entity_cls` was supplied as an explicit parameter
+                # Protean
                 from protean.core.repository.model import ModelMeta
 
                 if hasattr(new_cls, "Meta"):
@@ -565,6 +575,7 @@ class Domain(_PackageBoundObject):
 
     def _validate_model_class(self, element_cls):
         # Import here to avoid cyclic dependency
+        # Protean
         from protean.core.repository.model import BaseModel
 
         if not issubclass(element_cls, BaseModel):
@@ -576,6 +587,7 @@ class Domain(_PackageBoundObject):
 
     def _validate_serializer_class(self, element_cls):
         # Import here to avoid cyclic dependency
+        # Protean
         from protean.core.serializer import BaseSerializer
 
         if not issubclass(element_cls, BaseSerializer):
@@ -587,6 +599,7 @@ class Domain(_PackageBoundObject):
 
     def _validate_command_handler_class(self, element_cls):
         # Import here to avoid cyclic dependency
+        # Protean
         from protean.core.command_handler import BaseCommandHandler
 
         if not issubclass(element_cls, BaseCommandHandler):
@@ -598,6 +611,7 @@ class Domain(_PackageBoundObject):
 
     def _validate_email_class(self, element_cls):
         # Import here to avoid cyclic dependency
+        # Protean
         from protean.core.email import BaseEmail
 
         if not issubclass(element_cls, BaseEmail):
@@ -935,6 +949,7 @@ class Domain(_PackageBoundObject):
 
     def repository_for(self, aggregate_cls):
         """Retrieve a Repository registered for the Aggregate"""
+        # Protean
         from protean.core.aggregate import BaseAggregate
 
         if not issubclass(aggregate_cls, BaseAggregate):
@@ -951,6 +966,7 @@ class Domain(_PackageBoundObject):
         except StopIteration:
             logger.debug(f"Constructing a Repository for {aggregate_cls}...")
 
+            # Protean
             from protean.core.repository.base import BaseRepository
 
             new_class = type(
@@ -1069,6 +1085,7 @@ class Domain(_PackageBoundObject):
         #   There is a pseudo-check to ensure `EventLog` is registered in the domain, to ensure that apps
         #   know about this functionality and opt for it explicitly.
         #   # FIXME Check if Event Log is enabled in config
+        # Protean
         from protean.infra.event_log import EventLog
 
         if (

@@ -1,4 +1,6 @@
+# Protean
 import pytest
+
 from protean.core.entity import BaseEntity
 from protean.core.exceptions import ValidationError
 from protean.core.field.basic import Boolean, Dict, Integer, List
@@ -20,7 +22,7 @@ class TestFields:
             numbers = List(content_type=Integer, required=True)
 
         with pytest.raises(ValidationError) as exc:
-            lottery = Lottery(jackpot=True)
+            Lottery(jackpot=True)
 
         assert exc.value.messages == {"numbers": ["is required"]}
 
@@ -39,6 +41,6 @@ class TestFields:
             numbers = Dict(required=True)
 
         with pytest.raises(ValidationError) as exc:
-            lottery = Lottery(jackpot=True)
+            Lottery(jackpot=True)
 
         assert exc.value.messages == {"numbers": ["is required"]}

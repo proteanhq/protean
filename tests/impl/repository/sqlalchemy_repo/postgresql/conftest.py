@@ -6,6 +6,7 @@ import pytest
 
 
 def initialize_domain():
+    # Protean
     from protean.domain import Domain
 
     domain = Domain("SQLAlchemy Test - Postgresql")
@@ -32,8 +33,8 @@ def setup_db():
     domain = initialize_domain()
     with domain.domain_context():
         # Create all associated tables
-        from .elements import Person, Alien, User, ComplexUser
-
+        # Local/Relative Imports
+        from .elements import Alien, ComplexUser, Person, User
         from .test_persistence import Event
 
         domain.register(Alien)

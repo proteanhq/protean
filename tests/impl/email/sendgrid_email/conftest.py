@@ -6,6 +6,7 @@ import pytest
 
 
 def initialize_domain():
+    # Protean
     from protean.domain import Domain
 
     domain = Domain("SQLAlchemy Test - SQLite")

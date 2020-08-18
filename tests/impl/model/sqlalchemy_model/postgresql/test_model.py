@@ -38,6 +38,7 @@ class TestModel:
         assert person_copy is not None
 
     def test_dynamically_constructed_model_attributes(self, test_domain):
+        # Protean
         from sqlalchemy import String
 
         model_cls = test_domain.get_model(Person)
@@ -98,6 +99,7 @@ class TestCustomModel:
         assert model_cls.__name__ == "ProviderCustomModel"
 
     def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
+        # Protean
         from sqlalchemy import Column, Text
 
         test_domain.register(Receiver)

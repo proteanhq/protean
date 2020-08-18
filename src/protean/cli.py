@@ -29,8 +29,11 @@ def main(ctx):
 
 @main.command()
 def test():
-    import pytest
+    # Standard Library Imports
     import sys
+
+    # Protean
+    import pytest
 
     errno = pytest.main(["-vv", "--cache-clear", "--flake8"])
 
@@ -39,6 +42,7 @@ def test():
 
 @main.command()
 def new():
+    # Protean
     from cookiecutter.main import cookiecutter
 
     # Create project from the cookiecutter-protean.git repo template

@@ -1,7 +1,7 @@
-# Protean
 # Standard Library Imports
 import logging
 
+# Protean
 from protean.core.exceptions import IncorrectUsageError
 from protean.domain import DomainObjects
 from protean.utils.container import BaseContainer

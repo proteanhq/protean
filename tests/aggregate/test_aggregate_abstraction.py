@@ -32,6 +32,7 @@ class TestAggregateAbstraction:
         assert concrete_role.name == "Titan"
 
     def test_that_abstract_entities_can_be_created_with_annotations(self, test_domain):
+        # Protean
         from protean.core.aggregate import BaseAggregate
         from protean.core.field.basic import String
 

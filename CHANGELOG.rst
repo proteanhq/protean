@@ -1,6 +1,12 @@
 Release History
 ===============
 
+0.5.3 (2020-08-17)
+------------------
+
+* Allow Postgres Models to choose b/w Pickle or Custom Types for Array and JSON
+* Add support for Any operator/lookup for Postgres
+
 0.5.2 (2020-08-06)
 ------------------
 

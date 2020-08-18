@@ -8,6 +8,7 @@ from elasticsearch_dsl import Index
 
 
 def initialize_domain():
+    # Protean
     from protean.domain import Domain
 
     domain = Domain("Elasticsearch Tests")
@@ -35,7 +36,8 @@ def setup_db():
 
     with domain.domain_context():
         # Create all indexes
-        from .elements import Person, Alien, User, ComplexUser
+        # Local/Relative Imports
+        from .elements import Alien, ComplexUser, Person, User
 
         domain.register(Person)
         domain.register(Alien)

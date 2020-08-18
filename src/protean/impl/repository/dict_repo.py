@@ -151,6 +151,7 @@ class DictProvider(BaseProvider):
                 if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
             }
 
+            # Protean
             from protean.core.repository.model import ModelMeta
 
             meta_ = ModelMeta()
@@ -175,6 +176,7 @@ class DictProvider(BaseProvider):
         if entity_cls.meta_.schema_name in self._model_classes:
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
+            # Protean
             from protean.core.repository.model import ModelMeta
 
             meta_ = ModelMeta()
