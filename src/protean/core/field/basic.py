@@ -143,7 +143,7 @@ class List(Field):
         "invalid_content": "Invalid value",
     }
 
-    def __init__(self, content_type=String, **kwargs):
+    def __init__(self, content_type=String, pickled=False, **kwargs):
         if content_type not in [
             String,
             Integer,
@@ -155,54 +155,7 @@ class List(Field):
         ]:
             raise ValidationError({"content_type": ["Content type not supported"]})
         self.content_type = content_type
-
-        super().__init__(**kwargs)
-
-    def _cast_to_type(self, value):
-        """ Raise errors if the value is not a list, or
-        the items in the list are not of the right data type.
-        """
-        if not isinstance(value, list):
-            self.fail("invalid", value=value)
-
-        # Try to cast value into the destination type.
-        #   Throw error if the underlying type does not support value.
-        new_value = []
-        try:
-            for item in value:
-                new_value.append(self.content_type()._load(item))
-        except ValidationError:
-            self.fail("invalid_content", value=value)
-
-        if new_value != value:
-            self.fail("invalid_content", value=value)
-
-        return value
-
-
-class Array(Field):
-    """Concrete field implementation for the Array type.
-
-    This field is supported only for Postgresql database.
-    """
-
-    default_error_messages = {
-        "invalid": '"{value}" value must be of list type.',
-        "invalid_content": "Invalid value",
-    }
-
-    def __init__(self, content_type=String, **kwargs):
-        if content_type not in [
-            String,
-            Integer,
-            Identifier,
-            Float,
-            Date,
-            DateTime,
-            Boolean,
-        ]:
-            raise ValidationError({"content_type": ["Content type not supported"]})
-        self.content_type = content_type
+        self.pickled = pickled
 
         super().__init__(**kwargs)
 
@@ -250,6 +203,11 @@ class Dict(Field):
     default_error_messages = {
         "invalid": '"{value}" value must be of dict type.',
     }
+
+    def __init__(self, content_type=String, pickled=False, **kwargs):
+        self.pickled = pickled
+
+        super().__init__(**kwargs)
 
     def _cast_to_type(self, value):
         """ Raise error if the value is not a dict """
