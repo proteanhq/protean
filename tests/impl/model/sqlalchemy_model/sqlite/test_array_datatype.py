@@ -16,25 +16,21 @@ from protean.core.field.basic import (
     Integer,
     List,
     String,
-    Text,
 )
 from sqlalchemy import types as sa_types
-
-from protean.globals import current_domain
 
 
 class ArrayUser(BaseAggregate):
     email = String(max_length=255, required=True, unique=True)
-    roles = List(content_type=Text, pickled=False)  # Defaulted to String Content Type
-    integers = List(content_type=Integer, pickled=False)
+    roles = List()  # Defaulted to String Content Type
 
 
 class IntegerArrayUser(BaseAggregate):
     email = String(max_length=255, required=True, unique=True)
-    roles = List(content_type=Integer, pickled=False)
+    roles = List(content_type=Integer)
 
 
-@pytest.mark.postgresql
+@pytest.mark.sqlite
 def test_array_data_type_association(test_domain):
     test_domain.register(ArrayUser)
 
@@ -42,15 +38,13 @@ def test_array_data_type_association(test_domain):
     type(model_cls.roles.property.columns[0].type) == sa_types.ARRAY
 
 
-@pytest.mark.postgresql
+@pytest.mark.sqlite
 def test_basic_array_data_type_operations(test_domain):
     test_domain.register(ArrayUser)
 
     model_cls = test_domain.get_model(ArrayUser)
 
-    user = ArrayUser(
-        email="john.doe@gmail.com", roles=["ADMIN", "USER"], integers=[9, 10]
-    )
+    user = ArrayUser(email="john.doe@gmail.com", roles=["ADMIN", "USER"])
     user_model_obj = model_cls.from_entity(user)
 
     user_copy = model_cls.to_entity(user_model_obj)
@@ -58,44 +52,7 @@ def test_basic_array_data_type_operations(test_domain):
     assert user_copy.roles == ["ADMIN", "USER"]
 
 
-@pytest.mark.postgresql
-def test_array_any_query(test_domain):
-    test_domain.register(ArrayUser)
-
-    dao = current_domain.get_dao(ArrayUser)
-
-    dao.create(
-        email="john.doe.12345@gmail.com", roles=["JUDGE", "ADMIN"], integers=[9, 10]
-    )
-    dao.create(email="john.doe.67890@gmail.com", roles=["ADMIN"], integers=[11])
-
-    assert dao.find_by(roles__any="JUDGE").email == "john.doe.12345@gmail.com"
-
-
-@pytest.mark.postgresql
-def test_array_contains_query(test_domain):
-    test_domain.register(ArrayUser)
-
-    dao = current_domain.get_dao(ArrayUser)
-    dao.create(
-        email="john.doe.12345@gmail.com", roles=["JUDGE", "ADMIN"], integers=[9, 10]
-    )
-    dao.create(email="john.doe.67890@gmail.com", roles=["ADMIN"], integers=[11])
-
-    user = dao.find_by(email="john.doe.12345@gmail.com")
-    assert user is not None
-    assert user.roles == ["JUDGE", "ADMIN"]
-    assert user.integers == [9, 10]
-
-    assert dao.find_by(roles__any="JUDGE").email == "john.doe.12345@gmail.com"
-
-    assert dao.find_by(roles__contains=["JUDGE"]).email == "john.doe.12345@gmail.com"
-
-    assert dao.find_by(integers__contains=[9]).email == "john.doe.12345@gmail.com"
-    assert dao.find_by(integers__contains=[11]).email == "john.doe.67890@gmail.com"
-
-
-@pytest.mark.postgresql
+@pytest.mark.sqlite
 def test_array_content_type_validation(test_domain):
     test_domain.register(ArrayUser)
     test_domain.register(IntegerArrayUser)
@@ -128,7 +85,7 @@ def test_array_content_type_validation(test_domain):
         assert exception.value.messages == {"roles": ["Invalid value"]}
 
 
-@pytest.mark.postgresql
+@pytest.mark.sqlite
 def test_that_only_specific_primitive_types_are_allowed_as_content_types(test_domain):
     List(content_type=String)
     List(content_type=Identifier)

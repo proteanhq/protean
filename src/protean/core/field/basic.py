@@ -143,15 +143,16 @@ class List(Field):
         "invalid_content": "Invalid value",
     }
 
-    def __init__(self, content_type=String, pickled=False, **kwargs):
+    def __init__(self, content_type=String, pickled=True, **kwargs):
         if content_type not in [
-            String,
-            Integer,
-            Identifier,
-            Float,
+            Boolean,
             Date,
             DateTime,
-            Boolean,
+            Float,
+            Identifier,
+            Integer,
+            String,
+            Text,
         ]:
             raise ValidationError({"content_type": ["Content type not supported"]})
         self.content_type = content_type
@@ -204,7 +205,7 @@ class Dict(Field):
         "invalid": '"{value}" value must be of dict type.',
     }
 
-    def __init__(self, content_type=String, pickled=False, **kwargs):
+    def __init__(self, content_type=String, pickled=True, **kwargs):
         self.pickled = pickled
 
         super().__init__(**kwargs)
