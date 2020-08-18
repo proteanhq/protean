@@ -142,7 +142,9 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                         if field_cls == Dict and not field_obj.pickled:
                             sa_type_cls = JSON
 
-                        if field_cls == List:
+                        if field_cls == List and not field_obj.pickled:
+                            sa_type_cls = ARRAY
+
                             # Associate Content Type
                             if field_obj.content_type:
                                 type_args.append(
@@ -150,10 +152,6 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                                 )
                             else:
                                 type_args.append(sa_types.Text)
-
-                            # Fixate on Postgres ARRAY type
-                            if not field_obj.pickled:
-                                sa_type_cls = ARRAY
 
                     # Default to the text type if no mapping is found
                     if not sa_type_cls:

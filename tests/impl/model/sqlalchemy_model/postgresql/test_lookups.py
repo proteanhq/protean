@@ -7,7 +7,7 @@ from protean.impl.repository.sqlalchemy_repo import Any, Contains, In
 
 
 class GenericPostgres(BaseAggregate):
-    ids = List(pickled=False)
+    ids = List()
     role = String()
 
 

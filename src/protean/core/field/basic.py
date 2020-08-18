@@ -143,7 +143,7 @@ class List(Field):
         "invalid_content": "Invalid value",
     }
 
-    def __init__(self, content_type=String, pickled=True, **kwargs):
+    def __init__(self, content_type=Text, pickled=False, **kwargs):
         if content_type not in [
             Boolean,
             Date,
@@ -205,7 +205,7 @@ class Dict(Field):
         "invalid": '"{value}" value must be of dict type.',
     }
 
-    def __init__(self, content_type=String, pickled=True, **kwargs):
+    def __init__(self, pickled=False, **kwargs):
         self.pickled = pickled
 
         super().__init__(**kwargs)

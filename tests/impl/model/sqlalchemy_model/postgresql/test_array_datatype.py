@@ -25,13 +25,13 @@ from protean.globals import current_domain
 
 class ArrayUser(BaseAggregate):
     email = String(max_length=255, required=True, unique=True)
-    roles = List(content_type=Text, pickled=False)  # Defaulted to String Content Type
-    integers = List(content_type=Integer, pickled=False)
+    roles = List()  # Defaulted to Text Content Type
+    integers = List(content_type=Integer)
 
 
 class IntegerArrayUser(BaseAggregate):
     email = String(max_length=255, required=True, unique=True)
-    roles = List(content_type=Integer, pickled=False)
+    roles = List(content_type=Integer)
 
 
 @pytest.mark.postgresql
