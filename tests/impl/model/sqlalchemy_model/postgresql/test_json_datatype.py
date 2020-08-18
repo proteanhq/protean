@@ -1,12 +1,11 @@
 # Standard Library Imports
 from datetime import datetime
-from typing import Dict
 
 # Protean
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import DateTime, String
+from protean.core.field.basic import Dict, DateTime, String
 from sqlalchemy import types as sa_types
 
 
