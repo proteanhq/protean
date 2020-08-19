@@ -679,6 +679,7 @@ operators = {
     "lte": "__le__",
     "in": "in_",
     "any": "any",
+    "overlap": "overlap",
 }
 
 
@@ -793,6 +794,13 @@ class In(DefaultLookup):
 
 @SAProvider.register_lookup
 class Any(DefaultLookup):
-    """In Query"""
+    """Any Query"""
 
     lookup_name = "any"
+
+
+@SAProvider.register_lookup
+class Overlap(DefaultLookup):
+    """Overlap Query"""
+
+    lookup_name = "overlap"

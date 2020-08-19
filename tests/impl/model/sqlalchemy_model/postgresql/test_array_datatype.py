@@ -82,17 +82,26 @@ def test_array_contains_query(test_domain):
     )
     dao.create(email="john.doe.67890@gmail.com", roles=["ADMIN"], integers=[11])
 
-    user = dao.find_by(email="john.doe.12345@gmail.com")
-    assert user is not None
-    assert user.roles == ["JUDGE", "ADMIN"]
-    assert user.integers == [9, 10]
-
-    assert dao.find_by(roles__any="JUDGE").email == "john.doe.12345@gmail.com"
-
     assert dao.find_by(roles__contains=["JUDGE"]).email == "john.doe.12345@gmail.com"
-
+    assert (
+        dao.find_by(roles__contains=["JUDGE", "ADMIN"]).email
+        == "john.doe.12345@gmail.com"
+    )
     assert dao.find_by(integers__contains=[9]).email == "john.doe.12345@gmail.com"
     assert dao.find_by(integers__contains=[11]).email == "john.doe.67890@gmail.com"
+
+
+@pytest.mark.postgresql
+def test_array_overlap_query(test_domain):
+    test_domain.register(ArrayUser)
+
+    dao = current_domain.get_dao(ArrayUser)
+    dao.create(
+        email="john.doe.12345@gmail.com", roles=["JUDGE", "ADMIN"], integers=[9, 10]
+    )
+    dao.create(email="john.doe.67890@gmail.com", roles=["ADMIN"], integers=[11])
+
+    assert len(dao.query.filter(roles__overlap=["JUDGE", "ADMIN"]).all().items) == 2
 
 
 @pytest.mark.postgresql

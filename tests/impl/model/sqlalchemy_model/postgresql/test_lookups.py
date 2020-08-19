@@ -3,7 +3,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import List, String
-from protean.impl.repository.sqlalchemy_repo import Any, Contains, In
+from protean.impl.repository.sqlalchemy_repo import Any, Contains, In, Overlap
 
 
 class GenericPostgres(BaseAggregate):
@@ -31,6 +31,16 @@ class TestLookups:
         expr = lookup.as_expression()
 
         assert str(expr.compile()) == "public.generic_postgres.ids @> :ids_1"
+        assert expr.compile().params == {"ids_1": ["foo", "bar"]}
+
+    def test_overlap_lookup_with_array(self, test_domain):
+        model_cls = test_domain.get_model(GenericPostgres)
+
+        identifier = ["foo", "bar"]
+        lookup = Overlap("ids", identifier, model_cls)
+        expr = lookup.as_expression()
+
+        assert str(expr.compile()) == "public.generic_postgres.ids && :ids_1"
         assert expr.compile().params == {"ids_1": ["foo", "bar"]}
 
     def test_in_lookup(self, test_domain):
