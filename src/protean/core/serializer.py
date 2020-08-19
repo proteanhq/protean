@@ -109,9 +109,7 @@ class _SerializerMetaclass(type):
                     fields.String()
                 )  # FIXME Accept type param in List field
             elif isinstance(field_obj, Dict):  # FIXME Accept type param in Dict field
-                schema_fields[field_name] = fields.Dict(
-                    keys=fields.Str(), values=fields.Boolean()
-                )
+                schema_fields[field_name] = fields.Dict(keys=fields.Str())
             elif isinstance(field_obj, Nested):
                 schema_fields[field_name] = fields.Nested(
                     field_obj.schema_name, many=field_obj.many
