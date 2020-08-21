@@ -16,7 +16,6 @@ from protean.core.field.basic import (
     Integer,
     List,
     String,
-    Text,
 )
 from sqlalchemy import types as sa_types
 

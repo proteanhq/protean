@@ -212,24 +212,10 @@ class Dict(Field):
 
     def _cast_to_type(self, value):
         """ Raise error if the value is not a dict """
-        if not isinstance(value, dict):
-            self.fail("invalid", value=value)
-        return value
 
-
-class JSON(Field):
-    """Concrete field implementation for the JSON type.
-
-    This field is supported only for Postgresql database.
-    """
-
-    default_error_messages = {
-        "invalid": '"{value}" value must be of dict type.',
-    }
-
-    def _cast_to_type(self, value):
-        """ Raise error if the value is not a dict """
-        if not isinstance(value, dict):
+        # Lists are allowed in JSON because Postgres supports them.
+        #   All other databases treat these columns as BLOB/Pickled Type.
+        if not isinstance(value, (dict, list)):
             self.fail("invalid", value=value)
         return value
 
