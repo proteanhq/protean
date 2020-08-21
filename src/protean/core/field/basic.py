@@ -212,7 +212,7 @@ class Dict(Field):
 
     def _cast_to_type(self, value):
         """ Raise error if the value is not a dict """
-        if not isinstance(value, dict):
+        if not isinstance(value, (dict, list)):
             self.fail("invalid", value=value)
         return value
 
@@ -229,7 +229,7 @@ class JSON(Field):
 
     def _cast_to_type(self, value):
         """ Raise error if the value is not a dict """
-        if not isinstance(value, dict):
+        if not isinstance(value, (dict, list)):
             self.fail("invalid", value=value)
         return value
 
