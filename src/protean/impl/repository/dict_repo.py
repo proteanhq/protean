@@ -256,6 +256,9 @@ class DictProvider(BaseProvider):
 class DictDAO(BaseDAO):
     """A repository for storing data in a dictionary """
 
+    def __repr__(self) -> str:
+        return f"DictDAO <{self.entity_cls.__name__}>"
+
     def _set_auto_fields(self, model_obj):
         """Set the values of the auto field using counter"""
         conn = self._get_session()

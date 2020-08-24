@@ -348,6 +348,9 @@ class BaseDAO(metaclass=ABCMeta):
         try:
             # Build the model object and create it
             if entity_obj.state_.is_persisted:
+                # Do unique checks
+                self._validate_unique(entity_obj, create=False)
+
                 model_obj = self._update(self.model_cls.from_entity(entity_obj))
             else:
                 # If this is a new entity, generate ID
@@ -360,6 +363,9 @@ class BaseDAO(metaclass=ABCMeta):
                             entity_obj.meta_.id_field.field_name,
                             self.entity_cls.generate_identity(),
                         )
+
+                # Perform unique checks. Raises validation errors if unique constraints are violated.
+                self._validate_unique(entity_obj)
 
                 model_obj = self._create(self.model_cls.from_entity(entity_obj))
 

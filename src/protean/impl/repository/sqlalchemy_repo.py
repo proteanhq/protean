@@ -219,6 +219,9 @@ class SqlalchemyModel(BaseModel):
 class SADAO(BaseDAO):
     """DAO implementation for Databases compliant with SQLAlchemy"""
 
+    def __repr__(self) -> str:
+        return f"SQLAlchemyDAO <{self.entity_cls.__name__}>"
+
     def _get_session(self):
         """Returns an active connection to the persistence store.
 

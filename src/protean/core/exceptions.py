@@ -15,6 +15,9 @@ class ProteanException(Exception):
         self.messages = messages
         super().__init__(**kwargs)
 
+    def __str__(self):
+        return f"{self.__class__.__name__}: {self.messages}"
+
 
 class ConfigurationError(Exception):
     """Improper Configuration encountered like:

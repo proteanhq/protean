@@ -129,6 +129,9 @@ class ESSession:
 
 
 class ElasticsearchDAO(BaseDAO):
+    def __repr__(self) -> str:
+        return f"ElasticsearchDAO <{self.entity_cls.__name__}>"
+
     def get(self, identifier: Any):
         """Retrieve a specific Record from the Repository by its `identifier`.
 
