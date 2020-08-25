@@ -15,32 +15,42 @@ Release v\ |version| (:ref:`Changelog <changelog>`)
 
 *The Pragmatic Framework for Ambitious Applications*
 
-Get started with :ref:`install` and then get your hands dirty with :ref:`quickstart` guide. The rest of the docs describe different aspects of Protean in detail.
+Get started with :ref:`install` and follow through with the :ref:`quickstart` guide. The rest of the docs deep-dive into different aspects of Protean.
 
 Overview
 --------
 
-**Protean** Framework helps you build applications that can scale and adapt to growing requirements without significant rework.
+**Protean Framework** helps you build applications that can scale and adapt to growing requirements without significant rework.
 
-At its core, Protean is more a programming model than a framework. It encourages a Domain-driven design (DDD) approach to building applications, while providing the tools necessary to express your domain succinctly and precisely. It also allows you to remain agnostic to the underlying technology, helping you delay decisions until the last responsible moment.
+At its core, Protean encourages a Domain-driven design (DDD) approach to building applications, while providing the tools necessary to express your domain succinctly and precisely. It also allows you to remain agnostic to the underlying technology by keeping implementation details out of view, helping you delay infrastructure decisions until the |last-responsible-moment|.
 
-Read the full philosophy in :ref:`foreword`.
+Read :ref:`foreword` and check out the full list of :ref:`key-features` to understand Protean's philosophy.
 
-Protean is an excellent fit for your project if you are:
+Protean is an excellent fit for:
 
-- Tackling greenfield projects in complex and uncharted domains
+- Greenfield projects in complex and uncharted domains, where experimentation and refactoring is a necessity
 - Porting complicated Legacy applications onto newer technology stacks
-- Creating products that need to adapt and evolve over a long period
+- Building long-term products that need to adapt and evolve over time
 
 Protean helps you develop faster and better, and cleaner code by:
 - Providing a toolkit to model the code as closely as possible after the domain
-- Allowing you to delay important decisions until the Last Responsible Moment (LRM)
+- Allowing you to delay important decisions until the Last Responsible Moment (LRM) and switch later easily if necessary
 - Aligning your development team with good practices that result in quality software
 - Helping you remain technology-agnostic with the help of a Plugin-based Architecture
 
 *Protean is free, open source, and always will be.*
 
+.. note:: It is assumed that you have some prior knowledge about **Domain-driven Design** and **Command Query Responsibility Segregation** architectural patterns.
+
+    If you do not have sufficient background in these topics, you should go through the following texts:
+
+    * |ddd-eric-evans|
+    * |implementing-ddd-vaughn-vernon|
+    * |ddd-distilled-vaughn-vernon|
+
 .. warning:: **Protean** is currently under active development. APIs and interfaces are to be expected to change drastically and newer releases will almost certainly be backward incompatible. If you are interested in using Protean for your project, you may want to wait for the announcement of first stable production-ready version. If you want to use the framework *right now*, drop us an `email <subhash.bhushan@gmail.com>`_.
+
+.. _key-features:
 
 Key Features
 ------------
@@ -67,12 +77,6 @@ Guides
 ------
 
 Protean guides contain a mixture of `Architecture Principles`, `Conventions`, `Practical Considerations`, `Protean Opinions/Choices` and `Sample code`. Wherever applicable, additional links to reference materials have been provided.
-
-These guides have been heavily influenced by the thoughts and works of DDD pioneers. Specifically, it references extensively to the following texts:
-
-* |ddd-eric-evans|
-* |implementing-ddd-vaughn-vernon|
-* |ddd-distilled-vaughn-vernon|
 
 *Guides are not a replacement to these original texts. It is recommended that you go through them to hone and complete your DDD knowledge.*
 
@@ -141,3 +145,7 @@ These guides have been heavily influenced by the thoughts and works of DDD pione
 .. |ddd-distilled-vaughn-vernon| raw:: html
 
     <a href="https://www.amazon.com/Domain-Driven-Design-Distilled-Vaughn-Vernon-ebook/dp/B01JJSGE5S" target="_blank">Domain-Driven Design Distilled - Vaughn Vernon</a>
+
+.. |last-responsible-moment| raw:: html
+
+    <a href="https://blog.codinghorror.com/the-last-responsible-moment/" target="_blank">Last Responsible Moment</a>
