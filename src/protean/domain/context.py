@@ -4,7 +4,7 @@ import logging
 import sys
 
 # Local/Relative Imports
-from .globals import _domain_context_stack
+from protean.globals import _domain_context_stack
 
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
