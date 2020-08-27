@@ -24,7 +24,7 @@ class TestApplicationServiceRegistration:
 
         assert (
             fully_qualified_name(DummyApplicationService)
-            in test_domain.application_services
+            in test_domain.registry.application_services
         )
 
     def test_that_application_service_can_be_registered_via_annotations(
@@ -37,5 +37,5 @@ class TestApplicationServiceRegistration:
 
         assert (
             fully_qualified_name(AnnotatedApplicationService)
-            in test_domain.application_services
+            in test_domain.registry.application_services
         )

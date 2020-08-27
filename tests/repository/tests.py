@@ -23,7 +23,9 @@ class TestRepositoryRegistration:
     def test_that_repository_can_be_registered_with_domain(self, test_domain):
         test_domain.register(PersonRepository)
 
-        assert fully_qualified_name(PersonRepository) in test_domain.repositories
+        assert (
+            fully_qualified_name(PersonRepository) in test_domain.registry.repositories
+        )
 
     def test_that_repository_can_be_registered_via_annotations(self, test_domain):
         @test_domain.repository
@@ -34,7 +36,10 @@ class TestRepositoryRegistration:
             class Meta:
                 aggregate_cls = Person
 
-        assert fully_qualified_name(AnnotatedRepository) in test_domain.repositories
+        assert (
+            fully_qualified_name(AnnotatedRepository)
+            in test_domain.registry.repositories
+        )
 
     def test_that_repository_can_be_registered_via_annotations_with_aggregate_cls_parameter(
         self, test_domain
@@ -44,7 +49,10 @@ class TestRepositoryRegistration:
             def special_method(self):
                 pass
 
-        assert fully_qualified_name(AnnotatedRepository) in test_domain.repositories
+        assert (
+            fully_qualified_name(AnnotatedRepository)
+            in test_domain.registry.repositories
+        )
 
     def test_that_repository_cannot_be_registered_via_annotations_without_aggregate_cls(
         self, test_domain

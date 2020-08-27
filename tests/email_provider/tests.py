@@ -24,7 +24,7 @@ class TestEmailRegistration:
     def test_that_email_can_be_registered_with_domain(self, test_domain):
         test_domain.register(WelcomeEmail)
 
-        assert fully_qualified_name(WelcomeEmail) in test_domain.emails
+        assert fully_qualified_name(WelcomeEmail) in test_domain.registry.emails
 
     def test_that_email_can_be_registered_via_annotations(self, test_domain):
         @test_domain.email
@@ -32,7 +32,7 @@ class TestEmailRegistration:
             def special_method(self):
                 pass
 
-        assert fully_qualified_name(AnnotatedEmail) in test_domain.emails
+        assert fully_qualified_name(AnnotatedEmail) in test_domain.registry.emails
 
 
 class TestEmailTriggering:

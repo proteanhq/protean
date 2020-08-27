@@ -315,58 +315,6 @@ class Domain(_PackageBoundObject):
     def registry(self):
         return self._domain_registry
 
-    @property
-    def aggregates(self):
-        return self._domain_registry._elements[DomainObjects.AGGREGATE.value]
-
-    @property
-    def application_services(self):
-        return self._domain_registry._elements[DomainObjects.APPLICATION_SERVICE.value]
-
-    @property
-    def commands(self):
-        return self._domain_registry._elements[DomainObjects.COMMAND.value]
-
-    @property
-    def command_handlers(self):
-        return self._domain_registry._elements[DomainObjects.COMMAND_HANDLER.value]
-
-    @property
-    def domain_events(self):
-        return self._domain_registry._elements[DomainObjects.DOMAIN_EVENT.value]
-
-    @property
-    def domain_services(self):
-        return self._domain_registry._elements[DomainObjects.DOMAIN_SERVICE.value]
-
-    @property
-    def emails(self):
-        return self._domain_registry._elements[DomainObjects.EMAIL.value]
-
-    @property
-    def models(self):
-        return self._domain_registry._elements[DomainObjects.MODEL.value]
-
-    @property
-    def entities(self):
-        return self._domain_registry._elements[DomainObjects.ENTITY.value]
-
-    @property
-    def repositories(self):
-        return self._domain_registry._elements[DomainObjects.REPOSITORY.value]
-
-    @property
-    def serializers(self):
-        return self._domain_registry._elements[DomainObjects.SERIALIZER.value]
-
-    @property
-    def subscribers(self):
-        return self._domain_registry._elements[DomainObjects.SUBSCRIBER.value]
-
-    @property
-    def value_objects(self):
-        return self._domain_registry._elements[DomainObjects.VALUE_OBJECT.value]
-
     def _register_element(self, element_type, element_cls, **kwargs):  # noqa: C901
         """Register class into the domain"""
         # Check if `element_cls` is already a subclass of the Element Type
@@ -889,7 +837,7 @@ class Domain(_PackageBoundObject):
         try:
             repository_record = next(
                 repository
-                for _, repository in self.repositories.items()
+                for _, repository in self.registry.repositories.items()
                 if repository.cls.meta_.aggregate_cls.__name__ == aggregate_cls.__name__
             )
         except StopIteration:
@@ -912,7 +860,7 @@ class Domain(_PackageBoundObject):
             # FIXME Avoid comparing classes / Fetch a Repository class directly by its aggregate class
             repository_record = next(
                 repository
-                for _, repository in self.repositories.items()
+                for _, repository in self.registry.repositories.items()
                 if repository.cls.meta_.aggregate_cls.__name__ == aggregate_cls.__name__
             )
 
@@ -953,7 +901,7 @@ class Domain(_PackageBoundObject):
         self._brokers = broker_objects
 
         # Initialize subscribers for Brokers
-        for _, subscriber_record in self.subscribers.items():
+        for _, subscriber_record in self.registry.subscribers.items():
             subscriber = subscriber_record.cls
             broker_name = subscriber.meta_.broker
 
@@ -967,7 +915,7 @@ class Domain(_PackageBoundObject):
             )
 
         # Initialize command handlers for Brokers
-        for _, command_handler_record in self.command_handlers.items():
+        for _, command_handler_record in self.registry.command_handlers.items():
             command_handler = command_handler_record.cls
             broker_name = command_handler.meta_.broker
 

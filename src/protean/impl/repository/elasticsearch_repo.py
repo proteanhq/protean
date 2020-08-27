@@ -464,7 +464,7 @@ class ESProvider(BaseProvider):
         """Utility method to reset data in DB between tests"""
         conn = self.get_connection()
 
-        for _, aggregate_record in current_domain.aggregates.items():
+        for _, aggregate_record in current_domain.registry.aggregates.items():
             provider = current_domain.get_provider(aggregate_record.cls.meta_.provider)
             if provider.conn_info["DATABASE"] == Database.ELASTICSEARCH.value:
                 conn.delete_by_query(

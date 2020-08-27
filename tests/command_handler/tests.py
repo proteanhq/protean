@@ -27,7 +27,7 @@ class TestCommandHandlerRegistration:
 
         assert (
             fully_qualified_name(AddNewPersonCommandHandler)
-            in test_domain.command_handlers
+            in test_domain.registry.command_handlers
         )
 
     def test_that_domain_event_can_be_registered_via_annotations(self, test_domain):
@@ -38,7 +38,7 @@ class TestCommandHandlerRegistration:
 
         assert (
             fully_qualified_name(AnnotatedCommandHandler)
-            in test_domain.command_handlers
+            in test_domain.registry.command_handlers
         )
 
 

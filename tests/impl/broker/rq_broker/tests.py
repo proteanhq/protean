@@ -45,7 +45,10 @@ class TestEventProcessing:
         current_domain.register(NotifySSOSubscriber)
 
     def test_that_subscriber_is_registered_with_redis_broker(self):
-        assert fully_qualified_name(NotifySSOSubscriber) in current_domain.subscribers
+        assert (
+            fully_qualified_name(NotifySSOSubscriber)
+            in current_domain.registry.subscribers
+        )
         assert isinstance(
             current_domain.get_broker(NotifySSOSubscriber.meta_.broker), RqBroker
         )

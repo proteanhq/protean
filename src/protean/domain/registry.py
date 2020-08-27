@@ -59,3 +59,55 @@ class _DomainRegistry:
         element_name = fully_qualified_name(element_cls)
 
         self._elements[element_cls.element_type.value].pop(element_name, None)
+
+    @property
+    def aggregates(self):
+        return self._elements[DomainObjects.AGGREGATE.value]
+
+    @property
+    def application_services(self):
+        return self._elements[DomainObjects.APPLICATION_SERVICE.value]
+
+    @property
+    def commands(self):
+        return self._elements[DomainObjects.COMMAND.value]
+
+    @property
+    def command_handlers(self):
+        return self._elements[DomainObjects.COMMAND_HANDLER.value]
+
+    @property
+    def domain_events(self):
+        return self._elements[DomainObjects.DOMAIN_EVENT.value]
+
+    @property
+    def domain_services(self):
+        return self._elements[DomainObjects.DOMAIN_SERVICE.value]
+
+    @property
+    def emails(self):
+        return self._elements[DomainObjects.EMAIL.value]
+
+    @property
+    def models(self):
+        return self._elements[DomainObjects.MODEL.value]
+
+    @property
+    def entities(self):
+        return self._elements[DomainObjects.ENTITY.value]
+
+    @property
+    def repositories(self):
+        return self._elements[DomainObjects.REPOSITORY.value]
+
+    @property
+    def serializers(self):
+        return self._elements[DomainObjects.SERIALIZER.value]
+
+    @property
+    def subscribers(self):
+        return self._elements[DomainObjects.SUBSCRIBER.value]
+
+    @property
+    def value_objects(self):
+        return self._elements[DomainObjects.VALUE_OBJECT.value]

@@ -47,7 +47,7 @@ def setup_db():
         provider = domain.get_provider("default")
         conn = provider.get_connection()
 
-        for _, aggregate_record in domain.aggregates.items():
+        for _, aggregate_record in domain.registry.aggregates.items():
             index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
             if not index.exists():
                 index.create()
@@ -55,7 +55,7 @@ def setup_db():
         yield
 
         # Drop all indexes at the end of test suite
-        for _, aggregate_record in domain.aggregates.items():
+        for _, aggregate_record in domain.registry.aggregates.items():
             index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
             if index.exists():
                 index.delete()

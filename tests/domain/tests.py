@@ -14,7 +14,7 @@ class TestDomainInitialization:
         domain = Domain(__name__)
         assert domain is not None
         assert domain.registry is not None
-        assert domain.aggregates == {}
+        assert domain.registry.aggregates == {}
 
 
 class TestDomainRegistration:
@@ -26,18 +26,18 @@ class TestDomainRegistration:
     def test_register_aggregate_with_domain(self, test_domain):
         test_domain.registry.register_element(UserAggregate)
 
-        assert test_domain.aggregates != {}
-        assert fully_qualified_name(UserAggregate) in test_domain.aggregates
+        assert test_domain.registry.aggregates != {}
+        assert fully_qualified_name(UserAggregate) in test_domain.registry.aggregates
 
     def test_register_entity_with_domain(self, test_domain):
         test_domain.registry.register_element(UserEntity)
 
-        assert fully_qualified_name(UserEntity) in test_domain.entities
+        assert fully_qualified_name(UserEntity) in test_domain.registry.entities
 
     def test_register_value_object_with_domain(self, test_domain):
         test_domain.registry.register_element(UserVO)
 
-        assert fully_qualified_name(UserVO) in test_domain.value_objects
+        assert fully_qualified_name(UserVO) in test_domain.registry.value_objects
 
     def test_that_an_improperly_subclassed_element_cannot_be_registered(
         self, test_domain

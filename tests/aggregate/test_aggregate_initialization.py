@@ -28,7 +28,7 @@ class TestAggregateStructure:
 
     def test_successful_aggregate_registration(self, test_domain):
         test_domain.register(Role)
-        assert fully_qualified_name(Role) in test_domain.aggregates
+        assert fully_qualified_name(Role) in test_domain.registry.aggregates
 
     def test_field_definitions_declared_in_aggregate(self):
         declared_fields_keys = list(

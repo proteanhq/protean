@@ -26,7 +26,7 @@ class TestDomainEventRegistration:
     def test_that_domain_event_can_be_registered_with_domain(self, test_domain):
         test_domain.register(PersonAdded)
 
-        assert fully_qualified_name(PersonAdded) in test_domain.domain_events
+        assert fully_qualified_name(PersonAdded) in test_domain.registry.domain_events
 
     def test_that_domain_event_can_be_registered_via_annotations(self, test_domain):
         @test_domain.domain_event(aggregate_cls=Person)
@@ -34,7 +34,10 @@ class TestDomainEventRegistration:
             def special_method(self):
                 pass
 
-        assert fully_qualified_name(AnnotatedDomainEvent) in test_domain.domain_events
+        assert (
+            fully_qualified_name(AnnotatedDomainEvent)
+            in test_domain.registry.domain_events
+        )
 
 
 class TestDomainEventTriggering:

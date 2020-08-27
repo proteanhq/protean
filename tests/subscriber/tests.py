@@ -23,7 +23,10 @@ class TestApplicationServiceRegistration:
     def test_that_domain_event_can_be_registered_with_domain(self, test_domain):
         test_domain.register(NotifySSOSubscriber)
 
-        assert fully_qualified_name(NotifySSOSubscriber) in test_domain.subscribers
+        assert (
+            fully_qualified_name(NotifySSOSubscriber)
+            in test_domain.registry.subscribers
+        )
 
     def test_that_domain_event_can_be_registered_via_annotations(self, test_domain):
         @test_domain.subscriber(domain_event=PersonAdded)
@@ -31,7 +34,10 @@ class TestApplicationServiceRegistration:
             def special_method(self):
                 pass
 
-        assert fully_qualified_name(AnnotatedSubscriber) in test_domain.subscribers
+        assert (
+            fully_qualified_name(AnnotatedSubscriber)
+            in test_domain.registry.subscribers
+        )
 
 
 class TestDomainEventNotification:
