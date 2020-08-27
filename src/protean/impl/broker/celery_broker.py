@@ -9,7 +9,7 @@ from celery import Celery, Task
 from kombu import Queue
 from protean.core.broker.base import BaseBroker
 from protean.core.domain_event import BaseDomainEvent
-from protean.domain import DomainObjects
+from protean.utils import DomainObjects
 from protean.utils import fully_qualified_name
 from protean.utils.inflection import underscore
 

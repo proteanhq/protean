@@ -2,7 +2,7 @@
 from abc import abstractmethod
 
 # Protean
-from protean.domain import DomainObjects
+from protean.utils import DomainObjects
 
 
 class _CommandHandlerMetaclass(type):

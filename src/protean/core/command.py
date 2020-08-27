@@ -1,6 +1,6 @@
 # Protean
 from protean.core.exceptions import InvalidDataError, ValidationError
-from protean.domain import DomainObjects
+from protean.utils import DomainObjects
 from protean.utils.container import BaseContainer
 
 

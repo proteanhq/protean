@@ -4,7 +4,7 @@ import logging
 # Protean
 from protean.core.exceptions import IncorrectUsageError, ValidationError
 from protean.core.field.association import HasMany, HasOne
-from protean.domain import DomainObjects
+from protean.utils import DomainObjects
 from protean.globals import current_domain
 
 logger = logging.getLogger("protean.repository")

@@ -61,3 +61,19 @@ def convert_str_values_to_list(value):
         return [value]
     else:
         return list(value)
+
+
+class DomainObjects(Enum):
+    AGGREGATE = "AGGREGATE"
+    APPLICATION_SERVICE = "APPLICATION_SERVICE"
+    COMMAND = "COMMAND"
+    COMMAND_HANDLER = "COMMAND_HANDLER"
+    DOMAIN_EVENT = "DOMAIN_EVENT"
+    DOMAIN_SERVICE = "DOMAIN_SERVICE"
+    EMAIL = "EMAIL"
+    ENTITY = "ENTITY"
+    MODEL = "MODEL"
+    REPOSITORY = "REPOSITORY"
+    SERIALIZER = "SERIALIZER"
+    SUBSCRIBER = "SUBSCRIBER"
+    VALUE_OBJECT = "VALUE_OBJECT"

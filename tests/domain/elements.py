@@ -3,7 +3,7 @@ from enum import Enum
 
 # Protean
 from protean.core.field.basic import String
-from protean.domain import DomainObjects
+from protean.utils import DomainObjects
 
 
 class DummyElement(Enum):

@@ -105,7 +105,7 @@ class TestDomainContext:
                 pass
 
             # Protean
-            from protean.domain import DomainObjects
+            from protean.utils import DomainObjects
 
             with test_domain.domain_context():
                 try:

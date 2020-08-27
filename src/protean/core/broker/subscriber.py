@@ -5,7 +5,7 @@ from abc import abstractmethod
 
 # Protean
 from protean.core.exceptions import IncorrectUsageError
-from protean.domain import DomainObjects
+from protean.utils import DomainObjects
 
 logger = logging.getLogger("protean.domain.subscriber")
 

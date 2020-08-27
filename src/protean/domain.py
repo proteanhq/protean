@@ -21,7 +21,7 @@ from protean.core.exceptions import (
     ObjectNotFoundError,
 )
 from protean.globals import current_uow
-from protean.utils import fully_qualified_name
+from protean.utils import fully_qualified_name, DomainObjects
 from werkzeug.datastructures import ImmutableDict
 
 # Local/Relative Imports
@@ -33,22 +33,6 @@ logger = logging.getLogger("protean.domain")
 
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
-
-
-class DomainObjects(Enum):
-    AGGREGATE = "AGGREGATE"
-    APPLICATION_SERVICE = "APPLICATION_SERVICE"
-    COMMAND = "COMMAND"
-    COMMAND_HANDLER = "COMMAND_HANDLER"
-    DOMAIN_EVENT = "DOMAIN_EVENT"
-    DOMAIN_SERVICE = "DOMAIN_SERVICE"
-    EMAIL = "EMAIL"
-    ENTITY = "ENTITY"
-    MODEL = "MODEL"
-    REPOSITORY = "REPOSITORY"
-    SERIALIZER = "SERIALIZER"
-    SUBSCRIBER = "SUBSCRIBER"
-    VALUE_OBJECT = "VALUE_OBJECT"
 
 
 @dataclass

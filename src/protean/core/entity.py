@@ -16,7 +16,7 @@ from protean.core.exceptions import (
 from protean.core.field.association import Association, Reference
 from protean.core.field.basic import Auto, Field
 from protean.core.field.embedded import ValueObjectField
-from protean.domain import DomainObjects
+from protean.utils import DomainObjects
 from protean.globals import current_domain
 from protean.utils import IdentityStrategy, IdentityType, inflection
 

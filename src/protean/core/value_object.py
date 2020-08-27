@@ -4,7 +4,7 @@ import logging
 
 # Protean
 from protean.core.exceptions import IncorrectUsageError
-from protean.domain import DomainObjects
+from protean.utils import DomainObjects
 from protean.utils.container import BaseContainer
 
 logger = logging.getLogger("protean.domain.value_object")
