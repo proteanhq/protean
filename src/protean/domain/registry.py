@@ -1,8 +1,9 @@
+from enum import Enum
+import inflection
 import logging
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any, Dict
 
 from protean.utils import fully_qualified_name, DomainObjects
@@ -10,24 +11,36 @@ from protean.utils import fully_qualified_name, DomainObjects
 logger = logging.getLogger("protean.domain")
 
 
-@dataclass
 class _DomainRegistry:
-    _elements: Dict[str, dict] = field(default_factory=dict)
+    def __init__(self):
+        self._elements: Dict[str, dict] = {}
 
-    @dataclass
-    class DomainRecord:
-        name: str
-        qualname: str
-        class_type: str
-        cls: Any
-
-    def __post_init__(self):
-        """Initialize placeholders for element types"""
+        # Initialize placeholders for element types
         for element_type in DomainObjects:
             self._elements[element_type.value] = defaultdict(dict)
 
+    class DomainRecord:
+        def __init__(self, name: str, qualname: str, class_type: str, cls: Any):
+            self.name = name
+            self.qualname = qualname
+            self.class_type = class_type
+            self.cls = cls
+
+    def _is_invalid_element_cls(self, element_cls):
+        """Ensure that we are dealing with an element class, that:
+
+        * Has a `element_type` attribute
+        * `element_type` is an Enum value
+        * The value of `element_type` enum is among recognized `DomainObjects` values
+        """
+        return (
+            not hasattr(element_cls, "element_type")
+            or not isinstance(element_cls.element_type, Enum)
+            or element_cls.element_type.name not in DomainObjects.__members__
+        )
+
     def register_element(self, element_cls):
-        if element_cls.element_type.name not in DomainObjects.__members__:
+        if self._is_invalid_element_cls(element_cls):
             raise NotImplementedError
 
         element_name = fully_qualified_name(element_cls)
@@ -53,61 +66,41 @@ class _DomainRegistry:
             )
 
     def delist_element(self, element_cls):
-        if element_cls.element_type.name not in DomainObjects.__members__:
+        if self._is_invalid_element_cls(element_cls):
             raise NotImplementedError
 
         element_name = fully_qualified_name(element_cls)
 
         self._elements[element_cls.element_type.value].pop(element_name, None)
 
-    @property
-    def aggregates(self):
-        return self._elements[DomainObjects.AGGREGATE.value]
+    def get(self, element_type):
+        return self._elements[element_type.value]
 
-    @property
-    def application_services(self):
-        return self._elements[DomainObjects.APPLICATION_SERVICE.value]
 
-    @property
-    def commands(self):
-        return self._elements[DomainObjects.COMMAND.value]
+# Set up access to all elements as properties
+for element_type in DomainObjects:
+    """Set up `properties` on Registry
 
-    @property
-    def command_handlers(self):
-        return self._elements[DomainObjects.COMMAND_HANDLER.value]
+    Since all elements are stored within a Dict in the registry, accessing
+    them will mean knowing the storage structure. It is instead preferable to
+    expose the elements by their element types as properties.
 
-    @property
-    def domain_events(self):
-        return self._elements[DomainObjects.DOMAIN_EVENT.value]
+    Registry object will contain properties named after of each element type
+    and pluralized to indicate that all elements of the type will be returned.
 
-    @property
-    def domain_services(self):
-        return self._elements[DomainObjects.DOMAIN_SERVICE.value]
+    E.g.
+    AGGREGATE: registry.aggregates
+    VALUE_OBJECT: registry.value_objects
+    """
 
-    @property
-    def emails(self):
-        return self._elements[DomainObjects.EMAIL.value]
+    # Lowercase element type, add underscores and pluralize
+    prop_name = inflection.pluralize(inflection.underscore(element_type.value.lower()))
 
-    @property
-    def models(self):
-        return self._elements[DomainObjects.MODEL.value]
+    # This weird syntax is because when using lambdas in a for loop, we need to supply
+    #   element_type as an argument with a default value of element_type
+    prop = property(
+        lambda self, element_type=element_type: self.get(element_type)
+    )  # pragma: no cover  # FIXME Is it possible to cover this line in tests
 
-    @property
-    def entities(self):
-        return self._elements[DomainObjects.ENTITY.value]
-
-    @property
-    def repositories(self):
-        return self._elements[DomainObjects.REPOSITORY.value]
-
-    @property
-    def serializers(self):
-        return self._elements[DomainObjects.SERIALIZER.value]
-
-    @property
-    def subscribers(self):
-        return self._elements[DomainObjects.SUBSCRIBER.value]
-
-    @property
-    def value_objects(self):
-        return self._elements[DomainObjects.VALUE_OBJECT.value]
+    # Set the property on the class
+    setattr(_DomainRegistry, prop_name, prop)
