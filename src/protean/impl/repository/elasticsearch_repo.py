@@ -76,13 +76,11 @@ class ElasticsearchModel(Document):
     def to_entity(cls, item: "ElasticsearchModel"):
         """Convert the elasticsearch document to an entity """
         item_dict = {}
+
+        # Convert the values in ES Model as a dictionary
+        values = item.to_dict()
         for field_name in cls.meta_.entity_cls.meta_.attributes:
-            value = getattr(item, field_name, None)
-            if isinstance(value, elasticsearch_dsl.utils.AttrList):
-                value = value._l_
-            elif isinstance(value, elasticsearch_dsl.utils.AttrDict):
-                value = value._d_
-            item_dict[field_name] = value
+            item_dict[field_name] = values.get(field_name, None)
 
         identifier = None
         if (
