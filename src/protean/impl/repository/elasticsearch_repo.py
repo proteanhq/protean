@@ -13,10 +13,10 @@ from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Document, Index, Search, query
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.field.association import Reference
-from protean.core.provider.base import BaseProvider
-from protean.core.repository.dao import BaseDAO
-from protean.core.repository.lookup import BaseLookup
-from protean.core.repository.resultset import ResultSet
+from protean.port.provider import BaseProvider
+from protean.port.dao import BaseDAO
+from protean.port.dao import BaseLookup
+from protean.port.dao import ResultSet
 from protean.globals import current_domain
 from protean.utils import Database, IdentityStrategy, IdentityType
 from protean.utils.query import Q
@@ -406,7 +406,7 @@ class ESProvider(BaseProvider):
             }
 
             # Protean
-            from protean.core.repository.model import ModelMeta
+            from protean.core.model import ModelMeta
 
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls
@@ -431,7 +431,7 @@ class ESProvider(BaseProvider):
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
             # Protean
-            from protean.core.repository.model import ModelMeta
+            from protean.core.model import ModelMeta
 
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls

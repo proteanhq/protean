@@ -844,7 +844,7 @@ class TestDAOLookup:
     @pytest.fixture
     def sample_lookup_cls(self):
         # Protean
-        from protean.core.repository.lookup import BaseLookup
+        from protean.port.dao import BaseLookup
         from protean.impl.repository.sqlalchemy_repo import SAProvider
 
         @SAProvider.register_lookup

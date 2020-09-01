@@ -6,7 +6,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.field.association import HasMany, HasOne, Reference
 from protean.core.field.basic import DateTime, Integer, String, Text
-from protean.core.repository.base import BaseRepository
+from protean.core.repository import BaseRepository
 
 
 class Post(BaseAggregate):

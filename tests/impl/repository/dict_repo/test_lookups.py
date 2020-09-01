@@ -9,7 +9,7 @@ class TestLookup:
     """This class holds tests for Lookup Class"""
 
     # Protean
-    from protean.core.repository.lookup import BaseLookup
+    from protean.port.dao import BaseLookup
     from protean.impl.repository.dict_repo import DictProvider
 
     @DictProvider.register_lookup

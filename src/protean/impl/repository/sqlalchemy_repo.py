@@ -22,11 +22,11 @@ from protean.core.field.basic import (
     String,
     Text,
 )
-from protean.core.provider.base import BaseProvider
-from protean.core.repository.dao import BaseDAO
-from protean.core.repository.lookup import BaseLookup
-from protean.core.repository.model import BaseModel
-from protean.core.repository.resultset import ResultSet
+from protean.port.provider import BaseProvider
+from protean.port.dao import BaseDAO
+from protean.port.dao import BaseLookup
+from protean.core.model import BaseModel
+from protean.port.dao import ResultSet
 from protean.globals import current_domain, current_uow
 from protean.utils import Database, IdentityType
 from protean.utils.query import Q
@@ -612,7 +612,7 @@ class SAProvider(BaseProvider):
             }
 
             # Protean
-            from protean.core.repository.model import ModelMeta
+            from protean.core.model import ModelMeta
 
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls
@@ -637,7 +637,7 @@ class SAProvider(BaseProvider):
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
             # Protean
-            from protean.core.repository.model import ModelMeta
+            from protean.core.model import ModelMeta
 
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls

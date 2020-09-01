@@ -16,10 +16,54 @@ from protean.core.queryset import QuerySet
 from protean.globals import current_uow
 from protean.utils.query import Q
 
-# Local/Relative Imports
-from .resultset import ResultSet
-
 logger = logging.getLogger("protean.repository")
+
+
+class ResultSet(object):
+    """This is an internal helper class returned by DAO query operations.
+
+    The purpose of this class is to prevent DAO-specific data structures from leaking into the domain layer.
+    It can help check whether results exist, traverse the results, fetch the total number of items and also provide
+    basic pagination support.
+    """
+
+    def __init__(self, offset: int, limit: int, total: int, items: list):
+        # the current offset (zero indexed)
+        self.offset = offset
+        # the number of items to be displayed on a page.
+        self.limit = limit
+        # the total number of items matching the query
+        self.total = total
+        # the items for the current page
+        self.items = items
+
+    @property
+    def has_prev(self):
+        """Is `True` if the results are a subset of all results"""
+        return bool(self.items) and self.offset > 0
+
+    @property
+    def has_next(self):
+        """Is `True` if more pages exist"""
+        return (self.offset + self.limit) < self.total
+
+    @property
+    def first(self):
+        """Is the first item from results"""
+        if self.items:
+            return self.items[0]
+
+    def __bool__(self):
+        """Returns `True` when the resultset is not empty"""
+        return bool(self.items)
+
+    def __iter__(self):
+        """Returns an iterable on items, to support traversal"""
+        return iter(self.items)
+
+    def __len__(self):
+        """Returns number of items in the resultset"""
+        return len(self.items)
 
 
 class BaseDAO(metaclass=ABCMeta):
@@ -488,3 +532,55 @@ class BaseDAO(metaclass=ABCMeta):
         except Exception as exc:
             logger.error(f"Failed deletion of all records because of {exc}")
             raise
+
+
+class BaseLookup(metaclass=ABCMeta):
+    """Base Lookup class to implement for each lookup
+
+    Inspired by the lookup mechanism implemented in Django.
+
+    Each lookup, which is simply a data comparison (like `name == 'John'`), is implemented as a subclass of this
+    class, and has to implement the `as_expression()` method to provide the representation that the persistence
+    store needs.
+
+    Lookups are identified by their names, and the names are stored in the `lookup_name` class variable.
+    """
+
+    lookup_name = None
+
+    def __init__(self, source, target):
+        """Source is LHS and Target is RHS of a comparsion.
+
+        For example, in the expression `name == 'John'`, `name` is source (LHS) and `'John'` is target (RHS).
+        In other words, source is the key/column/attribute to be searched on, and target is the value present in the
+        persistent store.
+        """
+        self.source, self.target = source, target
+
+    def process_source(self):
+        """This is a blank implementation that simply returns the source.
+
+        Returns `source` (LHS of the expression).
+
+        You can override this method to manipulate the source when necessary. For example, if you are using a
+        data store that cannot perform case-insensitive queries, it may be useful to always compare in lowercase.
+        """
+        return self.source
+
+    def process_target(self):
+        """This is a blank implementation that simply returns the target.
+
+        Returns `target` (RHS of the expression).
+
+        You can override this method to manipulate the target when necessary. A good example of overriding this
+        method is when you are using a data store that needs strings to be enclosed in single quotes.
+        """
+        return self.target
+
+    @abstractmethod
+    def as_expression(self):
+        """This methods should return the source and the target in the format required by the persistence store.
+
+        Concrete implementation for this method varies from database to database.
+        """
+        raise NotImplementedError

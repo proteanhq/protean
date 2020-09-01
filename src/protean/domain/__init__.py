@@ -56,8 +56,8 @@ class Domain(_PackageBoundObject):
     from protean.core.domain_service import BaseDomainService
     from protean.core.email import BaseEmail
     from protean.core.entity import BaseEntity
-    from protean.core.repository.base import BaseRepository
-    from protean.core.repository.model import BaseModel
+    from protean.core.repository import BaseRepository
+    from protean.core.model import BaseModel
     from protean.core.serializer import BaseSerializer
     from protean.core.value_object import BaseValueObject
     from protean.utils import IdentityStrategy, IdentityType
@@ -335,7 +335,7 @@ class Domain(_PackageBoundObject):
             new_cls = ValueObjectFactory.prep_class(element_cls, **kwargs)
         elif element_type == DomainObjects.REPOSITORY:
             # Protean
-            from protean.core.repository.base import RepositoryFactory
+            from protean.core.repository import RepositoryFactory
 
             new_cls = RepositoryFactory.prep_class(element_cls, **kwargs)
         elif element_type == DomainObjects.AGGREGATE:
@@ -399,7 +399,7 @@ class Domain(_PackageBoundObject):
             ):
                 # Associate aggregate/entity class with model if `entity_cls` was supplied as an explicit parameter
                 # Protean
-                from protean.core.repository.model import ModelMeta
+                from protean.core.model import ModelMeta
 
                 if hasattr(new_cls, "Meta"):
                     new_cls.meta_ = ModelMeta(new_cls.Meta)
@@ -453,7 +453,7 @@ class Domain(_PackageBoundObject):
     def _validate_model_class(self, element_cls):
         # Import here to avoid cyclic dependency
         # Protean
-        from protean.core.repository.model import BaseModel
+        from protean.core.model import BaseModel
 
         if not issubclass(element_cls, BaseModel):
             raise AssertionError(
@@ -844,7 +844,7 @@ class Domain(_PackageBoundObject):
             logger.debug(f"Constructing a Repository for {aggregate_cls}...")
 
             # Protean
-            from protean.core.repository.base import BaseRepository
+            from protean.core.repository import BaseRepository
 
             new_class = type(
                 aggregate_cls.__name__ + "Repository", (BaseRepository,), {}
