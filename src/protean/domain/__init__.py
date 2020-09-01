@@ -49,7 +49,7 @@ class Domain(_PackageBoundObject):
     # Protean
     from protean.core.aggregate import BaseAggregate
     from protean.core.application_service import BaseApplicationService
-    from protean.core.broker.subscriber import BaseSubscriber
+    from protean.core.subscriber import BaseSubscriber
     from protean.core.command import BaseCommand
     from protean.core.command_handler import BaseCommandHandler
     from protean.core.domain_event import BaseDomainEvent
@@ -350,7 +350,7 @@ class Domain(_PackageBoundObject):
             new_cls = EntityFactory.prep_class(element_cls, **kwargs)
         elif element_type == DomainObjects.SUBSCRIBER:
             # Protean
-            from protean.core.broker.subscriber import SubscriberFactory
+            from protean.core.subscriber import SubscriberFactory
 
             new_cls = SubscriberFactory.prep_class(element_cls, **kwargs)
         elif element_type == DomainObjects.DOMAIN_EVENT:

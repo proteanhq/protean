@@ -4,7 +4,7 @@ import logging.config
 import os
 
 # Protean
-from protean.core.broker.base import BaseBroker
+from protean.port.broker import BaseBroker
 from protean.core.domain_event import BaseDomainEvent
 from protean.domain import Domain
 from protean.utils import fully_qualified_name

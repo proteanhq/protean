@@ -2,7 +2,7 @@
 import pytest
 
 from mock import patch
-from protean.core.broker.subscriber import BaseSubscriber
+from protean.core.subscriber import BaseSubscriber
 from protean.utils import fully_qualified_name
 
 # Local/Relative Imports

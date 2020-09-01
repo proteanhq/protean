@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from protean.utils import DomainObjects
 from protean.utils import fully_qualified_name
 
-logger = logging.getLogger("protean.core.broker.base")
+logger = logging.getLogger("protean.port.broker")
 
 
 class _BrokerMetaclass(type):

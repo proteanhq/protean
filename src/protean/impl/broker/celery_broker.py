@@ -7,7 +7,7 @@ from collections.abc import Iterable
 # Protean
 from celery import Celery, Task
 from kombu import Queue
-from protean.core.broker.base import BaseBroker
+from protean.port.broker import BaseBroker
 from protean.core.domain_event import BaseDomainEvent
 from protean.utils import DomainObjects
 from protean.utils import fully_qualified_name

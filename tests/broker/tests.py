@@ -1,7 +1,7 @@
 # Protean
 import pytest
 
-from protean.core.broker.base import BaseBroker
+from protean.port.broker import BaseBroker
 from protean.impl.broker.memory_broker import MemoryBroker
 
 
