@@ -58,5 +58,5 @@ def run_around_tests(test_domain):
     conn = get_current_connection()
     conn.flushall()
 
-    if test_domain.has_provider("default"):
+    if test_domain.providers.has_provider("default"):
         test_domain.get_provider("default")._data_reset()

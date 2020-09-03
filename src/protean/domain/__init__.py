@@ -784,15 +784,8 @@ class Domain(_PackageBoundObject):
     # Email Functionality #
     #######################
 
-    def has_email_provider(self, provider_name):
-        return self.emails.has_email_provider(provider_name)
-
     def get_email_provider(self, provider_name):
         return self.emails.get_email_provider(provider_name)
-
-    @property
-    def email_providers_list(self):
-        return self.emails.email_providers_list
 
     def send_email(self, email):
         return self.emails.send_email(email)

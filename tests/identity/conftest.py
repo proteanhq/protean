@@ -64,5 +64,5 @@ def run_around_tests(test_domain):
 
     yield
 
-    if test_domain.has_provider("default"):
+    if test_domain.providers.has_provider("default"):
         test_domain.get_provider("default")._data_reset()

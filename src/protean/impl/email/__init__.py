@@ -36,12 +36,6 @@ class Emails:
 
         self._email_providers = email_provider_objects
 
-    def has_email_provider(self, provider_name):
-        if self._email_providers is None:
-            self._initialize_email_providers()
-
-        return provider_name in self._email_providers
-
     def get_email_provider(self, provider_name):
         """Retrieve the email provider object with a given provider name"""
         if self._email_providers is None:
@@ -51,15 +45,6 @@ class Emails:
             return self._email_providers[provider_name]
         except KeyError:
             raise AssertionError(f"No Provider registered with name {provider_name}")
-
-    @property
-    def email_providers_list(self):
-        """A generator that helps users iterator through email providers"""
-        if self._email_providers is None:
-            self._initialize_email_providers()
-
-        for provider_name in self._email_providers:
-            yield self._email_providers[provider_name]
 
     def send_email(self, email):
         """Push email through registered provider"""

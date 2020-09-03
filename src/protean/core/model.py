@@ -16,9 +16,11 @@ class ModelMeta:
         if meta:
             self.entity_cls = getattr(meta, "entity_cls", None)
             self.schema = getattr(meta, "schema", None)
+            self.database = getattr(meta, "database", None)
         else:
             self.entity_cls = None
             self.schema = None
+            self.database = None
 
 
 class BaseModel:
