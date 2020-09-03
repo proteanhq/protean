@@ -1,6 +1,7 @@
 """Module to test SQLAlchemy Provider Class"""
 # Protean
 import pytest
+from protean.impl.repository import Providers
 
 from protean.impl.repository.sqlalchemy_repo import SAProvider
 from sqlalchemy.engine.result import ResultProxy
@@ -21,7 +22,8 @@ class TestProviders:
 
     def test_initialization_of_providers_on_first_call(self, test_domain):
         """Test that ``providers`` object is available"""
-        assert test_domain.providers is None
+        assert isinstance(test_domain.providers, Providers)
+        assert test_domain.providers._providers is None
 
         test_domain.get_provider("default")
         assert test_domain.providers is not None

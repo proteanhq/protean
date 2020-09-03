@@ -1,5 +1,6 @@
 # Protean
 import pytest
+from protean.impl.repository import Providers
 
 from protean.impl.repository.dict_repo import DictProvider
 
@@ -17,7 +18,8 @@ class TestProviders:
 
     def test_initialization_of_providers_on_first_call(self, test_domain):
         """Test that ``providers`` object is available"""
-        assert test_domain.providers is None
+        assert isinstance(test_domain.providers, Providers)
+        assert test_domain.providers._providers is None
 
         test_domain.get_provider("default")
         assert test_domain.providers is not None
