@@ -10,7 +10,6 @@ import sys
 import marshmallow
 
 from protean.core.exceptions import (
-    ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
     ObjectNotFoundError,
@@ -18,6 +17,7 @@ from protean.core.exceptions import (
 from protean.globals import current_uow
 from protean.domain.registry import _DomainRegistry
 from protean.impl.broker import Brokers
+from protean.impl.email import Emails
 from protean.impl.repository import Providers
 from protean.utils import fully_qualified_name, DomainObjects
 from werkzeug.datastructures import ImmutableDict
@@ -161,7 +161,7 @@ class Domain(_PackageBoundObject):
 
         self.providers = Providers(self)
         self.brokers = Brokers(self)
-        self._email_providers = None
+        self.emails = Emails(self)
 
         # Cache for holding Model to Entity/Aggregate associations
         self._models = {}
@@ -735,72 +735,6 @@ class Domain(_PackageBoundObject):
             aggregate_record.qualname
         ].cls = new_element_cls
 
-    def _initialize_email_providers(self):
-        """Read config file and initialize email providers"""
-        configured_email_providers = self.config["EMAIL_PROVIDERS"]
-        email_provider_objects = {}
-
-        if configured_email_providers and isinstance(configured_email_providers, dict):
-            if "default" not in configured_email_providers:
-                raise ConfigurationError("You must define a 'default' email provider")
-
-            for provider_name, conn_info in configured_email_providers.items():
-                provider_full_path = conn_info["PROVIDER"]
-                provider_module, provider_class = provider_full_path.rsplit(
-                    ".", maxsplit=1
-                )
-
-                provider_cls = getattr(
-                    importlib.import_module(provider_module), provider_class
-                )
-                email_provider_objects[provider_name] = provider_cls(
-                    provider_name, self, conn_info
-                )
-
-        self._email_providers = email_provider_objects
-
-    def has_email_provider(self, provider_name):
-        if self._email_providers is None:
-            self._initialize_email_providers()
-
-        return provider_name in self._email_providers
-
-    def get_email_provider(self, provider_name):
-        """Retrieve the email provider object with a given provider name"""
-        if self._email_providers is None:
-            self._initialize_email_providers()
-
-        try:
-            return self._email_providers[provider_name]
-        except KeyError:
-            raise AssertionError(f"No Provider registered with name {provider_name}")
-
-    @property
-    def email_providers_list(self):
-        """A generator that helps users iterator through email providers"""
-        if self._email_providers is None:
-            self._initialize_email_providers()
-
-        for provider_name in self._email_providers:
-            yield self._email_providers[provider_name]
-
-    def send_email(self, email):
-        """Push email through registered provider"""
-        if self._email_providers is None:
-            self._initialize_email_providers()
-
-        if current_uow:
-            logger.debug(
-                f"Recording email {email.__class__.__name__} "
-                f"to be sent to {repr(email)} in {current_uow}"
-            )
-            current_uow.register_email(email)
-        else:
-            logger.debug(
-                f"Pushing {email.__class__.__name__} with content {repr(email)}"
-            )
-            self._email_providers[email.meta_.provider].send_email(email)
-
     ########################
     # Broker Functionality #
     ########################
@@ -845,3 +779,20 @@ class Domain(_PackageBoundObject):
 
     def get_dao(self, aggregate_cls):
         return self.providers.get_dao(aggregate_cls)
+
+    #######################
+    # Email Functionality #
+    #######################
+
+    def has_email_provider(self, provider_name):
+        return self.emails.has_email_provider(provider_name)
+
+    def get_email_provider(self, provider_name):
+        return self.emails.get_email_provider(provider_name)
+
+    @property
+    def email_providers_list(self):
+        return self.emails.email_providers_list
+
+    def send_email(self, email):
+        return self.emails.send_email(email)
