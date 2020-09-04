@@ -18,14 +18,14 @@ from tests.impl.broker.rq_broker.elements import (
 @pytest.mark.redis
 class TestRedisConnection:
     def test_that_configured_broker_is_redis(self):
-        assert current_domain.has_broker("default")
-        broker = current_domain.get_broker("default")
+        assert "default" in current_domain.brokers
+        broker = current_domain.brokers["default"]
 
         assert isinstance(broker, RqBroker)
         assert broker.conn_info["URI"] == "redis://127.0.0.1:6379/2"
 
     def test_that_rq_connection_is_active(self):
-        broker = current_domain.get_broker("default")
+        broker = current_domain.brokers["default"]
         conn = broker.get_connection()
 
         assert isinstance(conn, Redis)
@@ -50,7 +50,7 @@ class TestEventProcessing:
             in current_domain.registry.subscribers
         )
         assert isinstance(
-            current_domain.get_broker(NotifySSOSubscriber.meta_.broker), RqBroker
+            current_domain.brokers[NotifySSOSubscriber.meta_.broker], RqBroker
         )
 
     @patch.object(RqBroker, "send_message")

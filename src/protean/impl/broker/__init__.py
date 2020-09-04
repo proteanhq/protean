@@ -1,6 +1,8 @@
 import importlib
 import logging
 
+from collections.abc import MutableMapping
+
 from protean.core.exceptions import ConfigurationError
 from protean.globals import current_uow
 from protean.utils import DomainObjects
@@ -8,12 +10,37 @@ from protean.utils import DomainObjects
 logger = logging.getLogger("protean.broker")
 
 
-class Brokers:
+class Brokers(MutableMapping):
     def __init__(self, domain):
         self.domain = domain
         self._brokers = None
 
-    def _initialize_brokers(self):
+    def __getitem__(self, key):
+        if self._brokers is None:
+            self._initialize()
+        return self._brokers[key]
+
+    def __iter__(self):
+        if self._brokers is None:
+            self._initialize()
+        return iter(self._brokers)
+
+    def __len__(self):
+        if self._brokers is None:
+            self._initialize()
+        return len(self._brokers)
+
+    def __setitem__(self, key, value):
+        if self._brokers is None:
+            self._initialize()
+        self._brokers[key] = value
+
+    def __delitem__(self, key):
+        if self._brokers is None:
+            self._initialize()
+        del self._brokers[key]
+
+    def _initialize(self):
         """Read config file and initialize brokers"""
         configured_brokers = self.domain.config["BROKERS"]
         broker_objects = {}
@@ -62,35 +89,10 @@ class Brokers:
                 command_handler.meta_.command_cls, command_handler
             )
 
-    def has_broker(self, broker_name):
-        if self._brokers is None:
-            self._initialize_brokers()
-
-        return broker_name in self._brokers
-
-    def get_broker(self, broker_name):
-        """Retrieve the broker object with a given broker name"""
-        if self._brokers is None:
-            self._initialize_brokers()
-
-        try:
-            return self._brokers[broker_name]
-        except KeyError:
-            raise AssertionError(f"No Broker registered with name {broker_name}")
-
-    @property
-    def brokers_list(self):
-        """A generator that helps users iterator through brokers"""
-        if self._brokers is None:
-            self._initialize_brokers()
-
-        for broker_name in self._brokers:
-            yield self._brokers[broker_name]
-
     def publish(self, domain_event):
         """Publish a domain event to all registered brokers"""
         if self._brokers is None:
-            self._initialize_brokers()
+            self._initialize()
 
         # Log event into a table before pushing to brokers. This will give a chance to recover from errors.
         #   There is a pseudo-check to ensure `EventLog` is registered in the domain, to ensure that apps
@@ -126,7 +128,7 @@ class Brokers:
     def publish_command(self, command):
         """Publish a command to registered command handler"""
         if self._brokers is None:
-            self._initialize_brokers()
+            self._initialize()
 
         if current_uow:
             logger.debug(

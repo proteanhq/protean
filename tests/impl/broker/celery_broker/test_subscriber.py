@@ -15,7 +15,7 @@ class TestSubscriberNotifications:
 
     @pytest.fixture
     def broker(self):
-        return current_domain.get_broker("default")
+        return current_domain.brokers["default"]
 
     @pytest.fixture
     def decorated_task_obj(self, broker):

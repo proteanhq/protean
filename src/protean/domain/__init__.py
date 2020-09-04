@@ -739,16 +739,6 @@ class Domain(_PackageBoundObject):
     # Broker Functionality #
     ########################
 
-    @property
-    def brokers_list(self):
-        return self.brokers.brokers_list
-
-    def has_broker(self, broker_name):
-        return self.brokers.has_broker(broker_name)
-
-    def get_broker(self, broker_name):
-        return self.brokers.get_broker(broker_name)
-
     def publish(self, domain_event):
         self.brokers.publish(domain_event)
 

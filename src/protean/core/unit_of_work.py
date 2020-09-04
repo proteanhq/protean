@@ -55,7 +55,7 @@ class UnitOfWork:
                 session.commit()
 
             for event in self._events:
-                for broker in self.domain.brokers_list:
+                for _, broker in self.domain.brokers.items():
                     broker.send_message(event)
 
             logger.debug("Commit Successful")

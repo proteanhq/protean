@@ -16,6 +16,5 @@ class TestBroker:
         assert broker is not None
 
     def test_that_domain_initializes_broker_from_config(self, test_domain):
-        assert test_domain.brokers_list is not None
-        assert len(list(test_domain.brokers_list)) == 1
-        assert isinstance(list(test_domain.brokers_list)[0], MemoryBroker)
+        assert len(list(test_domain.brokers)) == 1
+        assert isinstance(list(test_domain.brokers.values())[0], MemoryBroker)

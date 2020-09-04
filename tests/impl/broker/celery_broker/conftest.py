@@ -11,7 +11,7 @@ def initialize_domain():
     # Protean
     from protean.domain import Domain
 
-    domain = Domain("RQ Tests")
+    domain = Domain("Celery Tests")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))

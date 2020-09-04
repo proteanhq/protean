@@ -14,8 +14,8 @@ from tests.impl.broker.celery_broker.elements import (
 @pytest.mark.redis
 class TestRedisConnection:
     def test_that_configured_broker_is_celery_with_redis(self):
-        assert current_domain.has_broker("default")
-        broker = current_domain.get_broker("default")
+        assert "default" in current_domain.brokers
+        broker = current_domain.brokers["default"]
 
         assert isinstance(broker, CeleryBroker)
         assert broker.conn_info["URI"] == "redis://127.0.0.1:6379/2"
