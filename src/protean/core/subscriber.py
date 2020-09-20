@@ -5,7 +5,7 @@ from abc import abstractmethod
 
 # Protean
 from protean.core.exceptions import IncorrectUsageError
-from protean.utils import DomainObjects
+from protean.utils import DomainObjects, derive_element_class
 
 logger = logging.getLogger("protean.domain.subscriber")
 
@@ -80,64 +80,29 @@ class BaseSubscriber(metaclass=_SubscriberMetaclass):
         pass
 
 
-class SubscriberFactory:
-    @classmethod
-    def prep_class(cls, element_cls, **kwargs):
-        if issubclass(element_cls, BaseSubscriber):
-            new_element_cls = element_cls
-        else:
-            try:
-                new_dict = element_cls.__dict__.copy()
-                new_dict.pop("__dict__", None)  # Remove __dict__ to prevent recursion
+def subscriber_factory(element_cls, **kwargs):
+    element_cls = derive_element_class(element_cls, BaseSubscriber)
 
-                new_element_cls = type(
-                    element_cls.__name__, (BaseSubscriber,), new_dict
-                )
-            except BaseException as exc:
-                logger.debug("Error during Element registration:", repr(exc))
-                raise IncorrectUsageError(
-                    "Invalid class {element_cls.__name__} for type {element_type.value}"
-                    " (Error: {exc})",
-                )
+    element_cls.meta_.domain_event = (
+        kwargs.pop("domain_event", None)
+        or (hasattr(element_cls, "meta_") and element_cls.meta_.domain_event)
+        or None
+    )
 
-        cls._validate_subscriber_class(new_element_cls)
+    element_cls.meta_.broker = (
+        kwargs.pop("broker", None)
+        or (hasattr(element_cls, "meta_") and element_cls.meta_.broker)
+        or "default"
+    )
 
-        new_element_cls.meta_.domain_event = (
-            kwargs.pop("domain_event", None)
-            or (
-                hasattr(new_element_cls, "meta_") and new_element_cls.meta_.domain_event
-            )
-            or None
-        )
-        new_element_cls.meta_.broker = (
-            kwargs.pop("broker", None)
-            or (hasattr(new_element_cls, "meta_") and new_element_cls.meta_.broker)
-            or "default"
-        )
-        new_element_cls.meta_.bounded_context = kwargs.pop("bounded_context", None) or (
-            hasattr(new_element_cls, "meta_") and new_element_cls.meta_.bounded_context
-        )
-        new_element_cls.meta_.aggregate_cls = (
-            kwargs.pop("aggregate_cls", None)
-            or (
-                hasattr(new_element_cls, "meta_")
-                and new_element_cls.meta_.aggregate_cls
-            )
-            or None
+    if not element_cls.meta_.domain_event:
+        raise IncorrectUsageError(
+            f"Subscriber `{element_cls.__name__}` needs to be associated with a Domain Event"
         )
 
-        if not new_element_cls.meta_.domain_event:
-            raise IncorrectUsageError(
-                f"Subscriber `{new_element_cls.__name__}` needs to be associated with a Domain Event"
-            )
+    if not element_cls.meta_.broker:
+        raise IncorrectUsageError(
+            f"Subscriber `{element_cls.__name__}` needs to be associated with a Broker"
+        )
 
-        return new_element_cls
-
-    @classmethod
-    def _validate_subscriber_class(self, element_cls):
-        if not issubclass(element_cls, BaseSubscriber):
-            raise AssertionError(
-                f"Element {element_cls.__name__} must be subclass of `BaseSubscriber`"
-            )
-
-        return True
+    return element_cls

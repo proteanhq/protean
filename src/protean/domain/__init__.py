@@ -49,19 +49,7 @@ class Domain(_PackageBoundObject):
     """
 
     # Protean
-    from protean.core.aggregate import BaseAggregate
-    from protean.core.application_service import BaseApplicationService
-    from protean.core.subscriber import BaseSubscriber
-    from protean.core.command import BaseCommand
-    from protean.core.command_handler import BaseCommandHandler
-    from protean.core.domain_event import BaseDomainEvent
-    from protean.core.domain_service import BaseDomainService
-    from protean.core.email import BaseEmail
-    from protean.core.entity import BaseEntity
-    from protean.core.repository import BaseRepository
     from protean.core.model import BaseModel
-    from protean.core.serializer import BaseSerializer
-    from protean.core.value_object import BaseValueObject
     from protean.utils import IdentityStrategy, IdentityType
 
     config_class = Config
@@ -126,19 +114,8 @@ class Domain(_PackageBoundObject):
     )
 
     base_class_mapping = {
-        DomainObjects.AGGREGATE.value: BaseAggregate,
-        DomainObjects.APPLICATION_SERVICE.value: BaseApplicationService,
-        DomainObjects.COMMAND.value: BaseCommand,
-        DomainObjects.COMMAND_HANDLER.value: BaseCommandHandler,
-        DomainObjects.DOMAIN_EVENT.value: BaseDomainEvent,
-        DomainObjects.DOMAIN_SERVICE.value: BaseDomainService,
-        DomainObjects.ENTITY.value: BaseEntity,
-        DomainObjects.EMAIL.value: BaseEmail,
         DomainObjects.MODEL.value: BaseModel,
-        DomainObjects.REPOSITORY.value: BaseRepository,
         DomainObjects.SERIALIZER.value: marshmallow.Schema,
-        DomainObjects.SUBSCRIBER.value: BaseSubscriber,
-        DomainObjects.VALUE_OBJECT.value: BaseValueObject,
     }
 
     def __init__(
@@ -317,6 +294,38 @@ class Domain(_PackageBoundObject):
     def registry(self):
         return self._domain_registry
 
+    def factory_for(self, domain_object_type):
+        from protean.core.aggregate import aggregate_factory
+        from protean.core.application_service import application_service_factory
+        from protean.core.command import command_factory
+        from protean.core.command_handler import command_handler_factory
+        from protean.core.domain_event import domain_event_factory
+        from protean.core.domain_service import domain_service_factory
+        from protean.core.email import email_factory
+        from protean.core.entity import entity_factory
+        from protean.core.repository import repository_factory
+        from protean.core.subscriber import subscriber_factory
+        from protean.core.value_object import value_object_factory
+
+        factories = {
+            DomainObjects.AGGREGATE.value: aggregate_factory,
+            DomainObjects.APPLICATION_SERVICE.value: application_service_factory,
+            DomainObjects.COMMAND.value: command_factory,
+            DomainObjects.COMMAND_HANDLER.value: command_handler_factory,
+            DomainObjects.DOMAIN_EVENT.value: domain_event_factory,
+            DomainObjects.DOMAIN_SERVICE.value: domain_service_factory,
+            DomainObjects.EMAIL.value: email_factory,
+            DomainObjects.ENTITY.value: entity_factory,
+            DomainObjects.REPOSITORY.value: repository_factory,
+            DomainObjects.SUBSCRIBER.value: subscriber_factory,
+            DomainObjects.VALUE_OBJECT.value: value_object_factory,
+            DomainObjects.COMMAND_HANDLER.value: command_handler_factory,
+            # DomainObjects.MODEL.value: model_factory,
+            # DomainObjects.SERIALIZER.value: marshmallow.Schema,
+        }
+
+        return factories[domain_object_type.value]
+
     def _register_element(self, element_type, element_cls, **kwargs):  # noqa: C901
         """Register class into the domain"""
         # Check if `element_cls` is already a subclass of the Element Type
@@ -330,36 +339,20 @@ class Domain(_PackageBoundObject):
         #       class Account:
         #  ```
 
-        if element_type == DomainObjects.VALUE_OBJECT:
-            # Protean
-            from protean.core.value_object import ValueObjectFactory
-
-            new_cls = ValueObjectFactory.prep_class(element_cls, **kwargs)
-        elif element_type == DomainObjects.REPOSITORY:
-            # Protean
-            from protean.core.repository import RepositoryFactory
-
-            new_cls = RepositoryFactory.prep_class(element_cls, **kwargs)
-        elif element_type == DomainObjects.AGGREGATE:
-            # Protean
-            from protean.core.aggregate import AggregateFactory
-
-            new_cls = AggregateFactory.prep_class(element_cls, **kwargs)
-        elif element_type == DomainObjects.ENTITY:
-            # Protean
-            from protean.core.entity import EntityFactory
-
-            new_cls = EntityFactory.prep_class(element_cls, **kwargs)
-        elif element_type == DomainObjects.SUBSCRIBER:
-            # Protean
-            from protean.core.subscriber import SubscriberFactory
-
-            new_cls = SubscriberFactory.prep_class(element_cls, **kwargs)
-        elif element_type == DomainObjects.DOMAIN_EVENT:
-            # Protean
-            from protean.core.domain_event import DomainEventFactory
-
-            new_cls = DomainEventFactory.prep_class(element_cls, **kwargs)
+        if element_type in [
+            DomainObjects.AGGREGATE,
+            DomainObjects.APPLICATION_SERVICE,
+            DomainObjects.COMMAND,
+            DomainObjects.COMMAND_HANDLER,
+            DomainObjects.DOMAIN_EVENT,
+            DomainObjects.DOMAIN_SERVICE,
+            DomainObjects.EMAIL,
+            DomainObjects.ENTITY,
+            DomainObjects.REPOSITORY,
+            DomainObjects.SUBSCRIBER,
+            DomainObjects.VALUE_OBJECT,
+        ]:
+            new_cls = self.factory_for(element_type)(element_cls, **kwargs)
         else:
             try:
                 if not issubclass(

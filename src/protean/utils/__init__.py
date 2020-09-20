@@ -5,8 +5,13 @@ to the maximum extent possible.
 """
 # Standard Library Imports
 import functools
+import logging
 
 from enum import Enum, auto
+
+from protean.core.exceptions import IncorrectUsageError
+
+logger = logging.getLogger("protean.utils")
 
 
 class IdentityStrategy(Enum):
@@ -77,3 +82,20 @@ class DomainObjects(Enum):
     SERIALIZER = "SERIALIZER"
     SUBSCRIBER = "SUBSCRIBER"
     VALUE_OBJECT = "VALUE_OBJECT"
+
+
+def derive_element_class(element_cls, base_cls):
+    if not issubclass(element_cls, base_cls):
+        try:
+            new_dict = element_cls.__dict__.copy()
+            new_dict.pop("__dict__", None)  # Remove __dict__ to prevent recursion
+
+            element_cls = type(element_cls.__name__, (base_cls,), new_dict)
+        except BaseException as exc:
+            logger.debug("Error during Element registration:", repr(exc))
+            raise IncorrectUsageError(
+                "Invalid class {element_cls.__name__} for type {element_type.value}"
+                " (Error: {exc})",
+            )
+
+    return element_cls

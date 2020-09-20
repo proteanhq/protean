@@ -2,7 +2,7 @@
 import logging
 
 # Protean
-from protean.utils import DomainObjects
+from protean.utils import DomainObjects, derive_element_class
 
 logger = logging.getLogger("protean.application")
 
@@ -25,3 +25,7 @@ class BaseApplicationService:
         if cls is BaseApplicationService:
             raise TypeError("BaseApplicationService cannot be instantiated")
         return object.__new__(cls, *args, **kwargs)
+
+
+def application_service_factory(element_cls, **kwargs):
+    return derive_element_class(element_cls, BaseApplicationService)

@@ -2,7 +2,7 @@
 from abc import abstractmethod
 
 # Protean
-from protean.utils import DomainObjects
+from protean.utils import DomainObjects, derive_element_class
 
 
 class _CommandHandlerMetaclass(type):
@@ -49,7 +49,7 @@ class CommandHandlerMeta:
 
     def __init__(self, entity_name, meta):
         self.command_cls = getattr(meta, "command_cls", None)
-        self.broker = getattr(meta, "broker", None)
+        self.broker = getattr(meta, "broker", "default")
 
 
 class BaseCommandHandler(metaclass=_CommandHandlerMetaclass):
@@ -72,5 +72,9 @@ class BaseCommandHandler(metaclass=_CommandHandlerMetaclass):
 
     @abstractmethod
     def notify(self, command):
-        """Placeholder method for recieving notifications on command"""
+        """Placeholder method for receiving notifications on command"""
         pass
+
+
+def command_handler_factory(element_cls, **kwargs):
+    return derive_element_class(element_cls, BaseCommandHandler)
