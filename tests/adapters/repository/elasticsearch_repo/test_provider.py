@@ -5,7 +5,7 @@ import pytest
 from elasticsearch import Elasticsearch
 from elasticsearch_dsl.response import Response
 from protean.adapters.repository import Providers
-from protean.adapters.repository.elasticsearch_repo import ESProvider
+from protean.adapters.repository.elasticsearch import ESProvider
 
 # Local/Relative Imports
 from .elements import Alien, Person

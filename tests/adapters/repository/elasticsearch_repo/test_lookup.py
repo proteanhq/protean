@@ -1,7 +1,7 @@
 # Protean
 import pytest
 
-from protean.adapters.repository import elasticsearch_repo as repo
+from protean.adapters.repository import elasticsearch as repo
 
 
 @pytest.mark.elasticsearch

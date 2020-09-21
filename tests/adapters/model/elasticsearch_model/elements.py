@@ -11,7 +11,7 @@ from protean.core.field.basic import DateTime, Integer, String
 from protean.core.field.basic import Text as ProteanText
 from protean.core.field.embedded import ValueObjectField
 from protean.core.value_object import BaseValueObject
-from protean.adapters.repository.elasticsearch_repo import ElasticsearchModel
+from protean.adapters.repository.elasticsearch import ElasticsearchModel
 
 
 class Person(BaseAggregate):

@@ -1,7 +1,7 @@
 # Protean
 import pytest
 
-from protean.adapters.repository.elasticsearch_repo import ElasticsearchModel
+from protean.adapters.repository.elasticsearch import ElasticsearchModel
 
 # Local/Relative Imports
 from .elements import (
