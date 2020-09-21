@@ -20,7 +20,7 @@ from protean.core.field.basic import (
     String,
     Text,
 )
-from protean.utils import DomainObjects
+from protean.utils import DomainObjects, derive_element_class
 
 logger = logging.getLogger("protean.application.serializer")
 
@@ -193,3 +193,7 @@ class BaseSerializer(metaclass=_SerializerMetaclass):
         if cls is BaseSerializer:
             raise TypeError("BaseSerializer cannot be instantiated")
         return super().__new__(cls)
+
+
+def serializer_factory(element_cls, **kwargs):
+    return derive_element_class(element_cls, BaseSerializer)

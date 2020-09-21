@@ -1,8 +1,9 @@
 # Standard Library Imports
 from abc import abstractmethod
+from protean.core.exceptions import IncorrectUsageError
 
 # Protean
-from protean.utils import DomainObjects
+from protean.utils import DomainObjects, derive_element_class
 
 
 class ModelMeta:
@@ -44,3 +45,22 @@ class BaseModel:
     @abstractmethod
     def to_entity(cls, *args, **kwargs):
         """Convert Model Object to Entity Object"""
+
+
+def model_factory(element_cls, **kwargs):
+    element_cls = derive_element_class(element_cls, BaseModel)
+
+    if hasattr(element_cls, "Meta"):
+        element_cls.meta_ = ModelMeta(element_cls.Meta)
+    else:
+        element_cls.meta_ = ModelMeta()
+
+    if not (hasattr(element_cls.meta_, "entity_cls") and element_cls.meta_.entity_cls):
+        element_cls.meta_.entity_cls = kwargs.pop("entity_cls", None)
+
+    if not element_cls.meta_.entity_cls:
+        raise IncorrectUsageError(
+            "Models need to be associated with an Entity or Aggregate"
+        )
+
+    return element_cls

@@ -303,8 +303,10 @@ class Domain(_PackageBoundObject):
         from protean.core.domain_service import domain_service_factory
         from protean.core.email import email_factory
         from protean.core.entity import entity_factory
+        from protean.core.model import model_factory
         from protean.core.repository import repository_factory
         from protean.core.subscriber import subscriber_factory
+        from protean.core.serializer import serializer_factory
         from protean.core.value_object import value_object_factory
 
         factories = {
@@ -316,13 +318,18 @@ class Domain(_PackageBoundObject):
             DomainObjects.DOMAIN_SERVICE.value: domain_service_factory,
             DomainObjects.EMAIL.value: email_factory,
             DomainObjects.ENTITY.value: entity_factory,
+            DomainObjects.MODEL.value: model_factory,
             DomainObjects.REPOSITORY.value: repository_factory,
             DomainObjects.SUBSCRIBER.value: subscriber_factory,
+            DomainObjects.SERIALIZER.value: serializer_factory,
             DomainObjects.VALUE_OBJECT.value: value_object_factory,
-            DomainObjects.COMMAND_HANDLER.value: command_handler_factory,
-            # DomainObjects.MODEL.value: model_factory,
-            # DomainObjects.SERIALIZER.value: marshmallow.Schema,
         }
+
+        if domain_object_type.value not in factories:
+            raise IncorrectUsageError(
+                "Unknown Element Type {element_type.value} for class {element_cls.__name__} "
+                " (Error: {exc})",
+            )
 
         return factories[domain_object_type.value]
 
@@ -339,106 +346,11 @@ class Domain(_PackageBoundObject):
         #       class Account:
         #  ```
 
-        if element_type in [
-            DomainObjects.AGGREGATE,
-            DomainObjects.APPLICATION_SERVICE,
-            DomainObjects.COMMAND,
-            DomainObjects.COMMAND_HANDLER,
-            DomainObjects.DOMAIN_EVENT,
-            DomainObjects.DOMAIN_SERVICE,
-            DomainObjects.EMAIL,
-            DomainObjects.ENTITY,
-            DomainObjects.REPOSITORY,
-            DomainObjects.SUBSCRIBER,
-            DomainObjects.VALUE_OBJECT,
-        ]:
-            new_cls = self.factory_for(element_type)(element_cls, **kwargs)
-        else:
-            try:
-                if not issubclass(
-                    element_cls, self.base_class_mapping[element_type.value]
-                ):
-                    new_dict = element_cls.__dict__.copy()
-                    new_dict.pop(
-                        "__dict__", None
-                    )  # Remove __dict__ to prevent recursion
+        new_cls = self.factory_for(element_type)(element_cls, **kwargs)
 
-                    # Hack to switch between `marshmallow.Schema` and `BaseSerializer`
-                    #   while creating the derived class for Serializers
-                    #
-                    # This becomes necessary because we need to derive the undecorated class
-                    #   from `BaseSerializer`, but once derived, the base hierarchy only reflects
-                    #   `marshmallow.Schema` (This is a metaclass, so it disrupts hierarchy).
-                    if element_type == DomainObjects.SERIALIZER:
-                        # Protean
-                        from protean.core.serializer import BaseSerializer
-
-                        base_cls = BaseSerializer
-                    else:
-                        base_cls = self.base_class_mapping[element_type.value]
-
-                    new_cls = type(element_cls.__name__, (base_cls,), new_dict)
-                else:
-                    new_cls = element_cls  # Element was already subclassed properly
-            except BaseException as exc:
-                logger.debug("Error during Element registration:", repr(exc))
-                raise IncorrectUsageError(
-                    "Invalid class {element_cls.__name__} for type {element_type.value}"
-                    " (Error: {exc})",
-                )
-
-            aggregate_cls = None
-
-            if element_type == DomainObjects.MODEL and self._validate_model_class(
-                new_cls
-            ):
-                # Associate aggregate/entity class with model if `entity_cls` was supplied as an explicit parameter
-                # Protean
-                from protean.core.model import ModelMeta
-
-                if hasattr(new_cls, "Meta"):
-                    new_cls.meta_ = ModelMeta(new_cls.Meta)
-                else:
-                    new_cls.meta_ = ModelMeta()
-
-                entity_cls = new_cls.meta_.entity_cls or kwargs.pop("entity_cls", None)
-                if not entity_cls:
-                    raise IncorrectUsageError(
-                        "Models need to be associated with an Entity or Aggregate"
-                    )
-
-                if not new_cls.meta_.entity_cls:
-                    new_cls.meta_.entity_cls = entity_cls
-
-                # Remember model association with aggregate/entity class, for easy fetching
-                self._models[fully_qualified_name(entity_cls)] = new_cls
-
-            if (
-                element_type == DomainObjects.COMMAND_HANDLER
-                and self._validate_command_handler_class(new_cls)
-            ):
-                command_cls = new_cls.meta_.command_cls or kwargs.pop("command", None)
-                broker_name = new_cls.meta_.broker or "default"
-                if not command_cls:
-                    raise IncorrectUsageError(
-                        "Command Handlers need to be associated with a Command"
-                    )
-
-                new_cls.meta_.command_cls = command_cls
-                new_cls.meta_.broker = broker_name
-
-            if element_type == DomainObjects.EMAIL and self._validate_email_class(
-                new_cls
-            ):
-                provider_name = new_cls.meta_.provider or "default"
-                new_cls.meta_.provider = provider_name
-
-            # Enrich element with domain information
-            if hasattr(new_cls, "meta_"):
-                new_cls.meta_.aggregate_cls = aggregate_cls or kwargs.pop(
-                    "aggregate_cls", None
-                )
-                new_cls.meta_.bounded_context = kwargs.pop("bounded_context", None)
+        if element_type == DomainObjects.MODEL:
+            # Remember model association with aggregate/entity class, for easy fetching
+            self._models[fully_qualified_name(new_cls.meta_.entity_cls)] = new_cls
 
         # Register element with domain
         self._domain_registry.register_element(new_cls)
