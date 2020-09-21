@@ -33,14 +33,6 @@ class Database(Enum):
     SQLITE = "SQLITE"
 
 
-class classproperty(object):
-    def __init__(self, fget):
-        self.fget = fget
-
-    def __get__(self, owner_self, owner_cls):
-        return self.fget(owner_cls)
-
-
 def fully_qualified_name(cls):
     """Return Fully Qualified name along with module"""
     return ".".join([cls.__module__, cls.__name__])
@@ -82,6 +74,7 @@ class DomainObjects(Enum):
     SERIALIZER = "SERIALIZER"
     SUBSCRIBER = "SUBSCRIBER"
     VALUE_OBJECT = "VALUE_OBJECT"
+    VIEW = "VIEW"
 
 
 def derive_element_class(element_cls, base_cls):

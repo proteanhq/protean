@@ -299,6 +299,7 @@ class Domain(_PackageBoundObject):
         from protean.core.subscriber import subscriber_factory
         from protean.core.serializer import serializer_factory
         from protean.core.value_object import value_object_factory
+        from protean.core.view import view_factory
 
         factories = {
             DomainObjects.AGGREGATE.value: aggregate_factory,
@@ -314,6 +315,7 @@ class Domain(_PackageBoundObject):
             DomainObjects.SUBSCRIBER.value: subscriber_factory,
             DomainObjects.SERIALIZER.value: serializer_factory,
             DomainObjects.VALUE_OBJECT.value: value_object_factory,
+            DomainObjects.VIEW.value: view_factory,
         }
 
         if domain_object_type.value not in factories:
@@ -471,6 +473,9 @@ class Domain(_PackageBoundObject):
 
     def value_object(self, _cls=None, **kwargs):
         return self._domain_element(DomainObjects.VALUE_OBJECT, _cls=_cls, **kwargs,)
+
+    def view(self, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.VIEW, _cls=_cls, **kwargs,)
 
     ########################
     # Broker Functionality #

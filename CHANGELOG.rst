@@ -1,6 +1,13 @@
 Release History
 ===============
 
+DEV
+---
+
+* Introduce Views (a.k.a Read Models)
+* Refactor Domain Module
+* Introduce Factory Methods for all Domain Elements
+
 0.5.3 (2020-08-17)
 ------------------
 
