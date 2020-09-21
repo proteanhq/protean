@@ -13,7 +13,7 @@ SECRET_KEY = "tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA"
 
 # Database Configuration
 DATABASES = {
-    "default": {"PROVIDER": "protean.adapters.repository.dict_repo.DictProvider"},
+    "default": {"PROVIDER": "protean.adapters.repository.memory.MemoryProvider"},
 }
 
 # Identity strategy to use when persisting Entities/Aggregates.

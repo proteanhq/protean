@@ -37,11 +37,11 @@ def derive_schema_name(model_cls):
         return model_cls.meta_.entity_cls.meta_.schema_name
 
 
-class DictModel(BaseModel):
+class MemoryModel(BaseModel):
     """A model for the dictionary repository"""
 
     @classmethod
-    def from_entity(cls, entity) -> "DictModel":
+    def from_entity(cls, entity) -> "MemoryModel":
         """Convert the entity to a dictionary record """
         dict_obj = {}
         for attribute_name in entity.meta_.attributes:
@@ -49,12 +49,12 @@ class DictModel(BaseModel):
         return dict_obj
 
     @classmethod
-    def to_entity(cls, item: "DictModel"):
+    def to_entity(cls, item: "MemoryModel"):
         """Convert the dictionary record to an entity """
         return cls.meta_.entity_cls(item, raise_errors=False)
 
 
-class DictSession:
+class MemorySession:
     def __init__(self, provider, new_connection=False):
         self._provider = provider
         self.is_active = True
@@ -96,13 +96,13 @@ class DictSession:
         pass
 
 
-class DictProvider(BaseProvider):
+class MemoryProvider(BaseProvider):
     """Provider class for Dict Repositories"""
 
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Provider with Connection/Adapter details"""
 
-        # In case of `DictProvider`, the `DATABASE` value will always be `MEMORY`.
+        # In case of `MemoryProvider`, the `DATABASE` value will always be `MEMORY`.
         conn_info["DATABASE"] = Database.MEMORY.value
         super().__init__(name, domain, conn_info)
 
@@ -116,11 +116,11 @@ class DictProvider(BaseProvider):
         `database`. All transactions on the Provider's repositories
         are committed on this copy of the database.
         """
-        return DictSession(self)
+        return MemorySession(self)
 
     def get_connection(self, session_cls=None):
         """Return the dictionary database object """
-        return DictSession(self, new_connection=True)
+        return MemorySession(self, new_connection=True)
 
     def _data_reset(self):
         """Reset data"""
@@ -140,9 +140,9 @@ class DictProvider(BaseProvider):
         if schema_name in self._model_classes:
             return self._model_classes[schema_name]
 
-        # If `model_cls` is already subclassed from DictModel,
+        # If `model_cls` is already subclassed from MemoryModel,
         #   this method call is a no-op
-        if issubclass(model_cls, DictModel):
+        if issubclass(model_cls, MemoryModel):
             return model_cls
         else:
             custom_attrs = {
@@ -160,7 +160,7 @@ class DictProvider(BaseProvider):
             custom_attrs.update({"meta_": meta_})
             # FIXME Ensure the custom model attributes are constructed properly
             decorated_model_cls = type(
-                model_cls.__name__, (DictModel, model_cls), custom_attrs
+                model_cls.__name__, (MemoryModel, model_cls), custom_attrs
             )
 
             # Memoize the constructed model class
@@ -186,7 +186,7 @@ class DictProvider(BaseProvider):
                 "meta_": meta_,
             }
             # FIXME Ensure the custom model attributes are constructed properly
-            model_cls = type(entity_cls.__name__ + "Model", (DictModel,), attrs)
+            model_cls = type(entity_cls.__name__ + "Model", (MemoryModel,), attrs)
 
             # Memoize the constructed model class
             self._model_classes[entity_cls.meta_.schema_name] = model_cls
@@ -505,7 +505,7 @@ operators = {
 }
 
 
-class DefaultDictLookup(BaseLookup):
+class MemoryLookup(BaseLookup):
     """Base class with default implementation of expression construction"""
 
     def process_source(self):
@@ -538,15 +538,15 @@ class DefaultDictLookup(BaseLookup):
         )
 
 
-@DictProvider.register_lookup
-class Exact(DefaultDictLookup):
+@MemoryProvider.register_lookup
+class Exact(MemoryLookup):
     """Exact Match Query"""
 
     lookup_name = "exact"
 
 
-@DictProvider.register_lookup
-class IExact(DefaultDictLookup):
+@MemoryProvider.register_lookup
+class IExact(MemoryLookup):
     """Exact Case-Insensitive Match Query"""
 
     lookup_name = "iexact"
@@ -562,8 +562,8 @@ class IExact(DefaultDictLookup):
         return "%s.lower()" % super().process_target()
 
 
-@DictProvider.register_lookup
-class Contains(DefaultDictLookup):
+@MemoryProvider.register_lookup
+class Contains(MemoryLookup):
     """Exact Contains Query"""
 
     lookup_name = "contains"
@@ -577,8 +577,8 @@ class Contains(DefaultDictLookup):
         )
 
 
-@DictProvider.register_lookup
-class IContains(DefaultDictLookup):
+@MemoryProvider.register_lookup
+class IContains(MemoryLookup):
     """Exact Case-Insensitive Contains Query"""
 
     lookup_name = "icontains"
@@ -602,36 +602,36 @@ class IContains(DefaultDictLookup):
         )
 
 
-@DictProvider.register_lookup
-class GreaterThan(DefaultDictLookup):
+@MemoryProvider.register_lookup
+class GreaterThan(MemoryLookup):
     """Greater than Query"""
 
     lookup_name = "gt"
 
 
-@DictProvider.register_lookup
-class GreaterThanOrEqual(DefaultDictLookup):
+@MemoryProvider.register_lookup
+class GreaterThanOrEqual(MemoryLookup):
     """Greater than or Equal Query"""
 
     lookup_name = "gte"
 
 
-@DictProvider.register_lookup
-class LessThan(DefaultDictLookup):
+@MemoryProvider.register_lookup
+class LessThan(MemoryLookup):
     """Less than Query"""
 
     lookup_name = "lt"
 
 
-@DictProvider.register_lookup
-class LessThanOrEqual(DefaultDictLookup):
+@MemoryProvider.register_lookup
+class LessThanOrEqual(MemoryLookup):
     """Less than or Equal Query"""
 
     lookup_name = "lte"
 
 
-@DictProvider.register_lookup
-class In(DefaultDictLookup):
+@MemoryProvider.register_lookup
+class In(MemoryLookup):
     """In Query"""
 
     lookup_name = "in"

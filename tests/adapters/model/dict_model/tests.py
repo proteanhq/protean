@@ -1,7 +1,7 @@
 # Protean
 import pytest
 
-from protean.adapters.repository.dict_repo import DictModel
+from protean.adapters.repository.memory import MemoryModel
 
 # Local/Relative Imports
 from .elements import Email, Person, Provider, ProviderCustomModel, Receiver, User
@@ -14,7 +14,7 @@ class TestModel:
 
     def test_that_model_class_is_created_automatically(self, test_domain):
         model_cls = test_domain.get_model(Person)
-        assert issubclass(model_cls, DictModel)
+        assert issubclass(model_cls, MemoryModel)
         assert model_cls.__name__ == "PersonModel"
 
     def test_conversation_from_entity_to_model(self, test_domain):
@@ -46,7 +46,7 @@ class TestModelWithVO:
 
     def test_that_model_class_is_created_automatically(self, test_domain):
         model_cls = test_domain.get_model(User)
-        assert issubclass(model_cls, DictModel)
+        assert issubclass(model_cls, MemoryModel)
         assert model_cls.__name__ == "UserModel"
 
     def test_conversation_from_entity_to_model(self, test_domain):

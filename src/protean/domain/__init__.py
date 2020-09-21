@@ -91,7 +91,7 @@ class Domain(_PackageBoundObject):
             "IDENTITY_TYPE": IdentityType.STRING,
             "DATABASES": {
                 "default": {
-                    "PROVIDER": "protean.adapters.repository.dict_repo.DictProvider",
+                    "PROVIDER": "protean.adapters.repository.memory.MemoryProvider",
                 },
             },
             "BROKERS": {

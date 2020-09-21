@@ -2,7 +2,7 @@
 from datetime import datetime
 
 # Protean
-from protean.adapters.repository.dict_repo import Exact
+from protean.adapters.repository.memory import Exact
 
 
 class TestLookup:
@@ -10,9 +10,9 @@ class TestLookup:
 
     # Protean
     from protean.port.dao import BaseLookup
-    from protean.adapters.repository.dict_repo import DictProvider
+    from protean.adapters.repository.memory import MemoryProvider
 
-    @DictProvider.register_lookup
+    @MemoryProvider.register_lookup
     class SampleLookup(BaseLookup):
         """A simple implementation of lookup class"""
 
@@ -27,9 +27,9 @@ class TestLookup:
 
     def test_registration_of_a_lookup_to_an_adapter(self):
         # Protean
-        from protean.adapters.repository.dict_repo import DictProvider
+        from protean.adapters.repository.memory import MemoryProvider
 
-        assert DictProvider.get_lookups().get("sample") == self.SampleLookup
+        assert MemoryProvider.get_lookups().get("sample") == self.SampleLookup
 
     def test_expression_constructed_for_datetime_fields(self):
         now = datetime.today()
