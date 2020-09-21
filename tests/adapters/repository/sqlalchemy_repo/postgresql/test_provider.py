@@ -3,7 +3,7 @@
 import pytest
 from protean.adapters.repository import Providers
 
-from protean.adapters.repository.sqlalchemy_repo import SAProvider
+from protean.adapters.repository.sqlalchemy import SAProvider
 from sqlalchemy.engine.result import ResultProxy
 from sqlalchemy.orm.session import Session
 

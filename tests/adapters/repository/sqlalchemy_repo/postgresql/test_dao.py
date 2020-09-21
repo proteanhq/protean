@@ -873,7 +873,7 @@ class TestDAOLookup:
     def sample_lookup_cls(self):
         # Protean
         from protean.port.dao import BaseLookup
-        from protean.adapters.repository.sqlalchemy_repo import SAProvider
+        from protean.adapters.repository.sqlalchemy import SAProvider
 
         @SAProvider.register_lookup
         class SampleLookup(BaseLookup):
@@ -896,6 +896,6 @@ class TestDAOLookup:
 
     def test_registration_of_a_lookup_to_an_adapter(self, sample_lookup_cls):
         # Protean
-        from protean.adapters.repository.sqlalchemy_repo import SAProvider
+        from protean.adapters.repository.sqlalchemy import SAProvider
 
         assert SAProvider.get_lookups().get("sample") == sample_lookup_cls

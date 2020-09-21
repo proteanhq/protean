@@ -12,7 +12,7 @@ SECRET_KEY = "j2t#8U!vy877Rn2W6gQQyz%HmXN3@egV"
 # Database Configuration
 DATABASES = {
     "default": {
-        "PROVIDER": "protean.adapters.repository.sqlalchemy_repo.SAProvider",
+        "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
         "DATABASE": Database.SQLITE.value,
         "DATABASE_URI": "sqlite:///test.db",
     },

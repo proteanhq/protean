@@ -1,7 +1,7 @@
 # Protean
 import pytest
 
-from protean.adapters.repository.sqlalchemy_repo import SqlalchemyModel
+from protean.adapters.repository.sqlalchemy import SqlalchemyModel
 
 # Local/Relative Imports
 from .elements import ComplexUser, Email, Person, Provider, Receiver

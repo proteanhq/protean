@@ -14,7 +14,7 @@ SECRET_KEY = "tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA"
 DATABASES = {
     "default": {"PROVIDER": "protean.adapters.repository.memory.MemoryProvider"},
     "sqlite": {
-        "PROVIDER": "protean.adapters.repository.sqlalchemy_repo.SAProvider",
+        "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
         "DATABASE": Database.SQLITE.value,
         "DATABASE_URI": "sqlite:///test.db",
     },
