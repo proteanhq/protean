@@ -36,7 +36,6 @@ class TestEntityMeta:
 
         # Domain attributes
         assert hasattr(Person.meta_, "aggregate_cls")
-        assert hasattr(Person.meta_, "bounded_context")
 
     def test_entity_meta_has_declared_fields_on_construction(self):
         assert Person.meta_.declared_fields is not None

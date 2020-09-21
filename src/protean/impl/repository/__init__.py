@@ -131,10 +131,7 @@ class Providers:
             )
 
             self.domain._domain_element(
-                DomainObjects.REPOSITORY,
-                _cls=new_class,
-                aggregate_cls=aggregate_cls,
-                bounded_context=aggregate_cls.meta_.bounded_context,
+                DomainObjects.REPOSITORY, _cls=new_class, aggregate_cls=aggregate_cls,
             )
 
             # FIXME Avoid comparing classes / Fetch a Repository class directly by its aggregate class
