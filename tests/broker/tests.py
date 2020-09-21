@@ -2,7 +2,7 @@
 import pytest
 
 from protean.port.broker import BaseBroker
-from protean.impl.broker.memory_broker import MemoryBroker
+from protean.adapters.broker.memory_broker import MemoryBroker
 
 
 class TestBroker:

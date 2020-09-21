@@ -66,8 +66,5 @@ def aggregate_factory(element_cls, **kwargs):
         or (hasattr(element_cls, "meta_") and element_cls.meta_.model)
         or None
     )
-    element_cls.meta_.bounded_context = kwargs.pop("bounded_context", None) or (
-        hasattr(element_cls, "meta_") and element_cls.meta_.bounded_context
-    )
 
     return element_cls

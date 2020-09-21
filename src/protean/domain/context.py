@@ -101,7 +101,7 @@ class DomainContext(object):
                 self.domain.do_teardown_domain_context(exc)
         finally:
             rv = _domain_context_stack.pop()
-        assert rv is self, "Popped wrong domain context.  (%r instead of %r)" % (
+        assert rv is self, f"Popped wrong domain context.  (%r instead of %r)" % (
             rv,
             self,
         )

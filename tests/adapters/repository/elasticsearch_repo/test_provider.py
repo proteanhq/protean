@@ -1,13 +1,17 @@
+"""Module to test SQLAlchemy Provider Class"""
 # Protean
 import pytest
-from protean.adapters.repository import Providers
 
-from protean.adapters.repository.dict_repo import DictProvider
+from elasticsearch import Elasticsearch
+from elasticsearch_dsl.response import Response
+from protean.adapters.repository import Providers
+from protean.adapters.repository.elasticsearch_repo import ESProvider
 
 # Local/Relative Imports
 from .elements import Alien, Person
 
 
+@pytest.mark.elasticsearch
 class TestProviders:
     """This class holds tests for Providers Singleton"""
 
@@ -28,14 +32,16 @@ class TestProviders:
         """Test provider info loaded for tests"""
 
         provider1 = test_domain.get_provider("default")
-        assert isinstance(provider1, DictProvider)
+        assert isinstance(provider1, ESProvider)
 
     def test_provider_get_connection(self, test_domain):
         """Test ``get_connection`` method and check for connection details"""
 
         conn = test_domain.get_provider("default").get_connection()
-        assert all(key in conn._db for key in ["data", "lock", "counters"])
+        assert conn is not None
+        assert isinstance(conn, Elasticsearch)
 
+    @pytest.mark.pending
     def test_provider_raw(self, test_domain):
         """Test raw queries"""
         test_domain.get_dao(Person).create(
@@ -54,24 +60,21 @@ class TestProviders:
 
         provider = test_domain.get_provider("default")
 
-        # Filter by Dog attributes
-        results = provider.raw('{"last_name":"John"}')
-        assert isinstance(results, list)
-        assert len(results) == 2
+        # Filter by column value
+        results = provider.raw("SELECT count(*) FROM person where last_name = 'John'")
+        assert isinstance(results, Response)
+        assert next(results)[0] == 2
 
-        # Try with single quotes in JSON String
-        results = provider.raw("{'last_name':'John'}")
-        assert len(results) == 2
-
-        results = provider.raw('{"last_name":"John", "age":3}')
-        assert len(results) == 1
+        results = provider.raw(
+            "SELECT count(*) FROM person where last_name = 'John' and age = 3"
+        )
+        assert next(results)[0] == 1
 
         # This query brings results from multiple repositories
-        results = provider.raw('{"age__in":[2, 3]}')
-        assert len(results) == 2
+        results = provider.raw("SELECT count(*) FROM person where age in (6,3)")
+        assert next(results)[0] == 2
 
-        results = provider.raw('{"last_name":"John", "age__in":[6,7]}')
-        assert len(results) == 1
-
-        results = provider.raw('{"last_name":"John", "age__in":[2, 3,7]}')
-        assert len(results) == 2
+        results = provider.raw(
+            "SELECT * FROM person where last_name = 'John' and age in (6,7)"
+        )
+        assert next(results)[0] == "Murdock"

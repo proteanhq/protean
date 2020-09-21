@@ -56,7 +56,6 @@ class SubscriberMeta:
         self.domain_event = getattr(meta, "domain_event", None)
         self.broker = getattr(meta, "broker", None)
         self.aggregate_cls = getattr(meta, "aggregate_cls", None)
-        self.bounded_context = getattr(meta, "bounded_context", None)
 
 
 class BaseSubscriber(metaclass=_SubscriberMetaclass):

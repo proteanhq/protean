@@ -1,10 +1,11 @@
+# cSpell: disable
+
 # Protean
-from protean.utils import Database, IdentityStrategy, IdentityType
+from protean.utils import IdentityStrategy, IdentityType
 
 DEBUG = True
 TESTING = True
 ENV = "development"
-AGGREGATE_CHILDREN_LIMIT = 15
 
 # A secret key for this particular Protean installation. Used in secret-key
 # hashing algorithms.
@@ -13,11 +14,6 @@ SECRET_KEY = "tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA"
 # Database Configuration
 DATABASES = {
     "default": {"PROVIDER": "protean.adapters.repository.dict_repo.DictProvider"},
-    "sqlite": {
-        "PROVIDER": "protean.adapters.repository.sqlalchemy_repo.SAProvider",
-        "DATABASE": Database.SQLITE.value,
-        "DATABASE_URI": "sqlite:///test.db",
-    },
 }
 
 # Identity strategy to use when persisting Entities/Aggregates.
@@ -45,7 +41,8 @@ BROKERS = {
 
 EMAIL_PROVIDERS = {
     "default": {
-        "PROVIDER": "protean.adapters.email.dummy.DummyEmailProvider",
+        "PROVIDER": "protean.adapters.email.sendgrid_email.SendgridEmailProvider",
         "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
+        "API_KEY": "this-is-a-fake-key",
     },
 }

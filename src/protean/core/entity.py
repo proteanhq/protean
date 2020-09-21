@@ -203,7 +203,6 @@ class EntityMeta:
 
         # Domain Attributes
         self.aggregate_cls = getattr(meta, "aggregate_cls", None)
-        self.bounded_context = getattr(meta, "bounded_context", None)
 
     @property
     def mandatory_fields(self):
@@ -610,9 +609,6 @@ def entity_factory(element_cls, **kwargs):
         kwargs.pop("model", None)
         or (hasattr(element_cls, "meta_") and element_cls.meta_.model)
         or None
-    )
-    element_cls.meta_.bounded_context = kwargs.pop("bounded_context", None) or (
-        hasattr(element_cls, "meta_") and element_cls.meta_.bounded_context
     )
     element_cls.meta_.aggregate_cls = (
         kwargs.pop("aggregate_cls", None)

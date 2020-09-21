@@ -4,7 +4,7 @@ import pytest
 from mock import patch
 from protean.core.domain_event import BaseDomainEvent
 from protean.globals import current_domain
-from protean.impl.broker.memory_broker import MemoryBroker
+from protean.adapters.broker.memory_broker import MemoryBroker
 from protean.infra.event_log import EventLog, EventLogRepository
 from protean.utils import fully_qualified_name
 

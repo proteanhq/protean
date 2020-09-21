@@ -4,7 +4,6 @@ from protean.utils import Database, IdentityStrategy, IdentityType
 DEBUG = True
 TESTING = True
 ENV = "development"
-AGGREGATE_CHILDREN_LIMIT = 15
 
 # A secret key for this particular Protean installation. Used in secret-key
 # hashing algorithms.
@@ -40,12 +39,28 @@ IDENTITY_TYPE = IdentityType.STRING
 
 # Messaging Mediums
 BROKERS = {
-    "default": {"PROVIDER": "protean.adapters.broker.memory_broker.MemoryBroker"},
+    "default": {
+        "PROVIDER": "protean.adapters.broker.rq_broker.RqBroker",
+        "URI": "redis://127.0.0.1:6379/2",
+        "IS_ASYNC": True,
+    },
 }
 
-EMAIL_PROVIDERS = {
-    "default": {
-        "PROVIDER": "protean.adapters.email.dummy.DummyEmailProvider",
-        "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
+LOGGING_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "console": {"format": "%(asctime)s %(name)-12s %(levelname)-8s %(message)s"},
+    },
+    "handlers": {
+        "console": {
+            "level": "DEBUG",
+            "class": "logging.StreamHandler",
+            "formatter": "console",
+        },
+    },
+    "loggers": {
+        "protean": {"handlers": ["console"], "level": "DEBUG"},
+        "rq.worker": {"handlers": ["console"], "level": "DEBUG"},
     },
 }

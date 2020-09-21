@@ -12,9 +12,9 @@ from protean.core.exceptions import (
 )
 from protean.globals import current_uow
 from protean.domain.registry import _DomainRegistry
-from protean.impl.broker import Brokers
-from protean.impl.email import Emails
-from protean.impl.repository import Providers
+from protean.adapters.broker import Brokers
+from protean.adapters.email import Emails
+from protean.adapters.repository import Providers
 from protean.utils import fully_qualified_name, DomainObjects
 from werkzeug.datastructures import ImmutableDict
 
@@ -91,17 +91,17 @@ class Domain(_PackageBoundObject):
             "IDENTITY_TYPE": IdentityType.STRING,
             "DATABASES": {
                 "default": {
-                    "PROVIDER": "protean.impl.repository.dict_repo.DictProvider",
+                    "PROVIDER": "protean.adapters.repository.dict_repo.DictProvider",
                 },
             },
             "BROKERS": {
                 "default": {
-                    "PROVIDER": "protean.impl.broker.memory_broker.MemoryBroker",
+                    "PROVIDER": "protean.adapters.broker.memory_broker.MemoryBroker",
                 },
             },
             "EMAIL_PROVIDERS": {
                 "default": {
-                    "PROVIDER": "protean.impl.email.dummy.DummyEmailProvider",
+                    "PROVIDER": "protean.adapters.email.dummy.DummyEmailProvider",
                     "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
                 },
             },
