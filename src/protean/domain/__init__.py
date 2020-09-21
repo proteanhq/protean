@@ -357,54 +357,6 @@ class Domain(_PackageBoundObject):
 
         return new_cls
 
-    def _validate_model_class(self, element_cls):
-        # Import here to avoid cyclic dependency
-        # Protean
-        from protean.core.model import BaseModel
-
-        if not issubclass(element_cls, BaseModel):
-            raise AssertionError(
-                f"Element {element_cls.__name__} must be subclass of `BaseModel`"
-            )
-
-        return True
-
-    def _validate_serializer_class(self, element_cls):
-        # Import here to avoid cyclic dependency
-        # Protean
-        from protean.core.serializer import BaseSerializer
-
-        if not issubclass(element_cls, BaseSerializer):
-            raise AssertionError(
-                f"Element {element_cls.__name__} must be subclass of `BaseSerializer`"
-            )
-
-        return True
-
-    def _validate_command_handler_class(self, element_cls):
-        # Import here to avoid cyclic dependency
-        # Protean
-        from protean.core.command_handler import BaseCommandHandler
-
-        if not issubclass(element_cls, BaseCommandHandler):
-            raise AssertionError(
-                f"Element {element_cls.__name__} must be subclass of `BaseCommandHandler`"
-            )
-
-        return True
-
-    def _validate_email_class(self, element_cls):
-        # Import here to avoid cyclic dependency
-        # Protean
-        from protean.core.email import BaseEmail
-
-        if not issubclass(element_cls, BaseEmail):
-            raise AssertionError(
-                f"Element {element_cls.__name__} must be subclass of `BaseEmail`"
-            )
-
-        return True
-
     # _cls should never be specified by keyword, so start it with an
     # underscore.  The presence of _cls is used to detect if this
     # decorator is being called with parameters or not.
@@ -444,141 +396,50 @@ class Domain(_PackageBoundObject):
         # We're called as @dataclass without parens.
         return wrap(_cls)
 
-    def aggregate(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
+    def aggregate(self, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.AGGREGATE, _cls=_cls, **kwargs,)
+
+    def application_service(self, _cls=None, **kwargs):
         return self._domain_element(
-            DomainObjects.AGGREGATE,
-            _cls=_cls,
-            **kwargs,
-            aggregate_cls=aggregate_cls,
-            bounded_context=bounded_context,
+            DomainObjects.APPLICATION_SERVICE, _cls=_cls, **kwargs,
         )
 
-    def application_service(
-        self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs
-    ):
-        return self._domain_element(
-            DomainObjects.APPLICATION_SERVICE,
-            _cls=_cls,
-            **kwargs,
-            aggregate_cls=aggregate_cls,
-            bounded_context=bounded_context,
-        )
+    def command(self, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.COMMAND, _cls=_cls, **kwargs,)
 
-    def command(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
-        return self._domain_element(
-            DomainObjects.COMMAND,
-            _cls=_cls,
-            **kwargs,
-            aggregate_cls=aggregate_cls,
-            bounded_context=bounded_context,
-        )
+    def command_handler(self, command, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.COMMAND_HANDLER, _cls=_cls, **kwargs)
 
-    def command_handler(
-        self, command, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs
-    ):
-        return self._domain_element(
-            DomainObjects.COMMAND_HANDLER,
-            _cls=_cls,
-            **kwargs,
-            aggregate_cls=aggregate_cls,
-            bounded_context=bounded_context,
-            command=command,
-        )
+    def domain_event(self, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.DOMAIN_EVENT, _cls=_cls, **kwargs,)
 
-    def domain_event(
-        self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs
-    ):
-        return self._domain_element(
-            DomainObjects.DOMAIN_EVENT,
-            _cls=_cls,
-            **kwargs,
-            aggregate_cls=aggregate_cls,
-            bounded_context=bounded_context,
-        )
+    def domain_service(self, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.DOMAIN_SERVICE, _cls=_cls, **kwargs,)
 
-    def domain_service(
-        self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs
-    ):
-        return self._domain_element(
-            DomainObjects.DOMAIN_SERVICE,
-            _cls=_cls,
-            **kwargs,
-            aggregate_cls=aggregate_cls,
-            bounded_context=bounded_context,
-        )
+    def entity(self, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.ENTITY, _cls=_cls, **kwargs)
 
-    def entity(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
-        return self._domain_element(
-            DomainObjects.ENTITY,
-            _cls=_cls,
-            **kwargs,
-            aggregate_cls=aggregate_cls,
-            bounded_context=bounded_context,
-        )
+    def email(self, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.EMAIL, _cls=_cls, **kwargs)
 
-    def email(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
-        return self._domain_element(
-            DomainObjects.EMAIL,
-            _cls=_cls,
-            **kwargs,
-            aggregate_cls=aggregate_cls,
-            bounded_context=bounded_context,
-        )
+    def model(self, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.MODEL, _cls=_cls, **kwargs)
 
-    def model(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
-        return self._domain_element(
-            DomainObjects.MODEL,
-            _cls=_cls,
-            **kwargs,
-            aggregate_cls=aggregate_cls,
-            bounded_context=bounded_context,
-        )
+    def repository(self, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.REPOSITORY, _cls=_cls, **kwargs)
 
-    def repository(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
-        return self._domain_element(
-            DomainObjects.REPOSITORY,
-            _cls=_cls,
-            **kwargs,
-            aggregate_cls=aggregate_cls,
-            bounded_context=bounded_context,
-        )
-
-    def serializer(self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs):
-        return self._domain_element(
-            DomainObjects.SERIALIZER,
-            _cls=_cls,
-            **kwargs,
-            aggregate_cls=aggregate_cls,
-            bounded_context=bounded_context,
-        )
+    def serializer(self, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.SERIALIZER, _cls=_cls, **kwargs)
 
     def subscriber(
-        self,
-        domain_event,
-        _cls=None,
-        aggregate_cls=None,
-        bounded_context=None,
-        **kwargs,
+        self, domain_event, _cls=None, **kwargs,
     ):
         return self._domain_element(
-            DomainObjects.SUBSCRIBER,
-            _cls=_cls,
-            **kwargs,
-            aggregate_cls=aggregate_cls,
-            bounded_context=bounded_context,
-            domain_event=domain_event,
+            DomainObjects.SUBSCRIBER, _cls=_cls, **kwargs, domain_event=domain_event,
         )
 
-    def value_object(
-        self, _cls=None, aggregate_cls=None, bounded_context=None, **kwargs
-    ):
-        return self._domain_element(
-            DomainObjects.VALUE_OBJECT,
-            _cls=_cls,
-            **kwargs,
-            aggregate_cls=aggregate_cls,
-            bounded_context=bounded_context,
-        )
+    def value_object(self, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.VALUE_OBJECT, _cls=_cls, **kwargs,)
 
     def register_model(self, model_cls, **kwargs):
         """Register a model class"""
