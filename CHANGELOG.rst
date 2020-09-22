@@ -1,6 +1,17 @@
 Release History
 ===============
 
+0.5.4 (2020-09-22)
+------------------
+
+* Add support to restrict a model to a specific database
+* Add support for optional pickling of `List` fields (leverage Postgres List support)
+* Add support for Overlap operator in SQLAlchemy repo for Postgresql
+* Bugfix - Return keys as Strings for `Dict` field
+* Add support for storing Array of dictionaries in Postgres JSON column
+* Bugfix - Validate unique constraints in Dictionary repo
+* Bugfix - Fix broken Entity construction from Elasticsearch model
+
 0.5.3 (2020-08-17)
 ------------------
 
