@@ -22,7 +22,6 @@ class TestDomainContext:
     def test_domain_context_provides_domain_app(self, test_domain):
         with test_domain.domain_context():
             assert current_domain._get_current_object() == test_domain
-        assert _domain_context_stack.top is None
 
     def test_domain_tearing_down(self, test_domain):
         cleanup_stuff = []
@@ -105,7 +104,7 @@ class TestDomainContext:
                 pass
 
             # Protean
-            from protean.domain import DomainObjects
+            from protean.utils import DomainObjects
 
             with test_domain.domain_context():
                 try:

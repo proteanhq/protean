@@ -1,7 +1,8 @@
 # Protean
 import pytest
+from protean.adapters.repository import Providers
 
-from protean.impl.repository.dict_repo import DictProvider
+from protean.adapters.repository.memory import MemoryProvider
 
 # Local/Relative Imports
 from .elements import Alien, Person
@@ -17,7 +18,8 @@ class TestProviders:
 
     def test_initialization_of_providers_on_first_call(self, test_domain):
         """Test that ``providers`` object is available"""
-        assert test_domain.providers is None
+        assert isinstance(test_domain.providers, Providers)
+        assert test_domain.providers._providers is None
 
         test_domain.get_provider("default")
         assert test_domain.providers is not None
@@ -26,7 +28,7 @@ class TestProviders:
         """Test provider info loaded for tests"""
 
         provider1 = test_domain.get_provider("default")
-        assert isinstance(provider1, DictProvider)
+        assert isinstance(provider1, MemoryProvider)
 
     def test_provider_get_connection(self, test_domain):
         """Test ``get_connection`` method and check for connection details"""

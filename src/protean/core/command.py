@@ -1,6 +1,6 @@
 # Protean
 from protean.core.exceptions import InvalidDataError, ValidationError
-from protean.domain import DomainObjects
+from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import BaseContainer
 
 
@@ -41,3 +41,7 @@ class BaseCommand(BaseContainer):
             super().__init__(*args, **kwargs)
         except ValidationError as exception:
             raise InvalidDataError(exception.messages)
+
+
+def command_factory(element_cls, **kwargs):
+    return derive_element_class(element_cls, BaseCommand)

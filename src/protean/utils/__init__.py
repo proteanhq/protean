@@ -5,8 +5,13 @@ to the maximum extent possible.
 """
 # Standard Library Imports
 import functools
+import logging
 
 from enum import Enum, auto
+
+from protean.core.exceptions import IncorrectUsageError
+
+logger = logging.getLogger("protean.utils")
 
 
 class IdentityStrategy(Enum):
@@ -26,14 +31,6 @@ class Database(Enum):
     MEMORY = "MEMORY"
     POSTGRESQL = "POSTGRESQL"
     SQLITE = "SQLITE"
-
-
-class classproperty(object):
-    def __init__(self, fget):
-        self.fget = fget
-
-    def __get__(self, owner_self, owner_cls):
-        return self.fget(owner_cls)
 
 
 def fully_qualified_name(cls):
@@ -61,3 +58,37 @@ def convert_str_values_to_list(value):
         return [value]
     else:
         return list(value)
+
+
+class DomainObjects(Enum):
+    AGGREGATE = "AGGREGATE"
+    APPLICATION_SERVICE = "APPLICATION_SERVICE"
+    COMMAND = "COMMAND"
+    COMMAND_HANDLER = "COMMAND_HANDLER"
+    DOMAIN_EVENT = "DOMAIN_EVENT"
+    DOMAIN_SERVICE = "DOMAIN_SERVICE"
+    EMAIL = "EMAIL"
+    ENTITY = "ENTITY"
+    MODEL = "MODEL"
+    REPOSITORY = "REPOSITORY"
+    SERIALIZER = "SERIALIZER"
+    SUBSCRIBER = "SUBSCRIBER"
+    VALUE_OBJECT = "VALUE_OBJECT"
+    VIEW = "VIEW"
+
+
+def derive_element_class(element_cls, base_cls):
+    if not issubclass(element_cls, base_cls):
+        try:
+            new_dict = element_cls.__dict__.copy()
+            new_dict.pop("__dict__", None)  # Remove __dict__ to prevent recursion
+
+            element_cls = type(element_cls.__name__, (base_cls,), new_dict)
+        except BaseException as exc:
+            logger.debug("Error during Element registration:", repr(exc))
+            raise IncorrectUsageError(
+                "Invalid class {element_cls.__name__} for type {element_type.value}"
+                " (Error: {exc})",
+            )
+
+    return element_cls

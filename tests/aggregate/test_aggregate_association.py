@@ -3,7 +3,7 @@ import mock
 import pytest
 
 from protean.core.queryset import QuerySet
-from protean.core.repository.resultset import ResultSet
+from protean.port.dao import ResultSet
 
 # Local/Relative Imports
 from .elements import (

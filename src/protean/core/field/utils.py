@@ -1,6 +1,6 @@
 """ Utility functions for the Field Module """
 # Protean
-from protean.domain import DomainObjects
+from protean.utils import DomainObjects
 from protean.globals import current_domain
 
 

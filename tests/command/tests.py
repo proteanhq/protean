@@ -43,7 +43,10 @@ class TestCommandRegistration:
     def test_that_command_can_be_registered_with_domain(self, test_domain):
         test_domain.register(UserRegistrationCommand)
 
-        assert fully_qualified_name(UserRegistrationCommand) in test_domain.commands
+        assert (
+            fully_qualified_name(UserRegistrationCommand)
+            in test_domain.registry.commands
+        )
 
     def test_that_command_can_be_registered_via_annotations(self, test_domain):
         @test_domain.command
@@ -51,7 +54,9 @@ class TestCommandRegistration:
             old_password = String(required=True, max_length=255)
             new_password = String(required=True, max_length=255)
 
-        assert fully_qualified_name(ChangePasswordCommand) in test_domain.commands
+        assert (
+            fully_qualified_name(ChangePasswordCommand) in test_domain.registry.commands
+        )
 
 
 class TestCommandProperties:

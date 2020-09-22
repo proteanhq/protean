@@ -4,7 +4,7 @@ import os
 # Protean
 import pytest
 
-from protean.config import Config
+from protean.domain.config import Config
 from protean.domain import Domain
 
 # config keys used for the TestConfig
@@ -38,9 +38,9 @@ class TestConfig:
             "'AUTOLOAD_DOMAIN': True, "
             "'IDENTITY_STRATEGY': <IdentityStrategy.UUID: 1>, "
             "'IDENTITY_TYPE': <IdentityType.STRING: 'STRING'>, "
-            "'DATABASES': {'default': {'PROVIDER': 'protean.impl.repository.dict_repo.DictProvider'}}, "
-            "'BROKERS': {'default': {'PROVIDER': 'protean.impl.broker.memory_broker.MemoryBroker'}}, "
-            "'EMAIL_PROVIDERS': {'default': {'PROVIDER': 'protean.impl.email.dummy.DummyEmailProvider', "
+            "'DATABASES': {'default': {'PROVIDER': 'protean.adapters.repository.memory.MemoryProvider'}}, "
+            "'BROKERS': {'default': {'PROVIDER': 'protean.adapters.broker.memory_broker.MemoryBroker'}}, "
+            "'EMAIL_PROVIDERS': {'default': {'PROVIDER': 'protean.adapters.email.dummy.DummyEmailProvider', "
             "'DEFAULT_FROM_EMAIL': 'admin@team8solutions.com'}}, "
             "'AGGREGATE_CHILDREN_LIMIT': 100, "
             "'TEST_KEY': 'foo'}>"

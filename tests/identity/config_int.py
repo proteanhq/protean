@@ -12,7 +12,7 @@ SECRET_KEY = "j2t#8U!vy877Rn2W6gQQyz%HmXN3@egV"
 # Database Configuration
 DATABASES = {
     "default": {
-        "PROVIDER": "protean.impl.repository.sqlalchemy_repo.SAProvider",
+        "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
         "DATABASE": Database.SQLITE.value,
         "DATABASE_URI": "sqlite:///test.db",
     },
@@ -23,5 +23,5 @@ IDENTITY_TYPE = IdentityType.INTEGER
 
 # Messaging Mediums
 BROKERS = {
-    "default": {"PROVIDER": "protean.impl.broker.memory_broker.MemoryBroker"},
+    "default": {"PROVIDER": "protean.adapters.broker.memory_broker.MemoryBroker"},
 }

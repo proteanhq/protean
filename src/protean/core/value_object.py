@@ -4,7 +4,7 @@ import logging
 
 # Protean
 from protean.core.exceptions import IncorrectUsageError
-from protean.domain import DomainObjects
+from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import BaseContainer
 
 logger = logging.getLogger("protean.domain.value_object")
@@ -50,38 +50,17 @@ class BaseValueObject(BaseContainer):
         return super().__new__(cls)
 
 
-class ValueObjectFactory:
-    @classmethod
-    def prep_class(cls, element_cls, **kwargs):
-        if issubclass(element_cls, BaseValueObject):
-            new_element_cls = element_cls
-        else:
-            try:
-                new_dict = element_cls.__dict__.copy()
-                new_dict.pop("__dict__", None)  # Remove __dict__ to prevent recursion
+def value_object_factory(element_cls, **kwargs):
+    element_cls = derive_element_class(element_cls, BaseValueObject)
 
-                new_element_cls = type(
-                    element_cls.__name__, (BaseValueObject,), new_dict
-                )
-            except BaseException as exc:
-                logger.debug("Error during Element registration:", repr(exc))
-                raise IncorrectUsageError(
-                    "Invalid class {element_cls.__name__} for type {element_type.value}"
-                    " (Error: {exc})",
-                )
+    if not (
+        hasattr(element_cls.meta_, "aggregate_cls") and element_cls.meta_.aggregate_cls
+    ):
+        element_cls.meta_.aggregate_cls = kwargs.pop("aggregate_cls", None)
 
-        if hasattr(new_element_cls, "meta_"):
-            if not (
-                hasattr(new_element_cls.meta_, "aggregate_cls")
-                and new_element_cls.meta_.aggregate_cls
-            ):
-                new_element_cls.meta_.aggregate_cls = kwargs.pop("aggregate_cls", None)
+    if not element_cls.meta_.aggregate_cls:
+        raise IncorrectUsageError(
+            "Value Objects need to be associated with an Aggregate"
+        )
 
-            new_element_cls.meta_.bounded_context = kwargs.pop("bounded_context", None)
-
-        if not new_element_cls.meta_.aggregate_cls:
-            raise IncorrectUsageError(
-                "Value Objects need to be associated with an Aggregate"
-            )
-
-        return new_element_cls
+    return element_cls

@@ -5,7 +5,7 @@ from typing import List
 # Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import DateTime, Integer, String
-from protean.core.repository.base import BaseRepository
+from protean.core.repository import BaseRepository
 
 
 class Person(BaseAggregate):

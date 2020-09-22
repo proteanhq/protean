@@ -2,7 +2,7 @@
 from abc import abstractmethod
 
 # Protean
-from protean.domain import DomainObjects
+from protean.utils import DomainObjects, derive_element_class
 from protean.globals import current_domain
 from protean.utils import convert_str_values_to_list
 
@@ -142,3 +142,7 @@ class BaseEmail(metaclass=_EmailMetaclass):
         addressees as well as Cc and Bcc entries).
         """
         return [email for email in (self.to + self.cc + self.bcc) if email]
+
+
+def email_factory(element_cls, **kwargs):
+    return derive_element_class(element_cls, BaseEmail)

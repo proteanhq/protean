@@ -19,7 +19,7 @@ class TestEntityRegistration:
         test_domain.register(Post)
         test_domain.register(Comment)
 
-        assert fully_qualified_name(Comment) in test_domain.entities
+        assert fully_qualified_name(Comment) in test_domain.registry.entities
         assert Comment.meta_.aggregate_cls == Post
 
     def test_setting_provider_in_decorator_based_registration(self, test_domain):

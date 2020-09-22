@@ -30,7 +30,7 @@ class TestSerializerRegistration:
     def test_that_serializer_can_be_registered_with_domain(self, test_domain):
         test_domain.register(UserSchema)
 
-        assert fully_qualified_name(UserSchema) in test_domain.serializers
+        assert fully_qualified_name(UserSchema) in test_domain.registry.serializers
 
     def test_that_serializer_can_be_registered_via_annotations(self, test_domain):
         @test_domain.serializer
@@ -41,7 +41,7 @@ class TestSerializerRegistration:
             class Meta:
                 aggregate_cls = User
 
-        assert fully_qualified_name(PersonSchema) in test_domain.serializers
+        assert fully_qualified_name(PersonSchema) in test_domain.registry.serializers
 
 
 class TestSerializerDump:

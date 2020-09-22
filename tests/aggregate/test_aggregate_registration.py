@@ -11,7 +11,7 @@ class TestAggregateRegistration:
 
         test_domain.register(User)
 
-        assert fully_qualified_name(User) in test_domain.aggregates
+        assert fully_qualified_name(User) in test_domain.registry.aggregates
 
     def test_settings_in_manual_registration(self, test_domain):
         class User(BaseAggregate):

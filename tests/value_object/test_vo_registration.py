@@ -15,5 +15,5 @@ class TestVORegistration:
         class Bar:
             bar = String()
 
-        assert fully_qualified_name(Bar) in test_domain.value_objects
+        assert fully_qualified_name(Bar) in test_domain.registry.value_objects
         assert Bar.meta_.aggregate_cls == Foo

@@ -1,5 +1,5 @@
 # Protean
-from protean.core.repository.resultset import ResultSet
+from protean.port.dao import ResultSet
 
 
 class TestResultSet:

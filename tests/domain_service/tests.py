@@ -22,7 +22,10 @@ class TestDomainServiceRegistration:
     def test_that_domain_service_can_be_registered_with_domain(self, test_domain):
         test_domain.register(DummyDomainService)
 
-        assert fully_qualified_name(DummyDomainService) in test_domain.domain_services
+        assert (
+            fully_qualified_name(DummyDomainService)
+            in test_domain.registry.domain_services
+        )
 
     def test_that_domain_service_can_be_registered_via_annotations(self, test_domain):
         @test_domain.domain_service
@@ -31,5 +34,6 @@ class TestDomainServiceRegistration:
                 pass
 
         assert (
-            fully_qualified_name(AnnotatedDomainService) in test_domain.domain_services
+            fully_qualified_name(AnnotatedDomainService)
+            in test_domain.registry.domain_services
         )

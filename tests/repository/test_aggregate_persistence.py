@@ -7,7 +7,7 @@ from protean.core.exceptions import ObjectNotFoundError
 from .elements import Person, PersonRepository
 
 
-class TestAggregatePersistenceWithDictProvider:
+class TestAggregatePersistenceWithMemoryProvider:
     def test_retrieval_from_provider_connection(self, test_domain):
         conn = test_domain.get_connection()
         assert conn is not None
