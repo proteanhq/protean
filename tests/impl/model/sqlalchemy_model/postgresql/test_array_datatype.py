@@ -17,9 +17,8 @@ from protean.core.field.basic import (
     List,
     String,
 )
-from sqlalchemy import types as sa_types
-
 from protean.globals import current_domain
+from sqlalchemy import types as sa_types
 
 
 class ArrayUser(BaseAggregate):
