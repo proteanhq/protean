@@ -5,8 +5,13 @@ DEV
 ---
 
 * Introduce Views (a.k.a Read Models)
-* Refactor Domain Module
-* Introduce Factory Methods for all Domain Elements
+* Refactor Domain Module to be leaner
+* Introduce Class Factories for all Domain Elements
+* Rename `impl` to `adapters`
+* Add separate `ports` module with interfaces
+* Remove `bounded_context` definition everywhere
+* Rename `dict_repo` to `memory`
+* Remove `*_repo` from DB adapter module names
 
 0.5.4 (2020-09-22)
 ------------------

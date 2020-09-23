@@ -35,7 +35,7 @@ marshmallow_requires = ["marshmallow>=3.5.1"]
 install_requires = marshmallow_requires + [
     "click>=7.0",
     "cookiecutter>=1.7.0",
-    "inflect>=4.1.0",
+    "inflection>=0.5.1",
     "python-dateutil>=2.8.1",
     "werkzeug>=1.0.0",
 ]
