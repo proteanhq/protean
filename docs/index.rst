@@ -19,10 +19,15 @@ Get started with :ref:`install` and follow through with the :ref:`quickstart` gu
 
 Overview
 --------
-
 **Protean Framework** helps you build applications that can scale and adapt to growing requirements without significant rework.
 
 At its core, Protean encourages a Domain-driven design (DDD) approach to building applications, while providing the tools necessary to express your domain succinctly and precisely. It also allows you to remain agnostic to the underlying technology by keeping implementation details out of view, helping you delay infrastructure decisions until the |last-responsible-moment|.
+
+Protean can be thought of containing three parts:
+
+1. **Service-Oriented**: Protean helps decompose a domain into one or more subdomains, that can run independently as Microservices
+2. **Event-Driven**: Protean advocates using Domain Events both to propagate changes across different subdomains as well as to achieve eventual consistency in a Bounded Context.
+3. **Adapter-based**: Protean helps you remain technology-agnostic by exposing Port interfaces to the infrastructure, with multiple adapters supported out of the box.
 
 Read :ref:`foreword` and check out the full list of :ref:`key-features` to understand Protean's philosophy.
 
@@ -96,8 +101,8 @@ Protean guides contain a mixture of `Architecture Principles`, `Conventions`, `P
    user/quickstart
    user/composition-root
    user/identity
-   user/domain-layer-mechanics
-   user/application-layer-mechanics
+   user/domain-elements
+   user/application-elements
    user/configuration
    user/persistence
    user/unit-of-work
@@ -126,13 +131,6 @@ Protean guides contain a mixture of `Architecture Principles`, `Conventions`, `P
    Code of Conduct <community/code-of-conduct>
    community/contributing
 
-**Pending major improvement areas:**
-
-* Support for Custom Models
-* Support for Specifications
-* Out-of-the-box Support for Command Handlers
-* EventSourcing Implementation Support
-* Documentation on Architectures
 
 .. |ddd-eric-evans| raw:: html
 
