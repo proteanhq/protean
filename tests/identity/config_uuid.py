@@ -25,5 +25,5 @@ IDENTITY_TYPE = IdentityType.UUID
 
 # Messaging Mediums
 BROKERS = {
-    "default": {"PROVIDER": "protean.adapters.broker.memory_broker.MemoryBroker"},
+    "default": {"PROVIDER": "protean.adapters.broker.inline_broker.InlineBroker"},
 }

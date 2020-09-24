@@ -4,7 +4,7 @@ import pytest
 from mock import patch
 from protean.core.domain_event import BaseDomainEvent
 from protean.globals import current_domain
-from protean.adapters.broker.memory_broker import MemoryBroker
+from protean.adapters.broker.inline_broker import InlineBroker
 from protean.infra.event_log import EventLog, EventLogRepository
 from protean.utils import fully_qualified_name
 
@@ -41,7 +41,7 @@ class TestDomainEventRegistration:
 
 
 class TestDomainEventTriggering:
-    @patch.object(MemoryBroker, "send_message")
+    @patch.object(InlineBroker, "send_message")
     def test_that_domain_event_is_raised_in_aggregate_command_method(self, mock):
         newcomer = Person.add_newcomer(
             {"first_name": "John", "last_name": "Doe", "age": 21}

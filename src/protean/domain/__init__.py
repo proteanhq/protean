@@ -95,7 +95,7 @@ class Domain(_PackageBoundObject):
             },
             "BROKERS": {
                 "default": {
-                    "PROVIDER": "protean.adapters.broker.memory_broker.MemoryBroker",
+                    "PROVIDER": "protean.adapters.broker.inline_broker.InlineBroker",
                 },
             },
             "EMAIL_PROVIDERS": {

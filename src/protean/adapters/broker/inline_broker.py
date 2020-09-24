@@ -5,11 +5,11 @@ from protean.globals import current_domain
 from protean.utils import fully_qualified_name
 
 
-class MemoryBroker(BaseBroker):
+class InlineBroker(BaseBroker):
     def __init__(self, name, domain, conn_info):
         super().__init__(name, domain, conn_info)
 
-        # In case of `MemoryBroker`, the `IS_ASYNC` value will always be `False`.
+        # In case of `InlineBroker`, the `IS_ASYNC` value will always be `False`.
         conn_info["IS_ASYNC"] = False
 
     def send_message(self, initiator_obj):
