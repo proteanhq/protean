@@ -1,9 +1,8 @@
-======================
-Domain Layer Mechanics
-======================
+=====================
+Domain Layer Elements
+=====================
 
 .. toctree::
     :glob:
-    :caption: Domain Layer Elements
 
     domain/*

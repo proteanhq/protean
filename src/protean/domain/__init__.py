@@ -10,7 +10,6 @@ from protean.core.exceptions import (
     NotSupportedError,
     ObjectNotFoundError,
 )
-from protean.globals import current_uow
 from protean.domain.registry import _DomainRegistry
 from protean.adapters.broker import Brokers
 from protean.adapters.email import Emails

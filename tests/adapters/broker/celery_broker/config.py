@@ -59,8 +59,5 @@ LOGGING_CONFIG = {
             "formatter": "console",
         },
     },
-    "loggers": {
-        "protean": {"handlers": ["console"], "level": "DEBUG"},
-        "rq.worker": {"handlers": ["console"], "level": "DEBUG"},
-    },
+    "loggers": {"protean": {"handlers": ["console"], "level": "DEBUG"},},
 }

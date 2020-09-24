@@ -24,7 +24,7 @@ def read(*names, **kwargs):
 
 
 elasticsearch_requires = ["elasticsearch-dsl>=7.1.0"]
-redis_requires = ["redis==3.5.2", "rq>=1.3.0"]
+redis_requires = ["redis==3.5.2"]
 sqlite_requires = ["sqlalchemy>=1.3.15"]
 postgresql_requires = ["psycopg2>=2.8.4", "sqlalchemy>=1.3.15"]
 celery_requires = ["celery[redis]>=4.4.2"]
