@@ -12,4 +12,5 @@ This section walks you through these mental models, and introduces the core fram
     :maxdepth: 1
     :glob:
 
-    ddd/*
+    aggregate
+    repository

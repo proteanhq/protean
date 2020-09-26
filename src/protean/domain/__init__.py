@@ -44,7 +44,6 @@ class Domain(_PackageBoundObject):
     """
 
     # Protean
-    from protean.core.model import BaseModel
     from protean.utils import IdentityStrategy, IdentityType
 
     config_class = Config
@@ -93,11 +92,7 @@ class Domain(_PackageBoundObject):
                     "PROVIDER": "protean.adapters.repository.memory.MemoryProvider",
                 },
             },
-            "BROKERS": {
-                "default": {
-                    "PROVIDER": "protean.adapters.broker.inline_broker.InlineBroker",
-                },
-            },
+            "BROKERS": {"default": {"PROVIDER": "protean.InlineBroker",},},
             "EMAIL_PROVIDERS": {
                 "default": {
                     "PROVIDER": "protean.adapters.email.dummy.DummyEmailProvider",

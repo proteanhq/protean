@@ -23,5 +23,5 @@ IDENTITY_TYPE = IdentityType.INTEGER
 
 # Messaging Mediums
 BROKERS = {
-    "default": {"PROVIDER": "protean.adapters.broker.inline_broker.InlineBroker"},
+    "default": {"PROVIDER": "protean.InlineBroker"},
 }

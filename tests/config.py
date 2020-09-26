@@ -40,7 +40,7 @@ IDENTITY_TYPE = IdentityType.STRING
 
 # Messaging Mediums
 BROKERS = {
-    "default": {"PROVIDER": "protean.adapters.broker.inline_broker.InlineBroker"},
+    "default": {"PROVIDER": "protean.InlineBroker"},
 }
 
 EMAIL_PROVIDERS = {

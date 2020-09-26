@@ -4,7 +4,7 @@ import pytest
 from mock import patch
 from protean.core.domain_event import BaseDomainEvent
 from protean.globals import current_domain
-from protean.adapters.broker.inline_broker import InlineBroker
+from protean.adapters.broker.inline import InlineBroker
 from protean.infra.event_log import EventLog, EventLogRepository
 from protean.utils import fully_qualified_name
 
