@@ -12,6 +12,8 @@ DEV
 * Remove `bounded_context` definition everywhere
 * Rename `dict_repo` to `memory`
 * Remove `*_repo` from DB adapter module names
+* Rename `celery` and `inline` broker module names
+* Rename `sendgrid` email module name
 
 0.5.4 (2020-09-22)
 ------------------

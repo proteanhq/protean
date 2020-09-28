@@ -41,7 +41,7 @@ BROKERS = {
 
 EMAIL_PROVIDERS = {
     "default": {
-        "PROVIDER": "protean.adapters.email.sendgrid_email.SendgridEmailProvider",
+        "PROVIDER": "protean.SendgridEmailProvider",
         "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
         "API_KEY": "this-is-a-fake-key",
     },

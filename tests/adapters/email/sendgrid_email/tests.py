@@ -2,7 +2,7 @@
 import pytest
 
 from mock import patch
-from protean.adapters.email.sendgrid_email import SendgridEmailProvider
+from protean import SendgridEmailProvider
 
 # Local/Relative Imports
 from .elements import Person, PersonAdded, WelcomeEmail, WelcomeNewPerson

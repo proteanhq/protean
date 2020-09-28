@@ -8,5 +8,12 @@ from .domain import Domain
 # Adapters
 from .adapters.broker.celery import CeleryBroker, ProteanTask
 from .adapters.broker.inline import InlineBroker
+from .adapters.email.sendgrid import SendgridEmailProvider
 
-__all__ = ("Domain", "CeleryBroker", "ProteanTask", "InlineBroker")
+__all__ = (
+    "Domain",
+    "CeleryBroker",
+    "ProteanTask",
+    "InlineBroker",
+    "SendgridEmailProvider",
+)
