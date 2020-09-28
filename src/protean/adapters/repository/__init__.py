@@ -1,9 +1,11 @@
 """ Package for  Concrete Implementations of Protean repositories """
+# Standard Library Imports
 import importlib
 import logging
 
+# Protean
 from protean.core.exceptions import ConfigurationError
-from protean.utils import fully_qualified_name, DomainObjects
+from protean.utils import DomainObjects, fully_qualified_name
 
 logger = logging.getLogger("protean.repository")
 

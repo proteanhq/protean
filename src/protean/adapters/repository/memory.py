@@ -14,12 +14,10 @@ from uuid import UUID
 
 # Protean
 from protean.core.exceptions import ObjectNotFoundError
-from protean.port.provider import BaseProvider
-from protean.port.dao import BaseDAO
-from protean.port.dao import BaseLookup
 from protean.core.model import BaseModel
-from protean.port.dao import ResultSet
 from protean.globals import current_uow
+from protean.port.dao import BaseDAO, BaseLookup, ResultSet
+from protean.port.provider import BaseProvider
 from protean.utils import Database
 from protean.utils.query import Q
 

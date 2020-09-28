@@ -1,7 +1,7 @@
 """ Utility functions for the Field Module """
 # Protean
-from protean.utils import DomainObjects
 from protean.globals import current_domain
+from protean.utils import DomainObjects
 
 
 def fetch_entity_cls_from_registry(entity):

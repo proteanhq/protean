@@ -16,9 +16,14 @@ from protean.core.exceptions import (
 from protean.core.field.association import Association, Reference
 from protean.core.field.basic import Auto, Field
 from protean.core.field.embedded import ValueObjectField
-from protean.utils import DomainObjects, derive_element_class
 from protean.globals import current_domain
-from protean.utils import IdentityStrategy, IdentityType, inflection
+from protean.utils import (
+    DomainObjects,
+    IdentityStrategy,
+    IdentityType,
+    derive_element_class,
+    inflection,
+)
 
 # Local/Relative Imports
 from ..core.field.association import _ReferenceField  # Relative path to private class

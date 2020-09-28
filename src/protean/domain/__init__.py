@@ -5,14 +5,15 @@ to register Domain Elements.
 import logging
 import sys
 
+# Protean
+from protean.adapters import Brokers, EmailProviders, Providers
 from protean.core.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
     ObjectNotFoundError,
 )
 from protean.domain.registry import _DomainRegistry
-from protean.adapters import Brokers, EmailProviders, Providers
-from protean.utils import fully_qualified_name, DomainObjects
+from protean.utils import DomainObjects, fully_qualified_name
 from werkzeug.datastructures import ImmutableDict
 
 # Local/Relative Imports
@@ -85,8 +86,8 @@ class Domain(_PackageBoundObject):
             "AUTOLOAD_DOMAIN": True,
             "IDENTITY_STRATEGY": IdentityStrategy.UUID,
             "IDENTITY_TYPE": IdentityType.STRING,
-            "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider",},},
-            "BROKERS": {"default": {"PROVIDER": "protean.adapters.InlineBroker",},},
+            "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider"}},
+            "BROKERS": {"default": {"PROVIDER": "protean.adapters.InlineBroker"}},
             "EMAIL_PROVIDERS": {
                 "default": {
                     "PROVIDER": "protean.adapters.DummyEmailProvider",
@@ -274,6 +275,7 @@ class Domain(_PackageBoundObject):
         return self._domain_registry
 
     def factory_for(self, domain_object_type):
+        # Protean
         from protean.core.aggregate import aggregate_factory
         from protean.core.application_service import application_service_factory
         from protean.core.command import command_factory
@@ -284,8 +286,8 @@ class Domain(_PackageBoundObject):
         from protean.core.entity import entity_factory
         from protean.core.model import model_factory
         from protean.core.repository import repository_factory
-        from protean.core.subscriber import subscriber_factory
         from protean.core.serializer import serializer_factory
+        from protean.core.subscriber import subscriber_factory
         from protean.core.value_object import value_object_factory
         from protean.core.view import view_factory
 

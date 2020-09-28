@@ -2,9 +2,12 @@
 from abc import abstractmethod
 
 # Protean
-from protean.utils import DomainObjects, derive_element_class
 from protean.globals import current_domain
-from protean.utils import convert_str_values_to_list
+from protean.utils import (
+    DomainObjects,
+    convert_str_values_to_list,
+    derive_element_class,
+)
 
 
 class BaseEmailProvider:

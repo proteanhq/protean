@@ -3,7 +3,7 @@
 import logging
 import sys
 
-# Local/Relative Imports
+# Protean
 from protean.globals import _domain_context_stack
 
 # a singleton sentinel value for parameter defaults
@@ -101,7 +101,7 @@ class DomainContext(object):
                 self.domain.do_teardown_domain_context(exc)
         finally:
             rv = _domain_context_stack.pop()
-        assert rv is self, f"Popped wrong domain context.  (%r instead of %r)" % (
+        assert rv is self, "Popped wrong domain context.  (%r instead of %r)" % (
             rv,
             self,
         )

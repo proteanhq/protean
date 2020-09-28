@@ -7,8 +7,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 
 # Protean
-from protean.utils import DomainObjects
-from protean.utils import fully_qualified_name
+from protean.utils import DomainObjects, fully_qualified_name
 
 logger = logging.getLogger("protean.port.broker")
 

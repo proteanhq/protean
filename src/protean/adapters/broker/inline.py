@@ -1,7 +1,7 @@
 # Protean
-from protean.port.broker import BaseBroker
 from protean.core.domain_event import BaseDomainEvent
 from protean.globals import current_domain
+from protean.port.broker import BaseBroker
 from protean.utils import fully_qualified_name
 
 

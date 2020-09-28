@@ -1,7 +1,7 @@
 # Protean
 import pytest
 
-from protean.globals import _domain_context_stack, current_domain, g
+from protean.globals import current_domain, g
 
 
 class TestDomainContext:

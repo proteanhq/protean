@@ -6,12 +6,12 @@ from datetime import datetime
 
 # Protean
 from elasticsearch_dsl import Keyword, Text
+from protean.adapters import ElasticsearchModel
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import DateTime, Integer, String
 from protean.core.field.basic import Text as ProteanText
 from protean.core.field.embedded import ValueObjectField
 from protean.core.value_object import BaseValueObject
-from protean.adapters import ElasticsearchModel
 
 
 class Person(BaseAggregate):

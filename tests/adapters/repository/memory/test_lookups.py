@@ -9,8 +9,8 @@ class TestLookup:
     """This class holds tests for Lookup Class"""
 
     # Protean
-    from protean.port.dao import BaseLookup
     from protean.adapters.repository.memory import MemoryProvider
+    from protean.port.dao import BaseLookup
 
     @MemoryProvider.register_lookup
     class SampleLookup(BaseLookup):

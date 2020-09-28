@@ -1,8 +1,8 @@
 """Module to test SQLAlchemy Provider Class"""
 # Protean
 import pytest
-from protean.adapters.repository import Providers
 
+from protean.adapters.repository import Providers
 from protean.adapters.repository.sqlalchemy import SAProvider
 from sqlalchemy.engine.result import ResultProxy
 from sqlalchemy.orm.session import Session

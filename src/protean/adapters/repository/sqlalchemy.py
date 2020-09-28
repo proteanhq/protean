@@ -22,12 +22,10 @@ from protean.core.field.basic import (
     String,
     Text,
 )
-from protean.port.provider import BaseProvider
-from protean.port.dao import BaseDAO
-from protean.port.dao import BaseLookup
 from protean.core.model import BaseModel
-from protean.port.dao import ResultSet
 from protean.globals import current_domain, current_uow
+from protean.port.dao import BaseDAO, BaseLookup, ResultSet
+from protean.port.provider import BaseProvider
 from protean.utils import Database, IdentityType
 from protean.utils.query import Q
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm

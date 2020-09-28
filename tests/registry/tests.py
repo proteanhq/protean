@@ -1,12 +1,14 @@
-import inflection
-import pytest
-
+# Standard Library Imports
 from datetime import datetime
 from enum import Enum
 
+# Protean
+import inflection
+import pytest
+
 from protean.core.aggregate import BaseAggregate
-from protean.domain.registry import _DomainRegistry
 from protean.core.field.basic import DateTime, String
+from protean.domain.registry import _DomainRegistry
 from protean.utils import DomainObjects
 
 

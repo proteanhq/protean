@@ -1,8 +1,8 @@
 # Standard Library Imports
 from abc import abstractmethod
-from protean.core.exceptions import IncorrectUsageError
 
 # Protean
+from protean.core.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, derive_element_class
 
 

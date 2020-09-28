@@ -1,7 +1,6 @@
 # Protean
-from protean.core.aggregate import BaseAggregate
-from protean.core.view import BaseView
 from protean.core.field.basic import String
+from protean.core.view import BaseView
 from protean.utils import fully_qualified_name
 
 

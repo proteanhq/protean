@@ -1,8 +1,8 @@
 # Protean
 import pytest
 
-from protean.port.broker import BaseBroker
 from protean.adapters.broker.inline import InlineBroker
+from protean.port.broker import BaseBroker
 
 
 class TestBroker:

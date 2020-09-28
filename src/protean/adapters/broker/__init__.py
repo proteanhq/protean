@@ -1,8 +1,10 @@
+# Standard Library Imports
 import importlib
 import logging
 
 from collections.abc import MutableMapping
 
+# Protean
 from protean.core.exceptions import ConfigurationError
 from protean.globals import current_uow
 from protean.utils import DomainObjects

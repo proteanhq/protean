@@ -9,6 +9,7 @@ import logging
 
 from enum import Enum, auto
 
+# Protean
 from protean.core.exceptions import IncorrectUsageError
 
 logger = logging.getLogger("protean.utils")

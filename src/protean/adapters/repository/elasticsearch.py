@@ -13,11 +13,9 @@ from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Document, Index, Search, query
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.field.association import Reference
-from protean.port.provider import BaseProvider
-from protean.port.dao import BaseDAO
-from protean.port.dao import BaseLookup
-from protean.port.dao import ResultSet
 from protean.globals import current_domain
+from protean.port.dao import BaseDAO, BaseLookup, ResultSet
+from protean.port.provider import BaseProvider
 from protean.utils import Database, IdentityStrategy, IdentityType
 from protean.utils.query import Q
 

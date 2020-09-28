@@ -1,11 +1,14 @@
-from enum import Enum
-import inflection
+# Standard Library Imports
 import logging
 
 from collections import defaultdict
+from enum import Enum
 from typing import Any, Dict
 
-from protean.utils import fully_qualified_name, DomainObjects
+# Protean
+import inflection
+
+from protean.utils import DomainObjects, fully_qualified_name
 
 logger = logging.getLogger("protean.domain")
 

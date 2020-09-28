@@ -1,7 +1,7 @@
 # Protean
 import pytest
-from protean.adapters.repository import Providers
 
+from protean.adapters.repository import Providers
 from protean.adapters.repository.memory import MemoryProvider
 
 # Local/Relative Imports

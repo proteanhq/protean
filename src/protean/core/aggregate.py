@@ -4,7 +4,7 @@ import logging
 
 # Protean
 from protean.core.entity import BaseEntity
-from protean.core.exceptions import IncorrectUsageError, NotSupportedError
+from protean.core.exceptions import NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 
 logger = logging.getLogger("protean.domain.aggregate")

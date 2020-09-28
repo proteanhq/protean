@@ -4,8 +4,8 @@ import os
 # Protean
 import pytest
 
-from protean.domain.config import Config
 from protean.domain import Domain
+from protean.domain.config import Config
 
 # config keys used for the TestConfig
 TEST_KEY = "foo"
