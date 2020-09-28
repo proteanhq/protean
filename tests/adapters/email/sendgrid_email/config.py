@@ -13,7 +13,7 @@ SECRET_KEY = "tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA"
 
 # Database Configuration
 DATABASES = {
-    "default": {"PROVIDER": "protean.adapters.repository.memory.MemoryProvider"},
+    "default": {"PROVIDER": "protean.adapters.MemoryProvider"},
 }
 
 # Identity strategy to use when persisting Entities/Aggregates.
@@ -36,7 +36,7 @@ IDENTITY_TYPE = IdentityType.STRING
 
 # Messaging Mediums
 BROKERS = {
-    "default": {"PROVIDER": "protean.InlineBroker"},
+    "default": {"PROVIDER": "protean.adapters.InlineBroker"},
 }
 
 EMAIL_PROVIDERS = {

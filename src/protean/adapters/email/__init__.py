@@ -4,10 +4,10 @@ import logging
 from protean.core.exceptions import ConfigurationError
 from protean.globals import current_uow
 
-logger = logging.getLogger("protean.emails")
+logger = logging.getLogger("protean.email_providers")
 
 
-class Emails:
+class EmailProviders:
     def __init__(self, domain):
         self.domain = domain
         self._email_providers = None

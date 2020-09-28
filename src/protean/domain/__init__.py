@@ -11,9 +11,7 @@ from protean.core.exceptions import (
     ObjectNotFoundError,
 )
 from protean.domain.registry import _DomainRegistry
-from protean.adapters.broker import Brokers
-from protean.adapters.email import Emails
-from protean.adapters.repository import Providers
+from protean.adapters import Brokers, EmailProviders, Providers
 from protean.utils import fully_qualified_name, DomainObjects
 from werkzeug.datastructures import ImmutableDict
 
@@ -87,15 +85,11 @@ class Domain(_PackageBoundObject):
             "AUTOLOAD_DOMAIN": True,
             "IDENTITY_STRATEGY": IdentityStrategy.UUID,
             "IDENTITY_TYPE": IdentityType.STRING,
-            "DATABASES": {
-                "default": {
-                    "PROVIDER": "protean.adapters.repository.memory.MemoryProvider",
-                },
-            },
-            "BROKERS": {"default": {"PROVIDER": "protean.InlineBroker",},},
+            "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider",},},
+            "BROKERS": {"default": {"PROVIDER": "protean.adapters.InlineBroker",},},
             "EMAIL_PROVIDERS": {
                 "default": {
-                    "PROVIDER": "protean.adapters.email.dummy.DummyEmailProvider",
+                    "PROVIDER": "protean.adapters.DummyEmailProvider",
                     "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
                 },
             },
@@ -123,7 +117,7 @@ class Domain(_PackageBoundObject):
 
         self.providers = Providers(self)
         self.brokers = Brokers(self)
-        self.emails = Emails(self)
+        self.email_providers = EmailProviders(self)
 
         # Cache for holding Model to Entity/Aggregate associations
         self._models = {}
@@ -511,7 +505,7 @@ class Domain(_PackageBoundObject):
     #######################
 
     def get_email_provider(self, provider_name):
-        return self.emails.get_email_provider(provider_name)
+        return self.email_providers.get_email_provider(provider_name)
 
     def send_email(self, email):
-        return self.emails.send_email(email)
+        return self.email_providers.send_email(email)

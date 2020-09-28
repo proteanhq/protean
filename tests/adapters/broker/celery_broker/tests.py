@@ -3,7 +3,7 @@ import pytest
 
 from mock import patch
 from protean.globals import current_domain
-from protean import CeleryBroker
+from protean.adapters import CeleryBroker
 from tests.adapters.broker.celery_broker.elements import (
     NotifySSOSubscriber,
     Person,

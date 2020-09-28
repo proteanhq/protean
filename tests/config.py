@@ -12,7 +12,7 @@ SECRET_KEY = "tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA"
 
 # Database Configuration
 DATABASES = {
-    "default": {"PROVIDER": "protean.adapters.repository.memory.MemoryProvider"},
+    "default": {"PROVIDER": "protean.adapters.MemoryProvider"},
     "sqlite": {
         "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
         "DATABASE": Database.SQLITE.value,
@@ -40,12 +40,12 @@ IDENTITY_TYPE = IdentityType.STRING
 
 # Messaging Mediums
 BROKERS = {
-    "default": {"PROVIDER": "protean.InlineBroker"},
+    "default": {"PROVIDER": "protean.adapters.InlineBroker"},
 }
 
 EMAIL_PROVIDERS = {
     "default": {
-        "PROVIDER": "protean.adapters.email.dummy.DummyEmailProvider",
+        "PROVIDER": "protean.adapters.DummyEmailProvider",
         "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
     },
 }

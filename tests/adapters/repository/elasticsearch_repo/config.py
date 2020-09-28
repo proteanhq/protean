@@ -21,7 +21,7 @@ IDENTITY_TYPE = IdentityType.UUID
 # Define the databases
 DATABASES = {
     "default": {
-        "PROVIDER": "protean.adapters.repository.elasticsearch.ESProvider",
+        "PROVIDER": "protean.adapters.ESProvider",
         "DATABASE": Database.ELASTICSEARCH.value,
         "DATABASE_URI": {"hosts": ["localhost"]},
     },

@@ -13,7 +13,7 @@ from protean.utils import DomainObjects
 from protean.utils import fully_qualified_name
 from protean.utils.inflection import underscore
 
-logger = logging.getLogger("protean.adapters.broker.celery")
+logger = logging.getLogger("protean.adapters.celery")
 
 
 class ProteanTask(Task):
