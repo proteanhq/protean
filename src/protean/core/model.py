@@ -58,6 +58,12 @@ def model_factory(element_cls, **kwargs):
     if not (hasattr(element_cls.meta_, "entity_cls") and element_cls.meta_.entity_cls):
         element_cls.meta_.entity_cls = kwargs.pop("entity_cls", None)
 
+    if not (hasattr(element_cls.meta_, "schema") and element_cls.meta_.schema):
+        element_cls.meta_.schema = kwargs.pop("schema", None)
+
+    if not (hasattr(element_cls.meta_, "database") and element_cls.meta_.database):
+        element_cls.meta_.database = kwargs.pop("database", None)
+
     if not element_cls.meta_.entity_cls:
         raise IncorrectUsageError(
             "Models need to be associated with an Entity or Aggregate"

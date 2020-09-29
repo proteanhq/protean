@@ -33,7 +33,15 @@ class Providers:
         if fully_qualified_name(aggregate_cls) in self.domain._models:
             custom_model_cls = self.domain._models[fully_qualified_name(aggregate_cls)]
 
-        if custom_model_cls:
+        # FIXME This is the provide support for activating database specific models
+        #   This needs to be enhanced to allow Protean to hold multiple models per Aggregate/Entity
+        #   per database.
+        #
+        #   If no database is specified, model can be used for all databases
+        if custom_model_cls and (
+            custom_model_cls.meta_.database is None
+            or custom_model_cls.meta_.database == provider.conn_info["DATABASE"]
+        ):
             # Get the decorated model class.
             #   This is a no-op if the provider decides that the model is fully-baked
             model_cls = provider.decorate_model_class(
