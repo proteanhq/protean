@@ -4,6 +4,11 @@ Release History
 DEV
 ---
 
+* Lock down celery to 4.4.x version
+
+0.5.5 (2020-09-28)
+------------------
+
 * Introduce Views (a.k.a Read Models)
 * Refactor Domain Module to be leaner
 * Introduce Class Factories for all Domain Elements
