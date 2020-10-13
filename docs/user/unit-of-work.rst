@@ -35,7 +35,7 @@ A `Unit of Work` is initialized manually when you want to fold a set of tasks in
 
             # The Unit of Work transaction would have been committed by this point
 
-Events that are plublished as part of the business transaction are only dispatched on successful sync of the database. They are lost if the transaction is rolled back, or business validations fail, ensuring that data sanctity is maintained throughout the system at all time.
+Events that are published as part of the business transaction are only dispatched on successful sync of the database. They are lost if the transaction is rolled back, or business validations fail, ensuring that data sanctity is maintained throughout the system at all time.
 
 While a `Unit of Work` provides a mechanism to atomically commit changes to the database, it is recommended that Domain transactions are limited to one single Aggregate per Application Service method call. Changes outside the aggregate's transaction boundary should be done with eventual consistency, with the help of domain events.
 

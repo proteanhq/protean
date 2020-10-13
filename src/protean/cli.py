@@ -47,3 +47,13 @@ def new():
 
     # Create project from the cookiecutter-protean.git repo template
     cookiecutter("gh:proteanhq/cookiecutter-protean")
+
+
+@main.command()
+def livereload_docs():
+    """Run in shell as `protean livereload-docs`"""
+    from livereload import Server, shell
+
+    server = Server()
+    server.watch("docs/**/*.rst", shell("make html"))
+    server.serve(root="build/html", debug=True)

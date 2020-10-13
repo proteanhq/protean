@@ -5,6 +5,8 @@ DEV
 ---
 
 * Lock down celery to 4.4.x version
+* Re-Add support for restricting model to a specific database
+* Add support for locking a custom repository to a specific database
 
 0.5.5 (2020-09-28)
 ------------------
