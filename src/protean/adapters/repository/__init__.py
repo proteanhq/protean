@@ -1,10 +1,12 @@
 """ Package for  Concrete Implementations of Protean repositories """
 # Standard Library Imports
+from collections import defaultdict
 import importlib
 import logging
 
 # Protean
-from protean.core.exceptions import ConfigurationError
+from protean.core.exceptions import ConfigurationError, IncorrectUsageError
+from protean.core.repository import BaseRepository, repository_factory
 from protean.utils import DomainObjects, fully_qualified_name
 
 logger = logging.getLogger("protean.repository")
@@ -13,7 +15,38 @@ logger = logging.getLogger("protean.repository")
 class Providers:
     def __init__(self, domain):
         self.domain = domain
+
+        # Providers will be filled dynamically on first call to
+        # fetch a repository. This is designed so that the entire
+        # domain is loaded before we try to load providers.
+        # FIXME Should this be done during domain.init()
         self._providers = None
+
+        # Recognized Repositories are memoized within providers
+        # for subsequent calls.
+        #
+        # Structure:
+        # {
+        #    'app.User': {
+        #        'ALL': UserRepository,
+        #        'SQLITE': UserSQLiteRepository,
+        #        'POSTGRESQL': UserPostgresRepository,
+        #    }
+        # }
+        self._repositories = defaultdict(lambda: defaultdict(str))
+
+    def _construct_repository(self, aggregate_cls):
+        repository_cls = type(
+            aggregate_cls.__name__ + "Repository", (BaseRepository,), {}
+        )
+        repository_cls = repository_factory(repository_cls, aggregate_cls=aggregate_cls)
+        return repository_cls
+
+    def _register_repository(self, aggregate_cls, repository_cls):
+        database = repository_cls.meta_.database
+        aggregate_name = fully_qualified_name(aggregate_cls)
+
+        self._repositories[aggregate_name][database] = repository_cls
 
     def get_model(self, aggregate_cls):
         """Retrieve Model class connected to Entity"""
@@ -74,22 +107,22 @@ class Providers:
                 provider_cls = getattr(
                     importlib.import_module(provider_module), provider_class
                 )
-                provider_objects[provider_name] = provider_cls(
-                    provider_name, self, conn_info
-                )
+                provider = provider_cls(provider_name, self, conn_info)
 
-        return provider_objects
+                provider_objects[provider_name] = provider
+
+        self._providers = provider_objects
 
     def has_provider(self, provider_name):
         if self._providers is None:
-            self._providers = self._initialize_providers()
+            self._initialize_providers()
 
         return provider_name in self._providers
 
     def get_provider(self, provider_name):
         """Retrieve the provider object with a given provider name"""
         if self._providers is None:
-            self._providers = self._initialize_providers()
+            self._initialize_providers()
 
         try:
             return self._providers[provider_name]
@@ -99,7 +132,7 @@ class Providers:
     def get_connection(self, provider_name="default"):
         """Fetch connection from Provider"""
         if self._providers is None:
-            self._providers = self._initialize_providers()
+            self._initialize_providers()
 
         try:
             return self._providers[provider_name].get_connection()
@@ -109,49 +142,50 @@ class Providers:
     def providers_list(self):
         """A generator that helps users iterator through providers"""
         if self._providers is None:
-            self._providers = self._initialize_providers()
+            self._initialize_providers()
 
         for provider_name in self._providers:
             yield self._providers[provider_name]
 
     def repository_for(self, aggregate_cls):
         """Retrieve a Repository registered for the Aggregate"""
-        # Protean
-        from protean.core.aggregate import BaseAggregate
+        if self._providers is None:
+            self._initialize_providers()
 
-        if not issubclass(aggregate_cls, BaseAggregate):
-            raise AssertionError(
-                f"Element {aggregate_cls.__name__} must be subclass of `BaseAggregate`"
-            )
+        provider = aggregate_cls.meta_.provider
+        database = self.get_provider(provider).conn_info["DATABASE"]
 
-        try:
-            repository_record = next(
-                repository
-                for _, repository in self.domain.registry.repositories.items()
-                if repository.cls.meta_.aggregate_cls.__name__ == aggregate_cls.__name__
-            )
-        except StopIteration:
-            logger.debug(f"Constructing a Repository for {aggregate_cls}...")
+        aggregate_name = fully_qualified_name(aggregate_cls)
 
-            # Protean
-            from protean.core.repository import BaseRepository
+        # One-time repository registration process for Aggregates
+        #
+        # We first cycle through repositories registered with the domain
+        # and cache them within providers. We also construct a generic
+        # repository dynamically that would work with the other providers.
+        # FIXME Should we construct generic repositories?
+        if aggregate_name not in self._repositories:
+            # First, register all explicitly-defined repositories
+            for _, repository in self.domain.registry.repositories.items():
+                if (
+                    repository.cls.meta_.aggregate_cls.__name__
+                    == aggregate_cls.__name__
+                ):
+                    self._register_repository(aggregate_cls, repository.cls)
 
-            new_class = type(
-                aggregate_cls.__name__ + "Repository", (BaseRepository,), {}
-            )
+            # Next, check if a generic repository has been registered, otherwise construct
+            if "ALL" not in self._repositories[aggregate_name]:
+                self._register_repository(
+                    aggregate_cls, self._construct_repository(aggregate_cls)
+                )
 
-            self.domain._domain_element(
-                DomainObjects.REPOSITORY, _cls=new_class, aggregate_cls=aggregate_cls,
-            )
+        # If the aggregate is tied to a database, return the database-specific repository
+        if database in self._repositories[aggregate_name]:
+            repository_cls = self._repositories[aggregate_name][database]
+        # Else return the generic repository
+        else:
+            repository_cls = self._repositories[aggregate_name]["ALL"]
 
-            # FIXME Avoid comparing classes / Fetch a Repository class directly by its aggregate class
-            repository_record = next(
-                repository
-                for _, repository in self.domain.registry.repositories.items()
-                if repository.cls.meta_.aggregate_cls.__name__ == aggregate_cls.__name__
-            )
-
-        return repository_record.cls()
+        return repository_cls()
 
     def get_dao(self, aggregate_cls):
         """Retrieve a DAO registered for the Aggregate with a live connection"""

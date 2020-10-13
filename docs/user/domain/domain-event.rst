@@ -4,7 +4,7 @@
 Domain Events
 =============
 
-A Domain Event is a record of some business-significant occurence in a Bounded Context. Domain Events help make strategic design possible, by providing the ability for Bounded Contexts to remain distinct, but also communicate effectively. Domain Events are very much a part of the Core Domain, and are identified frequently from the domain's Ubiquitous Language.
+A Domain Event is a record of some business-significant occurrence in a Bounded Context. Domain Events help make strategic design possible, by providing the ability for Bounded Contexts to remain distinct, but also communicate effectively. Domain Events are very much a part of the Core Domain, and are identified frequently from the domain's Ubiquitous Language.
 
 When Events are delivered to interested parties, in the same bounded context, other bounded contexts or even external systems, they are generally used to facilitate eventual consistency. Such a design can eliminate the need for two-phase commits (global transactions) and support the invariant rules defined in Aggregates.
 

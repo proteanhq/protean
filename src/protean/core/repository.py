@@ -61,6 +61,7 @@ class RepositoryMeta:
         #
         # FIXME Validate that `aggregate_cls` is a Aggregate domain element
         self.aggregate_cls = getattr(meta, "aggregate_cls", None)
+        self.database = getattr(meta, "database", "ALL")
 
 
 class BaseRepository(metaclass=_RepositoryMetaclass):
@@ -211,6 +212,9 @@ def repository_factory(element_cls, **kwargs):
         hasattr(element_cls.meta_, "aggregate_cls") and element_cls.meta_.aggregate_cls
     ):
         element_cls.meta_.aggregate_cls = kwargs.pop("aggregate_cls", None)
+
+    if not (hasattr(element_cls.meta_, "database") and element_cls.meta_.database):
+        element_cls.meta_.database = kwargs.pop("database", "ALL")
 
     if not element_cls.meta_.aggregate_cls:
         raise IncorrectUsageError(
