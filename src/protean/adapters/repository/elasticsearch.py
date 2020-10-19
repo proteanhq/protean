@@ -377,7 +377,12 @@ class ESProvider(BaseProvider):
 
     def get_connection(self):
         """Get the connection object for the repository"""
-        return Elasticsearch(self.conn_info["DATABASE_URI"]["hosts"])
+
+        return Elasticsearch(
+            self.conn_info["DATABASE_URI"]["hosts"],
+            use_ssl=self.conn_info.get("USE_SSL", True),
+            verify_certs=self.conn_info.get("VERIFY_CERTS", True),
+        )
 
     def get_dao(self, entity_cls, model_cls):
         """Return a DAO object configured with a live connection"""
