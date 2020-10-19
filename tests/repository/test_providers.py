@@ -1,8 +1,10 @@
+# Standard Library Imports
 from typing import List
 
+# Protean
 from protean.core.aggregate import BaseAggregate
+from protean.core.field.basic import Integer, String
 from protean.core.repository import BaseRepository
-from protean.core.field.basic import String, Integer
 from protean.globals import current_domain
 from protean.utils import Database, fully_qualified_name
 

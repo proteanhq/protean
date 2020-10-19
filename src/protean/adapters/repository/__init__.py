@@ -1,11 +1,12 @@
 """ Package for  Concrete Implementations of Protean repositories """
 # Standard Library Imports
-from collections import defaultdict
 import importlib
 import logging
 
+from collections import defaultdict
+
 # Protean
-from protean.core.exceptions import ConfigurationError, IncorrectUsageError
+from protean.core.exceptions import ConfigurationError
 from protean.core.repository import BaseRepository, repository_factory
 from protean.utils import DomainObjects, fully_qualified_name
 
