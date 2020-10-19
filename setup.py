@@ -83,7 +83,7 @@ dev_requires = (
 
 setup(
     name="protean",
-    version="0.5.6",
+    version="0.5.7",
     license="BSD 3-Clause License",
     description="Protean Application Framework",
     long_description="%s\n%s"
