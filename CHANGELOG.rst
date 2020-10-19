@@ -1,12 +1,17 @@
 Release History
 ===============
 
-DEV
----
+0.5.7
+-----
+
+* Add support for locking a custom repository to a specific database
+* Add support for `use_ssl` and `verify_certs` options in Elasticsearch database definition
+
+0.5.6
+-----
 
 * Lock down celery to 4.4.x version
 * Re-Add support for restricting model to a specific database
-* Add support for locking a custom repository to a specific database
 
 0.5.5 (2020-09-28)
 ------------------

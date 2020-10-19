@@ -380,8 +380,8 @@ class ESProvider(BaseProvider):
 
         return Elasticsearch(
             self.conn_info["DATABASE_URI"]["hosts"],
-            use_ssl=self.conn_info.get("USE_SSL", True),
-            verify_certs=self.conn_info.get("VERIFY_CERTS", True),
+            use_ssl=self.conn_info.get("USE_SSL", False),
+            verify_certs=self.conn_info.get("VERIFY_CERTS", False),
         )
 
     def get_dao(self, entity_cls, model_cls):
