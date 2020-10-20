@@ -1,6 +1,11 @@
 Release History
 ===============
 
+0.5.8
+-----
+
+* Fix Issue with timestamps in EventLog
+
 0.5.7
 -----
 

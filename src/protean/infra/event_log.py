@@ -11,7 +11,7 @@ from protean.globals import current_domain
 class EventLog(BaseAggregate):
     kind = String(max_length=50, required=True)
     payload = Dict(required=True)
-    timestamp = DateTime(required=True, default=datetime.utcnow())
+    timestamp = DateTime(required=True, default=datetime.utcnow)
 
 
 class EventLogRepository(BaseRepository):
