@@ -1,0 +1,57 @@
+name: CI
+
+on: [push]
+
+jobs:
+
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:11
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Run scripts
+        run:  ./setup_scripts/1.sh
+
+      - name: PSQL command
+        run: psql -c 'create database protean_test;' -U postgres && sleep 10
+
+      - name: Run scripts
+        run: psql -c 'create database protean_test;' -U postgres && sleep 10
+
+      - name: Set up Python 3.7
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.7
+
+      - uses: actions/cache@v1
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      - name: Install dependencies
+        run: |
+          pip install codecov pre-commit && 
+          pip install .[test]
+        if: steps.cache.outputs.cache-hit != 'true'
+
+      - name: Tests 
+        run: pytest --slow --sqlite --postgresql --elasticsearch --redis --cov=protean --cov-config .coveragerc tests
+        env:
+            TEST_CMD: pre-commit run --all-files
+
+      - name: CodeCOV
+        run: codecov
