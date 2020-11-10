@@ -59,8 +59,7 @@ jobs:
             ${{ runner.os }}-pip-
       - name: Install dependencies
         run: |
-          pip install codecov pre-commit && 
-          pip install .[test]
+          pip install codecov pre-commit && pip install .[test]
         if: steps.cache.outputs.cache-hit != 'true'
 
       - name: Tests 
@@ -72,9 +71,9 @@ jobs:
             POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
             PGPASSWORD: postgres
             # The hostname used to communicate with the Redis service container
-            REDIS_HOST: redis
+            REDIS_HOST: localhost
             # The default Redis port
-            REDIS_PORT: 6379
+            REDIS_PORT: ${{ job.services.redis.ports[6379] }}
 
 
       - name: CodeCOV
@@ -85,6 +84,6 @@ jobs:
             POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
             PGPASSWORD: postgres
              # The hostname used to communicate with the Redis service container
-            REDIS_HOST: redis
+            REDIS_HOST: localhost
             # The default Redis port
-            REDIS_PORT: 6379
+            REDIS_PORT: ${{ job.services.redis.ports[6379] }}
