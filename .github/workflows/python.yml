@@ -71,6 +71,10 @@ jobs:
             POSTGRES_USER: postgres
             POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
             PGPASSWORD: postgres
+            # The hostname used to communicate with the Redis service container
+            REDIS_HOST: redis
+            # The default Redis port
+            REDIS_PORT: 6379
 
 
       - name: CodeCOV
@@ -80,3 +84,7 @@ jobs:
             POSTGRES_USER: postgres
             POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
             PGPASSWORD: postgres
+             # The hostname used to communicate with the Redis service container
+            REDIS_HOST: redis
+            # The default Redis port
+            REDIS_PORT: 6379
