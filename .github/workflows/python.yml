@@ -6,6 +6,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    # Docker Hub image that `container-job` executes in
+    container: node:10.18-jessie
 
     services:
       postgres:
@@ -14,6 +16,7 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
+        
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
 
@@ -29,7 +32,8 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
-        run: psql -U postgres -h postgres -p 5432 postgres -c 'create database protean_test;' && sleep 10
+          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
+        run: psql -U postgres -h localhost -p $POSTGRES_PORT postgres -c 'create database protean_test;' && sleep 10
 
       - name: Run scripts
         run: psql -c 'create database protean_test;' -U postgres && sleep 10
