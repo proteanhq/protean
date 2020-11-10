@@ -57,6 +57,16 @@ jobs:
         run: pytest --slow --sqlite --postgresql --elasticsearch --redis --cov=protean --cov-config .coveragerc tests
         env:
             TEST_CMD: pre-commit run --all-files
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_USER: postgres
+            POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
+            PGPASSWORD: postgres
+
 
       - name: CodeCOV
         run: codecov
+        env:
+            POSTGRES_PASSWORD: postgres
+            POSTGRES_USER: postgres
+            POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
+            PGPASSWORD: postgres
