@@ -57,7 +57,7 @@ class NotSupportedError(Exception):
     """Object does not support the operation being performed"""
 
 
-class IncorrectUsageError(Exception):
+class IncorrectUsageError(ProteanException):
     """Usage of a Domain Element violates principles"""
 
 
