@@ -57,7 +57,8 @@ class Providers:
 
         # Fixate on the provider associated with the aggregate class
         aggregate_record = self.domain._get_element_by_class(
-            (DomainObjects.AGGREGATE, DomainObjects.ENTITY), aggregate_cls
+            (DomainObjects.AGGREGATE, DomainObjects.ENTITY, DomainObjects.VIEW),
+            aggregate_cls,
         )
         provider = self.get_provider(aggregate_record.cls.meta_.provider)
 
@@ -192,7 +193,8 @@ class Providers:
         """Retrieve a DAO registered for the Aggregate with a live connection"""
         # Fixate on the provider associated with the aggregate class
         aggregate_record = self.domain._get_element_by_class(
-            (DomainObjects.AGGREGATE, DomainObjects.ENTITY), aggregate_cls
+            (DomainObjects.AGGREGATE, DomainObjects.ENTITY, DomainObjects.VIEW),
+            aggregate_cls,
         )
         provider = self.get_provider(aggregate_record.cls.meta_.provider)
 

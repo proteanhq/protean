@@ -254,12 +254,32 @@ class Auto(Field):
 class Identifier(Field):
     """ Concrete field implementation for Identifiers.
 
+    An identity field cannot be changed.
+
     Values can be Integers or Strings.
     """
 
     def _cast_to_type(self, value):
         """ Perform no validation for identifier fields. Return the value as is"""
         return value
+
+    def __set__(self, instance, value):
+        """An Identifier Field once set cannot be reset or changed if it is the identity of the object.
+
+        We override the ``__set__`` method and prevent setting of new value if one was
+        already set and is different from the new value
+        """
+        if self.identifier is True:
+            existing_value = getattr(instance, self.field_name)
+            if existing_value is not None and value != existing_value:
+                raise InvalidOperationError("Identifiers cannot be changed once set")
+
+        value = self._load(value)
+        instance.__dict__[self.field_name] = value
+
+        if hasattr(instance, "state_"):
+            # Mark Entity as Dirty
+            instance.state_.mark_changed()
 
 
 class CustomObject(Field):
