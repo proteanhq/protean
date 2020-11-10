@@ -29,7 +29,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
-        run: psql -c 'create database protean_test;' -U postgres && sleep 10
+        run: psql -U postgres -h postgres -p 5432 postgres -c 'create database protean_test;' && sleep 10
 
       - name: Run scripts
         run: psql -c 'create database protean_test;' -U postgres && sleep 10
