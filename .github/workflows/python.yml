@@ -7,7 +7,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     # Docker Hub image that `container-job` executes in
-    container: node:10.18-jessie
+    #container: node:10.18-jessie
 
     services:
       postgres:
