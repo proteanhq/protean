@@ -26,6 +26,9 @@ jobs:
         run:  ./setup_scripts/1.sh
 
       - name: PSQL command
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
         run: psql -c 'create database protean_test;' -U postgres && sleep 10
 
       - name: Run scripts
