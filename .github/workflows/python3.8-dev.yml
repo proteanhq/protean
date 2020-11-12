@@ -6,9 +6,6 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    # Docker Hub image that `container-job` executes in
-    #container: node:10.18-jessie
-
     services:
       postgres:
         image: postgres:11
@@ -49,10 +46,7 @@ jobs:
         uses: elastic/elastic-github-actions/elasticsearch@master
         with:
           stack-version: 7.6.0
-
-      #- name: Run scripts
-      #  run:  ./setup_scripts/1.sh
-
+          
       - name: PSQL command
         env:
           POSTGRES_PASSWORD: postgres
