@@ -38,8 +38,20 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Run scripts
-        run:  ./setup_scripts/1.sh
+      - name: Configure sysctl limits
+        run: |
+          sudo swapoff -a
+          sudo sysctl -w vm.swappiness=1
+          sudo sysctl -w fs.file-max=262144
+          sudo sysctl -w vm.max_map_count=262144
+
+      - name: Runs Elasticsearch
+        uses: elastic/elastic-github-actions/elasticsearch@master
+        with:
+          stack-version: 7.6.0
+
+      #- name: Run scripts
+      #  run:  ./setup_scripts/1.sh
 
       - name: PSQL command
         env:
@@ -49,10 +61,11 @@ jobs:
           PGPASSWORD: postgres
         run: psql -U postgres -h localhost -p $POSTGRES_PORT postgres -c 'create database protean_test;' && sleep 10
 
-      - name: Set up Python 3.7
+      # test Python 3.6
+      - name: Set up Python 3.6
         uses: actions/setup-python@v1
         with:
-          python-version: 3.7
+          python-version: 3.6
 
       - uses: actions/cache@v1
         with:
@@ -90,3 +103,5 @@ jobs:
             REDIS_HOST: localhost
             # The default Redis port
             REDIS_PORT: ${{ job.services.redis.ports[6379] }}
+
+          
