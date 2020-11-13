@@ -1,8 +1,18 @@
 import pytest
+import time
+
+from protean.core.field.basic import Identifier, String
 
 from protean.port.cache import BaseCache
 from protean.adapters.cache.memory import MemoryCache
 from protean.utils import Cache
+from protean.core.view import BaseView
+
+
+class Token(BaseView):
+    key = Identifier(identifier=True)
+    user_id = Identifier(required=True)
+    email = String(required=True)
 
 
 class TestCacheInitialization:
@@ -10,164 +20,215 @@ class TestCacheInitialization:
         with pytest.raises(TypeError):
             BaseCache()
 
-    @pytest.mark.skip
     def test_that_a_concrete_cache_can_be_initialized_successfully(self, test_domain):
-        broker = MemoryCache("dummy_name", test_domain, {})
-        assert broker is not None
+        cache = MemoryCache("dummy_name", test_domain, {})
+        assert cache is not None
 
-    @pytest.mark.skip
     def test_that_domain_initializes_cache_from_config(self, test_domain):
         assert len(list(test_domain.caches)) == 1
         assert isinstance(list(test_domain.caches.values())[0], MemoryCache)
 
-    @pytest.mark.skip
     def test_that_cache_can_be_retrieved(self, test_domain):
-        cache = test_domain.get_cache()
-        assert cache is not None
-        assert isinstance(cache, MemoryCache)
+        cache_name = next(iter(test_domain.caches))
+        assert cache_name is not None
+        assert cache_name == "default"
+        assert isinstance(test_domain.caches[cache_name], MemoryCache)
 
 
 class TestCacheProvider:
-    def test_connection(test_domain):
-        provider = test_domain.get_cache_provider()
+    def test_connection(self, test_domain):
+        provider = test_domain.caches.get("default")
         assert provider is not None
         assert provider.ping() is True
 
-    def test_conn_info(test_domain):
-        provider = test_domain.get_cache_provider()
+    def test_conn_info(self, test_domain):
+        provider = test_domain.caches.get("default")
         assert provider.conn_info["CACHE"] == Cache.MEMORY.value
 
-    def test_connection(test_domain):
-        provider = test_domain.get_cache_provider()
+    def test_connection_via_provider(self, test_domain):
+        provider = test_domain.caches.get("default")
         conn = provider.get_connection()
         assert conn is not None
-        assert isinstance(conn, MemoryConnection)
+        assert isinstance(conn, dict)
+
+    def test_connection_via_cache_aggregate(self, test_domain):
+        conn = test_domain.caches.get_connection("default")
+        assert conn is not None
+        assert isinstance(conn, dict)
 
 
 class TestCachePersistenceFlows:
     # ADD, GET, REMOVE, EXPIRY, FLUSH_ALL
-    @pytest.mark.skip
-    def test_adding_to_cache(test_domain):
-        token = Token(identifier="qux", user_id="foo", email="bar@baz.com")
+    def test_adding_to_cache(self, test_domain):
+        token = Token(key="qux", user_id="foo", email="bar@baz.com")
         cache = test_domain.cache_for(Token)
         cache.add(token)
 
-        provider = test_domain.get_cache_provider()
+        provider = test_domain.caches.get("default")
         conn = provider.get_connection()
-        assert "token-qux" in conn
-        assert conn["token-qux"] == {"user_id": "foo", "email": "bar@baz.com"}
 
-    @pytest.mark.skip
-    def test_fetching_from_cache():
-        token = Token(identifier="qux", user_id="foo", email="bar@baz.com")
+        assert isinstance(conn, dict)
+        assert "token:::qux" in conn
+        assert conn["token:::qux"][1] == {
+            "key": "qux",
+            "email": "bar@baz.com",
+            "user_id": "foo",
+        }
+
+    def test_fetching_from_cache(self, test_domain):
+        token = Token(key="qux", user_id="foo", email="bar@baz.com")
         cache = test_domain.cache_for(Token)
         cache.add(token)
 
-        value = cache.get("token-qux")
+        value = cache.get("token:::qux")
         assert value == token
 
-    @pytest.mark.skip
-    def test_get_keys_by_keyname_regex():
+    def test_get_keys_by_keyname_regex(self, test_domain):
         cache = test_domain.cache_for(Token)
 
-        token1 = Token(identifier="qux", user_id="foo", email="bar@baz.com")
-        token1 = Token(identifier="quux", user_id="fooo", email="baar@baz.com")
+        token1 = Token(key="qux", user_id="foo", email="bar@baz.com")
+        token2 = Token(key="quux", user_id="fooo", email="baar@baz.com")
 
         cache.add(token1)
         cache.add(token2)
 
-        values = cache.get_all("token-qu*")
+        values = cache.get_all("token:::qu*")
         assert len(values) == 2
-        assert all(key in values for key in ["qux", "quux"])
+        assert all(key in values for key in ["token:::qux", "token:::quux"])
 
-    @pytest.mark.skip
-    def test_counting_keys_in_cache():
+    def test_counting_keys_in_cache(self, test_domain):
         cache = test_domain.cache_for(Token)
 
-        token1 = Token(identifier="qux", user_id="foo", email="bar@baz.com")
-        token1 = Token(identifier="quux", user_id="fooo", email="baar@baz.com")
+        token1 = Token(key="qux", user_id="foo", email="bar@baz.com")
+        token2 = Token(key="quux", user_id="fooo", email="baar@baz.com")
 
         cache.add(token1)
         cache.add(token2)
 
-        total = cache.count("token-qu*")
+        total = cache.count("token:::qu*")
         assert total == 2
 
-    @pytest.mark.skip
-    def test_overwriting_key_in_cache():
+    def test_overwriting_key_in_cache(self, test_domain):
         cache = test_domain.cache_for(Token)
 
-        token1 = Token(identifier="qux", user_id="foo", email="bar@baz.com")
+        token1 = Token(key="qux", user_id="foo", email="bar@baz.com")
         cache.add(token1)
 
-        value1 = cache.get("token-qux")
+        value1 = cache.get("token:::qux")
         assert value1 == token1
 
-        token2 = Token(identifier="qux", user_id="fooo", email="baar@baz.com")
+        token2 = Token(key="qux", user_id="fooo", email="baar@baz.com")
         cache.add(token2)
 
-        value2 = cache.get("token-qux")
+        value2 = cache.get("token:::qux")
         assert value2 == token2
 
-    @pytest.mark.skip
-    def test_removing_from_cache():
+    def test_removing_from_cache(self, test_domain):
         cache = test_domain.cache_for(Token)
 
-        token = Token(identifier="qux", user_id="foo", email="bar@baz.com")
+        token = Token(key="qux", user_id="foo", email="bar@baz.com")
         cache.add(token)
 
-        value = cache.get("token-qux")
+        value = cache.get("token:::qux")
         assert value is not None
 
-        cache.remove("token-qux")
+        cache.remove_by_key("token:::qux")
 
-        value = cache.get("token-qux")
+        value = cache.get("token:::qux")
         assert value is None
 
-    @pytest.mark.skip
-    def test_setting_expiry_for_key():
-        pass
+        # Test removal by view object
+        cache.add(token)
+        value = cache.get("token:::qux")
+        assert value is not None
+        cache.remove(token)
 
-    @pytest.mark.skip
-    def test_flushing_cache():
+        value = cache.get("token:::qux")
+        assert value is None
+
+        # Test removal by key pattern
+        cache.add(token)
+        value = cache.get("token:::qux")
+        assert value is not None
+        cache.remove_by_key_pattern("token:::qu*")
+
+        value = cache.get("token:::qux")
+        assert value is None
+
+    def test_get_ttl_on_key(self, test_domain):
         cache = test_domain.cache_for(Token)
 
-        token1 = Token(identifier="qux", user_id="foo", email="bar@baz.com")
-        token1 = Token(identifier="quux", user_id="fooo", email="baar@baz.com")
+        token1 = Token(key="qux", user_id="foo", email="bar@baz.com")
+        cache.add(token1)
+
+        ttl = cache.get_ttl("token:::qux")
+        assert 0 <= ttl <= 300
+
+    def test_get_ttl_on_key(self, test_domain):
+        cache = test_domain.cache_for(Token)
+
+        token1 = Token(key="qux", user_id="foo", email="bar@baz.com")
+        cache.add(token1)
+
+        ttl = cache.get_ttl("token:::qux")
+        assert 0 <= ttl <= 300
+
+        cache.set_ttl("token:::qux", 3000)
+
+        ttl = cache.get_ttl("token:::qux")
+        assert 2700 <= ttl <= 3000
+
+    def test_setting_expiry_for_key(self, test_domain):
+        cache = test_domain.cache_for(Token)
+
+        token1 = Token(key="qux", user_id="foo", email="bar@baz.com")
+        cache.add(token1, 0.01)
+
+        total = cache.count("token:::qu*")
+        assert total == 1
+
+        time.sleep(0.01)
+
+        total = cache.count("token:::qu*")
+        assert total == 0
+
+    def test_flushing_cache(self, test_domain):
+        cache = test_domain.cache_for(Token)
+
+        token1 = Token(key="qux", user_id="foo", email="bar@baz.com")
+        token2 = Token(key="quux", user_id="fooo", email="baar@baz.com")
 
         cache.add(token1)
         cache.add(token2)
 
-        total = cache.count("token-qu*")
+        total = cache.count("token:::qu*")
         assert total == 2
 
         cache.flush_all()
 
-        total = cache.count("token-qu*")
+        total = cache.count("token:::qu*")
         assert total == 0
 
 
 class TestCacheSerialization:
-    @pytest.mark.skip
-    def test_serializing_view_object_data(test_domain):
+    def test_serializing_view_object_data(self, test_domain):
         cache = test_domain.cache_for(Token)
 
-        token = Token(identifier="qux", user_id="foo", email="bar@baz.com")
+        token = Token(key="qux", user_id="foo", email="bar@baz.com")
         cache.add(token)
 
-        provider = test_domain.get_cache_provider()
+        provider = test_domain.caches.get("default")
         conn = provider.get_connection()
-        raw_value = conn["token-qux"]
+        raw_value = conn["token:::qux"]
 
-        assert raw_value == {"user_id": "foo", "email": "bar@baz.com"}
+        assert raw_value[1] == {"key": "qux", "user_id": "foo", "email": "bar@baz.com"}
 
-    @pytest.mark.skip
-    def test_deserializing_view_object_data():
+    def test_deserializing_view_object_data(self, test_domain):
         cache = test_domain.cache_for(Token)
 
-        token = Token(identifier="qux", user_id="foo", email="bar@baz.com")
+        token = Token(key="qux", user_id="foo", email="bar@baz.com")
         cache.add(token)
 
-        value = cache.get("token-qux")
+        value = cache.get("token:::qux")
         assert isinstance(value, Token)
         assert value == token

@@ -6,7 +6,7 @@ import logging
 import sys
 
 # Protean
-from protean.adapters import Brokers, EmailProviders, Providers
+from protean.adapters import Brokers, EmailProviders, Providers, Caches
 from protean.core.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
@@ -87,6 +87,12 @@ class Domain(_PackageBoundObject):
             "IDENTITY_STRATEGY": IdentityStrategy.UUID,
             "IDENTITY_TYPE": IdentityType.STRING,
             "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider"}},
+            "CACHES": {
+                "default": {
+                    "PROVIDER": "protean.adapters.cache.memory.MemoryCache",
+                    "TTL": 300,
+                }
+            },
             "BROKERS": {"default": {"PROVIDER": "protean.adapters.InlineBroker"}},
             "EMAIL_PROVIDERS": {
                 "default": {
@@ -118,6 +124,7 @@ class Domain(_PackageBoundObject):
 
         self.providers = Providers(self)
         self.brokers = Brokers(self)
+        self.caches = Caches(self)
         self.email_providers = EmailProviders(self)
 
         # Cache for holding Model to Entity/Aggregate associations
@@ -501,6 +508,13 @@ class Domain(_PackageBoundObject):
 
     def get_dao(self, aggregate_cls):
         return self.providers.get_dao(aggregate_cls)
+
+    #######################
+    # Email Functionality #
+    #######################
+
+    def cache_for(self, view_cls):
+        return self.caches.cache_for(view_cls)
 
     #######################
     # Email Functionality #
