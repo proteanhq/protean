@@ -126,7 +126,9 @@ class MemoryCache(BaseCache):
         value = self._db.get(key)
         return view_cls(value) if value else None
 
-    def get_all(self, key_pattern):
+    def get_all(self, key_pattern, last_position=0, size=25):
+        # FIXME Handle Pagination with Last Position
+        # FIXME Handle Pagination with Size
         key_list = self._db.keys()
         regex = re.compile(key_pattern)
         return list(filter(regex.match, key_list))

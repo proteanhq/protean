@@ -39,7 +39,7 @@ class BaseCache(metaclass=ABCMeta):
         """Retrieve data by key"""
 
     @abstractmethod
-    def get_all(self, key_pattern):
+    def get_all(self, key_pattern, last_position=0, size=25):
         """Retrieve data by key pattern"""
 
     @abstractmethod
@@ -47,7 +47,7 @@ class BaseCache(metaclass=ABCMeta):
         """Retrieve count of data by key pattern"""
 
     @abstractmethod
-    def remove(self, view_cls: BaseView):
+    def remove(self, view):
         """Remove a cache record by view"""
 
     @abstractmethod
