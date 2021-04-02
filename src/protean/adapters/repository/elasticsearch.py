@@ -573,6 +573,24 @@ class Contains(DefaultLookup):
 
 
 @ESProvider.register_lookup
+class IContains(DefaultLookup):
+    """Case insensitive Contains Query"""
+
+    lookup_name = "icontains"
+
+    def as_expression(self):
+        return query.Q(
+            "wildcard",
+            **{
+                self.process_source(): {
+                    "value": f"*{self.process_target()}*",
+                    "case_insensitive": True,
+                }
+            },
+        )
+
+
+@ESProvider.register_lookup
 class Startswith(DefaultLookup):
     """Exact Contains Query"""
 

@@ -286,6 +286,7 @@ class TestDAORetrievalFunctionality:
         person = test_domain.get_dao(Person).get(persisted_person.id)
         assert person is not None
         assert person.id == identifier
+        assert person == persisted_person
 
     def test_failed_entity_retrieval_by_its_primary_key(self, test_domain):
         """Test failed Entity Retrieval by its primary key"""
@@ -298,6 +299,7 @@ class TestDAORetrievalFunctionality:
         person = test_domain.get_dao(Person).find_by(first_name__keyword="John")
         assert person is not None
         assert person.id == identifier
+        assert person == persisted_person
 
     def test_failed_entity_retrieval_by_column_value(
         self, test_domain, persisted_person
@@ -315,9 +317,11 @@ class TestDAORetrievalFunctionality:
             id=identifier2, first_name="Johnny2", last_name="Bravo", age=6
         )
 
-        dog = test_domain.get_dao(Person).find_by(first_name__keyword="Johnny1", age=8)
-        assert dog is not None
-        assert dog.id == identifier1
+        person = test_domain.get_dao(Person).find_by(
+            first_name__keyword="Johnny1", age=8
+        )
+        assert person is not None
+        assert person.id == identifier1
 
     def test_failed_entity_retrieval_by_multiple_column_values(self, test_domain):
         test_domain.get_dao(Person).create(
@@ -572,6 +576,26 @@ class TestDAORetrievalFunctionality:
         )
 
         assert people_contains.total == 1
+
+    def test_filtering_using_icontains(self, test_domain):
+        # Add multiple entries to the DB
+        test_domain.get_dao(Person).create(
+            first_name="Murdock", age=7, last_name="John"
+        )
+        test_domain.get_dao(Person).create(first_name="Jean", age=3, last_name="john")
+        test_domain.get_dao(Person).create(first_name="Bart", age=6, last_name="Carrie")
+
+        people_contains = test_domain.get_dao(Person).query.filter(
+            last_name__keyword__icontains="Joh"
+        )
+
+        assert people_contains.total == 2
+
+        people_contains = test_domain.get_dao(Person).query.filter(
+            last_name__keyword__icontains="joh"
+        )
+
+        assert people_contains.total == 2
 
     @pytest.mark.xfail
     def test_exception_on_usage_of_unsupported_comparison_operator(self, test_domain):
