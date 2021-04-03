@@ -128,6 +128,25 @@ class TestCustomModel:
         model_cls = test_domain.get_model(Provider)
         assert model_cls.__name__ == "ProviderCustomModel"
 
+    def test_that_custom_model_is_persisted_via_dao(self, test_domain):
+        test_domain.register(Provider)
+        test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
+
+        provider_dao = test_domain.get_dao(Provider)
+        provider = provider_dao.create(name="John", about="Me, Myself, and Jane")
+        assert provider is not None
+
+    def test_that_custom_model_is_retrievable_via_dao(self, test_domain):
+        test_domain.register(Provider)
+        test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
+
+        provider_dao = test_domain.get_dao(Provider)
+        provider = provider_dao.create(name="John", about="Me, Myself, and Jane")
+
+        provider = provider_dao.get(provider.id)
+        assert provider is not None
+        assert provider.name == "John"
+
     def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
         # Protean
         from elasticsearch_dsl import Index, Keyword, Text
@@ -151,3 +170,30 @@ class TestCustomModel:
         model_cls = test_domain.get_model(Receiver)
         assert model_cls.__name__ == "ReceiverInlineModel"
         assert model_cls.name._params["fields"] == {"raw": Keyword()}
+
+    def test_persistence_via_model_registered_with_domain_annotation(self, test_domain):
+        # Protean
+        from elasticsearch_dsl import Index, Keyword, Text
+
+        test_domain.register(Receiver)
+
+        @test_domain.model(entity_cls=Receiver)
+        class ReceiverInlineModel(ElasticsearchModel):
+            name = Text(fields={"raw": Keyword()})
+
+        test_domain.register(Provider)
+        test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
+
+        provider_dao = test_domain.get_dao(Provider)
+        provider = provider_dao.create(name="John", about="Me, Myself, and Jane")
+
+        provider = provider_dao.get(provider.id)
+        assert provider is not None
+        assert provider.name == "John"
+
+        receiver_dao = test_domain.get_dao(Receiver)
+        receiver = receiver_dao.create(name="John")
+
+        receiver = receiver_dao.get(receiver.id)
+        assert receiver is not None
+        assert receiver.name == "John"

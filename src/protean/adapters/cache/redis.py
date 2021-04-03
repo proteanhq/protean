@@ -39,6 +39,7 @@ class RedisCache(BaseCache):
         return view_cls(json.loads(value)) if value else None
 
     def get_all(self, key_pattern, last_position=0, count=25):
+        # FIXME Validate count
         view_name = key_pattern.split(":::")[0]
         view_cls = self._views[view_name]
 

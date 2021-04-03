@@ -729,7 +729,7 @@ class Contains(DefaultLookup):
 
 @SAProvider.register_lookup
 class IContains(DefaultLookup):
-    """Exact Case-Insensitive Contains Query"""
+    """Case-Insensitive Contains Query"""
 
     lookup_name = "icontains"
 

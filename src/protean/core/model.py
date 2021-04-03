@@ -48,7 +48,7 @@ class BaseModel:
 
 
 def model_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseModel)
+    element_cls.element_type = DomainObjects.MODEL
 
     if hasattr(element_cls, "Meta"):
         element_cls.meta_ = ModelMeta(element_cls.Meta)
