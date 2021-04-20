@@ -50,13 +50,6 @@ jobs:
         with:
           stack-version: 7.6.0
 
-      - name: PSQL command
-        env:
-          # The hostname used to communicate with the PostgreSQL service container
-          POSTGRES_HOST: postgres
-          # The default PostgreSQL port
-          POSTGRES_PORT: 5432
-
       # test Python 3.6
       - name: Set up Python 3.8
         uses: actions/setup-python@v1
