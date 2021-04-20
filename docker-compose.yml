@@ -39,13 +39,13 @@ services:
       - ALLOW_EMPTY_PASSWORD=yes
 
   postgres:
-    image: "postgres:9.6"
+    image: postgres:11
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: protean_test
-      POSTGRES_PASSWORD: protean_test
-      POSTGRES_DB: protean_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
 
 volumes:
   elasticsearch-data:

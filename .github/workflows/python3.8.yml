@@ -7,14 +7,18 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
+        # Docker Hub image
         image: postgres:11
+        # Provide the password for postgres
         env:
-          POSTGRES_USER: protean_test
-          POSTGRES_PASSWORD: protean_test
-          POSTGRES_DB: protean_test
+          POSTGRES_PASSWORD: postgres
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
-        ports: ["5432:5432"]
-        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
       # Label used to access the service container
       redis:
         # Docker Hub image
@@ -48,11 +52,10 @@ jobs:
 
       - name: PSQL command
         env:
-          POSTGRES_PASSWORD: protean_test
-          POSTGRES_USER: protean_test
-          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
-          PGPASSWORD: protean_test
-        run: psql -U $POSTGRES_USER -tc "SELECT 1 FROM pg_database WHERE datname = 'protean_test'" | grep -q 1 || psql -U $POSTGRES_USER -c "CREATE DATABASE protean_test"
+          # The hostname used to communicate with the PostgreSQL service container
+          POSTGRES_HOST: postgres
+          # The default PostgreSQL port
+          POSTGRES_PORT: 5432
 
       # test Python 3.6
       - name: Set up Python 3.8
@@ -75,10 +78,10 @@ jobs:
         run: pytest --slow --sqlite --postgresql --elasticsearch --redis --cov=protean --cov-config .coveragerc tests
         env:
           TEST_CMD: pre-commit run --all-files
-          POSTGRES_PASSWORD: protean_test
-          POSTGRES_USER: protean_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
           POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
-          PGPASSWORD: protean_test
+          PGPASSWORD: postgres
           # The hostname used to communicate with the Redis service container
           REDIS_HOST: localhost
           # The default Redis port
@@ -87,11 +90,11 @@ jobs:
       - name: CodeCOV
         run: codecov
         env:
-          POSTGRES_PASSWORD: protean_test
-          POSTGRES_USER: protean_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
           POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
           PGPASSWORD:
-            protean_test
+            postgres
             # The hostname used to communicate with the Redis service container
           REDIS_HOST: localhost
           # The default Redis port
