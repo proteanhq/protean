@@ -2,17 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   pull_request:
-    branches: [ master ]
+    branches: [master]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
-        python-version: [ '3.6', '3.7', '3.8', '3.9' '3.10-dev']
+        python-version: ["3.6", "3.7", "3.8", "3.9", "3.10-dev"]
     name: Python ${{ matrix.python-version }} Tests
 
     services:
