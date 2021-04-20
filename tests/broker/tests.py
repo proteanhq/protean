@@ -22,3 +22,6 @@ class TestBroker:
     def test_that_domain_initializes_broker_before_iteration(self, test_domain):
         brokers = [broker for broker in test_domain.brokers]
         assert len(brokers) == 1
+
+    def test_that_brokers_can_be_registered_manually(self, test_domain):
+        duplicate_broker = None
