@@ -22,7 +22,7 @@ services:
       - 9200:9200
 
   kibana:
-    image: "kibana:7.9.3"
+    image: "kibana:7.12.0"
     container_name: kibana
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
