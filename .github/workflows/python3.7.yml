@@ -51,7 +51,7 @@ jobs:
           POSTGRES_USER: protean_test
           POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
           PGPASSWORD: protean_test
-        run: psql -U $POSTGRES_USER -h localhost -p $POSTGRES_PORT postgres -c 'create database protean_test;' && sleep 10
+        run: psql -U $POSTGRES_USER -tc "SELECT 1 FROM pg_database WHERE datname = 'protean_test'" | grep -q 1 || psql -U $POSTGRES_USER -c "CREATE DATABASE protean_test"
 
       # test Python 3.6
       - name: Set up Python 3.7
