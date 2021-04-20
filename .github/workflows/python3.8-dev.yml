@@ -3,18 +3,17 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-
   test:
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:11
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        
-        ports: ['5432:5432']
+          POSTGRES_USER: protean_test
+          POSTGRES_PASSWORD: protean_test
+          POSTGRES_DB: protean_test
+
+        ports: ["5432:5432"]
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
       # Label used to access the service container
       redis:
@@ -46,14 +45,14 @@ jobs:
         uses: elastic/elastic-github-actions/elasticsearch@master
         with:
           stack-version: 7.6.0
-          
+
       - name: PSQL command
         env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: protean_test
+          POSTGRES_USER: protean_test
           POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
-          PGPASSWORD: postgres
-        run: psql -U postgres -h localhost -p $POSTGRES_PORT postgres -c 'create database protean_test;' && sleep 10
+          PGPASSWORD: protean_test
+        run: psql -U $POSTGRES_USER -h localhost -p $POSTGRES_PORT postgres -c 'create database protean_test;' && sleep 10
 
       # test Python 3.6
       - name: Set up Python 3.8-dev
@@ -72,30 +71,28 @@ jobs:
           pip install codecov pre-commit && pip install .[test]
         if: steps.cache.outputs.cache-hit != 'true'
 
-      - name: Tests 
+      - name: Tests
         run: pytest --slow --sqlite --postgresql --elasticsearch --redis --cov=protean --cov-config .coveragerc tests
         env:
-            TEST_CMD: pre-commit run --all-files
-            POSTGRES_PASSWORD: postgres
-            POSTGRES_USER: postgres
-            POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
-            PGPASSWORD: postgres
-            # The hostname used to communicate with the Redis service container
-            REDIS_HOST: localhost
-            # The default Redis port
-            REDIS_PORT: ${{ job.services.redis.ports[6379] }}
-
+          TEST_CMD: pre-commit run --all-files
+          POSTGRES_PASSWORD: protean_test
+          POSTGRES_USER: protean_test
+          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
+          PGPASSWORD: protean_test
+          # The hostname used to communicate with the Redis service container
+          REDIS_HOST: localhost
+          # The default Redis port
+          REDIS_PORT: ${{ job.services.redis.ports[6379] }}
 
       - name: CodeCOV
         run: codecov
         env:
-            POSTGRES_PASSWORD: postgres
-            POSTGRES_USER: postgres
-            POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
-            PGPASSWORD: postgres
-             # The hostname used to communicate with the Redis service container
-            REDIS_HOST: localhost
-            # The default Redis port
-            REDIS_PORT: ${{ job.services.redis.ports[6379] }}
-
-          
+          POSTGRES_PASSWORD: protean_test
+          POSTGRES_USER: protean_test
+          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
+          PGPASSWORD:
+            protean_test
+            # The hostname used to communicate with the Redis service container
+          REDIS_HOST: localhost
+          # The default Redis port
+          REDIS_PORT: ${{ job.services.redis.ports[6379] }}
