@@ -23,10 +23,10 @@ def read(*names, **kwargs):
     ).read()
 
 
-elasticsearch_requires = ["elasticsearch-dsl>=7.1.0"]
+elasticsearch_requires = ["elasticsearch>=7.12.0", "elasticsearch-dsl>=7.3.0"]
 redis_requires = ["redis==3.5.2"]
-sqlite_requires = ["sqlalchemy>=1.3.15"]
-postgresql_requires = ["psycopg2>=2.8.4", "sqlalchemy>=1.3.15"]
+sqlite_requires = ["sqlalchemy>=1.4.9"]
+postgresql_requires = ["psycopg2>=2.8.4", "sqlalchemy>=1.4.9"]
 celery_requires = ["celery[redis]~=4.4.2"]
 sendgrid_requires = ["sendgrid>=6.1.3"]
 flask_requires = ["flask>=1.1.1"]

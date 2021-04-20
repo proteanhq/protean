@@ -20,9 +20,13 @@ IDENTITY_TYPE = IdentityType.UUID
 
 # Define the databases
 DATABASES = {
+    "default": {"PROVIDER": "protean.adapters.MemoryProvider"},
+}
+
+CACHES = {
     "default": {
-        "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
-        "DATABASE": Database.POSTGRESQL.value,
-        "DATABASE_URI": "postgresql://postgres:postgres@localhost:5432/postgres",
-    },
+        "PROVIDER": "protean.adapters.cache.redis.RedisCache",
+        "URI": "redis://127.0.0.1:6379/2",
+        "TTL": 300,
+    }
 }

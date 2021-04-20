@@ -34,6 +34,10 @@ class Database(Enum):
     SQLITE = "SQLITE"
 
 
+class Cache(Enum):
+    MEMORY = "MEMORY"
+
+
 def fully_qualified_name(cls):
     """Return Fully Qualified name along with module"""
     return ".".join([cls.__module__, cls.__name__])

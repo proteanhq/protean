@@ -52,10 +52,6 @@ class TestLookups:
 
         assert (
             str(expr.compile())
-            == "public.generic_postgres.role IN (:role_1, :role_2, :role_3)"
+            == "public.generic_postgres.role IN ([POSTCOMPILE_role_1])"
         )
-        assert expr.compile().params == {
-            "role_1": "foo",
-            "role_2": "bar",
-            "role_3": "baz",
-        }
+        assert expr.compile().params == {"role_1": ["foo", "bar", "baz"]}

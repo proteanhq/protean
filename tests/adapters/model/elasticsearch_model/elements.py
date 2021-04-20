@@ -6,7 +6,7 @@ from datetime import datetime
 
 # Protean
 from elasticsearch_dsl import Keyword, Text
-from protean.adapters import ElasticsearchModel
+from protean.adapters.repository.elasticsearch import ElasticsearchModel
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import DateTime, Integer, String
 from protean.core.field.basic import Text as ProteanText
@@ -61,6 +61,9 @@ class Provider(BaseAggregate):
 class ProviderCustomModel(ElasticsearchModel):
     name = Text(fields={"raw": Keyword()})
     about = Text()
+
+    class Index:
+        name = "providers"
 
 
 class Receiver(BaseAggregate):

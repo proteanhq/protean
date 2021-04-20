@@ -39,6 +39,7 @@ class TestConfig:
             "'IDENTITY_STRATEGY': <IdentityStrategy.UUID: 1>, "
             "'IDENTITY_TYPE': <IdentityType.STRING: 'STRING'>, "
             "'DATABASES': {'default': {'PROVIDER': 'protean.adapters.MemoryProvider'}}, "
+            "'CACHES': {'default': {'PROVIDER': 'protean.adapters.cache.memory.MemoryCache', 'TTL': 300, 'CACHE': 'MEMORY'}}, "
             "'BROKERS': {'default': {'PROVIDER': 'protean.adapters.InlineBroker'}}, "
             "'EMAIL_PROVIDERS': {'default': {'PROVIDER': 'protean.adapters.DummyEmailProvider', "
             "'DEFAULT_FROM_EMAIL': 'admin@team8solutions.com'}}, "

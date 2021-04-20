@@ -146,4 +146,4 @@ TODO
 *.db
 
 # Temporary Python files
-tester.py
+tester*.py

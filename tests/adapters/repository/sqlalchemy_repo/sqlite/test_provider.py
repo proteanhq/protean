@@ -4,7 +4,7 @@ import pytest
 
 from protean.adapters.repository import Providers
 from protean.adapters.repository.sqlalchemy import SAProvider
-from sqlalchemy.engine.result import ResultProxy
+from sqlalchemy.engine.result import Result
 from sqlalchemy.orm.session import Session
 
 # Local/Relative Imports
@@ -62,7 +62,7 @@ class TestProviders:
 
         # Filter by column value
         results = provider.raw("SELECT count(*) FROM person where last_name = 'John'")
-        assert isinstance(results, ResultProxy)
+        assert isinstance(results, Result)
         assert next(results)[0] == 2
 
         results = provider.raw(
