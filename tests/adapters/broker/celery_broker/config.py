@@ -40,7 +40,7 @@ IDENTITY_TYPE = IdentityType.STRING
 # Messaging Mediums
 BROKERS = {
     "default": {
-        "PROVIDER": "protean.adapters.CeleryBroker",
+        "PROVIDER": "protean.adapters.broker.celery.CeleryBroker",
         "URI": "redis://127.0.0.1:6379/2",
         "IS_ASYNC": True,
     },
