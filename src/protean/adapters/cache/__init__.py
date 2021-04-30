@@ -1,9 +1,13 @@
 """ Package for  Concrete Implementations of Protean repositories """
 # Standard Library Imports
+import collections
 import importlib
 import logging
 
-from collections.abc import MutableMapping
+try:
+    collectionsAbc = collections.abc
+except AttributeError:
+    collectionsAbc = collections
 
 # Protean
 from protean.core.exceptions import ConfigurationError
@@ -14,7 +18,7 @@ from protean.utils.inflection import underscore
 logger = logging.getLogger("protean.cache")
 
 
-class Caches(MutableMapping):
+class Caches(collectionsAbc.MutableMapping):
     def __init__(self, domain):
         self.domain = domain
 

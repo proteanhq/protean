@@ -23,4 +23,8 @@ class InlineBroker(BaseBroker):
             command_handler = self._command_handlers[
                 fully_qualified_name(initiator_obj.__class__)
             ]
-            command_handler.notify(initiator_obj.to_dict())
+
+            command_handler_object = command_handler(
+                current_domain, initiator_obj.__class__
+            )
+            command_handler_object.notify(initiator_obj.to_dict())

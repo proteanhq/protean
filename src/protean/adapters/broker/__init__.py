@@ -1,8 +1,14 @@
 # Standard Library Imports
+import collections
 import importlib
 import logging
 
-from collections.abc import MutableMapping
+try:
+    # Python 3.8+
+    collectionsAbc = collections.abc
+except AttributeError:  # pragma: no cover
+    # Until Python 3.7
+    collectionsAbc = collections
 
 # Protean
 from protean.core.exceptions import ConfigurationError
@@ -12,7 +18,7 @@ from protean.utils import DomainObjects
 logger = logging.getLogger("protean.broker")
 
 
-class Brokers(MutableMapping):
+class Brokers(collectionsAbc.MutableMapping):
     def __init__(self, domain):
         self.domain = domain
         self._brokers = None
@@ -60,6 +66,8 @@ class Brokers(MutableMapping):
                     importlib.import_module(broker_module), broker_class
                 )
                 broker_objects[broker_name] = broker_cls(broker_name, self, conn_info)
+        else:
+            raise ConfigurationError("Configure at least one broker in the domain")
 
         self._brokers = broker_objects
 

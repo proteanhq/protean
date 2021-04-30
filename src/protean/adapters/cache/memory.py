@@ -1,16 +1,23 @@
+import collections
 import re
 from re import L
 import time
 
 from threading import RLock
-from collections import MutableMapping
+
+try:
+    # Python 3.8+
+    collectionsAbc = collections.abc
+except AttributeError:  # pragma: no cover
+    # Until Python 3.7
+    collectionsAbc = collections
 
 from protean.port.cache import BaseCache
 from protean.utils import Cache
 from protean.utils.inflection import underscore
 
 
-class TTLDict(MutableMapping):
+class TTLDict(collectionsAbc.MutableMapping):
     def __init__(self, default_ttl, *args, **kwargs):
         self._default_ttl = default_ttl
         self._values = {}

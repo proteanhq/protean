@@ -20,6 +20,7 @@ class UnitOfWork:
 
         self._sessions = {}
         self._events = []
+        self._commands = []
 
     @property
     def in_progress(self):
@@ -58,6 +59,10 @@ class UnitOfWork:
                 for _, broker in self.domain.brokers.items():
                     broker.send_message(event)
 
+            for command in self._commands:
+                for _, broker in self.domain.brokers.items():
+                    broker.send_message(command)
+
             logger.debug("Commit Successful")
         except Exception as exc:
             logger.error(
@@ -76,6 +81,7 @@ class UnitOfWork:
 
         self._sessions = {}
         self._events = []
+        self._commands = []
         self._in_progress = False
 
     def rollback(self):
@@ -115,3 +121,6 @@ class UnitOfWork:
 
     def register_event(self, event):
         self._events.append(event)
+
+    def register_command_handler(self, command):
+        self._commands.append(command)
