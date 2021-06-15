@@ -510,7 +510,7 @@ class Domain(_PackageBoundObject):
         return self.providers.get_dao(aggregate_cls)
 
     #######################
-    # Email Functionality #
+    # Cache Functionality #
     #######################
 
     def cache_for(self, view_cls):

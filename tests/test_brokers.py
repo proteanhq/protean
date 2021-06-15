@@ -193,13 +193,13 @@ class TestBrokerSubscriberInitialization:
         len(test_domain.brokers)  # Triggers initialization
 
         assert (
-            "tests.broker.tests.PersonAdded"
+            "tests.test_brokers.PersonAdded"
             in test_domain.brokers["default"]._subscribers
         )
         assert (
             NotifySSOSubscriber
             in test_domain.brokers["default"]._subscribers[
-                "tests.broker.tests.PersonAdded"
+                "tests.test_brokers.PersonAdded"
             ]
         )
 
@@ -255,12 +255,12 @@ class TestBrokerCommandHandlerInitialization:
         test_domain.register(AddNewPersonCommandHandler)
 
         assert (
-            "tests.broker.tests.AddPersonCommand"
+            "tests.test_brokers.AddPersonCommand"
             in test_domain.brokers["default"]._command_handlers
         )
         assert (
             test_domain.brokers["default"]._command_handlers[
-                "tests.broker.tests.AddPersonCommand"
+                "tests.test_brokers.AddPersonCommand"
             ]
             is AddNewPersonCommandHandler
         )

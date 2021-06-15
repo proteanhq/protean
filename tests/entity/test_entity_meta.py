@@ -13,6 +13,9 @@ from .elements import (
     OrderedPerson,
     OrderedPersonSubclass,
     Person,
+    PersonAutoSSN,
+    PersonExplicitID,
+    Relative,
     SqlDifferentDbPerson,
     SqlPerson,
 )
@@ -95,3 +98,33 @@ class TestEntityMeta:
 
     def test_that_schema_is_not_inherited(self):
         assert Person.meta_.schema_name != Adult.meta_.schema_name
+
+    def test_entity_meta_has_mandatory_fields_on_construction(self):
+        assert hasattr(Person.meta_, "mandatory_fields")
+        assert list(Person.meta_.mandatory_fields.keys()) == ["first_name"]
+        assert list(PersonAutoSSN.meta_.mandatory_fields.keys()) == ["first_name"]
+        assert list(PersonExplicitID.meta_.mandatory_fields.keys()) == [
+            "ssn",
+            "first_name",
+        ]
+
+    def test_entity_meta_has_attributes_on_construction(self):
+        assert hasattr(Person.meta_, "mandatory_fields")
+        assert list(Person.meta_.attributes.keys()) == [
+            "first_name",
+            "last_name",
+            "age",
+            "id",
+        ]
+        assert list(PersonAutoSSN.meta_.attributes.keys()) == [
+            "ssn",
+            "first_name",
+            "last_name",
+            "age",
+        ]
+        assert list(Relative.meta_.attributes.keys()) == [
+            "first_name",
+            "last_name",
+            "age",
+            "id",
+        ]  # `relative_of` is ignored

@@ -5,6 +5,7 @@ from enum import Enum
 # Protean
 from protean.core.entity import BaseEntity
 from protean.core.field.basic import Auto, Integer, String
+from protean.core.field.association import HasOne
 
 
 class AbstractPerson(BaseEntity):
@@ -44,6 +45,13 @@ class PersonExplicitID(BaseEntity):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
     age = Integer(default=21)
+
+
+class Relative(BaseEntity):
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50)
+    age = Integer(default=21)
+    relative_of = HasOne(Person)
 
 
 class Adult(Person):
