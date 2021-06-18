@@ -1,6 +1,6 @@
-=====================
-Domain Layer Elements
-=====================
+============
+Domain Layer
+============
 
 .. toctree::
     :glob:

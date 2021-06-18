@@ -1,6 +1,6 @@
-==========================
-Application Layer Elements
-==========================
+=================
+Application Layer
+=================
 
 .. toctree::
     :glob:

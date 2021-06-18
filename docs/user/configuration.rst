@@ -94,7 +94,7 @@ The following configuration values are used internally by Protean:
 
     Protean allows you to specify the database provider you want to use with your application. By virtue of using a Ports and Adapters architecture, you can switch between databases at any time, and your application should work seamlessly.
 
-    By default, Protean is packaged with a :ref:`implementation-in-memory-database` that works perfectly well in development environments and within a single bounded context. But it is recommended to use full-fledged database providers in production and for large scale deployments. Protean comes with built-in support for SQLAlchemy and Elasticsearch, but you can easily extend the mechanism to support your :ref:`own broker<plugin-database>`.
+    By default, Protean is packaged with a :ref:`implementation-in-memory-database` that works perfectly well in development environments and within a single bounded context. But it is recommended to use full-fledged database providers in production and for large scale deployments. Protean comes with built-in support for SQLAlchemy and Elasticsearch, but you can easily extend the mechanism to support your :ref:`own provider<plugin-database>`.
 
     Default:
 
@@ -213,7 +213,7 @@ If you are using Pytest for your test framework, you can create a test domain fi
 
 .. _config-dev-prod:
 
-Cofigurations for different environments
+Configurations for different environments
 ========================================
 
 Most applications need more than one configuration. At the very minimum, there are separate configurations for the production server and for development. The easiest way to handle this is to use a default configuration that is always loaded and part of the version control, and a separate configuration that overrides the values as necessary as mentioned in the example above:
