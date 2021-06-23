@@ -288,7 +288,7 @@ class DictDAO(BaseDAO):
                 raise ValidationError(
                     {
                         "entity": f"`{self.__class__.__name__}` object with identifier {identifier} "
-                        f"already exists."
+                        f"is already present."
                     }
                 )
 

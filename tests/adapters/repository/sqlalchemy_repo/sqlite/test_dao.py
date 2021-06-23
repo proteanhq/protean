@@ -800,7 +800,7 @@ class TestDAOValidations:
                 email="john.doe@gmail.com", password="d4e5r6"
             )
         assert err.value.messages == {
-            "email": ["`User` with this `email` already exists."]
+            "email": ["User with email 'john.doe@gmail.com' is already present."]
         }
 
     def test_that_field_required_validations_are_triggered_on_incorrect_attribute_setting(

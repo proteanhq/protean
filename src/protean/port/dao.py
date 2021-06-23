@@ -427,7 +427,7 @@ class BaseDAO(metaclass=ABCMeta):
 
             return entity_obj
         except Exception as exc:
-            logger.error(f"Failed saving entity because of {exc}")
+            logger.error(f"Failed saving entity because {exc}")
             raise
 
     def update(self, entity_obj, *data, **kwargs) -> "BaseEntity":
@@ -503,6 +503,7 @@ class BaseDAO(metaclass=ABCMeta):
                     "unique",
                     entity_name=self.entity_cls.__name__,
                     field_name=filter_key,
+                    value=lookup_value,
                 )
 
     def delete(self, entity_obj):
