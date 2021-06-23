@@ -27,7 +27,6 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
     :param required: if `True`, Raise a :exc:`ValidationError` if the field
     value is `None`.
     :param unique: Indicate if this field needs to be checked for uniqueness.
-    :param label: Verbose name for this field
     :param choices: Valid choices for this field, if value is not one of the
     choices a `ValidationError` is raised.
     :param validators: Optional list of validators to be applied for this field.
@@ -57,7 +56,6 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
         default: Any = None,
         required: bool = False,
         unique: bool = False,
-        label: str = None,
         choices: enum.Enum = None,
         validators: Iterable = (),
         value=None,
@@ -87,7 +85,6 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
                 else:
                     self.choice_dict[member.value] = member.value
 
-        self.label = label
         self._validators = validators
 
         # Value holder

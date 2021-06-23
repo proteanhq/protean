@@ -36,7 +36,6 @@ class FieldDescriptorMixin:
         self.field_name = None
         self.attribute_name = None
         self.referenced_as = kwargs.pop("referenced_as", None)
-        self.label = None
 
     def __set_name__(self, entity_cls, name):
         self.field_name = name
@@ -44,10 +43,6 @@ class FieldDescriptorMixin:
 
         # Record Entity setting up the field
         self._entity_cls = entity_cls
-
-        # `self.label` should default to being based on the field name.
-        if self.label is None:
-            self.label = self.field_name.replace("_", " ").capitalize()
 
     def get_attribute_name(self):
         """Return Attribute name for the attribute.
