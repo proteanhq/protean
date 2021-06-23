@@ -461,7 +461,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
         # Raise any errors found during load
         if self.errors and self.raise_errors:
-            logger.error(self.errors)
+            logger.error(f"Error during initialization: {dict(self.errors)}")
             raise ValidationError(self.errors)
 
     def defaults(self):
@@ -544,7 +544,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
         # Raise any errors found during update
         if self.errors:
-            logger.error(self.errors)
+            logger.error(f"Errors on Update: {dict(self.errors)}")
             raise ValidationError(self.errors)
 
     def to_dict(self):

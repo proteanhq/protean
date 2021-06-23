@@ -13,7 +13,7 @@ from typing import Any
 from uuid import UUID
 
 # Protean
-from protean.core.exceptions import ObjectNotFoundError
+from protean.core.exceptions import ObjectNotFoundError, ValidationError
 from protean.core.model import BaseModel
 from protean.globals import current_uow
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
@@ -285,9 +285,11 @@ class DictDAO(BaseDAO):
         with conn._db["lock"]:
             # Check if object is present
             if identifier in conn._db["data"][self.schema_name]:
-                raise ObjectNotFoundError(
-                    f"`{self.__class__.__name__}` object with identifier {identifier} "
-                    f"already exists."
+                raise ValidationError(
+                    {
+                        "entity": f"`{self.__class__.__name__}` object with identifier {identifier} "
+                        f"already exists."
+                    }
                 )
 
             conn._db["data"][self.schema_name][identifier] = model_obj
@@ -372,8 +374,10 @@ class DictDAO(BaseDAO):
             # Check if object is present
             if identifier not in conn._db["data"][self.schema_name]:
                 raise ObjectNotFoundError(
-                    f"`{self.__class__.__name__}` object with identifier {identifier} "
-                    f"does not exist."
+                    {
+                        "entity": f"`{self.__class__.__name__}` object with identifier {identifier} "
+                        f"does not exist."
+                    }
                 )
 
             conn._db["data"][self.schema_name][identifier] = model_obj
@@ -414,8 +418,10 @@ class DictDAO(BaseDAO):
             # Check if object is present
             if identifier not in conn._db["data"][self.schema_name]:
                 raise ObjectNotFoundError(
-                    f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                    f"does not exist."
+                    {
+                        "entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                        f"does not exist."
+                    }
                 )
 
             del conn._db["data"][self.schema_name][identifier]

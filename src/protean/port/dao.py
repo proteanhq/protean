@@ -268,8 +268,10 @@ class BaseDAO(metaclass=ABCMeta):
         results = self.query.filter(**filters).all()
         if not results:
             raise ObjectNotFoundError(
-                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                f"does not exist."
+                {
+                    "entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                    f"does not exist."
+                }
             )
 
         if len(results) > 1:
@@ -301,8 +303,10 @@ class BaseDAO(metaclass=ABCMeta):
 
         if not results:
             raise ObjectNotFoundError(
-                f"`{self.entity_cls.__name__}` object with values {[item for item in kwargs.items()]} "
-                f"does not exist."
+                {
+                    "entity": f"`{self.entity_cls.__name__}` object with values {[item for item in kwargs.items()]} "
+                    f"does not exist."
+                }
             )
 
         if len(results) > 1:
@@ -394,6 +398,9 @@ class BaseDAO(metaclass=ABCMeta):
             if entity_obj.state_.is_persisted:
                 model_obj = self._update(self.model_cls.from_entity(entity_obj))
             else:
+                # Perform unique checks. Raises validation errors if unique constraints are violated.
+                self._validate_unique(entity_obj)
+
                 # If this is a new entity, generate ID
                 if entity_obj.state_.is_new:
                     if not getattr(

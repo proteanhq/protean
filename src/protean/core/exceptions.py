@@ -16,7 +16,7 @@ class ProteanException(Exception):
         super().__init__(**kwargs)
 
     def __str__(self):
-        return f"{self.__class__.__name__}: {self.messages}"
+        return f"{dict(self.messages)}"
 
 
 class ConfigurationError(Exception):

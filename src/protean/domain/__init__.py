@@ -8,9 +8,9 @@ import sys
 # Protean
 from protean.adapters import Brokers, EmailProviders, Providers, Caches
 from protean.core.exceptions import (
+    ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
-    ObjectNotFoundError,
 )
 from protean.domain.registry import _DomainRegistry
 from protean.utils import DomainObjects, fully_qualified_name
@@ -408,8 +408,10 @@ class Domain(_PackageBoundObject):
             if element_name in self._domain_registry._elements[element_type.value]:
                 return self._domain_registry._elements[element_type.value][element_name]
         else:
-            raise ObjectNotFoundError(
-                f"Element {element_name} not registered in domain {self.domain_name}"
+            raise ConfigurationError(
+                {
+                    "element": f"Element {element_name} not registered in domain {self.domain_name}"
+                }
             )
 
     def _get_element_by_class(self, element_types, element_cls):

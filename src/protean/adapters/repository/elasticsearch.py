@@ -155,8 +155,10 @@ class ElasticsearchDAO(BaseDAO):
         except NotFoundError:
             logger.error(f"Record {identifier} was not found")
             raise ObjectNotFoundError(
-                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                f"does not exist."
+                {
+                    "entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                    f"does not exist."
+                }
             )
         except Exception as error:
             logger.error(f"Unknown error occurred when fetching {identifier}: {error}")
@@ -264,8 +266,10 @@ class ElasticsearchDAO(BaseDAO):
         except NotFoundError as exc:
             logger.error(f"Database Record not found: {exc}")
             raise ObjectNotFoundError(
-                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                f"does not exist."
+                {
+                    "entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                    f"does not exist."
+                }
             )
 
         try:
