@@ -40,7 +40,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
         "unique": "{entity_name:s} with {field_name:s} '{value:s}' is already present.",
         "required": "is required",
         "invalid_choice": "Value `{value!r}` is not a valid choice. "
-        "Must be one of {choices!r}",
+        "Must be among {choices!r}",
     }
 
     # Default validators for a Field
@@ -62,7 +62,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
         error_messages: dict = None,
     ):
 
-        # Nothing to be passed into FieldCacheMixin for initialization
+        # Pass to FieldDescriptorMixin for initialization
         super().__init__(referenced_as=referenced_as)
 
         self.identifier = identifier

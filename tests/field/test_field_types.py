@@ -72,7 +72,7 @@ class TestStringField:
         assert e_info.value.messages == {
             "unlinked": [
                 "Value `'Failure'` is not a valid choice. "
-                "Must be one of ['Pending', 'Success', 'Error']"
+                "Must be among ['Pending', 'Success', 'Error']"
             ]
         }
 
@@ -131,7 +131,7 @@ class TestIntegerField:
         with pytest.raises(ValidationError) as e_info:
             status._load(4)
         assert e_info.value.messages == {
-            "unlinked": ["Value `4` is not a valid choice. " "Must be one of [0, 1, 2]"]
+            "unlinked": ["Value `4` is not a valid choice. " "Must be among [0, 1, 2]"]
         }
 
 
@@ -245,7 +245,7 @@ class TestListField:
         assert e_info.value.messages == {
             "unlinked": [
                 "Value `'Failure'` is not a valid choice. "
-                "Must be one of ['Pending', 'Success', 'Error']"
+                "Must be among ['Pending', 'Success', 'Error']"
             ]
         }
 
