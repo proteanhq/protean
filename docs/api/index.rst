@@ -1,4 +1,6 @@
-.. _api:
+===
+API
+===
 
 This section expands on the technical details of Protean's building blocks.
 
@@ -8,5 +10,6 @@ This section expands on the technical details of Protean's building blocks.
 
     domain-elements/index
     implementations/index
+    validators
     config
     utils

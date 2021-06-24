@@ -90,6 +90,10 @@ The following configuration values are used internally by Protean:
 
     Default: ``IdentityStrategy.UUID``
 
+.. py:data:: IDENTITY_TYPE
+
+    The :ref:`field_type` acting as the identifier for the domain. Can be among :ref:`string`, :ref:`guid`, or :ref:`integer`.
+
 .. py:data:: DATABASES
 
     Protean allows you to specify the database provider you want to use with your application. By virtue of using a Ports and Adapters architecture, you can switch between databases at any time, and your application should work seamlessly.
@@ -108,7 +112,7 @@ The following configuration values are used internally by Protean:
 
 .. py:data:: BROKERS
 
-    Protean uses Message Brokers for publishing and propogating Domain events within and across Bounded Contexts.
+    Protean uses Message Brokers for publishing and propagating Domain events within and across Bounded Contexts.
 
     By default, Protean is packaged with a :ref:`in-memory-broker` that works perfectly well in development environments and within a single bounded context. But it is recommended to use full-fledged message brokers in production and for large scale deployments. Protean comes with built-in support for RabbitMQ and Redis, but you can easily extend the mechanism to support your :ref:`own broker<plugin-broker>`.
 
@@ -132,14 +136,14 @@ A common pattern is this:
 .. code-block:: python
 
     domain = Domain(__name__)
-    domain.config.from_object('yourapplication.default_settings')
-    domain.config.from_envvar('YOURAPPLICATION_SETTINGS')
+    domain.config.from_object('application.default_settings')
+    domain.config.from_envvar('APPLICATION_SETTINGS')
 
-This first loads the configuration from the *yourapplication.default_settings* module and then overrides the values with the contents of the file the **YOURAPPLICATION_SETTINGS** environment variable points to. This environment variable can be set on Linux or OS X with the export command in the shell before starting the server:
+This first loads the configuration from the *application.default_settings* module and then overrides the values with the contents of the file the **APPLICATION_SETTINGS** environment variable points to. This environment variable can be set on Linux or OS X with the export command in the shell before starting the server:
 
 .. code-block:: shell
 
-    $ export YOURAPPLICATION_SETTINGS=/path/to/settings.cfg
+    $ export APPLICATION_SETTINGS=/path/to/settings.cfg
     $ python load-domain.py
 
 The configuration files themselves are actual Python files. Only values in uppercase are actually stored in the config object later on. So make sure to use uppercase letters for your config keys.
@@ -150,7 +154,7 @@ Here is an example of a configuration file:
 
     # Example configuration
     DEBUG = False
-    SECRET_KEY = b'this-is-a-secret'
+    SECRET_KEY = str.encode('this-is-a-secret')
 
 Make sure to load the configuration very early on, so that extensions have the ability to access the configuration when starting up. There are other methods on the config object as well to load from individual files. For a complete reference, read the :ref:`api-config` object’s documentation.
 
@@ -175,7 +179,7 @@ Environment variables can be set on Linux or OS X with the export command in the
 
 .. code-block:: shell
 
-    $ export SECRET_KEY='tddmue!3k8DFv^5T'
+    $ export SECRET_KEY='not-so-secret-now-key'
     $ export ADMIN_EMAIL='admin@mycompany.com'
 
 While this approach is straightforward to use, it is important to remember that environment variables are strings – they are not automatically deserialized into Python types.
@@ -221,10 +225,10 @@ Most applications need more than one configuration. At the very minimum, there a
 .. code-block:: python
 
     domain = Domain(__name__)
-    domain.config.from_object('yourapplication.default_settings')
-    domain.config.from_envvar('YOURAPPLICATION_SETTINGS')
+    domain.config.from_object('application.default_settings')
+    domain.config.from_envvar('APPLICATION_SETTINGS')
 
-Then you just have to add a separate `config.py` file and export `YOURAPPLICATION_SETTINGS=/path/to/config.py` and you are done. However there are alternative ways as well. For example, you could use imports or subclassing.
+Then you just have to add a separate `config.py` file and export `APPLICATION_SETTINGS=/path/to/config.py` and you are done. However there are alternative ways as well. For example, you could use imports or subclassing.
 
 An interesting pattern is also to use classes and inheritance for configuration:
 
@@ -249,18 +253,18 @@ To enable such a config you just have to call into `from_object` method:
 
 .. code-block:: python
 
-    domain.config.from_object('configmodule.ProductionConfig')
+    domain.config.from_object('config_module.ProductionConfig')
 
 Note that from_object() does not instantiate the class object. If you need to instantiate the class, such as to access a property, then you must do so before calling from_object():
 
 .. code-block:: python
 
-    from configmodule import ProductionConfig
+    from config_module import ProductionConfig
     domain.config.from_object(ProductionConfig())
 
     # Alternatively, import via string:
     from werkzeug.utils import import_string
-    cfg = import_string('configmodule.ProductionConfig')()
+    cfg = import_string('config_module.ProductionConfig')()
     domain.config.from_object(cfg)
 
 Instantiating the configuration object allows you to use @property in your configuration classes:

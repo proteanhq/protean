@@ -101,6 +101,7 @@ Protean guides contain a mixture of `Architecture Principles`, `Conventions`, `P
    user/quickstart
    user/composition-root
    user/identity
+   user/fields
    user/domain-elements
    user/application-elements
    user/configuration
