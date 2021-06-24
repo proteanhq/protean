@@ -58,7 +58,6 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
         unique: bool = False,
         choices: enum.Enum = None,
         validators: Iterable = (),
-        value=None,
         error_messages: dict = None,
     ):
 
@@ -87,9 +86,6 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
 
         self._validators = validators
 
-        # Value holder
-        self._value = value
-
         # Hold a reference to Entity registering the field
         self._entity_cls = None
 
@@ -102,7 +98,7 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
 
     def __get__(self, instance, owner):
         if hasattr(instance, "__dict__"):
-            return instance.__dict__.get(self.field_name, self.value)
+            return instance.__dict__.get(self.field_name)
 
     def __set__(self, instance, value):
         value = self._load(value)
@@ -114,14 +110,6 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
 
     def __delete__(self, instance):
         instance.__dict__.pop(self.field_name, None)
-
-    @property
-    def value(self):
-        return self._value
-
-    @value.setter
-    def value(self, value):
-        self._value = value if value else None
 
     def fail(self, key, **kwargs):
         """A helper method that simply raises a `ValidationError`.
