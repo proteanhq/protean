@@ -6,7 +6,7 @@ from datetime import datetime
 
 # Protean
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import DateTime, Integer, String
+from protean.core.field.basic import DateTime, Integer, String, List
 from protean.core.field.embedded import ValueObjectField
 from protean.core.model import BaseModel
 from protean.core.value_object import BaseValueObject
@@ -62,3 +62,13 @@ class ProviderCustomModel(BaseModel):
 class Receiver(BaseAggregate):
     name = String()
     age = Integer()
+
+
+class ListUser(BaseAggregate):
+    email = String(max_length=255, required=True, unique=True)
+    roles = List()  # Defaulted to String Content Type
+
+
+class IntegerListUser(BaseAggregate):
+    email = String(max_length=255, required=True, unique=True)
+    roles = List(content_type=Integer)

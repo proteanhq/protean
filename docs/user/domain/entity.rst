@@ -35,6 +35,8 @@ You can define and register an Entity by annotating it with the `@domain.entity`
     >>> Comment.meta_.aggregate_cls
     <class '__main__.Post'>
 
+.. _entity-abstraction:
+
 Abstraction
 ===========
 

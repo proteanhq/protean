@@ -218,7 +218,7 @@ If you are using Pytest for your test framework, you can create a test domain fi
 .. _config-dev-prod:
 
 Configurations for different environments
-========================================
+=========================================
 
 Most applications need more than one configuration. At the very minimum, there are separate configurations for the production server and for development. The easiest way to handle this is to use a default configuration that is always loaded and part of the version control, and a separate configuration that overrides the values as necessary as mentioned in the example above:
 

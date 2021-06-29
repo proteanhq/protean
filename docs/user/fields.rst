@@ -1,4 +1,4 @@
-.. _fields:
+.. _api-fields:
 
 ===============
 Field Reference
@@ -183,7 +183,9 @@ The custom error message can be observed in the ``ValidationError`` exception::
     ...
     ValidationError: {'name': ["Please specify child's name"], 'age': ['is required']}
 
-Field Types
+The error message can be formatted with additional keyword arguments:
+
+Basic Fields
 ------------
 
 String
@@ -191,10 +193,10 @@ String
 
 A string field, for small- to large-sized strings. For large amounts of text, use :ref:`Text`.
 
-``String`` has two optional extra arguments:
+``String`` has two optional arguments:
 
-- ``max_length``: The maximum length (in characters) of the field, enforced during validation using :ref:`MaxLengthValidator`. Defaults to 255.
-- ``min_length``: The minimum length (in characters) of the field, enforced during validation using :ref:`MaxLengthValidator`.
+- ``max_length``: The maximum length (in characters) of the field, enforced during validation using :ref:`MaxLengthValidator <max-value-validator>`. Defaults to 255.
+- ``min_length``: The minimum length (in characters) of the field, enforced during validation using :ref:`MinLengthValidator <min-value-validator>`.
 
 Text
 ~~~~
@@ -204,22 +206,22 @@ A large text field, to hold large amounts of text. Text fields do not have size 
 Integer
 ~~~~~~~
 
-An integer. It uses :ref:`MinValueValidator` and :ref:`MaxValueValidator` to validate the input based on the values that the default database supports.
+An integer. It uses :ref:`MinValueValidator <min-value-validator>` and :ref:`MaxValueValidator <max-value-validator>` to validate the input based on the values that the default database supports.
 
-``Integer`` has two extra optional arguments:
+``Integer`` has two optional arguments:
 
-- ``max_value``: The maximum numeric value of the field, enforced during validation using :ref:`MaxValueValidator`.
-- ``min_value``: The minimum numeric value of the field, enforced during validation using :ref:`MinValueValidator`.
+- ``max_value``: The maximum numeric value of the field, enforced during validation using :ref:`MaxValueValidator <max-value-validator>`.
+- ``min_value``: The minimum numeric value of the field, enforced during validation using :ref:`MinValueValidator <min-value-validator>`.
 
 Float
 ~~~~~
 
 A floating-point number represented in Python by a float instance.
 
-``Float`` has two extra arguments:
+``Float`` has two optional arguments:
 
-- ``max_value``: The maximum numeric value of the field, enforced during validation using :ref:`MaxValueValidator`.
-- ``min_value``: The minimum numeric value of the field, enforced during validation using :ref:`MinValueValidator`.
+- ``max_value``: The maximum numeric value of the field, enforced during validation using :ref:`MaxValueValidator <max-value-validator>`.
+- ``min_value``: The minimum numeric value of the field, enforced during validation using :ref:`MinValueValidator <min-value-validator>`.
 
 Boolean
 ~~~~~~~
@@ -241,23 +243,143 @@ The default value is ``None`` when ``default`` option isn’t defined::
     'adult': None,
     'id': 'e30e97fb-540b-43f0-8fc9-937baf413080'}
 
-List
-~~~~
-
-Set
-~~~
-
-Dict
-~~~~
-
 Auto
 ~~~~
 
 Identifier
 ~~~~~~~~~~
 
-CustomObject
-~~~~~~~~~~~~
+
+Date
+~~~~
+
+A date, represented in Python by a ``datetime.date`` instance.
+
+.. code-block:: python
+
+    @domain.aggregate
+    class Person:
+        name = String(required=True)
+        born_on = Date(required=True)
+
+The date can be specified as a ``datetime.date`` object::
+
+    >>> p = Person(name="John Doe", born_on=datetime(1962, 3, 16).date())
+    >>> p.to_dict()
+    {'name': 'John Doe',
+    'born_on': datetime.date(1962, 3, 16),
+    'id': '0f9d4f86-a47c-48ec-bb14-8b8bb8a65ae3'}
+
+Or as a string, which will be parsed by ``dateutil.parse``::
+
+    >>> p = Person(name="John Doe", born_on="2018-03-16")
+    >>> p.to_dict()
+    {'name': 'John Doe',
+    'born_on': datetime.date(1962, 3, 16),
+    'id': '0f9d4f86-a47c-48ec-bb14-8b8bb8a65ae3'}
+
+DateTime
+~~~~~~~~
+
+A date and time, represented in Python by a ``datetime.datetime`` instance.
+
+.. code-block:: python
+
+    @domain.aggregate
+    class User:
+        email = String(required=True)
+        created_at = DateTime(required=True)
+
+The timestamp can be specified as a ``datetime.datetime`` object::
+
+    >>> u = User(email="john.doe@example.com", created_at=datetime.utcnow())
+    >>> u.to_dict()
+    {'email': 'john.doe@example.com',
+    'created_at': datetime.datetime(2021, 6, 25, 22, 55, 19, 28744),
+    'id': '448f885e-be8f-4968-bb47-c637eabc21f8'}
+
+Or as a string, which will be parsed by ``dateutil.parse``::
+
+    >>> u = User(email="john.doe@example.com", created_at="2018-03-16 10:23:32")
+    >>> u.to_dict()
+    {'email': 'john.doe@example.com',
+    'created_at': datetime.datetime(2018, 3, 16, 10, 23, 32),
+    'id': '1dcb17e1-64e9-43ef-b9bd-802b8a004765'}
+
+Complex Fields
+--------------
+
+List
+~~~~
+
+A collection field that accepts values of a specified basic field type.
+
+.. code-block:: python
+
+    @domain.aggregate
+    class User:
+        email = String(max_length=255, required=True, unique=True)
+        roles = List()  # Defaulted to hold String Content Type
+
+``roles`` now accepts a list of strings:
+
+    >>> user = User(email='john.doe@example.com', roles=['ADMIN', 'EDITOR'])
+    >>> user.to_dict()
+    {'email': 'john.doe@example.com',
+    'roles': ['ADMIN', 'EDITOR'],
+    'id': 'ef2b222b-de5c-4968-8b1c-7e3cdb4a3c2c'}
+
+The supplied value needs to be a Python ``list``. Specifying values of a different basic type or a mixture of types throws a ``ValidationError``::
+
+    >>> user = User(email='john.doe@example.com', roles=[2, 1])
+    ValidationError                           Traceback (most recent call last)
+    ...
+    ValidationError: {'roles': ['Invalid value [2, 1]']}
+
+``List`` has two optional arguments:
+
+- ``content_type``: The type of Fields enclosed in the list.
+
+    Accepted Field Types are:
+
+    - ``Boolean``
+    - ``Date``
+    - ``DateTime``
+    - ``Float``
+    - ``Identifier``
+    - ``Integer``
+    - ``String``
+    - ``Text``
+
+    Default ``content_type`` is ``String``.
+
+- ``pickled``: Flag to treat the field as a Python object. Defaults to ``False``. Some database implementations (like Postgresql) can store lists by default. You can  force it to store the pickled value as a Python object by specifying ``pickled=True``. Databases that don't support lists simply store the field as a python object, serialized using pickle.
+
+Dict
+~~~~
+
+A map that closely resembles the Python Dictionary in its utility.
+
+.. code-block:: python
+
+    @domain.aggregate
+    class Event:
+        name = String(max_length=255)
+        created_at = DateTime(default=datetime.utcnow())
+        payload = Dict()
+
+A regular dictionary can be supplied as value to ``payload``::
+
+    >>> event=Event(name='UserRegistered', payload={'name': 'John Doe', 'email': 'john.doe@example.com'})
+    >>> event.to_dict()
+    {'name': 'UserRegistered',
+    'created_at': datetime.datetime(2021, 6, 25, 22, 37, 24, 680524),
+    'payload': {'name': 'John Doe', 'email': 'john.doe@example.com'},
+    'id': 'ab803d41-b8b0-48e6-a930-f0f265f62d9e'}
+
+``Dict`` accepts an optional argument:
+
+- ``pickled``: Flag to treat the field as a Python object. Defaults to ``False``. Some database implementations (like Postgresql) can store dicts as JSON by default. You can  force it to store the pickled value as a Python object by specifying ``pickled=True``. Databases that don't support lists simply store the field as a python object, serialized using pickle.
 
 Method
 ~~~~~~
@@ -265,15 +387,8 @@ Method
 Nested
 ~~~~~~
 
-Date
-~~~~
-
-DateTime
-~~~~~~~~
-
 Associations
 ------------
-
 
 Embedded Fields
 ---------------

@@ -17,6 +17,8 @@ Release v\ |version| (:ref:`Changelog <changelog>`)
 
 Get started with :ref:`install` and follow through with the :ref:`quickstart` guide. The rest of the docs deep-dive into different aspects of Protean.
 
+.. warning:: **Protean**'s documentation is currently a **Work-In-Progress** - there are significant portions of functionality missing here. Earliest version expected to have sufficiently good documentation is **v0.6** (slated to be released at end of July).
+
 Overview
 --------
 **Protean Framework** helps you build applications that can scale and adapt to growing requirements without significant rework.

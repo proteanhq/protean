@@ -1,8 +1,11 @@
 # Standard Library Imports
 import os
+from typing import List
 
 # Protean
 import pytest
+
+from protean.core.field.basic import Integer
 
 
 def initialize_domain():
@@ -35,7 +38,15 @@ def setup_db():
     with domain.domain_context():
         # Create all associated tables
         # Local/Relative Imports
-        from .elements import ComplexUser, Person, Provider, ProviderCustomModel, User
+        from .elements import (
+            ComplexUser,
+            Person,
+            Provider,
+            ProviderCustomModel,
+            User,
+            ListUser,
+            IntegerListUser,
+        )
         from .test_array_datatype import ArrayUser, IntegerArrayUser
         from .test_json_datatype import Event
         from .test_lookups import GenericPostgres
@@ -48,6 +59,8 @@ def setup_db():
         domain.register(Person)
         domain.register(Provider)
         domain.register(User)
+        domain.register(ListUser)
+        domain.register(IntegerListUser)
 
         domain.register_model(ProviderCustomModel, entity_cls=Provider)
 
@@ -59,6 +72,8 @@ def setup_db():
         domain.get_dao(Person)
         domain.get_dao(Provider)
         domain.get_dao(User)
+        domain.get_dao(ListUser)
+        domain.get_dao(IntegerListUser)
 
         for provider in domain.providers_list():
             provider._metadata.create_all()

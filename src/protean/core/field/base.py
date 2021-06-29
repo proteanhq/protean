@@ -120,6 +120,8 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
             class_name = self.__class__.__name__
             msg = MISSING_ERROR_MESSAGE.format(class_name=class_name, key=key)
             raise AssertionError(msg)
+
+        # Format message with supplied arguments
         if isinstance(msg, str):
             msg = msg.format(**kwargs)
 

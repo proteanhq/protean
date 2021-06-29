@@ -140,10 +140,10 @@ class List(Field):
 
     default_error_messages = {
         "invalid": '"{value}" value must be of list type.',
-        "invalid_content": "Invalid value",
+        "invalid_content": "Invalid value {value}",
     }
 
-    def __init__(self, content_type=Text, pickled=False, **kwargs):
+    def __init__(self, content_type=String, pickled=False, **kwargs):
         if content_type not in [
             Boolean,
             Date,
@@ -179,21 +179,6 @@ class List(Field):
         if new_value != value:
             self.fail("invalid_content", value=value)
 
-        return value
-
-
-class Set(Field):
-    """Concrete field implementation for the Set type.
-    """
-
-    default_error_messages = {
-        "invalid": '"{value}" value must be of set type.',
-    }
-
-    def _cast_to_type(self, value):
-        """ Raise error if the value is not a set """
-        if not isinstance(value, set):
-            self.fail("invalid", value=value)
         return value
 
 
@@ -280,14 +265,6 @@ class Identifier(Field):
         if hasattr(instance, "state_"):
             # Mark Entity as Dirty
             instance.state_.mark_changed()
-
-
-class CustomObject(Field):
-    """Concrete field implementation for objects. Values are instances of custom classes"""
-
-    def _cast_to_type(self, value):
-        """ Perform no validation for identifier fields. Return the value as is"""
-        return value
 
 
 class Method(Field):

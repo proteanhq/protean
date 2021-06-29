@@ -115,7 +115,7 @@ def test_array_content_type_validation(test_domain):
     ]:
         with pytest.raises(ValidationError) as exception:
             ArrayUser(**kwargs)
-        assert exception.value.messages == {"roles": ["Invalid value"]}
+        assert exception.value.messages["roles"][0].startswith("Invalid value")
 
     model_cls = test_domain.get_model(IntegerArrayUser)
     user = IntegerArrayUser(email="john.doe@gmail.com", roles=[1, 2])
@@ -132,7 +132,7 @@ def test_array_content_type_validation(test_domain):
     ]:
         with pytest.raises(ValidationError) as exception:
             IntegerArrayUser(**kwargs)
-        assert exception.value.messages == {"roles": ["Invalid value"]}
+        assert exception.value.messages["roles"][0].startswith("Invalid value")
 
 
 @pytest.mark.postgresql

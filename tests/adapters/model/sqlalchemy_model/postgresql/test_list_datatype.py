@@ -4,7 +4,6 @@ from datetime import datetime
 # Protean
 import pytest
 
-from protean.core.aggregate import BaseAggregate
 from protean.core.exceptions import ValidationError
 from protean.core.field.basic import (
     Auto,
@@ -18,15 +17,7 @@ from protean.core.field.basic import (
     String,
 )
 
-
-class ListUser(BaseAggregate):
-    email = String(max_length=255, required=True, unique=True)
-    roles = List()  # Defaulted to String Content Type
-
-
-class IntegerListUser(BaseAggregate):
-    email = String(max_length=255, required=True, unique=True)
-    roles = List(content_type=Integer)
+from .elements import ListUser, IntegerListUser
 
 
 @pytest.mark.postgresql
@@ -55,7 +46,7 @@ def test_array_content_type_validation(test_domain):
     ]:
         with pytest.raises(ValidationError) as exception:
             ListUser(**kwargs)
-        assert exception.value.messages == {"roles": ["Invalid value"]}
+        assert exception.value.messages["roles"][0].startswith("Invalid value")
 
     model_cls = test_domain.get_model(IntegerListUser)
     user = IntegerListUser(email="john.doe@gmail.com", roles=[1, 2])
@@ -72,7 +63,7 @@ def test_array_content_type_validation(test_domain):
     ]:
         with pytest.raises(ValidationError) as exception:
             IntegerListUser(**kwargs)
-        assert exception.value.messages == {"roles": ["Invalid value"]}
+        assert exception.value.messages["roles"][0].startswith("Invalid value")
 
 
 @pytest.mark.postgresql

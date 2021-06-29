@@ -25,6 +25,7 @@ TEST_DATA = [
     (MinValueValidator(100), 100, None),
     (MinValueValidator(100), 101, None),
     (MinValueValidator(100), 99, ValidationError),
+    (MinValueValidator(0), -1, ValidationError),
     (MaxValueValidator(100), 100, None),
     (MaxValueValidator(100), 101, ValidationError),
     (MaxValueValidator(100), 99, None),

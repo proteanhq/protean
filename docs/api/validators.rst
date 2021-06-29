@@ -49,12 +49,16 @@ Parameters:
 
 A ``RegexValidator`` searches the provided value for a given regular expression with ``re.search()``. By default, it raises a ``ValidationError`` with ``message`` and ``code`` if a match *is not* found. Its behavior can be inverted by setting ``inverse_match`` to True, in which case the ``ValidationError`` is raised when a match is found.
 
+.. _max-value-validator:
+
 MaxValueValidator
 ~~~~~~~~~~~~~~~~~
 
 **class MaxValueValidator(max_value)**
 
 Raises a ``ValidationError`` if value is greater than ``max_value``.
+
+.. _min-value-validator:
 
 MinValueValidator
 ~~~~~~~~~~~~~~~~~
@@ -63,12 +67,16 @@ MinValueValidator
 
 Raises a ``ValidationError`` if value is greater than ``min_value``.
 
+.. _max-length-validator:
+
 MaxLengthValidator
 ~~~~~~~~~~~~~~~~~~
 
 **class MaxLengthValidator(max_length)**
 
 Raises a ``ValidationError`` if value is longer than ``max_value``.
+
+.. _min-length-validator:
 
 MinLengthValidator
 ~~~~~~~~~~~~~~~~~~

@@ -14,7 +14,7 @@ class MinLengthValidator:
         self.message = f"value has less than " f"{self.min_length} characters"
 
     def __call__(self, value):
-        if self.min_length and len(value) < self.min_length:
+        if self.min_length is not None and len(value) < self.min_length:
             raise ValidationError(self.message)
 
 
@@ -26,7 +26,7 @@ class MaxLengthValidator:
         self.message = f"value has more than " f"{self.max_length} characters"
 
     def __call__(self, value):
-        if self.max_length and len(value) > self.max_length:
+        if self.max_length is not None and len(value) > self.max_length:
             raise ValidationError(self.message)
 
 
@@ -38,7 +38,7 @@ class MinValueValidator:
         self.message = f"value is lesser than {self.min_value}"
 
     def __call__(self, value):
-        if self.min_value and value < self.min_value:
+        if self.min_value is not None and value < self.min_value:
             raise ValidationError(self.message)
 
 
@@ -50,7 +50,7 @@ class MaxValueValidator:
         self.message = f"value is greater than {self.max_value}"
 
     def __call__(self, value):
-        if self.max_value and value > self.max_value:
+        if self.max_value is not None and value > self.max_value:
             raise ValidationError(self.message)
 
 
