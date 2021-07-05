@@ -138,6 +138,8 @@ Defining Custom Schemas
 
 Schemas, which are object representations of Entities as your underlying data store would understand, are generated on-the-fly by your repository provider. You do not have explicitly define them by hand. But if you want to override the default definitions, for example to specify a column name to store an entity's attribute, you can define them in the ``Meta`` section of an entity.
 
-<TO BE DOCUMENTED>
+.. //FIXME Pending Documentation
+
+TO BE DOCUMENTED
 
 .. //FIXME Add documentation on customization of attributes in ``Meta`` class

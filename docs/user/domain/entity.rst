@@ -4,33 +4,37 @@
 Entities
 ========
 
-An Entity represents an unique object in the domain. A passenger, for example, in the airline domain is an Entity. A seat, on the other hand, is an Entity if airlines distinguish each seat uniquely on every flight, or a Value Object if they consider all seats the same.
+An Entity represents an unique object in the domain model. Entities are identified by their unique identities that remain the same throughout its life - they are not defined by their attributes or values. For example, a passenger in the airline domain is an Entity. The passenger's identity remains the same across multiple seat bookings, even if her profile information (name, address, etc.) changes over time.
 
-Unlike Value Objects, an Entity is not defined by its attributes or values. It is identified by a unique identity that remains the same throughout the object's life.
+An Entity in one domain may not be an Entity in another. For example, a seat is an Entity if airlines distinguish each seat uniquely on every flight. If passengers are not allotted specific seats, then a seat can be considered a :ref:`value_object` as one seat can be exchanged with another.
 
-Entities are always defined as part of an Aggregate, which is a root entity that manages a cluster of related entities.
+In Protean, Entities are always associated with an :ref:`aggregate`, which is the root Entity that manages the cluster of related entities.
 
 Usage
 =====
 
 You can define and register an Entity by annotating it with the `@domain.entity` decorator::
 
-    >>> from protean.domain import Domain
-    >>> from protean.core.field.basic import Date, String
-    >>>
-    >>> domain = Domain(__name__)
-    >>>
-    >>> @domain.aggregate
-    ... class Post:
-    ...     name = String(max_length=50)
-    ...     created_on = Date()
-    ...
-    >>> @domain.entity
-    ... class Comment:
-    ...     content = String(max_length=500)
-    ...     class Meta:
-    ...         aggregate_cls = Post
-    ...
+.. code-block:: python
+
+    from protean.domain import Domain
+    from protean.core.field.basic import Date, String
+
+    publishing = Domain(__name__)
+
+    @publishing.aggregate
+    class Post:
+        name = String(max_length=50)
+        created_on = Date()
+
+    @publishing.entity
+    class Comment:
+        content = String(max_length=500)
+
+        class Meta:
+            aggregate_cls = Post
+
+
 
     >>> Comment.meta_.aggregate_cls
     <class '__main__.Post'>

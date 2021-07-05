@@ -13,7 +13,7 @@ Put another way, all elements in the Aggregate are only accessible through the R
 Definition
 ==========
 
-Aggregates are defined with the help of `@domain.aggregate` decorator:
+Aggregate Roots are identified with the help of `@domain.aggregate` decorator:
 
 .. code-block:: python
 
@@ -70,18 +70,76 @@ You can initialize the values of a person object by passing them as key-value pa
 A default identifier field named ``id`` is associated with an Aggregate object on initialization. Read more about :ref:`identity` to understand aspects of primary key generation.
 
 
-Subclassing Aggregates
-======================
+Inheritance
+===========
+
+.. //FIXME Pending Documentation
+
+TO BE DOCUMENTED
 
 
+Identifier
+==========
+
+Identity is one of the primary characteristics of Protean Entities - they are expected to have a unique identity.
+
+All Aggregates and Entities have a unique identifier field named ``id``, added automatically by Protean. ``id`` is an :ref:`field-auto` field and populated with the strategy specified for the :ref:`identity-strategy` in Configuration.
+
+.. code-block:: python
+
+    @domain.aggregate
+    class Person:
+        first_name = String(max_length=30)
+        last_name = String(max_length=30)
+
+The identifier field is available as among ``declared_fields`` and is also accessible via the special ``id_field`` meta attribute::
+
+    >>> Person.meta_.declared_fields
+    {'first_name': <protean.core.field.basic.String at 0x10a647c70>,
+    'last_name': <protean.core.field.basic.String at 0x10a6476d0>,
+    'id': <protean.core.field.basic.Auto at 0x10a647340>}
+    >>> Person.meta_.id_field
+    <protean.core.field.basic.Auto at 0x10a647340>
+
+By default, identifiers hold ``UUID`` values::
+
+    >>> p = Person(first_name='John', last_name='Doe')
+    >>> p.to_dict()
+    {'first_name': 'John',
+    'last_name': 'Doe',
+    'id': '6667ec6e-d568-4ac5-9d66-0c9c4e3a571b'}
+
+The identifier can be optionally overridden by setting ``identifier=True`` to a field. Fields marked as identifiers are both ``required`` and ``unique`` and can contain either Integer or String values.
+
+.. code-block:: python
+
+    @domain.aggregate
+    class Person:
+        email = String(identifier=True)
+        first_name = String(max_length=30)
+        last_name = String(max_length=30)
+
+When overridden, the application is responsible for initializing the entity with a unique identifier value::
+
+    >>> p = Person(first_name='John', last_name='Doe')
+    ValidationError                           Traceback (most recent call last)
+    ...
+    ValidationError: {'email': ['is required']}
+
+You can find an Aggregate's identifier field from its meta property :ref:`user-aggregate-meta-id-field`::
+
+    >>> Person5.meta_.id_field
+    <protean.core.field.basic.String at 0x10b8f67c0>
+    >>> Person5.meta_.id_field.attribute_name
+    'email'
 
 Metadata
 ========
 
 Aggregate metadata is available under the ``meta_`` attribute of an aggregate object in runtime, and is made up of two parts:
 
-Meta options:
--------------
+Meta options
+------------
 
 Options that control Aggregate behavior, such as its database provider, the name used to persist the aggregate entity, or if the Aggregate is abstract. These options can be overridden with an inner ``class Meta``, like so:
 
@@ -102,49 +160,89 @@ The overridden attributes are reflected in the ``meta_`` attribute:
 
 Available options are:
 
-- ``abstract``: The flag used to mark an Aggregate as abstract. If abstract, the aggregate class cannot be instantiated and needs to be subclassed. Refer to the section on :ref:`entity-abstraction` for a deeper discussion.
+.. _user-aggregate-meta-abstract:
 
-.. code-block:: python
+- **abstract**: The flag used to mark an Aggregate as abstract. If abstract, the aggregate class cannot be instantiated and needs to be subclassed. Refer to the section on :ref:`entity-abstraction` for a deeper discussion.
 
-    @domain.aggregate
-    class Person:
-        first_name = String(max_length=30)
-        last_name = String(max_length=30)
+    .. code-block:: python
 
-        class Meta:
-            abstract = True
+        @domain.aggregate
+        class Person:
+            first_name = String(max_length=30)
+            last_name = String(max_length=30)
 
-Trying to instantiate an abstract Aggregate will throw a ``NotSupportedError``:
+            class Meta:
+                abstract = True
 
-    >>> p = Person(first_name='John', last_name='Doe')
-    NotSupportedError                         Traceback (most recent call last)
-    ...
-    NotSupportedError: Person class has been marked abstract and cannot be instantiated
+    Trying to instantiate an abstract Aggregate will throw a ``NotSupportedError``:
 
-- ``provider``:
+        >>> p = Person(first_name='John', last_name='Doe')
+        NotSupportedError                         Traceback (most recent call last)
+        ...
+        NotSupportedError: Person class has been marked abstract and cannot be instantiated
 
-- ``model``:
+.. _user-aggregate-meta-provider:
 
-- ``schema_name``:
+- **provider**: The database that the aggregate is persisted in.
 
-- ``ordering``:
+    Aggregates are connected to underlying data stores via providers. The definitions of these providers are supplied within the ``DATABASES`` key as part of the Domain's configuration during initialization. Protean identifies the correct data store, establishes the connection and takes the responsibility of persisting the data.
+
+    Protean requires at least one provider, named ``default``, to be specified in the configuration. When no provider is explicitly specified, Aggregate objects are persisted into the ``default`` data store.
+
+    Configuration:
+
+    .. code-block:: python
+
+        ...
+        DATABASES = {
+            'default': {
+                'PROVIDER': 'protean_sqlalchemy.provider.SAProvider'
+            }
+            "nosql": {
+                "PROVIDER": "protean.adapters.repository.elasticsearch.ESProvider",
+                "DATABASE": Database.ELASTICSEARCH.value,
+                "DATABASE_URI": {"hosts": ["localhost"]},
+            },
+        }
+        ...
+
+    You can then connect the provider explicitly to an Aggregate by its ``provider`` Meta option:
+
+    .. code-block:: python
+
+        @domain.aggregate
+        class Person:
+            first_name = String(max_length=30)
+            last_name = String(max_length=30)
+
+            class Meta:
+                provider = 'nosql'
+
+    Refer to :ref:`user-persistence` for an in-depth discussion about persisting to databases.
+
+- **model**:
+
+- **schema_name**:
 
 
-
-Reflection:
------------
+Reflection
+----------
 
 Aggregates are decorated with additional attributes that you can use to examine the aggregate structure in runtime. The following meta attributes are available:
 
-- ``declared_fields``:
+- **declared_fields**:
 
-- ``id_field``:
+.. _user-aggregate-meta-id-field:
 
-- ``attributes``:
+- **id_field**:
 
-- ``value_object_fields``:
 
-- ``reference_fields``:
+
+- **attributes**:
+
+- **value_object_fields**:
+
+- **reference_fields**:
 
 
 
@@ -152,3 +250,9 @@ Persistence
 ===========
 
 An *Aggregate* is connected to the ``default`` provider, by default. Protean's out-of-the-box configuration specifies the in-built InMemory database as the  ``default`` provider.
+
+
+
+
+Identity
+========

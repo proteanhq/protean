@@ -213,6 +213,7 @@ class Auto(Field):
         """Initialize an Auto Field"""
         # Force set required to false
         super().__init__(*args, **kwargs)
+        # FIXME Why is auto-field marked as False? Is it handle issues with defaulting?
         self.required = False
 
     def __set__(self, instance, value):

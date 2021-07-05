@@ -243,8 +243,42 @@ The default value is ``None`` when ``default`` option isn’t defined::
     'adult': None,
     'id': 'e30e97fb-540b-43f0-8fc9-937baf413080'}
 
+.. _field-auto:
+
 Auto
 ~~~~
+
+Automatically-generated unique identifiers. By default, all entities and aggregates hold an ``Auto`` field named ``id`` that acts as their unique identifier.
+
+.. code-block:: python
+
+    @domain.aggregate
+    class Person:
+        first_name = String(max_length=30)
+        last_name = String(max_length=30)
+
+The identifier field is available as among ``declared_fields`` and is also accessible via the special ``id_field`` meta attribute::
+
+    >>> Person.meta_.declared_fields
+    {'first_name': <protean.core.field.basic.String at 0x10a647c70>,
+    'last_name': <protean.core.field.basic.String at 0x10a6476d0>,
+    'id': <protean.core.field.basic.Auto at 0x10a647340>}
+    >>> Person.meta_.id_field
+    <protean.core.field.basic.Auto at 0x10a647340>
+
+An ``Auto`` field is unique by default::
+
+    >>> vars(Person.meta_.id_field)
+    ...
+    {'field_name': 'id',
+    'attribute_name': 'id',
+    'identifier': True,
+    'default': None,
+    'unique': True,
+    'required': False,
+    ...
+
+.. _field-identifier:
 
 Identifier
 ~~~~~~~~~~
@@ -365,7 +399,7 @@ A map that closely resembles the Python Dictionary in its utility.
     @domain.aggregate
     class Event:
         name = String(max_length=255)
-        created_at = DateTime(default=datetime.utcnow())
+        created_at = DateTime(default=datetime.utcnow)
         payload = Dict()
 
 A regular dictionary can be supplied as value to ``payload``::
