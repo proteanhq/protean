@@ -1,5 +1,6 @@
 """ Utility functions for the Field Module """
 # Protean
+from protean.core.exceptions import ConfigurationError
 from protean.globals import current_domain
 from protean.utils import DomainObjects
 
@@ -9,13 +10,20 @@ def fetch_entity_cls_from_registry(entity):
     # Defensive check to ensure we only process if `to_cls` is a string
     if isinstance(entity, str):
         try:
+            # Try fetching by class name
             return current_domain._get_element_by_name(
                 (DomainObjects.AGGREGATE, DomainObjects.ENTITY), entity
             ).cls
-        except AssertionError:
-            # Entity has not been registered (yet)
-            # FIXME print a helpful debug message
-            raise
+        except ConfigurationError:
+            try:
+                # Try fetching by fully qualified class name
+                return current_domain._get_element_by_fully_qualified_name(
+                    (DomainObjects.AGGREGATE, DomainObjects.ENTITY), entity
+                ).cls
+            except AssertionError:
+                # Entity has not been registered
+                # FIXME print a helpful debug message
+                raise
     else:
         return entity
 
@@ -25,7 +33,7 @@ def fetch_value_object_cls_from_domain(value_object):
     # Defensive check to ensure we only process if `value_object_cls` is a string
     if isinstance(value_object, str):
         try:
-            return current_domain._get_element_by_name(
+            return current_domain._get_element_by_fully_qualified_name(
                 DomainObjects.VALUE_OBJECT, value_object
             ).cls
         except AssertionError:
@@ -41,7 +49,7 @@ def fetch_aggregate_cls_from_domain(aggregate):
     # Defensive check to ensure we only process if `aggregate_cls` is a string
     if isinstance(aggregate, str):
         try:
-            return current_domain._get_element_by_name(
+            return current_domain._get_element_by_fully_qualified_name(
                 DomainObjects.AGGREGATE, aggregate
             ).cls
         except AssertionError:
@@ -57,7 +65,9 @@ def fetch_entity_cls_from_domain(entity):
     # Defensive check to ensure we only process if `entity_cls` is a string
     if isinstance(entity, str):
         try:
-            return current_domain._get_element_by_name(DomainObjects.ENTITY, entity).cls
+            return current_domain._get_element_by_fully_qualified_name(
+                DomainObjects.ENTITY, entity
+            ).cls
         except AssertionError:
             # Entity has not been registered (yet)
             # FIXME print a helpful debug message

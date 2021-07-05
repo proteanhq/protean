@@ -403,21 +403,54 @@ class Domain(_PackageBoundObject):
         self._domain_registry.dei_element(element_cls.element_type, element_cls)
 
     def _get_element_by_name(self, element_types, element_name):
-        """Fetch Domain record with an Element name"""
-        for element_type in element_types:
-            if element_name in self._domain_registry._elements[element_type.value]:
-                return self._domain_registry._elements[element_type.value][element_name]
-        else:
+        """Fetch Domain record with the provided Element name"""
+        try:
+            elements = self._domain_registry._elements_by_name[element_name]
+
+            # There is one element registered with the name and the correct type
+            if len(elements) == 1 and elements[0].class_type in [
+                o.value for o in element_types
+            ]:
+                return elements[0]
+            else:
+                # There are multiple elements registered with the name
+                #   Loop to check if one of them has the correct type
+                for element in elements:
+                    if element.class_type in [o.value for o in element_types]:
+                        return element
+                else:
+                    raise ConfigurationError(
+                        {
+                            "element": f"Element {element_name} not registered in domain {self.domain_name}"
+                        }
+                    )
+        except KeyError:
             raise ConfigurationError(
                 {
                     "element": f"Element {element_name} not registered in domain {self.domain_name}"
                 }
             )
 
+    def _get_element_by_fully_qualified_name(self, element_types, element_fq_name):
+        """Fetch Domain record with the Fully Qualified Element name"""
+        for element_type in element_types:
+            if element_fq_name in self._domain_registry._elements[element_type.value]:
+                return self._domain_registry._elements[element_type.value][
+                    element_fq_name
+                ]
+        else:
+            raise ConfigurationError(
+                {
+                    "element": f"Element {element_fq_name} not registered in domain {self.domain_name}"
+                }
+            )
+
     def _get_element_by_class(self, element_types, element_cls):
         """Fetch Domain record with Element class details"""
         element_qualname = fully_qualified_name(element_cls)
-        return self._get_element_by_name(element_types, element_qualname)
+        return self._get_element_by_fully_qualified_name(
+            element_types, element_qualname
+        )
 
     def _replace_element_by_class(self, new_element_cls):
         aggregate_record = self._get_element_by_class(

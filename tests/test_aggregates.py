@@ -1,8 +1,11 @@
 import pytest
 
+from datetime import datetime
+
 from protean.core.aggregate import BaseAggregate
 from protean.core.exceptions import ValidationError
-from protean.core.field.basic import Integer, String
+from protean.core.field.basic import Integer, String, Date
+from protean.core.field.association import HasMany
 from protean.utils import fully_qualified_name
 
 
@@ -55,3 +58,29 @@ class TestAggregateMeta:
 
     class TestAggregateMetaSuppliedInDecorator:
         pass
+
+
+class TestAggregateAssociations:
+    def test_has_many(self, test_domain):
+        @test_domain.aggregate
+        class Post:
+            name = String(max_length=50)
+            created_on = Date(default=datetime.utcnow)
+
+            comments = HasMany("Comment")
+
+        @test_domain.entity
+        class Comment:
+            content = String(max_length=500)
+
+            class Meta:
+                aggregate_cls = Post
+
+        post = Post(name="The World")
+        test_domain.repository_for(Post).add(post)
+
+        post.comments.add(Comment(content="This is a great post!"))
+        test_domain.repository_for(Post).add(post)
+
+        refreshed_post = test_domain.repository_for(Post).get(post.id)
+        print([c for c in refreshed_post.comments])

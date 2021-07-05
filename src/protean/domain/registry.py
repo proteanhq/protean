@@ -14,19 +14,20 @@ logger = logging.getLogger("protean.domain")
 
 
 class _DomainRegistry:
-    def __init__(self):
-        self._elements: Dict[str, dict] = {}
-
-        # Initialize placeholders for element types
-        for element_type in DomainObjects:
-            self._elements[element_type.value] = defaultdict(dict)
-
     class DomainRecord:
         def __init__(self, name: str, qualname: str, class_type: str, cls: Any):
             self.name = name
             self.qualname = qualname
             self.class_type = class_type
             self.cls = cls
+
+    def __init__(self):
+        self._elements: Dict[str, dict] = {}
+        self._elements_by_name: Dict[str, list] = {}
+
+        # Initialize placeholders for element types
+        for element_type in DomainObjects:
+            self._elements[element_type.value] = defaultdict(dict)
 
     def _is_invalid_element_cls(self, element_cls):
         """Ensure that we are dealing with an element class, that:
@@ -62,6 +63,12 @@ class _DomainRegistry:
             self._elements[element_cls.element_type.value][
                 element_name
             ] = element_record
+
+            # Create an array to hold multiple elements of same name
+            if element_cls.__name__ in self._elements_by_name:
+                self._elements_by_name[element_cls.__name__].append(element_record)
+            else:
+                self._elements_by_name[element_cls.__name__] = [element_record]
 
             logger.debug(
                 f"Registered Element {element_name} with Domain as a {element_cls.element_type.value}"
