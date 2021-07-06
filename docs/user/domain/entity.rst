@@ -13,7 +13,7 @@ In Protean, Entities are always associated with an :ref:`aggregate`, which is th
 Usage
 =====
 
-You can define and register an Entity by annotating it with the `@domain.entity` decorator::
+You can define and register an Entity by annotating it with the ``@domain.entity`` decorator:
 
 .. code-block:: python
 
@@ -27,6 +27,14 @@ You can define and register an Entity by annotating it with the `@domain.entity`
         name = String(max_length=50)
         created_on = Date()
 
+    @publishing.entity(aggregate_cls=Post)
+    class Comment:
+        content = String(max_length=500)
+
+An Entity's Aggregate can also be specified as a ``Meta`` option:
+
+.. code-block:: python
+
     @publishing.entity
     class Comment:
         content = String(max_length=500)
@@ -34,10 +42,34 @@ You can define and register an Entity by annotating it with the `@domain.entity`
         class Meta:
             aggregate_cls = Post
 
-
+You can access the Aggregate associated with an Entity from its ``meta_`` attributes::
 
     >>> Comment.meta_.aggregate_cls
     <class '__main__.Post'>
+
+.. _entity-persistence:
+
+Persistence
+===========
+
+An Entity is always persisted and retrieved via its Aggregate. This means that the Aggregate has to be initialized and persisted before managing entities enclosed under it::
+
+    >>> post = Post(name="The World")
+    >>> publishing.repository_for(Post).add(post)
+
+Comments under the ``post`` object can be updated once ``post`` is persisted::
+
+    >>> post.comments.add(Comment(content="This is a great post!"))
+    >>> publishing.repository_for(Post).add(post)
+
+    >>> refreshed_post = publishing.repository_for(Post).get(post.id)
+    >>> refreshed_post.comments.all().items
+    [<Comment: Comment object (id: 07b89fd0-80a7-4667-9d7f-0f9f1b474849)>]
+
+    >>> refreshed_post.comments.all().items[0].to_dict()
+    {'content': 'This is a great post!',
+    'post': <Post: Post object (id: b004be17-5ee0-4be2-9845-a2f4fa27ede2)>,
+    'id': '07b89fd0-80a7-4667-9d7f-0f9f1b474849'}
 
 .. _entity-abstraction:
 

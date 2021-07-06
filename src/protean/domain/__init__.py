@@ -114,6 +114,10 @@ class Domain(_PackageBoundObject):
 
         self.domain_name = domain_name
 
+        # FIXME Additional domain attributes: (Think if this is needed)
+        #   - Type of Domain: Core, Supporting, Third-party(?)
+        #   - Type of Implementation: CRUD, CQRS, ES
+
         # Registry for all domain Objects
         self._domain_registry = _DomainRegistry()
 

@@ -1,4 +1,4 @@
-.. _aggregate:
+.. _user-aggregate:
 
 ==========
 Aggregates
@@ -77,9 +77,74 @@ Inheritance
 
 TO BE DOCUMENTED
 
+Abstraction
+===========
 
-Identifier
-==========
+By default, Protean Aggregates and Entities are concrete and instantiable:
+
+.. code-block:: python
+
+    @domain.aggregate
+    class Person:
+        first_name = String(max_length=30)
+        last_name = String(max_length=30)
+
+``Person`` is concrete and can be instantiated:
+
+    >>> Person.meta_.abstract
+    False
+    >>> person = Person(first_name='John', last_name='Doe')
+    >>> person.to_dict()
+    {'first_name': 'John',
+    'last_name': 'Doe',
+    'id': '6667ec6e-d568-4ac5-9d66-0c9c4e3a571b'}
+
+You can optionally declare an Aggregate as abstract with the ``abstract`` :ref:`Meta option <user-aggregate-meta-abstract>`:
+
+.. code-block:: python
+
+    @domain.aggregate
+    class AbstractPerson:
+        first_name = String(max_length=30)
+        last_name = String(max_length=30)
+
+        class Meta:
+            abstract = True
+
+An Aggregate marked as ``abstract`` cannot be instantiated. It's primary purpose is to serve as a base class for other aggregates.
+
+    >>> AbstractPerson.meta_.abstract
+    True
+
+Trying to instantiate an abstract Aggregate will raise a `NotSupportedError` error::
+
+    >>> person = AbstractPerson()
+    NotSupportedError                         Traceback (most recent call last)
+    ...
+    NotSupportedError: AbstractPerson class has been marked abstract and cannot be instantiated
+
+An Aggregate derived from an abstract parent is concrete by default:
+
+.. code-block:: python
+
+    class Adult(AbstractPerson):
+        age = Integer(default=21)
+
+``Adult`` class is instantiable::
+
+    >>> Adult.meta_.abstract
+    False
+    >>> adult = Adult(first_name='John', last_name='Doe')
+    >>> adult.to_dict()
+    {'first_name': 'John',
+    'last_name': 'Doe',
+    'age': 21,
+    'id': '6667ec6e-d568-4ac5-9d66-0c9c4e3a571b'}
+
+An Aggregate can be marked as ``abstract`` at any level of inheritance.
+
+Identity
+========
 
 Identity is one of the primary characteristics of Protean Entities - they are expected to have a unique identity.
 
@@ -250,9 +315,3 @@ Persistence
 ===========
 
 An *Aggregate* is connected to the ``default`` provider, by default. Protean's out-of-the-box configuration specifies the in-built InMemory database as the  ``default`` provider.
-
-
-
-
-Identity
-========
