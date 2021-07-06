@@ -182,7 +182,6 @@ class Reference(FieldCacheMixin, Field):
             self._reset_values(instance)
 
     def _set_own_value(self, instance, value):
-        self.value = value
         if value is None:
             instance.__dict__.pop(self.field_name, None)
             self.delete_cached_value(instance)
@@ -195,7 +194,6 @@ class Reference(FieldCacheMixin, Field):
             instance.state_.mark_changed()
 
     def _set_relation_value(self, instance, value):
-        self.relation.value = value
         if value is None:
             instance.__dict__.pop(self.attribute_name, None)
         else:
@@ -228,17 +226,6 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
         # FIXME Refactor for general use across all types of associations. Currently used only with `HasOne`
         self.change = None  # Used to store type of change in the association
         self.change_old_value = None  # Used to preserve the old value that was removed
-
-        # Value holder
-        self._value = None
-
-    @property
-    def value(self):
-        return self._value
-
-    @value.setter
-    def value(self, value):
-        self._value = value if value else None
 
     def _cast_to_type(self, value):
         """Verify type of value assigned to the association field"""

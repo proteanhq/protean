@@ -5,7 +5,7 @@ from datetime import datetime
 from protean.core.aggregate import BaseAggregate
 from protean.core.exceptions import ValidationError
 from protean.core.field.basic import Integer, String, Date
-from protean.core.field.association import HasMany
+from protean.core.field.association import HasMany, Reference
 from protean.utils import fully_qualified_name
 
 
@@ -72,6 +72,7 @@ class TestAggregateAssociations:
         @test_domain.entity
         class Comment:
             content = String(max_length=500)
+            post = Reference("Post")
 
             class Meta:
                 aggregate_cls = Post
