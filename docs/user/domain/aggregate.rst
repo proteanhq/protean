@@ -70,12 +70,135 @@ You can initialize the values of a person object by passing them as key-value pa
 A default identifier field named ``id`` is associated with an Aggregate object on initialization. Read more about :ref:`identity` to understand aspects of primary key generation.
 
 
+Identity
+========
+
+Identity is one of the primary characteristics of Protean Entities - they are expected to have a unique identity.
+
+All Aggregates and Entities have a unique identifier field named ``id``, added automatically by Protean. ``id`` is an :ref:`field-auto` field and populated with the strategy specified for the :ref:`identity-strategy` in Configuration.
+
+.. code-block:: python
+
+    @domain.aggregate
+    class Person:
+        first_name = String(max_length=30)
+        last_name = String(max_length=30)
+
+The identifier field is available as among ``declared_fields`` and is also accessible via the special ``id_field`` meta attribute::
+
+    >>> Person.meta_.declared_fields
+    {'first_name': <protean.core.field.basic.String at 0x10a647c70>,
+    'last_name': <protean.core.field.basic.String at 0x10a6476d0>,
+    'id': <protean.core.field.basic.Auto at 0x10a647340>}
+    >>> Person.meta_.id_field
+    <protean.core.field.basic.Auto at 0x10a647340>
+
+By default, identifiers hold ``UUID`` values::
+
+    >>> p = Person(first_name='John', last_name='Doe')
+    >>> p.to_dict()
+    {'first_name': 'John',
+    'last_name': 'Doe',
+    'id': '6667ec6e-d568-4ac5-9d66-0c9c4e3a571b'}
+
+The identifier can be optionally overridden by setting ``identifier=True`` to a field. Fields marked as identifiers are both ``required`` and ``unique`` and can contain either Integer or String values.
+
+.. code-block:: python
+
+    @domain.aggregate
+    class Person:
+        email = String(identifier=True)
+        first_name = String(max_length=30)
+        last_name = String(max_length=30)
+
+When overridden, the application is responsible for initializing the entity with a unique identifier value::
+
+    >>> p = Person(first_name='John', last_name='Doe')
+    ValidationError                           Traceback (most recent call last)
+    ...
+    ValidationError: {'email': ['is required']}
+
+You can find an Aggregate's identifier field from its meta property :ref:`user-aggregate-meta-id-field`::
+
+    >>> Person5.meta_.id_field
+    <protean.core.field.basic.String at 0x10b8f67c0>
+    >>> Person5.meta_.id_field.attribute_name
+    'email'
+
+Aggregates marked abstract do not have an identity.
+
+.. code-block:: python
+
+    @domain.aggregate
+    class TimeStamped(BaseAggregate):
+        created_at = DateTime(default=datetime.utcnow)
+        updated_at = DateTime(default=datetime.utcnow)
+
+        class Meta:
+            abstract=True
+
+The base Aggregate ``TimeStamped`` will not have an automatically generated ``id`` field:
+
+    >>> TimeStamped.meta_.declared_fields
+    {'created_at': <protean.core.field.basic.DateTime at 0x1101cce50>,
+    'updated_at': <protean.core.field.basic.DateTime at 0x1101cc040>}
+
+Abstract Aggregates cannot have an explicit identifier field:
+
+.. code-block:: python
+
+    @test_domain.aggregate
+    class User(BaseAggregate):
+        email = String(identifier=True)
+        name = String(max_length=55)
+
+        class Meta:
+            abstract=True
+
+Trying to declare one will through an ``IncorrectUsageError``::
+
+    >>>
+    IncorrectUsageError                       Traceback (most recent call last)
+    ...
+    IncorrectUsageError: {'entity': ['Aggregates marked as abstract cannot have identity fields']}
+
 Inheritance
 ===========
 
-.. //FIXME Pending Documentation
+Often, you may want to put some common information into a number of Aggregates into your domain. A Protean Aggregate can be inherited from another Aggregate class:
 
-TO BE DOCUMENTED
+.. code-block:: python
+
+    @domain.aggregate
+    class TimeStamped(BaseAggregate):
+        created_at = DateTime(default=datetime.utcnow)
+        updated_at = DateTime(default=datetime.utcnow)
+
+    @domain.aggregate
+    class User(TimeStamped):
+        name = String(max_length=30)
+        timezone = String(max_length=30)
+
+The ``User`` aggregate will have three fields of its own including an identifier, and two derived from its parent class:
+
+    >>> User.meta_.declared_fields
+    {'name': <protean.core.field.basic.String at 0x10a80d8b0>,
+    'timezone': <protean.core.field.basic.String at 0x1063753d0>,
+    'created_at': <protean.core.field.basic.DateTime at 0x106375dc0>,
+    'updated_at': <protean.core.field.basic.DateTime at 0x10a80dd60>,
+    'id': <protean.core.field.basic.Auto at 0x10a83e6d0>}
+
+    >>> user = User(name='John Doe', address='101, Timbuktu St.')
+    >>> user.to_dict()
+    {'name': 'John Doe',
+    'timezone': None,
+    'created_at': datetime.datetime(2021, 7, 7, 16, 35, 10, 799318),
+    'updated_at': datetime.datetime(2021, 7, 7, 16, 35, 10, 799327),
+    'id': '557770a2-5f34-4f80-895b-c38f2679766b'}
+
+If you do not want the parent Aggregate to be instantiable, you can mark it :ref:`abstract <aggregate-abstraction>`.
+
+.. _aggregate-abstraction:
 
 Abstraction
 ===========
@@ -142,61 +265,6 @@ An Aggregate derived from an abstract parent is concrete by default:
     'id': '6667ec6e-d568-4ac5-9d66-0c9c4e3a571b'}
 
 An Aggregate can be marked as ``abstract`` at any level of inheritance.
-
-Identity
-========
-
-Identity is one of the primary characteristics of Protean Entities - they are expected to have a unique identity.
-
-All Aggregates and Entities have a unique identifier field named ``id``, added automatically by Protean. ``id`` is an :ref:`field-auto` field and populated with the strategy specified for the :ref:`identity-strategy` in Configuration.
-
-.. code-block:: python
-
-    @domain.aggregate
-    class Person:
-        first_name = String(max_length=30)
-        last_name = String(max_length=30)
-
-The identifier field is available as among ``declared_fields`` and is also accessible via the special ``id_field`` meta attribute::
-
-    >>> Person.meta_.declared_fields
-    {'first_name': <protean.core.field.basic.String at 0x10a647c70>,
-    'last_name': <protean.core.field.basic.String at 0x10a6476d0>,
-    'id': <protean.core.field.basic.Auto at 0x10a647340>}
-    >>> Person.meta_.id_field
-    <protean.core.field.basic.Auto at 0x10a647340>
-
-By default, identifiers hold ``UUID`` values::
-
-    >>> p = Person(first_name='John', last_name='Doe')
-    >>> p.to_dict()
-    {'first_name': 'John',
-    'last_name': 'Doe',
-    'id': '6667ec6e-d568-4ac5-9d66-0c9c4e3a571b'}
-
-The identifier can be optionally overridden by setting ``identifier=True`` to a field. Fields marked as identifiers are both ``required`` and ``unique`` and can contain either Integer or String values.
-
-.. code-block:: python
-
-    @domain.aggregate
-    class Person:
-        email = String(identifier=True)
-        first_name = String(max_length=30)
-        last_name = String(max_length=30)
-
-When overridden, the application is responsible for initializing the entity with a unique identifier value::
-
-    >>> p = Person(first_name='John', last_name='Doe')
-    ValidationError                           Traceback (most recent call last)
-    ...
-    ValidationError: {'email': ['is required']}
-
-You can find an Aggregate's identifier field from its meta property :ref:`user-aggregate-meta-id-field`::
-
-    >>> Person5.meta_.id_field
-    <protean.core.field.basic.String at 0x10b8f67c0>
-    >>> Person5.meta_.id_field.attribute_name
-    'email'
 
 Metadata
 ========
