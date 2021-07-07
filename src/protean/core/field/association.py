@@ -259,7 +259,9 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
         except KeyError:
             # Fetch target object by own Identifier
             id_value = getattr(instance, instance.meta_.id_field.field_name)
-            reference_obj = self._fetch_objects(self._linked_attribute(owner), id_value)
+            reference_obj = self._fetch_objects(
+                instance, self._linked_attribute(owner), id_value
+            )
 
             self._set_own_value(instance, reference_obj)
 
@@ -275,7 +277,7 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
             instance.state_.mark_changed()
 
     @abstractmethod
-    def _fetch_objects(self, key, value):
+    def _fetch_objects(self, instance, key, value):
         """Placeholder method for customized Association query methods"""
         raise NotImplementedError
 
@@ -341,7 +343,7 @@ class HasOne(Association):
 
         self._set_own_value(instance, value)
 
-    def _fetch_objects(self, key, value):
+    def _fetch_objects(self, instance, key, value):
         """Fetch single linked object"""
         try:
             return current_domain.get_dao(self.to_cls).find_by(**{key: value})
@@ -357,19 +359,80 @@ class HasMany(Association):
     to fetch and populate. This behavior can be changed by using the `via` argument.
     """
 
-    def _fetch_objects(self, key, value):
+    def __init__(self, to_cls, via=None, **kwargs):
+        super().__init__(to_cls, via=via, **kwargs)
+
+        # `_temp_cache` is a data container for holding temporary
+        #   It holds objects that have been added, but not yet persisted,
+        #   as well as objects that have been removed, but are still
+        #   present in the data store.
+        #
+        # The data set returned from Queryset is manipulated automatically
+        #   to be up-to-date with temporary changes.
+        self._temp_cache = {
+            "added": list(),
+            "removed": list(),
+        }
+
+    def add(self, instance, item):
+        data = getattr(instance, self.field_name)
+        if item.id not in [value.id for value in data] or (
+            item.id in [value.id for value in data]
+            and item.state_.is_persisted
+            and item.state_.is_changed
+        ):
+            if item.id not in [
+                value.id for value in instance._temp_cache[self.field_name]["added"]
+            ]:
+                # FIXME Re-evaluate for UoW support
+
+                # If the child was already present, first remove that record
+                if item.id in [value.id for value in data]:
+                    for value in data:
+                        if value.id == item.id:
+                            instance._temp_cache[self.field_name]["removed"].append(
+                                value
+                            )
+                            break
+
+                setattr(
+                    item,
+                    self._linked_attribute(type(instance)),
+                    getattr(instance, instance.meta_.id_field.field_name),
+                )
+
+                instance._temp_cache[self.field_name]["added"].append(item)
+
+                # Reset Cache
+                self.delete_cached_value(instance)
+
+    def remove(self, instance, item):
+        data = getattr(instance, self.field_name)
+        if item.id in [value.id for value in data]:
+            if item.id not in [
+                value.id for value in instance._temp_cache[self.field_name]["removed"]
+            ]:
+                instance._temp_cache[self.field_name]["removed"].append(item)
+
+                # Reset Cache
+                self.delete_cached_value(instance)
+
+    def _fetch_objects(self, instance, key, value):
         """ Fetch linked entities.
 
         This method returns a well-formed query, containing the foreign-key constraint.
         The query will NOT be fired at this stage, and records will only be fetched
         when the consumer accesses the `HasMany` field values.
-
-        The number of underlying entities fetched at one time is limited by the
-        config attribute `AGGREGATE_CHILDREN_LIMIT`. By default, the value is `100`.
-        Be aware that increasing this limit will mean more entity objects will be
-        loaded into memory along with the aggregate.
         """
         children_dao = current_domain.get_dao(self.to_cls)
-        return children_dao.query.filter(**{key: value}).limit(
-            current_domain.config["AGGREGATE_CHILDREN_LIMIT"]
-        )
+        temp_data = children_dao.query.filter(**{key: value}).all().items
+
+        # Add objects in temporary cache
+        for item in instance._temp_cache[self.field_name]["added"]:
+            temp_data.append(item)
+
+        # Remove objects in temporary cache
+        for item in instance._temp_cache[self.field_name]["removed"]:
+            temp_data[:] = [value for value in temp_data if value.id != item.id]
+
+        return temp_data

@@ -100,7 +100,6 @@ class Domain(_PackageBoundObject):
                     "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
                 },
             },
-            "AGGREGATE_CHILDREN_LIMIT": 100,
         },
     )
 

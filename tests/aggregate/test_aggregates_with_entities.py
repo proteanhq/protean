@@ -21,7 +21,7 @@ class TestAggregatesWithEntities:
 
     def test_that_an_entity_can_be_added(self, persisted_post):
         comment = Comment(content="So La Ti Do")
-        persisted_post.comments.add(comment)
+        persisted_post.add_comments(comment)
 
         assert comment in persisted_post.comments
 
@@ -29,7 +29,7 @@ class TestAggregatesWithEntities:
         self, persisted_post
     ):
         comment = Comment(content="So La Ti Do")
-        persisted_post.comments.add(comment)
+        persisted_post.add_comments(comment)
 
         assert comment.post_id is not None
 
@@ -37,37 +37,37 @@ class TestAggregatesWithEntities:
         self, persisted_post
     ):
         comment = Comment(content="So La Ti Do")
-        persisted_post.comments.add(comment)
+        persisted_post.add_comments(comment)
 
         assert comment in persisted_post.comments
         assert len(persisted_post.comments) == 1
 
         # Add the child object again
-        persisted_post.comments.add(comment)
+        persisted_post.add_comments(comment)
 
         assert comment in persisted_post.comments
         assert len(persisted_post.comments) == 1
 
     def test_that_an_entity_can_be_removed(self, persisted_post):
         comment = Comment(content="So La Ti Do")
-        persisted_post.comments.add(comment)
+        persisted_post.add_comments(comment)
 
         assert comment in persisted_post.comments
 
-        persisted_post.comments.remove(comment)
+        persisted_post.remove_comments(comment)
         assert comment not in persisted_post.comments
 
     def test_that_one_entity_amongst_many_can_be_removed(self, persisted_post):
         comment1 = Comment(content="So La Ti Do")
         comment2 = Comment(content="Sa Re Ga Ma")
-        persisted_post.comments.add(comment1)
-        persisted_post.comments.add(comment2)
+        persisted_post.add_comments(comment1)
+        persisted_post.add_comments(comment2)
 
         assert comment1 in persisted_post.comments
         assert comment2 in persisted_post.comments
         assert len(persisted_post.comments) == 2
 
-        persisted_post.comments.remove(comment1)
+        persisted_post.remove_comments(comment1)
 
         assert len(persisted_post.comments) == 1
         assert comment1 not in persisted_post.comments

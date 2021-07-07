@@ -43,7 +43,6 @@ class TestConfig:
             "'BROKERS': {'default': {'PROVIDER': 'protean.adapters.InlineBroker'}}, "
             "'EMAIL_PROVIDERS': {'default': {'PROVIDER': 'protean.adapters.DummyEmailProvider', "
             "'DEFAULT_FROM_EMAIL': 'admin@team8solutions.com'}}, "
-            "'AGGREGATE_CHILDREN_LIMIT': 100, "
             "'TEST_KEY': 'foo'}>"
         )
 

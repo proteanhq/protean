@@ -4,7 +4,6 @@ from protean.utils import Database, IdentityStrategy, IdentityType
 DEBUG = True
 TESTING = True
 ENV = "development"
-AGGREGATE_CHILDREN_LIMIT = 15
 
 # A secret key for this particular Protean installation. Used in secret-key
 # hashing algorithms.

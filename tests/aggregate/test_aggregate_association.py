@@ -128,8 +128,8 @@ class TestHasMany:
         comment1 = Comment(id=101, content="First Comment")
         comment2 = Comment(id=102, content="Second Comment")
 
-        post.comments.add(comment1)
-        post.comments.add(comment2)
+        post.add_comments(comment1)
+        post.add_comments(comment2)
         test_domain.repository_for(Post).add(post)
 
         refreshed_post = test_domain.repository_for(Post).get(post.id)
@@ -138,8 +138,7 @@ class TestHasMany:
         assert refreshed_post.comments[0].post_id == post.id
         assert refreshed_post.comments[1].post_id == post.id
 
-        assert isinstance(refreshed_post.comments, QuerySet)
-        assert isinstance(refreshed_post.comments.all(), ResultSet)
+        assert isinstance(refreshed_post.comments, list)
         assert all(
             comment.id in [101, 102] for comment in refreshed_post.comments
         )  # `__iter__` magic here
@@ -161,8 +160,7 @@ class TestHasMany:
         assert len(refreshed_post.comments) == 2
         assert "comments" in refreshed_post.__dict__  # Available after access
 
-        assert isinstance(refreshed_post.comments, QuerySet)
-        assert isinstance(refreshed_post.comments.all(), ResultSet)
+        assert isinstance(refreshed_post.comments, list)
         assert all(
             comment.id in [101, 102] for comment in refreshed_post.comments
         )  # `__iter__` magic here
@@ -188,8 +186,7 @@ class TestHasMany:
         assert len(refreshed_post.comments) == 2
         assert "comments" in refreshed_post.__dict__  # Available after access
 
-        assert isinstance(refreshed_post.comments, QuerySet)
-        assert isinstance(refreshed_post.comments.all(), ResultSet)
+        assert isinstance(refreshed_post.comments, list)
         assert all(
             comment.id in [101, 102] for comment in refreshed_post.comments
         )  # `__iter__` magic here
@@ -224,37 +221,8 @@ class TestHasMany:
                 content=f"Comment {i}", post_id=persisted_post.id
             )  # FIXME This should not be necessary
             test_domain.get_dao(Comment).save(comment)
-            persisted_post.comments.add(comment)
+            persisted_post.add_comments(comment)
             test_domain.get_dao(Post).save(persisted_post)
 
         updated_post = test_domain.get_dao(Post).get(persisted_post.id)
-        assert updated_post.comments.total == 12
-        assert len(updated_post.comments.items) == 12
-
-    def test_that_entities_beyond_configured_limit_value_are_not_retrieved(
-        self, test_domain, persisted_post
-    ):
-        for i in range(1, 20):
-            comment = Comment(
-                content=f"Comment {i}", post_id=persisted_post.id
-            )  # FIXME This should not be necessary
-            test_domain.get_dao(Comment).save(comment)
-
-        updated_post = test_domain.get_dao(Post).get(persisted_post.id)
-        assert updated_post.comments.total == 19
-        assert len(updated_post.comments.items) == 15
-
-    def test_filtering_on_has_many_association(self, test_domain, persisted_post):
-        comments = []
-
-        for i in range(1, 13):
-            comment = Comment(
-                content=f"Comment {i}", post_id=persisted_post.id
-            )  # FIXME This should not be necessary
-            comments.append(comment)
-            test_domain.get_dao(Comment).save(comment)
-
-        post = test_domain.get_dao(Post).get(persisted_post.id)
-        specific_comment = post.comments.filter(content="Comment 2").all()
-        assert specific_comment.total == 1
-        assert specific_comment.items[0] == comments[1]
+        assert len(updated_post.comments) == 12

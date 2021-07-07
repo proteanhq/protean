@@ -30,7 +30,7 @@ class TestUnitOfWorkRegistration:
 
         with UnitOfWork():
             comment = Comment(content="So La Ti Do")
-            persisted_post.comments.add(comment)
+            persisted_post.add_comments(comment)
 
             repo = test_domain.repository_for(Post)
             repo.add(persisted_post)
@@ -47,7 +47,7 @@ class TestUnitOfWorkRegistration:
         self, test_domain, persisted_post
     ):
         comment = Comment(content="So La Ti Do")
-        persisted_post.comments.add(comment)
+        persisted_post.add_comments(comment)
 
         repo = test_domain.repository_for(Post)
         repo.add(persisted_post)
@@ -58,7 +58,7 @@ class TestUnitOfWorkRegistration:
         with UnitOfWork():
             comment = persisted_post.comments[0]
             comment.content = "Pa Da Ni Sa"
-            persisted_post.comments.add(comment)
+            persisted_post.add_comments(comment)
 
             repo = test_domain.repository_for(Post)
             repo.add(persisted_post)
@@ -73,14 +73,14 @@ class TestUnitOfWorkRegistration:
         self, test_domain, persisted_post
     ):
         comment = Comment(content="So La Ti Do")
-        persisted_post.comments.add(comment)
+        persisted_post.add_comments(comment)
 
         repo = test_domain.repository_for(Post)
         repo.add(persisted_post)
 
         with UnitOfWork():
             comment = persisted_post.comments[0]
-            persisted_post.comments.remove(comment)
+            persisted_post.remove_comments(comment)
 
             repo = test_domain.repository_for(Post)
             repo.add(persisted_post)

@@ -80,7 +80,7 @@ class TestAggregateAssociations:
         post = Post(name="The World")
         test_domain.repository_for(Post).add(post)
 
-        post.comments.add(Comment(content="This is a great post!"))
+        post.add_comments(Comment(content="This is a great post!"))
         test_domain.repository_for(Post).add(post)
 
         refreshed_post = test_domain.repository_for(Post).get(post.id)

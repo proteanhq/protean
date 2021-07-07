@@ -4,6 +4,7 @@ import copy
 import logging
 
 from collections import defaultdict
+from functools import partial
 from uuid import uuid4
 
 # Protean
@@ -26,7 +27,10 @@ from protean.utils import (
 )
 
 # Local/Relative Imports
-from ..core.field.association import _ReferenceField  # Relative path to private class
+from ..core.field.association import (
+    HasMany,
+    _ReferenceField,
+)  # Relative path to private class
 
 logger = logging.getLogger("protean.domain.entity")
 
@@ -372,6 +376,9 @@ class BaseEntity(metaclass=_EntityMetaclass):
         # Set up the storage for instance state
         self.state_ = _EntityState()
 
+        # Placeholder for temporary association values
+        self._temp_cache = defaultdict(lambda: defaultdict(list))
+
         # Load the attributes based on the template
         loaded_fields = []
         for dictionary in template:
@@ -431,6 +438,16 @@ class BaseEntity(metaclass=_EntityMetaclass):
         for field_name, field_obj in self.meta_.declared_fields.items():
             if isinstance(field_obj, Association):
                 getattr(self, field_name)  # This refreshes the values in associations
+
+                # Set up add and remove methods. These are pseudo methods, `add_*` and
+                #   `remove_*` that point to the HasMany field's `add` and `remove`
+                #   methods. They are wrapped to ensure we pass the object that holds
+                #   the values and temp_cache.
+                if isinstance(field_obj, HasMany):
+                    setattr(self, f"add_{field_name}", partial(field_obj.add, self))
+                    setattr(
+                        self, f"remove_{field_name}", partial(field_obj.remove, self)
+                    )
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields
@@ -553,7 +570,11 @@ class BaseEntity(metaclass=_EntityMetaclass):
         field_values = {
             field_name: getattr(self, field_name, None)
             for field_name, field_obj in self.meta_.declared_fields.items()
-            if not isinstance(field_obj, ValueObjectField)
+            # Do not display Value Object fields or Reference fields
+            #   Reference fields are not necessary because:
+            #       - Entities are always shown within Aggregates
+            #       - Aggregates with references should not populate the other aggregate's value
+            if not isinstance(field_obj, (ValueObjectField, Reference))
         }
 
         # FIXME Simplify fetching and appending Value Object dict values

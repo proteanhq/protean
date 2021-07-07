@@ -98,7 +98,7 @@ class TestHasManyPersistence:
         post_repo = current_domain.repository_for(Post)
 
         comment = Comment(content="So La Ti Do")
-        persisted_post.comments.add(comment)
+        persisted_post.add_comments(comment)
 
         post_repo.add(persisted_post)
 
@@ -112,8 +112,8 @@ class TestHasManyPersistence:
 
         comment1 = Comment(content="So La Ti Do")
         comment2 = Comment(content="Do Re Mi Fa")
-        persisted_post.comments.add(comment1)
-        persisted_post.comments.add(comment2)
+        persisted_post.add_comments(comment1)
+        persisted_post.add_comments(comment2)
 
         post_repo.add(persisted_post)
 
@@ -130,12 +130,12 @@ class TestHasManyPersistence:
         post_repo = current_domain.repository_for(Post)
 
         comment = Comment(content="So La Ti Do")
-        persisted_post.comments.add(comment)
+        persisted_post.add_comments(comment)
 
         post_repo.add(persisted_post)
 
         post_to_alter = post_repo.get(persisted_post.id)
-        post_to_alter.comments.remove(comment)
+        post_to_alter.remove_comments(comment)
 
         post_repo.add(post_to_alter)
 
@@ -151,13 +151,13 @@ class TestHasManyPersistence:
 
         comment1 = Comment(content="So La Ti Do")
         comment2 = Comment(content="Do Re Mi Fa")
-        persisted_post.comments.add(comment1)
-        persisted_post.comments.add(comment2)
+        persisted_post.add_comments(comment1)
+        persisted_post.add_comments(comment2)
 
         post_repo.add(persisted_post)
 
         post_to_alter = post_repo.get(persisted_post.id)
-        post_to_alter.comments.remove(comment1)
+        post_to_alter.remove_comments(comment1)
 
         post_repo.add(post_to_alter)
 

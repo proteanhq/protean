@@ -120,20 +120,18 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
         #   in a variable called `_temp_cache`
         for field_name, field in aggregate.meta_.declared_fields.items():
             if isinstance(field, HasMany):
-                has_many_field = getattr(aggregate, field_name)
-
-                for item in has_many_field._temp_cache["removed"]:
+                for item in aggregate._temp_cache[field_name]["removed"]:
                     dao = current_domain.get_dao(field.to_cls)
                     dao.delete(item)
-                has_many_field._temp_cache[
+                aggregate._temp_cache[field_name][
                     "removed"
                 ] = list()  # Empty contents of `removed` cache
 
-                for item in has_many_field._temp_cache["added"]:
+                for item in aggregate._temp_cache[field_name]["added"]:
                     dao = current_domain.get_dao(field.to_cls)
                     item.state_.mark_new()
                     dao.save(item)
-                has_many_field._temp_cache[
+                aggregate._temp_cache[field_name][
                     "added"
                 ] = list()  # Empty contents of `added` cache
 
