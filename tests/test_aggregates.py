@@ -3,8 +3,8 @@ import pytest
 from datetime import datetime
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.exceptions import ValidationError
-from protean.core.field.basic import Integer, String, Date
+from protean.core.exceptions import IncorrectUsageError, ValidationError
+from protean.core.field.basic import Integer, String, Date, DateTime
 from protean.core.field.association import HasMany, Reference
 from protean.utils import fully_qualified_name
 
@@ -49,7 +49,41 @@ class TestAggregateInitialization:
 
 
 class TestAggregateIdentity:
-    pass
+    # FIXME This should fail
+    def test_exception_on_multiple_identifiers(self, test_domain):
+        @test_domain.aggregate
+        class Person:
+            email = String(identifier=True)
+            username = String(identifier=True)
+
+    def test_that_abstract_aggregates_do_not_have_id_field(self, test_domain):
+        @test_domain.aggregate
+        class TimeStamped(BaseAggregate):
+            created_at = DateTime(default=datetime.utcnow)
+            updated_at = DateTime(default=datetime.utcnow)
+
+            class Meta:
+                abstract = True
+
+        assert "id" not in TimeStamped.meta_.declared_fields
+
+    def test_that_abstract_aggregates_cannot_have_a_declared_id_field(
+        self, test_domain
+    ):
+        with pytest.raises(IncorrectUsageError) as exception:
+
+            @test_domain.aggregate
+            class User(BaseAggregate):
+                email = String(identifier=True)
+                name = String(max_length=55)
+
+                class Meta:
+                    abstract = True
+
+        assert (
+            exception.value.messages
+            == "Aggregates marked as abstract cannot have identity fields"
+        )
 
 
 class TestAggregateMeta:

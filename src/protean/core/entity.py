@@ -151,9 +151,23 @@ class _EntityMetaclass(type):
                     for _, field in new_class.meta_.declared_fields.items()
                     if isinstance(field, (Field, Reference)) and field.identifier
                 )
+
+                # If the aggregate/entity has been marked abstract,
+                #   and contains an identifier field, raise exception
+                if new_class.meta_.abstract and new_class.meta_.id_field:
+                    raise IncorrectUsageError(
+                        {
+                            "entity": [
+                                "Aggregates marked as abstract cannot have identity fields"
+                            ]
+                        }
+                    )
             except StopIteration:
                 # If no id field is declared then create one
-                new_class._create_id_field()
+                #   If the aggregate/entity is marked abstract,
+                #   avoid creating an identifier field.
+                if not new_class.meta_.abstract:
+                    new_class._create_id_field()
 
     def _create_id_field(new_class):
         """Create and return a default ID field that is Auto generated"""
