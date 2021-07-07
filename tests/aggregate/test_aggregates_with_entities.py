@@ -73,3 +73,17 @@ class TestAggregatesWithEntities:
         assert comment1 not in persisted_post.comments
         assert comment2 in persisted_post.comments
         assert comment2.id == persisted_post.comments[0].id
+
+    def test_that_all_entities_can_be_removed(self, persisted_post):
+        comment1 = Comment(content="So La Ti Do")
+        comment2 = Comment(content="Sa Re Ga Ma")
+        persisted_post.add_comments(comment1)
+        persisted_post.add_comments(comment2)
+
+        assert comment1 in persisted_post.comments
+        assert comment2 in persisted_post.comments
+        assert len(persisted_post.comments) == 2
+
+        persisted_post.remove_comments([comment1, comment2])
+
+        assert len(persisted_post.comments) == 0

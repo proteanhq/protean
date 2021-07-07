@@ -143,6 +143,27 @@ class TestHasMany:
             comment.id in [101, 102] for comment in refreshed_post.comments
         )  # `__iter__` magic here
 
+    def test_adding_multiple_associations_at_the_same_time(self, test_domain):
+        post = Post(content="Lorem Ipsum")
+        test_domain.repository_for(Post).add(post)
+
+        comment1 = Comment(id=101, content="First Comment")
+        comment2 = Comment(id=102, content="Second Comment")
+
+        post.add_comments([comment1, comment2])
+        test_domain.repository_for(Post).add(post)
+
+        refreshed_post = test_domain.repository_for(Post).get(post.id)
+        assert len(refreshed_post.comments) == 2
+        assert "comments" in refreshed_post.__dict__  # Available after access
+        assert refreshed_post.comments[0].post_id == post.id
+        assert refreshed_post.comments[1].post_id == post.id
+
+        assert isinstance(refreshed_post.comments, list)
+        assert all(
+            comment.id in [101, 102] for comment in refreshed_post.comments
+        )  # `__iter__` magic here
+
     def test_successful_has_one_initialization_with_a_class_containing_via_and_no_reference(
         self, test_domain
     ):

@@ -374,48 +374,59 @@ class HasMany(Association):
             "removed": list(),
         }
 
-    def add(self, instance, item):
+    def add(self, instance, items):
         data = getattr(instance, self.field_name)
-        if item.id not in [value.id for value in data] or (
-            item.id in [value.id for value in data]
-            and item.state_.is_persisted
-            and item.state_.is_changed
-        ):
-            if item.id not in [
-                value.id for value in instance._temp_cache[self.field_name]["added"]
-            ]:
-                # FIXME Re-evaluate for UoW support
 
-                # If the child was already present, first remove that record
-                if item.id in [value.id for value in data]:
-                    for value in data:
-                        if value.id == item.id:
-                            instance._temp_cache[self.field_name]["removed"].append(
-                                value
-                            )
-                            break
+        # Convert a single item into a list of items, if necessary
+        items = [items] if not isinstance(items, list) else items
 
-                setattr(
-                    item,
-                    self._linked_attribute(type(instance)),
-                    getattr(instance, instance.meta_.id_field.field_name),
-                )
+        for item in items:
+            if item.id not in [value.id for value in data] or (
+                item.id in [value.id for value in data]
+                and item.state_.is_persisted
+                and item.state_.is_changed
+            ):
+                if item.id not in [
+                    value.id for value in instance._temp_cache[self.field_name]["added"]
+                ]:
+                    # FIXME Re-evaluate for UoW support
 
-                instance._temp_cache[self.field_name]["added"].append(item)
+                    # If the child was already present, first remove that record
+                    if item.id in [value.id for value in data]:
+                        for value in data:
+                            if value.id == item.id:
+                                instance._temp_cache[self.field_name]["removed"].append(
+                                    value
+                                )
+                                break
 
-                # Reset Cache
-                self.delete_cached_value(instance)
+                    setattr(
+                        item,
+                        self._linked_attribute(type(instance)),
+                        getattr(instance, instance.meta_.id_field.field_name),
+                    )
 
-    def remove(self, instance, item):
+                    instance._temp_cache[self.field_name]["added"].append(item)
+
+                    # Reset Cache
+                    self.delete_cached_value(instance)
+
+    def remove(self, instance, items):
         data = getattr(instance, self.field_name)
-        if item.id in [value.id for value in data]:
-            if item.id not in [
-                value.id for value in instance._temp_cache[self.field_name]["removed"]
-            ]:
-                instance._temp_cache[self.field_name]["removed"].append(item)
 
-                # Reset Cache
-                self.delete_cached_value(instance)
+        # Convert a single item into a list of items, if necessary
+        items = [items] if not isinstance(items, list) else items
+
+        for item in items:
+            if item.id in [value.id for value in data]:
+                if item.id not in [
+                    value.id
+                    for value in instance._temp_cache[self.field_name]["removed"]
+                ]:
+                    instance._temp_cache[self.field_name]["removed"].append(item)
+
+                    # Reset Cache
+                    self.delete_cached_value(instance)
 
     def _fetch_objects(self, instance, key, value):
         """ Fetch linked entities.
