@@ -1,5 +1,3 @@
-.. _user-aggregate:
-
 ==========
 Aggregates
 ==========
@@ -41,7 +39,7 @@ You can also define the Aggregate as a subclass of ``BaseAggregate`` and registe
 Field Declarations
 ==================
 
-Aggregate definitions enclose fields and behaviors that represent the domain concept. The complete list of available fields is available in :ref:`api-fields`
+Aggregate definitions enclose fields and behaviors that represent the domain concept. The fields declared in the aggregate are available as a map in :ref:`user-aggregate-meta-declared-fields`.
 
 This example defines a ``Person`` Aggregate, which has a ``first_name`` and ``last_name``.
 
@@ -69,6 +67,7 @@ You can initialize the values of a person object by passing them as key-value pa
 
 A default identifier field named ``id`` is associated with an Aggregate object on initialization. Read more about :ref:`identity` to understand aspects of primary key generation.
 
+The complete list of available fields is available in :ref:`api-fields`.
 
 Identity
 ========
@@ -118,11 +117,11 @@ When overridden, the application is responsible for initializing the entity with
     ...
     ValidationError: {'email': ['is required']}
 
-You can find an Aggregate's identifier field from its meta property :ref:`user-aggregate-meta-id-field`::
+You can find an Aggregate's identifier field from its meta property :ref:`user-aggregate-meta-id-field` ::
 
-    >>> Person5.meta_.id_field
+    >>> Person.meta_.id_field
     <protean.core.field.basic.String at 0x10b8f67c0>
-    >>> Person5.meta_.id_field.attribute_name
+    >>> Person.meta_.id_field.attribute_name
     'email'
 
 Aggregates marked abstract do not have an identity.
@@ -196,9 +195,7 @@ The ``User`` aggregate will have three fields of its own including an identifier
     'updated_at': datetime.datetime(2021, 7, 7, 16, 35, 10, 799327),
     'id': '557770a2-5f34-4f80-895b-c38f2679766b'}
 
-If you do not want the parent Aggregate to be instantiable, you can mark it :ref:`abstract <aggregate-abstraction>`.
-
-.. _aggregate-abstraction:
+If you do not want the parent Aggregate to be instantiable, you can mark it as abstract.
 
 Abstraction
 ===========
@@ -293,9 +290,10 @@ The overridden attributes are reflected in the ``meta_`` attribute:
 
 Available options are:
 
-.. _user-aggregate-meta-abstract:
+abstract
+~~~~~~~~
 
-- **abstract**: The flag used to mark an Aggregate as abstract. If abstract, the aggregate class cannot be instantiated and needs to be subclassed. Refer to the section on :ref:`entity-abstraction` for a deeper discussion.
+The flag used to mark an Aggregate as abstract. If abstract, the aggregate class cannot be instantiated and needs to be subclassed. Refer to the section on :ref:`entity-abstraction` for a deeper discussion.
 
     .. code-block:: python
 
@@ -314,9 +312,10 @@ Available options are:
         ...
         NotSupportedError: Person class has been marked abstract and cannot be instantiated
 
-.. _user-aggregate-meta-provider:
+provider
+~~~~~~~~
 
-- **provider**: The database that the aggregate is persisted in.
+The database that the aggregate is persisted in.
 
     Aggregates are connected to underlying data stores via providers. The definitions of these providers are supplied within the ``DATABASES`` key as part of the Domain's configuration during initialization. Protean identifies the correct data store, establishes the connection and takes the responsibility of persisting the data.
 
@@ -330,7 +329,7 @@ Available options are:
         DATABASES = {
             'default': {
                 'PROVIDER': 'protean_sqlalchemy.provider.SAProvider'
-            }
+            },
             "nosql": {
                 "PROVIDER": "protean.adapters.repository.elasticsearch.ESProvider",
                 "DATABASE": Database.ELASTICSEARCH.value,
@@ -353,33 +352,169 @@ Available options are:
 
     Refer to :ref:`user-persistence` for an in-depth discussion about persisting to databases.
 
-- **model**:
+model
+~~~~~
 
-- **schema_name**:
+Protean automatically constructs a representation of the aggregate that is compatible with the configured database. While the generated model suits most use cases, you can also explicitly construct a model and associated it with the aggregate. Note that custom models are associated with a specific database type. The model is used only when database of the right type  is in use.
 
+// FIXME Pending Documentation
+
+schema_name
+~~~~~~~~~~~
+
+The name to store and retrieve the aggregate from the persistence store. By default, ``schema_name`` is the snake case version of the Aggregate's name.
+
+    .. code-block:: python
+
+        @domain.aggregate
+        class UserProfile:
+            name = String()
+
+    ``schema_name`` is available under ``meta_``:
+
+    >>> UserProfile.meta_.schema_name
+    'user_profile'
 
 Reflection
 ----------
 
 Aggregates are decorated with additional attributes that you can use to examine the aggregate structure in runtime. The following meta attributes are available:
 
-- **declared_fields**:
+.. _user-aggregate-meta-declared-fields:
+
+declared_fields
+~~~~~~~~~~~~~~~
+
+A map of fields explicitly declared in the Aggregate.
+
+    >>> @domain.aggregate
+    ... class Person:
+    ...     first_name = String(max_length=30)
+    ...     last_name = String(max_length=30)
+    ...
+    >>> Person.meta_.declared_fields
+    {'first_name': <protean.core.field.basic.String at 0x10a647c70>,
+    'last_name': <protean.core.field.basic.String at 0x10a6476d0>,
+    'id': <protean.core.field.basic.Auto at 0x10a647340>}
 
 .. _user-aggregate-meta-id-field:
 
-- **id_field**:
+id_field
+~~~~~~~~
 
+The identifier field configured for the Entity or Aggregate. A field can be marked as an identifier by setting the ``identifier=True`` option.
 
+    >>> @domain.aggregate
+    ... class Person:
+    ...     email = String(identifier=True)
+    ...     first_name = String(max_length=30)
+    ...     last_name = String(max_length=30)
+    ...
+    >>> Person.meta_.id_field
+    <protean.core.field.basic.String at 0x10b8f67c0>
+    >>> Person.meta_.id_field.attribute_name
+    'email'
 
-- **attributes**:
+When not explicitly identified, an identifier field named ``id`` of type :ref:`Auto`  is added automatically to the Aggregate::
 
-- **value_object_fields**:
+    >>> @domain.aggregate
+    ... class Person:
+    ...     first_name = String(max_length=30)
+    ...     last_name = String(max_length=30)
+    ...
+    >>> Person.meta_.declared_fields
+    {'first_name': <protean.core.field.basic.String at 0x10a647c70>,
+    'last_name': <protean.core.field.basic.String at 0x10a6476d0>,
+    'id': <protean.core.field.basic.Auto at 0x10a647340>}
+    >>> Person.meta_.id_field
+    <protean.core.field.basic.Auto at 0x10a647340>
 
-- **reference_fields**:
+attributes
+~~~~~~~~~~
 
+A map of all fields, including :ref:`user-aggregate-meta-value-object-fields` and :ref:`user-aggregate-meta-reference-fields` fields. These attribute names are used during persistence of Aggregates, unless overridden by :ref:`api-fields-referenced-as`.
 
+.. code-block:: python
+
+    @domain.entity(aggregate_cls="Account")
+    class Profile:
+        email = String(required=True)
+        name = String(max_length=50)
+        password = String(max_length=50)
+
+    @domain.value_object
+    class Balance:
+        currency = String(max_length=3)
+        amount = Float()
+
+    @domain.aggregate
+    class Account:
+        account_type = String(max_length=25)
+        balance =  ValueObjectField(Balance)
+        profile = Reference(Profile)
+
+All fields are available under ``meta_``:
+
+    >>> Account.meta_.attributes
+    {'account_type': <protean.core.field.basic.String at 0x111ff3cd0>,
+    'balance_currency': <protean.core.field.embedded._ShadowField at 0x111fe9d60>,
+    'balance_amount': <protean.core.field.embedded._ShadowField at 0x111fe9df0>,
+    'profile_id': <protean.core.field.association._ReferenceField at 0x111fe9cd0>,
+    'id': <protean.core.field.basic.Auto at 0x111fe9be0>}
+
+.. _user-aggregate-meta-value-object-fields:
+
+value_object_fields
+~~~~~~~~~~~~~~~~~~~
+
+A map of fields derived from value objects embedded within the Aggregate.
+
+.. code-block:: python
+
+    @domain.value_object
+    class Balance:
+        currency = String(max_length=3)
+        amount = Float()
+
+    @domain.aggregate
+    class Account:
+        account_type = String(max_length=25)
+        balance =  ValueObjectField(Balance)
+
+The fields are now available as part of ``meta_`` attributes:
+
+    >>> Account.meta_.value_object_fields
+    {'balance_currency': <protean.core.field.embedded._ShadowField at 0x106d4d2e0>,
+    'balance_amount': <protean.core.field.embedded._ShadowField at 0x106d4d310>}
+
+.. _user-aggregate-meta-reference-fields:
+
+reference_fields
+~~~~~~~~~~~~~~~~
+
+A map of reference fields (a.k.a Foreign keys, if you are familiar with the relational world) embedded within the Aggregate.
+
+.. code-block:: python
+
+    @domain.aggregate
+    class Post:
+        content = Text(required=True)
+        author = Reference("Author")
+
+    @domain.entity(aggregate_cls="Post")
+    class Author:
+        first_name = String(required=True, max_length=25)
+        last_name = String(max_length=25)
+
+An attribute named `author_id` (<Entity Name>_<Identifier>) is automatically generated and attached to the Aggregate::
+
+    >>> Post.meta_.reference_fields
+    {'author_id': <protean.core.field.association._ReferenceField at 0x105c65760>}
 
 Persistence
 ===========
 
 An *Aggregate* is connected to the ``default`` provider, by default. Protean's out-of-the-box configuration specifies the in-built InMemory database as the  ``default`` provider.
+
+Custom Models
+-------------

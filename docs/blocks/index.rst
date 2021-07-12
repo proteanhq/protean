@@ -1,5 +1,3 @@
-.. _building-blocks:
-
 ===============
 Building Blocks
 ===============

@@ -1,5 +1,3 @@
-.. _block-repository:
-
 ============
 Repositories
 ============

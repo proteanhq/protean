@@ -7,10 +7,10 @@ Field Reference
 This document contains the field options and field types Protean offers.
 
 Field options
--------------
+=============
 
 required
-~~~~~~~~
+--------
 
 If ``True``, the field is not allowed to be blank. Default is ``False``.
 
@@ -28,7 +28,7 @@ Leaving the field blank or not specifying a value will raise a ``ValidationError
     ValidationError: {'name': ['is required']}
 
 identifier
-~~~~~~~~~~
+----------
 
 If ``True``, the field is the primary key for the entity.
 
@@ -55,7 +55,7 @@ If you don't specify ``identifier=True`` for any field in your Entity, Protean w
 Alternatively, you can use the ::ref:`Identifier` field for primary key fields. The type of the field can be specified per domain in config with :ref:`IDENTITY_TYPE`.
 
 default
-~~~~~~~
+-------
 
 The default value for the field. This can be a value or a callable object. If callable, it will be called every time a new object is created.
 
@@ -98,7 +98,7 @@ You can even use a lambda expression to specify an anonymous function:
         throw = Integer(default=lambda: random.randrange(1, 6))
 
 unique
-~~~~~~
+------
 
 If ``True``, this field must be unique among all entities.
 
@@ -120,7 +120,7 @@ This is enforced by entity validation. If you try to save an entity with a dupli
     ValidationError: {'email': ["Person with email 'john.doe@example.com' is already present."]}
 
 choices
-~~~~~~~
+-------
 
 When supplied, the value of the field is validated to be one among the specified options.
 
@@ -152,20 +152,40 @@ The choices are enforced during entity validation::
     ...
     ValidationError: {'status': ["Value `'COMPLETED'` is not a valid choice. Must be one of ['WIP', 'DONE']"]}
 
-referenced_as
-~~~~~~~~~~~~~
+.. _api-fields-referenced-as:
 
-.. //FIXME Pending Documentation
+referenced_as
+-------------
+
+The name used to store and retrieve the attribute's value. A field's ``referenced_as`` name is used by Protean's persistence mechanism while storing and retrieving the field.
+
+.. code-block:: python
+
+    @domain.aggregate
+    class Person:
+        email = String(unique=True)
+        name = String(referenced_as='fullname', required=True)
+
+``meta_.declared_fields`` will preserve the original field name, while ``meta_.attributes`` will reflect the new name::
+
+    >>> Person.meta_.declared_fields
+    {'email': <protean.core.field.basic.String at 0x109f20820>,
+    'fullname': <protean.core.field.basic.String at 0x109f20880>,
+    'id': <protean.core.field.basic.Auto at 0x109eed940>}
+    >>> Person.meta_.attributes
+    {'email': <protean.core.field.basic.String at 0x109f20820>,
+    'fullname': <protean.core.field.basic.String at 0x109f20880>,
+    'id': <protean.core.field.basic.Auto at 0x109eed940>}
 
 TO BE DOCUMENTED
 
 validators
-~~~~~~~~~~
+----------
 
 A list of validators to run for this field. See :ref:`Validators API Documentation <validators>`  for more information.
 
 error_messages
-~~~~~~~~~~~~~~
+--------------
 
 If supplied, the default messages that the field will raise will be overridden. Error message keys include **required**, **invalid**, **unique**, and **invalid_choice**. Additional error message keys are specified for each field in the :ref:`Field types` section below.
 
@@ -186,10 +206,10 @@ The custom error message can be observed in the ``ValidationError`` exception::
 The error message can be formatted with additional keyword arguments:
 
 Basic Fields
-------------
+============
 
 String
-~~~~~~
+------
 
 A string field, for small- to large-sized strings. For large amounts of text, use :ref:`Text`.
 
@@ -199,12 +219,12 @@ A string field, for small- to large-sized strings. For large amounts of text, us
 - ``min_length``: The minimum length (in characters) of the field, enforced during validation using :ref:`MinLengthValidator <min-value-validator>`.
 
 Text
-~~~~
+----
 
 A large text field, to hold large amounts of text. Text fields do not have size constraints.
 
 Integer
-~~~~~~~
+-------
 
 An integer. It uses :ref:`MinValueValidator <min-value-validator>` and :ref:`MaxValueValidator <max-value-validator>` to validate the input based on the values that the default database supports.
 
@@ -214,7 +234,7 @@ An integer. It uses :ref:`MinValueValidator <min-value-validator>` and :ref:`Max
 - ``min_value``: The minimum numeric value of the field, enforced during validation using :ref:`MinValueValidator <min-value-validator>`.
 
 Float
-~~~~~
+-----
 
 A floating-point number represented in Python by a float instance.
 
@@ -224,7 +244,7 @@ A floating-point number represented in Python by a float instance.
 - ``min_value``: The minimum numeric value of the field, enforced during validation using :ref:`MinValueValidator <min-value-validator>`.
 
 Boolean
-~~~~~~~
+-------
 
 A ``True``/``False`` field.
 
@@ -246,7 +266,7 @@ The default value is ``None`` when ``default`` option isn’t defined::
 .. _field-auto:
 
 Auto
-~~~~
+----
 
 Automatically-generated unique identifiers. By default, all entities and aggregates hold an ``Auto`` field named ``id`` that acts as their unique identifier.
 
@@ -281,11 +301,11 @@ An ``Auto`` field is unique by default::
 .. _field-identifier:
 
 Identifier
-~~~~~~~~~~
+----------
 
 
 Date
-~~~~
+----
 
 A date, represented in Python by a ``datetime.date`` instance.
 
@@ -313,7 +333,7 @@ Or as a string, which will be parsed by ``dateutil.parse``::
     'id': '0f9d4f86-a47c-48ec-bb14-8b8bb8a65ae3'}
 
 DateTime
-~~~~~~~~
+--------
 
 A date and time, represented in Python by a ``datetime.datetime`` instance.
 
@@ -341,10 +361,10 @@ Or as a string, which will be parsed by ``dateutil.parse``::
     'id': '1dcb17e1-64e9-43ef-b9bd-802b8a004765'}
 
 Complex Fields
---------------
+==============
 
 List
-~~~~
+----
 
 A collection field that accepts values of a specified basic field type.
 
@@ -390,7 +410,7 @@ The supplied value needs to be a Python ``list``. Specifying values of a differe
 - ``pickled``: Flag to treat the field as a Python object. Defaults to ``False``. Some database implementations (like Postgresql) can store lists by default. You can  force it to store the pickled value as a Python object by specifying ``pickled=True``. Databases that don't support lists simply store the field as a python object, serialized using pickle.
 
 Dict
-~~~~
+----
 
 A map that closely resembles the Python Dictionary in its utility.
 
@@ -416,13 +436,13 @@ A regular dictionary can be supplied as value to ``payload``::
 - ``pickled``: Flag to treat the field as a Python object. Defaults to ``False``. Some database implementations (like Postgresql) can store dicts as JSON by default. You can  force it to store the pickled value as a Python object by specifying ``pickled=True``. Databases that don't support lists simply store the field as a python object, serialized using pickle.
 
 Method
-~~~~~~
+------
 
 Nested
-~~~~~~
+------
 
 Associations
-------------
+============
 
 Embedded Fields
----------------
+===============

@@ -110,6 +110,7 @@ Protean guides contain a mixture of `Architecture Principles`, `Conventions`, `P
    user/persistence
    user/unit-of-work
    user/logging
+   user/exceptions
 
 .. toctree::
    :maxdepth: 1

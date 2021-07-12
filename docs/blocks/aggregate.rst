@@ -1,5 +1,3 @@
-.. _block-aggregate:
-
 ==========
 Aggregates
 ==========
