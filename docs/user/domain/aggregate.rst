@@ -511,6 +511,9 @@ An attribute named `author_id` (<Entity Name>_<Identifier>) is automatically gen
     >>> Post.meta_.reference_fields
     {'author_id': <protean.core.field.association._ReferenceField at 0x105c65760>}
 
+Relationships
+=============
+
 Persistence
 ===========
 

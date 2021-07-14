@@ -119,6 +119,15 @@ class _EntityMetaclass(type):
             if isinstance(attr_obj, (Association, Field, Reference)):
                 setattr(new_class, attr_name, attr_obj)
                 new_class.meta_.declared_fields[attr_name] = attr_obj
+            else:
+                if isinstance(attr_obj, BaseEntity):
+                    raise IncorrectUsageError(
+                        {
+                            "entity": [
+                                f"'{attr_name}' of type '{type(attr_obj).__name__}' cannot be part of an entity."
+                            ]
+                        }
+                    )
 
     def _set_up_reference_fields(new_class):
         """Walk through relation fields and setup shadow attributes"""
