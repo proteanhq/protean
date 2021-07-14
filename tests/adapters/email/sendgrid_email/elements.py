@@ -4,7 +4,6 @@ from protean.core.domain_event import BaseDomainEvent
 from protean.core.email import BaseEmail
 from protean.core.exceptions import InsufficientDataError, InvalidDataError
 from protean.core.field.basic import Integer, String
-from protean.core.field.embedded import AggregateField
 from protean.core.subscriber import BaseSubscriber
 from protean.globals import current_domain
 
@@ -32,7 +31,10 @@ class Person(BaseAggregate):
 
 
 class PersonAdded(BaseDomainEvent):
-    person = AggregateField(Person)
+    email = String(max_length=255, required=True)
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50, required=True)
+    age = Integer(default=21)
 
 
 class WelcomeEmail(BaseEmail):
@@ -62,7 +64,5 @@ class WelcomeNewPerson(BaseSubscriber):
         domain_event = PersonAdded
 
     def notify(self, domain_event):
-        email = WelcomeEmail(
-            to=domain_event.person.email, data=domain_event.person.to_dict()
-        )
+        email = WelcomeEmail(to=domain_event.email, data=domain_event.to_dict())
         current_domain.send_email(email)

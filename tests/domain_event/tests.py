@@ -1,3 +1,5 @@
+import uuid
+
 # Protean
 import pytest
 
@@ -18,7 +20,7 @@ class TestDomainEventInitialization:
             BaseDomainEvent()
 
     def test_that_domain_event_can_be_instantiated(self):
-        service = PersonAdded()
+        service = PersonAdded(id=uuid.uuid4(), first_name="John", last_name="Doe")
         assert service is not None
 
 
@@ -46,7 +48,7 @@ class TestDomainEventTriggering:
         newcomer = Person.add_newcomer(
             {"first_name": "John", "last_name": "Doe", "age": 21}
         )
-        mock.assert_called_once_with(PersonAdded(person=newcomer))
+        mock.assert_called_once_with(PersonAdded(**newcomer.to_dict()))
 
     def test_that_domain_event_is_persisted(self, test_domain):
         test_domain.register(Person)
@@ -61,7 +63,7 @@ class TestDomainEventTriggering:
 
         assert event is not None
         assert event.kind == "PersonAdded"
-        assert event.payload["person"] == person.to_dict()
+        assert event.payload == person.to_dict()
 
     def test_that_all_domain_events_are_retrievable(self, test_domain):
         test_domain.register(Person)
@@ -78,4 +80,4 @@ class TestDomainEventTriggering:
         assert isinstance(events, list)
         assert len(events) == 1
         assert events[0].kind == "PersonAdded"
-        assert events[0].payload["person"] == person.to_dict()
+        assert events[0].payload == person.to_dict()

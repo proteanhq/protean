@@ -1,3 +1,5 @@
+import uuid
+
 # Protean
 import pytest
 
@@ -15,7 +17,17 @@ class TestSubscriberInitialization:
             BaseSubscriber()
 
     def test_that_subscriber_can_be_instantiated(self, test_domain):
-        service = NotifySSOSubscriber(test_domain, PersonAdded())
+        service = NotifySSOSubscriber(
+            test_domain,
+            PersonAdded(
+                **{
+                    "id": uuid.uuid4(),
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "age": 21,
+                }
+            ),
+        )
         assert service is not None
 
 
@@ -50,4 +62,4 @@ class TestDomainEventNotification:
         newcomer = Person.add_newcomer(
             {"first_name": "John", "last_name": "Doe", "age": 21}
         )
-        mock.assert_called_once_with(PersonAdded(person=newcomer).to_dict())
+        mock.assert_called_once_with(PersonAdded(**newcomer.to_dict()).to_dict())

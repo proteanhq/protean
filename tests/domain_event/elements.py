@@ -3,8 +3,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService
 from protean.core.command import BaseCommand
 from protean.core.domain_event import BaseDomainEvent
-from protean.core.field.basic import Integer, String
-from protean.core.field.embedded import AggregateField
+from protean.core.field.basic import Identifier, Integer, String
 from protean.core.unit_of_work import UnitOfWork
 from protean.globals import current_domain
 
@@ -30,13 +29,16 @@ class Person(BaseAggregate):
         )
 
         # Publish Event via the domain
-        current_domain.publish(PersonAdded(person=newcomer))
+        current_domain.publish(PersonAdded(**newcomer.to_dict()))
 
         return newcomer
 
 
 class PersonAdded(BaseDomainEvent):
-    person = AggregateField(Person)
+    id = Identifier(required=True)
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50, required=True)
+    age = Integer(default=21)
 
     class Meta:
         aggregate_cls = Person

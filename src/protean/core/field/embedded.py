@@ -4,11 +4,7 @@
 from protean.core.field.base import Field
 
 # Local/Relative Imports
-from .utils import (
-    fetch_aggregate_cls_from_domain,
-    fetch_entity_cls_from_domain,
-    fetch_value_object_cls_from_domain,
-)
+from .utils import fetch_value_object_cls_from_domain
 
 
 class _ShadowField(Field):
@@ -149,40 +145,3 @@ class ValueObjectField(Field):
         """Reset all associated values and clean up dictionary items"""
         self._set_own_value(instance, None)
         self._set_embedded_values(instance, None)
-
-
-class AggregateField(Field):
-    """Field implementation for Aggregates"""
-
-    def __init__(self, aggregate_cls, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._aggregate_cls = aggregate_cls
-
-    @property
-    def aggregate_cls(self):
-        """Property to retrieve aggregate_cls as a Aggregate when possible"""
-        # Checks if ``aggregate_cls`` is a string
-        #   If it is, checks if the Aggregate is imported and available
-        #   If it is, register the class
-        try:
-            if isinstance(self._aggregate_cls, str):
-                self._aggregate_cls = fetch_aggregate_cls_from_domain(
-                    self._aggregate_cls
-                )
-        except AssertionError:
-            # Preserve ``aggregate_cls`` as a string and we will hook up the entity later
-            pass
-
-        return self._aggregate_cls
-
-    def __get__(self, instance, owner):
-        if hasattr(instance, "__dict__"):
-            return instance.__dict__.get(self.field_name).to_dict()
-
-    def __set_name__(self, element_cls, name):
-        super().__set_name__(element_cls, name)
-
-    def _cast_to_type(self, value):
-        if not isinstance(value, self._aggregate_cls):
-            self.fail("invalid", value=value)
-        return value
