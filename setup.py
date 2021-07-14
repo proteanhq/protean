@@ -56,10 +56,8 @@ testing_requires = all_external_requires + [
     "pluggy==0.13.1",
     "pyjwt==1.7.1",
     "pytest-cov==2.8.1",
-    "pytest-flake8==1.0.6",
     "pytest-mock==3.1.0",
-    "pytest-travis-fold==1.3.0",
-    "pytest==5.4.2",
+    "pytest>=5.4.2",
 ]
 
 docs_requires = [
@@ -112,6 +110,7 @@ setup(
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3 :: Only",
         "Topic :: Software Development :: Libraries",
         "Topic :: Software Development :: Libraries :: Application Frameworks",

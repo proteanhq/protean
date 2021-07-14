@@ -35,7 +35,7 @@ def test():
     # Protean
     import pytest
 
-    errno = pytest.main(["-vv", "--cache-clear", "--flake8"])
+    errno = pytest.main(["-vv", "--cache-clear"])
 
     sys.exit(errno)
 
