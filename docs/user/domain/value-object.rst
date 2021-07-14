@@ -47,8 +47,8 @@ Let's again consider the example of a Customer entity in our domain, with Addres
     class Customer(BaseAggregate):
         first_name = String(max_length=255, required=True)
         last_name = String(max_length=255)
-        email = ValueObjectField(Email)
-        address = ValueObjectField(Address)
+        email = ValueObject(Email)
+        address = ValueObject(Address)
 
 For this example, let us assume that a separate table holds Address values in the database. You would care about having access to the customer's address via the Customer object, viz. customer.address.city, or even customer.zipcode. Would we care what the `id` of the Address row is in the table? Probably not.
 

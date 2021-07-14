@@ -5,7 +5,7 @@ from protean.core.entity import BaseEntity
 from protean.core.exceptions import IncorrectUsageError
 from protean.core.field.association import HasOne, Reference
 from protean.core.field.basic import String
-from protean.core.field.embedded import ValueObjectField
+from protean.core.field.embedded import ValueObject
 from protean.core.value_object import BaseValueObject
 from protean.core.view import BaseView
 
@@ -22,11 +22,11 @@ def test_that_views_cannot_have_value_object_fields():
     with pytest.raises(IncorrectUsageError) as exception:
 
         class User(BaseView):
-            email = ValueObjectField(Email)
+            email = ValueObject(Email)
 
     assert (
         exception.value.messages
-        == "Views can only contain basic field types. Remove email (ValueObjectField) from class User"
+        == "Views can only contain basic field types. Remove email (ValueObject) from class User"
     )
 
 

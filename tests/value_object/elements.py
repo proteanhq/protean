@@ -5,7 +5,7 @@ from enum import Enum
 # Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import Float, Identifier, Integer, String
-from protean.core.field.embedded import ValueObjectField
+from protean.core.field.embedded import ValueObject
 from protean.core.value_object import BaseValueObject
 
 
@@ -45,7 +45,7 @@ class Email(BaseValueObject):
 
 
 class User(BaseAggregate):
-    email = ValueObjectField(Email, required=True)
+    email = ValueObject(Email, required=True)
     name = String(max_length=255)
 
 
@@ -84,7 +84,7 @@ class Balance(BaseValueObject):
 
 
 class Account(BaseAggregate):
-    balance = ValueObjectField(Balance, required=True)
+    balance = ValueObject(Balance, required=True)
     kind = String(max_length=15, required=True)
 
 
@@ -118,4 +118,4 @@ class PolymorphicConnection(BaseValueObject):
 
 
 class PolymorphicOwner(BaseAggregate):
-    connector = ValueObjectField(PolymorphicConnection)
+    connector = ValueObject(PolymorphicConnection)

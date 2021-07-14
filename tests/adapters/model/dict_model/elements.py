@@ -7,7 +7,7 @@ from typing import List
 # Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import Integer, String, Text
-from protean.core.field.embedded import ValueObjectField
+from protean.core.field.embedded import ValueObject
 from protean.core.model import BaseModel
 from protean.core.repository import BaseRepository
 from protean.core.value_object import BaseValueObject
@@ -45,7 +45,7 @@ class Email(BaseValueObject):
 
 
 class User(BaseAggregate):
-    email = ValueObjectField(Email, required=True)
+    email = ValueObject(Email, required=True)
     password = String(required=True, max_length=255)
 
 

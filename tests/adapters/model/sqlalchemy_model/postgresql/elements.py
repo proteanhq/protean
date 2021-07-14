@@ -7,7 +7,7 @@ from datetime import datetime
 # Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import DateTime, Integer, String, List
-from protean.core.field.embedded import ValueObjectField
+from protean.core.field.embedded import ValueObject
 from protean.core.model import BaseModel
 from protean.core.value_object import BaseValueObject
 from sqlalchemy import Column, Text
@@ -42,7 +42,7 @@ class Email(BaseValueObject):
 
 
 class ComplexUser(BaseAggregate):
-    email = ValueObjectField(Email, required=True)
+    email = ValueObject(Email, required=True)
     password = String(required=True, max_length=255)
 
 

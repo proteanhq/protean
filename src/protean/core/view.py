@@ -18,7 +18,7 @@ from protean.core.field.association import Association, Reference
 from protean.core.field.base import Field
 from protean.core.field.basic import Auto, Identifier
 from protean.core.entity import _EntityState
-from protean.core.field.embedded import ValueObjectField
+from protean.core.field.embedded import ValueObject
 from protean.globals import current_domain
 from protean.utils import (
     DomainObjects,
@@ -137,7 +137,7 @@ class _ViewMetaclass(type):
 
     def _validate_for_basic_field_types(new_class):
         for field_name, field_obj in new_class.meta_.declared_fields.items():
-            if isinstance(field_obj, (Reference, Association, ValueObjectField)):
+            if isinstance(field_obj, (Reference, Association, ValueObject)):
                 raise IncorrectUsageError(
                     f"Views can only contain basic field types. "
                     f"Remove {field_name} ({field_obj.__class__.__name__}) from class {new_class.__name__}"

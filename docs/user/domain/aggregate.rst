@@ -450,7 +450,7 @@ A map of all fields, including :ref:`user-aggregate-meta-value-object-fields` an
     @domain.aggregate
     class Account:
         account_type = String(max_length=25)
-        balance =  ValueObjectField(Balance)
+        balance =  ValueObject(Balance)
         profile = Reference(Profile)
 
 All fields are available under ``meta_``:
@@ -479,7 +479,7 @@ A map of fields derived from value objects embedded within the Aggregate.
     @domain.aggregate
     class Account:
         account_type = String(max_length=25)
-        balance =  ValueObjectField(Balance)
+        balance =  ValueObject(Balance)
 
 The fields are now available as part of ``meta_`` attributes:
 

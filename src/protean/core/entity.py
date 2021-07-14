@@ -16,7 +16,7 @@ from protean.core.exceptions import (
 )
 from protean.core.field.association import Association, Reference
 from protean.core.field.basic import Auto, Field
-from protean.core.field.embedded import ValueObjectField
+from protean.core.field.embedded import ValueObject
 from protean.globals import current_domain
 from protean.utils import (
     DomainObjects,
@@ -133,7 +133,7 @@ class _EntityMetaclass(type):
         """Walk through value object fields and setup shadow attributes"""
         if new_class.meta_.declared_fields:
             for _, field in new_class.meta_.declared_fields.items():
-                if isinstance(field, ValueObjectField):
+                if isinstance(field, ValueObject):
                     shadow_fields = field.get_shadow_fields()
                     for shadow_field_name, shadow_field in shadow_fields:
                         new_class.meta_.value_object_fields[
@@ -257,7 +257,7 @@ class EntityMeta:
     def attributes(self):
         attributes_dict = {}
         for _, field_obj in self.declared_fields.items():
-            if isinstance(field_obj, ValueObjectField):
+            if isinstance(field_obj, ValueObject):
                 shadow_fields = field_obj.get_shadow_fields()
                 for _, shadow_field in shadow_fields:
                     attributes_dict[shadow_field.attribute_name] = shadow_field
@@ -420,9 +420,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         #   and associated the vo with the entity
         # If the value object was already provided, it will not be overridden.
         for field_name, field_obj in self.meta_.declared_fields.items():
-            if isinstance(field_obj, (ValueObjectField)) and not getattr(
-                self, field_name
-            ):
+            if isinstance(field_obj, (ValueObject)) and not getattr(self, field_name):
                 attributes = [
                     (embedded_field.field_name, embedded_field.attribute_name)
                     for embedded_field in field_obj.embedded_fields.values()
@@ -472,7 +470,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
                         setattr(self, field_name, None)
 
                         # If field is a VO, set underlying attributes to None as well
-                        if isinstance(field_obj, ValueObjectField):
+                        if isinstance(field_obj, ValueObject):
                             for embedded_field in field_obj.embedded_fields.values():
                                 setattr(self, embedded_field.attribute_name, None)
                     except ValidationError as err:
@@ -588,14 +586,14 @@ class BaseEntity(metaclass=_EntityMetaclass):
             #   Reference fields are not necessary because:
             #       - Entities are always shown within Aggregates
             #       - Aggregates with references should not populate the other aggregate's value
-            if not isinstance(field_obj, (ValueObjectField, Reference))
+            if not isinstance(field_obj, (ValueObject, Reference))
         }
 
         # FIXME Simplify fetching and appending Value Object dict values
         vo_fields = {
             field_name: getattr(self, field_name, None)
             for field_name, field_obj in self.meta_.declared_fields.items()
-            if isinstance(field_obj, ValueObjectField)
+            if isinstance(field_obj, ValueObject)
         }
 
         vo_field_values = {}

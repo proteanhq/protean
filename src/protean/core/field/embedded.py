@@ -38,7 +38,7 @@ class _ShadowField(Field):
         instance.__dict__.pop(self.field_name, None)
 
 
-class ValueObjectField(Field):
+class ValueObject(Field):
     """Field implementation for Value Objects"""
 
     def __init__(self, value_object_cls, *args, **kwargs):

@@ -4,7 +4,7 @@ from enum import Enum
 # Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import String
-from protean.core.field.embedded import ValueObjectField
+from protean.core.field.embedded import ValueObject
 from protean.core.value_object import BaseValueObject
 
 
@@ -23,4 +23,4 @@ class File(BaseValueObject):
 
 class Resource(BaseAggregate):
     title = String(required=True, max_length=50)
-    associated_file = ValueObjectField(File)
+    associated_file = ValueObject(File)
