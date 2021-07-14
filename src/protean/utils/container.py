@@ -88,7 +88,7 @@ class ContainerMeta:
         self.abstract = getattr(meta, "abstract", None) or False
 
         # FIXME These attributes should be decided per domain element
-        #   Was added here to be able to move Domain Event Factory into its own file
+        #   Was added here to be able to move Event Factory into its own file
         self.aggregate_cls = getattr(meta, "aggregate_cls", None)
 
         # Initialize Options

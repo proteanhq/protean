@@ -1,10 +1,10 @@
-.. _domain-events:
+.. _events:
 
-=============
-Domain Events
-=============
+======
+Events
+======
 
-A Domain Event is a record of some business-significant occurrence in a Bounded Context. Domain Events help make strategic design possible, by providing the ability for Bounded Contexts to remain distinct, but also communicate effectively. Domain Events are very much a part of the Core Domain, and are identified frequently from the domain's Ubiquitous Language.
+An Event is a record of some business-significant occurrence in a Bounded Context. Events help make strategic design possible, by providing the ability for Bounded Contexts to remain distinct, but also communicate effectively. Events are very much a part of the Core Domain, and are identified frequently from the domain's Ubiquitous Language.
 
 When Events are delivered to interested parties, in the same bounded context, other bounded contexts or even external systems, they are generally used to facilitate eventual consistency. Such a design can eliminate the need for two-phase commits (global transactions) and support the invariant rules defined in Aggregates.
 
@@ -54,10 +54,10 @@ It is also important to remember that there will be a whole of events in the app
 Notes
 =====
 
-* Domain Event objects are immutable in nature.
+* Event objects are immutable in nature.
 * In the rare case that an event contains methods, they should be side-effect free and return new instances of the event.
-* The Domain Event's name should preferably be indicative of a past occurrence; that is, the names should be verbs in the past-tense. Ex. `RoleAdded`, `UserProvisioned`, etc.
+* The Event's name should preferably be indicative of a past occurrence; that is, the names should be verbs in the past-tense. Ex. `RoleAdded`, `UserProvisioned`, etc.
 * The Domain Model should not be exposed to the messaging infrastructure. A new event should be submitted to the domain for publishing, and it is the domain's responsibility to transport it to registered subscribers.
-* Domain Events should include all the necessary information from the originating aggregate, including it's unique identity. Typically, a subscriber should not have to contact the originating aggregate bounded context again for additional information.
+* Events should include all the necessary information from the originating aggregate, including it's unique identity. Typically, a subscriber should not have to contact the originating aggregate bounded context again for additional information.
 
-See :ref:`subscriber` for information on creating consumers of Domain Events.
+See :ref:`subscriber` for information on creating consumers of Events.

@@ -5,7 +5,7 @@ import pytest
 
 from mock import patch
 from protean.adapters.broker.inline import InlineBroker
-from protean.core.domain_event import BaseDomainEvent
+from protean.core.event import BaseEvent
 from protean.globals import current_domain
 from protean.infra.event_log import EventLog, EventLogRepository
 from protean.utils import fully_qualified_name
@@ -17,7 +17,7 @@ from .elements import Person, PersonAdded, PersonCommand, PersonService
 class TestDomainEventInitialization:
     def test_that_base_domain_event_class_cannot_be_instantiated(self):
         with pytest.raises(TypeError):
-            BaseDomainEvent()
+            BaseEvent()
 
     def test_that_domain_event_can_be_instantiated(self):
         service = PersonAdded(id=uuid.uuid4(), first_name="John", last_name="Doe")
@@ -28,18 +28,15 @@ class TestDomainEventRegistration:
     def test_that_domain_event_can_be_registered_with_domain(self, test_domain):
         test_domain.register(PersonAdded)
 
-        assert fully_qualified_name(PersonAdded) in test_domain.registry.domain_events
+        assert fully_qualified_name(PersonAdded) in test_domain.registry.events
 
     def test_that_domain_event_can_be_registered_via_annotations(self, test_domain):
-        @test_domain.domain_event(aggregate_cls=Person)
+        @test_domain.event(aggregate_cls=Person)
         class AnnotatedDomainEvent:
             def special_method(self):
                 pass
 
-        assert (
-            fully_qualified_name(AnnotatedDomainEvent)
-            in test_domain.registry.domain_events
-        )
+        assert fully_qualified_name(AnnotatedDomainEvent) in test_domain.registry.events
 
 
 class TestDomainEventTriggering:
@@ -65,7 +62,7 @@ class TestDomainEventTriggering:
         assert event.kind == "PersonAdded"
         assert event.payload == person.to_dict()
 
-    def test_that_all_domain_events_are_retrievable(self, test_domain):
+    def test_that_all_events_are_retrievable(self, test_domain):
         test_domain.register(Person)
         test_domain.register(EventLog)
         test_domain.register(EventLogRepository)

@@ -81,9 +81,7 @@ class Brokers(collectionsAbc.MutableMapping):
                     f"Broker {broker_name} has not been configured."
                 )
 
-            self._brokers[broker_name].register(
-                subscriber.meta_.domain_event, subscriber
-            )
+            self._brokers[broker_name].register(subscriber.meta_.event, subscriber)
 
         # Initialize command handlers for Brokers
         for _, command_handler_record in self.domain.registry.command_handlers.items():
@@ -99,8 +97,8 @@ class Brokers(collectionsAbc.MutableMapping):
                 command_handler.meta_.command_cls, command_handler
             )
 
-    def publish(self, domain_event):
-        """Publish a domain event to all registered brokers"""
+    def publish(self, event):
+        """Publish an event to all registered brokers"""
         if self._brokers is None:
             self._initialize()
 
@@ -118,22 +116,20 @@ class Brokers(collectionsAbc.MutableMapping):
             ]  # FIXME Do not refer to domain
         ):
             event_dao = self.domain.get_dao(EventLog)
-            event_dao.create(
-                kind=domain_event.__class__.__name__, payload=domain_event.to_dict()
-            )
+            event_dao.create(kind=event.__class__.__name__, payload=event.to_dict())
 
         if current_uow:
             logger.debug(
-                f"Recording {domain_event.__class__.__name__} "
-                f"with values {domain_event.to_dict()} in {current_uow}"
+                f"Recording {event.__class__.__name__} "
+                f"with values {event.to_dict()} in {current_uow}"
             )
-            current_uow.register_event(domain_event)
+            current_uow.register_event(event)
         else:
             logger.debug(
-                f"Publishing {domain_event.__class__.__name__} with values {domain_event.to_dict()}"
+                f"Publishing {event.__class__.__name__} with values {event.to_dict()}"
             )
             for broker_name in self._brokers:
-                self._brokers[broker_name].send_message(domain_event)
+                self._brokers[broker_name].send_message(event)
 
     def publish_command(self, command):
         """Publish a command to registered command handler"""

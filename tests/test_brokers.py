@@ -6,7 +6,7 @@ from mock import patch
 from protean.adapters.broker.inline import InlineBroker
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.core.domain_event import BaseDomainEvent
+from protean.core.event import BaseEvent
 from protean.core.exceptions import ConfigurationError
 from protean.core.field.basic import Auto, String, Integer
 from protean.core.subscriber import BaseSubscriber
@@ -15,7 +15,7 @@ from protean.infra.event_log import EventLog, EventLogRepository
 from protean.port.broker import BaseBroker
 
 
-class PersonAdded(BaseDomainEvent):
+class PersonAdded(BaseEvent):
     id = Auto(identifier=True)
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50, required=True)
@@ -24,10 +24,10 @@ class PersonAdded(BaseDomainEvent):
 
 class NotifySSOSubscriber(BaseSubscriber):
     class Meta:
-        domain_event = PersonAdded
+        event = PersonAdded
 
     def notify(self, domain_event_dict):
-        print("Received Domain Event: ", domain_event_dict)
+        print("Received Event: ", domain_event_dict)
 
 
 class AddPersonCommand(BaseCommand):

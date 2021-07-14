@@ -290,7 +290,7 @@ class Domain(_PackageBoundObject):
         from protean.core.application_service import application_service_factory
         from protean.core.command import command_factory
         from protean.core.command_handler import command_handler_factory
-        from protean.core.domain_event import domain_event_factory
+        from protean.core.event import domain_event_factory
         from protean.core.domain_service import domain_service_factory
         from protean.core.email import email_factory
         from protean.core.entity import entity_factory
@@ -306,7 +306,7 @@ class Domain(_PackageBoundObject):
             DomainObjects.APPLICATION_SERVICE.value: application_service_factory,
             DomainObjects.COMMAND.value: command_factory,
             DomainObjects.COMMAND_HANDLER.value: command_handler_factory,
-            DomainObjects.DOMAIN_EVENT.value: domain_event_factory,
+            DomainObjects.EVENT.value: domain_event_factory,
             DomainObjects.DOMAIN_SERVICE.value: domain_service_factory,
             DomainObjects.EMAIL.value: email_factory,
             DomainObjects.ENTITY.value: entity_factory,
@@ -482,8 +482,8 @@ class Domain(_PackageBoundObject):
     def command_handler(self, command, _cls=None, **kwargs):
         return self._domain_element(DomainObjects.COMMAND_HANDLER, _cls=_cls, **kwargs)
 
-    def domain_event(self, _cls=None, **kwargs):
-        return self._domain_element(DomainObjects.DOMAIN_EVENT, _cls=_cls, **kwargs,)
+    def event(self, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.EVENT, _cls=_cls, **kwargs,)
 
     def domain_service(self, _cls=None, **kwargs):
         return self._domain_element(DomainObjects.DOMAIN_SERVICE, _cls=_cls, **kwargs,)
@@ -516,8 +516,8 @@ class Domain(_PackageBoundObject):
     # Broker Functionality #
     ########################
 
-    def publish(self, domain_event):
-        self.brokers.publish(domain_event)
+    def publish(self, event):
+        self.brokers.publish(event)
 
     def publish_command(self, command):
         self.brokers.publish_command(command)

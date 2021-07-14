@@ -1,6 +1,6 @@
 # Protean
 from protean.core.aggregate import BaseAggregate
-from protean.core.domain_event import BaseDomainEvent
+from protean.core.event import BaseEvent
 from protean.core.field.basic import Auto, Integer, String
 from protean.core.subscriber import BaseSubscriber
 from protean.globals import current_domain
@@ -33,7 +33,7 @@ class Person(BaseAggregate):
         return newcomer
 
 
-class PersonAdded(BaseDomainEvent):
+class PersonAdded(BaseEvent):
     id = Auto(identifier=True)
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50, required=True)
@@ -46,10 +46,10 @@ class NotifySSOSubscriber(BaseSubscriber):
     """
 
     class Meta:
-        domain_event = PersonAdded
+        event = PersonAdded
 
     def notify(self, domain_event_dict):
-        print("Received Domain Event: ", domain_event_dict)
-        print("Domain Event class: ", self.meta_.domain_event)
+        print("Received Event: ", domain_event_dict)
+        print("Event class: ", self.meta_.event)
 
         print("Current domain: ", current_domain.domain_name)

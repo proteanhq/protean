@@ -7,7 +7,7 @@ from collections.abc import Iterable
 # Protean
 from celery import Celery, Task
 from kombu import Queue
-from protean.core.domain_event import BaseDomainEvent
+from protean.core.event import BaseEvent
 from protean.port.broker import BaseBroker
 from protean.utils import DomainObjects, fully_qualified_name
 from protean.utils.inflection import underscore
@@ -65,11 +65,11 @@ class CeleryBroker(BaseBroker):
         return decorated_cls_instance
 
     def register(self, initiator_cls, consumer_cls):
-        """Registers Domain Events and Commands with Subscribers/Command Handlers
+        """Registers Events and Commands with Subscribers/Command Handlers
 
         Arguments:
-            initiator_cls {list} -- One or more Domain Events or Commands
-            consumer_cls {Subscriber/CommandHandler} -- The consumer class connected to the Domain Event or Command
+            initiator_cls {list} -- One or more Events or Commands
+            consumer_cls {Subscriber/CommandHandler} -- The consumer class connected to the Event or Command
         """
         if not isinstance(initiator_cls, Iterable):
             initiator_cls = [initiator_cls]
@@ -77,7 +77,7 @@ class CeleryBroker(BaseBroker):
         decorated_cls_instance = self.construct_and_register_celery_task(consumer_cls)
 
         for initiator in initiator_cls:
-            if initiator.element_type == DomainObjects.DOMAIN_EVENT:
+            if initiator.element_type == DomainObjects.EVENT:
                 self._subscribers[fully_qualified_name(initiator)].add(
                     decorated_cls_instance
                 )
@@ -91,7 +91,7 @@ class CeleryBroker(BaseBroker):
                 ] = decorated_cls_instance
 
     def send_message(self, initiator_obj):
-        if isinstance(initiator_obj, BaseDomainEvent):
+        if isinstance(initiator_obj, BaseEvent):
             for subscriber in self._subscribers[
                 fully_qualified_name(initiator_obj.__class__)
             ]:

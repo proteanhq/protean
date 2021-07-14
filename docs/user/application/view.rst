@@ -78,18 +78,18 @@ Views are typically populated and maintained by Event Handlers:
 
 .. code-block:: python
 
-    @domain.domain_event
+    @domain.event
     class ArticleRated:
         article_id = Identifier(identifier=True)
         rated_by = Identifier()
         rating = Integer(min_value=1, max_value=1)
 
-    @domain.subscriber(domain_event=ArticleRated)
+    @domain.subscriber(event=ArticleRated)
     class PopulateArticleRatingsCount:
-        def notify(self, domain_event):
+        def notify(self, event):
             repo = current_domain.repository_for(ArticleRatingsCount)
 
-            rating_record = repo.find_by_article(domain_event['article_id'])
+            rating_record = repo.find_by_article(event['article_id'])
             rating_record.count += 1
             repo.add(rating_record)
 

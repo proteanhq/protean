@@ -77,7 +77,7 @@ Release History
 * Bugfix to not link shadow fields with Aggregate/Entity classes directly
 * Bugfix to set initialize Shadow (Reference) and Value Object attributes correctly
 * Store Reference and Value Object fields in `Entity.meta_` for later use
-* Allow Subscribers and Handlers to hook into multiple Domain Events
+* Allow Subscribers and Handlers to hook into multiple Events
 * Bugfix to avoid fetching child records without foreign key linkages
 * Add support for Dict serialization
 * Allow persisting and management of child entities via the Aggregate object
@@ -139,7 +139,7 @@ Release History
 
 * Full revamp of Protean codebase to adhere to DDD principles
 * Add `Domain` Composition root, with support for the definition of multiple domains in a project
-* Support for Domain Layer elements: Aggregates, Entities, Value Objects, Domain Services, and Domain Events
+* Support for Domain Layer elements: Aggregates, Entities, Value Objects, Domain Services, and Events
 * Support for Application Layer elements: Application Services, Data Transfer Objects, Repositories, Subscribers and Serializers
 * Support annotations to register elements with Domain
 * Complete revamping of Repository layer, and introduction of an underlying DAO layer

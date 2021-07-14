@@ -41,7 +41,7 @@ class TestApplicationServiceRegistration:
         )
 
     def test_that_domain_event_can_be_registered_via_annotations(self, test_domain):
-        @test_domain.subscriber(domain_event=PersonAdded)
+        @test_domain.subscriber(event=PersonAdded)
         class AnnotatedSubscriber:
             def special_method(self):
                 pass

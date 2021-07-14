@@ -54,7 +54,7 @@ The catch-all logger for messages in the protean hierarchy. No messages are post
 ``protean.domain``
 ^^^^^^^^^^^^^^^^^^
 
-Log messages related to the core domain functionality defined as part of Aggregates, Entities, Value Objects, Domain Services or Domain Events.
+Log messages related to the core domain functionality defined as part of Aggregates, Entities, Value Objects, Domain Services or Events.
 
 .. _logging-protean-application:
 
@@ -75,4 +75,4 @@ Log messages related to the repository layer. If `DEBUG` is set to True, log mes
 ``protean.event``
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-Log messages related to publishing, subscribing and processing of Domain Events.
+Log messages related to publishing, subscribing and processing of Events.

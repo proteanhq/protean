@@ -28,7 +28,7 @@ At its core, Protean encourages a Domain-driven design (DDD) approach to buildin
 Protean can be thought of containing three parts:
 
 1. **Service-Oriented**: Protean helps decompose a domain into one or more subdomains, that can run independently as Microservices
-2. **Event-Driven**: Protean advocates using Domain Events both to propagate changes across different subdomains as well as to achieve eventual consistency in a Bounded Context.
+2. **Event-Driven**: Protean advocates using Events both to propagate changes across different subdomains as well as to achieve eventual consistency in a Bounded Context.
 3. **Adapter-based**: Protean helps you remain technology-agnostic by exposing Port interfaces to the infrastructure, with multiple adapters supported out of the box.
 
 Read :ref:`foreword` and check out the full list of :ref:`key-features` to understand Protean's philosophy.

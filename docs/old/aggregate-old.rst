@@ -72,9 +72,9 @@ However, the wrong transactional boundary can produce an incorrect design and cr
 
 However, it is common to make changes across multiple Aggregates as part of a domain change. If each Aggregate represents a transactional boundary, how do we ensure that changes remain consistent across Aggregates?
 
-Domain events to the rescue. Aggregates publish Domain Events on domain-meaningful changes, and other Aggregates who are interested in the event subscribe to it. The messaging mechanism delivers the Domain Events to interested parties through subscriptions.  When the domain event makes its way to an interested subscriber, a brand new transaction is started for the changes to the related Aggregate and committed.
+Domain events to the rescue. Aggregates publish Events on domain-meaningful changes, and other Aggregates who are interested in the event subscribe to it. The messaging mechanism delivers the Events to interested parties through subscriptions.  When the event makes its way to an interested subscriber, a brand new transaction is started for the changes to the related Aggregate and committed.
 
-The interested Bounded Context can be in the same one Bounded Context as the Domain Event, or it could be in a different BC. Even when you have both the publisher and the subscriber in the same Bounded Context, it makes sense to use the messaging middleware if you already use it for publishing to other Bounded Contexts.
+The interested Bounded Context can be in the same one Bounded Context as the Event, or it could be in a different BC. Even when you have both the publisher and the subscriber in the same Bounded Context, it makes sense to use the messaging middleware if you already use it for publishing to other Bounded Contexts.
 
 If you are in the initial stages of your project and have not invested in a messaging infrastructure, you can commit changes to multiple aggregates in a single transaction but should still use Domain events to publish changes. You can use a Unit of Work pattern to group all changes to be committed together.
 
@@ -113,7 +113,7 @@ The push towards atomicity may be especially strong when many in the design sess
 
 Proving how transactions fail due to concurrent updates by multiple users and the memory overhead taken by such large-cluster designs can help convince stakeholders to move away from a data model oriented thought process.
 
-This exercise indicates that eventual consistency is business-driven, not technology-driven. Of course, you have to find a way to support eventual updates between multiple Aggregates technically. Even so, it is only the business that can determine the acceptable time frame for updates to occur between various Entities. Some are immediate, or transactional, which means the same Aggregate must manage them. Some are eventual, which means they may be managed through Domain Events and messaging, for example.
+This exercise indicates that eventual consistency is business-driven, not technology-driven. Of course, you have to find a way to support eventual updates between multiple Aggregates technically. Even so, it is only the business that can determine the acceptable time frame for updates to occur between various Entities. Some are immediate, or transactional, which means the same Aggregate must manage them. Some are eventual, which means they may be managed through Events and messaging, for example.
 
 Considering what the business would have to do if it ran its operations only employing paper systems, can provide some worthwhile insights into how various domain-driven operations should work within a software model of the business operations.
 

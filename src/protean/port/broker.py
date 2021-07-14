@@ -82,17 +82,17 @@ class BaseBroker(metaclass=_BrokerMetaclass):
         """Placeholder method for brokers to accept incoming events"""
 
     def register(self, initiator_cls, consumer_cls):
-        """Registers Domain Events and Commands with Subscribers/Command Handlers
+        """Registers Events and Commands with Subscribers/Command Handlers
 
         Arguments:
-            initiator_cls {list} -- One or more Domain Events or Commands
-            consumer_cls {Subscriber/CommandHandler} -- The consumer class connected to the Domain Event or Command
+            initiator_cls {list} -- One or more Events or Commands
+            consumer_cls {Subscriber/CommandHandler} -- The consumer class connected to the Event or Command
         """
         if not isinstance(initiator_cls, Iterable):
             initiator_cls = [initiator_cls]
 
         for initiator in initiator_cls:
-            if initiator.element_type == DomainObjects.DOMAIN_EVENT:
+            if initiator.element_type == DomainObjects.EVENT:
                 self._subscribers[fully_qualified_name(initiator)].add(consumer_cls)
                 logger.debug(
                     f"Registered Subscriber {consumer_cls.__name__} with broker {self.name}"

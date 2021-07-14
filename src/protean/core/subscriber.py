@@ -18,7 +18,7 @@ class _SubscriberMetaclass(type):
     Subscriber class.
 
     `meta_` is setup with these attributes:
-        * `domain_event`: The domain_event that this subscriber is associated with
+        * `event`: The event that this subscriber is associated with
     """
 
     def __new__(mcs, name, bases, attrs, **kwargs):
@@ -49,11 +49,11 @@ class SubscriberMeta:
     """ Metadata info for the Subscriber.
 
     Options:
-    - ``domain_event``: The domain_event that this subscriber is associated with
+    - ``event``: The event that this subscriber is associated with
     """
 
     def __init__(self, entity_name, meta):
-        self.domain_event = getattr(meta, "domain_event", None)
+        self.event = getattr(meta, "event", None)
         self.broker = getattr(meta, "broker", None)
         self.aggregate_cls = getattr(meta, "aggregate_cls", None)
 
@@ -74,17 +74,17 @@ class BaseSubscriber(metaclass=_SubscriberMetaclass):
 
     @classmethod
     @abstractmethod
-    def notify(cls, domain_event):
-        """Placeholder method for receiving notifications on domain event"""
+    def notify(cls, event):
+        """Placeholder method for receiving notifications on event"""
         pass
 
 
 def subscriber_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseSubscriber)
 
-    element_cls.meta_.domain_event = (
-        kwargs.pop("domain_event", None)
-        or (hasattr(element_cls, "meta_") and element_cls.meta_.domain_event)
+    element_cls.meta_.event = (
+        kwargs.pop("event", None)
+        or (hasattr(element_cls, "meta_") and element_cls.meta_.event)
         or None
     )
 
@@ -94,9 +94,9 @@ def subscriber_factory(element_cls, **kwargs):
         or "default"
     )
 
-    if not element_cls.meta_.domain_event:
+    if not element_cls.meta_.event:
         raise IncorrectUsageError(
-            f"Subscriber `{element_cls.__name__}` needs to be associated with a Domain Event"
+            f"Subscriber `{element_cls.__name__}` needs to be associated with an Event"
         )
 
     if not element_cls.meta_.broker:
