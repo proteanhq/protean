@@ -2,6 +2,7 @@
 import logging
 
 # Protean
+from protean.core.aggregate import BaseAggregate
 from protean.core.exceptions import IncorrectUsageError, ValidationError
 from protean.core.field.association import HasMany, HasOne
 from protean.globals import current_domain
@@ -217,6 +218,11 @@ def repository_factory(element_cls, **kwargs):
     if not element_cls.meta_.aggregate_cls:
         raise IncorrectUsageError(
             "Repositories need to be associated with an Aggregate"
+        )
+
+    if not issubclass(element_cls.meta_.aggregate_cls, BaseAggregate):
+        raise IncorrectUsageError(
+            {"entity": ["Repositories can only be associated with an Aggregate"]}
         )
 
     return element_cls
