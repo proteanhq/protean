@@ -4,8 +4,8 @@ Protean: The Domain-Centric, Antifragile Framework
 
 Protean helps you build software on architecture stacks that need to survive in the ever changing technology landscape.
 
-.. image:: https://travis-ci.org/proteanhq/protean.svg?branch=master
-    :target: https://travis-ci.org/proteanhq/protean
+.. image:: https://github.com/proteanhq/protean/actions/workflows/ci.yml/badge.svg?branch=master
+    :target: https://github.com/proteanhq/protean/actions
     :alt: Build Status
 .. image:: https://codecov.io/gh/proteanhq/protean/branch/master/graph/badge.svg
     :target: https://codecov.io/gh/proteanhq/protean
