@@ -2,9 +2,6 @@
 import mock
 import pytest
 
-from protean.core.queryset import QuerySet
-from protean.port.dao import ResultSet
-
 # Local/Relative Imports
 from .elements import (
     Account,

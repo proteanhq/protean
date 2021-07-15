@@ -1,7 +1,6 @@
 import json
 import redis
 
-from protean.core.view import BaseView
 from protean.port.cache import BaseCache
 from protean.utils import Cache
 from protean.utils.inflection import underscore

@@ -10,7 +10,6 @@ from uuid import uuid4
 from protean.core.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
-    InvalidDataError,
     NotSupportedError,
     ValidationError,
 )

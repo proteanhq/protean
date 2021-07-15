@@ -1,6 +1,5 @@
 import collections
 import re
-from re import L
 import time
 
 from threading import RLock

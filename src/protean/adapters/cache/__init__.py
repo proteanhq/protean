@@ -11,8 +11,6 @@ except AttributeError:
 
 # Protean
 from protean.core.exceptions import ConfigurationError
-from protean.core.repository import BaseRepository, repository_factory
-from protean.utils import DomainObjects, fully_qualified_name
 from protean.utils.inflection import underscore
 
 logger = logging.getLogger("protean.cache")

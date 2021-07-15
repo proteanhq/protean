@@ -286,7 +286,7 @@ class TestIdentityValues:
 
     def test_mandatory_nature_of_id_field_value(self):
         with pytest.raises(ValidationError):
-            person = Person(first_name="John", last_name="Doe")
+            Person(first_name="John", last_name="Doe")
 
     def test_assigning_explicit_id_during_initialization(self):
         person = Person(id=uuid4(), first_name="John", last_name="Doe")

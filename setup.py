@@ -56,6 +56,7 @@ testing_requires = all_external_requires + [
     "pluggy==0.13.1",
     "pyjwt==1.7.1",
     "pytest-cov==2.8.1",
+    "pytest-flake8>=1.0.7",
     "pytest-mock==3.1.0",
     "pytest>=5.4.2",
 ]

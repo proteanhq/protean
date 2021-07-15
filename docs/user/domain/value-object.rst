@@ -1,5 +1,3 @@
-.. _value-object:
-
 =============
 Value Objects
 =============
@@ -198,7 +196,7 @@ You will then have to register the Value Object with the domain:
 
 In this case, registration is automatic and does not require manual registration of the domain element.
 
-You can assign a VO's value by instantiating an object of the class:
+You can assign a ValueObject's value by instantiating an object of the class:
 
 .. code-block:: python
 

@@ -1,5 +1,3 @@
-import pytest
-
 from protean.core.field.basic import Integer, String
 from protean.core.view import BaseView
 

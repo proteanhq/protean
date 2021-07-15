@@ -1,5 +1,5 @@
-from logging import exception
 import pytest
+
 from protean.core.entity import BaseEntity
 
 from protean.core.exceptions import IncorrectUsageError

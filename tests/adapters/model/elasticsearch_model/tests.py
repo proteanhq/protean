@@ -173,7 +173,7 @@ class TestCustomModel:
 
     def test_persistence_via_model_registered_with_domain_annotation(self, test_domain):
         # Protean
-        from elasticsearch_dsl import Index, Keyword, Text
+        from elasticsearch_dsl import Keyword, Text
 
         test_domain.register(Receiver)
 

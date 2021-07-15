@@ -6,7 +6,6 @@ from redis import Redis
 
 from protean.core.field.basic import Identifier, String
 
-from protean.port.cache import BaseCache
 from protean.adapters.cache.redis import RedisCache
 from protean.utils import Cache
 from protean.core.view import BaseView
@@ -197,8 +196,8 @@ class TestCachePersistenceFlows:
     def test_flushing_cache(self, test_domain):
         cache = test_domain.cache_for(Token)
 
-        token1 = Token(key="qux", user_id="foo", email="bar@baz.com")
-        token2 = Token(key="quux", user_id="fooo", email="baar@baz.com")
+        token1 = Token(key="queen", user_id="foo", email="bar@baz.com")
+        token2 = Token(key="quit", user_id="foo", email="baar@baz.com")
 
         cache.add(token1)
         cache.add(token2)
