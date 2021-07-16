@@ -1,4 +1,3 @@
-# Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService
 from protean.core.command import BaseCommand

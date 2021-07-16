@@ -1,11 +1,9 @@
-# Protean
 import pytest
 
 from protean import Domain
 from protean.core.exceptions import IncorrectUsageError
 from protean.utils import fully_qualified_name
 
-# Local/Relative Imports
 from .elements import UserAggregate, UserEntity, UserFoo, UserVO
 
 
@@ -42,7 +40,6 @@ class TestDomainRegistration:
     def test_that_an_improperly_subclassed_element_cannot_be_registered(
         self, test_domain
     ):
-        # Protean
         from protean.core.field.basic import String
 
         class Foo:
@@ -63,7 +60,6 @@ class TestDomainAnnotations:
         # Standard Library Imports
         from enum import Enum
 
-        # Protean
         from protean.core.field.basic import String
 
         class DummyElement(Enum):

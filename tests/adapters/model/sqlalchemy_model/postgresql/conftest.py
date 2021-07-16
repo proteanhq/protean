@@ -1,15 +1,12 @@
-# Standard Library Imports
 import os
 from typing import List
 
-# Protean
 import pytest
 
 from protean.core.field.basic import Integer
 
 
 def initialize_domain():
-    # Protean
     from protean.domain import Domain
 
     domain = Domain("SQLAlchemy Test - SQLite")
@@ -37,7 +34,6 @@ def test_domain():
 def setup_db():
     with domain.domain_context():
         # Create all associated tables
-        # Local/Relative Imports
         from .elements import (
             ComplexUser,
             Person,

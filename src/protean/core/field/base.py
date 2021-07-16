@@ -1,16 +1,13 @@
 """Module for defining base Field class"""
 
-# Standard Library Imports
 import enum
 
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from typing import Any, Iterable
 
-# Protean
 from protean.core import exceptions
 
-# Local/Relative Imports
 from .mixins import FieldDescriptorMixin
 
 MISSING_ERROR_MESSAGE = (

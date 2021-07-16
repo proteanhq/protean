@@ -1,4 +1,3 @@
-# Standard Library Imports
 import collections
 import importlib
 import logging
@@ -10,7 +9,6 @@ except AttributeError:  # pragma: no cover
     # Until Python 3.7
     collectionsAbc = collections
 
-# Protean
 from protean.core.exceptions import ConfigurationError
 from protean.globals import current_uow
 from protean.utils import DomainObjects
@@ -106,7 +104,6 @@ class Brokers(collectionsAbc.MutableMapping):
         #   There is a pseudo-check to ensure `EventLog` is registered in the domain, to ensure that apps
         #   know about this functionality and opt for it explicitly.
         #   # FIXME Check if Event Log is enabled in config
-        # Protean
         from protean.infra.event_log import EventLog
 
         if (

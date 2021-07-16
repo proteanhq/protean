@@ -1,9 +1,7 @@
-# Protean
 import pytest
 
 from protean.core.exceptions import InvalidOperationError
 
-# Local/Relative Imports
 from .elements import CustomBaseContainer, CustomContainer
 
 

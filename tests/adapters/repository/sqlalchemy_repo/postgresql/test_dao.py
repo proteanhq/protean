@@ -1,8 +1,6 @@
-# Standard Library Imports
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-# Protean
 import pytest
 
 from protean.core.exceptions import (
@@ -13,7 +11,6 @@ from protean.core.exceptions import (
 from protean.core.queryset import Q, QuerySet
 from sqlalchemy.orm.session import Session
 
-# Local/Relative Imports
 from .elements import Person, User
 
 
@@ -871,7 +868,6 @@ class TestDAOLookup:
 
     @pytest.fixture
     def sample_lookup_cls(self):
-        # Protean
         from protean.adapters.repository.sqlalchemy import SAProvider
         from protean.port.dao import BaseLookup
 
@@ -895,7 +891,6 @@ class TestDAOLookup:
         assert lookup.as_expression() == "src <<<>>> trg"
 
     def test_registration_of_a_lookup_to_an_adapter(self, sample_lookup_cls):
-        # Protean
         from protean.adapters.repository.sqlalchemy import SAProvider
 
         assert SAProvider.get_lookups().get("sample") == sample_lookup_cls

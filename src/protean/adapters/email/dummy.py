@@ -1,8 +1,6 @@
 """A Dummy Email Provider class"""
-# Standard Library Imports
 import logging
 
-# Protean
 from protean.core.email import BaseEmailProvider
 
 logger = logging.getLogger("protean.adapters.email")

@@ -1,5 +1,4 @@
 """Module to test SQLAlchemy Provider Class"""
-# Protean
 import pytest
 
 from elasticsearch import Elasticsearch
@@ -8,7 +7,6 @@ from protean.adapters import Providers
 from protean.adapters.repository.elasticsearch import ESProvider
 
 
-# Local/Relative Imports
 from .elements import Alien, Person
 
 

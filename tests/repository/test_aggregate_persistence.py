@@ -1,9 +1,7 @@
-# Protean
 import pytest
 
 from protean.core.exceptions import ObjectNotFoundError
 
-# Local/Relative Imports
 from .elements import Person, PersonRepository
 
 

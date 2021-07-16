@@ -1,4 +1,3 @@
-# Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.field.basic import Auto, Integer, String

@@ -1,5 +1,4 @@
 """Module to test SQLAlchemy Provider Class"""
-# Protean
 import pytest
 
 from protean.adapters.repository import Providers
@@ -7,7 +6,6 @@ from protean.adapters.repository.sqlalchemy import SAProvider
 from sqlalchemy.engine.result import Result
 from sqlalchemy.orm.session import Session
 
-# Local/Relative Imports
 from .elements import Alien, Person
 
 

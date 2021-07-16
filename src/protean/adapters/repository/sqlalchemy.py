@@ -1,12 +1,19 @@
 """Module with repository implementation for SQLAlchemy"""
-# Standard Library Imports
 import logging
 import uuid
 
 from abc import ABCMeta
 from typing import Any
 
-# Protean
+from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
+from sqlalchemy import types as sa_types
+from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
+from sqlalchemy.engine.url import make_url
+from sqlalchemy.exc import DatabaseError
+from sqlalchemy.ext import declarative as sa_dec
+from sqlalchemy.ext.declarative import as_declarative, declared_attr
+from sqlalchemy.types import CHAR, TypeDecorator
+
 from protean.core.exceptions import ConfigurationError, ObjectNotFoundError
 from protean.core.field.association import Reference
 from protean.core.field.basic import (
@@ -28,14 +35,6 @@ from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
 from protean.utils import Database, IdentityType
 from protean.utils.query import Q
-from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
-from sqlalchemy import types as sa_types
-from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
-from sqlalchemy.engine.url import make_url
-from sqlalchemy.exc import DatabaseError
-from sqlalchemy.ext import declarative as sa_dec
-from sqlalchemy.ext.declarative import as_declarative, declared_attr
-from sqlalchemy.types import CHAR, TypeDecorator
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
 logger = logging.getLogger("protean.repository")
@@ -613,7 +612,6 @@ class SAProvider(BaseProvider):
                 if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
             }
 
-            # Protean
             from protean.core.model import ModelMeta
 
             meta_ = ModelMeta()
@@ -638,7 +636,6 @@ class SAProvider(BaseProvider):
         if entity_cls.meta_.schema_name in self._model_classes:
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
-            # Protean
             from protean.core.model import ModelMeta
 
             meta_ = ModelMeta()

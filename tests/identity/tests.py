@@ -1,10 +1,7 @@
-# Standard Library Imports
 from uuid import UUID
 
-# Protean
 import pytest
 
-# Local/Relative Imports
 from .elements import Person
 
 

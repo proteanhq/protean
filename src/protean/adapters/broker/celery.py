@@ -1,12 +1,11 @@
-# Standard Library Imports
 import logging
 import logging.config
 
 from collections.abc import Iterable
 
-# Protean
 from celery import Celery, Task
 from kombu import Queue
+
 from protean.core.event import BaseEvent
 from protean.port.broker import BaseBroker
 from protean.utils import DomainObjects, fully_qualified_name

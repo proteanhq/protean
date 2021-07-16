@@ -1,7 +1,5 @@
-# Standard Library Imports
 from abc import abstractmethod
 
-# Protean
 from protean.utils import DomainObjects, derive_element_class
 
 

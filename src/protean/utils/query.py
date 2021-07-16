@@ -1,5 +1,4 @@
 """Utility classes and methods for DB Adapters, Repositories and Query Constructors"""
-# Standard Library Imports
 import copy
 import functools
 import inspect
@@ -9,7 +8,7 @@ logger = logging.getLogger("protean.repository")
 
 
 def subclasses(cls):
-    """Iterator utilty to loop and clear registered Lookups against a class"""
+    """Iterator utility to loop and clear registered Lookups against a class"""
     yield cls
     for subclass in cls.__subclasses__():
         yield from subclasses(subclass)
@@ -33,7 +32,6 @@ class RegisterLookupMixin:
 
     def get_lookup(self, lookup_name):
         """Fetch Lookup by name"""
-        # Protean
         from protean.port.dao import BaseLookup
 
         lookup = self._get_lookup(lookup_name)

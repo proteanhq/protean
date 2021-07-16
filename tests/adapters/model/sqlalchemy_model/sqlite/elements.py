@@ -1,10 +1,8 @@
-# Standard Library Imports
 import re
 
 from collections import defaultdict
 from datetime import datetime
 
-# Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import DateTime, Integer, String
 from protean.core.field.embedded import ValueObject

@@ -1,8 +1,6 @@
 """Value Object Functionality and Classes"""
-# Standard Library Imports
 import logging
 
-# Protean
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import BaseContainer
 

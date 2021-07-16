@@ -1,10 +1,8 @@
 """Base class for Providers"""
 
-# Standard Library Imports
 from abc import ABCMeta, abstractmethod
 from typing import Any
 
-# Protean
 from protean.utils.query import RegisterLookupMixin
 
 

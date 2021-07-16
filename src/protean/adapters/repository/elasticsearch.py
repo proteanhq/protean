@@ -1,16 +1,15 @@
 """Module containing repository implementation for Elasticsearch"""
-# Standard Library Imports
 import logging
 
 from typing import Any
 from uuid import UUID
 
-# Protean
 import elasticsearch_dsl
 
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Document, Index, Search, query
+
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.field.association import Reference
 from protean.globals import current_domain
@@ -410,7 +409,6 @@ class ESProvider(BaseProvider):
                 if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
             }
 
-            # Protean
             from protean.core.model import ModelMeta
 
             meta_ = ModelMeta()
@@ -435,7 +433,6 @@ class ESProvider(BaseProvider):
         if entity_cls.meta_.schema_name in self._model_classes:
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
-            # Protean
             from protean.core.model import ModelMeta
 
             meta_ = ModelMeta()

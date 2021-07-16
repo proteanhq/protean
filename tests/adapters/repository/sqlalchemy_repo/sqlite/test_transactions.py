@@ -1,14 +1,11 @@
-# Standard Library Imports
 import random
 import string
 
-# Protean
 import pytest
 
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.unit_of_work import UnitOfWork
 
-# Local/Relative Imports
 from .elements import Person, PersonRepository
 
 
@@ -133,7 +130,7 @@ class TestTransactions:
         with pytest.raises(ObjectNotFoundError):
             person_dao.get(person_to_be_deleted.id)
 
-    def test_changed_objects_are_committed_as_part_of_one_transaction_on_explict_commit(
+    def test_changed_objects_are_committed_as_part_of_one_transaction_on_explicit_commit(
         self, test_domain
     ):
         # Add a Person the database

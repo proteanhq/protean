@@ -1,7 +1,5 @@
-# Protean
 import pytest
 
-# Local/Relative Imports
 from .aggregate_elements import Comment, Post, PostMeta
 
 

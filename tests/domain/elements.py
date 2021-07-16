@@ -1,7 +1,5 @@
-# Standard Library Imports
 from enum import Enum
 
-# Protean
 from protean.core.field.basic import String
 from protean.utils import DomainObjects
 

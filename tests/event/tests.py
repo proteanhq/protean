@@ -1,6 +1,5 @@
 import uuid
 
-# Protean
 import pytest
 
 from mock import patch
@@ -10,7 +9,6 @@ from protean.globals import current_domain
 from protean.infra.event_log import EventLog, EventLogRepository
 from protean.utils import fully_qualified_name
 
-# Local/Relative Imports
 from .elements import Person, PersonAdded, PersonCommand, PersonService
 
 

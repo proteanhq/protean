@@ -1,8 +1,6 @@
-# Standard Library Imports
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-# Protean
 import pytest
 
 from elasticsearch import Elasticsearch
@@ -13,7 +11,6 @@ from protean.core.exceptions import (
 )
 from protean.core.queryset import Q, QuerySet
 
-# Local/Relative Imports
 from .elements import Person, User
 
 

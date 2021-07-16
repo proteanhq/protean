@@ -1,4 +1,3 @@
-# Protean
 import pytest
 
 from protean.globals import current_domain, g
@@ -7,7 +6,6 @@ from protean.globals import current_domain, g
 class TestDomainContext:
     @pytest.fixture
     def test_domain(self):
-        # Protean
         from protean.domain import Domain
 
         domain = Domain("Test")
@@ -103,7 +101,6 @@ class TestDomainContext:
             class FooBar:
                 pass
 
-            # Protean
             from protean.utils import DomainObjects
 
             with test_domain.domain_context():

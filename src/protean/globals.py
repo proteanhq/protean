@@ -1,7 +1,5 @@
-# Standard Library Imports
 from functools import partial
 
-# Protean
 from werkzeug.local import LocalProxy, LocalStack
 
 _domain_ctx_err_msg = """\

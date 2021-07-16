@@ -1,9 +1,7 @@
-# Protean
 import pytest
 
 from protean.adapters.repository.elasticsearch import ElasticsearchModel
 
-# Local/Relative Imports
 from .elements import (
     ComplexUser,
     Email,
@@ -51,7 +49,6 @@ class TestDefaultModel:
         assert person_copy.id == person_model_obj.meta.id
 
     def test_dynamically_constructed_model_attributes(self, test_domain):
-        # Protean
         from elasticsearch_dsl import Index
 
         test_domain.register(Receiver)
@@ -148,7 +145,6 @@ class TestCustomModel:
         assert provider.name == "John"
 
     def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
-        # Protean
         from elasticsearch_dsl import Index, Keyword, Text
 
         test_domain.register(Receiver)
@@ -172,7 +168,6 @@ class TestCustomModel:
         assert model_cls.name._params["fields"] == {"raw": Keyword()}
 
     def test_persistence_via_model_registered_with_domain_annotation(self, test_domain):
-        # Protean
         from elasticsearch_dsl import Keyword, Text
 
         test_domain.register(Receiver)

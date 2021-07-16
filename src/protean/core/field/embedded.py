@@ -1,9 +1,7 @@
 """Module for defining embedded fields"""
 
-# Protean
 from protean.core.field.base import Field
 
-# Local/Relative Imports
 from .utils import fetch_value_object_cls_from_domain
 
 

@@ -1,7 +1,5 @@
-# Standard Library Imports
 from datetime import datetime
 
-# Protean
 import pytest
 
 from protean.core.exceptions import ValidationError

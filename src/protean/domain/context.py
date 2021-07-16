@@ -1,9 +1,7 @@
 """Context Management Framework"""
-# Standard Library Imports
 import logging
 import sys
 
-# Protean
 from protean.globals import _domain_context_stack
 
 # a singleton sentinel value for parameter defaults

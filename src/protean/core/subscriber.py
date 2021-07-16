@@ -1,9 +1,7 @@
-# Standard Library Imports
 import logging
 
 from abc import abstractmethod
 
-# Protean
 from protean.core.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, derive_element_class
 

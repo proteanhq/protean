@@ -1,8 +1,6 @@
 """Aggregate Functionality and Classes"""
-# Standard Library Imports
 import logging
 
-# Protean
 from protean.core.entity import BaseEntity
 from protean.utils import DomainObjects, derive_element_class
 

@@ -1,12 +1,12 @@
 """This module implements the central domain object, along with decorators
 to register Domain Elements.
 """
-# Standard Library Imports
 import logging
 import sys
 
-# Protean
-from protean.adapters import Brokers, EmailProviders, Providers, Caches
+from werkzeug.datastructures import ImmutableDict
+
+from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.core.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -14,9 +14,7 @@ from protean.core.exceptions import (
 )
 from protean.domain.registry import _DomainRegistry
 from protean.utils import DomainObjects, fully_qualified_name
-from werkzeug.datastructures import ImmutableDict
 
-# Local/Relative Imports
 from .config import Config, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals
 from .helpers import _PackageBoundObject, get_debug_flag, get_env
@@ -42,7 +40,6 @@ class Domain(_PackageBoundObject):
     :param domain_name: the name of the domain
     """
 
-    # Protean
     from protean.utils import IdentityStrategy, IdentityType
 
     config_class = Config
@@ -285,15 +282,14 @@ class Domain(_PackageBoundObject):
         return self._domain_registry
 
     def factory_for(self, domain_object_type):
-        # Protean
         from protean.core.aggregate import aggregate_factory
         from protean.core.application_service import application_service_factory
         from protean.core.command import command_factory
         from protean.core.command_handler import command_handler_factory
-        from protean.core.event import domain_event_factory
         from protean.core.domain_service import domain_service_factory
         from protean.core.email import email_factory
         from protean.core.entity import entity_factory
+        from protean.core.event import domain_event_factory
         from protean.core.model import model_factory
         from protean.core.repository import repository_factory
         from protean.core.serializer import serializer_factory

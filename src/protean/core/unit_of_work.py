@@ -1,7 +1,5 @@
-# Standard Library Imports
 import logging
 
-# Protean
 from protean.core.exceptions import InvalidOperationError, ValidationError
 from protean.globals import _uow_context_stack, current_domain
 

@@ -1,6 +1,5 @@
 """Module to test other Protean Functions and Utilities"""
 
-# Protean
 import pytest
 
 from protean.core import entity

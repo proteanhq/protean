@@ -1,8 +1,6 @@
-# Protean
 from protean.core.entity import EntityMeta
 from protean.core.field.basic import Auto, Integer, String
 
-# Local/Relative Imports
 from .elements import (
     AbstractPerson,
     Adult,

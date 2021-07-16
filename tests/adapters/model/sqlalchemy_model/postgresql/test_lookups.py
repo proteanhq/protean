@@ -1,4 +1,3 @@
-# Protean
 import pytest
 
 from protean.adapters.repository.sqlalchemy import Any, Contains, In, Overlap

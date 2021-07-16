@@ -1,7 +1,5 @@
-# Standard Library Imports
 from abc import abstractmethod
 
-# Protean
 from protean.core.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects
 

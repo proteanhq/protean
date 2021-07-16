@@ -1,4 +1,3 @@
-# Standard Library Imports
 import logging
 import logging.config
 
@@ -6,7 +5,6 @@ from abc import abstractmethod
 from collections import defaultdict
 from collections.abc import Iterable
 
-# Protean
 from protean.utils import DomainObjects, fully_qualified_name
 
 logger = logging.getLogger("protean.port.broker")

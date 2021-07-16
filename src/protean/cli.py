@@ -14,7 +14,6 @@ Why does this file exist, and why not put this in __main__?
 
   Also see (1) from http://click.pocoo.org/5/setuptools/#setuptools-integration
 """
-# Protean
 import click
 
 
@@ -32,7 +31,6 @@ def test():
     # Standard Library Imports
     import sys
 
-    # Protean
     import pytest
 
     errno = pytest.main(["-vv", "--cache-clear", "--flake8"])
@@ -42,7 +40,6 @@ def test():
 
 @main.command()
 def new():
-    # Protean
     from cookiecutter.main import cookiecutter
 
     # Create project from the cookiecutter-protean.git repo template
@@ -52,7 +49,6 @@ def new():
 @main.command()
 def livereload_docs():
     """Run in shell as `protean livereload-docs`"""
-    # Protean
     from livereload import Server, shell
 
     server = Server()

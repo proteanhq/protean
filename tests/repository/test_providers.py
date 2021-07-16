@@ -1,7 +1,5 @@
-# Standard Library Imports
 from typing import List
 
-# Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import Integer, String
 from protean.core.repository import BaseRepository

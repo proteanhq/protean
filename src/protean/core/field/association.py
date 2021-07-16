@@ -1,12 +1,9 @@
-# Standard Library Imports
 from abc import abstractmethod
 
-# Protean
 from protean import utils
 from protean.core import exceptions
 from protean.globals import current_domain
 
-# Local/Relative Imports
 from .base import Field
 from .mixins import FieldCacheMixin, FieldDescriptorMixin
 from .utils import fetch_entity_cls_from_registry

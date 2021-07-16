@@ -1,11 +1,9 @@
-# Protean
 import pytest
 
 from mock import patch
 from protean.core.command_handler import BaseCommandHandler
 from protean.utils import fully_qualified_name
 
-# Local/Relative Imports
 from .elements import AddNewPersonCommandHandler, AddPersonCommand
 
 

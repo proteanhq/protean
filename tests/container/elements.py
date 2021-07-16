@@ -1,4 +1,3 @@
-# Protean
 from protean.core.field.basic import String
 from protean.utils.container import BaseContainer
 

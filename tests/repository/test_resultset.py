@@ -1,4 +1,3 @@
-# Protean
 from protean.port.dao import ResultSet
 
 

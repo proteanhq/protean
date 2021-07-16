@@ -1,13 +1,10 @@
-# Standard Library Imports
 from datetime import datetime, timedelta
 
-# Protean
 import pytest
 
 from protean.core.exceptions import ObjectNotFoundError, TooManyObjectsError
 from protean.core.queryset import QuerySet
 
-# Local/Relative Imports
 from .elements import Person, PersonRepository, User
 
 

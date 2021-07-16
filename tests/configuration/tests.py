@@ -1,7 +1,5 @@
-# Standard Library Imports
 import os
 
-# Protean
 import pytest
 
 from protean.domain import Domain

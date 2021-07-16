@@ -1,5 +1,4 @@
 """ Utility functions for the Field Module """
-# Protean
 from protean.core.exceptions import ConfigurationError
 from protean.globals import current_domain
 from protean.utils import DomainObjects

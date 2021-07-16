@@ -1,10 +1,8 @@
-# Protean
 import pytest
 
 from protean.core.domain_service import BaseDomainService
 from protean.utils import fully_qualified_name
 
-# Local/Relative Imports
 from .elements import DummyDomainService
 
 

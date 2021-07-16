@@ -1,6 +1,5 @@
 # cSpell: disable
 
-# Protean
 from protean.utils import Database, IdentityStrategy, IdentityType
 
 DEBUG = True

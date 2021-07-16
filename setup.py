@@ -5,14 +5,12 @@
 
 from __future__ import absolute_import, print_function
 
-# Standard Library Imports
 import io
 import re
 
 from glob import glob
 from os.path import basename, dirname, join, splitext
 
-# Protean
 from setuptools import find_packages, setup
 
 

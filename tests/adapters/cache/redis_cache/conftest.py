@@ -1,12 +1,9 @@
-# Standard Library Imports
 import os
 
-# Protean
 import pytest
 
 
 def initialize_domain():
-    # Protean
     from protean.domain import Domain
 
     domain = Domain("Redis Cache Tests")

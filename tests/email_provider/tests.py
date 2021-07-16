@@ -1,4 +1,3 @@
-# Protean
 import pytest
 
 from mock import patch
@@ -6,7 +5,6 @@ from protean.adapters import DummyEmailProvider
 from protean.core.email import BaseEmail
 from protean.utils import fully_qualified_name
 
-# Local/Relative Imports
 from .elements import Person, PersonAdded, WelcomeEmail, WelcomeNewPerson
 
 

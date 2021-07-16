@@ -1,15 +1,12 @@
-# Standard Library Imports
 from collections import OrderedDict
 from datetime import datetime
 
-# Protean
 import pytest
 
 from protean.core.entity import _EntityMetaclass
 from protean.core.exceptions import ValidationError
 from protean.utils import fully_qualified_name
 
-# Local/Relative Imports
 from .elements import (
     AccountWithId,
     Comment,

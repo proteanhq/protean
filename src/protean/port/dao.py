@@ -1,10 +1,8 @@
-# Standard Library Imports
 import logging
 
 from abc import ABCMeta, abstractmethod
 from typing import Any
 
-# Protean
 from protean.core.entity import BaseEntity
 from protean.core.exceptions import (
     ObjectNotFoundError,

@@ -1,4 +1,3 @@
-# Protean
 import pytest
 
 from celery import Task

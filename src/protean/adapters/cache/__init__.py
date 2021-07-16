@@ -1,5 +1,4 @@
 """ Package for  Concrete Implementations of Protean repositories """
-# Standard Library Imports
 import collections
 import importlib
 import logging
@@ -9,7 +8,6 @@ try:
 except AttributeError:
     collectionsAbc = collections
 
-# Protean
 from protean.core.exceptions import ConfigurationError
 from protean.utils.inflection import underscore
 

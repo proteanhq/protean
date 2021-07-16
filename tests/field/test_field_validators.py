@@ -1,8 +1,6 @@
 """ Test cases for validators"""
-# Standard Library Imports
 import re
 
-# Protean
 import pytest
 
 from protean.core.exceptions import ValidationError

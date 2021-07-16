@@ -1,7 +1,5 @@
-# Standard Library Imports
 from abc import abstractmethod
 
-# Protean
 from protean.globals import current_domain
 from protean.utils import (
     DomainObjects,

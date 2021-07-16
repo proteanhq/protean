@@ -1,4 +1,3 @@
-# Protean
 import pytest
 
 from protean.adapters.repository import elasticsearch as repo

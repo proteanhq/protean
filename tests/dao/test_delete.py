@@ -1,10 +1,8 @@
-# Protean
 import pytest
 
 from protean.core.exceptions import ObjectNotFoundError
 from protean.core.queryset import Q
 
-# Local/Relative Imports
 from .elements import Person, PersonRepository, User
 
 

@@ -1,8 +1,6 @@
-# Standard Library Imports
 import importlib
 import logging
 
-# Protean
 from protean.core.exceptions import ConfigurationError
 from protean.globals import current_uow
 

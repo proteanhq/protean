@@ -1,5 +1,4 @@
 """Entity Functionality and Classes"""
-# Standard Library Imports
 import copy
 import logging
 
@@ -7,7 +6,6 @@ from collections import defaultdict
 from functools import partial
 from uuid import uuid4
 
-# Protean
 from protean.core.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -26,11 +24,10 @@ from protean.utils import (
     inflection,
 )
 
-# Local/Relative Imports
-from ..core.field.association import (
+from ..core.field.association import (  # Relative path to private class
     HasMany,
     _ReferenceField,
-)  # Relative path to private class
+)
 
 logger = logging.getLogger("protean.domain.entity")
 

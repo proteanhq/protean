@@ -3,13 +3,11 @@
 Definitions/declaractions in this module should be independent of other modules,
 to the maximum extent possible.
 """
-# Standard Library Imports
 import functools
 import logging
 
 from enum import Enum, auto
 
-# Protean
 from protean.core.exceptions import IncorrectUsageError
 
 logger = logging.getLogger("protean.utils")

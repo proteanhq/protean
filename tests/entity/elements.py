@@ -1,8 +1,6 @@
-# Standard Library Imports
 from collections import defaultdict
 from enum import Enum
 
-# Protean
 from protean.core.entity import BaseEntity
 from protean.core.field.basic import Auto, Integer, String
 from protean.core.field.association import HasOne

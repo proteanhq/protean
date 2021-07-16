@@ -1,10 +1,8 @@
-# Protean
 import pytest
 
 from mock import patch
 from protean.adapters.email.sendgrid import SendgridEmailProvider
 
-# Local/Relative Imports
 from .elements import Person, PersonAdded, WelcomeEmail, WelcomeNewPerson
 
 

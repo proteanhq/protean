@@ -1,11 +1,10 @@
 """ Define the send-grid email provider """
-# Standard Library Imports
 import logging
 
-# Protean
-from protean.core.email import BaseEmailProvider
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, TemplateId
+
+from protean.core.email import BaseEmailProvider
 
 logger = logging.getLogger("protean.email.sendgrid")
 

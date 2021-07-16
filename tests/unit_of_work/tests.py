@@ -1,4 +1,3 @@
-# Protean
 import pytest
 
 from protean.core.exceptions import InvalidOperationError

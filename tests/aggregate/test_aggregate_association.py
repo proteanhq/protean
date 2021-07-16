@@ -1,8 +1,6 @@
-# Protean
 import mock
 import pytest
 
-# Local/Relative Imports
 from .elements import (
     Account,
     AccountVia,

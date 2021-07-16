@@ -1,12 +1,10 @@
 """QuerySet Implementation"""
 
-# Standard Library Imports
 import copy
 import logging
 
 from typing import Any, Union
 
-# Protean
 from protean.utils.query import Q
 
 logger = logging.getLogger("protean.repository.queryset")

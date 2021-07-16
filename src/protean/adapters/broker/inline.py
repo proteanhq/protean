@@ -1,4 +1,3 @@
-# Protean
 from protean.core.event import BaseEvent
 from protean.globals import current_domain
 from protean.port.broker import BaseBroker

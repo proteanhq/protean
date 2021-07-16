@@ -1,5 +1,4 @@
 # Adapters
-# Protean
 from protean.adapters.broker import Brokers
 from protean.adapters.broker.inline import InlineBroker
 from protean.adapters.cache import Caches

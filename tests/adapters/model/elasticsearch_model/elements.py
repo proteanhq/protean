@@ -1,10 +1,8 @@
-# Standard Library Imports
 import re
 
 from collections import defaultdict
 from datetime import datetime
 
-# Protean
 from elasticsearch_dsl import Keyword, Text
 from protean.adapters.repository.elasticsearch import ElasticsearchModel
 from protean.core.aggregate import BaseAggregate

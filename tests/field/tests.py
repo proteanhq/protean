@@ -1,6 +1,5 @@
 """Test Field Functionality"""
 
-# Protean
 import pytest
 
 from protean.core.exceptions import ValidationError

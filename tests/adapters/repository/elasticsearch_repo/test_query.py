@@ -1,9 +1,7 @@
-# Protean
 import pytest
 
 from elasticsearch_dsl.query import Bool, Term
 
-# Local/Relative Imports
 from .elements import Person
 
 

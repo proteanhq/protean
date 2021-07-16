@@ -1,7 +1,5 @@
-# Standard Library Imports
 import logging
 
-# Protean
 from protean.core.aggregate import BaseAggregate
 from protean.core.exceptions import IncorrectUsageError, ValidationError
 from protean.core.field.association import HasMany, HasOne

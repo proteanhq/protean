@@ -1,14 +1,11 @@
-# Standard Library Imports
 import os
 
-# Protean
 import pytest
 
 from redis import Redis
 
 
 def initialize_domain():
-    # Protean
     from protean.domain import Domain
 
     domain = Domain("Celery Tests")

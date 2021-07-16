@@ -1,11 +1,9 @@
-# Standard Library Imports
 import logging
 
 from collections import defaultdict
 from enum import Enum
 from typing import Any, Dict
 
-# Protean
 import inflection
 
 from protean.utils import DomainObjects, fully_qualified_name

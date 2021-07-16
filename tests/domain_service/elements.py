@@ -1,4 +1,3 @@
-# Protean
 from protean.core.domain_service import BaseDomainService
 
 

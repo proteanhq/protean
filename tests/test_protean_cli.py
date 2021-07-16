@@ -1,4 +1,3 @@
-# Protean
 from click.testing import CliRunner
 from protean.cli import main
 
@@ -7,7 +6,6 @@ def test_main():
     runner = CliRunner()
     result = runner.invoke(main, ["--version"])
 
-    # Protean
     from protean import __version__
 
     assert result.output == "main, version {protean_version}\n".format(

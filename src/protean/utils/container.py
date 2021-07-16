@@ -1,10 +1,8 @@
-# Standard Library Imports
 import copy
 import logging
 
 from collections import defaultdict
 
-# Protean
 from protean.core.exceptions import InvalidDataError, NotSupportedError, ValidationError
 from protean.core.field.basic import Field
 

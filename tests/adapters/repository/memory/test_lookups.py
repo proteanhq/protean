@@ -1,14 +1,11 @@
-# Standard Library Imports
 from datetime import datetime
 
-# Protean
 from protean.adapters.repository.memory import Exact
 
 
 class TestLookup:
     """This class holds tests for Lookup Class"""
 
-    # Protean
     from protean.adapters.repository.memory import MemoryProvider
     from protean.port.dao import BaseLookup
 
@@ -26,7 +23,6 @@ class TestLookup:
         assert lookup.as_expression() == "src <<<>>> trg"
 
     def test_registration_of_a_lookup_to_an_adapter(self):
-        # Protean
         from protean.adapters.repository.memory import MemoryProvider
 
         assert MemoryProvider.get_lookups().get("sample") == self.SampleLookup

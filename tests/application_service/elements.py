@@ -1,4 +1,3 @@
-# Protean
 from protean.core.application_service import BaseApplicationService
 
 

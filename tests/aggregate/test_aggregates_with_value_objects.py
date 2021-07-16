@@ -1,4 +1,3 @@
-# Local/Relative Imports
 from .aggregate_elements_with_value_objects import File, Resource
 
 

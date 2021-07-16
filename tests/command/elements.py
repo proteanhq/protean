@@ -1,4 +1,3 @@
-# Protean
 from protean.core.command import BaseCommand
 from protean.core.field.basic import String
 

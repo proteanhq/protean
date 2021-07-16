@@ -1,9 +1,7 @@
-# Protean
 import pytest
 
 from protean.globals import current_domain
 
-# Local/Relative Imports
 from .child_entities import Comment, Post, PostMeta
 
 

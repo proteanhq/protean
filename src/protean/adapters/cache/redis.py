@@ -1,4 +1,5 @@
 import json
+
 import redis
 
 from protean.port.cache import BaseCache

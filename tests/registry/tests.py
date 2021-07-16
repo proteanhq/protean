@@ -1,8 +1,6 @@
-# Standard Library Imports
 from datetime import datetime
 from enum import Enum
 
-# Protean
 import inflection
 import pytest
 

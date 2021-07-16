@@ -1,4 +1,3 @@
-# Protean
 import pytest
 
 from protean.core.entity import BaseEntity

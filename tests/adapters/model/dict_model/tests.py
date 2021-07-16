@@ -1,9 +1,7 @@
-# Protean
 import pytest
 
 from protean.adapters.repository.memory import MemoryModel
 
-# Local/Relative Imports
 from .elements import Email, Person, Provider, ProviderCustomModel, Receiver, User
 
 
@@ -91,7 +89,6 @@ class TestCustomModel:
         assert model_cls.__name__ == "ProviderCustomModel"
 
     def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
-        # Protean
         from protean.core.field.basic import Text
 
         test_domain.register(Receiver)
