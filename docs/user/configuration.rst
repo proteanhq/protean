@@ -42,6 +42,8 @@ The environment is used to indicate to Protean, its extensions, and other progra
 
 Setting PROTEAN_ENV to development will enable debug mode. To control this separately from the environment, use the PROTEAN_DEBUG flag.
 
+.. _user-configuration-parameters:
+
 Builtin Configuration Parameters
 ================================
 
@@ -76,7 +78,10 @@ The following configuration values are used internally by Protean:
 
     Default: ``100``
 
-.. py:data:: IDENTITY_STRATEGY
+.. _user-configuration-identity-strategy:
+
+IDENTITY_STRATEGY
+-----------------
 
     What Strategy to use generate Unique Identifiers.
 
@@ -90,11 +95,16 @@ The following configuration values are used internally by Protean:
 
     Default: ``IdentityStrategy.UUID``
 
-.. py:data:: IDENTITY_TYPE
 
-    The :ref:`field_type` acting as the identifier for the domain. Can be among :ref:`string`, :ref:`guid`, or :ref:`integer`.
+.. _user-configuration-identity-type:
 
-.. py:data:: DATABASES
+IDENTITY_TYPE
+-------------
+
+    The type of value acting as the identifier for the domain. Can be among "INTEGER", "STRING", or "UUID".
+
+DATABASES
+---------
 
     Protean allows you to specify the database provider you want to use with your application. By virtue of using a Ports and Adapters architecture, you can switch between databases at any time, and your application should work seamlessly.
 
@@ -110,7 +120,8 @@ The following configuration values are used internally by Protean:
             }
         }
 
-.. py:data:: BROKERS
+BROKERS
+-------
 
     Protean uses Message Brokers for publishing and propagating Domain events within and across Bounded Contexts.
 

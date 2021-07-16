@@ -4,7 +4,7 @@ Views
 
 Views are read-only data representations on the **read** side of the CQRS pattern, that cater to specific requirements typically outlined by APIs or Reports. They are also referred to as Projections (especially in EventSourcing) or Read-only Models.
 
-Views look and feel very similar to :ref:`Entities <entity>` with a couple of important exceptions:
+Views look and feel very similar to :ref:`Entities <user-entity>` with a couple of important exceptions:
 
 * **A View's identity is never auto-generated**: While an identity field called `id` is still added automatically to the view model, it is up to the domain to generate and assign identifiers. The unique identifier for the view - either a primary key of an existing data record or dynamically generated - should be populated explicitly.
 * **A View can only contain basic types of fields**: Other Domain Elements like Value Objects, as well as relationships like Reference, HasOne, and HasMany are not permitted. This is to encourage developers to construct views as wholesome data records, that don't contain complex business rules and don't require combining data from different views.

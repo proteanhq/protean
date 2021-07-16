@@ -1,5 +1,3 @@
-.. _events:
-
 ======
 Events
 ======
@@ -12,17 +10,7 @@ One rule of Aggregates states that only a single instance should be modified in 
 
 It is also important to remember that there will be a whole of events in the application that the domain experts or the business do not really care about. Still, it is possible that Events will be more prolific than domain experts directly require, purely because of technical requirements. It is usually recommended that business events are annotated for easy recognition.
 
-.. testsetup:: *
-
-    import os
-    from protean.domain import Domain
-
-    domain = Domain('Test')
-
-    ctx = domain.domain_context()
-    ctx.push()
-
-.. doctest::
+.. code-block:: python
 
     from datetime import datetime
 
@@ -49,7 +37,9 @@ It is also important to remember that there will be a whole of events in the app
 
             return new_role
 
-    role = Role.add_new_role({'name': 'ADMIN'})
+Adding a new role generates a ``RoleAdded`` event::
+
+    >>> role = Role.add_new_role({'name': 'ADMIN'})
 
 Notes
 =====

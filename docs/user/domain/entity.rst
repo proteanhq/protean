@@ -1,4 +1,4 @@
-.. _entity:
+.. _user-entity:
 
 ========
 Entities
@@ -6,9 +6,9 @@ Entities
 
 An Entity represents an unique object in the domain model. Entities are identified by their unique identities that remain the same throughout its life - they are not defined by their attributes or values. For example, a passenger in the airline domain is an Entity. The passenger's identity remains the same across multiple seat bookings, even if her profile information (name, address, etc.) changes over time.
 
-An Entity in one domain may not be an Entity in another. For example, a seat is an Entity if airlines distinguish each seat uniquely on every flight. If passengers are not allotted specific seats, then a seat can be considered a :ref:`value_object` as one seat can be exchanged with another.
+An Entity in one domain may not be an Entity in another. For example, a seat is an Entity if airlines distinguish each seat uniquely on every flight. If passengers are not allotted specific seats, then a seat can be considered a :ref:`user-value-objects` as one seat can be exchanged with another.
 
-In Protean, Entities are always associated with an :ref:`aggregate`, which is the root Entity that manages the cluster of related entities.
+In Protean, Entities are always associated with an :ref:`user-aggregate`, which is the root Entity that manages the cluster of related entities.
 
 Usage
 =====

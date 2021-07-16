@@ -1,5 +1,3 @@
-.. _domain-services:
-
 ===============
 Domain Services
 ===============
@@ -8,7 +6,7 @@ A **Domain Service** handles stateless operations that execute domain-specific t
 
     When a significant process or transformation in the domain is not a natural responsibility of an ENTITY or VALUE OBJECT, add an operation to the model as a standalone interface declared as a SERVICE. Define the interface in terms of the language of the model and make sure the operation name is part of the UBIQUITOUS LANGUAGE. Make the SERVICE stateless. - [|evans|, pp. 104, 106]
 
-A Domain Service **is not** the same as an Application Service. Application Services are not supposed to have any business logic in them, but Domain Services do. Application Services, being the natural clients of the domain model, would normally be the client of a Domain Service. But the Service needs to be stateless and should have an interface that clearly expresses the Ubiquitous Language in its Bounded Context.
+A Domain Service **is not** the same as an Application Service. Application Services do to have any business logic in them, but Domain Services do. Application Services, being the natural clients of the domain model, would normally be the client of a Domain Service. But the Service needs to be stateless and should have an interface that clearly expresses the Ubiquitous Language in its Bounded Context.
 
 A Domain Service would be very similar to behavior defined in the domain model. It is fine-grained, focuses on some specific aspect of the business at hand, and does not deal with infrastructure. Typically, it is used be operate on two or more domain objects in a single, atomic operation, so it can handle more complexity than usual domain elements.
 
@@ -24,26 +22,7 @@ Typically, Domain Services are used when you need to:
 Usage
 =====
 
-A Domain Service can be defined in two ways, as usual:
-
-1. As a class inheriting from ``BaseDomainService``
-
-.. code-block:: python
-
-    class FavoriteArticle(BaseDomainService):
-        """Mark as an Article as the current user's favorite"""
-
-        @classmethod
-        def mark_favorite(current_user, article):
-            current_user.favorites.add(article)
-
-You will then have to register the Domain Service with the domain:
-
-.. code-block:: python
-
-    domain.register(FavoriteArticle)
-
-2. As a class annotated with ``@domain.domain_service``
+Domain Services are defined with the help of ``@domain.domain_service`` decorator:
 
 .. code-block:: python
 
@@ -55,4 +34,21 @@ You will then have to register the Domain Service with the domain:
         def mark_favorite(current_user, article):
             current_user.favorites.add(article)
 
-In this case, registration is automatic and does not require manual registration of the domain element.
+``FavoriteArticle`` is registered with the domain automatically.
+
+You can also declare Domain Services by inheriting from ``BaseDomainService``:
+
+.. code-block:: python
+
+    class FavoriteArticle(BaseDomainService):
+        """Mark as an Article as the current user's favorite"""
+
+        @classmethod
+        def mark_favorite(current_user, article):
+            current_user.favorites.add(article)
+
+If you take this approach, you will  have to register the `Domain Service` with the domain manually:
+
+.. code-block:: python
+
+    domain.register(FavoriteArticle)

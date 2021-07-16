@@ -52,7 +52,7 @@ The field is validated to be unique and non-blank::
 
 If you don't specify ``identifier=True`` for any field in your Entity, Protean will automatically add a field called ``id`` to hold the primary key, so you don't need to set ``identifier=True`` on any of your fields unless you want to override the default primary-key behavior.
 
-Alternatively, you can use the ::ref:`Identifier` field for primary key fields. The type of the field can be specified per domain in config with :ref:`IDENTITY_TYPE`.
+Alternatively, you can use the ::ref:`field-type-identifier` field for primary key fields. The type of the field can be specified per domain in config with :ref:`user-configuration-identity-type`.
 
 default
 -------
@@ -109,7 +109,7 @@ If ``True``, this field must be unique among all entities.
         name = String(max_length=255)
         email = String(unique=True)
 
-This is enforced by entity validation. If you try to save an entity with a duplicate value in a ``unique`` field, a :ref:`ValidationError` will be raised::
+This is enforced by entity validation. If you try to save an entity with a duplicate value in a ``unique`` field, a :ref:`validation-error` will be raised::
 
     >>> p1 = Person(name='John Doe', email='john.doe@example.com')
     >>> domain.repository_for(Person).add(p1)
@@ -182,12 +182,12 @@ TO BE DOCUMENTED
 validators
 ----------
 
-A list of validators to run for this field. See :ref:`Validators API Documentation <validators>`  for more information.
+A list of validators to run for this field. See :ref:`Validators API Documentation <api-validators>`  for more information.
 
 error_messages
 --------------
 
-If supplied, the default messages that the field will raise will be overridden. Error message keys include **required**, **invalid**, **unique**, and **invalid_choice**. Additional error message keys are specified for each field in the :ref:`Field types` section below.
+If supplied, the default messages that the field will raise will be overridden. Error message keys include **required**, **invalid**, **unique**, and **invalid_choice**. Additional error message keys are specified for each field in the :ref:`field-types` section below.
 
 .. code-block:: python
 
@@ -205,23 +205,33 @@ The custom error message can be observed in the ``ValidationError`` exception::
 
 The error message can be formatted with additional keyword arguments:
 
-Basic Fields
-============
+.. //FIXME Pending Documentation
+
+.. _field-types:
+
+Fields
+======
+
+.. _field-type-string:
 
 String
 ------
 
-A string field, for small- to large-sized strings. For large amounts of text, use :ref:`Text`.
+A string field, for small- to large-sized strings. For large amounts of text, use :ref:`field-type-text`.
 
 ``String`` has two optional arguments:
 
 - ``max_length``: The maximum length (in characters) of the field, enforced during validation using :ref:`MaxLengthValidator <max-value-validator>`. Defaults to 255.
 - ``min_length``: The minimum length (in characters) of the field, enforced during validation using :ref:`MinLengthValidator <min-value-validator>`.
 
+.. _field-type-text:
+
 Text
 ----
 
 A large text field, to hold large amounts of text. Text fields do not have size constraints.
+
+.. _field-type-integer:
 
 Integer
 -------
@@ -263,7 +273,7 @@ The default value is ``None`` when ``default`` option isn’t defined::
     'adult': None,
     'id': 'e30e97fb-540b-43f0-8fc9-937baf413080'}
 
-.. _field-auto:
+.. _field-type-auto:
 
 Auto
 ----
@@ -298,11 +308,12 @@ An ``Auto`` field is unique by default::
     'required': False,
     ...
 
-.. _field-identifier:
+.. _field-type-identifier:
 
 Identifier
 ----------
 
+.. //FIXME Pending Documentation
 
 Date
 ----

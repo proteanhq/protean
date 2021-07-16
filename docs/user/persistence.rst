@@ -143,3 +143,10 @@ Schemas, which are object representations of Entities as your underlying data st
 TO BE DOCUMENTED
 
 .. //FIXME Add documentation on customization of attributes in ``Meta`` class
+
+.. _supported-databases:
+
+Supported Databases
+-------------------
+
+.. //FIXME Pending Documentation

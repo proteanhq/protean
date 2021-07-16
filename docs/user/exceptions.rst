@@ -2,6 +2,8 @@
 Exceptions
 ==========
 
+.. _validation-error:
+
 ValidationError
 ===============
 

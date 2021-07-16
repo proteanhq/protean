@@ -1,8 +1,10 @@
+.. _api-validators:
+
 ==========
 Validators
 ==========
 
-A validator is a callable that takes a value and raises a :ref:`ValidationError` if it doesn't meet some criteria. Validators can be useful for re-using validation logic between different types of fields.
+A validator is a callable that takes a value and raises a :ref:`validation-error` if it doesn't meet some criteria. Validators can be useful for re-using validation logic between different types of fields.
 
 For example, here's a validator that only allows positive numbers:
 
@@ -19,7 +21,7 @@ For example, here's a validator that only allows positive numbers:
         currency = String(max_length=3, required=True)
         amount = Float(default=0.0, validators=[PositiveNumberValidator()])
 
-Specifying negative balances throws a :ref:`ValidationError`::
+Specifying negative balances throws a :ref:`validation-error`::
 
     >>> balance = Balance(account='AC12345', currency='USD', amount=-599.0)
     ValidationError                           Traceback (most recent call last)
@@ -30,7 +32,7 @@ Specifying negative balances throws a :ref:`ValidationError`::
 Built-in validators
 -------------------
 
-The ``protean.core.field.validators`` module contains a collection of callable validators for use with entity fields. They're used internally but are available for use with your own fields, too. They can be used in addition to, or in lieu of custom :ref:`Aggregate's Clean` method.
+The ``protean.core.field.validators`` module contains a collection of callable validators for use with entity fields. They're used internally but are available for use with your own fields, too. They can be used in addition to, or in lieu of custom :ref:`aggregate-lifecycle-clean` method.
 
 RegexValidator
 ~~~~~~~~~~~~~~

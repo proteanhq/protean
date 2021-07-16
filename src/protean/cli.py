@@ -35,7 +35,7 @@ def test():
     # Protean
     import pytest
 
-    errno = pytest.main(["-vv", "--cache-clear"])
+    errno = pytest.main(["-vv", "--cache-clear", "--flake8"])
 
     sys.exit(errno)
 
@@ -57,4 +57,4 @@ def livereload_docs():
 
     server = Server()
     server.watch("docs/**/*.rst", shell("make html"))
-    server.serve(root="build/html", debug=True)
+    server.serve(root="build", debug=True)

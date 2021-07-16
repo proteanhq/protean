@@ -21,6 +21,8 @@ Default Methods
 
 Protean's repository comes with two in-built methods:
 
+.. _repository-add:
+
 1. **add**
 
 The `add` method places the new aggregate in a transaction and commits when appropriate.
@@ -109,7 +111,7 @@ A repository can be locked to a specific database implementation. This feature c
         class Meta:
             database = Database.SQLITE.value
 
-This feature also allows multiple repositories to be defined and linked per database to the aggregate. The full list of supported databases can be found :ref:`here<supported-databases>`. Refer to :ref:`aggregate` documentation to understand how providers are defined.
+This feature also allows multiple repositories to be defined and linked per database to the aggregate. The full list of supported databases can be found :ref:`here<supported-databases>`. Refer to :ref:`user-aggregate` documentation to understand how providers are defined.
 
 Repositories and Data Access Objects
 ------------------------------------

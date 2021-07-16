@@ -74,7 +74,7 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
     parent method first before writing custom code.
 
     Repositories are strictly meant to be used in conjunction with Aggregate elements. While it is possible
-    to link and use :ref:`entity`, it is always better to deal with persistence at the level of the transaction
+    to link and use :ref:`user-entity`, it is always better to deal with persistence at the level of the transaction
     boundary, which is at the aggregate's level.
     """
 

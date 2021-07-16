@@ -39,7 +39,7 @@ Assuming you have :ref:`installed <install>` protean already, in this code snipp
 
 * First, we imported the ``Domain`` class. An instance of this class will be our domain's :ref:`composition-root`.
 * Next, we create an instance of this class. The first argument is the name of the domain. If you are using a single domain (as in this example), you should use __name__ so that Protean knows where to look for domain elements. For more information have a look at the :ref:`api-domain` documentation.
-* We then declare a ``User`` :ref:`aggregate` in the domain with the ``@aggregate`` decorator. The decorator also registers the element with the domain.
+* We then declare a ``User`` :ref:`user-aggregate` in the domain with the ``@aggregate`` decorator. The decorator also registers the element with the domain.
 * A simple ``String`` attribute called `name` is declared as part of the ``User`` aggregate.
 * We then initialize a new `user` object with the name attribute set to 'John'
 * The repository associated with `User` aggregate is fetched from the domain. In this case, a repository class is constructed by the domain itself and provided to us.

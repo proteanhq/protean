@@ -24,17 +24,16 @@ Basic Fields
 
 // FIXME Attach caption to reference
 
+.. _api-field-basic-auto:
+
 ``Auto``
 ^^^^^^^^
 
-.. _api-field-basic-auto:
-
 `Auto` fields serve as placeholders of unique identity values that are auto-generated. Refer to :ref:`identity` for detailed information about different identity options and configuring them for your domain.
 
+.. _api-field-basic-identifier:
 
 ``Identifier``
 ^^^^^^^^^^^^^^
-
-.. _api-field-basic-identifier:
 
 `Identifier` fields serve as placeholders of identity values. The values can be either *Unique Identifiers* of Aggregates/Entities/Views, or referential keys for other domain elements (Foreign Keys).

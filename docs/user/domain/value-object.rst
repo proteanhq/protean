@@ -1,3 +1,5 @@
+.. _user-value-objects:
+
 =============
 Value Objects
 =============

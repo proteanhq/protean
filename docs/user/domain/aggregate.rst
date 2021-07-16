@@ -1,17 +1,19 @@
+.. _user-aggregate:
+
 ==========
 Aggregates
 ==========
 
-Aggregates are the coarse-grained building blocks of a domain model. They are conceptual wholes - they enclose all behaviors and data of a distinct domain concept and are often composed of one or more :ref:`Entities <entity>` and :ref:`Value Objects <value-object>`.
+Aggregates are the coarse-grained building blocks of a domain model. They are conceptual wholes - they enclose all behaviors and data of a distinct domain concept and are often composed of one or more :ref:`Entities <user-entity>` and :ref:`Value Objects <user-value-objects>`.
 
-Aggregates essential are just ::ref:`Entity` with the additional responsibility of managing a cluster of objects. They responsible for the lifecycle management of all Entities and Value Objects within them, including fetching and persisting data.
+Aggregates essential are just ::ref:`user-entity` with the additional responsibility of managing a cluster of objects. They responsible for the lifecycle management of all Entities and Value Objects within them, including fetching and persisting data.
 
 Put another way, all elements in the Aggregate are only accessible through the Root Entity. The Aggregate acts as a consistency boundary and preserves data sanctity within the cluster.
 
 Definition
 ==========
 
-Aggregate Roots are identified with the help of `@domain.aggregate` decorator:
+Aggregate Roots are defined with the help of `@domain.aggregate` decorator:
 
 .. code-block:: python
 
@@ -74,7 +76,7 @@ Identity
 
 Identity is one of the primary characteristics of Protean Entities - they are expected to have a unique identity.
 
-All Aggregates and Entities have a unique identifier field named ``id``, added automatically by Protean. ``id`` is an :ref:`field-auto` field and populated with the strategy specified for the :ref:`identity-strategy` in Configuration.
+All Aggregates and Entities have a unique identifier field named ``id``, added automatically by Protean. ``id`` is an :ref:`field-type-auto` field and populated with the strategy specified for the :ref:`user-configuration-parameters` in Configuration.
 
 .. code-block:: python
 
@@ -160,6 +162,14 @@ Trying to declare one will through an ``IncorrectUsageError``::
     IncorrectUsageError                       Traceback (most recent call last)
     ...
     IncorrectUsageError: {'entity': ['Aggregates marked as abstract cannot have identity fields']}
+
+Lifecycle Methods
+=================
+
+.. _aggregate-lifecycle-clean:
+
+clean
+-----
 
 Inheritance
 ===========
@@ -290,6 +300,8 @@ The overridden attributes are reflected in the ``meta_`` attribute:
 
 Available options are:
 
+.. _user-aggregate-meta-abstract:
+
 abstract
 ~~~~~~~~
 
@@ -415,7 +427,7 @@ The identifier field configured for the Entity or Aggregate. A field can be mark
     >>> Person.meta_.id_field.attribute_name
     'email'
 
-When not explicitly identified, an identifier field named ``id`` of type :ref:`Auto`  is added automatically to the Aggregate::
+When not explicitly identified, an identifier field named ``id`` of type :ref:`field-type-auto`  is added automatically to the Aggregate::
 
     >>> @domain.aggregate
     ... class Person:
