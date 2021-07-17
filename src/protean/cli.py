@@ -53,4 +53,5 @@ def livereload_docs():
 
     server = Server()
     server.watch("docs/**/*.rst", shell("make html"))
-    server.serve(root="build", debug=True)
+    server.watch("./*.rst", shell("make html"))
+    server.serve(root="build/html", debug=True)

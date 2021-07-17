@@ -1,20 +1,25 @@
-# Minimal makefile for Sphinx documentation
-#
+export COMPOSE_DOCKER_CLI_BUILD=1
+export DOCKER_BUILDKIT=1
 
-# You can set these variables from the command line, and also
-# from the environment for the first two.
-SPHINXOPTS    ?=
-SPHINXBUILD   ?= sphinx-build
-SOURCEDIR     = docs
-BUILDDIR      = build
+all: down build up test
 
-# Put it first so that "make" without argument is like "make help".
-help:
-	@$(SPHINXBUILD) -M help "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+build:
+	docker-compose build
 
-.PHONY: help Makefile
+up:
+	docker-compose up -d
 
-# Catch-all target: route all unknown targets to Sphinx using the new
-# "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
-%: Makefile
-	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+down:
+	docker-compose down --remove-orphans
+
+html:
+	@cd docs; $(MAKE) html
+
+test:
+	protean test
+
+test-full: up
+	pytest --slow --sqlite --postgresql --elasticsearch --redis tests
+
+cov: up
+    pytest --slow --sqlite --postgresql --elasticsearch --redis --cov=protean --cov-config .coveragerc tests

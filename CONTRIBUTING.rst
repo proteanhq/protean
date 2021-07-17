@@ -1,176 +1,224 @@
-=======================
-Contributing to Protean
-=======================
+============================
+How to contribute to Protean
+============================
 
-You are awesome! Thanks for taking the time to contribute!
+Thank you for considering contributing to Protean!
 
-What follows is a set of guidelines for contributing to Protean and its related packages, which are hosted in the Protean Organization on GitHub. These are mostly guidelines, not rules. Use your best judgment, and feel free to propose changes to this document in a pull request.
+Support questions
+=================
+
+Please don't use the issue tracker for this. The issue tracker is a tool
+to address bugs and feature requests in Protean itself. Use one of the
+following resources for questions about using Protean or issues with your
+own code:
+
+-   The ``#questions`` channel on our Discord chat:
+    https://discord.gg/fwhg7JKxNy
+-   Ask on `Stack Overflow`_. Search with Google first using:
+    ``site:stackoverflow.com protean {search term, exception message, etc.}``
+-   Ask on our `GitHub Discussions`_.
+
+.. _Stack Overflow: https://stackoverflow.com/questions/tagged/protean?tab=Frequent
+.. _GitHub Discussions: https://github.com/proteanhq/protean/discussions
+
+Reporting issues
+================
+
+Include the following information in your issue:
+
+-   Describe what you expected to happen.
+-   If possible, include a `minimal reproducible example`_ to help us
+    identify the issue. This also helps check that the issue is not with
+    your own code.
+-   Describe what actually happened. Include the full traceback if there
+    was an exception.
+-   List your Python and Protean versions. If possible, check if this
+    issue is already fixed in the latest releases or the latest code in
+    the repository.
+
+.. _minimal reproducible example: https://stackoverflow.com/help/minimal-reproducible-example
+
+Submitting patches
+==================
+
+If there is not an open issue for what you want to submit, prefer
+opening one for discussion before working on a PR. You can work on any
+issue that doesn't have an open PR linked to it or a maintainer assigned
+to it. These show up in the sidebar. No need to ask if you can work on
+an issue that interests you.
+
+Include the following in your patch:
+
+-   Use `Black`_ to format your code. This and other tools will run
+    automatically if you install `pre-commit`_ using the instructions
+    below.
+-   Include tests if your patch adds or changes code. Make sure the test
+    fails without your patch.
+-   Update any relevant docs pages and docstrings. Docs pages and
+    docstrings should be wrapped at 72 characters.
+-   Add an entry in ``CHANGES.rst``. Use the same style as other
+    entries. Also include ``.. versionchanged::`` inline changelogs in
+    relevant docstrings.
+
+.. _Black: https://black.readthedocs.io
+.. _pre-commit: https://pre-commit.com
+
+First time setup
+----------------
+
+-   Download and install the `latest version of git`_.
+-   Configure git with your `username`_ and `email`_.
+
+    .. code-block:: text
+
+        $ git config --global user.name 'your name'
+        $ git config --global user.email 'your email'
+
+-   Make sure you have a `GitHub account`_.
+-   Fork Flask to your GitHub account by clicking the `Fork`_ button.
+-   `Clone`_ the main repository locally.
+
+    .. code-block:: text
+
+        $ git clone https://github.com/proteanhq/protean
+        $ cd protean
+-   Add your fork as a remote to push your work to. Replace
+    ``{username}`` with your username. This names the remote "fork", the
+    default Protean remote is "origin".
+
+    .. code-block:: text
+
+        $ git remote add fork https://github.com/{username}/flask
+
+-   Create a virtualenv.
+
+    .. tabs::
+
+       .. group-tab:: Linux/macOS
+
+          .. code-block:: text
+
+             $ python3 -m venv env
+             $ . env/bin/activate
+
+       .. group-tab:: Windows
+
+          .. code-block:: text
+
+             > py -3 -m venv env
+             > env\Scripts\activate
+
+-   Upgrade pip and setuptools.
+
+    .. code-block:: text
+
+        $ python -m pip install --upgrade pip setuptools
+
+-   Install the development dependencies, then install Protean in editable
+    mode.
+
+    .. code-block:: text
+
+        $ pip install -e .[all] && pip install -e .
+
+-   Install the pre-commit hooks.
+
+    .. code-block:: text
+
+        $ pre-commit install
+
+.. _latest version of git: https://git-scm.com/downloads
+.. _username: https://docs.github.com/en/github/using-git/setting-your-username-in-git
+.. _email: https://docs.github.com/en/github/setting-up-and-managing-your-github-user-account/setting-your-commit-email-address
+.. _GitHub account: https://github.com/join
+.. _Fork: https://github.com/proteanhq/protean/fork
+.. _Clone: https://docs.github.com/en/github/getting-started-with-github/fork-a-repo#step-2-create-a-local-clone-of-your-fork
+
+Start coding
+------------
+
+-   Create a branch to identify the issue you would like to work on. If
+    you're submitting a bug or documentation fix, branch off of the
+    latest ".x" branch.
+
+    .. code-block:: text
+
+        $ git fetch origin
+        $ git checkout -b your-branch-name origin/0.6.x
+
+    If you're submitting a feature addition or change, branch off of the
+    "master" branch.
+
+    .. code-block:: text
+
+        $ git fetch origin
+        $ git checkout -b your-branch-name origin/master
+
+-   Using your favorite editor, make your changes,
+    `committing as you go`_.
+-   Include tests that cover any code changes you make. Make sure the
+    test fails without your patch. Run the tests as described below.
+-   Push your commits to your fork on GitHub and
+    `create a pull request`_. Link to the issue being addressed with
+    ``fixes #123`` or ``closes #123`` in the pull request.
+
+    .. code-block:: text
+
+        $ git push --set-upstream fork your-branch-name
+
+.. _committing as you go: https://dont-be-afraid-to-commit.readthedocs.io/en/latest/git/commandlinegit.html#commit-your-changes
+.. _create a pull request: https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request
+
+Running the tests
+-----------------
+
+Run the basic test suite:
+
+.. code-block:: text
+
+    $ make test
+
+This runs the tests with default adapters, which is usually
+sufficient. CI will run the full suite when you submit your pull
+request.
+
+If you want to test Protean against all adapters, you can
+run the full test suite after bringing up the docker containers.
+
+.. code-block:: text
+
+    $ make test-full
+
+Running test coverage
+---------------------
+
+Generating a report of lines that do not have test coverage can indicate
+where to start contributing. Run ``pytest`` using ``coverage`` and
+generate a report.
+
+.. code-block:: text
+
+    $ make cov
+
+Open ``htmlcov/index.html`` in your browser to explore the report.
+
+Read more about `coverage <https://coverage.readthedocs.io>`__.
+
+Building the docs
+-----------------
+
+Build the docs in the ``docs`` directory using Sphinx.
+
+.. code-block:: text
+
+    $ make html
+
+Open ``build/html/index.html`` in your browser to view the docs.
+
+Read more about `Sphinx <https://www.sphinx-doc.org/en/stable/>`__.
+
 
 Code of Conduct
----------------
+===============
 
-This project and everyone participating in it is governed by the :ref:`Code of Conduct <code-of-conduct>`. By participating, you are expected to uphold this code. Please report unacceptable behavior to <subhash.bhushan@gmail.com>.
-
-General Guidelines
-------------------
-
-Be Nice
-^^^^^^^
-
-Protean is a safe community. **All contributions are welcome**, as long as
-everyone involved is treated with respect.
-
-.. _early-feedback:
-
-Get Early Feedback
-^^^^^^^^^^^^^^^^^^
-
-If you are contributing, do not feel the need to sit on your contribution until
-it is perfectly polished and complete. It helps everyone involved for you to
-seek feedback as early as you possibly can. Submitting an early, unfinished
-version of your contribution for feedback in no way prejudices your chances of
-getting that contribution accepted, and can save you from putting a lot of work
-into a contribution that is not suitable for the project.
-
-Contribution Suitability
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-Our project maintainers have the last word on whether or not a contribution is
-suitable for Protean. All contributions will be considered carefully, but from
-time to time, contributions will be rejected because they do not suit the
-current goals or needs of the project.
-
-If your contribution is rejected, don't despair! As long as you followed these
-guidelines, you will have a much better chance of getting your next
-contribution accepted.
-
-Code Contributions
-------------------
-
-Bug reports
-^^^^^^^^^^^
-
-Before you raise one, though, please check through the `GitHub issues`_,
-**both open and closed**, to confirm that the bug hasn’t been reported before.
-Duplicate bug reports are a huge drain on the time of other contributors,
-and should be avoided as much as possible.
-
-When `reporting a bug <https://github.com/proteanhq/protean/issues>`_ please include:
-
-    * Your operating system name and version.
-    * Any details about your local setup that might be helpful in troubleshooting.
-    * Detailed steps to reproduce the bug.
-
-Documentation improvements
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Protean could always use more documentation, whether as part of the
-official Protean docs, in docstrings, or even on the web in blog posts,
-articles, and such. The documentation files live in the docs/ directory of the codebase.
-They’re written in reStructuredText, and use Sphinx to generate the full suite of documentation.
-
-When contributing documentation, please do your best to follow the style of the
-documentation files. This means a soft-limit of 79 characters wide in your text files
-and a semi-formal, yet friendly and approachable, prose style.
-
-When presenting Python code, use single-quoted strings ('hello' instead of "hello").
-
-All Documentation changes will need to go through
-the normal pull request process.
-
-Feature requests and feedback
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The best way to send feedback is to file an issue at `GitHub issues`_.
-
-If you are proposing a feature:
-
-* Explain in detail how it would work.
-* Keep the scope as narrow as possible, to make it easier to implement.
-* Remember that this is a volunteer-driven project, and that code contributions are welcome :)
-
-Development
-^^^^^^^^^^^
-
-To set up `protean` for local development:
-
-1. Fork `protean <https://github.com/proteanhq/protean>`_
-   (look for the "Fork" button).
-2. Clone your fork locally::
-
-    git clone git@github.com:your_name_here/protean.git
-
-3. Create a branch for local development::
-
-    git checkout -b name-of-your-bugfix-or-feature
-
-   Now you can make your changes locally.
-
-4. When you're done making changes, run all the checks, doc builder and spell checker with `tox <https://tox.readthedocs.io/en/latest/install.html>`_ one command::
-
-    tox
-
-5. Commit your changes and push your branch to GitHub::
-
-    git add .
-    git commit -m "Your detailed description of your changes."
-    git push origin name-of-your-bugfix-or-feature
-
-6. Submit a pull request through the GitHub website.
-
-Code Formatting
-^^^^^^^^^^^^^^^
-
-Protean uses `black <https://github.com/psf/black>`_ as the default code formatter.
-
-You can configure `editor <https://github.com/psf/black#editor-integration>`_ with `black`, but is also run automatically on commit with the help of `pre-commit` git hook. Protean uses `pre-commit` to configure and install the hook locally, so you can simply run `pre-commit install` after install all dev requirement packages.
-
-Testing
-^^^^^^^
-
-Protean tests have been written to work with **Pytest**, and you can run tests with the command ``pytest``.
-
-By default, tests that are marked as ``slow`` are skipped. If you want to run the slow tests, use ``pytest --slow``.
-
-Pull Request Guidelines
-^^^^^^^^^^^^^^^^^^^^^^^
-
-If you need some code review or feedback while you're developing the code just make the pull request.
-
-For merging, you should:
-
-1. Include passing tests (run ``tox``).
-2. Update documentation when there's new API, functionality etc.
-3. Add a note to ``CHANGELOG.rst`` about the changes.
-4. Add yourself to ``AUTHORS.rst``.
-
-Tips
-^^^^
-
-To run a subset of tests::
-
-    tox -e envname -- pytest -k test_myfeature
-
-To run all the test environments in *parallel* (you need to ``pip install detox``)::
-
-    detox
-
-Code Review
-^^^^^^^^^^^
-
-Contributions will not be merged until they've been code reviewed. You should
-implement any code review feedback unless you strongly object to it. In the
-event that you object to the code review feedback, you should make your case
-clearly and calmly. If, after doing so, the feedback is judged to still apply,
-you must either apply the feedback or withdraw your contribution.
-
-New Contributors
-^^^^^^^^^^^^^^^^
-
-If you are new or relatively new to Open Source, welcome! Protean aims to
-be a gentle introduction to the world of Open Source. If you're concerned about
-how best to contribute, please drop a mail to <subhash.bhushan@gmail.com> asking for help.
-
-Please also check the :ref:`early-feedback` section.
-
-.. _GitHub issues: https://github.com/proteanhq/protean/issues
+As a contributor, you can help us keep the Protean community open and inclusive. Please read and follow our :ref:`code-of-conduct`.

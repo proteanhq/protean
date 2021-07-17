@@ -15,6 +15,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.todo",
     "sphinx.ext.viewcode",
+    "sphinx_tabs.tabs",
 ]
 if os.getenv("SPELLCHECK"):
     extensions += "sphinxcontrib.spelling"
@@ -24,7 +25,7 @@ if os.getenv("SPELLCHECK"):
 source_suffix = ".rst"
 master_doc = "index"
 project = "Protean"
-year = "2020"
+year = "2021"
 author = "Subhash Bhushan C"
 copyright = "{0}, {1}".format(year, author)
 version = release = "0.5.8"
@@ -55,9 +56,3 @@ html_short_title = "%s-%s" % (project, version)
 napoleon_use_ivar = True
 napoleon_use_rtype = False
 napoleon_use_param = False
-
-html_theme_options = {
-    "style_nav_header_background": "#CF5400",
-}
-html_static_path = ["_static"]
-html_css_files = ["css/custom.css"]
