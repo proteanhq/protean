@@ -17,13 +17,13 @@ def perform_import(val):
     return val
 
 
-def import_from_string(val):
+def import_from_string(val, package=None):
     """
     Attempt to import a class from a string representation.
     """
     try:
         module_path, class_name = val.rsplit(".", 1)
-        module = import_module(module_path)
+        module = import_module(module_path, package=package)
         return getattr(module, class_name)
     except (ImportError, AttributeError) as e:
         msg = f"Could not import {val}. {e.__class__.__name__}: {e}"

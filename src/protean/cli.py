@@ -55,3 +55,12 @@ def livereload_docs():
     server.watch("docs/**/*.rst", shell("make html"))
     server.watch("./*.rst", shell("make html"))
     server.serve(root="build/html", debug=True)
+
+
+@main.command
+def server():
+    """Run Async Background Server"""
+    from protean.server import Server
+
+    server = Server()
+    server.run()
