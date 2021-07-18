@@ -42,7 +42,27 @@ class Providers:
         return repository_cls
 
     def _register_repository(self, aggregate_cls, repository_cls):
+        # When explicitly provided, the value of `database` will be the actual database in use
+        # and will lock the repository to that type of database.
+        # For example, with the following PostgreSQL configuration:
+        #   DATABASES = {
+        #       "default": {
+        #           "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
+        #           "DATABASE": Database.POSTGRESQL.value,
+        #           "DATABASE_URI": "postgresql://postgres:postgres@localhost:5432/postgres",
+        #       },
+        #   }
+        #
+        # And repository as:
+        #   class CustomPostRepository:
+        #       class Meta:
+        #           database = Database.POSTGRESQL.value
+        # The value of `database` would be `POSTGRESQL`.
+        #
+        # In the absence of an explicit database value, the repository is associated with "ALL"
+        # and is used for all databases.
         database = repository_cls.meta_.database
+
         aggregate_name = fully_qualified_name(aggregate_cls)
 
         self._repositories[aggregate_name][database] = repository_cls
@@ -163,6 +183,7 @@ class Providers:
         # and cache them within providers. We also construct a generic
         # repository dynamically that would work with the other providers.
         # FIXME Should we construct generic repositories?
+        # FIXME Will this run multiple times?
         if aggregate_name not in self._repositories:
             # First, register all explicitly-defined repositories
             for _, repository in self.domain.registry.repositories.items():

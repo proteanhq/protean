@@ -4,7 +4,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.exceptions import IncorrectUsageError, ValidationError
 from protean.core.field.association import HasMany, HasOne
 from protean.globals import current_domain
-from protean.utils import DomainObjects, derive_element_class
+from protean.utils import Database, DomainObjects, derive_element_class
 
 logger = logging.getLogger("protean.repository")
 
@@ -58,7 +58,6 @@ class RepositoryMeta:
         # The aggregate class with which the repository is associated
         #   Repository will be fetched via its associated aggregate.
         #
-        # FIXME Validate that `aggregate_cls` is a Aggregate domain element
         self.aggregate_cls = getattr(meta, "aggregate_cls", None)
         self.database = getattr(meta, "database", "ALL")
 
@@ -221,6 +220,14 @@ def repository_factory(element_cls, **kwargs):
     if not issubclass(element_cls.meta_.aggregate_cls, BaseAggregate):
         raise IncorrectUsageError(
             {"entity": ["Repositories can only be associated with an Aggregate"]}
+        )
+
+    # Ensure the value of `database` is among known databases
+    if element_cls.meta_.database != "ALL" and element_cls.meta_.database not in [
+        database.value for database in Database
+    ]:
+        raise IncorrectUsageError(
+            {"entity": ["Repositories should be associated with a valid Database"]}
         )
 
     return element_cls
