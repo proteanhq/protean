@@ -4,8 +4,11 @@ import logging.config
 from abc import abstractmethod
 from collections import defaultdict
 from collections.abc import Iterable
+from typing import Union
 
 from protean.utils import DomainObjects, fully_qualified_name
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
 
 logger = logging.getLogger("protean.port.broker")
 
@@ -63,6 +66,8 @@ class BaseBroker(metaclass=_BrokerMetaclass):
     It is also a marker interface for registering broker
     classes with the domain"""
 
+    # FIXME Replace with typing.Protocol
+
     def __init__(self, name, domain, conn_info):
         self.name = name
         self.domain = domain
@@ -78,6 +83,15 @@ class BaseBroker(metaclass=_BrokerMetaclass):
     @abstractmethod
     def send_message(self, initiator_obj):
         """Placeholder method for brokers to accept incoming events"""
+        # FIXME Remove this method once `publish()` is ready
+
+    @abstractmethod
+    def publish(self, message: Union[BaseCommand, BaseEvent]):
+        """Publish a message with Protean-compatible payload to the configured Message bus.
+
+        Args:
+            message (Union[BaseCommand, BaseEvent]): Command or Event object
+        """
 
     def register(self, initiator_cls, consumer_cls):
         """Registers Events and Commands with Subscribers/Command Handlers
