@@ -15,6 +15,7 @@ from protean.core.exceptions import (
 from protean.core.field.association import Association, Reference
 from protean.core.field.basic import Auto, Field
 from protean.core.field.embedded import ValueObject
+from protean.core.field.association import HasMany, _ReferenceField
 from protean.globals import current_domain
 from protean.utils import (
     DomainObjects,
@@ -22,11 +23,6 @@ from protean.utils import (
     IdentityType,
     derive_element_class,
     inflection,
-)
-
-from ..core.field.association import (  # Relative path to private class
-    HasMany,
-    _ReferenceField,
 )
 
 logger = logging.getLogger("protean.domain.entity")
@@ -584,37 +580,21 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
     def to_dict(self):
         """ Return entity data as a dictionary """
+        # FIXME Memoize this function
         field_values = {}
-        field_values = {
-            field_name: getattr(self, field_name, None)
-            for field_name, field_obj in self.meta_.declared_fields.items()
-            # Do not display Value Object fields or Reference fields
-            #   Reference fields are not necessary because:
-            #       - Entities are always shown within Aggregates
-            #       - Aggregates with references should not populate the other aggregate's value
-            if not isinstance(field_obj, (ValueObject, Reference))
-        }
 
-        # FIXME Simplify fetching and appending Value Object dict values
-        vo_fields = {
-            field_name: getattr(self, field_name, None)
-            for field_name, field_obj in self.meta_.declared_fields.items()
-            if isinstance(field_obj, ValueObject)
-        }
-
-        vo_field_values = {}
-        for vo_field_name, vo_field_obj in vo_fields.items():
-            if vo_field_obj:
-                vo_field_values.update(
-                    {
-                        vo_field_name
-                        + "_"
-                        + field_name: getattr(vo_field_obj, field_name, None)
-                        for field_name, field_obj in vo_field_obj.meta_.declared_fields.items()
-                    }
+        for field_name, field_obj in self.meta_.declared_fields.items():
+            if (
+                not isinstance(field_obj, (ValueObject, Reference))
+                and getattr(self, field_name, None) is not None
+            ):
+                field_values[field_name] = field_obj.as_dict(
+                    getattr(self, field_name, None)
                 )
+            elif isinstance(field_obj, ValueObject):
+                field_values.update(field_obj.as_dict(getattr(self, field_name, None)))
 
-        return {**field_values, **vo_field_values}
+        return field_values
 
     def __repr__(self):
         """Friendly repr for Entity"""

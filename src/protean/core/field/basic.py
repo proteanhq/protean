@@ -37,6 +37,10 @@ class String(Field):
             return value
         return str(value)
 
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        return value
+
 
 class Text(Field):
     """Concrete field implementation for the text type.
@@ -51,6 +55,10 @@ class Text(Field):
         if isinstance(value, str) or value is None:
             return value
         return str(value)
+
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        return value
 
 
 class Integer(Field):
@@ -84,6 +92,10 @@ class Integer(Field):
         except (ValueError, TypeError):
             self.fail("invalid", value=value)
 
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        return value
+
 
 class Float(Field):
     """Concrete field implementation for the Floating type.
@@ -113,6 +125,10 @@ class Float(Field):
         except (ValueError, TypeError):
             self.fail("invalid", value=value)
 
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        return value
+
 
 class Boolean(Field):
     """Concrete field implementation for the Boolean type.
@@ -131,6 +147,10 @@ class Boolean(Field):
         if value in ("f", "False", "0"):
             return False
         self.fail("invalid", value=value)
+
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        return value
 
 
 class List(Field):
@@ -180,6 +200,11 @@ class List(Field):
 
         return value
 
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        # FIXME Convert value of objects that the list holds?
+        return value
+
 
 class Dict(Field):
     """Concrete field implementation for the Dict type.
@@ -201,6 +226,11 @@ class Dict(Field):
         #   All other databases treat these columns as BLOB/Pickled Type.
         if not isinstance(value, (dict, list)):
             self.fail("invalid", value=value)
+        return value
+
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        # FIXME Convert value of objects that the dict holds?
         return value
 
 
@@ -235,6 +265,10 @@ class Auto(Field):
         """ Perform no validation for auto fields. Return the value as is"""
         return value
 
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        return value
+
 
 class Identifier(Field):
     """ Concrete field implementation for Identifiers.
@@ -266,6 +300,10 @@ class Identifier(Field):
             # Mark Entity as Dirty
             instance.state_.mark_changed()
 
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        return value
+
 
 class Method(Field):
     """Helper field for custom methods associated with serializer fields"""
@@ -276,6 +314,10 @@ class Method(Field):
 
     def _cast_to_type(self, value):
         """ Perform no validation for identifier fields. Return the value as is"""
+        return value
+
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
         return value
 
 
@@ -289,6 +331,10 @@ class Nested(Field):
 
     def _cast_to_type(self, value):
         """ Perform no validation for identifier fields. Return the value as is"""
+        return value
+
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
         return value
 
 
@@ -312,6 +358,10 @@ class Date(Field):
         except ValueError:
             self.fail("invalid", value=value)
 
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        return str(value)
+
 
 class DateTime(Field):
     """ Concrete field implementation for the Datetime/Timestamp type.
@@ -329,3 +379,7 @@ class DateTime(Field):
             return value
         except ValueError:
             self.fail("invalid", value=value)
+
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        return str(value)

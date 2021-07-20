@@ -144,6 +144,11 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
         """
         pass
 
+    @abstractmethod
+    def as_dict(self):
+        """Return JSON-compatible value of field"""
+        pass
+
     def _run_validators(self, value):
         """Perform validation on ``value``. Raise a :exc:`ValidationError` if
         validation does not succeed.

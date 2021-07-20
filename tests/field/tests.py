@@ -19,6 +19,9 @@ class DummyStringField(Field):
             self.fail("invalid_type")
         return value
 
+    def as_dict(self, value: str):
+        return value
+
 
 class MinLengthValidator:
     def __init__(self, min_length):

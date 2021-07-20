@@ -19,7 +19,7 @@ class _ReferenceField(Field):
 
     def __set__(self, instance, value):
         """Override `__set__` to update relation field and keep it in sync with the shadow
-           attribute's value
+        attribute's value
         """
         value = self._load(value)
 
@@ -37,6 +37,10 @@ class _ReferenceField(Field):
         """Verify type of value assigned to the shadow field"""
         # FIXME Verify that the value being assigned is compatible with the remote field
         return value
+
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        raise NotImplementedError
 
     def _reset_values(self, instance):
         """Reset all associated values and clean up dictionary items"""
@@ -210,6 +214,10 @@ class Reference(FieldCacheMixin, Field):
         #     self.fail('invalid', value=value)
         return value
 
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        raise NotImplementedError
+
 
 class Association(FieldDescriptorMixin, FieldCacheMixin):
     """Base class for all association classes"""
@@ -232,8 +240,8 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
     def _linked_attribute(self, owner):
         """Choose the Linkage attribute between `via` and own entity's `id_field`
 
-           FIXME Explore converting this method into an attribute, and treating it
-           uniformly at `association` level.
+        FIXME Explore converting this method into an attribute, and treating it
+        uniformly at `association` level.
         """
         return self.via or (
             utils.inflection.underscore(owner.__name__)
@@ -278,6 +286,11 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
         """Placeholder method for customized Association query methods"""
         raise NotImplementedError
 
+    @abstractmethod
+    def as_dict(self):
+        """Return JSON-compatible value of field"""
+        raise NotImplementedError
+
     def __set__(self, instance, value):
         """Cannot set values through an association"""
         raise exceptions.NotSupportedError(
@@ -320,19 +333,21 @@ class HasOne(Association):
             #   so that the foreign key relationship is preserved
             id_value = getattr(instance, instance.meta_.id_field.field_name)
             linked_attribute = self._linked_attribute(instance.__class__)
-            setattr(
-                value, linked_attribute, id_value
-            )  # This overwrites any existing linkage, which is correct
+            if hasattr(value, linked_attribute):
+                setattr(
+                    value, linked_attribute, id_value
+                )  # This overwrites any existing linkage, which is correct
 
-        if self.value is None:
+        current_value = getattr(instance, self.field_name)
+        if current_value is None:
             self.change = "ADDED"
         elif value is None:
             self.change = "DELETED"
             self.change_old_value = self.value
-        elif self.value.id != value.id:
+        elif current_value.id != value.id:
             self.change = "UPDATED"
             self.change_old_value = self.value
-        elif self.value.id == value.id and value.state_.is_changed:
+        elif current_value.id == value.id and value.state_.is_changed:
             self.change = "UPDATED"
             self.change_old_value = self.value
         else:
@@ -346,6 +361,11 @@ class HasOne(Association):
             return current_domain.get_dao(self.to_cls).find_by(**{key: value})
         except exceptions.ObjectNotFoundError:
             return None
+
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        if value is not None:
+            return value.to_dict()
 
 
 class HasMany(Association):
@@ -444,3 +464,7 @@ class HasMany(Association):
             temp_data[:] = [value for value in temp_data if value.id != item.id]
 
         return temp_data
+
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        return [item.to_dict() for item in value]
