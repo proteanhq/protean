@@ -183,7 +183,8 @@ sufficient. CI will run the full suite when you submit your pull
 request.
 
 If you want to test Protean against all adapters, you can
-run the full test suite after bringing up the docker containers.
+run the full test suite after bringing up the Docker containers
+running database and message broker services.
 
 .. code-block:: text
 

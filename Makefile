@@ -1,7 +1,8 @@
 export COMPOSE_DOCKER_CLI_BUILD=1
 export DOCKER_BUILDKIT=1
 
-all: down build up test
+test:
+	protean test
 
 build:
 	docker-compose build
@@ -14,9 +15,6 @@ down:
 
 html:
 	@cd docs; $(MAKE) html
-
-test:
-	protean test
 
 test-full: up
 	pytest --slow --sqlite --postgresql --elasticsearch --redis tests
