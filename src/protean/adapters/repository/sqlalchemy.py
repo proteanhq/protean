@@ -166,10 +166,8 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                         type_kwargs["length"] = field_obj.max_length
 
                     # Update the attributes of the class
-                    setattr(
-                        cls,
-                        attribute_name,
-                        Column(sa_type_cls(*type_args, **type_kwargs), **col_args),
+                    dict_[attribute_name] = Column(
+                        sa_type_cls(*type_args, **type_kwargs), **col_args
                     )
         super().__init__(classname, bases, dict_)
 
