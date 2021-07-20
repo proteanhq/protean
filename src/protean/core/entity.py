@@ -192,7 +192,6 @@ class EntityMeta:
         defaults to underscore version of the Entity name.
     - ``provider``: the name of the datasource associated with this
         entity, default value is `default`.
-    - ``order_by``: default ordering of objects returned by filter queries.
 
     Also acts as a placeholder for generated entity fields like:
 
@@ -212,13 +211,6 @@ class EntityMeta:
         )
         self.provider = getattr(meta, "provider", None) or "default"
         self.model = getattr(meta, "model", None)
-
-        # `order_by` can be provided either as a string or a tuple
-        ordering = getattr(meta, "order_by", ())
-        if isinstance(ordering, str):
-            self.order_by = (ordering,)
-        else:
-            self.order_by = tuple(ordering)
 
         # Initialize Options
         self.declared_fields = {}

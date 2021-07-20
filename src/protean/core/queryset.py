@@ -157,14 +157,9 @@ class QuerySet:
         # Fetch Model class and connected repository from Domain
         model_cls = self._domain.get_model(self._entity_cls)
 
-        # order_by clause must be list of keys
-        order_by = (
-            self._entity_cls.meta_.order_by if not self._order_by else self._order_by
-        )
-
         # Call the read method of the dao
         results = self._owner_dao._filter(
-            self._criteria, self._offset, self._limit, order_by
+            self._criteria, self._offset, self._limit, self._order_by
         )
 
         # Convert the returned results to entity and return it
