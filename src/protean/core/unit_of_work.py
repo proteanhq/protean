@@ -8,11 +8,14 @@ logger = logging.getLogger("protean.core.unit_of_work")
 
 class UnitOfWork:
     def __init__(self):
-        # Initialize session factories from all providers
-        #   Connections will be retrieved at this stage
+        """Initialize session factories from all providers
+        
+        Connections will be retrieved at this stage
 
-        # Also initialize Identity Map?
-        #   Repository will first check here before retrieving from Database
+        Also initialize Identity Map?
+        Repository will first check here before retrieving from Database
+        """
+        # FIXME Should UnitOfWork keep an Identity map, of all `seen` objects?
         self.domain = current_domain
         self._in_progress = False
 
@@ -53,6 +56,7 @@ class UnitOfWork:
             for _, session in self._sessions.items():
                 session.commit()
 
+            # FIXME Let Async Server pick up messages from committed transaction
             for event in self._events:
                 for _, broker in self.domain.brokers.items():
                     broker.send_message(event)
@@ -118,7 +122,9 @@ class UnitOfWork:
             return self._initialize_session(provider_name)
 
     def register_event(self, event):
+        # FIXME Register events on Aggregates?
         self._events.append(event)
 
     def register_command_handler(self, command):
+        # FIXME UoWs should not deal with commands?
         self._commands.append(command)

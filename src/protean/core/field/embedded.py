@@ -31,6 +31,10 @@ class _ShadowField(Field):
         # FIXME Verify that the value being assigned is compatible with the remote field
         return value
 
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        raise NotImplementedError
+
     def _reset_values(self, instance):
         """Reset all associated values and clean up dictionary items"""
         instance.__dict__.pop(self.field_name, None)
@@ -98,6 +102,13 @@ class ValueObject(Field):
         if not isinstance(value, self._value_object_cls):
             self.fail("invalid", value=value)
         return value
+
+    def as_dict(self, value):
+        """Return JSON-compatible value of self"""
+        return {
+            field_obj.attribute_name: getattr(value, field_name)
+            for field_name, field_obj in self.embedded_fields.items()
+        }
 
     def __set__(self, instance, value):
         """Override `__set__` to coordinate between value object and its embedded fields"""

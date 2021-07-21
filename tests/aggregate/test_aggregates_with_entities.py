@@ -85,3 +85,29 @@ class TestAggregatesWithEntities:
         persisted_post.remove_comments([comment1, comment2])
 
         assert len(persisted_post.comments) == 0
+
+    def test_conversion_of_enclosed_entity_values_to_dict(self, persisted_post):
+        comment1 = Comment(content="So La Ti Do")
+        comment2 = Comment(content="Sa Re Ga Ma")
+        persisted_post.add_comments(comment1)
+        persisted_post.add_comments(comment2)
+
+        assert persisted_post.to_dict() == {
+            "id": persisted_post.id,
+            "title": "Test Post",
+            "slug": "test-post",
+            "content": "Do Re Mi Fa",
+            "posted_at": str(persisted_post.posted_at),
+            "comments": [
+                {
+                    "id": comment1.id,
+                    "content": "So La Ti Do",
+                    "commented_at": str(comment1.commented_at),
+                },
+                {
+                    "id": comment2.id,
+                    "content": "Sa Re Ga Ma",
+                    "commented_at": str(comment2.commented_at),
+                },
+            ],
+        }

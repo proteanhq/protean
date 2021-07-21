@@ -85,15 +85,6 @@ class TestEntityMeta:
         assert hasattr(SqlDifferentDbPerson.meta_, "provider")
         assert getattr(SqlDifferentDbPerson.meta_, "provider") == "non-default-sql"
 
-    def test_default_and_overridden_order_by_in_meta(self):
-        assert getattr(Person.meta_, "order_by") == ()
-        assert getattr(OrderedPerson.meta_, "order_by") == ("first_name",)
-
-    def test_order_by_can_be_overridden_in_entity_subclass(self):
-        """Test that `order_by` can be overridden"""
-        assert hasattr(OrderedPersonSubclass.meta_, "order_by")
-        assert getattr(OrderedPersonSubclass.meta_, "order_by") == ("last_name",)
-
     def test_that_schema_is_not_inherited(self):
         assert Person.meta_.schema_name != Adult.meta_.schema_name
 

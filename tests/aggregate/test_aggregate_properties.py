@@ -13,7 +13,11 @@ class TestProperties:
     def test_conversion_of_aggregate_values_to_dict(self):
         current_time = datetime.now()
         role = Role(id=12, name="ADMIN", created_on=current_time)
-        assert role.to_dict() == {"id": 12, "name": "ADMIN", "created_on": current_time}
+        assert role.to_dict() == {
+            "id": 12,
+            "name": "ADMIN",
+            "created_on": str(current_time),
+        }
 
     def test_repr_output_of_aggregate(self):
         role = Role(id=12, name="ADMIN")

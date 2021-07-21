@@ -1,8 +1,9 @@
 import pytest
 
 from protean.core.exceptions import IncorrectUsageError
+from protean.core.field.basic import String
 from protean.core.repository import BaseRepository
-from protean.utils import fully_qualified_name
+from protean.utils import Database, fully_qualified_name
 
 from .elements import Person, PersonRepository
 from .child_entities import Comment
@@ -79,9 +80,101 @@ class TestRepositoryRegistration:
     def test_that_repositories_can_only_be_associated_with_an_aggregate(
         self, test_domain
     ):
-        with pytest.raises(IncorrectUsageError):
+        with pytest.raises(IncorrectUsageError) as exc:
 
             @test_domain.repository(aggregate_cls=Comment)
             class CommentRepository:
                 def special_method(self):
                     pass
+
+        assert exc.value.messages == {
+            "entity": ["Repositories can only be associated with an Aggregate"]
+        }
+
+    def test_retrieving_custom_repository(self, test_domain):
+        @test_domain.aggregate
+        class GenericUser:
+            name = String()
+
+        @test_domain.repository(aggregate_cls=GenericUser)
+        class GenericUserRepository:
+            def special_method(self):
+                pass
+
+        assert isinstance(
+            test_domain.repository_for(GenericUser), GenericUserRepository
+        )
+        assert (
+            "ALL"
+            in test_domain.providers._repositories[fully_qualified_name(GenericUser)]
+        )
+        assert (
+            test_domain.providers._repositories[fully_qualified_name(GenericUser)][
+                "ALL"
+            ].__name__
+            == "GenericUserRepository"
+        )
+
+    def test_retrieving_the_database_specific_repository(self, test_domain):
+        test_domain.config["DATABASES"]["secondary"] = {
+            "PROVIDER": "protean.adapters.repository.elasticsearch.ESProvider",
+            "DATABASE": Database.ELASTICSEARCH.value,
+            "DATABASE_URI": {"hosts": ["localhost"]},
+        }
+
+        @test_domain.aggregate
+        class User:
+            name = String()
+
+        @test_domain.repository(aggregate_cls=User)
+        class UserMemoryRepository:
+            def special_method(self):
+                pass
+
+            class Meta:
+                database = Database.MEMORY.value
+
+        @test_domain.repository(aggregate_cls=User)
+        class UserElasticRepository:
+            def special_method(self):
+                pass
+
+            class Meta:
+                database = Database.ELASTICSEARCH.value
+
+        assert isinstance(test_domain.repository_for(User), UserMemoryRepository)
+
+        # Next, we test for a secondary database repository by relinking the User aggregate
+        @test_domain.aggregate
+        class User:
+            name = String()
+
+            class Meta:
+                provider = "secondary"
+
+        assert isinstance(test_domain.repository_for(User), UserElasticRepository)
+        # FIXME Reset test_domain?
+
+    def test_incorrect_usage_error_on_repositories_associated_with_invalid_databases(
+        self, test_domain
+    ):
+        @test_domain.aggregate
+        class User:
+            name = String()
+
+            class Meta:
+                provider = "secondary"
+
+        with pytest.raises(IncorrectUsageError) as exc:
+
+            @test_domain.repository(aggregate_cls=User)
+            class CustomUserRepository:
+                def special_method(self):
+                    pass
+
+                class Meta:
+                    database = "UNKNOWN"
+
+        assert exc.value.messages == {
+            "entity": ["Repositories should be associated with a valid Database"]
+        }
