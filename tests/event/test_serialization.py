@@ -1,12 +1,12 @@
 import pytest
 
-from uuid import UUID
+from uuid import uuid4, UUID
 
 from tests.event.elements import PersonAdded
 
 
 def test_that_message_has_unique_identifier():
-    event = PersonAdded(first_name="John", last_name="Doe")
+    event = PersonAdded(id=uuid4(), first_name="John", last_name="Doe")
 
     assert hasattr(event, "id")
     try:

@@ -46,6 +46,10 @@ class AddNewPersonCommandHandler(BaseCommandHandler):
 
 
 class TestBrokerInitialization:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(PersonAdded)
+
     def test_that_base_broker_class_cannot_be_instantiated(self):
         with pytest.raises(TypeError):
             BaseBroker()
@@ -216,8 +220,12 @@ class TestBrokerSubscriberInitialization:
 
 
 class TestPublishToSubscriber:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(PersonAdded)
+
     def test_that_broker_receives_event(self, mocker, test_domain):
-        spy = mocker.spy(test_domain.brokers["default"], "send_message")
+        spy = mocker.spy(test_domain.brokers["default"], "publish")
 
         test_domain.publish(
             PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)

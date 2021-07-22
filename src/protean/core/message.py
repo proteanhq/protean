@@ -1,27 +1,42 @@
-import uuid
+from datetime import datetime
+from enum import Enum
 
+from protean.core.event import BaseEvent
+from protean.core.field.basic import DateTime, Identifier, Integer, String, Dict
+from protean.globals import current_domain
+from protean.utils import generate_identity
 from protean.utils.container import BaseContainer
+from protean.utils.inflection import underscore
+
+
+class MessageType(Enum):
+    EVENT = "EVENT"
+    COMMAND = "COMMAND"
 
 
 class Message(BaseContainer):
     """Base class for Events and Commands.
 
-    It provides core implementations for:
+    It provides concrete implementations for:
     - ID generation
     - Payload construction
     - Serialization and De-serialization
     """
 
-    def __new__(cls, *args, **kwargs):
-        if cls is Message:
-            raise TypeError("Message cannot be instantiated")
-        return super().__new__(cls)
+    message_id = Identifier(identifier=True, default=generate_identity)
+    name = String(max_length=50)
+    owner = String(max_length=50)
+    type = String(max_length=15, choices=MessageType)
+    payload = Dict()
+    version = Integer(default=1)
+    created_at = DateTime(default=datetime.utcnow)
 
-    def __init__(self, *template, owner, raise_errors, **kwargs):
-        super().__init__(*template, owner=owner, raise_errors=raise_errors, **kwargs)
-
-        # FIXME Should this identifier field be named something else?
-        if "id" in kwargs:
-            self.id = kwargs["id"]
-        else:
-            self.id = uuid.uuid4()
+    @classmethod
+    def to_message(cls, event: BaseEvent) -> dict:
+        message = cls(
+            name=underscore(event.__class__.__name__),
+            owner=current_domain.domain_name,
+            type=event.element_type.value,
+            payload=event.to_dict(),
+        )
+        return message.to_dict()

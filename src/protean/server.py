@@ -23,7 +23,7 @@ class Server:
         """This works with `add_done_callback`"""
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             while True:
-                logger.debug(f"Polling...")
+                logger.debug(f"Polling with {executor}...")
 
                 # while message := r.lpop("messages"):
                 #     # Reconstruct message back to Command or Event

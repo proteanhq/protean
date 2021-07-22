@@ -279,6 +279,11 @@ class TestAutoField:
         value = add_info._load(1)
         assert value == 1
 
+    def test_that_auto_fields_that_are_identifiers_are_also_unique(self):
+        message_id = Auto(identifier=True)
+        assert message_id.identifier is True
+        assert message_id.unique is True
+
     def test_validation(self):
         """ Test validation for the Auto Field"""
         add_info = Auto(required=True)

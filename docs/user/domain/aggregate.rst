@@ -367,9 +367,22 @@ The database that the aggregate is persisted in.
 model
 ~~~~~
 
-Protean automatically constructs a representation of the aggregate that is compatible with the configured database. While the generated model suits most use cases, you can also explicitly construct a model and associated it with the aggregate. Note that custom models are associated with a specific database type. The model is used only when database of the right type  is in use.
+Protean automatically constructs a representation of the aggregate that is compatible with the configured database. While the generated model suits most use cases, you can also explicitly construct a model and associate it with the aggregate.
 
-// FIXME Pending Documentation
+.. code-block:: python
+
+    import sqlalchemy
+
+    @domain.aggregate
+    class Person:
+            first_name = String(max_length=30)
+            last_name = String(max_length=30)
+
+    @domain.model(entity_cls=Person)
+    class PersonModel:
+        name = sqlalchemy.Column(sqlalchemyText)
+
+Note that custom models are associated with a specific database type. The model is used only when database of the right type is active. Refer to :ref:`aggregate-custom-models` for more information.
 
 schema_name
 ~~~~~~~~~~~
@@ -526,10 +539,16 @@ An attribute named `author_id` (<Entity Name>_<Identifier>) is automatically gen
 Relationships
 =============
 
+An Aggregate can be connected to its enclosed entities with specific kinds of relationships. These connections determine how the aggregate persists and loads its entities from the database store.
+
+
+
 Persistence
 ===========
 
 An *Aggregate* is connected to the ``default`` provider, by default. Protean's out-of-the-box configuration specifies the in-built InMemory database as the  ``default`` provider.
+
+.. _aggregate-custom-models:
 
 Custom Models
 -------------

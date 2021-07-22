@@ -1,4 +1,4 @@
-from protean.utils import Database, IdentityStrategy, IdentityType
+from protean.utils import IdentityStrategy, IdentityType
 
 DEBUG = True
 TESTING = True

@@ -1,6 +1,5 @@
 import pytest
 import redis
-from redis import connection
 
 from protean.adapters.broker.redis import RedisBroker
 from protean.globals import current_domain

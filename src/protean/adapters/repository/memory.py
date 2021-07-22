@@ -257,7 +257,7 @@ class DictDAO(BaseDAO):
         """Set the values of the auto field using counter"""
         conn = self._get_session()
 
-        for field_name, field_obj in self.entity_cls.meta_.auto_fields:
+        for field_name in self.entity_cls.meta_.auto_fields:
             counter_key = f"{self.schema_name}_{field_name}"
             if not (field_name in model_obj and model_obj[field_name] is not None):
                 # Increment the counter and it should start from 1

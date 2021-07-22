@@ -2,7 +2,7 @@ import pytest
 
 from protean import Domain
 from protean.core.exceptions import IncorrectUsageError
-from protean.utils import fully_qualified_name
+from protean.utils import EventStrategy, fully_qualified_name
 
 from .elements import UserAggregate, UserEntity, UserFoo, UserVO
 
@@ -12,7 +12,11 @@ class TestDomainInitialization:
         domain = Domain(__name__)
         assert domain is not None
         assert domain.registry is not None
-        assert domain.registry.aggregates == {}
+        if domain.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED:
+            assert len(domain.registry.aggregates) == 1
+            assert "protean.infra.event_log.EventLog" in domain.registry.aggregates
+        else:
+            assert domain.registry.aggregates == {}
 
 
 class TestDomainRegistration:

@@ -8,13 +8,14 @@ from protean.core.event import BaseEvent
 from protean.globals import current_domain
 from protean.infra.event_log import EventLog, EventLogRepository
 from protean.utils import fully_qualified_name
+from protean.core.exceptions import NotSupportedError
 
 from .elements import Person, PersonAdded, PersonCommand, PersonService
 
 
 class TestDomainEventInitialization:
     def test_that_base_domain_event_class_cannot_be_instantiated(self):
-        with pytest.raises(TypeError):
+        with pytest.raises(NotSupportedError):
             BaseEvent()
 
     def test_that_domain_event_can_be_instantiated(self):
@@ -38,12 +39,11 @@ class TestDomainEventRegistration:
 
 
 class TestDomainEventTriggering:
-    @patch.object(InlineBroker, "send_message")
+    @patch.object(InlineBroker, "publish")
     def test_that_domain_event_is_raised_in_aggregate_command_method(self, mock):
-        newcomer = Person.add_newcomer(
-            {"first_name": "John", "last_name": "Doe", "age": 21}
-        )
-        mock.assert_called_once_with(PersonAdded(**newcomer.to_dict()))
+        Person.add_newcomer({"first_name": "John", "last_name": "Doe", "age": 21})
+        mock.assert_called_once()
+        assert type(mock.call_args.args[0]) == dict
 
     def test_that_domain_event_is_persisted(self, test_domain):
         test_domain.register(Person)
@@ -54,10 +54,11 @@ class TestDomainEventTriggering:
         person = PersonService.add(command)
 
         event_repo = current_domain.repository_for(EventLog)
-        event = event_repo.get_most_recent_event_by_type(kind=PersonAdded)
+        event = event_repo.get_most_recent_event_by_type_cls(event_cls=PersonAdded)
 
         assert event is not None
-        assert event.kind == "PersonAdded"
+        assert event.name == "person_added"
+        assert event.type == "EVENT"
         assert event.payload == person.to_dict()
 
     def test_that_all_events_are_retrievable(self, test_domain):
@@ -69,10 +70,11 @@ class TestDomainEventTriggering:
         person = PersonService.add(command)
 
         event_repo = current_domain.repository_for(EventLog)
-        events = event_repo.get_all_events_of_type(kind=PersonAdded)
+        events = event_repo.get_all_events_of_type_cls(event_cls=PersonAdded)
 
         assert events is not None
         assert isinstance(events, list)
         assert len(events) == 1
-        assert events[0].kind == "PersonAdded"
+        assert events[0].name == "person_added"
+        assert events[0].type == "EVENT"
         assert events[0].payload == person.to_dict()

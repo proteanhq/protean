@@ -8,8 +8,6 @@ from .elements import (
     ConcretePerson,
     DbPerson,
     DifferentDbPerson,
-    OrderedPerson,
-    OrderedPersonSubclass,
     Person,
     PersonAutoSSN,
     PersonExplicitID,

@@ -3,17 +3,29 @@ to register Domain Elements.
 """
 import logging
 import sys
+from typing import Union
 
 from werkzeug.datastructures import ImmutableDict
 
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
 from protean.core.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
 )
+from protean.core.message import Message, MessageType
 from protean.domain.registry import _DomainRegistry
-from protean.utils import DomainObjects, fully_qualified_name
+from protean.infra.event_log import EventLog
+from protean.utils import (
+    DomainObjects,
+    EventStrategy,
+    fetch_command_cls_from_registry,
+    fetch_event_cls_from_registry,
+    fully_qualified_name,
+)
+from protean.utils.inflection import camelize
 
 from .config import Config, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals
@@ -40,7 +52,7 @@ class Domain(_PackageBoundObject):
     :param domain_name: the name of the domain
     """
 
-    from protean.utils import IdentityStrategy, IdentityType
+    from protean.utils import EventStrategy, IdentityStrategy, IdentityType
 
     config_class = Config
     domain_context_globals_class = _DomainContextGlobals
@@ -83,6 +95,7 @@ class Domain(_PackageBoundObject):
             "AUTOLOAD_DOMAIN": True,
             "IDENTITY_STRATEGY": IdentityStrategy.UUID,
             "IDENTITY_TYPE": IdentityType.STRING,
+            "EVENT_STRATEGY": EventStrategy.DB_SUPPORTED,
             "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider"}},
             "CACHES": {
                 "default": {
@@ -135,6 +148,10 @@ class Domain(_PackageBoundObject):
         #: is destroyed.  This is the place to store code that cleans up and
         #: disconnects from databases, for example.
         self.teardown_domain_context_functions = []
+
+        # Register the EventLog Aggregate  # FIXME Is this the best place to do this?
+        if self.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED:
+            self.register(EventLog)
 
     def init(self):
         """ Parse the domain folder, and attach elements dynamically to the domain.
@@ -517,6 +534,17 @@ class Domain(_PackageBoundObject):
 
     def publish_command(self, command):
         self.brokers.publish_command(command)
+
+    def from_message(self, message: Message) -> Union[BaseCommand, BaseEvent]:
+        if message["type"] == MessageType.EVENT.value:
+            event_cls = fetch_event_cls_from_registry(camelize(message["name"]))
+            return event_cls(message["payload"])
+        elif message["type"] == MessageType.COMMAND.value:
+            command_cls = fetch_command_cls_from_registry(camelize(message["name"]))
+            return command_cls(message["payload"])
+        else:
+            # FIXME What is the correct error to raise here?
+            raise NotSupportedError({"message": ["Unknown object type in message"]})
 
     ############################
     # Repository Functionality #

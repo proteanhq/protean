@@ -36,6 +36,7 @@ class TestConfig:
             "'AUTOLOAD_DOMAIN': True, "
             "'IDENTITY_STRATEGY': <IdentityStrategy.UUID: 1>, "
             "'IDENTITY_TYPE': <IdentityType.STRING: 'STRING'>, "
+            "'EVENT_STRATEGY': <EventStrategy.DB_SUPPORTED: 'DB_SUPPORTED'>, "
             "'DATABASES': {'default': {'PROVIDER': 'protean.adapters.MemoryProvider'}}, "
             "'CACHES': {'default': {'PROVIDER': 'protean.adapters.cache.memory.MemoryCache', "
             "'TTL': 300, 'CACHE': 'MEMORY'}}, "

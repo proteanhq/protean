@@ -55,6 +55,7 @@ class TestDomainEventNotification:
     def test_that_domain_event_is_received_from_aggregate_command_method(
         self, mock, test_domain
     ):
+        test_domain.register(PersonAdded)
         test_domain.register(NotifySSOSubscriber)
 
         newcomer = Person.add_newcomer(

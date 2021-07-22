@@ -2,7 +2,7 @@
 
 from protean.core.field.base import Field
 
-from .utils import fetch_value_object_cls_from_domain
+from protean.utils import fetch_value_object_cls_from_domain
 
 
 class _ShadowField(Field):

@@ -278,7 +278,7 @@ The default value is ``None`` when ``default`` option isn’t defined::
 Auto
 ----
 
-Automatically-generated unique identifiers. By default, all entities and aggregates hold an ``Auto`` field named ``id`` that acts as their unique identifier.
+Automatically-generated unique identifiers. By default, all entities and aggregates hold an ``Auto`` field named ``id`` that acts as their unique identifier. You cannot supply values explicitly to ``Auto`` fields - they are self-generated.
 
 .. code-block:: python
 
@@ -307,6 +307,8 @@ An ``Auto`` field is unique by default::
     'unique': True,
     'required': False,
     ...
+
+At the same time, ``Auto`` fields cannot be marked as ``required`` because their values cannot be specified explicitly.
 
 .. _field-type-identifier:
 

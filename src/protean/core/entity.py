@@ -4,10 +4,8 @@ import logging
 
 from collections import defaultdict
 from functools import partial
-from uuid import uuid4
 
 from protean.core.exceptions import (
-    ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
     ValidationError,
@@ -16,12 +14,10 @@ from protean.core.field.association import Association, Reference
 from protean.core.field.basic import Auto, Field
 from protean.core.field.embedded import ValueObject
 from protean.core.field.association import HasMany, _ReferenceField
-from protean.globals import current_domain
 from protean.utils import (
     DomainObjects,
-    IdentityStrategy,
-    IdentityType,
     derive_element_class,
+    generate_identity,
     inflection,
 )
 
@@ -437,7 +433,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
             not getattr(self, self.meta_.id_field.field_name, None)
             and type(self.meta_.id_field) is Auto
         ):
-            setattr(self, self.meta_.id_field.field_name, self.generate_identity())
+            setattr(self, self.meta_.id_field.field_name, generate_identity())
             loaded_fields.append(self.meta_.id_field.field_name)
 
         # Load Associations
@@ -497,23 +493,6 @@ class BaseEntity(metaclass=_EntityMetaclass):
         To be overridden in concrete Containers, when complex validations spanning multiple fields are required.
         """
         return defaultdict(list)
-
-    @classmethod
-    def generate_identity(cls):
-        """Generate Unique Identifier, based on configured strategy"""
-        if current_domain.config["IDENTITY_STRATEGY"] == IdentityStrategy.UUID:
-            if current_domain.config["IDENTITY_TYPE"] == IdentityType.INTEGER:
-                return uuid4().int
-            elif current_domain.config["IDENTITY_TYPE"] == IdentityType.STRING:
-                return str(uuid4())
-            elif current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID:
-                return uuid4()
-            else:
-                raise ConfigurationError(
-                    f'Unknown Identity Type {current_domain.config["IDENTITY_TYPE"]}'
-                )
-
-        return None  # Database will generate the identity
 
     def __eq__(self, other):
         """Equivalence check to be based only on Identity"""

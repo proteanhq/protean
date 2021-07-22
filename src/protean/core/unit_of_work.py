@@ -9,7 +9,7 @@ logger = logging.getLogger("protean.core.unit_of_work")
 class UnitOfWork:
     def __init__(self):
         """Initialize session factories from all providers
-        
+
         Connections will be retrieved at this stage
 
         Also initialize Identity Map?

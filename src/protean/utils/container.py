@@ -11,11 +11,13 @@ logger = logging.getLogger("protean.domain")
 
 class _ContainerMetaclass(type):
     """
-    This base metaclass processes the class declaration and constructs a meta object that can
-    be used to introspect the concrete Container class later.
+    This base metaclass processes the class declaration and
+    constructs a meta object that can be used to introspect
+    the concrete Container class later.
 
-    It also sets up a `meta_` attribute on the concrete class to an instance of Meta,
-    either the default of one that is defined in the concrete class.
+    It also sets up a `meta_` attribute on the concrete class
+    to an instance of Meta, either the default of one that is
+    defined in the concrete class.
     """
 
     def __new__(mcs, name, bases, attrs, **kwargs):
@@ -92,6 +94,9 @@ class ContainerMeta:
         # Initialize Options
         self.declared_fields = {}
 
+        # FIXME Make Meta class configurable per Element Type
+        self.version = 1
+
     @property
     def mandatory_fields(self):
         """ Return the mandatory fields for this entity """
@@ -122,7 +127,7 @@ class BaseContainer(metaclass=_ContainerMetaclass):
             raise TypeError("BaseContainer cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, *template, owner=None, raise_errors=True, **kwargs):
+    def __init__(self, *template, **kwargs):
         """
         Initialise the container.
 
@@ -139,10 +144,6 @@ class BaseContainer(metaclass=_ContainerMetaclass):
             )
 
         self.errors = defaultdict(list)
-        self.raise_errors = raise_errors
-
-        # Entity/Aggregate to which this Command is connected to
-        self.owner = owner
 
         # Load the attributes based on the template
         loaded_fields = []
@@ -176,7 +177,7 @@ class BaseContainer(metaclass=_ContainerMetaclass):
             self.errors[field].extend(custom_errors[field])
 
         # Raise any errors found during load
-        if self.errors and self.raise_errors:
+        if self.errors:
             logger.error(self.errors)
             raise ValidationError(self.errors)
 
@@ -235,9 +236,7 @@ class BaseContainer(metaclass=_ContainerMetaclass):
 
     def __setattr__(self, name, value):
         if name in self.meta_.declared_fields or name in [
-            "raise_errors",
             "errors",
-            "owner",
         ]:
             super().__setattr__(name, value)
         else:
@@ -246,8 +245,8 @@ class BaseContainer(metaclass=_ContainerMetaclass):
     def to_dict(self):
         """ Return data as a dictionary """
         return {
-            field_name: getattr(self, field_name, None)
-            for field_name in self.meta_.attributes
+            field_name: field_obj.as_dict(getattr(self, field_name, None))
+            for field_name, field_obj in self.meta_.attributes.items()
         }
 
     def clone(self):

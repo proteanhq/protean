@@ -6,7 +6,7 @@ from protean.globals import current_domain
 
 from .base import Field
 from .mixins import FieldCacheMixin, FieldDescriptorMixin
-from .utils import fetch_entity_cls_from_registry
+from protean.utils import fetch_entity_cls_from_registry
 
 
 class _ReferenceField(Field):

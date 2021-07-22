@@ -15,10 +15,8 @@ class BaseEvent(BaseContainer):
 
     element_type = DomainObjects.EVENT
 
-    def __new__(cls, *args, **kwargs):
-        if cls is BaseEvent:
-            raise TypeError("BaseEvent cannot be instantiated")
-        return super().__new__(cls)
+    class Meta:
+        abstract = True
 
 
 def domain_event_factory(element_cls, **kwargs):

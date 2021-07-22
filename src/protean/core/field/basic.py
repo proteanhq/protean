@@ -239,10 +239,15 @@ class Auto(Field):
     """
 
     def __init__(self, *args, **kwargs):
-        """Initialize an Auto Field"""
-        # Force set required to false
+        """Initialize an Auto Field
+
+        Values of Auto-fields are generated automatically and cannot be set explicitly.
+        They cannot be marked as `required` for this reason - Protean does not accept
+        values supplied for Auto fields.
+        """
         super().__init__(*args, **kwargs)
-        # FIXME Why is auto-field marked as False? Is it handle issues with defaulting?
+
+        # Force set required to false
         self.required = False
 
     def __set__(self, instance, value):

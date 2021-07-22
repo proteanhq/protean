@@ -2,6 +2,8 @@ import collections
 import importlib
 import logging
 
+from protean.core.message import Message
+
 try:
     # Python 3.8+
     collectionsAbc = collections.abc
@@ -10,8 +12,8 @@ except AttributeError:  # pragma: no cover
     collectionsAbc = collections
 
 from protean.core.exceptions import ConfigurationError
-from protean.globals import current_uow
-from protean.utils import DomainObjects
+from protean.globals import current_uow, current_domain
+from protean.utils import EventStrategy
 
 logger = logging.getLogger("protean.broker")
 
@@ -100,20 +102,14 @@ class Brokers(collectionsAbc.MutableMapping):
         if self._brokers is None:
             self._initialize()
 
-        # Log event into a table before pushing to brokers. This will give a chance to recover from errors.
-        #   There is a pseudo-check to ensure `EventLog` is registered in the domain, to ensure that apps
-        #   know about this functionality and opt for it explicitly.
-        #   # FIXME Check if Event Log is enabled in config
-        from protean.infra.event_log import EventLog
+        message = Message.to_message(event)
 
-        if (
-            "protean.infra.event_log.EventLog"
-            in self.domain._domain_registry._elements[
-                DomainObjects.AGGREGATE.value
-            ]  # FIXME Do not refer to domain
-        ):
-            event_dao = self.domain.get_dao(EventLog)
-            event_dao.create(kind=event.__class__.__name__, payload=event.to_dict())
+        if current_domain.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED:
+            # Log event into a table before pushing to brokers.
+            # This will give a chance to recover from errors.
+            from protean.infra.event_log import EventLog
+
+            self.domain.get_dao(EventLog).save(EventLog.from_message(message))
 
         if current_uow:
             logger.debug(
@@ -123,15 +119,18 @@ class Brokers(collectionsAbc.MutableMapping):
             current_uow.register_event(event)
         else:
             logger.debug(
-                f"Publishing {event.__class__.__name__} with values {event.to_dict()}"
+                f"Publishing {event.__class__.__name__} with message {message}"
             )
+
             for broker_name in self._brokers:
-                self._brokers[broker_name].send_message(event)
+                self._brokers[broker_name].publish(message)
 
     def publish_command(self, command):
         """Publish a command to registered command handler"""
         if self._brokers is None:
             self._initialize()
+
+        # FIXME Save Commands before processing, for later retries/debugging?
 
         if current_uow:
             logger.debug(

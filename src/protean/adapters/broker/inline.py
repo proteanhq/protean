@@ -1,4 +1,3 @@
-from protean.core.event import BaseEvent
 from protean.globals import current_domain
 from protean.port.broker import BaseBroker
 from protean.utils import fully_qualified_name
@@ -11,8 +10,10 @@ class InlineBroker(BaseBroker):
         # In case of `InlineBroker`, the `IS_ASYNC` value will always be `False`.
         conn_info["IS_ASYNC"] = False
 
-    def send_message(self, initiator_obj):
-        if isinstance(initiator_obj, BaseEvent):
+    def publish(self, message):
+        # FIXME Implement Inline Broker's publish mechanism
+        initiator_obj = current_domain.from_message(message)
+        if message["type"] == "EVENT":
             for subscriber in self._subscribers[
                 fully_qualified_name(initiator_obj.__class__)
             ]:
