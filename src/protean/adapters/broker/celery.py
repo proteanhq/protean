@@ -7,11 +7,14 @@ from typing import Dict
 from celery import Celery, Task
 from kombu import Queue
 
-from protean.core.event import BaseEvent
 from protean.core.message import MessageType
 from protean.port.broker import BaseBroker
-from protean.utils import DomainObjects, fully_qualified_name
-from protean.utils.inflection import underscore
+from protean.utils import (
+    DomainObjects,
+    fetch_event_cls_from_registry,
+    fully_qualified_name,
+)
+from protean.utils.inflection import camelize, underscore
 
 logger = logging.getLogger("protean.adapters.celery")
 
@@ -93,10 +96,8 @@ class CeleryBroker(BaseBroker):
 
     def publish(self, message: Dict):
         if message["type"] == MessageType.EVENT.value:
-            for subscriber in self._subscribers[
-                # FIXME FQN needed here
-                fully_qualified_name(message["name"])
-            ]:
+            event_cls = fetch_event_cls_from_registry(camelize(message["name"]))
+            for subscriber in self._subscribers[fully_qualified_name(event_cls)]:
                 if self.conn_info["IS_ASYNC"]:
                     subscriber.apply_async([message], queue=subscriber.name)
                 else:

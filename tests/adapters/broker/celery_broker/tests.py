@@ -26,16 +26,14 @@ class TestEventProcessing:
     @pytest.fixture(autouse=True)
     def register(self):
         current_domain.register(Person)
+        current_domain.register(PersonAdded)
         current_domain.register(NotifySSOSubscriber)
 
     @patch.object(CeleryBroker, "publish")
     def test_that_an_event_is_published_to_the_broker(self, mock):
-        newcomer = Person.add_newcomer(
-            {"first_name": "John", "last_name": "Doe", "age": 21}
-        )
-        mock.assert_called_once_with(
-            PersonAdded(id=newcomer.id, first_name="John", last_name="Doe", age=21)
-        )
+        Person.add_newcomer({"first_name": "John", "last_name": "Doe", "age": 21})
+        mock.assert_called_once()
+        assert type(mock.call_args.args[0]) == dict
 
     def test_that_events_are_available_on_queue_after_publish(self):
         Person.add_newcomer({"first_name": "John", "last_name": "Doe", "age": 21})

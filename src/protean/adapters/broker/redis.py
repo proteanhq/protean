@@ -1,10 +1,8 @@
 import redis
 
-from typing import Dict, Union
+from typing import Dict
 
 from protean.port.broker import BaseBroker
-from protean.core.command import BaseCommand
-from protean.core.event import BaseEvent
 
 
 class RedisBroker(BaseBroker):

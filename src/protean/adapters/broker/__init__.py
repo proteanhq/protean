@@ -104,41 +104,28 @@ class Brokers(collectionsAbc.MutableMapping):
 
         message = Message.to_message(object)
 
-        if message["type"] == MessageType.EVENT.value:
-            if current_domain.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED:
-                # Log event into a table before pushing to brokers.
-                # This will give a chance to recover from errors.
-                from protean.infra.event_log import EventLog
+        if (
+            message["type"] == MessageType.EVENT.value
+            and current_domain.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED
+        ):
+            # Log event into a table before pushing to brokers.
+            # This will give a chance to recover from errors.
+            from protean.infra.event_log import EventLog
 
-                self.domain.get_dao(EventLog).save(EventLog.from_message(message))
+            self.domain.get_dao(EventLog).save(EventLog.from_message(message))
 
-            if current_uow:
-                logger.debug(
-                    f"Recording {object.__class__.__name__} "
-                    f"with values {object.to_dict()} in {current_uow}"
-                )
+        if current_uow:
+            logger.debug(
+                f"Recording {object.__class__.__name__} "
+                f"with values {object.to_dict()} in {current_uow}"
+            )
 
-                # FIXME Register the payload itself instead of objects
-                current_uow.register_event(object)
-            else:
-                logger.debug(
-                    f"Publishing {object.__class__.__name__} with message {message}"
-                )
-
-                for broker_name in self._brokers:
-                    self._brokers[broker_name].publish(message)
+            # FIXME Register the payload itself instead of objects
+            current_uow.register_message(message)
         else:
-            # FIXME Command Handlers should follow a different path, not through a UoW
-            if current_uow:
-                logger.debug(
-                    f"Recording {object.__class__.__name__} "
-                    f"with values {object.to_dict()} in {current_uow}"
-                )
-                # FIXME Register the payload itself instead of objects
-                current_uow.register_command_handler(object)
-            else:
-                logger.debug(
-                    f"Publishing {object.__class__.__name__} with values {object.to_dict()}"
-                )
-                for broker_name in self._brokers:
-                    self._brokers[broker_name].publish(message)
+            logger.debug(
+                f"Publishing {object.__class__.__name__} with message {message}"
+            )
+
+            for broker_name in self._brokers:
+                self._brokers[broker_name].publish(message)

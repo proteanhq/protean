@@ -1,7 +1,6 @@
 import logging
 
 from protean.core.exceptions import InvalidOperationError, ValidationError
-from protean.core.message import Message
 from protean.globals import _uow_context_stack, current_domain
 
 logger = logging.getLogger("protean.core.unit_of_work")
@@ -21,8 +20,7 @@ class UnitOfWork:
         self._in_progress = False
 
         self._sessions = {}
-        self._events = []
-        self._commands = []
+        self._messages_to_dispath = []
 
     @property
     def in_progress(self):
@@ -58,13 +56,7 @@ class UnitOfWork:
                 session.commit()
 
             # FIXME Let Async Server pick up messages from committed transaction
-            for event in self._events:
-                message = Message.to_message(event)
-                for _, broker in self.domain.brokers.items():
-                    broker.publish(message)
-
-            for command in self._commands:
-                message = Message.to_message(command)
+            for message in self._messages_to_dispath:
                 for _, broker in self.domain.brokers.items():
                     broker.publish(message)
 
@@ -124,10 +116,5 @@ class UnitOfWork:
         else:
             return self._initialize_session(provider_name)
 
-    def register_event(self, event):
-        # FIXME Register events on Aggregates?
-        self._events.append(event)
-
-    def register_command_handler(self, command):
-        # FIXME UoWs should not deal with commands?
-        self._commands.append(command)
+    def register_message(self, message):
+        self._messages_to_dispath.append(message)

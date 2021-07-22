@@ -4,11 +4,9 @@ import logging.config
 from abc import abstractmethod
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import Dict, Union
+from typing import Dict
 
 from protean.utils import DomainObjects, fully_qualified_name
-from protean.core.command import BaseCommand
-from protean.core.event import BaseEvent
 
 logger = logging.getLogger("protean.port.broker")
 
