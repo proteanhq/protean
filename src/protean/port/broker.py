@@ -4,7 +4,7 @@ import logging.config
 from abc import abstractmethod
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import Union
+from typing import Dict, Union
 
 from protean.utils import DomainObjects, fully_qualified_name
 from protean.core.command import BaseCommand
@@ -81,16 +81,11 @@ class BaseBroker(metaclass=_BrokerMetaclass):
         """Get the connection object to the broker"""
 
     @abstractmethod
-    def send_message(self, initiator_obj):
-        """Placeholder method for brokers to accept incoming events"""
-        # FIXME Remove this method once `publish()` is ready
-
-    @abstractmethod
-    def publish(self, message: Union[BaseCommand, BaseEvent]):
+    def publish(self, message: Dict):
         """Publish a message with Protean-compatible payload to the configured Message bus.
 
         Args:
-            message (Union[BaseCommand, BaseEvent]): Command or Event object
+            message (Dict): Command or Event payload
         """
 
     def register(self, initiator_cls, consumer_cls):

@@ -1,3 +1,4 @@
+from tests.test_brokers import AddPersonCommand
 import uuid
 
 import pytest
@@ -49,6 +50,8 @@ class TestDomainEventTriggering:
         test_domain.register(Person)
         test_domain.register(EventLog)
         test_domain.register(EventLogRepository)
+        test_domain.register(AddPersonCommand)
+        test_domain.register(PersonAdded)
 
         command = PersonCommand(first_name="John", last_name="Doe", age=21)
         person = PersonService.add(command)
@@ -65,6 +68,8 @@ class TestDomainEventTriggering:
         test_domain.register(Person)
         test_domain.register(EventLog)
         test_domain.register(EventLogRepository)
+        test_domain.register(AddPersonCommand)
+        test_domain.register(PersonAdded)
 
         command = PersonCommand(first_name="John", last_name="Doe", age=21)
         person = PersonService.add(command)

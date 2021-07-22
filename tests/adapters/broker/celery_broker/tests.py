@@ -28,7 +28,7 @@ class TestEventProcessing:
         current_domain.register(Person)
         current_domain.register(NotifySSOSubscriber)
 
-    @patch.object(CeleryBroker, "send_message")
+    @patch.object(CeleryBroker, "publish")
     def test_that_an_event_is_published_to_the_broker(self, mock):
         newcomer = Person.add_newcomer(
             {"first_name": "John", "last_name": "Doe", "age": 21}

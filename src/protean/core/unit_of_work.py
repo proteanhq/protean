@@ -1,6 +1,7 @@
 import logging
 
 from protean.core.exceptions import InvalidOperationError, ValidationError
+from protean.core.message import Message
 from protean.globals import _uow_context_stack, current_domain
 
 logger = logging.getLogger("protean.core.unit_of_work")
@@ -58,12 +59,14 @@ class UnitOfWork:
 
             # FIXME Let Async Server pick up messages from committed transaction
             for event in self._events:
+                message = Message.to_message(event)
                 for _, broker in self.domain.brokers.items():
-                    broker.send_message(event)
+                    broker.publish(message)
 
             for command in self._commands:
+                message = Message.to_message(command)
                 for _, broker in self.domain.brokers.items():
-                    broker.send_message(command)
+                    broker.publish(message)
 
             logger.debug("Commit Successful")
         except Exception as exc:

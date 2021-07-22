@@ -529,11 +529,8 @@ class Domain(_PackageBoundObject):
     # Broker Functionality #
     ########################
 
-    def publish(self, event):
-        self.brokers.publish(event)
-
-    def publish_command(self, command):
-        self.brokers.publish_command(command)
+    def publish(self, object):
+        self.brokers.publish(object)
 
     def from_message(self, message: Message) -> Union[BaseCommand, BaseEvent]:
         if message["type"] == MessageType.EVENT.value:

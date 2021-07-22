@@ -161,10 +161,11 @@ class TestBrokerInitialization:
     def test_that_brokers_are_initialized_on_receiving_a_command(
         self, mocker, test_domain
     ):
+        test_domain.register(AddPersonCommand)
         test_domain.register(AddNewPersonCommandHandler)
 
         spy = mocker.spy(test_domain.brokers, "_initialize")
-        test_domain.publish_command(
+        test_domain.publish(
             AddPersonCommand(first_name="John", last_name="Doe", age=21)
         )
         assert spy.call_count == 1
@@ -172,12 +173,13 @@ class TestBrokerInitialization:
     def test_that_brokers_are_not_reinitialized_on_receiving_a_command(
         self, mocker, test_domain
     ):
+        test_domain.register(AddPersonCommand)
         test_domain.register(AddNewPersonCommandHandler)
 
         len(test_domain.brokers)  # Triggers initialization
 
         spy = mocker.spy(test_domain.brokers, "_initialize")
-        test_domain.publish_command(
+        test_domain.publish(
             AddPersonCommand(first_name="John", last_name="Doe", age=21)
         )
         assert spy.call_count == 0
@@ -234,7 +236,7 @@ class TestPublishToSubscriber:
         assert spy.call_count == 1
 
     def test_that_uow_stores_event_on_publishing_within_uow(self, mocker, test_domain):
-        spy = mocker.spy(test_domain.brokers["default"], "send_message")
+        spy = mocker.spy(test_domain.brokers["default"], "publish")
 
         with UnitOfWork():
             test_domain.publish(
@@ -288,19 +290,21 @@ class TestBrokerCommandHandlerInitialization:
 class TestPublishToCommandHandler:
     @patch.object(AddNewPersonCommandHandler, "notify")
     def test_that_brokers_receive_a_command(self, mock, test_domain):
+        test_domain.register(AddPersonCommand)
         test_domain.register(AddNewPersonCommandHandler)
 
         command = AddPersonCommand(first_name="John", last_name="Doe", age=21)
-        test_domain.publish_command(command)
+        test_domain.publish(command)
         mock.assert_called_once_with(command.to_dict())
 
     @patch.object(AddNewPersonCommandHandler, "notify")
     def test_that_uow_stores_command_on_publishing_within_uow(self, mock, test_domain):
+        test_domain.register(AddPersonCommand)
         test_domain.register(AddNewPersonCommandHandler)
 
         with UnitOfWork():
             command = AddPersonCommand(first_name="John", last_name="Doe", age=21)
-            test_domain.publish_command(command)
+            test_domain.publish(command)
 
             mock.assert_not_called()
 

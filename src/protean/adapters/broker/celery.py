@@ -2,11 +2,13 @@ import logging
 import logging.config
 
 from collections.abc import Iterable
+from typing import Dict
 
 from celery import Celery, Task
 from kombu import Queue
 
 from protean.core.event import BaseEvent
+from protean.core.message import MessageType
 from protean.port.broker import BaseBroker
 from protean.utils import DomainObjects, fully_qualified_name
 from protean.utils.inflection import underscore
@@ -89,16 +91,15 @@ class CeleryBroker(BaseBroker):
                     fully_qualified_name(initiator)
                 ] = decorated_cls_instance
 
-    def send_message(self, initiator_obj):
-        if isinstance(initiator_obj, BaseEvent):
+    def publish(self, message: Dict):
+        if message["type"] == MessageType.EVENT.value:
             for subscriber in self._subscribers[
-                fully_qualified_name(initiator_obj.__class__)
+                # FIXME FQN needed here
+                fully_qualified_name(message["name"])
             ]:
                 if self.conn_info["IS_ASYNC"]:
-                    subscriber.apply_async(
-                        [initiator_obj.to_dict()], queue=subscriber.name
-                    )
+                    subscriber.apply_async([message], queue=subscriber.name)
                 else:
-                    subscriber.apply([initiator_obj.to_dict()])
+                    subscriber.apply([message])
         else:
             raise NotImplementedError

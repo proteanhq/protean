@@ -1,6 +1,6 @@
 import redis
 
-from typing import Union
+from typing import Dict, Union
 
 from protean.port.broker import BaseBroker
 from protean.core.command import BaseCommand
@@ -23,9 +23,6 @@ class RedisBroker(BaseBroker):
         """
         return self.conn_pool.release(connection)
 
-    def send_message(self, initiator_obj):
-        """Placeholder method for brokers to accept incoming events"""
-        pass
-
-    def publish(self, message: Union[BaseCommand, BaseEvent]):
+    def publish(self, message: Dict):
+        # FIXME Yet to be implemented
         pass

@@ -45,8 +45,9 @@ class TestDomainEventNotification:
     def test_that_domain_event_is_received_from_aggregate_command_method(
         self, mock, test_domain
     ):
+        test_domain.register(AddPersonCommand)
         test_domain.register(AddNewPersonCommandHandler)
 
         command = AddPersonCommand(first_name="John", last_name="Doe", age=21)
-        test_domain.publish_command(command)
+        test_domain.publish(command)
         mock.assert_called_once_with(command.to_dict())

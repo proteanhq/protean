@@ -12,7 +12,7 @@ class BaseEmailProvider:
     """
     Base class for email backend implementations.
 
-    Concrete implementations must overwrite `send_messages()`.
+    Concrete implementations must overwrite `send_email()`.
     ```
     """
 
@@ -30,7 +30,7 @@ class BaseEmailProvider:
         """
         raise NotImplementedError(
             "Concrete implementations of BaseEmailBackend "
-            "must override send_messages() method"
+            "must override send_email() method"
         )
 
 
