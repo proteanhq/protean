@@ -1,7 +1,11 @@
 import pytest
 
 from protean.core.command import BaseCommand
-from protean.core.exceptions import InvalidDataError, InvalidOperationError
+from protean.core.exceptions import (
+    InvalidDataError,
+    InvalidOperationError,
+    NotSupportedError,
+)
 from protean.core.field.basic import String
 from protean.utils import fully_qualified_name
 
@@ -10,7 +14,7 @@ from .elements import UserRegistrationCommand
 
 class TestCommandInitialization:
     def test_that_command_object_class_cannot_be_instantiated(self):
-        with pytest.raises(TypeError):
+        with pytest.raises(NotSupportedError):
             BaseCommand()
 
     def test_that_a_concrete_dto_can_be_instantiated(self):

@@ -1,11 +1,17 @@
+from __future__ import annotations
+
 import logging
 import logging.config
 
 from abc import abstractmethod
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import Dict
+from typing import Any, Dict, Type, Union
 
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
+from protean.core.event import BaseEvent
+from protean.core.subscriber import BaseSubscriber
 from protean.utils import DomainObjects, fully_qualified_name
 
 logger = logging.getLogger("protean.port.broker")
@@ -22,7 +28,9 @@ class _BrokerMetaclass(type):
         * `aggregate`: The aggregate associated with the repository
     """
 
-    def __new__(mcs, name, bases, attrs, **kwargs):
+    def __new__(
+        mcs: Type[type], name: str, bases: tuple, attrs: dict, **kwargs: Any
+    ) -> _BrokerMetaclass:
         """Initialize Broker MetaClass and load attributes"""
 
         # Ensure initialization is only performed for subclasses of Broker
@@ -53,7 +61,9 @@ class BrokerMeta:
     - ``aggregate_cls``: The aggregate associated with the repository
     """
 
-    def __init__(self, entity_name, meta):
+    def __init__(
+        self, entity_name: str, meta: Any
+    ):  # FIXME What is the type of `meta`?
         self.aggregate_cls = getattr(meta, "aggregate_cls", None)
 
 
@@ -66,7 +76,9 @@ class BaseBroker(metaclass=_BrokerMetaclass):
 
     # FIXME Replace with typing.Protocol
 
-    def __init__(self, name, domain, conn_info):
+    def __init__(
+        self, name: str, domain: Any, conn_info: Dict[str, str]
+    ) -> None:  # FIXME Any should be Domain
         self.name = name
         self.domain = domain
         self.conn_info = conn_info
@@ -75,18 +87,30 @@ class BaseBroker(metaclass=_BrokerMetaclass):
         self._command_handlers = {}
 
     @abstractmethod
-    def get_connection(self):
-        """Get the connection object to the broker"""
-
-    @abstractmethod
-    def publish(self, message: Dict):
+    def publish(self, message: Dict) -> None:
         """Publish a message with Protean-compatible payload to the configured Message bus.
 
         Args:
             message (Dict): Command or Event payload
         """
 
-    def register(self, initiator_cls, consumer_cls):
+    @abstractmethod
+    def get_next(self) -> Dict:
+        """Retrieve the next message to process from broker.
+        """
+
+    @abstractmethod
+    def _data_reset(self) -> None:
+        """Flush all data in broker instance.
+
+        Useful for clearing cache and running tests.
+        """
+
+    def register(
+        self,
+        initiator_cls: Union[BaseCommand, BaseEvent],
+        consumer_cls: Union[BaseCommandHandler, BaseSubscriber],
+    ) -> None:
         """Registers Events and Commands with Subscribers/Command Handlers
 
         Arguments:

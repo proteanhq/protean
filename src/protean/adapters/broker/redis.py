@@ -1,26 +1,29 @@
+import json
 import redis
 
 from typing import Dict
 
 from protean.port.broker import BaseBroker
+from protean.domain import Domain
 
 
 class RedisBroker(BaseBroker):
-    def __init__(self, name, domain, conn_info):
+    """Redis as the Message Broker.
+
+    FIXME: Convert to be a Context Manager, and release connection after use
+    """
+
+    def __init__(self, name: str, domain: Domain, conn_info: Dict) -> None:
         super().__init__(name, domain, conn_info)
 
-        self.conn_pool = redis.ConnectionPool.from_url(conn_info["URI"])
+        self.redis_instance = redis.Redis.from_url(conn_info["URI"])
 
-    def get_connection(self) -> redis.Connection:
-        """Retrieve an active connection from connection pool
-        """
-        return self.conn_pool.get_connection("_")
+    def publish(self, message: Dict) -> None:
+        self.redis_instance.rpush("messages", json.dumps(message))
 
-    def release_connection(self, connection: redis.Connection):
-        """Release connection back to the connection pool
-        """
-        return self.conn_pool.release(connection)
+    def get_next(self) -> Dict:
+        bytes_message = self.redis_instance.lpop("messages")
+        return json.loads(bytes_message) if bytes_message else None
 
-    def publish(self, message: Dict):
-        # FIXME Yet to be implemented
-        pass
+    def _data_reset(self) -> None:
+        self.redis_instance.flushall()

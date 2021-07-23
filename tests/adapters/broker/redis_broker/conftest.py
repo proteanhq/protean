@@ -28,13 +28,6 @@ def test_domain():
     yield domain
 
 
-@pytest.fixture(scope="module")
-def test_domain_for_worker():
-    domain = initialize_domain()
-
-    yield domain
-
-
 @pytest.fixture(scope="session", autouse=True)
 def setup_redis():
     # Initialize Redis
@@ -51,8 +44,8 @@ def run_around_tests(test_domain):
 
     yield
 
-    # Flush all in Redis
-    # FIXME
+    if ("default") in test_domain.brokers:
+        test_domain.brokers["default"]._data_reset()
 
     if test_domain.providers.has_provider("default"):
         test_domain.get_provider("default")._data_reset()

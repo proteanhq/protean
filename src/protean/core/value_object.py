@@ -41,10 +41,8 @@ class BaseValueObject(BaseContainer):
 
     element_type = DomainObjects.VALUE_OBJECT
 
-    def __new__(cls, *args, **kwargs):
-        if cls is BaseValueObject:
-            raise TypeError("BaseValueObject cannot be instantiated")
-        return super().__new__(cls)
+    class Meta:
+        abstract = True
 
 
 def value_object_factory(element_cls, **kwargs):

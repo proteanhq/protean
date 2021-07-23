@@ -30,10 +30,8 @@ class BaseCommand(BaseContainer):
 
     element_type = DomainObjects.COMMAND
 
-    def __new__(cls, *args, **kwargs):
-        if cls is BaseCommand:
-            raise TypeError("BaseCommand cannot be instantiated")
-        return super().__new__(cls)
+    class Meta:
+        abstract = True
 
     def __init__(self, *args, **kwargs):
         try:
