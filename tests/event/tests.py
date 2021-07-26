@@ -7,7 +7,7 @@ from mock import patch
 from protean.adapters.broker.inline import InlineBroker
 from protean.core.event import BaseEvent
 from protean.globals import current_domain
-from protean.infra.event_log import EventLog, EventLogRepository
+from protean.infra.eventing import EventLog, EventLogRepository
 from protean.utils import fully_qualified_name
 from protean.core.exceptions import NotSupportedError
 

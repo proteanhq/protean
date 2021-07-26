@@ -7,7 +7,7 @@ from typing import Dict
 from celery import Celery, Task
 from kombu import Queue
 
-from protean.core.message import MessageType
+from protean.infra.eventing import MessageType
 from protean.port.broker import BaseBroker
 from protean.utils import (
     DomainObjects,

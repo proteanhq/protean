@@ -10,7 +10,7 @@ from protean.core.exceptions import ConfigurationError
 from protean.core.field.basic import Auto, String, Integer
 from protean.core.subscriber import BaseSubscriber
 from protean.core.unit_of_work import UnitOfWork
-from protean.infra.event_log import EventLog, EventLogRepository
+from protean.infra.eventing import EventLog, EventLogRepository
 from protean.port.broker import BaseBroker
 
 
@@ -221,7 +221,7 @@ class TestBrokerSubscriberInitialization:
         NotifySSOSubscriber.meta_.broker = "default"
 
 
-class TestPublishToSubscriber:
+class TestEventPublish:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(PersonAdded)
@@ -287,7 +287,7 @@ class TestBrokerCommandHandlerInitialization:
         AddNewPersonCommandHandler.meta_.broker = "default"
 
 
-class TestPublishToCommandHandler:
+class TestCommandPublish:
     @patch.object(AddNewPersonCommandHandler, "notify")
     def test_that_brokers_receive_a_command(self, mock, test_domain):
         test_domain.register(AddPersonCommand)

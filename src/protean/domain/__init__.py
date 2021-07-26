@@ -15,9 +15,9 @@ from protean.core.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
 )
-from protean.core.message import Message, MessageType
+from protean.infra.eventing import Message, MessageType
 from protean.domain.registry import _DomainRegistry
-from protean.infra.event_log import EventLog
+from protean.infra.eventing import EventLog, EventLogRepository
 from protean.utils import (
     DomainObjects,
     EventStrategy,
@@ -152,6 +152,7 @@ class Domain(_PackageBoundObject):
         # Register the EventLog Aggregate  # FIXME Is this the best place to do this?
         if self.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED:
             self.register(EventLog)
+            self.register(EventLogRepository)
 
     def init(self):
         """ Parse the domain folder, and attach elements dynamically to the domain.

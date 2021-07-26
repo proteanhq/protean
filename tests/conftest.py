@@ -113,8 +113,11 @@ def run_around_tests(test_domain):
     yield
 
     # FIXME Providers has to become a MutableMapping
-    if test_domain.providers.has_provider("default"):
-        test_domain.get_provider("default")._data_reset()
+    for provider in test_domain.providers.providers_list():
+        provider._data_reset()
+
+    for _, broker in test_domain.brokers.items():
+        broker._data_reset()
 
     for _, cache in test_domain.caches.items():
         cache.flush_all()

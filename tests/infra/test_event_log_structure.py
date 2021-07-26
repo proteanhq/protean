@@ -1,5 +1,5 @@
 from protean.core.field.basic import Auto
-from protean.infra.event_log import EventLog
+from protean.infra.eventing import EventLog
 
 
 def test_event_log_attributes():

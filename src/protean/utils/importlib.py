@@ -1,5 +1,7 @@
 """ Module defines utilities for importing modules and packages """
 
+import importlib.util
+
 from importlib import import_module
 
 
@@ -28,3 +30,11 @@ def import_from_string(val, package=None):
     except (ImportError, AttributeError) as e:
         msg = f"Could not import {val}. {e.__class__.__name__}: {e}"
         raise ImportError(msg)
+
+
+def import_from_full_path(domain, path):
+    spec = importlib.util.spec_from_file_location(domain, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    return getattr(mod, domain)

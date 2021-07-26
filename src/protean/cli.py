@@ -57,10 +57,14 @@ def livereload_docs():
     server.serve(root="build/html", debug=True)
 
 
-@main.command
-def server():
+@main.command()
+@click.argument("domain")
+@click.argument("domain_file", type=click.Path(exists=True))
+@click.option("-b", "--broker", default="default")
+def server(domain, domain_file, broker):
     """Run Async Background Server"""
+    # FIXME Accept MAX_WORKERS as command-line input as well
     from protean.server import Server
 
-    server = Server()
+    server = Server(domain=domain, domain_file=domain_file, broker=broker)
     server.run()
