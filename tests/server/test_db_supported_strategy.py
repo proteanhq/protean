@@ -4,7 +4,7 @@ from protean.adapters.broker.redis import RedisBroker
 from protean.core.event import BaseEvent
 from protean.core.field.basic import Auto, String, Integer
 from protean.core.subscriber import BaseSubscriber
-from protean.infra.eventing import EventLog
+from protean.infra.eventing import EventLog, EventLogStatus
 from protean.server import Server
 from protean.utils import EventStrategy
 
@@ -94,18 +94,69 @@ async def test_that_new_event_is_published_to_broker(test_domain):
 
     # Publish Event to Domain
     test_domain.publish(
-        PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
+        PersonAdded(id="nW4RN2", first_name="John", last_name="Doe", age=24,)
     )
 
-    server = Server(domain="baz", domain_file="tests/server/support/dummy_domain.py")
+    server = Server.from_domain_file(
+        domain="baz", domain_file="tests/server/support/dummy_domain.py"
+    )
     await server.push_messages()
     server.stop()
 
+    message = test_domain.brokers["default"].get_next()
+    assert message is not None
+    assert message["payload"]["id"] == "nW4RN2"
 
-# Test fetching subscribers for Event message
+
+@pytest.mark.asyncio
+async def test_that_event_is_marked_as_published_after_push_to_broker(test_domain):
+    # Register Event
+    test_domain.register(PersonAdded)
+
+    # Publish Event to Domain
+    test_domain.publish(
+        PersonAdded(id="nW4RN2", first_name="John", last_name="Doe", age=24,)
+    )
+
+    server = Server.from_domain_file(
+        domain="baz", domain_file="tests/server/support/dummy_domain.py"
+    )
+    await server.push_messages()
+    server.stop()
+
+    eventlog_repo = test_domain.repository_for(EventLog)
+    event_record = eventlog_repo.get_most_recent_event_by_type_cls(PersonAdded)
+
+    assert event_record is not None
+    assert event_record.status == EventLogStatus.PUBLISHED.value
+
+
+@pytest.mark.asyncio
+async def test_fetching_subscribers_for_event_constructed_from_broker_message(
+    test_domain,
+):
+    # Register Event
+    test_domain.register(PersonAdded)
+    test_domain.register(NotifySSOSubscriber)
+
+    # Publish Event to Domain
+    test_domain.publish(
+        PersonAdded(id="nW4RN2", first_name="John", last_name="Doe", age=24,)
+    )
+
+    server = Server(domain=test_domain, test_mode=True)
+    await server.push_messages()
+    server.stop()
+
+    message = test_domain.brokers["default"].get_next()
+    subscribers = server.subscribers_for(message)
+
+    assert len(subscribers) == 1
+    assert next(iter(subscribers)) == NotifySSOSubscriber
+
+
 # Test creation of job
 # Test creation of jobs, one per subscriber, when there are multiple subscribers
-# Test marking of Event as picked up
 # Test that the same event cannot be picked twice
 # Test that a job is picked up on next poll
 # Test that the job is marked as picked up

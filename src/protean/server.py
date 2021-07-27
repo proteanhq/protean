@@ -1,11 +1,17 @@
+from __future__ import annotations
+
 import asyncio
 import concurrent.futures
 import logging
 import sys
-from protean.infra.eventing import Message
 
+from typing import Dict
+
+from protean.core.subscriber import BaseSubscriber
+from protean.domain import Domain
 from protean.globals import current_domain
 from protean.infra.eventing import EventLog
+from protean.infra.eventing import Message
 from protean.utils import fully_qualified_name
 from protean.utils.importlib import import_from_full_path
 
@@ -23,15 +29,27 @@ def handled():
 
 
 class Server:
-    def __init__(self, domain: str, domain_file: str = None, broker: str = "default"):
-        self.domain = import_from_full_path(domain=domain, path=domain_file)
+    def __init__(
+        self, domain: Domain, broker: str = "default", test_mode: str = False
+    ) -> None:
+        self.domain = domain
         self.broker = self.domain.brokers[broker]
+        self.test_mode = test_mode
 
         self.loop = asyncio.get_event_loop()
 
         self.SHUTTING_DOWN = False
 
-    async def push_messages(self):
+    @classmethod
+    def from_domain_file(cls, domain: str, domain_file: str, **kwargs) -> Server:
+        domain = import_from_full_path(domain=domain, path=domain_file)
+        return cls(domain=domain, **kwargs)
+
+    def subscribers_for(self, message: Dict) -> BaseSubscriber:
+        object = self.domain.from_message(message)
+        return self.broker._subscribers[fully_qualified_name(object.__class__)]
+
+    async def push_messages(self) -> None:
         """Pick up published events and push to all register brokers"""
         logger.debug(f"Polling DB for new events to publish...")
 
@@ -44,9 +62,10 @@ class Server:
                 broker.publish(message)
 
             # Mark event as picked up
-            object.mark_wip()
+            object.mark_published()
             current_domain.repository_for(EventLog).add(object)
 
+        # Trampoline: self-schedule again if not shutting down
         if not self.SHUTTING_DOWN:
             self.loop.call_later(0.5, self.push_messages)
 
@@ -58,31 +77,14 @@ class Server:
 
                 # FIXME Gather maximum `max_workers` messages and wait for the next cycle
                 while message := self.broker.get_next():
-                    # Reconstruct message back to Command or Event
+                    # Reconstruct message back to Event
                     object = current_domain.from_message(message)
 
-                    # Collect registered Subscribers or Command Handlers from Domain
-                    if message["type"] == "EVENT":
-                        for subscriber in current_domain._subscribers[
-                            fully_qualified_name(object.__class__)
-                        ]:
-                            subscriber_object = subscriber(
-                                current_domain, object.__class__
-                            )
-                            future = executor.submit(
-                                subscriber_object.notify, object.to_dict()
-                            )
-                            future.add_done_callback(handled)
-                    else:
-                        command_handler = self._command_handlers[
-                            fully_qualified_name(object.__class__)
-                        ]
-
-                        command_handler_object = command_handler(
-                            current_domain, object.__class__
-                        )
+                    # Collect registered Subscribers from Domain
+                    for subscriber in self.subscribers_for(object):
+                        subscriber_object = subscriber(current_domain, object.__class__)
                         future = executor.submit(
-                            command_handler_object.notify, object.to_dict()
+                            subscriber_object.notify, object.to_dict()
                         )
                         future.add_done_callback(handled)
 
@@ -93,7 +95,11 @@ class Server:
 
     def run(self):
         try:
-            self.loop.call_soon(self.push_messages())
+            self.loop.call_soon(self.push_messages)
+
+            if self.test_mode:
+                self.loop.call_soon(self.loop.stop)
+
             self.loop.run_forever()
         except KeyboardInterrupt:
             # Complete running tasks and cancel safely

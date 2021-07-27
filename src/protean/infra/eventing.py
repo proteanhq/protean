@@ -64,8 +64,8 @@ class Message(BaseContainer):
 
 class EventLogStatus(Enum):
     NEW = "NEW"
-    WIP = "WIP"
     PUBLISHED = "PUBLISHED"
+    CONSUMED = "CONSUMED"
 
 
 class EventLog(BaseAggregate):
@@ -94,13 +94,16 @@ class EventLog(BaseAggregate):
             created_at=message["created_at"],
         )
 
-    def mark_wip(self):
-        self.status = EventLogStatus.WIP.value
+    def touch(self):
         self.updated_at = datetime.utcnow()
 
     def mark_published(self):
         self.status = EventLogStatus.PUBLISHED.value
-        self.updated_at = datetime.utcnow()
+        self.touch()
+
+    def mark_consumed(self):
+        self.status = EventLogStatus.CONSUMED.value
+        self.touch()
 
 
 class EventLogRepository(BaseRepository):
