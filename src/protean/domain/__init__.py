@@ -18,6 +18,7 @@ from protean.core.exceptions import (
 from protean.infra.eventing import Message, MessageType
 from protean.domain.registry import _DomainRegistry
 from protean.infra.eventing import EventLog, EventLogRepository
+from protean.infra.job import Job, JobRepository
 from protean.utils import (
     DomainObjects,
     EventStrategy,
@@ -153,6 +154,8 @@ class Domain(_PackageBoundObject):
         if self.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED:
             self.register(EventLog)
             self.register(EventLogRepository)
+            self.register(Job)
+            self.register(JobRepository)
 
     def init(self):
         """ Parse the domain folder, and attach elements dynamically to the domain.

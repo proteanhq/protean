@@ -113,4 +113,4 @@ class Brokers(collectionsAbc.MutableMapping):
             # This will give a chance to recover from errors.
             from protean.infra.eventing import EventLog
 
-            self.domain.get_dao(EventLog).save(EventLog.from_message(message))
+            self.domain.repository_for(EventLog).add(EventLog.from_message(message))

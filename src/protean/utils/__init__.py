@@ -145,6 +145,30 @@ def fetch_entity_cls_from_registry(entity):
         return entity
 
 
+def fetch_subscription_cls_from_registry(event_cls):
+    """Util Method to fetch a Subscriber class from its name"""
+    # FIXME Generalize these functions
+    if isinstance(event_cls, str):
+        try:
+            # Try fetching by class name
+            return current_domain._get_element_by_name(
+                (DomainObjects.SUBSCRIBER,), event_cls
+            ).cls
+        except ConfigurationError:
+            try:
+                # Try fetching by fully qualified class name
+                return current_domain._get_element_by_fully_qualified_name(
+                    (DomainObjects.SUBSCRIBER,), event_cls
+                ).cls
+            except AssertionError:
+                # Event has not been registered
+                # FIXME print a helpful debug message
+                raise
+    else:
+        # FIXME Check if entity is subclassed from BaseEvent
+        return event_cls
+
+
 def fetch_event_cls_from_registry(event_cls):
     """Util Method to fetch an Event class from an event's name"""
     # FIXME Generalize these fucntions

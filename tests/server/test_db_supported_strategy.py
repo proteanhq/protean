@@ -1,12 +1,26 @@
+import asyncio
+import logging
 import pytest
+import sys
+
+from mock import MagicMock, patch
 
 from protean.adapters.broker.redis import RedisBroker
 from protean.core.event import BaseEvent
 from protean.core.field.basic import Auto, String, Integer
 from protean.core.subscriber import BaseSubscriber
 from protean.infra.eventing import EventLog, EventLogStatus
+from protean.infra.job import Job, JobStatus
 from protean.server import Server
 from protean.utils import EventStrategy
+
+logging.basicConfig(
+    level=logging.INFO,  # FIXME Pick up log level from config
+    format="%(threadName)10s %(name)18s: %(message)s",
+    stream=sys.stderr,
+)
+
+logger = logging.getLogger("Server")
 
 
 class PersonAdded(BaseEvent):
@@ -22,6 +36,14 @@ class NotifySSOSubscriber(BaseSubscriber):
 
     def notify(self, domain_event_dict):
         print("Received Event: ", domain_event_dict)
+
+
+class SendWelcomeEmail(BaseSubscriber):
+    class Meta:
+        event = PersonAdded
+
+    def notify(self, domain_event_dict):
+        print("Sending email for: ", domain_event_dict["first_name"])
 
 
 @pytest.fixture(autouse=True)
@@ -83,8 +105,9 @@ def test_that_event_is_picked_up_on_next_poll(test_domain):
         PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
     )
 
-    object = test_domain.repository_for(EventLog).get_next_to_publish()
-    assert object is not None
+    # FIXME Should this be tested from within the server?
+    event_log = test_domain.repository_for(EventLog).get_next_to_publish()
+    assert event_log is not None
 
 
 @pytest.mark.asyncio
@@ -156,12 +179,194 @@ async def test_fetching_subscribers_for_event_constructed_from_broker_message(
 
 
 # Test creation of job
-# Test creation of jobs, one per subscriber, when there are multiple subscribers
-# Test that the same event cannot be picked twice
-# Test that a job is picked up on next poll
-# Test that the job is marked as picked up
-# Test firing of Subscriber handle event from Job
-# Test marking the job as a success
+@pytest.mark.asyncio
+async def test_subscription_job_creation(test_domain,):
+    # Register Event
+    test_domain.register(PersonAdded)
+    test_domain.register(NotifySSOSubscriber)
+
+    # Publish Event to Domain
+    test_domain.publish(
+        PersonAdded(id="tD4pz3", first_name="John", last_name="Doe", age=24,)
+    )
+
+    server = Server(domain=test_domain, test_mode=True)
+    await server.push_messages()
+    await server.poll_for_messages()
+    server.stop()
+
+    job_repo = test_domain.repository_for(Job)
+    job_record = job_repo.get_most_recent_job_of_type("SUBSCRIPTION")
+
+    assert job_record is not None
+    assert job_record.status == JobStatus.NEW.value
+    assert job_record.payload["payload"]["payload"]["id"] == "tD4pz3"
+
+
+@pytest.mark.asyncio
+async def test_for_subscription_jobs_per_subscriber(test_domain):
+    # Register Event
+    test_domain.register(PersonAdded)
+    test_domain.register(NotifySSOSubscriber)
+    test_domain.register(SendWelcomeEmail)
+
+    # Publish Event to Domain
+    test_domain.publish(
+        PersonAdded(id="tD4pz3", first_name="John", last_name="Doe", age=24,)
+    )
+
+    server = Server(domain=test_domain, test_mode=True)
+    await server.push_messages()
+    await server.poll_for_messages()
+    server.stop()
+
+    job_repo = test_domain.repository_for(Job)
+    job_records = job_repo.get_all_jobs_of_type("SUBSCRIPTION")
+
+    assert len(job_records) == 2
+    assert all(
+        subscription_cls_name in ["NotifySSOSubscriber", "SendWelcomeEmail"]
+        for subscription_cls_name in [
+            job.payload["subscription_cls"] for job in job_records
+        ]
+    )
+
+
+@pytest.mark.skip(reason="Yet to be implemented")
+def test_that_the_same_event_is_not_picked_up_twice():
+    pass
+
+
+@pytest.mark.skip(reason="Yet to be implemented")
+def test_that_the_event_is_marked_as_consumed():
+    pass
+
+
+@pytest.mark.asyncio
+async def test_that_a_pending_job_is_picked_up_on_poll(test_domain):
+    # Register Event
+    test_domain.register(PersonAdded)
+    test_domain.register(NotifySSOSubscriber)
+    test_domain.register(SendWelcomeEmail)
+
+    # Publish Event to Domain
+    test_domain.publish(
+        PersonAdded(id="w93qBz", first_name="John", last_name="Doe", age=24,)
+    )
+
+    server = Server(domain=test_domain, test_mode=True)
+    await server.push_messages()
+    await server.poll_for_messages()
+    server.stop()
+
+    # FIXME Should this be tested from within the server?
+    job = test_domain.repository_for(Job).get_next_to_process()
+    assert job is not None
+    assert job.payload["payload"]["payload"]["id"] == "w93qBz"
+
+
+@pytest.mark.asyncio
+async def test_that_a_job_is_marked_as_in_progress(test_domain):
+    # Register Event
+    test_domain.register(PersonAdded)
+    test_domain.register(NotifySSOSubscriber)
+    test_domain.register(SendWelcomeEmail)
+
+    # Publish Event to Domain
+    test_domain.publish(
+        PersonAdded(id="w93qBz", first_name="John", last_name="Doe", age=24,)
+    )
+
+    server = Server(domain=test_domain, test_mode=True)
+    await server.push_messages()
+    await server.poll_for_messages()
+    await server.poll_for_jobs()
+
+    job_repo = test_domain.repository_for(Job)
+    job_record = job_repo.get_most_recent_job_of_type("SUBSCRIPTION")
+
+    assert job_record is not None
+    assert job_record.status == JobStatus.IN_PROGRESS.value
+
+
+@pytest.mark.asyncio
+@patch.object(NotifySSOSubscriber, "notify")
+async def test_job_processing_by_subscriber(mock, test_domain):
+    # Register Event
+    test_domain.register(PersonAdded)
+    test_domain.register(NotifySSOSubscriber)
+    test_domain.register(SendWelcomeEmail)
+
+    # Publish Event to Domain
+    test_domain.publish(
+        PersonAdded(id="w93qBz", first_name="John", last_name="Doe", age=24,)
+    )
+
+    server = Server(domain=test_domain, test_mode=True)
+    await server.push_messages()
+    await server.poll_for_messages()
+    await server.poll_for_jobs()
+    server.stop()
+
+    mock.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_marking_job_as_successful(test_domain):
+    # Register Event
+    test_domain.register(PersonAdded)
+    test_domain.register(NotifySSOSubscriber)
+
+    # Publish Event to Domain
+    test_domain.publish(
+        PersonAdded(id="w93qBz", first_name="John", last_name="Doe", age=24,)
+    )
+
+    server = Server(domain=test_domain, test_mode=True)
+    await server.push_messages()
+    await server.poll_for_messages()
+    await server.poll_for_jobs()
+
+    await asyncio.sleep(0.1)  # Allow for threads to complete
+
+    job_repo = test_domain.repository_for(Job)
+    job_record = job_repo.get_most_recent_job_of_type("SUBSCRIPTION")
+
+    assert job_record is not None
+    assert job_record.status == JobStatus.COMPLETED.value
+
+
 # Test marking the job as a failure
+@pytest.mark.asyncio
+async def test_marking_job_as_failure(test_domain):
+    # Register Event
+    test_domain.register(PersonAdded)
+    test_domain.register(NotifySSOSubscriber)
+
+    # Publish Event to Domain
+    test_domain.publish(
+        PersonAdded(id="w93qBz", first_name="John", last_name="Doe", age=24,)
+    )
+
+    with patch.object(NotifySSOSubscriber, "notify") as mocked_notify:
+        mocked_notify.side_effect = Exception("Test Exception")
+
+        server = Server(domain=test_domain, test_mode=True)
+
+        await server.push_messages()
+        await server.poll_for_messages()
+        await server.poll_for_jobs()
+
+        await asyncio.sleep(0.1)  # Allow for threads to complete
+
+        logging.info("---> Checking for Job Status")
+        job_repo = test_domain.repository_for(Job)
+        job_record = job_repo.get_most_recent_job_of_type("SUBSCRIPTION")
+
+        assert job_record is not None
+        logging.info(f"---> Job Record: {job_record.to_dict()}")
+        assert job_record.status == JobStatus.ERRORED.value
+
+
 # Test rerunning of a job on known failures
 # Test rerunning of broken jobs

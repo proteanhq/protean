@@ -107,6 +107,9 @@ class EventLog(BaseAggregate):
 
 
 class EventLogRepository(BaseRepository):
+    class Meta:
+        aggregate_cls = EventLog
+
     def get_most_recent_event_by_type_cls(self, event_cls: BaseEvent) -> EventLog:
         event_dao = current_domain.get_dao(EventLog)
         return (
@@ -125,22 +128,19 @@ class EventLogRepository(BaseRepository):
             .first
         )
 
-    @classmethod
-    def get_most_recent_event_by_type(cls, event_name: str) -> EventLog:
+    def get_most_recent_event_by_type(self, event_name: str) -> EventLog:
         event_dao = current_domain.get_dao(EventLog)
         return (
             event_dao.query.filter(name=event_name).order_by("-created_at").all().first
         )
 
-    @classmethod
-    def get_all_events_of_type(cls, event_name: str) -> EventLog:
+    def get_all_events_of_type(self, event_name: str) -> EventLog:
         event_dao = current_domain.get_dao(EventLog)
         return (
             event_dao.query.filter(name=event_name).order_by("-created_at").all().items
         )
 
-    @classmethod
-    def get_all_events_of_type_cls(cls, event_cls: BaseEvent) -> EventLog:
+    def get_all_events_of_type_cls(self, event_cls: BaseEvent) -> EventLog:
         event_dao = current_domain.get_dao(EventLog)
         return (
             event_dao.query.filter(name=underscore(event_cls.__name__))
@@ -148,6 +148,3 @@ class EventLogRepository(BaseRepository):
             .all()
             .items
         )
-
-    class Meta:
-        aggregate_cls = EventLog

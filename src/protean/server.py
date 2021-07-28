@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import functools
 import logging
 import sys
 
-from typing import Dict
+from typing import Dict, List
 
 from protean.core.subscriber import BaseSubscriber
 from protean.domain import Domain
 from protean.globals import current_domain
-from protean.infra.eventing import EventLog
-from protean.infra.eventing import Message
-from protean.utils import fully_qualified_name
+from protean.infra.eventing import EventLog, Message
+from protean.infra.job import Job, JobTypes
+from protean.core.unit_of_work import UnitOfWork
+from protean.utils import fetch_subscription_cls_from_registry, fully_qualified_name
 from protean.utils.importlib import import_from_full_path
 
 logging.basicConfig(
@@ -24,10 +26,6 @@ logging.basicConfig(
 logger = logging.getLogger("Server")
 
 
-def handled():
-    logger.info("1--->", "Done..")
-
-
 class Server:
     def __init__(
         self, domain: Domain, broker: str = "default", test_mode: str = False
@@ -37,6 +35,8 @@ class Server:
         self.test_mode = test_mode
 
         self.loop = asyncio.get_event_loop()
+        # FIXME Pick max workers from config
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
 
         self.SHUTTING_DOWN = False
 
@@ -45,7 +45,7 @@ class Server:
         domain = import_from_full_path(domain=domain, path=domain_file)
         return cls(domain=domain, **kwargs)
 
-    def subscribers_for(self, message: Dict) -> BaseSubscriber:
+    def subscribers_for(self, message: Dict) -> List[BaseSubscriber]:
         object = self.domain.from_message(message)
         return self.broker._subscribers[fully_qualified_name(object.__class__)]
 
@@ -54,48 +54,110 @@ class Server:
         logger.debug(f"Polling DB for new events to publish...")
 
         # Check if there are new messages to publish
-        while object := current_domain.repository_for(EventLog).get_next_to_publish():
-            message = Message.from_event_log(object)
+        while event_log := current_domain.repository_for(
+            EventLog
+        ).get_next_to_publish():
+            message = Message.from_event_log(event_log)
 
             # FIXME Move this to separate threads?
             for _, broker in current_domain.brokers.items():
                 broker.publish(message)
 
             # Mark event as picked up
-            object.mark_published()
-            current_domain.repository_for(EventLog).add(object)
+            event_log.mark_published()
+            current_domain.repository_for(EventLog).add(event_log)
 
         # Trampoline: self-schedule again if not shutting down
         if not self.SHUTTING_DOWN:
             self.loop.call_later(0.5, self.push_messages)
 
+    def handled(self, future, domain, job_id):
+        exception = future.exception()
+        logger.info(f"---> Future: {future}")
+        if future.done() and not future.exception():
+            logger.info(f"---> Job {job_id} completed successfully")
+
+            with domain.domain_context():
+                job = domain.repository_for(Job).get(job_id)
+                job.mark_completed()
+                domain.repository_for(Job).add(job)
+                logger.info(f"---> Updated {job_id} status to COMPLETED")
+        elif future.exception():
+            logger.info(f"---> Job {job_id} errored - {type(exception)}")
+            with domain.domain_context():
+                job = domain.repository_for(Job).get(job_id)
+                job.mark_errored()
+                logger.info(f"---> Job: {job.to_dict()}")
+                domain.repository_for(Job).add(job)
+                logger.info(f"---> Updated {job_id} status to ERRORED")
+
+    async def poll_for_jobs(self):
+        """Poll for new jobs and execute them in threads"""
+        logger.debug(f"Polling jobs...")
+
+        # Check if there are new jobs to process
+        while job := current_domain.repository_for(Job).get_next_to_process():
+            if job.type == JobTypes.SUBSCRIPTION.value:
+                subscriber_cls = fetch_subscription_cls_from_registry(
+                    job.payload["subscription_cls"]
+                )
+                subscriber_object = subscriber_cls()
+
+                logger.info(f"---> Submitting job {job.job_id}")
+                future = self.executor.submit(
+                    subscriber_object.notify, job.payload["payload"]["payload"]
+                )
+                future.add_done_callback(
+                    functools.partial(
+                        self.handled,
+                        domain=current_domain._get_current_object(),
+                        job_id=job.job_id,
+                    )
+                )
+            # FIXME Add other job types
+            # elif ... :
+
+            # Mark job as in progress
+            job.mark_in_progress()
+            current_domain.repository_for(Job).add(job)
+
+        # Trampoline: self-schedule again if not shutting down
+        if not self.SHUTTING_DOWN:
+            self.loop.call_later(0.5, self.poll_for_jobs)
+
     async def poll_for_messages(self):
         """This works with `add_done_callback`"""
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            while True:
-                logger.debug(f"Polling broker for new messages...")
+        logger.debug(f"Polling broker for new messages...")
 
-                # FIXME Gather maximum `max_workers` messages and wait for the next cycle
-                while message := self.broker.get_next():
-                    # Reconstruct message back to Event
-                    object = current_domain.from_message(message)
+        # FIXME Gather maximum `max_workers` messages and wait for the next cycle
+        while message := self.broker.get_next():
 
+            # Reconstruct message back to Event
+            subscribers = self.subscribers_for(message)
+
+            if subscribers:
+                with UnitOfWork():
                     # Collect registered Subscribers from Domain
-                    for subscriber in self.subscribers_for(object):
-                        subscriber_object = subscriber(current_domain, object.__class__)
-                        future = executor.submit(
-                            subscriber_object.notify, object.to_dict()
+                    # FIXME Execute in threads
+                    for subscriber in subscribers:
+                        job = Job(
+                            type=JobTypes.SUBSCRIPTION.value,
+                            payload={
+                                "subscription_cls": subscriber.__name__,
+                                "payload": message,
+                            },
                         )
-                        future.add_done_callback(handled)
+                        current_domain.repository_for(Job).add(job)
 
-                await asyncio.sleep(0.5)
-
-                if self.SHUTTING_DOWN:
-                    break  # FIXME Wait until all tasks are completed?
+        # Trampoline: self-schedule again if not shutting down
+        if not self.SHUTTING_DOWN:
+            self.loop.call_later(0.5, self.poll_for_messages)
 
     def run(self):
         try:
             self.loop.call_soon(self.push_messages)
+            self.loop.call_soon(self.poll_for_messages)
+            self.loop.call_soon(self.poll_for_jobs)
 
             if self.test_mode:
                 self.loop.call_soon(self.loop.stop)
