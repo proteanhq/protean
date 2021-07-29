@@ -22,6 +22,7 @@ from protean.infra.job import Job, JobRepository
 from protean.utils import (
     DomainObjects,
     EventStrategy,
+    EventExecution,
     fetch_command_cls_from_registry,
     fetch_event_cls_from_registry,
     fully_qualified_name,
@@ -97,6 +98,7 @@ class Domain(_PackageBoundObject):
             "IDENTITY_STRATEGY": IdentityStrategy.UUID,
             "IDENTITY_TYPE": IdentityType.STRING,
             "EVENT_STRATEGY": EventStrategy.DB_SUPPORTED,
+            "EVENT_EXECUTION": EventExecution.THREADED,
             "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider"}},
             "CACHES": {
                 "default": {

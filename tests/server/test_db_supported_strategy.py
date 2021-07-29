@@ -3,7 +3,7 @@ import logging
 import pytest
 import sys
 
-from mock import MagicMock, patch
+from mock import patch
 
 from protean.adapters.broker.redis import RedisBroker
 from protean.core.event import BaseEvent
@@ -12,7 +12,7 @@ from protean.core.subscriber import BaseSubscriber
 from protean.infra.eventing import EventLog, EventLogStatus
 from protean.infra.job import Job, JobStatus
 from protean.server import Server
-from protean.utils import EventStrategy
+from protean.utils import EventExecution, EventStrategy
 
 logging.basicConfig(
     level=logging.INFO,  # FIXME Pick up log level from config
@@ -47,16 +47,23 @@ class SendWelcomeEmail(BaseSubscriber):
 
 
 @pytest.fixture(autouse=True)
-def test_domain(test_domain):
-    test_domain.config["EVENT_STRATEGY"] = EventStrategy.DB_SUPPORTED.value
-    test_domain.config["BROKERS"] = {
+def test_domain():
+    from protean.domain import Domain
+
+    domain = Domain("Test")
+
+    domain.config["EVENT_STRATEGY"] = EventStrategy.DB_SUPPORTED.value
+    domain.config["EVENT_EXECUTION"] = EventExecution.INLINE.value
+    domain.config["BROKERS"] = {
         "default": {
             "PROVIDER": "protean.adapters.broker.redis.RedisBroker",
             "URI": "redis://127.0.0.1:6379/0",
             "IS_ASYNC": True,
         },
     }
-    return test_domain
+
+    with domain.domain_context():
+        yield domain
 
 
 def test_that_we_are_configured_property_for_redis_and_db_supported_strategy(
@@ -64,6 +71,7 @@ def test_that_we_are_configured_property_for_redis_and_db_supported_strategy(
 ):
     assert isinstance(test_domain.brokers["default"], RedisBroker)
     assert test_domain.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED.value
+    assert test_domain.config["EVENT_EXECUTION"] == EventExecution.INLINE.value
 
 
 # Test that Event is persisted into database on publish
@@ -277,16 +285,18 @@ async def test_that_a_job_is_marked_as_in_progress(test_domain):
         PersonAdded(id="w93qBz", first_name="John", last_name="Doe", age=24,)
     )
 
-    server = Server(domain=test_domain, test_mode=True)
-    await server.push_messages()
-    await server.poll_for_messages()
-    await server.poll_for_jobs()
+    # Patch `submit_job()` because we don't want to execute the job
+    with patch.object(Server, "submit_job") as mocked_handled:
+        server = Server(domain=test_domain, test_mode=True)
+        await server.push_messages()
+        await server.poll_for_messages()
+        await server.poll_for_jobs()
 
-    job_repo = test_domain.repository_for(Job)
-    job_record = job_repo.get_most_recent_job_of_type("SUBSCRIPTION")
+        job_repo = test_domain.repository_for(Job)
+        job_record = job_repo.get_most_recent_job_of_type("SUBSCRIPTION")
 
-    assert job_record is not None
-    assert job_record.status == JobStatus.IN_PROGRESS.value
+        assert job_record is not None
+        assert job_record.status == JobStatus.IN_PROGRESS.value
 
 
 @pytest.mark.asyncio
@@ -368,5 +378,11 @@ async def test_marking_job_as_failure(test_domain):
         assert job_record.status == JobStatus.ERRORED.value
 
 
-# Test rerunning of a job on known failures
-# Test rerunning of broken jobs
+@pytest.mark.skip(reason="Yet to be implemented")
+def test_rerunning_jobs_on_known_failures():
+    pass
+
+
+@pytest.mark.skip(reason="Yet to be implemented")
+def test_rerunning_broken_jobs():
+    pass

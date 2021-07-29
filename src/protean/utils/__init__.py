@@ -32,6 +32,11 @@ class EventStrategy(Enum):
     NAIVE = "NAIVE"
 
 
+class EventExecution(Enum):
+    THREADED = "THREADED"
+    INLINE = "INLINE"
+
+
 class Database(Enum):
     ELASTICSEARCH = "ELASTICSEARCH"
     MEMORY = "MEMORY"

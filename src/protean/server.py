@@ -7,6 +7,7 @@ import logging
 import sys
 
 from typing import Dict, List
+from protean.core.exceptions import InvalidConfigurationError
 
 from protean.core.subscriber import BaseSubscriber
 from protean.domain import Domain
@@ -14,7 +15,11 @@ from protean.globals import current_domain
 from protean.infra.eventing import EventLog, Message
 from protean.infra.job import Job, JobTypes
 from protean.core.unit_of_work import UnitOfWork
-from protean.utils import fetch_subscription_cls_from_registry, fully_qualified_name
+from protean.utils import (
+    EventExecution,
+    fetch_subscription_cls_from_registry,
+    fully_qualified_name,
+)
 from protean.utils.importlib import import_from_full_path
 
 logging.basicConfig(
@@ -91,12 +96,50 @@ class Server:
                 domain.repository_for(Job).add(job)
                 logger.info(f"---> Updated {job_id} status to ERRORED")
 
+    def submit_job(self, subscriber_object, job):
+        # Execute Subscriber logic and handle callback synchronously
+        logger.debug(f"---> {current_domain.config['EVENT_EXECUTION']}")
+        if current_domain.config["EVENT_EXECUTION"] == EventExecution.INLINE.value:
+            try:
+                subscriber_object.notify(job.payload["payload"]["payload"])
+                fut = self.loop.create_future()
+                fut.set_result(None)
+            except Exception as exc:
+                fut = self.loop.create_future()
+                fut.set_exception(exc)
+            finally:
+                self.handled(fut, current_domain, job.job_id)
+        elif current_domain.config["EVENT_EXECUTION"] == EventExecution.THREADED.value:
+            # Execute Subscriber logic in a thread
+            future = self.executor.submit(
+                subscriber_object.notify, job.payload["payload"]["payload"]
+            )
+            future.add_done_callback(
+                functools.partial(
+                    self.handled,
+                    domain=current_domain._get_current_object(),
+                    job_id=job.job_id,
+                )
+            )
+        else:
+            raise InvalidConfigurationError(
+                {
+                    "domain": [
+                        "Unknown Event Execution config - should be among {[e.value for e in EventExecution]}"
+                    ]
+                }
+            )
+
     async def poll_for_jobs(self):
         """Poll for new jobs and execute them in threads"""
         logger.debug(f"Polling jobs...")
 
         # Check if there are new jobs to process
         while job := current_domain.repository_for(Job).get_next_to_process():
+            # Mark job as in progress
+            job.mark_in_progress()
+            current_domain.repository_for(Job).add(job)
+
             if job.type == JobTypes.SUBSCRIPTION.value:
                 subscriber_cls = fetch_subscription_cls_from_registry(
                     job.payload["subscription_cls"]
@@ -104,22 +147,10 @@ class Server:
                 subscriber_object = subscriber_cls()
 
                 logger.info(f"---> Submitting job {job.job_id}")
-                future = self.executor.submit(
-                    subscriber_object.notify, job.payload["payload"]["payload"]
-                )
-                future.add_done_callback(
-                    functools.partial(
-                        self.handled,
-                        domain=current_domain._get_current_object(),
-                        job_id=job.job_id,
-                    )
-                )
+                self.submit_job(subscriber_object, job)
+
             # FIXME Add other job types
             # elif ... :
-
-            # Mark job as in progress
-            job.mark_in_progress()
-            current_domain.repository_for(Job).add(job)
 
         # Trampoline: self-schedule again if not shutting down
         if not self.SHUTTING_DOWN:
