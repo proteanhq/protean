@@ -4,6 +4,7 @@ import redis
 
 from protean.adapters.broker.redis import RedisBroker
 from protean.globals import current_domain
+from protean.server import Server
 
 from .elements import PersonAdded
 
@@ -22,10 +23,16 @@ class TestRedisConnection:
 
 @pytest.mark.redis
 class TestPublishingToRedis:
-    def test_event_message_structure(self, test_domain):
+    @pytest.mark.asyncio
+    async def test_event_message_structure(self, test_domain):
         # Publish event
         event = PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
         test_domain.publish(event)
+
+        # Push to Redis
+        server = Server(domain=test_domain, test_mode=True)
+        await server.push_messages()
+        server.stop()
 
         # Retrieve with an independent Redis instance
         r = redis.Redis.from_url(test_domain.config["BROKERS"]["default"]["URI"])
@@ -48,10 +55,16 @@ class TestPublishingToRedis:
         )
         assert json_message["type"] == "EVENT"
 
-    def test_that_an_event_can_be_published_to_redis(self, test_domain):
+    @pytest.mark.asyncio
+    async def test_that_an_event_can_be_published_to_redis(self, test_domain):
         # Publish event
         event = PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
         test_domain.publish(event)
+
+        # Push to Redis
+        server = Server(domain=test_domain, test_mode=True)
+        await server.push_messages()
+        server.stop()
 
         # Retrieve with an independent Redis instance
         r = redis.Redis.from_url(test_domain.config["BROKERS"]["default"]["URI"])
@@ -64,11 +77,11 @@ class TestPublishingToRedis:
         assert "id" in json_message["payload"]
         assert json_message["payload"]["id"] == event.id
 
-    @pytest.mark.skip(reason="Yet to be implemented")
+    @pytest.mark.skip(reason="Yet to implement")
     def test_command_message_structure(self):
         pass
 
-    @pytest.mark.skip(reason="Yet to be implemented")
+    @pytest.mark.skip(reason="Yet to implement")
     def test_that_a_command_can_be_published_to_redis(self):
         pass
 
@@ -79,10 +92,16 @@ class TestReceivingFromRedis:
         message = test_domain.brokers["default"].get_next()
         assert message is None
 
-    def test_retrieving_an_event_message(self, test_domain):
+    @pytest.mark.asyncio
+    async def test_retrieving_an_event_message(self, test_domain):
         # Publish event
         event = PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
         test_domain.publish(event)
+
+        # Push to Redis
+        server = Server(domain=test_domain, test_mode=True)
+        await server.push_messages()
+        server.stop()
 
         # Retrieve event
         message = test_domain.brokers["default"].get_next()
@@ -92,12 +111,18 @@ class TestReceivingFromRedis:
         assert "id" in message["payload"]
         assert message["payload"]["id"] == event.id
 
-    def test_reconstructing_an_event_object_from_message(self, test_domain):
+    @pytest.mark.asyncio
+    async def test_reconstructing_an_event_object_from_message(self, test_domain):
         test_domain.register(PersonAdded)
 
         # Publish event
         event = PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
         test_domain.publish(event)
+
+        # Push to Redis
+        server = Server(domain=test_domain, test_mode=True)
+        await server.push_messages()
+        server.stop()
 
         # Retrieve message
         message = test_domain.brokers["default"].get_next()
@@ -106,10 +131,10 @@ class TestReceivingFromRedis:
         retrieved_event = test_domain.from_message(message)
         assert retrieved_event == event
 
-    @pytest.mark.skip(reason="Yet to be implemented")
+    @pytest.mark.skip(reason="Yet to implement")
     def test_retrieving_a_command_message(self):
         pass
 
-    @pytest.mark.skip(reason="Yet to be implemented")
+    @pytest.mark.skip(reason="Yet to implement")
     def test_reconstructing_a_command_object_from_message(self):
         pass

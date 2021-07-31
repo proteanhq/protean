@@ -95,10 +95,10 @@ class Domain(_PackageBoundObject):
             "DEBUG": None,
             "SECRET_KEY": None,
             "AUTOLOAD_DOMAIN": True,
-            "IDENTITY_STRATEGY": IdentityStrategy.UUID,
-            "IDENTITY_TYPE": IdentityType.STRING,
-            "EVENT_STRATEGY": EventStrategy.DB_SUPPORTED,
-            "EVENT_EXECUTION": EventExecution.THREADED,
+            "IDENTITY_STRATEGY": IdentityStrategy.UUID.value,
+            "IDENTITY_TYPE": IdentityType.STRING.value,
+            "EVENT_STRATEGY": EventStrategy.DB_SUPPORTED.value,
+            "EVENT_EXECUTION": EventExecution.INLINE.value,
             "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider"}},
             "CACHES": {
                 "default": {
@@ -153,7 +153,7 @@ class Domain(_PackageBoundObject):
         self.teardown_domain_context_functions = []
 
         # Register the EventLog Aggregate  # FIXME Is this the best place to do this?
-        if self.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED:
+        if self.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED.value:
             self.register(EventLog)
             self.register(EventLogRepository)
             self.register(Job)
@@ -498,7 +498,7 @@ class Domain(_PackageBoundObject):
     def command(self, _cls=None, **kwargs):
         return self._domain_element(DomainObjects.COMMAND, _cls=_cls, **kwargs,)
 
-    def command_handler(self, command, _cls=None, **kwargs):
+    def command_handler(self, _cls=None, **kwargs):
         return self._domain_element(DomainObjects.COMMAND_HANDLER, _cls=_cls, **kwargs)
 
     def event(self, _cls=None, **kwargs):

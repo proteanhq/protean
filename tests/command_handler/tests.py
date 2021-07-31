@@ -29,7 +29,7 @@ class TestCommandHandlerRegistration:
         )
 
     def test_that_command_handler_can_be_registered_via_annotations(self, test_domain):
-        @test_domain.command_handler(command=AddPersonCommand)
+        @test_domain.command_handler(command_cls=AddPersonCommand)
         class AnnotatedCommandHandler:
             def special_method(self):
                 pass

@@ -4,6 +4,7 @@ import pytest
 
 from mock import patch
 from protean.core.subscriber import BaseSubscriber
+from protean.infra.eventing import EventLog
 from protean.utils import fully_qualified_name
 
 from .elements import NotifySSOSubscriber, Person, PersonAdded
@@ -29,7 +30,7 @@ class TestSubscriberInitialization:
         assert service is not None
 
 
-class TestApplicationServiceRegistration:
+class TestSubscriberRegistration:
     def test_that_domain_event_can_be_registered_with_domain(self, test_domain):
         test_domain.register(NotifySSOSubscriber)
 
@@ -48,17 +49,3 @@ class TestApplicationServiceRegistration:
             fully_qualified_name(AnnotatedSubscriber)
             in test_domain.registry.subscribers
         )
-
-
-class TestDomainEventNotification:
-    @patch.object(NotifySSOSubscriber, "notify")
-    def test_that_domain_event_is_received_from_aggregate_command_method(
-        self, mock, test_domain
-    ):
-        test_domain.register(PersonAdded)
-        test_domain.register(NotifySSOSubscriber)
-
-        newcomer = Person.add_newcomer(
-            {"first_name": "John", "last_name": "Doe", "age": 21}
-        )
-        mock.assert_called_once_with(PersonAdded(**newcomer.to_dict()).to_dict())

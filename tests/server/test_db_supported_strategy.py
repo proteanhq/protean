@@ -47,14 +47,10 @@ class SendWelcomeEmail(BaseSubscriber):
 
 
 @pytest.fixture(autouse=True)
-def test_domain():
-    from protean.domain import Domain
-
-    domain = Domain("Test")
-
-    domain.config["EVENT_STRATEGY"] = EventStrategy.DB_SUPPORTED.value
-    domain.config["EVENT_EXECUTION"] = EventExecution.INLINE.value
-    domain.config["BROKERS"] = {
+def test_domain(test_domain):
+    test_domain.config["EVENT_STRATEGY"] = EventStrategy.DB_SUPPORTED.value
+    test_domain.config["EVENT_EXECUTION"] = EventExecution.INLINE.value
+    test_domain.config["BROKERS"] = {
         "default": {
             "PROVIDER": "protean.adapters.broker.redis.RedisBroker",
             "URI": "redis://127.0.0.1:6379/0",
@@ -62,8 +58,7 @@ def test_domain():
         },
     }
 
-    with domain.domain_context():
-        yield domain
+    return test_domain
 
 
 def test_that_we_are_configured_property_for_redis_and_db_supported_strategy(
@@ -240,12 +235,12 @@ async def test_for_subscription_jobs_per_subscriber(test_domain):
     )
 
 
-@pytest.mark.skip(reason="Yet to be implemented")
+@pytest.mark.skip(reason="Yet to implement")
 def test_that_the_same_event_is_not_picked_up_twice():
     pass
 
 
-@pytest.mark.skip(reason="Yet to be implemented")
+@pytest.mark.skip(reason="Yet to implement")
 def test_that_the_event_is_marked_as_consumed():
     pass
 
@@ -378,11 +373,11 @@ async def test_marking_job_as_failure(test_domain):
         assert job_record.status == JobStatus.ERRORED.value
 
 
-@pytest.mark.skip(reason="Yet to be implemented")
+@pytest.mark.skip(reason="Yet to implement")
 def test_rerunning_jobs_on_known_failures():
     pass
 
 
-@pytest.mark.skip(reason="Yet to be implemented")
+@pytest.mark.skip(reason="Yet to implement")
 def test_rerunning_broken_jobs():
     pass

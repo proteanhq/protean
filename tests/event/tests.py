@@ -40,11 +40,23 @@ class TestDomainEventRegistration:
 
 
 class TestDomainEventTriggering:
-    @patch.object(InlineBroker, "publish")
-    def test_that_domain_event_is_raised_in_aggregate_command_method(self, mock):
-        Person.add_newcomer({"first_name": "John", "last_name": "Doe", "age": 21})
-        mock.assert_called_once()
-        assert type(mock.call_args.args[0]) == dict
+    def test_that_domain_event_is_raised_in_aggregate_command_method(self, test_domain):
+        test_domain.register(Person)
+        test_domain.register(EventLog)
+        test_domain.register(EventLogRepository)
+        test_domain.register(AddPersonCommand)
+        test_domain.register(PersonAdded)
+        person = Person.add_newcomer(
+            {"first_name": "John", "last_name": "Doe", "age": 21}
+        )
+
+        event_repo = current_domain.repository_for(EventLog)
+        event = event_repo.get_most_recent_event_by_type_cls(event_cls=PersonAdded)
+
+        assert event is not None
+        assert event.name == "person_added"
+        assert event.type == "EVENT"
+        assert event.payload == person.to_dict()
 
     def test_that_domain_event_is_persisted(self, test_domain):
         test_domain.register(Person)

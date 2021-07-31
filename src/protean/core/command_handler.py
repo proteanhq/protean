@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from protean.core.exceptions import IncorrectUsageError
 
 from protean.utils import DomainObjects, derive_element_class
 
@@ -51,7 +52,7 @@ class CommandHandlerMeta:
 
 
 class BaseCommandHandler(metaclass=_CommandHandlerMetaclass):
-    """Base Subsciber class that should implemented by all Domain CommandHandlers.
+    """Base Command Handler class that should implemented by all Domain CommandHandlers.
 
     This is also a marker class that is referenced when command handlers are registered
     with the domain
@@ -64,10 +65,6 @@ class BaseCommandHandler(metaclass=_CommandHandlerMetaclass):
             raise TypeError("BaseCommandHandler cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, domain, command_cls):
-        self.domain = domain
-        self.command_cls = command_cls
-
     @abstractmethod
     def notify(self, command):
         """Placeholder method for receiving notifications on command"""
@@ -75,4 +72,28 @@ class BaseCommandHandler(metaclass=_CommandHandlerMetaclass):
 
 
 def command_handler_factory(element_cls, **kwargs):
-    return derive_element_class(element_cls, BaseCommandHandler)
+    element_cls = derive_element_class(element_cls, BaseCommandHandler)
+
+    element_cls.meta_.command_cls = (
+        kwargs.pop("command_cls", None)
+        or (hasattr(element_cls, "meta_") and element_cls.meta_.command_cls)
+        or None
+    )
+
+    element_cls.meta_.broker = (
+        kwargs.pop("broker", None)
+        or (hasattr(element_cls, "meta_") and element_cls.meta_.broker)
+        or "default"
+    )
+
+    if not element_cls.meta_.command_cls:
+        raise IncorrectUsageError(
+            f"Command Handler `{element_cls.__name__}` needs to be associated with a Command"
+        )
+
+    if not element_cls.meta_.broker:
+        raise IncorrectUsageError(
+            f"Command Handler `{element_cls.__name__}` needs to be associated with a Broker"
+        )
+
+    return element_cls

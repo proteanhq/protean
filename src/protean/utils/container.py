@@ -96,6 +96,7 @@ class ContainerMeta:
 
         # FIXME Make Meta class configurable per Element Type
         self.version = 1
+        self.broker = "default"
 
     @property
     def mandatory_fields(self):

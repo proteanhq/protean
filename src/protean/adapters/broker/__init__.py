@@ -104,13 +104,47 @@ class Brokers(collectionsAbc.MutableMapping):
 
         message = Message.to_message(object)
 
-        if (
-            message["type"] == MessageType.EVENT.value
-            and current_domain.config["EVENT_STRATEGY"]
-            == EventStrategy.DB_SUPPORTED.value
-        ):
-            # Log event into a table before pushing to brokers.
-            # This will give a chance to recover from errors.
-            from protean.infra.eventing import EventLog
+        if message["type"] == MessageType.EVENT.value:
+            if (
+                current_domain.config["EVENT_STRATEGY"]
+                == EventStrategy.DB_SUPPORTED.value
+            ):
+                # Log event into a table and trigger a push asynchronously
+                # This will give a chance to recover from errors.
+                from protean.infra.eventing import EventLog
 
-            self.domain.repository_for(EventLog).add(EventLog.from_message(message))
+                self.domain.repository_for(EventLog).add(EventLog.from_message(message))
+            elif current_domain.config["EVENT_STRATEGY"] == EventStrategy.NAIVE.value:
+                # Follow a naive strategy and dispatch event directly to message broker
+                #   If the operation is enclosed in a Unit of Work, delegate the responsibility
+                #   of publishing the message to the UoW
+                if current_uow:
+                    logger.debug(
+                        f"Recording {object.__class__.__name__} "
+                        f"with values {object.to_dict()} in {current_uow}"
+                    )
+                    current_uow.register_message(message)
+                else:
+                    logger.debug(
+                        f"Publishing {object.__class__.__name__} with values {object.to_dict()}"
+                    )
+                    for broker in self._brokers:
+                        broker.publish(message)
+            else:
+                raise ConfigurationError(
+                    {
+                        "domain": [
+                            f"Unknown Event Execution config - should be among {[e.value for e in EventStrategy]}"
+                        ]
+                    }
+                )
+        elif message["type"] == MessageType.COMMAND.value:
+            self._brokers[object.meta_.broker].publish(message)
+        else:
+            raise ConfigurationError(
+                {
+                    "domain": [
+                        f"Unknown Message Type {object.__name__} - should be an Event or a Command"
+                    ]
+                }
+            )

@@ -41,4 +41,12 @@ class BaseCommand(BaseContainer):
 
 
 def command_factory(element_cls, **kwargs):
-    return derive_element_class(element_cls, BaseCommand)
+    element_cls = derive_element_class(element_cls, BaseCommand)
+
+    element_cls.meta_.broker = (
+        kwargs.pop("broker", None)
+        or (hasattr(element_cls, "meta_") and element_cls.meta_.broker)
+        or "default"
+    )
+
+    return element_cls

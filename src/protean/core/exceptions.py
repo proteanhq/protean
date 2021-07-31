@@ -42,10 +42,6 @@ class InvalidDataError(ProteanException):
     """Data (type, value) is invalid"""
 
 
-class InvalidConfigurationError(ProteanException):
-    """Invalid Configuration parameter"""
-
-
 class InvalidStateError(Exception):
     """Object is in invalid state for the given operation
 

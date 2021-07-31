@@ -7,7 +7,7 @@ import logging
 import sys
 
 from typing import Dict, List
-from protean.core.exceptions import InvalidConfigurationError
+from protean.core.exceptions import ConfigurationError
 
 from protean.core.subscriber import BaseSubscriber
 from protean.domain import Domain
@@ -122,7 +122,7 @@ class Server:
                 )
             )
         else:
-            raise InvalidConfigurationError(
+            raise ConfigurationError(
                 {
                     "domain": [
                         "Unknown Event Execution config - should be among {[e.value for e in EventExecution]}"

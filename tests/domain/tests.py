@@ -12,9 +12,10 @@ class TestDomainInitialization:
         domain = Domain(__name__)
         assert domain is not None
         assert domain.registry is not None
-        if domain.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED:
-            assert len(domain.registry.aggregates) == 1
-            assert "protean.infra.event_log.EventLog" in domain.registry.aggregates
+        if domain.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED.value:
+            assert len(domain.registry.aggregates) == 2
+            assert "protean.infra.eventing.EventLog" in domain.registry.aggregates
+            assert "protean.infra.job.Job" in domain.registry.aggregates
         else:
             assert domain.registry.aggregates == {}
 

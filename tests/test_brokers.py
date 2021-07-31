@@ -64,16 +64,19 @@ class TestBrokerInitialization:
         assert isinstance(list(test_domain.brokers.values())[0], InlineBroker)
 
     def test_that_atleast_one_broker_has_to_be_configured(self, test_domain):
-        del test_domain.config["BROKERS"]["default"]
+        default_broker = test_domain.config["BROKERS"].pop("default")
 
         with pytest.raises(ConfigurationError):
             len(test_domain.brokers)  # Triggers an initialization
+
+        # Push back default broker config to avoid pytest teardown errors
+        test_domain.config["BROKERS"]["default"] = default_broker
 
     def test_that_a_default_broker_is_mandatory(self, test_domain):
         dup_broker = InlineBroker("duplicate", test_domain, {})
 
         # Simulation - Add a secondary broker and remove default broker from config
-        del test_domain.config["BROKERS"]["default"]
+        default_broker = test_domain.config["BROKERS"].pop("default")
         test_domain.config["BROKERS"]["secondary"] = {
             "PROVIDER": "protean.adapters.InlineBroker"
         }
@@ -81,6 +84,9 @@ class TestBrokerInitialization:
         with pytest.raises(ConfigurationError):
             # This will try to initialize brokers and fail in absence of a 'default' broker
             test_domain.brokers["duplicate"] = dup_broker
+
+        # Push back default broker config to avoid pytest teardown errors
+        test_domain.config["BROKERS"]["default"] = default_broker
 
     def test_that_domain_initializes_broker_before_iteration(self, test_domain):
         brokers = [broker for broker in test_domain.brokers]
@@ -227,7 +233,7 @@ class TestEventPublish:
         test_domain.register(PersonAdded)
 
     def test_that_broker_receives_event(self, mocker, test_domain):
-        spy = mocker.spy(test_domain.brokers["default"], "publish")
+        spy = mocker.spy(test_domain.brokers, "publish")
 
         test_domain.publish(
             PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
@@ -235,21 +241,8 @@ class TestEventPublish:
 
         assert spy.call_count == 1
 
-    def test_that_uow_stores_event_on_publishing_within_uow(self, mocker, test_domain):
-        spy = mocker.spy(test_domain.brokers["default"], "publish")
-
-        with UnitOfWork():
-            test_domain.publish(
-                PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
-            )
-            assert spy.call_count == 0
-
-        # Broker receives message after UOW has been committed
-        assert spy.call_count == 1
-
     def test_that_event_log_is_populated(self, mocker, test_domain):
         test_domain.register(EventLog)
-        test_domain.register(EventLogRepository)
 
         test_domain.publish(
             PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
@@ -295,18 +288,4 @@ class TestCommandPublish:
 
         command = AddPersonCommand(first_name="John", last_name="Doe", age=21)
         test_domain.publish(command)
-        mock.assert_called_once_with(command.to_dict())
-
-    @patch.object(AddNewPersonCommandHandler, "notify")
-    def test_that_uow_stores_command_on_publishing_within_uow(self, mock, test_domain):
-        test_domain.register(AddPersonCommand)
-        test_domain.register(AddNewPersonCommandHandler)
-
-        with UnitOfWork():
-            command = AddPersonCommand(first_name="John", last_name="Doe", age=21)
-            test_domain.publish(command)
-
-            mock.assert_not_called()
-
-        # Broker receives message after UOW has been committed
         mock.assert_called_once_with(command.to_dict())

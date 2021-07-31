@@ -27,26 +27,6 @@ class TestConfig:
         assert domain.secret_key == "Baz"
         assert domain.config["SECRET_KEY"] == "Baz"
 
-    def test_config_repr(self):
-        domain = Domain(__name__)
-        domain.config.from_pyfile(__file__.rsplit(".", 1)[0] + ".py")
-
-        assert repr(domain.config) == (
-            "<Config {'ENV': 'production', 'DEBUG': False, 'SECRET_KEY': 'config', "
-            "'AUTOLOAD_DOMAIN': True, "
-            "'IDENTITY_STRATEGY': <IdentityStrategy.UUID: 1>, "
-            "'IDENTITY_TYPE': <IdentityType.STRING: 'STRING'>, "
-            "'EVENT_STRATEGY': <EventStrategy.DB_SUPPORTED: 'DB_SUPPORTED'>, "
-            "'EVENT_EXECUTION': <EventExecution.INLINE: 'INLINE'>, "
-            "'DATABASES': {'default': {'PROVIDER': 'protean.adapters.MemoryProvider'}}, "
-            "'CACHES': {'default': {'PROVIDER': 'protean.adapters.cache.memory.MemoryCache', "
-            "'TTL': 300, 'CACHE': 'MEMORY'}}, "
-            "'BROKERS': {'default': {'PROVIDER': 'protean.adapters.InlineBroker'}}, "
-            "'EMAIL_PROVIDERS': {'default': {'PROVIDER': 'protean.adapters.DummyEmailProvider', "
-            "'DEFAULT_FROM_EMAIL': 'admin@team8solutions.com'}}, "
-            "'TEST_KEY': 'foo'}>"
-        )
-
     def test_config_from_file(self):
         domain = Domain(__name__)
         domain.config.from_pyfile(__file__.rsplit(".", 1)[0] + ".py")
