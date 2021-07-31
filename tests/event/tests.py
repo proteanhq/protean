@@ -3,8 +3,6 @@ import uuid
 
 import pytest
 
-from mock import patch
-from protean.adapters.broker.inline import InlineBroker
 from protean.core.event import BaseEvent
 from protean.globals import current_domain
 from protean.infra.eventing import EventLog, EventLogRepository

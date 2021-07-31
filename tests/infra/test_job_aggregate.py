@@ -24,7 +24,7 @@ def test_that_updated_at_is_touched_on_consumed_status_change(job):
     assert job.updated_at > updated_timestamp
 
 
-def test_that_updated_at_is_touched_on_consumed_status_change(job):
+def test_that_updated_at_is_touched_on_errored_status_change(job):
     updated_timestamp = job.updated_at
 
     # Mark as Work in Progress and check for an updated timestamp

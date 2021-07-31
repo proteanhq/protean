@@ -9,8 +9,7 @@ from protean.core.event import BaseEvent
 from protean.core.exceptions import ConfigurationError
 from protean.core.field.basic import Auto, String, Integer
 from protean.core.subscriber import BaseSubscriber
-from protean.core.unit_of_work import UnitOfWork
-from protean.infra.eventing import EventLog, EventLogRepository
+from protean.infra.eventing import EventLog
 from protean.port.broker import BaseBroker
 
 

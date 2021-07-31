@@ -56,7 +56,7 @@ class Server:
 
     async def push_messages(self) -> None:
         """Pick up published events and push to all register brokers"""
-        logger.debug(f"Polling DB for new events to publish...")
+        logger.debug("Polling DB for new events to publish...")
 
         # Check if there are new messages to publish
         while event_log := current_domain.repository_for(
@@ -132,7 +132,7 @@ class Server:
 
     async def poll_for_jobs(self):
         """Poll for new jobs and execute them in threads"""
-        logger.debug(f"Polling jobs...")
+        logger.debug("Polling jobs...")
 
         # Check if there are new jobs to process
         while job := current_domain.repository_for(Job).get_next_to_process():
@@ -158,7 +158,7 @@ class Server:
 
     async def poll_for_messages(self):
         """This works with `add_done_callback`"""
-        logger.debug(f"Polling broker for new messages...")
+        logger.debug("Polling broker for new messages...")
 
         # FIXME Gather maximum `max_workers` messages and wait for the next cycle
         while message := self.broker.get_next():

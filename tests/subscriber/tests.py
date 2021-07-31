@@ -2,12 +2,10 @@ import uuid
 
 import pytest
 
-from mock import patch
 from protean.core.subscriber import BaseSubscriber
-from protean.infra.eventing import EventLog
 from protean.utils import fully_qualified_name
 
-from .elements import NotifySSOSubscriber, Person, PersonAdded
+from .elements import NotifySSOSubscriber, PersonAdded
 
 
 class TestSubscriberInitialization:

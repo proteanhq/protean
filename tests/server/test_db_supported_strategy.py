@@ -281,7 +281,7 @@ async def test_that_a_job_is_marked_as_in_progress(test_domain):
     )
 
     # Patch `submit_job()` because we don't want to execute the job
-    with patch.object(Server, "submit_job") as mocked_handled:
+    with patch.object(Server, "submit_job"):
         server = Server(domain=test_domain, test_mode=True)
         await server.push_messages()
         await server.poll_for_messages()

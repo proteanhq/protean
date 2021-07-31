@@ -1,5 +1,3 @@
-import pytest
-
 from mock import patch
 
 from protean.server import Server
@@ -16,7 +14,7 @@ def test_running_of_poll_loop_on_server_start(mock):
 
 
 @patch.object(Server, "poll_for_messages")
-def test_running_of_poll_loop_on_server_start(mock):
+def test_running_of_poll_messages_loop_on_server_start(mock):
     server = Server.from_domain_file(
         domain="baz", domain_file="tests/server/support/dummy_domain.py", test_mode=True
     )
@@ -26,7 +24,7 @@ def test_running_of_poll_loop_on_server_start(mock):
 
 
 @patch.object(Server, "poll_for_jobs")
-def test_running_of_poll_loop_on_server_start(mock):
+def test_running_of_poll_jobs_loop_on_server_start(mock):
     server = Server.from_domain_file(
         domain="baz", domain_file="tests/server/support/dummy_domain.py", test_mode=True
     )

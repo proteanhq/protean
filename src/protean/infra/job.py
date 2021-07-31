@@ -5,7 +5,6 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.core.field.basic import Auto, String, Dict, DateTime
 from protean.globals import current_domain
-from protean.utils.inflection import underscore
 
 
 class JobStatus(Enum):
