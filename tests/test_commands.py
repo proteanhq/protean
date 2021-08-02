@@ -1,15 +1,21 @@
 import pytest
 
 from protean.core.command import BaseCommand
+from protean.core.command import BaseCommand
 from protean.core.exceptions import (
     InvalidDataError,
     InvalidOperationError,
     NotSupportedError,
 )
-from protean.core.field.basic import String
+from protean.core.field.basic import Integer, String
 from protean.utils import fully_qualified_name
 
-from .elements import UserRegistrationCommand
+
+class UserRegistrationCommand(BaseCommand):
+    email = String(required=True, max_length=250)
+    username = String(required=True, max_length=50)
+    password = String(required=True, max_length=255)
+    age = Integer(default=21)
 
 
 class TestCommandInitialization:
@@ -88,6 +94,7 @@ class TestCommandProperties:
             "email": "john.doe@gmail.com",
             "username": "john.doe",
             "password": "secret1!",
+            "age": 21,
         }
 
     def test_different_commands_are_distinct(self):

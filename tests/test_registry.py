@@ -1,10 +1,13 @@
-from datetime import datetime
-from enum import Enum
-
 import inflection
 import pytest
 
+from datetime import datetime
+from enum import Enum
+from typing import Any
+
 from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
 from protean.core.field.basic import DateTime, String
 from protean.domain.registry import _DomainRegistry
 from protean.utils import DomainObjects
@@ -20,7 +23,7 @@ def test_element_registration():
     register.register_element(Role)
 
     assert (
-        "tests.registry.tests.Role" in register._elements[DomainObjects.AGGREGATE.value]
+        "tests.test_registry.Role" in register._elements[DomainObjects.AGGREGATE.value]
     )
 
 
@@ -29,13 +32,13 @@ def test_delisting_element():
     register.register_element(Role)
 
     assert (
-        "tests.registry.tests.Role" in register._elements[DomainObjects.AGGREGATE.value]
+        "tests.test_registry.Role" in register._elements[DomainObjects.AGGREGATE.value]
     )
 
     register.delist_element(Role)
 
     assert (
-        "tests.registry.tests.Role"
+        "tests.test_registry.Role"
         not in register._elements[DomainObjects.AGGREGATE.value]
     )
 
@@ -45,7 +48,7 @@ def test_fetching_elements_from_registry():
     register.register_element(Role)
 
     aggregates = register.get(DomainObjects.AGGREGATE)
-    assert "tests.registry.tests.Role" in aggregates
+    assert "tests.test_registry.Role" in aggregates
 
 
 def test_that_registry_exposes_properties():
@@ -114,5 +117,25 @@ def test_that_re_registering_an_element_has_no_effect():
 
     assert len(register._elements[DomainObjects.AGGREGATE.value]) == 1
     assert (
-        "tests.registry.tests.Role" in register._elements[DomainObjects.AGGREGATE.value]
+        "tests.test_registry.Role" in register._elements[DomainObjects.AGGREGATE.value]
     )
+
+
+def test_retrieving_command_handler_for_a_command():
+    registry = _DomainRegistry()
+
+    class SignupCommand(BaseCommand):
+        first_name = String(required=True)
+        email = String(required=True)
+
+    class SignupCommandHandler(BaseCommandHandler):
+        class Meta:
+            command_cls = SignupCommand
+
+        def __call__(self, command: BaseCommand) -> Any:
+            return True
+
+    registry.register_element(SignupCommand)
+    registry.register_element(SignupCommandHandler)
+
+    assert registry.command_handler_for(SignupCommand) == SignupCommandHandler

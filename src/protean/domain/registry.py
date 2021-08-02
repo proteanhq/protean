@@ -5,6 +5,8 @@ from enum import Enum
 from typing import Any, Dict
 
 import inflection
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
 
 from protean.utils import DomainObjects, fully_qualified_name
 
@@ -26,6 +28,8 @@ class _DomainRegistry:
         # Initialize placeholders for element types
         for element_type in DomainObjects:
             self._elements[element_type.value] = defaultdict(dict)
+
+        self._commands_to_command_handlers: Dict[BaseCommand, BaseCommandHandler] = {}
 
     def _is_invalid_element_cls(self, element_cls):
         """Ensure that we are dealing with an element class, that:
@@ -72,6 +76,15 @@ class _DomainRegistry:
                 f"Registered Element {element_name} with Domain as a {element_cls.element_type.value}"
             )
 
+            self._populate_utility_dicts(element_cls)
+
+    def _populate_utility_dicts(self, element_cls):
+        """Populate additional maps to help in easy retrieval"""
+        if element_cls.element_type == DomainObjects.COMMAND_HANDLER:
+            self._commands_to_command_handlers[
+                element_cls.meta_.command_cls
+            ] = element_cls
+
     def delist_element(self, element_cls):
         if self._is_invalid_element_cls(element_cls):
             raise NotImplementedError
@@ -82,6 +95,9 @@ class _DomainRegistry:
 
     def get(self, element_type):
         return self._elements[element_type.value]
+
+    def command_handler_for(self, command_cls: BaseCommand):
+        return self._commands_to_command_handlers[command_cls]
 
 
 # Set up access to all elements as properties

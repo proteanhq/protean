@@ -37,6 +37,11 @@ class EventExecution(Enum):
     INLINE = "INLINE"
 
 
+class CommandProcessingType(Enum):
+    SYNC = "SYNC"
+    ASYNC = "ASYNC"
+
+
 class Database(Enum):
     ELASTICSEARCH = "ELASTICSEARCH"
     MEMORY = "MEMORY"

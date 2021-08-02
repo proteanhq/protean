@@ -3,23 +3,26 @@ to register Domain Elements.
 """
 import logging
 import sys
-from typing import Union
+from typing import Any, Union
 
 from werkzeug.datastructures import ImmutableDict
 
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
 )
+from protean.core.field.basic import Boolean
 from protean.infra.eventing import Message, MessageType
 from protean.domain.registry import _DomainRegistry
 from protean.infra.eventing import EventLog, EventLogRepository
 from protean.infra.job import Job, JobRepository
 from protean.utils import (
+    CommandProcessingType,
     DomainObjects,
     EventStrategy,
     EventExecution,
@@ -99,6 +102,7 @@ class Domain(_PackageBoundObject):
             "IDENTITY_TYPE": IdentityType.STRING.value,
             "EVENT_STRATEGY": EventStrategy.DB_SUPPORTED.value,
             "EVENT_EXECUTION": EventExecution.INLINE.value,
+            "COMMAND_PROCESSING": CommandProcessingType.ASYNC.value,
             "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider"}},
             "CACHES": {
                 "default": {
@@ -530,6 +534,47 @@ class Domain(_PackageBoundObject):
 
     def view(self, _cls=None, **kwargs):
         return self._domain_element(DomainObjects.VIEW, _cls=_cls, **kwargs,)
+
+    #####################
+    # Handling Commands #
+    #####################
+
+    def command_handler_for(self, command_cls: BaseCommand) -> BaseCommandHandler:
+        """Retrieve Command Handler associated with a Command
+
+        Args:
+            command_cls (BaseCommand): Command class to be processed
+
+        Returns:
+            BaseCommandHandler: Command Handler associated with the Command class
+        """
+        return self._domain_registry.command_handler_for(command_cls)
+
+    def handle(
+        self, command: BaseCommand, asynchronous: Boolean = True
+    ) -> Union[None, Any]:
+        """Process command and return results based on specified preference.
+
+        By default, Protean does not return values after after processing commands. This behavior
+        can be overridden either by setting COMMAND_PROCESSING in config to "SYNC" or by specifying
+        ``asynchronous=False`` when calling the domain's ``handle`` method.
+
+        Args:
+            command (BaseCommand): Command to process
+            asynchronous (Boolean, optional): Specifies if the command should be processed asynchronously.
+                Defaults to True.
+
+        Returns:
+            Union[None, Any]: Returns either the command handler's return value or nothing, based on preference.
+        """
+        if (
+            not asynchronous
+            or self.config["COMMAND_PROCESSING"] == CommandProcessingType.SYNC.value
+        ):
+            command_handler = self.command_handler_for(command.__class__)()
+            return command_handler(command)
+        else:
+            self.brokers.publish(command)
 
     ########################
     # Broker Functionality #

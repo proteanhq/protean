@@ -1,4 +1,6 @@
 from abc import abstractmethod
+from typing import Any, Union
+from protean.core.command import BaseCommand
 from protean.core.exceptions import IncorrectUsageError
 
 from protean.utils import DomainObjects, derive_element_class
@@ -46,7 +48,7 @@ class CommandHandlerMeta:
     - ``command``: The command that this command handler is associated with
     """
 
-    def __init__(self, entity_name, meta):
+    def __init__(self, entity_name, meta):  # FIXME Remove `entity_name`
         self.command_cls = getattr(meta, "command_cls", None)
         self.broker = getattr(meta, "broker", "default")
 
@@ -66,7 +68,7 @@ class BaseCommandHandler(metaclass=_CommandHandlerMetaclass):
         return super().__new__(cls)
 
     @abstractmethod
-    def notify(self, command):
+    def __call__(self, command: BaseCommand) -> Union[None, Any]:
         """Placeholder method for receiving notifications on command"""
         pass
 

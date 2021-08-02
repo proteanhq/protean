@@ -252,7 +252,7 @@ class TestEventPublish:
 
 
 class TestBrokerCommandHandlerInitialization:
-    def test_that_registered_subscribers_are_initialized(self, test_domain):
+    def test_that_registered_command_handlers_are_initialized(self, test_domain):
         test_domain.register(AddNewPersonCommandHandler)
 
         assert (
@@ -264,6 +264,10 @@ class TestBrokerCommandHandlerInitialization:
                 "tests.test_brokers.AddPersonCommand"
             ]
             is AddNewPersonCommandHandler
+        )
+        assert (
+            test_domain.command_handler_for(AddPersonCommand)
+            == AddNewPersonCommandHandler
         )
 
     def test_that_subscribers_with_unknown_brokers_cannot_be_initialized(
@@ -280,11 +284,11 @@ class TestBrokerCommandHandlerInitialization:
 
 
 class TestCommandPublish:
-    @patch.object(AddNewPersonCommandHandler, "notify")
+    @patch.object(AddNewPersonCommandHandler, "__call__")
     def test_that_brokers_receive_a_command(self, mock, test_domain):
         test_domain.register(AddPersonCommand)
         test_domain.register(AddNewPersonCommandHandler)
 
         command = AddPersonCommand(first_name="John", last_name="Doe", age=21)
         test_domain.publish(command)
-        mock.assert_called_once_with(command.to_dict())
+        mock.assert_called_once_with(command)
