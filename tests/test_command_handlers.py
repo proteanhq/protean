@@ -76,12 +76,11 @@ class TestCommandHandlerInvocation:
         # Verify that no result was returned
         assert result is None
 
-        # Verify the side-effect of the command handler
+        # Verify there is no side-effect of the command handler yet
         people = current_domain.get_dao(Person).query.all().items
-        assert len(people) == 1
-        assert people[0].first_name == "John"
+        assert len(people) == 0
 
-    def test_async_command_handler_invocation(self, test_domain):
+    def test_synchronous_command_handler_invocation(self, test_domain):
         test_domain.config["COMMAND_PROCESSING"] = CommandProcessingType.SYNC.value
 
         result = test_domain.handle(

@@ -1,8 +1,10 @@
+import json
+
 from typing import Dict
-from protean.globals import current_domain
-from protean.infra.eventing import Message
+
+from queue import Queue, Empty
+
 from protean.port.broker import BaseBroker
-from protean.utils import fully_qualified_name
 
 from typing import TYPE_CHECKING
 
@@ -17,17 +19,19 @@ class InlineBroker(BaseBroker):
         # In case of `InlineBroker`, the `IS_ASYNC` value will always be `False`.
         conn_info["IS_ASYNC"] = False
 
-    def publish(self, message: Message) -> None:
-        # FIXME Implement Inline Broker's publish mechanism
-        initiator_obj = current_domain.from_message(message)
-        if message["type"] == "EVENT":
-            for subscriber in self._subscribers[
-                fully_qualified_name(initiator_obj.__class__)
-            ]:
-                subscriber_object = subscriber(current_domain, initiator_obj.__class__)
-                subscriber_object.notify(initiator_obj.to_dict())
-        elif message["type"] == "COMMAND":
-            command_handler = current_domain.command_handler_for(
-                initiator_obj.__class__
-            )
-            command_handler()(initiator_obj)
+        self._queue = Queue()
+
+    def publish(self, message: Dict) -> None:
+        self._queue.put(json.dumps(message))
+
+    def get_next(self) -> Dict:
+        try:
+            bytes_message = self._queue.get_nowait()
+        except Empty:
+            return None
+
+        return json.loads(bytes_message)
+
+    def _data_reset(self) -> None:
+        with self._queue.mutex:
+            self._queue.queue.clear()

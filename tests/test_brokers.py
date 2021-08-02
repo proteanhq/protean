@@ -11,6 +11,7 @@ from protean.core.field.basic import Auto, String, Integer
 from protean.core.subscriber import BaseSubscriber
 from protean.infra.eventing import EventLog
 from protean.port.broker import BaseBroker
+from protean.utils import CommandProcessingType
 
 
 class PersonAdded(BaseEvent):
@@ -289,6 +290,8 @@ class TestCommandPublish:
         test_domain.register(AddPersonCommand)
         test_domain.register(AddNewPersonCommandHandler)
 
+        test_domain.config["COMMAND_PROCESSING"] = CommandProcessingType.SYNC.value
+
         command = AddPersonCommand(first_name="John", last_name="Doe", age=21)
-        test_domain.publish(command)
+        test_domain.handle(command)
         mock.assert_called_once_with(command)

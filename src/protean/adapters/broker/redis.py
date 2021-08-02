@@ -1,10 +1,12 @@
 import json
 import redis
 
-from typing import Dict
+from typing import Dict, TYPE_CHECKING
 
 from protean.port.broker import BaseBroker
-from protean.domain import Domain
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
 
 
 class RedisBroker(BaseBroker):
@@ -13,12 +15,13 @@ class RedisBroker(BaseBroker):
     FIXME: Convert to be a Context Manager, and release connection after use
     """
 
-    def __init__(self, name: str, domain: Domain, conn_info: Dict) -> None:
+    def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
         super().__init__(name, domain, conn_info)
 
         self.redis_instance = redis.Redis.from_url(conn_info["URI"])
 
     def publish(self, message: Dict) -> None:
+        # FIXME Accept configuration for database and list name
         self.redis_instance.rpush("messages", json.dumps(message))
 
     def get_next(self) -> Dict:

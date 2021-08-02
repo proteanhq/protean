@@ -1,7 +1,6 @@
 import pytest
 
 from protean.core.command import BaseCommand
-from protean.core.command import BaseCommand
 from protean.core.exceptions import (
     InvalidDataError,
     InvalidOperationError,

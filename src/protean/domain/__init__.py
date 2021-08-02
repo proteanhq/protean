@@ -580,10 +580,29 @@ class Domain(_PackageBoundObject):
     # Broker Functionality #
     ########################
 
-    def publish(self, object):
-        self.brokers.publish(object)
+    def publish(self, event_or_command: Union[BaseCommand, BaseEvent]):
+        """Publish Events and Commands to all configured brokers.
+
+        Args:
+            event_or_command (Union[BaseCommand, BaseEvent]): The Event or Command object containing data to be pushed
+        """
+        self.brokers.publish(event_or_command)
 
     def from_message(self, message: Message) -> Union[BaseCommand, BaseEvent]:
+        """Reconstruct Event or Command class from Message.
+
+        Messages are pushed into brokers in JSON-stringified form. This method re-casts them
+        back into their respective Event and Command objects.
+
+        Args:
+            message (Message): Message retrieved from the broker
+
+        Raises:
+            NotSupportedError: Raised when the message is not Event or Command payload
+
+        Returns:
+            Union[BaseCommand, BaseEvent]: The Event or Command object reconstructed from the message
+        """
         if message["type"] == MessageType.EVENT.value:
             event_cls = fetch_event_cls_from_registry(camelize(message["name"]))
             return event_cls(message["payload"])

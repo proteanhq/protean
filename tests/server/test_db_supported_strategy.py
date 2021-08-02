@@ -5,7 +5,7 @@ import sys
 
 from mock import patch
 
-from protean.adapters.broker.redis import RedisBroker
+from protean.adapters.broker.inline import InlineBroker
 from protean.core.event import BaseEvent
 from protean.core.field.basic import Auto, String, Integer
 from protean.core.subscriber import BaseSubscriber
@@ -50,13 +50,6 @@ class SendWelcomeEmail(BaseSubscriber):
 def test_domain(test_domain):
     test_domain.config["EVENT_STRATEGY"] = EventStrategy.DB_SUPPORTED.value
     test_domain.config["EVENT_EXECUTION"] = EventExecution.INLINE.value
-    test_domain.config["BROKERS"] = {
-        "default": {
-            "PROVIDER": "protean.adapters.broker.redis.RedisBroker",
-            "URI": "redis://127.0.0.1:6379/0",
-            "IS_ASYNC": True,
-        },
-    }
 
     return test_domain
 
@@ -64,7 +57,7 @@ def test_domain(test_domain):
 def test_that_we_are_configured_property_for_redis_and_db_supported_strategy(
     test_domain,
 ):
-    assert isinstance(test_domain.brokers["default"], RedisBroker)
+    assert isinstance(test_domain.brokers["default"], InlineBroker)
     assert test_domain.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED.value
     assert test_domain.config["EVENT_EXECUTION"] == EventExecution.INLINE.value
 
