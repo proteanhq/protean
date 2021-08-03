@@ -5,64 +5,12 @@ from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.core.field.association import HasMany, HasOne
 from protean.globals import current_domain
 from protean.utils import Database, DomainObjects, derive_element_class
+from protean.utils.container import BaseContainer
 
 logger = logging.getLogger("protean.repository")
 
 
-class _RepositoryMetaclass(type):
-    """
-    This base metaclass processes the class declaration and constructs a meta object that can
-    be used to introspect the Repository class later. Specifically, it sets up a `meta_` attribute on
-    the Repository to an instance of Meta, either the default of one that is defined in the
-    Repository class.
-
-    `meta_` is setup with these attributes:
-        * `aggregate`: The aggregate associated with the repository
-    """
-
-    def __new__(mcs, name, bases, attrs, **kwargs):
-        """Initialize Repository MetaClass and load attributes"""
-
-        # Ensure initialization is only performed for subclasses of Repository
-        # (excluding Repository class itself).
-        parents = [b for b in bases if isinstance(b, _RepositoryMetaclass)]
-        if not parents:
-            return super().__new__(mcs, name, bases, attrs)
-
-        # Remove `abstract` in base classes if defined
-        for base in bases:
-            if hasattr(base, "Meta") and hasattr(base.Meta, "abstract"):
-                delattr(base.Meta, "abstract")
-
-        new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
-
-        # Gather `Meta` class/object if defined
-        attr_meta = attrs.pop("Meta", None)
-        meta = attr_meta or getattr(new_class, "Meta", None)
-        setattr(new_class, "meta_", RepositoryMeta(meta))
-
-        return new_class
-
-
-class RepositoryMeta:
-    """ Metadata info for the Repository.
-
-    An object of this class is either constructed automatically upon Repository class initialization, or
-    a meta class can be explicitly passed along with the repository definition, as in inner `Meta` class.
-
-    Options supported by Meta class:
-    - ``aggregate_cls``: The aggregate associated with the repository
-    """
-
-    def __init__(self, meta):
-        # The aggregate class with which the repository is associated
-        #   Repository will be fetched via its associated aggregate.
-        #
-        self.aggregate_cls = getattr(meta, "aggregate_cls", None)
-        self.database = getattr(meta, "database", "ALL")
-
-
-class BaseRepository(metaclass=_RepositoryMetaclass):
+class BaseRepository(BaseContainer):
     """This is the baseclass for concrete Repository implementations.
 
     The three methods in this baseclass to `add`, `get` or `remove` entities are sufficient in most cases
@@ -76,6 +24,8 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
     """
 
     element_type = DomainObjects.REPOSITORY
+
+    META_OPTIONS = [("aggregate_cls", None), ("database", "ALL")]
 
     def __new__(cls, *args, **kwargs):
         # Prevent instantiation of `BaseRepository itself`
@@ -202,15 +152,7 @@ class BaseRepository(metaclass=_RepositoryMetaclass):
 
 
 def repository_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseRepository)
-
-    if not (
-        hasattr(element_cls.meta_, "aggregate_cls") and element_cls.meta_.aggregate_cls
-    ):
-        element_cls.meta_.aggregate_cls = kwargs.pop("aggregate_cls", None)
-
-    if not (hasattr(element_cls.meta_, "database") and element_cls.meta_.database):
-        element_cls.meta_.database = kwargs.pop("database", "ALL")
+    element_cls = derive_element_class(element_cls, BaseRepository, **kwargs)
 
     if not element_cls.meta_.aggregate_cls:
         raise IncorrectUsageError(

@@ -12,6 +12,8 @@ class BaseCommand(BaseContainer):
 
     element_type = DomainObjects.COMMAND
 
+    META_OPTIONS = [("broker", "default")]
+
     class Meta:
         abstract = True
 
@@ -23,12 +25,6 @@ class BaseCommand(BaseContainer):
 
 
 def command_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseCommand)
-
-    element_cls.meta_.broker = (
-        kwargs.pop("broker", None)
-        or (hasattr(element_cls, "meta_") and element_cls.meta_.broker)
-        or "default"
-    )
+    element_cls = derive_element_class(element_cls, BaseCommand, **kwargs)
 
     return element_cls

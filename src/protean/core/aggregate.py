@@ -38,6 +38,8 @@ class BaseAggregate(BaseEntity):
 
     element_type = DomainObjects.AGGREGATE
 
+    META_OPTIONS = [("provider", "default"), ("model", None)]
+
     def __new__(cls, *args, **kwargs):
         if cls is BaseAggregate:
             raise TypeError("BaseAggregate cannot be instantiated")
@@ -45,17 +47,4 @@ class BaseAggregate(BaseEntity):
 
 
 def aggregate_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseAggregate)
-
-    element_cls.meta_.provider = (
-        kwargs.pop("provider", None)
-        or (hasattr(element_cls, "meta_") and element_cls.meta_.provider)
-        or "default"
-    )
-    element_cls.meta_.model = (
-        kwargs.pop("model", None)
-        or (hasattr(element_cls, "meta_") and element_cls.meta_.model)
-        or None
-    )
-
-    return element_cls
+    return derive_element_class(element_cls, BaseAggregate, **kwargs)

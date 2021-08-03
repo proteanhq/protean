@@ -1,7 +1,9 @@
 import copy
+import inspect
 import logging
 
 from collections import defaultdict
+from typing import Any, Dict
 
 from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
 from protean.core.field.basic import Field
@@ -39,7 +41,7 @@ class _ContainerMetaclass(type):
         # Gather `Meta` class/object if defined
         attr_meta = attrs.pop("Meta", None)
         meta = attr_meta or getattr(new_class, "Meta", None)
-        setattr(new_class, "meta_", ContainerMeta(name, meta))
+        setattr(new_class, "meta_", ContainerMeta(meta))
 
         # Load declared fields
         new_class._load_fields(attrs)
@@ -84,19 +86,19 @@ class ContainerMeta:
             or on any of its superclasses will be include in this dictionary.
     """
 
-    def __init__(self, entity_name, meta):
-        self.abstract = getattr(meta, "abstract", None) or False
+    def __init__(self, meta):
+        attributes = inspect.getmembers(meta, lambda a: not (inspect.isroutine(a)))
+        for attr in attributes:
+            if not (attr[0].startswith("__") and attr[0].endswith("__")):
+                setattr(self, attr[0], attr[1])
 
-        # FIXME These attributes should be decided per domain element
-        #   Was added here to be able to move Event Factory into its own file
-        self.aggregate_cls = getattr(meta, "aggregate_cls", None)
+        # Common Meta attributes
+        self.abstract = getattr(meta, "abstract", None) or False
+        self.version = 1
 
         # Initialize Options
+        # FIXME Move this to be within the container
         self.declared_fields = {}
-
-        # FIXME Make Meta class configurable per Element Type
-        self.version = 1
-        self.broker = "default"
 
     @property
     def mandatory_fields(self):
@@ -122,6 +124,9 @@ class BaseContainer(metaclass=_ContainerMetaclass):
     Provides helper methods to custom define attributes, and find attribute names
     during runtime.
     """
+
+    # Placeholder for definition custom Element options. Overridden at Element Class level.
+    META_OPTIONS = []
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseContainer:
@@ -257,3 +262,32 @@ class BaseContainer(metaclass=_ContainerMetaclass):
     def _clone_with_values(self, **kwargs):
         """To be implemented in each command"""
         raise NotImplementedError
+
+    @classmethod
+    def _extract_options(cls, **opts):
+        """A stand-in method for setting customized options on the Domain Element
+
+        Empty by default. To be overridden in each Element that expects or needs
+        specific options.
+        """
+        for key, default in cls.META_OPTIONS:
+            setattr(cls.meta_, key, cls._derive_preference(opts, key, default))
+
+    @classmethod
+    def _derive_preference(cls, kwargs: Dict, key: str, default: Any) -> Any:
+        """A common method to pop an element's preference from multiple sources
+
+        Args:
+            kwargs (Dict): Explicit options provided for element
+            element_cls (Any): The Domain Element to which options may be attached
+            key (str): The attribute to derive
+            default (Any): The default if no options are set
+
+        Returns:
+            Any: The attribute value
+        """
+        return (
+            kwargs.pop(key, None)
+            or (hasattr(cls.meta_, key) and getattr(cls.meta_, key))
+            or default
+        )

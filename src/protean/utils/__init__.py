@@ -98,7 +98,7 @@ class DomainObjects(Enum):
     VIEW = "VIEW"
 
 
-def derive_element_class(element_cls, base_cls):
+def derive_element_class(element_cls, base_cls, **opts):
     if not issubclass(element_cls, base_cls):
         try:
             new_dict = element_cls.__dict__.copy()
@@ -111,6 +111,9 @@ def derive_element_class(element_cls, base_cls):
                 "Invalid class {element_cls.__name__} for type {element_type.value}"
                 " (Error: {exc})",
             )
+
+    if callable(getattr(element_cls, "_extract_options", None)):
+        element_cls._extract_options(**opts)
 
     return element_cls
 

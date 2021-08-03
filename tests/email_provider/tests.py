@@ -13,8 +13,10 @@ class TestEmailInitialization:
         with pytest.raises(TypeError):
             BaseEmail()
 
-    def test_that_email_can_be_instantiated(self):
-        email = WelcomeEmail(to="john.doe@gmail.com", data={"foo": "bar"})
+    def test_that_email_can_be_instantiated(self, test_domain):
+        test_domain.register(WelcomeEmail)
+
+        email = WelcomeEmail(to=["john.doe@gmail.com"], data={"foo": "bar"})
         assert email is not None
 
 

@@ -1,6 +1,7 @@
 from abc import abstractmethod
 
-from protean.globals import current_domain
+from protean.core.field.basic import String, List, Text
+from protean.utils.container import BaseContainer
 from protean.utils import (
     DomainObjects,
     convert_str_values_to_list,
@@ -34,53 +35,7 @@ class BaseEmailProvider:
         )
 
 
-class _EmailMetaclass(type):
-    """
-    This base metaclass processes the class declaration and constructs a meta object that can
-    be used to introspect the Email class later. Specifically, it sets up a `meta_` attribute on
-    the Email to an instance of Meta, either the default of one that is defined in the
-    Email class.
-
-    `meta_` is setup with these attributes:
-        * `provider`: The email provider that this email message is associated with
-    """
-
-    def __new__(mcs, name, bases, attrs, **kwargs):
-        """Initialize Email MetaClass and load attributes"""
-
-        # Ensure initialization is only performed for subclasses of Email
-        # (excluding Email class itself).
-        parents = [b for b in bases if isinstance(b, _EmailMetaclass)]
-        if not parents:
-            return super().__new__(mcs, name, bases, attrs)
-
-        # Remove `abstract` in base classes if defined
-        for base in bases:
-            if hasattr(base, "Meta") and hasattr(base.Meta, "abstract"):
-                delattr(base.Meta, "abstract")
-
-        new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
-
-        # Gather `Meta` class/object if defined
-        attr_meta = attrs.pop("Meta", None)
-        meta = attr_meta or getattr(new_class, "Meta", None)
-        setattr(new_class, "meta_", EmailMeta(name, meta))
-
-        return new_class
-
-
-class EmailMeta:
-    """ Metadata info for the Email.
-
-    Options:
-    - ``provider``: The Email provider that this message is associated with
-    """
-
-    def __init__(self, entity_name, meta):
-        self.provider = getattr(meta, "provider", "default")
-
-
-class BaseEmail(metaclass=_EmailMetaclass):
+class BaseEmail(BaseContainer):
     """Base Email class that should implemented by all Domain Email Messages.
 
     This is also a marker class that is referenced when emails are registered
@@ -89,43 +44,35 @@ class BaseEmail(metaclass=_EmailMetaclass):
 
     element_type = DomainObjects.EMAIL
 
+    META_OPTIONS = [("provider", "default")]
+
     def __new__(cls, *args, **kwargs):
         if cls is BaseEmail:
             raise TypeError("BaseEmail cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(
-        self,
-        subject="",
-        data="",
-        from_email=None,
-        to=None,
-        bcc=None,
-        cc=None,
-        reply_to=None,
-        template_id="",
-        **kwargs
-    ):
+    subject = String(required=True)
+    data = Text(required=True)
+    from_email = String()
+    to = List(content_type=String)
+    bcc = List(content_type=String)
+    cc = List(content_type=String)
+    reply_to = String()
+    template = String()
+
+    def defaults(self):
         """
         Initialize a single email message (which can be sent to multiple
         recipients).
         """
-        self.to = convert_str_values_to_list(to)
-        self.cc = convert_str_values_to_list(cc)
-        self.bcc = convert_str_values_to_list(bcc)
-
-        provider = current_domain.get_email_provider(self.meta_.provider)
-        self.provider = provider
-        self.from_email = from_email or provider.conn_info["DEFAULT_FROM_EMAIL"]
-
+        self.to = convert_str_values_to_list(self.to)
+        self.cc = convert_str_values_to_list(self.cc)
+        self.bcc = convert_str_values_to_list(self.bcc)
         self.reply_to = (
-            convert_str_values_to_list(reply_to) if reply_to else self.from_email
+            convert_str_values_to_list(self.reply_to)
+            if self.reply_to
+            else self.from_email
         )
-
-        self.subject = subject
-        self.template_id = template_id
-        self.data = data
-        self.kwargs = kwargs
 
     @property
     def mime_message(self):

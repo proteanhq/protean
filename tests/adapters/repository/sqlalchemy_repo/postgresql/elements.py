@@ -18,7 +18,8 @@ class Person(BaseAggregate):
 
 
 class PersonRepository(BaseRepository):
-    pass
+    class Meta:
+        aggregate_cls = Person
 
 
 class Alien(BaseAggregate):

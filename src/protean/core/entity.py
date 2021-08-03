@@ -4,6 +4,7 @@ import logging
 
 from collections import defaultdict
 from functools import partial
+from typing import Any, Dict
 
 from protean.exceptions import (
     IncorrectUsageError,
@@ -348,6 +349,8 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
     element_type = DomainObjects.ENTITY
 
+    META_OPTIONS = [("provider", "default"), ("model", None), ("aggregate_cls", None)]
+
     def __init__(self, *template, raise_errors=True, **kwargs):  # noqa: C901
         """
         Initialise the entity object.
@@ -585,31 +588,44 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
         return clone_copy
 
+    @classmethod
+    def _extract_options(cls, **opts):
+        """A stand-in method for setting customized options on the Domain Element
+
+        Empty by default. To be overridden in each Element that expects or needs
+        specific options.
+        """
+        for key, default in cls.META_OPTIONS:
+            setattr(cls.meta_, key, cls._derive_preference(opts, key, default))
+
+    @classmethod
+    def _derive_preference(cls, kwargs: Dict, key: str, default: Any) -> Any:
+        """A common method to pop an element's preference from multiple sources
+
+        Args:
+            kwargs (Dict): Explicit options provided for element
+            element_cls (Any): The Domain Element to which options may be attached
+            key (str): The attribute to derive
+            default (Any): The default if no options are set
+
+        Returns:
+            Any: The attribute value
+        """
+        return (
+            kwargs.pop(key, None)
+            or (hasattr(cls.meta_, key) and getattr(cls.meta_, key))
+            or default
+        )
+
 
 def entity_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseEntity)
+    element_cls = derive_element_class(element_cls, BaseEntity, **kwargs)
 
     if element_cls.meta_.abstract is True:
         raise NotSupportedError(
             f"{element_cls.__name__} class has been marked abstract"
             f" and cannot be instantiated"
         )
-
-    element_cls.meta_.provider = (
-        kwargs.pop("provider", None)
-        or (hasattr(element_cls, "meta_") and element_cls.meta_.provider)
-        or "default"
-    )
-    element_cls.meta_.model = (
-        kwargs.pop("model", None)
-        or (hasattr(element_cls, "meta_") and element_cls.meta_.model)
-        or None
-    )
-    element_cls.meta_.aggregate_cls = (
-        kwargs.pop("aggregate_cls", None)
-        or (hasattr(element_cls, "meta_") and element_cls.meta_.aggregate_cls)
-        or None
-    )
 
     if not element_cls.meta_.aggregate_cls:
         raise IncorrectUsageError(

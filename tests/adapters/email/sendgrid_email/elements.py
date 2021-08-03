@@ -50,7 +50,7 @@ class WelcomeEmail(BaseEmail):
             raise InvalidDataError({"data": ["should be a dict"]})
 
         super().__init__(
-            subject=self.SUBJECT, template_id=self.TEMPLATE_ID, data=data, to=to
+            subject=self.SUBJECT, template=self.TEMPLATE_ID, data=data, to=to
         )
 
 

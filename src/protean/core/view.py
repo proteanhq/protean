@@ -423,7 +423,7 @@ class BaseView(metaclass=_ViewMetaclass):
 
 
 def view_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseView)
+    element_cls = derive_element_class(element_cls, BaseView, **kwargs)
 
     if element_cls.meta_.abstract is True:
         raise NotSupportedError(

@@ -1,11 +1,28 @@
-import uuid
-
 import pytest
 
+from protean.core.event import BaseEvent
+from protean.core.field.basic import Identifier, Integer, String
 from protean.core.subscriber import BaseSubscriber
 from protean.utils import fully_qualified_name
 
-from .elements import NotifySSOSubscriber, PersonAdded
+
+class PersonAdded(BaseEvent):
+    id = Identifier(required=True)
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50, required=True)
+    age = Integer(default=21)
+
+
+class NotifySSOSubscriber(BaseSubscriber):
+    """Subscriber that notifies an external SSO system
+    that a new person was added into the system
+    """
+
+    class Meta:
+        event = PersonAdded
+
+    def notify(self, event):
+        print("Received Event: ", event)
 
 
 class TestSubscriberInitialization:
@@ -14,18 +31,8 @@ class TestSubscriberInitialization:
             BaseSubscriber()
 
     def test_that_subscriber_can_be_instantiated(self, test_domain):
-        service = NotifySSOSubscriber(
-            test_domain,
-            PersonAdded(
-                **{
-                    "id": uuid.uuid4(),
-                    "first_name": "John",
-                    "last_name": "Doe",
-                    "age": 21,
-                }
-            ),
-        )
-        assert service is not None
+        subscriber = NotifySSOSubscriber()
+        assert subscriber is not None
 
 
 class TestSubscriberRegistration:

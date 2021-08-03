@@ -24,7 +24,7 @@ class SendgridEmailProvider(BaseEmailProvider):
             to_emails=message.to,
         )
         email.dynamic_template_data = message.data
-        email.template_id = TemplateId(message.template_id)
+        email.template_id = TemplateId(message.template)
 
         try:
             response = self.sg_client.send(email)

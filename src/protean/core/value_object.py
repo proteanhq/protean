@@ -46,12 +46,6 @@ class BaseValueObject(BaseContainer):
 
 
 def value_object_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseValueObject)
-
-    # FIXME Value Objects can be optionally associated with an Aggregate or Entity
-    if not (
-        hasattr(element_cls.meta_, "aggregate_cls") and element_cls.meta_.aggregate_cls
-    ):
-        element_cls.meta_.aggregate_cls = kwargs.pop("aggregate_cls", None)
+    element_cls = derive_element_class(element_cls, BaseValueObject, **kwargs)
 
     return element_cls
