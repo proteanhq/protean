@@ -7,6 +7,7 @@ import functools
 import logging
 
 from enum import Enum, auto
+from typing import Any, Tuple, Union
 from uuid import uuid4
 
 from protean.core.exceptions import IncorrectUsageError, ConfigurationError
@@ -131,112 +132,24 @@ def generate_identity():
     return None  # Database will generate the identity
 
 
-def fetch_entity_cls_from_registry(entity):
-    """Util Method to fetch an Entity class from an entity's name"""
-    # Defensive check to ensure we only process if `to_cls` is a string
-    if isinstance(entity, str):
+def fetch_element_cls_from_registry(
+    element: Union[str, Any], element_types: Tuple[DomainObjects, ...]
+) -> Any:
+    """Util Method to fetch an Element's class from its name"""
+    if isinstance(element, str):
         try:
             # Try fetching by class name
-            return current_domain._get_element_by_name(
-                (DomainObjects.AGGREGATE, DomainObjects.ENTITY), entity
-            ).cls
+            return current_domain._get_element_by_name(element_types, element).cls
         except ConfigurationError:
             try:
                 # Try fetching by fully qualified class name
                 return current_domain._get_element_by_fully_qualified_name(
-                    (DomainObjects.AGGREGATE, DomainObjects.ENTITY), entity
+                    element_types, element
                 ).cls
             except AssertionError:
-                # Entity has not been registered
+                # Element has not been registered
                 # FIXME print a helpful debug message
                 raise
     else:
         # FIXME Check if entity is subclassed from BaseEntity
-        return entity
-
-
-def fetch_subscription_cls_from_registry(event_cls):
-    """Util Method to fetch a Subscriber class from its name"""
-    # FIXME Generalize these functions
-    if isinstance(event_cls, str):
-        try:
-            # Try fetching by class name
-            return current_domain._get_element_by_name(
-                (DomainObjects.SUBSCRIBER,), event_cls
-            ).cls
-        except ConfigurationError:
-            try:
-                # Try fetching by fully qualified class name
-                return current_domain._get_element_by_fully_qualified_name(
-                    (DomainObjects.SUBSCRIBER,), event_cls
-                ).cls
-            except AssertionError:
-                # Event has not been registered
-                # FIXME print a helpful debug message
-                raise
-    else:
-        # FIXME Check if entity is subclassed from BaseEvent
-        return event_cls
-
-
-def fetch_event_cls_from_registry(event_cls):
-    """Util Method to fetch an Event class from an event's name"""
-    # FIXME Generalize these fucntions
-    if isinstance(event_cls, str):
-        try:
-            # Try fetching by class name
-            return current_domain._get_element_by_name(
-                (DomainObjects.EVENT,), event_cls
-            ).cls
-        except ConfigurationError:
-            try:
-                # Try fetching by fully qualified class name
-                return current_domain._get_element_by_fully_qualified_name(
-                    (DomainObjects.EVENT,), event_cls
-                ).cls
-            except AssertionError:
-                # Event has not been registered
-                # FIXME print a helpful debug message
-                raise
-    else:
-        # FIXME Check if entity is subclassed from BaseEvent
-        return event_cls
-
-
-def fetch_command_cls_from_registry(command_cls):
-    """Util Method to fetch an Command class from an command's name"""
-    if isinstance(command_cls, str):
-        try:
-            # Try fetching by class name
-            return current_domain._get_element_by_name(
-                (DomainObjects.COMMAND,), command_cls
-            ).cls
-        except ConfigurationError:
-            try:
-                # Try fetching by fully qualified class name
-                return current_domain._get_element_by_fully_qualified_name(
-                    (DomainObjects.COMMAND,), command_cls
-                ).cls
-            except AssertionError:
-                # Event has not been registered
-                # FIXME print a helpful debug message
-                raise
-    else:
-        # FIXME Check if entity is subclassed from BaseCommand
-        return command_cls
-
-
-def fetch_value_object_cls_from_domain(value_object):
-    """Util Method to fetch an Value Object class from a name string"""
-    # Defensive check to ensure we only process if `value_object_cls` is a string
-    if isinstance(value_object, str):
-        try:
-            return current_domain._get_element_by_fully_qualified_name(
-                DomainObjects.VALUE_OBJECT, value_object
-            ).cls
-        except AssertionError:
-            # Value Object has not been registered (yet)
-            # FIXME print a helpful debug message
-            raise
-    else:
-        return value_object
+        return element

@@ -11,7 +11,7 @@ from protean.infra.eventing import MessageType
 from protean.port.broker import BaseBroker
 from protean.utils import (
     DomainObjects,
-    fetch_event_cls_from_registry,
+    fetch_element_cls_from_registry,
     fully_qualified_name,
 )
 from protean.utils.inflection import camelize, underscore
@@ -96,7 +96,9 @@ class CeleryBroker(BaseBroker):
 
     def publish(self, message: Dict):
         if message["type"] == MessageType.EVENT.value:
-            event_cls = fetch_event_cls_from_registry(camelize(message["name"]))
+            event_cls = fetch_element_cls_from_registry(
+                camelize(message["name"]), (DomainObjects.EVENT,)
+            )
             for subscriber in self._subscribers[fully_qualified_name(event_cls)]:
                 if self.conn_info["IS_ASYNC"]:
                     subscriber.apply_async([message], queue=subscriber.name)

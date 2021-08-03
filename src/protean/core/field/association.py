@@ -6,7 +6,7 @@ from protean.globals import current_domain
 
 from .base import Field
 from .mixins import FieldCacheMixin, FieldDescriptorMixin
-from protean.utils import fetch_entity_cls_from_registry
+from protean.utils import DomainObjects, fetch_element_cls_from_registry
 
 
 class _ReferenceField(Field):
@@ -103,7 +103,9 @@ class Reference(FieldCacheMixin, Field):
     def _resolve_to_cls(self, instance):
         assert isinstance(self.to_cls, str)
 
-        self._to_cls = fetch_entity_cls_from_registry(self.to_cls)
+        self._to_cls = fetch_element_cls_from_registry(
+            self.to_cls, (DomainObjects.AGGREGATE, DomainObjects.ENTITY)
+        )
 
         # Refresh attribute name, now that we know `to_cls` Entity and it has been
         #   initialized with `id_field`
@@ -255,7 +257,9 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
         # If `to_cls` was specified as a string, take this opportunity to fetch
         #   and update the correct entity class against it, if not already done
         if isinstance(self.to_cls, str):
-            self.to_cls = fetch_entity_cls_from_registry(self.to_cls)
+            self.to_cls = fetch_element_cls_from_registry(
+                self.to_cls, (DomainObjects.AGGREGATE, DomainObjects.ENTITY)
+            )
 
             # FIXME Test that `to_cls` contains a corresponding `Reference` field
 
@@ -324,7 +328,9 @@ class HasOne(Association):
         # If `to_cls` was specified as a string, take this opportunity to fetch
         #   and update the correct entity class against it, if not already done
         if isinstance(self.to_cls, str):
-            self.to_cls = fetch_entity_cls_from_registry(self.to_cls)
+            self.to_cls = fetch_element_cls_from_registry(
+                self.to_cls, (DomainObjects.AGGREGATE, DomainObjects.ENTITY)
+            )
 
             # FIXME Test that `to_cls` contains a corresponding `Reference` field
 

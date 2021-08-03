@@ -26,8 +26,7 @@ from protean.utils import (
     DomainObjects,
     EventStrategy,
     EventExecution,
-    fetch_command_cls_from_registry,
-    fetch_event_cls_from_registry,
+    fetch_element_cls_from_registry,
     fully_qualified_name,
 )
 from protean.utils.inflection import camelize
@@ -604,10 +603,14 @@ class Domain(_PackageBoundObject):
             Union[BaseCommand, BaseEvent]: The Event or Command object reconstructed from the message
         """
         if message["type"] == MessageType.EVENT.value:
-            event_cls = fetch_event_cls_from_registry(camelize(message["name"]))
+            event_cls = fetch_element_cls_from_registry(
+                camelize(message["name"]), (DomainObjects.EVENT,)
+            )
             return event_cls(message["payload"])
         elif message["type"] == MessageType.COMMAND.value:
-            command_cls = fetch_command_cls_from_registry(camelize(message["name"]))
+            command_cls = fetch_element_cls_from_registry(
+                camelize(message["name"]), (DomainObjects.COMMAND,)
+            )
             return command_cls(message["payload"])
         else:
             # FIXME What is the correct error to raise here?

@@ -2,7 +2,7 @@
 
 from protean.core.field.base import Field
 
-from protean.utils import fetch_value_object_cls_from_domain
+from protean.utils import DomainObjects, fetch_element_cls_from_registry
 
 
 class _ShadowField(Field):
@@ -70,8 +70,8 @@ class ValueObject(Field):
         #   If it is, register the class
         try:
             if isinstance(self._value_object_cls, str):
-                self._value_object_cls = fetch_value_object_cls_from_domain(
-                    self._value_object_cls
+                self._value_object_cls = fetch_element_cls_from_registry(
+                    self._value_object_cls, (DomainObjects.VALUE_OBJECT,)
                 )
         except AssertionError:
             # Preserve ``value_object_cls`` as a string and we will hook up the entity later
@@ -113,8 +113,8 @@ class ValueObject(Field):
     def __set__(self, instance, value):
         """Override `__set__` to coordinate between value object and its embedded fields"""
         if isinstance(self.value_object_cls, str):
-            self.value_object_cls = fetch_value_object_cls_from_domain(
-                self.value_object_cls
+            self.value_object_cls = fetch_element_cls_from_registry(
+                self.value_object_cls, (DomainObjects.VALUE_OBJECT,)
             )
 
             # Refresh attribute name, now that we know `value_object_cls` class

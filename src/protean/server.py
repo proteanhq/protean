@@ -16,8 +16,9 @@ from protean.infra.eventing import EventLog, Message
 from protean.infra.job import Job, JobTypes
 from protean.core.unit_of_work import UnitOfWork
 from protean.utils import (
+    DomainObjects,
     EventExecution,
-    fetch_subscription_cls_from_registry,
+    fetch_element_cls_from_registry,
     fully_qualified_name,
 )
 from protean.utils.importlib import import_from_full_path
@@ -141,8 +142,8 @@ class Server:
             current_domain.repository_for(Job).add(job)
 
             if job.type == JobTypes.SUBSCRIPTION.value:
-                subscriber_cls = fetch_subscription_cls_from_registry(
-                    job.payload["subscription_cls"]
+                subscriber_cls = fetch_element_cls_from_registry(
+                    job.payload["subscription_cls"], (DomainObjects.SUBSCRIBER,)
                 )
                 subscriber_object = subscriber_cls()
 
