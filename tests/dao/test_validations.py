@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.exceptions import ValidationError
+from protean.exceptions import ValidationError
 
 from .elements import Person, PersonRepository, User
 

@@ -11,7 +11,7 @@ except AttributeError:  # pragma: no cover
     # Until Python 3.7
     collectionsAbc = collections
 
-from protean.core.exceptions import ConfigurationError
+from protean.exceptions import ConfigurationError
 from protean.globals import current_uow, current_domain
 from protean.utils import EventStrategy
 

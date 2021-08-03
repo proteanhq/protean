@@ -8,7 +8,7 @@ try:
 except AttributeError:
     collectionsAbc = collections
 
-from protean.core.exceptions import ConfigurationError
+from protean.exceptions import ConfigurationError
 from protean.utils.inflection import underscore
 
 logger = logging.getLogger("protean.cache")

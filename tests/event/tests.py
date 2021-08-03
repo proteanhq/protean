@@ -7,7 +7,7 @@ from protean.core.event import BaseEvent
 from protean.globals import current_domain
 from protean.infra.eventing import EventLog, EventLogRepository
 from protean.utils import fully_qualified_name
-from protean.core.exceptions import NotSupportedError
+from protean.exceptions import NotSupportedError
 
 from .elements import Person, PersonAdded, PersonCommand, PersonService
 

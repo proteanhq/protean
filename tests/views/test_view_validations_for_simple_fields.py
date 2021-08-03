@@ -2,7 +2,7 @@ import pytest
 
 from protean.core.entity import BaseEntity
 
-from protean.core.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError
 from protean.core.field.association import HasOne, Reference
 from protean.core.field.basic import String
 from protean.core.field.embedded import ValueObject

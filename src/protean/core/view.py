@@ -7,7 +7,7 @@ from collections import defaultdict
 from uuid import uuid4
 
 from protean.core.entity import _EntityState
-from protean.core.exceptions import (
+from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,

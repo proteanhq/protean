@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.exceptions import InvalidOperationError
+from protean.exceptions import InvalidOperationError
 
 from .elements import CustomBaseContainer, CustomContainer
 

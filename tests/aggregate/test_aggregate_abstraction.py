@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.exceptions import NotSupportedError
+from protean.exceptions import NotSupportedError
 
 from .elements import AbstractRole, ConcreteRole
 

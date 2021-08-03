@@ -4,7 +4,7 @@ import logging
 
 from collections import defaultdict
 
-from protean.core.exceptions import ConfigurationError
+from protean.exceptions import ConfigurationError
 from protean.core.repository import BaseRepository, repository_factory
 from protean.utils import DomainObjects, fully_qualified_name
 

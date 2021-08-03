@@ -5,7 +5,7 @@ import logging
 from collections import defaultdict
 from functools import partial
 
-from protean.core.exceptions import (
+from protean.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
     ValidationError,

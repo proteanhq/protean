@@ -6,7 +6,7 @@ from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from typing import Any, Iterable
 
-from protean.core import exceptions
+from protean import exceptions
 
 from .mixins import FieldDescriptorMixin
 

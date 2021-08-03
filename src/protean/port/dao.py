@@ -4,7 +4,7 @@ from abc import ABCMeta, abstractmethod
 from typing import Any
 
 from protean.core.entity import BaseEntity
-from protean.core.exceptions import (
+from protean.exceptions import (
     ObjectNotFoundError,
     TooManyObjectsError,
     ValidationError,

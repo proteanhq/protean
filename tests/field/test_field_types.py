@@ -7,7 +7,7 @@ from datetime import datetime
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.exceptions import ValidationError
+from protean.exceptions import ValidationError
 from protean.core.field.basic import (
     Auto,
     Boolean,

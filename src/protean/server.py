@@ -7,7 +7,7 @@ import logging
 import sys
 
 from typing import Dict, List
-from protean.core.exceptions import ConfigurationError
+from protean.exceptions import ConfigurationError
 
 from protean.core.subscriber import BaseSubscriber
 from protean.domain import Domain

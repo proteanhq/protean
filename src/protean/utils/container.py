@@ -3,7 +3,7 @@ import logging
 
 from collections import defaultdict
 
-from protean.core.exceptions import InvalidDataError, NotSupportedError, ValidationError
+from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
 from protean.core.field.basic import Field
 
 logger = logging.getLogger("protean.domain")

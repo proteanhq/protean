@@ -1,7 +1,7 @@
 """Module for defining different validators used by Field Types"""
 import re
 
-from protean.core.exceptions import ValidationError
+from protean.exceptions import ValidationError
 
 
 class MinLengthValidator:

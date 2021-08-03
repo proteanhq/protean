@@ -1,6 +1,6 @@
 from abc import abstractmethod
 
-from protean.core.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects
 
 

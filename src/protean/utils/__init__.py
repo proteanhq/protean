@@ -10,7 +10,7 @@ from enum import Enum, auto
 from typing import Any, Tuple, Union
 from uuid import uuid4
 
-from protean.core.exceptions import IncorrectUsageError, ConfigurationError
+from protean.exceptions import IncorrectUsageError, ConfigurationError
 from protean.globals import current_domain
 
 logger = logging.getLogger("protean.utils")

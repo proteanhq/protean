@@ -1,7 +1,7 @@
 import importlib
 import logging
 
-from protean.core.exceptions import ConfigurationError
+from protean.exceptions import ConfigurationError
 from protean.globals import current_uow
 
 logger = logging.getLogger("protean.email_providers")

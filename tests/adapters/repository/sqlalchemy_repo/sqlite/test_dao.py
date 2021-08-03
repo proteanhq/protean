@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from protean.core.exceptions import (
+from protean.exceptions import (
     ObjectNotFoundError,
     TooManyObjectsError,
     ValidationError,

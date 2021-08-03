@@ -3,7 +3,7 @@ import logging
 
 from marshmallow import Schema, fields
 
-from protean.core.exceptions import NotSupportedError
+from protean.exceptions import NotSupportedError
 from protean.core.field.basic import (
     Boolean,
     Date,

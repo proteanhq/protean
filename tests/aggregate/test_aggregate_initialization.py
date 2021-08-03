@@ -4,7 +4,7 @@ from datetime import datetime
 import pytest
 
 from protean.core.entity import _EntityMetaclass
-from protean.core.exceptions import ValidationError
+from protean.exceptions import ValidationError
 from protean.utils import fully_qualified_name
 
 from .elements import (

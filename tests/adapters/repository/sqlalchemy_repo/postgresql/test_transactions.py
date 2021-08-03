@@ -3,7 +3,7 @@ import string
 
 import pytest
 
-from protean.core.exceptions import ObjectNotFoundError
+from protean.exceptions import ObjectNotFoundError
 from protean.core.unit_of_work import UnitOfWork
 
 from .elements import Person, PersonRepository

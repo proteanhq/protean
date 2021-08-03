@@ -1,7 +1,7 @@
 from abc import abstractmethod
 
 from protean import utils
-from protean.core import exceptions
+from protean import exceptions
 from protean.globals import current_domain
 
 from .base import Field

@@ -1,7 +1,7 @@
 import pytest
 
 from protean import Domain
-from protean.core.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError
 from protean.utils import EventStrategy, fully_qualified_name
 
 from .elements import UserAggregate, UserEntity, UserFoo, UserVO

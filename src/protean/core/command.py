@@ -1,31 +1,13 @@
-from protean.core.exceptions import InvalidDataError, ValidationError
+from protean.exceptions import InvalidDataError, ValidationError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import BaseContainer
 
 
 class BaseCommand(BaseContainer):
-    """The Base class for Protean-Compliant Domain Commands.
+    """Base Command class that all commands should inherit from.
 
-    Provides helper methods to custom define attributes, and find attribute names
-    during runtime.
-
-    Basic Usage::
-
-        @domain.command
-        class UserRegistrationCommand:
-            email = String(required=True, max_length=250)
-            username = String(required=True, max_length=50)
-            password = String(required=True, max_length=255)
-
-
-    (or)
-
-        class UserRegistrationCommand(BaseCommand):
-            email = String(required=True, max_length=250)
-            username = String(required=True, max_length=50)
-            password = String(required=True, max_length=255)
-
-        domain.register_element(UserRegistrationCommand)
+    Core functionality associated with commands, like timestamping and authentication, are specified
+    as part of the base command class.
     """
 
     element_type = DomainObjects.COMMAND

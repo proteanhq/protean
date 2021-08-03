@@ -3,7 +3,7 @@ to register Domain Elements.
 """
 import logging
 import sys
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 from werkzeug.datastructures import ImmutableDict
 
@@ -11,7 +11,7 @@ from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
-from protean.core.exceptions import (
+from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
@@ -551,7 +551,7 @@ class Domain(_PackageBoundObject):
 
     def handle(
         self, command: BaseCommand, asynchronous: Boolean = True
-    ) -> Union[None, Any]:
+    ) -> Optional[Any]:
         """Process command and return results based on specified preference.
 
         By default, Protean does not return values after after processing commands. This behavior
@@ -564,7 +564,7 @@ class Domain(_PackageBoundObject):
                 Defaults to True.
 
         Returns:
-            Union[None, Any]: Returns either the command handler's return value or nothing, based on preference.
+            Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
         """
         if (
             not asynchronous

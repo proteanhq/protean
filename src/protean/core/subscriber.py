@@ -1,8 +1,10 @@
 import logging
 
 from abc import abstractmethod
+from typing import Any, Optional
 
-from protean.core.exceptions import IncorrectUsageError
+from protean.core.event import BaseEvent
+from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, derive_element_class
 
 logger = logging.getLogger("protean.domain.subscriber")
@@ -70,9 +72,8 @@ class BaseSubscriber(metaclass=_SubscriberMetaclass):
             raise TypeError("BaseSubscriber cannot be instantiated")
         return super().__new__(cls)
 
-    @classmethod
     @abstractmethod
-    def notify(cls, event):
+    def __call__(self, event: BaseEvent) -> Optional[Any]:
         """Placeholder method for receiving notifications on event"""
         pass
 

@@ -3,7 +3,7 @@ import pytest
 from datetime import datetime
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.exceptions import IncorrectUsageError, ValidationError
+from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.core.field.basic import String, Date, DateTime, Text
 from protean.core.field.association import HasMany, Reference
 from protean.utils import fully_qualified_name

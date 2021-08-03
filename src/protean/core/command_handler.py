@@ -1,7 +1,7 @@
 from abc import abstractmethod
-from typing import Any, Union
+from typing import Any, Optional
 from protean.core.command import BaseCommand
-from protean.core.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError
 
 from protean.utils import DomainObjects, derive_element_class
 
@@ -68,7 +68,7 @@ class BaseCommandHandler(metaclass=_CommandHandlerMetaclass):
         return super().__new__(cls)
 
     @abstractmethod
-    def __call__(self, command: BaseCommand) -> Union[None, Any]:
+    def __call__(self, command: BaseCommand) -> Optional[Any]:
         """Placeholder method for receiving notifications on command"""
         pass
 

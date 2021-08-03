@@ -2,7 +2,7 @@ import pytest
 
 from uuid import uuid4
 
-from protean.core.exceptions import ObjectNotFoundError
+from protean.exceptions import ObjectNotFoundError
 
 from .elements import Person
 

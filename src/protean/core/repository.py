@@ -1,7 +1,7 @@
 import logging
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.exceptions import IncorrectUsageError, ValidationError
+from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.core.field.association import HasMany, HasOne
 from protean.globals import current_domain
 from protean.utils import Database, DomainObjects, derive_element_class

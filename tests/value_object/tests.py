@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.exceptions import InvalidOperationError, ValidationError
+from protean.exceptions import InvalidOperationError, ValidationError
 
 from .elements import (
     Account,

@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from protean.core.exceptions import InvalidOperationError, ValidationError
+from protean.exceptions import InvalidOperationError, ValidationError
 from protean.core.field.basic import Auto, String
 
 from .elements import PersonAutoSSN, PersonExplicitID, Role, SubclassRole

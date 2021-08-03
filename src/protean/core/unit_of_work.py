@@ -1,6 +1,6 @@
 import logging
 
-from protean.core.exceptions import InvalidOperationError, ValidationError
+from protean.exceptions import InvalidOperationError, ValidationError
 from protean.globals import _uow_context_stack, current_domain
 
 logger = logging.getLogger("protean.core.unit_of_work")
