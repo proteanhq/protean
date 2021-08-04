@@ -59,10 +59,12 @@ class Server:
         """Pick up published events and push to all register brokers"""
         logger.debug("Polling DB for new events to publish...")
 
+        event_log_repo = current_domain.repository_for(EventLog)
+
         # Check if there are new messages to publish
-        while event_log := current_domain.repository_for(
-            EventLog
-        ).get_next_to_publish():
+        event_log = event_log_repo.get_next_to_publish()
+
+        while event_log:
             message = Message.from_event_log(event_log)
 
             # FIXME Move this to separate threads?
@@ -72,6 +74,9 @@ class Server:
             # Mark event as picked up
             event_log.mark_published()
             current_domain.repository_for(EventLog).add(event_log)
+
+            # Fetch next record to process
+            event_log = event_log_repo.get_next_to_publish()
 
         # Trampoline: self-schedule again if not shutting down
         if not self.SHUTTING_DOWN:
@@ -135,8 +140,11 @@ class Server:
         """Poll for new jobs and execute them in threads"""
         logger.debug("Polling jobs...")
 
+        job_repo = current_domain.repository_for(Job)
         # Check if there are new jobs to process
-        while job := current_domain.repository_for(Job).get_next_to_process():
+        job = job_repo.get_next_to_process()
+
+        while job:
             # Mark job as in progress
             job.mark_in_progress()
             current_domain.repository_for(Job).add(job)
@@ -153,6 +161,9 @@ class Server:
             # FIXME Add other job types
             # elif ... :
 
+            # Fetch next job record to process
+            job = job_repo.get_next_to_process()
+
         # Trampoline: self-schedule again if not shutting down
         if not self.SHUTTING_DOWN:
             self.loop.call_later(0.5, self.poll_for_jobs)
@@ -161,8 +172,10 @@ class Server:
         """This works with `add_done_callback`"""
         logger.debug("Polling broker for new messages...")
 
+        message = self.broker.get_next()
+
         # FIXME Gather maximum `max_workers` messages and wait for the next cycle
-        while message := self.broker.get_next():
+        while message:
 
             # Reconstruct message back to Event
             subscribers = self.subscribers_for(message)
@@ -180,6 +193,9 @@ class Server:
                             },
                         )
                         current_domain.repository_for(Job).add(job)
+
+            # Fetch next message to process
+            message = self.broker.get_next()
 
         # Trampoline: self-schedule again if not shutting down
         if not self.SHUTTING_DOWN:
