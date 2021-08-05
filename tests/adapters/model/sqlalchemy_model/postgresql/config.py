@@ -14,8 +14,8 @@ ENV = "development"
 # hashing algorithms.
 SECRET_KEY = "nU5JSWCP#4c#Annek2mx9V&g5uWUJfh@"
 
-IDENTITY_STRATEGY = IdentityStrategy.UUID
-IDENTITY_TYPE = IdentityType.UUID
+IDENTITY_STRATEGY = IdentityStrategy.UUID.value
+IDENTITY_TYPE = IdentityType.UUID.value
 
 # Define the databases
 DATABASES = {

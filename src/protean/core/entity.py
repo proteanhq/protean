@@ -5,8 +5,10 @@ import logging
 from collections import defaultdict
 from functools import partial
 from typing import Any, Dict
+from uuid import uuid4
 
 from protean.exceptions import (
+    ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
     ValidationError,
@@ -15,11 +17,14 @@ from protean.core.field.association import Association, Reference
 from protean.core.field.basic import Auto, Field
 from protean.core.field.embedded import ValueObject
 from protean.core.field.association import HasMany, _ReferenceField
+from protean.globals import current_domain
 from protean.utils import (
     DomainObjects,
     derive_element_class,
     generate_identity,
     inflection,
+    IdentityStrategy,
+    IdentityType,
 )
 
 logger = logging.getLogger("protean.domain.entity")
@@ -496,6 +501,23 @@ class BaseEntity(metaclass=_EntityMetaclass):
         To be overridden in concrete Containers, when complex validations spanning multiple fields are required.
         """
         return defaultdict(list)
+
+    @classmethod
+    def generate_identity(cls):
+        """Generate Unique Identifier, based on configured strategy"""
+        if current_domain.config["IDENTITY_STRATEGY"] == IdentityStrategy.UUID.value:
+            if current_domain.config["IDENTITY_TYPE"] == IdentityType.INTEGER.value:
+                return uuid4().int
+            elif current_domain.config["IDENTITY_TYPE"] == IdentityType.STRING.value:
+                return str(uuid4())
+            elif current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID.value:
+                return uuid4()
+            else:
+                raise ConfigurationError(
+                    f'Unknown Identity Type {current_domain.config["IDENTITY_TYPE"]}'
+                )
+
+        return None  # Database will generate the identity
 
     def __eq__(self, other):
         """Equivalence check to be based only on Identity"""

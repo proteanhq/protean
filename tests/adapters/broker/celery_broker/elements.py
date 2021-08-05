@@ -47,7 +47,7 @@ class NotifySSOSubscriber(BaseSubscriber):
     class Meta:
         event = PersonAdded
 
-    def notify(self, domain_event_dict):
+    def __call__(self, domain_event_dict):
         print("Received Event: ", domain_event_dict)
         print("Event class: ", self.meta_.event)
 

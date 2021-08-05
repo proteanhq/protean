@@ -17,8 +17,8 @@ DATABASES = {
     },
 }
 
-IDENTITY_STRATEGY = IdentityStrategy.UUID
-IDENTITY_TYPE = IdentityType.INTEGER
+IDENTITY_STRATEGY = IdentityStrategy.UUID.value
+IDENTITY_TYPE = IdentityType.INTEGER.value
 
 # Messaging Mediums
 BROKERS = {

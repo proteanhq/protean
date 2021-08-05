@@ -365,7 +365,7 @@ class Date(Field):
 
     def as_dict(self, value):
         """Return JSON-compatible value of self"""
-        return str(value)
+        return str(value) if value else None
 
 
 class DateTime(Field):
@@ -387,4 +387,4 @@ class DateTime(Field):
 
     def as_dict(self, value):
         """Return JSON-compatible value of self"""
-        return str(value)
+        return str(value) if value else None

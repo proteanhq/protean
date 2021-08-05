@@ -120,12 +120,12 @@ def derive_element_class(element_cls, base_cls, **opts):
 
 def generate_identity():
     """Generate Unique Identifier, based on configured strategy"""
-    if current_domain.config["IDENTITY_STRATEGY"] == IdentityStrategy.UUID:
-        if current_domain.config["IDENTITY_TYPE"] == IdentityType.INTEGER:
+    if current_domain.config["IDENTITY_STRATEGY"] == IdentityStrategy.UUID.value:
+        if current_domain.config["IDENTITY_TYPE"] == IdentityType.INTEGER.value:
             return uuid4().int
-        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.STRING:
+        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.STRING.value:
             return str(uuid4())
-        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID:
+        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID.value:
             return uuid4()
         else:
             raise ConfigurationError(

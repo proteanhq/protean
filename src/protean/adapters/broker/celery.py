@@ -49,7 +49,7 @@ class CeleryBroker(BaseBroker):
         """
         attrs = consumer_cls.__dict__
         custom_attrs = {
-            "run": attrs["notify"],  # `notify` is the method to run on event
+            "run": attrs["__call__"],  # `notify` is the method to run on event
             "name": underscore(
                 fully_qualified_name(consumer_cls)
             ),  # `name` will be the same as the task's queue

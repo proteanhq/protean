@@ -81,8 +81,8 @@ class ElasticsearchModel(Document):
 
         identifier = None
         if (
-            current_domain.config["IDENTITY_STRATEGY"] == IdentityStrategy.UUID
-            and current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID
+            current_domain.config["IDENTITY_STRATEGY"] == IdentityStrategy.UUID.value
+            and current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID.value
             and isinstance(item.meta.id, str)
         ):
             identifier = UUID(item.meta.id)

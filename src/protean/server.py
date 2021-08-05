@@ -107,7 +107,7 @@ class Server:
         logger.debug(f"---> {current_domain.config['EVENT_EXECUTION']}")
         if current_domain.config["EVENT_EXECUTION"] == EventExecution.INLINE.value:
             try:
-                subscriber_object.notify(job.payload["payload"]["payload"])
+                subscriber_object(job.payload["payload"]["payload"])
                 fut = self.loop.create_future()
                 fut.set_result(None)
             except Exception as exc:
@@ -118,7 +118,7 @@ class Server:
         elif current_domain.config["EVENT_EXECUTION"] == EventExecution.THREADED.value:
             # Execute Subscriber logic in a thread
             future = self.executor.submit(
-                subscriber_object.notify, job.payload["payload"]["payload"]
+                subscriber_object.__call__, job.payload["payload"]["payload"]
             )
             future.add_done_callback(
                 functools.partial(

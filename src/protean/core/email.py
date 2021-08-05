@@ -1,6 +1,6 @@
 from abc import abstractmethod
 
-from protean.core.field.basic import String, List, Text
+from protean.core.field.basic import String, List, Dict
 from protean.utils.container import BaseContainer
 from protean.utils import (
     DomainObjects,
@@ -51,8 +51,8 @@ class BaseEmail(BaseContainer):
             raise TypeError("BaseEmail cannot be instantiated")
         return super().__new__(cls)
 
-    subject = String(required=True)
-    data = Text(required=True)
+    subject = String()
+    data = Dict()
     from_email = String()
     to = List(content_type=String)
     bcc = List(content_type=String)
@@ -73,15 +73,6 @@ class BaseEmail(BaseContainer):
             if self.reply_to
             else self.from_email
         )
-
-    @property
-    def mime_message(self):
-        """ Convert the message to a mime compliant email string """
-        return "\n".join([self.from_email, str(self.to), self.subject[:25]])
-
-    def __repr__(self):
-        """ Convert the message to a mime compliant email string """
-        return "\n".join([self.from_email, str(self.to), self.subject[:25]])
 
     @property
     def recipients(self):

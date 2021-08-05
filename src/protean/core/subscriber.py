@@ -30,7 +30,7 @@ class BaseSubscriber(BaseContainer):
     @abstractmethod
     def __call__(self, event: BaseEvent) -> Optional[Any]:
         """Placeholder method for receiving notifications on event"""
-        pass
+        raise NotImplementedError
 
 
 def subscriber_factory(element_cls, **kwargs):

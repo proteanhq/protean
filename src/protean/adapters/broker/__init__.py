@@ -115,6 +115,11 @@ class Brokers(collectionsAbc.MutableMapping):
 
                 self.domain.repository_for(EventLog).add(EventLog.from_message(message))
             elif current_domain.config["EVENT_STRATEGY"] == EventStrategy.NAIVE.value:
+                # Log event into table
+                from protean.infra.eventing import EventLog
+
+                self.domain.repository_for(EventLog).add(EventLog.from_message(message))
+
                 # Follow a naive strategy and dispatch event directly to message broker
                 #   If the operation is enclosed in a Unit of Work, delegate the responsibility
                 #   of publishing the message to the UoW
@@ -128,7 +133,7 @@ class Brokers(collectionsAbc.MutableMapping):
                     logger.debug(
                         f"Publishing {object.__class__.__name__} with values {object.to_dict()}"
                     )
-                    for broker in self._brokers:
+                    for _, broker in self._brokers.items():
                         broker.publish(message)
             else:
                 raise ConfigurationError(

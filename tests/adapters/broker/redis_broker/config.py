@@ -21,7 +21,7 @@ DATABASES = {
 #       Persisted along with other details into the data store.
 #   * IdentityStrategy.DATABASE: Let the database generate unique identity during persistence
 #   * IdentityStrategy.FUNCTION: Special function that returns a unique identifier
-IDENTITY_STRATEGY = IdentityStrategy.UUID
+IDENTITY_STRATEGY = IdentityStrategy.UUID.value
 
 # Data type of Auto-Generated Identity Values
 #
@@ -29,7 +29,7 @@ IDENTITY_STRATEGY = IdentityStrategy.UUID
 #
 #   * INTEGER
 #   * STRING (Default)
-IDENTITY_TYPE = IdentityType.STRING
+IDENTITY_TYPE = IdentityType.STRING.value
 
 # Messaging Mediums
 BROKERS = {

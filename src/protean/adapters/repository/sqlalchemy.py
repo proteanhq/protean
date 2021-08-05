@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
 from sqlalchemy import types as sa_types
-from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
+import sqlalchemy.dialects.postgresql as psql
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext import declarative as sa_dec
@@ -15,7 +15,7 @@ from sqlalchemy.ext.declarative import as_declarative, declared_attr
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from protean.exceptions import ConfigurationError, ObjectNotFoundError
-from protean.core.field.association import Reference
+from protean.core.field.association import Reference, _ReferenceField
 from protean.core.field.basic import (
     Auto,
     Boolean,
@@ -52,7 +52,7 @@ class GUID(TypeDecorator):
 
     def load_dialect_impl(self, dialect):
         if dialect.name == "postgresql":
-            return dialect.type_descriptor(UUID())
+            return dialect.type_descriptor(psql.UUID())
         else:
             return dialect.type_descriptor(CHAR(32))
 
@@ -84,11 +84,11 @@ def _get_identity_type():
     Default to `Identity.STRING`
     """
     try:
-        if current_domain.config["IDENTITY_TYPE"] == IdentityType.INTEGER:
+        if current_domain.config["IDENTITY_TYPE"] == IdentityType.INTEGER.value:
             return sa_types.Integer
-        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.STRING:
+        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.STRING.value:
             return sa_types.String
-        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID:
+        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID.value:
             return GUID
         else:
             raise ConfigurationError(
@@ -117,6 +117,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
             List: sa_types.PickleType,
             String: sa_types.String,
             Text: sa_types.Text,
+            _ReferenceField: _get_identity_type(),
         }
 
         if "meta_" in dict_:
@@ -137,10 +138,10 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                     if cls.metadata.bind.dialect.name == "postgresql":
 
                         if field_cls == Dict and not field_obj.pickled:
-                            sa_type_cls = JSON
+                            sa_type_cls = psql.JSON
 
                         if field_cls == List and not field_obj.pickled:
-                            sa_type_cls = ARRAY
+                            sa_type_cls = psql.ARRAY
 
                             # Associate Content Type
                             if field_obj.content_type:

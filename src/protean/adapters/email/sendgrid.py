@@ -34,9 +34,7 @@ class SendgridEmailProvider(BaseEmailProvider):
                     f"Error encountered while sending Email: {response.status_code}"
                 )
 
-            logger.debug(
-                f"Email pushed to SendGrid successfully: {message.mime_message}"
-            )
+            logger.debug(f"Email pushed to SendGrid successfully.")
         except Exception as e:
             logger.error(f"Error encountered while sending Email: {e}")
 
