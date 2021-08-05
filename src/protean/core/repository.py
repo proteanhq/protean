@@ -68,20 +68,27 @@ class BaseRepository(BaseContainer):
         #   in a variable called `_temp_cache`
         for field_name, field in aggregate.meta_.declared_fields.items():
             if isinstance(field, HasMany):
-                for item in aggregate._temp_cache[field_name]["removed"]:
+                for _, item in aggregate._temp_cache[field_name]["removed"].items():
                     dao = current_domain.get_dao(field.to_cls)
                     dao.delete(item)
                 aggregate._temp_cache[field_name][
                     "removed"
-                ] = list()  # Empty contents of `removed` cache
+                ] = {}  # Empty contents of `removed` cache
 
-                for item in aggregate._temp_cache[field_name]["added"]:
+                for _, item in aggregate._temp_cache[field_name]["updated"].items():
+                    dao = current_domain.get_dao(field.to_cls)
+                    dao.save(item)
+                aggregate._temp_cache[field_name][
+                    "updated"
+                ] = {}  # Empty contents of `added` cache
+
+                for _, item in aggregate._temp_cache[field_name]["added"].items():
                     dao = current_domain.get_dao(field.to_cls)
                     item.state_.mark_new()
                     dao.save(item)
                 aggregate._temp_cache[field_name][
                     "added"
-                ] = list()  # Empty contents of `added` cache
+                ] = {}  # Empty contents of `added` cache
 
             if isinstance(field, HasOne):
                 if field.has_changed:

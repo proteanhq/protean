@@ -389,7 +389,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         self.state_ = _EntityState()
 
         # Placeholder for temporary association values
-        self._temp_cache = defaultdict(lambda: defaultdict(list))
+        self._temp_cache = defaultdict(lambda: defaultdict(dict))
 
         # Load the attributes based on the template
         loaded_fields = []

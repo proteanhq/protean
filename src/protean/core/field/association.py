@@ -393,8 +393,9 @@ class HasMany(Association):
         # The data set returned from Queryset is manipulated automatically
         #   to be up-to-date with temporary changes.
         self._temp_cache = {
-            "added": list(),
-            "removed": list(),
+            "added": {},
+            "updated": {},
+            "removed": {},
         }
 
     def add(self, instance, items):
@@ -403,36 +404,38 @@ class HasMany(Association):
         # Convert a single item into a list of items, if necessary
         items = [items] if not isinstance(items, list) else items
 
+        current_value_ids = [value.id for value in data]
+
         for item in items:
-            if item.id not in [value.id for value in data] or (
-                item.id in [value.id for value in data]
+            # Items to add
+            if item.id not in current_value_ids:
+                # If the same item is added multiple times, the last item added will win
+                instance._temp_cache[self.field_name]["added"][item.id] = item
+
+                setattr(
+                    item,
+                    self._linked_attribute(type(instance)),
+                    getattr(instance, instance.meta_.id_field.field_name),
+                )
+
+                # Reset Cache
+                self.delete_cached_value(instance)
+            # Items to update
+            elif (
+                item.id in current_value_ids
                 and item.state_.is_persisted
                 and item.state_.is_changed
             ):
-                if item.id not in [
-                    value.id for value in instance._temp_cache[self.field_name]["added"]
-                ]:
-                    # FIXME Re-evaluate for UoW support
+                setattr(
+                    item,
+                    self._linked_attribute(type(instance)),
+                    getattr(instance, instance.meta_.id_field.field_name),
+                )
 
-                    # If the child was already present, first remove that record
-                    if item.id in [value.id for value in data]:
-                        for value in data:
-                            if value.id == item.id:
-                                instance._temp_cache[self.field_name]["removed"].append(
-                                    value
-                                )
-                                break
+                instance._temp_cache[self.field_name]["updated"][item.id] = item
 
-                    setattr(
-                        item,
-                        self._linked_attribute(type(instance)),
-                        getattr(instance, instance.meta_.id_field.field_name),
-                    )
-
-                    instance._temp_cache[self.field_name]["added"].append(item)
-
-                    # Reset Cache
-                    self.delete_cached_value(instance)
+                # Reset Cache
+                self.delete_cached_value(instance)
 
     def remove(self, instance, items):
         data = getattr(instance, self.field_name)
@@ -440,13 +443,12 @@ class HasMany(Association):
         # Convert a single item into a list of items, if necessary
         items = [items] if not isinstance(items, list) else items
 
+        current_value_ids = [value.id for value in data]
+
         for item in items:
-            if item.id in [value.id for value in data]:
-                if item.id not in [
-                    value.id
-                    for value in instance._temp_cache[self.field_name]["removed"]
-                ]:
-                    instance._temp_cache[self.field_name]["removed"].append(item)
+            if item.id in current_value_ids:
+                if item.id not in instance._temp_cache[self.field_name]["removed"]:
+                    instance._temp_cache[self.field_name]["removed"][item.id] = item
 
                     # Reset Cache
                     self.delete_cached_value(instance)
@@ -455,18 +457,27 @@ class HasMany(Association):
         """ Fetch linked entities.
 
         This method returns a well-formed query, containing the foreign-key constraint.
-        The query will NOT be fired at this stage, and records will only be fetched
-        when the consumer accesses the `HasMany` field values.
         """
         children_dao = current_domain.get_dao(self.to_cls)
         temp_data = children_dao.query.filter(**{key: value}).all().items
 
         # Add objects in temporary cache
-        for item in instance._temp_cache[self.field_name]["added"]:
+        for _, item in instance._temp_cache[self.field_name]["added"].items():
             temp_data.append(item)
 
+        # Update objects in temporary cache
+        new_temp_data = []
+        for value in temp_data:
+            if value.id in instance._temp_cache[self.field_name]["updated"]:
+                new_temp_data.append(
+                    instance._temp_cache[self.field_name]["updated"][value.id]
+                )
+            else:
+                new_temp_data.append(value)
+        temp_data = new_temp_data
+
         # Remove objects in temporary cache
-        for item in instance._temp_cache[self.field_name]["removed"]:
+        for _, item in instance._temp_cache[self.field_name]["removed"].items():
             temp_data[:] = [value for value in temp_data if value.id != item.id]
 
         return temp_data
