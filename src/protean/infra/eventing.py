@@ -8,7 +8,6 @@ from protean.core.field.basic import Auto, DateTime, Identifier, Integer, String
 from protean.globals import current_domain
 from protean.utils import generate_identity
 from protean.utils.container import BaseContainer
-from protean.utils.inflection import underscore
 
 
 class MessageType(Enum):
@@ -36,7 +35,7 @@ class Message(BaseContainer):
     @classmethod
     def to_message(cls, event: BaseEvent) -> dict:
         message = cls(
-            name=underscore(event.__class__.__name__),
+            name=event.__class__.__name__,
             owner=current_domain.domain_name,
             type=event.element_type.value,
             payload=event.to_dict(),
@@ -113,7 +112,7 @@ class EventLogRepository(BaseRepository):
     def get_most_recent_event_by_type_cls(self, event_cls: BaseEvent) -> EventLog:
         event_dao = current_domain.get_dao(EventLog)
         return (
-            event_dao.query.filter(name=underscore(event_cls.__name__))
+            event_dao.query.filter(name=event_cls.__name__)
             .order_by("-created_at")
             .all()
             .first
@@ -143,7 +142,7 @@ class EventLogRepository(BaseRepository):
     def get_all_events_of_type_cls(self, event_cls: BaseEvent) -> EventLog:
         event_dao = current_domain.get_dao(EventLog)
         return (
-            event_dao.query.filter(name=underscore(event_cls.__name__))
+            event_dao.query.filter(name=event_cls.__name__)
             .order_by("-created_at")
             .all()
             .items

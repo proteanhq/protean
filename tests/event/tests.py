@@ -52,7 +52,7 @@ class TestDomainEventTriggering:
         event = event_repo.get_most_recent_event_by_type_cls(event_cls=PersonAdded)
 
         assert event is not None
-        assert event.name == "person_added"
+        assert event.name == "PersonAdded"
         assert event.type == "EVENT"
         assert event.payload == person.to_dict()
 
@@ -70,7 +70,7 @@ class TestDomainEventTriggering:
         event = event_repo.get_most_recent_event_by_type_cls(event_cls=PersonAdded)
 
         assert event is not None
-        assert event.name == "person_added"
+        assert event.name == "PersonAdded"
         assert event.type == "EVENT"
         assert event.payload == person.to_dict()
 
@@ -90,6 +90,6 @@ class TestDomainEventTriggering:
         assert events is not None
         assert isinstance(events, list)
         assert len(events) == 1
-        assert events[0].name == "person_added"
+        assert events[0].name == "PersonAdded"
         assert events[0].type == "EVENT"
         assert events[0].payload == person.to_dict()

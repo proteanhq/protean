@@ -604,12 +604,12 @@ class Domain(_PackageBoundObject):
         """
         if message["type"] == MessageType.EVENT.value:
             event_cls = fetch_element_cls_from_registry(
-                camelize(message["name"]), (DomainObjects.EVENT,)
+                message["name"], (DomainObjects.EVENT,)
             )
             return event_cls(message["payload"])
         elif message["type"] == MessageType.COMMAND.value:
             command_cls = fetch_element_cls_from_registry(
-                camelize(message["name"]), (DomainObjects.COMMAND,)
+                message["name"], (DomainObjects.COMMAND,)
             )
             return command_cls(message["payload"])
         else:
