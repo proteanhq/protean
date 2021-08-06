@@ -100,9 +100,9 @@ class BaseRepository(BaseContainer):
                             # The object was replaced, so delete the old record
                             dao.delete(field.change_old_value)
                         else:
-                            # The same object was updated, so mark it as new to be able to save
+                            # The same object was updated
                             # FIXME This should have been automatic with `is_changed` flag in `state_`
-                            field.value.state_.mark_new()
+                            field.value.state_.mark_changed()
 
                         dao.save(field.value)
                     else:

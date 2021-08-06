@@ -355,7 +355,6 @@ class HasOne(Association):
             self.change_old_value = self.value
         elif current_value.id == value.id and value.state_.is_changed:
             self.change = "UPDATED"
-            self.change_old_value = self.value
         else:
             self.change = None  # The same object has been assigned, No-Op
 
@@ -485,3 +484,11 @@ class HasMany(Association):
     def as_dict(self, value):
         """Return JSON-compatible value of self"""
         return [item.to_dict() for item in value]
+
+    # FIXME This has been added for applications to explicit mark a `HasMany`
+    #   as changed. Should be removed with better design.
+    def _mark_changed(self, instance, item):
+        instance._temp_cache[self.field_name]["updated"][item.id] = item
+
+        # Reset Cache
+        self.delete_cached_value(instance)
