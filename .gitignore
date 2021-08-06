@@ -147,3 +147,6 @@ TODO
 
 # Temporary Python files
 tester*.py
+
+# Temporary Docs folder
+docs-old/*
