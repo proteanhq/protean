@@ -5,6 +5,7 @@ to the maximum extent possible.
 """
 import functools
 import logging
+import pkg_resources
 
 from enum import Enum, auto
 from typing import Any, Tuple, Union
@@ -52,6 +53,10 @@ class Database(Enum):
 
 class Cache(Enum):
     MEMORY = "MEMORY"
+
+
+def get_version():
+    return pkg_resources.require("protean")[0].version
 
 
 def fully_qualified_name(cls):
