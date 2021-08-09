@@ -157,6 +157,13 @@ class BaseRepository(BaseContainer):
         dao = current_domain.get_dao(self.meta_.aggregate_cls)
         return dao.get(identifier)
 
+    def all(self):
+        """This is a utility method to fetch all records of own type from persistence store.
+
+        Returns a list of all records."""
+        dao = current_domain.get_dao(self.meta_.aggregate_cls)
+        return dao.query.all().items
+
 
 def repository_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseRepository, **kwargs)
