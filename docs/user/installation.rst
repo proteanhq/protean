@@ -1,20 +1,22 @@
 Installation
 ============
 
-Python Version
+Install Python
 --------------
 
 We recommend using the latest version of Python. Protean supports Python 3.7+.
 
-Virtual environments
---------------------
+Virtual environments allow you to install multiple Python versions side-by-side, without interfering with system-default Python installations. They also help you to work with different groups of Python libraries, one for each project, thereby preventing packages installed in one project from affecting other projects.
 
-We highly recommend using virtual environments to manage the dependencies for your project.
+There are many version managers that help you create virtual environments, like |pyenv| and |pipenv|, but we will quickly walk through the steps to create a virtual environment with one bundled with Python, :mod:`venv`.
 
-A virtual environment allows you to install multiple Python versions side-by-side, without interfering with system-default Python installations. They also allow you to work with different groups of Python libraries, one for each project, thereby preventing packages installed in one project from affecting other projects.
+.. |pyenv| raw:: html
 
-Python comes bundled with the :mod:`venv` module to create virtual
-environments.
+    <a href="https://github.com/pyenv/pyenv" target="_blank">pyenv</a>
+
+.. |pipenv| raw:: html
+
+    <a href="https://github.com/pypa/pipenv" target="_blank">pipenv</a>
 
 
 .. _install-create-env:
@@ -67,7 +69,13 @@ Before you work on your project, activate the corresponding environment:
 Your shell prompt will change to show the name of the activated
 environment.
 
-You can also use |pyenv| to manage your virtual environments.
+You can verify the Pyton version by typing ``python`` from your shell;
+you should see something like::
+
+    Python 3.8.10 (default, Jun 21 2021, 15:30:31)
+    [Clang 12.0.5 (clang-1205.0.22.9)] on darwin
+    Type "help", "copyright", "credits" or "license" for more information.
+    >>>
 
 
 Install Protean
@@ -80,6 +88,22 @@ Within the activated environment, install Protean with the following command:
     $ pip install protean
 
 
-.. |pyenv| raw:: html
+Verifying
+---------
 
-    <a href="https://github.com/pyenv/pyenv" target="_blank">pyenv</a>
+Use the ``protean`` command-line utility to verify the installation:
+
+    $ protean --version
+    0.5.8
+
+To verify that Protean can be seen by Python, type ``python`` from your shell. Then at the Python prompt, try to import Protean:
+
+    >>> import protean
+    >>> print(protean.get_version())
+    0.5.8
+
+*You may have another version of Protean installed.*
+
+-------------------
+
+That's it! You can now move onto the :doc:`quickstart`.

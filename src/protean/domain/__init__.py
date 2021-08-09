@@ -120,7 +120,10 @@ class Domain(_PackageBoundObject):
     )
 
     def __init__(
-        self, domain_name=__name__, root_path=None, instance_relative_config=False
+        self,
+        domain_name: str = __name__,
+        root_path: str = None,
+        instance_relative_config: bool = False,
     ):
 
         _PackageBoundObject.__init__(
