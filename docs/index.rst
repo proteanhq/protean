@@ -29,6 +29,17 @@ User Guide
     user/installation
     user/quickstart
 
+API Reference
+-------------
+
+If you are looking for information on a specific function, class or
+method, this part of the documentation is for you.
+
+.. toctree::
+    :maxdepth: 2
+
+    api
+
 Community
 ---------
 
@@ -38,3 +49,5 @@ The best way to track the development of Protean is through the `the GitHub repo
     :maxdepth: 1
 
     community/changelog
+    community/code-of-conduct
+    community/contributing

@@ -16,6 +16,8 @@ A simple Protean domain looks something like this:
 
     domain = Domain(__name__)
 
+Here's what we did:
+
 1. First we imported the :class:`protean.Domain` class. An instance of this class will be our domain root to which all elements are attached.
 2. Next, we create an instance of this class. The optional argument is the name of the domain's module or package. ``__name__`` is a convenient shortcut for this that is appropriate for most cases, so it is the default if no name is specified explicitly.
 

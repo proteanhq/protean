@@ -1,11 +1,10 @@
-============================
-How to contribute to Protean
-============================
+Contributing to Protean
+=======================
 
 Thank you for considering contributing to Protean!
 
 Support questions
-=================
+-----------------
 
 Please don't use the issue tracker for this. The issue tracker is a tool
 to address bugs and feature requests in Protean itself. Use one of the
@@ -22,7 +21,7 @@ own code:
 .. _GitHub Discussions: https://github.com/proteanhq/protean/discussions
 
 Reporting issues
-================
+----------------
 
 Include the following information in your issue:
 
@@ -39,7 +38,7 @@ Include the following information in your issue:
 .. _minimal reproducible example: https://stackoverflow.com/help/minimal-reproducible-example
 
 Submitting patches
-==================
+------------------
 
 If there is not an open issue for what you want to submit, prefer
 opening one for discussion before working on a PR. You can work on any
@@ -64,7 +63,7 @@ Include the following in your patch:
 .. _pre-commit: https://pre-commit.com
 
 First time setup
-----------------
+````````````````
 
 -   Download and install the `latest version of git`_.
 -   Configure git with your `username`_ and `email`_.
@@ -135,7 +134,7 @@ First time setup
 .. _Clone: https://docs.github.com/en/github/getting-started-with-github/fork-a-repo#step-2-create-a-local-clone-of-your-fork
 
 Start coding
-------------
+````````````
 
 -   Create a branch to identify the issue you would like to work on. If
     you're submitting a bug or documentation fix, branch off of the
@@ -170,7 +169,7 @@ Start coding
 .. _create a pull request: https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request
 
 Running the tests
------------------
+`````````````````
 
 Run the basic test suite:
 
@@ -191,7 +190,7 @@ running database and message broker services.
     $ make test-full
 
 Running test coverage
----------------------
+`````````````````````
 
 Generating a report of lines that do not have test coverage can indicate
 where to start contributing. Run ``pytest`` using ``coverage`` and
@@ -206,7 +205,7 @@ Open ``htmlcov/index.html`` in your browser to explore the report.
 Read more about `coverage <https://coverage.readthedocs.io>`__.
 
 Building the docs
------------------
+`````````````````
 
 Build the docs in the ``docs`` directory using Sphinx.
 
@@ -217,9 +216,3 @@ Build the docs in the ``docs`` directory using Sphinx.
 Open ``build/html/index.html`` in your browser to view the docs.
 
 Read more about `Sphinx <https://www.sphinx-doc.org/en/stable/>`__.
-
-
-Code of Conduct
-===============
-
-As a contributor, you can help us keep the Protean community open and inclusive. Please read and follow our :ref:`code-of-conduct`.

@@ -43,6 +43,7 @@ _sentinel = object()
 
 class Domain(_PackageBoundObject):
     """The domain object is a one-stop gateway to:
+
     * Registering Domain Objects/Concepts
     * Querying/Retrieving Domain Artifacts like Entities, Services, etc.
     * Retrieve injected infrastructure adapters
