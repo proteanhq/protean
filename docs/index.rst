@@ -13,7 +13,7 @@ Release v\ |version|
     :target: https://pyup.io/repos/github/proteanhq/protean/
     :alt: Updates
 
-**Protean is a DDD and CQRS-based framework that helps you build Event-driven applications.**
+Protean is a DDD and CQRS-based framework that helps you build Event-driven applications.
 
 Get started with :doc:`user/installation` and then get an overview with the :doc:`user/quickstart`.
 
@@ -24,9 +24,8 @@ User Guide
 
 .. toctree::
     :maxdepth: 2
-    :caption: User Guide
 
-    Installation <user/installation>
+    user/installation
     user/quickstart
 
 Community
@@ -36,6 +35,5 @@ The best way to track the development of Protean is through the `the GitHub repo
 
 .. toctree::
     :maxdepth: 1
-    :caption: Community
 
     community/changelog

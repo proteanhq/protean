@@ -43,13 +43,22 @@ extlinks = {
 #     html_theme = 'alabaster'
 
 # Change theme to Alabaster
-html_theme = "sphinx_rtd_theme"
+html_theme = "alabaster"
 
+html_theme_options = {
+    "show_powered_by": False,
+    "github_user": "proteanhq",
+    "github_repo": "protean",
+    "github_banner": True,
+    "show_related": False,
+}
+
+html_show_sourcelink = False
 html_use_smartypants = True
 html_last_updated_fmt = "%b %d, %Y"
 html_split_index = False
 html_sidebars = {
-    "**": ["searchbox.html", "globaltoc.html", "sourcelink.html"],
+    "**": ["globaltoc.html", "sourcelink.html", "searchbox.html"],
 }
 html_short_title = "%s-%s" % (project, version)
 
