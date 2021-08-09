@@ -28,6 +28,7 @@ User Guide
     user/foreword
     user/installation
     user/quickstart
+    user/composing-a-domain
 
 API Reference
 -------------
