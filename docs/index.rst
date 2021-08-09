@@ -25,6 +25,7 @@ User Guide
 .. toctree::
     :maxdepth: 2
 
+    user/foreword
     user/installation
     user/quickstart
 
