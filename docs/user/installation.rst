@@ -93,14 +93,16 @@ Verifying
 
 Use the ``protean`` command-line utility to verify the installation:
 
+.. code-block:: shell
+
     $ protean --version
-    0.5.8
+    0.6.0
 
 To verify that Protean can be seen by Python, type ``python`` from your shell. Then at the Python prompt, try to import Protean:
 
     >>> import protean
     >>> print(protean.get_version())
-    0.5.8
+    0.6.0
 
 *You may have another version of Protean installed.*
 

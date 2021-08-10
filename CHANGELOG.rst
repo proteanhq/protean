@@ -21,9 +21,9 @@ Release History
 * Refactor field class and remove unnecessary attributes (value, label)
 * Validate for unique values on saving Entities
 * Introduce Docker Compose for all services
-* * Upgrade SQLAlchemy to support >=1.4.9
+* Upgrade SQLAlchemy to support >=1.4.9
 * Upgrade to Elasticsearch 7.13.0
-* * Support case-insensitive match in Elasticsearch
+* Support case-insensitive match in Elasticsearch
 * Ensure compatibility from 3.7 to 3.10
 * Migrate to Github Actions from Travis
 
