@@ -14,7 +14,7 @@ from protean.utils import (
     fetch_element_cls_from_registry,
     fully_qualified_name,
 )
-from protean.utils.inflection import camelize, underscore
+from protean.utils.inflection import underscore
 
 logger = logging.getLogger("protean.adapters.celery")
 
@@ -97,12 +97,12 @@ class CeleryBroker(BaseBroker):
     def publish(self, message: Dict):
         if message["type"] == MessageType.EVENT.value:
             event_cls = fetch_element_cls_from_registry(
-                camelize(message["name"]), (DomainObjects.EVENT,)
+                message["name"], (DomainObjects.EVENT,)
             )
             for subscriber in self._subscribers[fully_qualified_name(event_cls)]:
                 if self.conn_info["IS_ASYNC"]:
-                    subscriber.apply_async([message], queue=subscriber.name)
+                    subscriber.apply_async([message["payload"]], queue=subscriber.name)
                 else:
-                    subscriber.apply([message])
+                    subscriber.apply([message["payload"]])
         else:
             raise NotImplementedError

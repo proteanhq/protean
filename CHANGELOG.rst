@@ -1,6 +1,11 @@
 Release History
 ===============
 
+0.6.1
+-----
+
+* Fix to adapt celery broker to new message payload format
+
 0.6.0
 -----
 
