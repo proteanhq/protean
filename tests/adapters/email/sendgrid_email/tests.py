@@ -1,6 +1,7 @@
 import pytest
 
 from mock import patch
+
 from protean.adapters.email.sendgrid import SendgridEmailProvider
 
 from .elements import Person, PersonAdded, WelcomeEmail, WelcomeNewPerson

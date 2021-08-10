@@ -1,12 +1,11 @@
 from abc import abstractmethod
 
-from protean import utils
-from protean import exceptions
+from protean import exceptions, utils
 from protean.globals import current_domain
+from protean.utils import DomainObjects, fetch_element_cls_from_registry
 
 from .base import Field
 from .mixins import FieldCacheMixin, FieldDescriptorMixin
-from protean.utils import DomainObjects, fetch_element_cls_from_registry
 
 
 class _ReferenceField(Field):

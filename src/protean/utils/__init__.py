@@ -5,13 +5,14 @@ to the maximum extent possible.
 """
 import functools
 import logging
-import pkg_resources
 
 from enum import Enum, auto
 from typing import Any, Tuple, Union
 from uuid import uuid4
 
-from protean.exceptions import IncorrectUsageError, ConfigurationError
+import pkg_resources
+
+from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.globals import current_domain
 
 logger = logging.getLogger("protean.utils")

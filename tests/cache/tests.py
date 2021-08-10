@@ -1,12 +1,12 @@
-import pytest
 import time
 
-from protean.core.field.basic import Identifier, String
+import pytest
 
-from protean.port.cache import BaseCache
 from protean.adapters.cache.memory import MemoryCache
-from protean.utils import Cache
+from protean.core.field.basic import Identifier, String
 from protean.core.view import BaseView
+from protean.port.cache import BaseCache
+from protean.utils import Cache
 
 
 class Token(BaseView):

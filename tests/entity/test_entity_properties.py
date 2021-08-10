@@ -2,8 +2,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from protean.exceptions import InvalidOperationError, ValidationError
 from protean.core.field.basic import Auto, String
+from protean.exceptions import InvalidOperationError, ValidationError
 
 from .elements import Adult, NotAPerson, Person, PersonAutoSSN, PersonExplicitID
 

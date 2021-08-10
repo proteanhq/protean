@@ -1,6 +1,32 @@
 Release History
 ===============
 
+0.6.0
+-----
+
+* Introduce Async Standalone Server
+* Add `all()` method to repository
+* Introduce Cache Port into Protean
+* Introduce View elements into Protean
+* Add support for add_* and remove_* methods for HasMany relationships
+* Enhance `Entity.to_dict()` to output fully-formed JSON
+* Fix HasOne issue with updating an item
+* Fix HasMany issue with updating items within UnitOfWork
+* Refactor ContainerMeta class to be generic for all elements
+* Introduce Makefile with useful test/development commands
+* Remove `order_by` from EntityMeta options
+* Validate for Repository's database meta value
+* Make ValueObject's aggregate linkage optional
+* Allow specifying associations with simple Class Names (instead of FQDNs)
+* Refactor field class and remove unnecessary attributes (value, label)
+* Validate for unique values on saving Entities
+* Introduce Docker Compose for all services
+* * Upgrade SQLAlchemy to support >=1.4.9
+* Upgrade to Elasticsearch 7.13.0
+* * Support case-insensitive match in Elasticsearch
+* Ensure compatibility from 3.7 to 3.10
+* Migrate to Github Actions from Travis
+
 0.5.8
 -----
 

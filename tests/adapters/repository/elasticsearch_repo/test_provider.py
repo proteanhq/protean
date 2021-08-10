@@ -3,9 +3,9 @@ import pytest
 
 from elasticsearch import Elasticsearch
 from elasticsearch_dsl.response import Response
+
 from protean.adapters import Providers
 from protean.adapters.repository.elasticsearch import ESProvider
-
 
 from .elements import Alien, Person
 

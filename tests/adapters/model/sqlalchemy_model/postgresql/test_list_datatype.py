@@ -2,7 +2,6 @@ from datetime import datetime
 
 import pytest
 
-from protean.exceptions import ValidationError
 from protean.core.field.basic import (
     Auto,
     Boolean,
@@ -14,8 +13,9 @@ from protean.core.field.basic import (
     List,
     String,
 )
+from protean.exceptions import ValidationError
 
-from .elements import ListUser, IntegerListUser
+from .elements import IntegerListUser, ListUser
 
 
 @pytest.mark.postgresql

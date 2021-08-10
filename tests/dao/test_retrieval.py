@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from protean.exceptions import ObjectNotFoundError, TooManyObjectsError
 from protean.core.queryset import QuerySet
+from protean.exceptions import ObjectNotFoundError, TooManyObjectsError
 
 from .elements import Person, PersonRepository, User
 

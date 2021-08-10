@@ -1,7 +1,7 @@
 import pytest
 
-from protean.exceptions import InvalidOperationError
 from protean.core.unit_of_work import UnitOfWork
+from protean.exceptions import InvalidOperationError
 
 
 class TestUnitOfWorkInitialization:

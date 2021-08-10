@@ -2,9 +2,9 @@ from .aggregate import BaseAggregate
 from .application_service import BaseApplicationService
 from .command import BaseCommand
 from .command_handler import BaseCommandHandler
+from .domain_service import BaseDomainService
 from .email import BaseEmail
 from .entity import BaseEntity
-from .domain_service import BaseDomainService
 from .event import BaseEvent
 from .model import BaseModel
 from .repository import BaseRepository

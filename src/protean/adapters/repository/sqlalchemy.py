@@ -5,16 +5,16 @@ import uuid
 from abc import ABCMeta
 from typing import Any
 
+import sqlalchemy.dialects.postgresql as psql
+
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
 from sqlalchemy import types as sa_types
-import sqlalchemy.dialects.postgresql as psql
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext import declarative as sa_dec
 from sqlalchemy.ext.declarative import as_declarative, declared_attr
 from sqlalchemy.types import CHAR, TypeDecorator
 
-from protean.exceptions import ConfigurationError, ObjectNotFoundError
 from protean.core.field.association import Reference, _ReferenceField
 from protean.core.field.basic import (
     Auto,
@@ -30,6 +30,7 @@ from protean.core.field.basic import (
     Text,
 )
 from protean.core.model import BaseModel
+from protean.exceptions import ConfigurationError, ObjectNotFoundError
 from protean.globals import current_domain, current_uow
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider

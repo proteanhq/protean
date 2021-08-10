@@ -2,10 +2,11 @@ from datetime import datetime
 
 import pytest
 
+from sqlalchemy import types as sa_types
+
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.basic import DateTime, Dict, String
 from protean.globals import current_domain
-from sqlalchemy import types as sa_types
 
 
 class Event(BaseAggregate):

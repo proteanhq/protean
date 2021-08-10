@@ -1,10 +1,8 @@
-from typing import Dict
+from typing import TYPE_CHECKING, Dict
 
 from protean.globals import current_domain
 from protean.port.broker import BaseBroker
 from protean.utils import fully_qualified_name
-
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from protean.domain import Domain

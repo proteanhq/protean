@@ -2,7 +2,8 @@
 
 __version__ = "0.5.8"
 
-from .domain import Domain
 from protean.utils import get_version
+
+from .domain import Domain
 
 __all__ = ("Domain", "get_version")

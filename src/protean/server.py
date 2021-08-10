@@ -7,14 +7,14 @@ import logging
 import sys
 
 from typing import Dict, List
-from protean.exceptions import ConfigurationError
 
 from protean.core.subscriber import BaseSubscriber
+from protean.core.unit_of_work import UnitOfWork
 from protean.domain import Domain
+from protean.exceptions import ConfigurationError
 from protean.globals import current_domain
 from protean.infra.eventing import EventLog, Message
 from protean.infra.job import Job, JobTypes
-from protean.core.unit_of_work import UnitOfWork
 from protean.utils import (
     DomainObjects,
     EventExecution,

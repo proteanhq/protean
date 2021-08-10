@@ -4,9 +4,9 @@ import datetime
 
 from dateutil.parser import parse as date_parser
 
-from protean.exceptions import InvalidOperationError, ValidationError
 from protean.core.field import validators
 from protean.core.field.base import Field
+from protean.exceptions import InvalidOperationError, ValidationError
 
 
 class String(Field):

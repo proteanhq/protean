@@ -3,7 +3,6 @@ import logging
 
 from marshmallow import Schema, fields
 
-from protean.exceptions import NotSupportedError
 from protean.core.field.basic import (
     Boolean,
     Date,
@@ -19,6 +18,7 @@ from protean.core.field.basic import (
     String,
     Text,
 )
+from protean.exceptions import NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 
 logger = logging.getLogger("protean.application.serializer")

@@ -5,9 +5,9 @@ from enum import Enum
 from typing import Any, Dict
 
 import inflection
+
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-
 from protean.utils import DomainObjects, fully_qualified_name
 
 logger = logging.getLogger("protean.domain")

@@ -1,12 +1,12 @@
 from abc import abstractmethod
 
-from protean.core.field.basic import String, List, Dict
-from protean.utils.container import BaseContainer
+from protean.core.field.basic import Dict, List, String
 from protean.utils import (
     DomainObjects,
     convert_str_values_to_list,
     derive_element_class,
 )
+from protean.utils.container import BaseContainer
 
 
 class BaseEmailProvider:

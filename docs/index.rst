@@ -17,6 +17,45 @@ Protean is a DDD and CQRS-based framework that helps you build Event-driven appl
 
 Get started with :doc:`user/installation` and then get an overview with the :doc:`user/quickstart`.
 
+.. warning:: Protean's documentation is *Work-In-Progress* - there are significant portions of
+    functionality still missing. Refer to the contribution guide to help grow the documentation.
+
+-------------------
+
+Overview
+--------
+
+Protean helps you build applications that can scale and adapt to growing requirements without significant rework.
+
+At its core, Protean encourages a Domain-Driven Design (DDD) approach to development, with support for artifacts
+necessary to express your domain succinctly and precisely. It also allows you to remain agnostic to the underlying
+technology by keeping implementation details out of view.
+
+Protean can be thought of having three capabilities:
+
+- *Service-Oriented*
+  - Develop your application as one or more subdomains that run independently as Microservices
+- *Event-Driven*:
+  - Use events to propagate changes across subdomains or become eventually consistent within a Bounded Context.
+- *Adapter-based*:
+  - Use Remain technology-agnostic by exposing Port interfaces to the infrastructure, with multiple adapters
+  supported out of the box.
+
+Read :doc:`user/foreword` to understand Protean's philosophy.
+
+.. note:: It is assumed that you have some prior knowledge about *Domain-Driven Design* (DDD) and *Command Query
+    Responsibility Segregation* (CQRS) architectural patterns.
+
+    If you do not have sufficient background in these topics, you should go through standard texts on these topics
+    to understand Protean's behavior better.
+
+.. warning:: **Protean** is currently under active development. APIs and interfaces are to be expected to change
+    drastically and newer releases will almost certainly be backward incompatible.
+
+    If you are interested in using Protean for your project, you may want to wait for the announcement of first
+    stable production-ready version. If you want to use the framework *right now*, drop us an
+    `email <subhash.bhushan@gmail.com>`_.
+
 -------------------
 
 User Guide
@@ -29,6 +68,7 @@ User Guide
     user/installation
     user/quickstart
     user/composing-a-domain
+    user/configuration-handling
 
 API Reference
 -------------

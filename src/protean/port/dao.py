@@ -4,13 +4,9 @@ from abc import ABCMeta, abstractmethod
 from typing import Any
 
 from protean.core.entity import BaseEntity
-from protean.exceptions import (
-    ObjectNotFoundError,
-    TooManyObjectsError,
-    ValidationError,
-)
 from protean.core.field.basic import Auto, Field
 from protean.core.queryset import QuerySet
+from protean.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
 from protean.globals import current_uow
 from protean.utils.query import Q
 
@@ -394,7 +390,7 @@ class BaseDAO(metaclass=ABCMeta):
         try:
             # Build the model object and create it
             if entity_obj.state_.is_persisted:
-                model_obj = self._update(self.model_cls.from_entity(entity_obj))
+                self._update(self.model_cls.from_entity(entity_obj))
             else:
                 # Perform unique checks. Raises validation errors if unique constraints are violated.
                 self._validate_unique(entity_obj)
@@ -410,9 +406,7 @@ class BaseDAO(metaclass=ABCMeta):
                             self.entity_cls.generate_identity(),
                         )
 
-                model_obj = self._create(self.model_cls.from_entity(entity_obj))
-
-            updated_entity_obj = self.model_cls.to_entity(model_obj)
+                self._create(self.model_cls.from_entity(entity_obj))
 
             # Set Entity status to saved to let everybody know it has been persisted
             entity_obj.state_.mark_saved()

@@ -1,8 +1,8 @@
 import pytest
 
 from protean.core.entity import BaseEntity
-from protean.exceptions import IncorrectUsageError
 from protean.core.field.basic import Integer, String
+from protean.exceptions import IncorrectUsageError
 
 
 def test_that_entities_cannot_hold_entities(test_domain):

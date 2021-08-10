@@ -1,17 +1,16 @@
 from .basic import (
-    String,
-    Text,
-    Float,
-    Boolean,
-    List,
-    Dict,
-    Integer,
     Auto,
-    Identifier,
+    Boolean,
     Date,
     DateTime,
+    Dict,
+    Float,
+    Identifier,
+    Integer,
+    List,
+    String,
+    Text,
 )
-
 
 __all__ = [
     "String",

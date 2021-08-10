@@ -5,8 +5,8 @@ import logging
 from collections import defaultdict
 from typing import Any, Dict
 
-from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
 from protean.core.field.basic import Field
+from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
 
 logger = logging.getLogger("protean.domain")
 

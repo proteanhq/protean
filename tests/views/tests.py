@@ -1,12 +1,12 @@
-import pytest
-
 from collections import defaultdict
 from enum import Enum
 from uuid import UUID, uuid4
 
-from protean.exceptions import InvalidOperationError, ValidationError
+import pytest
+
 from protean.core.field.basic import Auto, Identifier, Integer, String
 from protean.core.view import BaseView, ViewMeta
+from protean.exceptions import InvalidOperationError, ValidationError
 from protean.utils import fully_qualified_name
 
 

@@ -1,7 +1,6 @@
 """Module for defining embedded fields"""
 
 from protean.core.field.base import Field
-
 from protean.utils import DomainObjects, fetch_element_cls_from_registry
 
 

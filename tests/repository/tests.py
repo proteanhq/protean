@@ -1,6 +1,6 @@
 import pytest
 
-from .elements import Person, PersonRepository
+from .elements import Person
 
 
 @pytest.fixture(autouse=True)

@@ -4,7 +4,7 @@ Installation
 Install Python
 --------------
 
-We recommend using the latest version of Python. Protean supports Python 3.7+.
+We recommend using the latest version of Python. Protean supports Python 3.7 and newer.
 
 Virtual environments allow you to install multiple Python versions side-by-side, without interfering with system-default Python installations. They also help you to work with different groups of Python libraries, one for each project, thereby preventing packages installed in one project from affecting other projects.
 

@@ -11,8 +11,8 @@ from threading import Lock
 from typing import Any
 from uuid import UUID
 
-from protean.exceptions import ObjectNotFoundError, ValidationError
 from protean.core.model import BaseModel
+from protean.exceptions import ObjectNotFoundError, ValidationError
 from protean.globals import current_uow
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider

@@ -7,16 +7,16 @@ from collections import defaultdict
 from uuid import uuid4
 
 from protean.core.entity import _EntityState
+from protean.core.field.association import Association, Reference
+from protean.core.field.base import Field
+from protean.core.field.basic import Auto, Identifier
+from protean.core.field.embedded import ValueObject
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
     ValidationError,
 )
-from protean.core.field.association import Association, Reference
-from protean.core.field.base import Field
-from protean.core.field.basic import Auto, Identifier
-from protean.core.field.embedded import ValueObject
 from protean.globals import current_domain
 from protean.utils import (
     DomainObjects,

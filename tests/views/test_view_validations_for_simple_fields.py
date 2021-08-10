@@ -1,13 +1,12 @@
 import pytest
 
 from protean.core.entity import BaseEntity
-
-from protean.exceptions import IncorrectUsageError
 from protean.core.field.association import HasOne, Reference
 from protean.core.field.basic import String
 from protean.core.field.embedded import ValueObject
 from protean.core.value_object import BaseValueObject
 from protean.core.view import BaseView
+from protean.exceptions import IncorrectUsageError
 
 
 class Email(BaseValueObject):

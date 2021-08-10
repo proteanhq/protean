@@ -1,13 +1,14 @@
 import asyncio
 import logging
-import pytest
 import sys
+
+import pytest
 
 from mock import patch
 
 from protean.adapters.broker.redis import RedisBroker
 from protean.core.event import BaseEvent
-from protean.core.field.basic import Auto, String, Integer
+from protean.core.field.basic import Auto, Integer, String
 from protean.core.subscriber import BaseSubscriber
 from protean.infra.eventing import EventLog, EventLogStatus
 from protean.infra.job import Job, JobStatus

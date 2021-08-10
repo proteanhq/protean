@@ -1,6 +1,6 @@
-import pytest
-
 from uuid import uuid4
+
+import pytest
 
 from protean.exceptions import ObjectNotFoundError
 

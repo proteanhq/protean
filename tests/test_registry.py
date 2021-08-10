@@ -1,9 +1,9 @@
-import inflection
-import pytest
-
 from datetime import datetime
 from enum import Enum
 from typing import Any
+
+import inflection
+import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand

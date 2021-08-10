@@ -2,8 +2,9 @@ from datetime import datetime
 
 import pytest
 
+from sqlalchemy import types as sa_types
+
 from protean.core.aggregate import BaseAggregate
-from protean.exceptions import ValidationError
 from protean.core.field.basic import (
     Auto,
     Boolean,
@@ -15,7 +16,7 @@ from protean.core.field.basic import (
     List,
     String,
 )
-from sqlalchemy import types as sa_types
+from protean.exceptions import ValidationError
 
 
 class ArrayUser(BaseAggregate):

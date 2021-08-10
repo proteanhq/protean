@@ -1,7 +1,8 @@
 import json
-import redis
 
-from typing import Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict
+
+import redis
 
 from protean.port.broker import BaseBroker
 

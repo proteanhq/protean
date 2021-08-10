@@ -12,7 +12,7 @@ except AttributeError:  # pragma: no cover
     collectionsAbc = collections
 
 from protean.exceptions import ConfigurationError
-from protean.globals import current_uow, current_domain
+from protean.globals import current_domain, current_uow
 from protean.utils import EventStrategy
 
 logger = logging.getLogger("protean.broker")

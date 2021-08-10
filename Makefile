@@ -8,7 +8,7 @@ build:
 	docker-compose build
 
 up:
-	docker-compose up -d
+	docker-compose up -d redis elasticsearch postgres
 
 down:
 	docker-compose down --remove-orphans

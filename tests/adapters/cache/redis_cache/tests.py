@@ -1,14 +1,14 @@
 import json
-import pytest
 import time
+
+import pytest
 
 from redis import Redis
 
-from protean.core.field.basic import Identifier, String
-
 from protean.adapters.cache.redis import RedisCache
-from protean.utils import Cache
+from protean.core.field.basic import Identifier, String
 from protean.core.view import BaseView
+from protean.utils import Cache
 
 
 class Token(BaseView):

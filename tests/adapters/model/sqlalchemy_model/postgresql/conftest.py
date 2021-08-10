@@ -1,4 +1,5 @@
 import os
+
 from typing import List
 
 import pytest
@@ -36,12 +37,12 @@ def setup_db():
         # Create all associated tables
         from .elements import (
             ComplexUser,
+            IntegerListUser,
+            ListUser,
             Person,
             Provider,
             ProviderCustomModel,
             User,
-            ListUser,
-            IntegerListUser,
         )
         from .test_array_datatype import ArrayUser, IntegerArrayUser
         from .test_json_datatype import Event

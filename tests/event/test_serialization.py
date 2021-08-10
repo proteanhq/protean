@@ -1,6 +1,6 @@
-import pytest
+from uuid import UUID, uuid4
 
-from uuid import uuid4, UUID
+import pytest
 
 from tests.event.elements import PersonAdded
 

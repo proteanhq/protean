@@ -2,13 +2,10 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from protean.exceptions import (
-    ObjectNotFoundError,
-    TooManyObjectsError,
-    ValidationError,
-)
-from protean.core.queryset import Q, QuerySet
 from sqlalchemy.orm.session import Session
+
+from protean.core.queryset import Q, QuerySet
+from protean.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
 
 from .elements import Person, User
 

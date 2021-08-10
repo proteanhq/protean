@@ -2,8 +2,8 @@ from collections import defaultdict
 from enum import Enum
 
 from protean.core.entity import BaseEntity
-from protean.core.field.basic import Auto, Integer, String
 from protean.core.field.association import HasOne
+from protean.core.field.basic import Auto, Integer, String
 
 
 class AbstractPerson(BaseEntity):

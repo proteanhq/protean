@@ -47,7 +47,7 @@ You can pass a config file to the domain, like so:
 
     domain.config.from_pyfile(config_path)
 
-Refer to :ref:`configuration` to understand the different ways to configure the domain.
+Refer to :doc:`user/configuration-handling` to understand the different ways to configure the domain.
 
 Activating a Domain
 -------------------

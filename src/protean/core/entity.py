@@ -7,24 +7,28 @@ from functools import partial
 from typing import Any, Dict
 from uuid import uuid4
 
+from protean.core.field.association import (
+    Association,
+    HasMany,
+    Reference,
+    _ReferenceField,
+)
+from protean.core.field.basic import Auto, Field
+from protean.core.field.embedded import ValueObject
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
     ValidationError,
 )
-from protean.core.field.association import Association, Reference
-from protean.core.field.basic import Auto, Field
-from protean.core.field.embedded import ValueObject
-from protean.core.field.association import HasMany, _ReferenceField
 from protean.globals import current_domain
 from protean.utils import (
     DomainObjects,
+    IdentityStrategy,
+    IdentityType,
     derive_element_class,
     generate_identity,
     inflection,
-    IdentityStrategy,
-    IdentityType,
 )
 
 logger = logging.getLogger("protean.domain.entity")
