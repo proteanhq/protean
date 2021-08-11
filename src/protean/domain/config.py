@@ -2,6 +2,7 @@ import errno
 import json
 import os
 import types
+import typing
 
 from werkzeug.utils import import_string
 
@@ -67,7 +68,7 @@ class Config(dict):
         dict.__init__(self, defaults or {})
         self.root_path = root_path
 
-    def from_envvar(self, variable_name, silent=False):
+    def from_envvar(self, variable_name: str, silent: bool = False):
         """Loads a configuration from an environment variable pointing to
         a configuration file.  This is basically just a shortcut with nicer
         error messages for this line of code::
@@ -91,7 +92,7 @@ class Config(dict):
             )
         return self.from_pyfile(rv, silent=silent)
 
-    def from_pyfile(self, filename, silent=False):
+    def from_pyfile(self, filename: str, silent: bool = False):
         """Updates the values in the config from a Python file.  This function
         behaves as if the file was imported as module with the
         :meth:`from_object` function.
@@ -102,7 +103,6 @@ class Config(dict):
         :param silent: set to ``True`` if you want silent failure for missing
                        files.
 
-        .. versionadded:: 0.7
            `silent` parameter.
         """
         filename = os.path.join(self.root_path, filename)
@@ -157,6 +157,44 @@ class Config(dict):
             if key.isupper():
                 self[key] = getattr(obj, key)
 
+    def from_file(
+        self,
+        filename: str,
+        load: typing.Callable[[typing.IO[typing.Any]], typing.Mapping],
+        silent: bool = False,
+    ) -> bool:
+        """Update the values in the config from a file that is loaded
+        using the ``load`` parameter. The loaded data is passed to the
+        :meth:`from_mapping` method.
+
+        .. code-block:: python
+
+            import toml
+            app.config.from_file("config.toml", load=toml.load)
+
+        :param filename: The path to the data file. This can be an
+            absolute path or relative to the config root path.
+        :param load: A callable that takes a file handle and returns a
+            mapping of loaded data from the file.
+        :type load: ``Callable[[Reader], Mapping]`` where ``Reader``
+            implements a ``read`` method.
+        :param silent: Ignore the file if it doesn't exist.
+        :return: ``True`` if the file was loaded successfully.
+        """
+        filename = os.path.join(self.root_path, filename)
+
+        try:
+            with open(filename) as f:
+                obj = load(f)
+        except OSError as e:
+            if silent and e.errno in (errno.ENOENT, errno.EISDIR):
+                return False
+
+            e.strerror = f"Unable to load configuration file ({e.strerror})"
+            raise
+
+        return self.from_mapping(obj)
+
     def from_json(self, filename, silent=False):
         """Updates the values in the config from a JSON file. This function
         behaves as if the JSON object was a dictionary and passed to the
@@ -167,8 +205,6 @@ class Config(dict):
                          root path.
         :param silent: set to ``True`` if you want silent failure for missing
                        files.
-
-        .. versionadded:: 0.11
         """
         filename = os.path.join(self.root_path, filename)
 
@@ -185,8 +221,6 @@ class Config(dict):
     def from_mapping(self, *mapping, **kwargs):
         """Updates the config like :meth:`update` ignoring items with non-upper
         keys.
-
-        .. versionadded:: 0.11
         """
         mappings = []
         if len(mapping) == 1:
@@ -230,8 +264,6 @@ class Config(dict):
                           dictionary should be lowercase
         :param trim_namespace: a flag indicating if the keys of the resulting
                           dictionary should not include the namespace
-
-        .. versionadded:: 0.11
         """
         rv = {}
         for k, v in self.items():

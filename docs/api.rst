@@ -12,3 +12,9 @@ Domain Objects
 .. autoclass:: Domain
     :members:
     :inherited-members:
+
+Configuration
+-------------
+
+.. autoclass:: Config
+    :members:

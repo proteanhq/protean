@@ -62,9 +62,8 @@ testing_requires = all_external_requires + [
 
 docs_requires = [
     "livereload>=2.6.3",
-    "sphinx==3.0.3",
-    "sphinx_rtd_theme==0.4.3",
-    "sphinx-tabs>=3.1.0",
+    "sphinx>=4.1.2",
+    "sphinx-tabs>=3.2.0",
 ]
 
 dev_requires = (

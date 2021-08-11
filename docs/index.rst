@@ -68,7 +68,7 @@ User Guide
     user/installation
     user/quickstart
     user/composing-a-domain
-    user/configuration-handling
+    user/config
 
 API Reference
 -------------

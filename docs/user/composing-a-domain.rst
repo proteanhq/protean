@@ -47,7 +47,7 @@ You can pass a config file to the domain, like so:
 
     domain.config.from_pyfile(config_path)
 
-Refer to :doc:`user/configuration-handling` to understand the different ways to configure the domain.
+Refer to :doc:`config` to understand the different ways to configure the domain.
 
 Activating a Domain
 -------------------
@@ -110,4 +110,4 @@ the ``app`` object.
         return app
 
 Of note is the activation of the domain with the help of ``@app.before_request`` decorator above - this is
-``Flask``-specific. Refer to :ref:`plugin-api` section to understand how to accomplish this for other frameworks.
+``Flask``-specific. Refer to :ref:`adapter-api` section to understand how to accomplish this for other frameworks.
