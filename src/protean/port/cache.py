@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from typing import Optional, Union
 
 from protean.core.view import BaseView
 from protean.utils.inflection import underscore
@@ -31,7 +32,20 @@ class BaseCache(metaclass=ABCMeta):
         """Get the connection object for the cache"""
 
     @abstractmethod
-    def add(self, view_cls: BaseView):
+    def add(self, view: BaseView, ttl: Optional[Union[int, float]] = None) -> None:
+        """Add view record to cache
+
+        KEY: View ID
+        Value: View Data (derived from `to_dict()`)
+
+        TTL is in seconds. If not specified explicitly in method call,
+        it can be picked up from broker configuration. In the absence of
+        configuration, it can be defaulted to an optimum value, say 300 seconds.
+
+        Args:
+            view (BaseView): View Instance containing data
+            ttl (int, float, optional): Timeout in seconds. Defaults to None.
+        """
         """Add a key-value to the cache through the view object"""
 
     @abstractmethod

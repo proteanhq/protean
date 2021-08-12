@@ -3,6 +3,8 @@ import re
 import time
 
 from threading import RLock
+from typing import Optional, Union
+from protean.core.view import BaseView
 
 try:
     # Python 3.8+
@@ -116,7 +118,18 @@ class MemoryCache(BaseCache):
         """Get the connection object for the repository"""
         return self._db._values
 
-    def add(self, view, ttl=None):
+    def add(self, view: BaseView, ttl: Optional[Union[int, float]] = None) -> None:
+        """Add view record to cache
+
+        KEY: View ID
+        Value: View Data (derived from `to_dict()`)
+
+        TTL is in seconds.
+
+        Args:
+            view (BaseView): View Instance containing data
+            ttl (int, float, optional): Timeout in seconds. Defaults to None.
+        """
         identifier = getattr(view, view.meta_.id_field.field_name)
         key = f"{underscore(view.__class__.__name__)}:::{identifier}"
 

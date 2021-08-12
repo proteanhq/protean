@@ -183,12 +183,17 @@ class TestCachePersistenceFlows:
         cache = test_domain.cache_for(Token)
 
         token1 = Token(key="qux", user_id="foo", email="bar@baz.com")
-        cache.add(token1, 1)
+        token2 = Token(key="quz", user_id="quz", email="quz@baz.com")
+
+        cache.add(token1, 0.005)
+        # This is in seconds.
+        # We don't want to wait for a full second, so we test only that we can set a integer value
+        cache.add(token2, 1)
 
         value = cache.get("token:::qux")
         assert value is not None
 
-        time.sleep(1)
+        time.sleep(0.05)  # Allow redis to flush the key
 
         value = cache.get("token:::qux")
         assert value is None

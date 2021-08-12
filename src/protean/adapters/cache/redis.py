@@ -1,7 +1,9 @@
 import json
+from typing import Optional, Union
 
 import redis
 
+from protean.core.view import BaseView
 from protean.port.cache import BaseCache
 from protean.utils import Cache
 from protean.utils.inflection import underscore
@@ -23,13 +25,26 @@ class RedisCache(BaseCache):
     def get_connection(self):
         return self.r
 
-    def add(self, view, ttl=None):
+    def add(self, view: BaseView, ttl: Optional[Union[int, float]] = None) -> None:
+        """Add view record to cache
+
+        KEY: View ID
+        Value: View Data (derived from `to_dict()`)
+
+        TTL is in seconds. If not specified explicitly in method call,
+        it is picked up from Redis broker configuration. In the absence of
+        configuration, it is set to 300 seconds.
+
+        Args:
+            view (BaseView): View Instance containing data
+            ttl (int, float, optional): Timeout in seconds. Defaults to None.
+        """
         identifier = getattr(view, view.meta_.id_field.field_name)
         key = f"{underscore(view.__class__.__name__)}:::{identifier}"
 
         ttl = ttl or self.conn_info.get("TTL") or 300
 
-        self.r.psetex(key, ttl * 1000, json.dumps(view.to_dict()))
+        self.r.psetex(key, int(ttl * 1000), json.dumps(view.to_dict()))
 
     def get(self, key):
         view_name = key.split(":::")[0]
