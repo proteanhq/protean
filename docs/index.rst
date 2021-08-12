@@ -69,6 +69,7 @@ User Guide
     user/quickstart
     user/composing-a-domain
     user/config
+    user/cli
 
 API Reference
 -------------

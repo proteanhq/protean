@@ -55,10 +55,8 @@ class Server:
         object = self.domain.from_message(message)
         return self.broker._subscribers[fully_qualified_name(object.__class__)]
 
-    async def push_messages(self) -> None:
+    def push_messages(self) -> None:
         """Pick up published events and push to all register brokers"""
-        logger.debug("Polling DB for new events to publish...")
-
         event_log_repo = current_domain.repository_for(EventLog)
 
         # Check if there are new messages to publish
@@ -82,29 +80,26 @@ class Server:
         if not self.SHUTTING_DOWN:
             self.loop.call_later(0.5, self.push_messages)
 
-    def handled(self, future, domain, job_id):
-        exception = future.exception()
-        logger.info(f"---> Future: {future}")
+    def _handled(self, future, domain, job_id):
         if future.done() and not future.exception():
-            logger.info(f"---> Job {job_id} completed successfully")
-
             with domain.domain_context():
                 job = domain.repository_for(Job).get(job_id)
                 job.mark_completed()
+
                 domain.repository_for(Job).add(job)
-                logger.info(f"---> Updated {job_id} status to COMPLETED")
+                logger.info(f"Job {job_id} successfully completed")
         elif future.exception():
-            logger.info(f"---> Job {job_id} errored - {type(exception)}")
             with domain.domain_context():
                 job = domain.repository_for(Job).get(job_id)
                 job.mark_errored()
-                logger.info(f"---> Job: {job.to_dict()}")
-                domain.repository_for(Job).add(job)
-                logger.info(f"---> Updated {job_id} status to ERRORED")
 
-    def submit_job(self, subscriber_object, job):
+                domain.repository_for(Job).add(job)
+                logger.info(
+                    f"Error while processing job {job_id} - {future.exception()}"
+                )
+
+    def _submit_job(self, subscriber_object, job):
         # Execute Subscriber logic and handle callback synchronously
-        logger.debug(f"---> {current_domain.config['EVENT_EXECUTION']}")
         if current_domain.config["EVENT_EXECUTION"] == EventExecution.INLINE.value:
             try:
                 subscriber_object(job.payload["payload"]["payload"])
@@ -114,7 +109,7 @@ class Server:
                 fut = self.loop.create_future()
                 fut.set_exception(exc)
             finally:
-                self.handled(fut, current_domain, job.job_id)
+                self._handled(fut, current_domain, job.job_id)
         elif current_domain.config["EVENT_EXECUTION"] == EventExecution.THREADED.value:
             # Execute Subscriber logic in a thread
             future = self.executor.submit(
@@ -122,7 +117,7 @@ class Server:
             )
             future.add_done_callback(
                 functools.partial(
-                    self.handled,
+                    self._handled,
                     domain=current_domain._get_current_object(),
                     job_id=job.job_id,
                 )
@@ -136,10 +131,8 @@ class Server:
                 }
             )
 
-    async def poll_for_jobs(self):
+    def poll_for_jobs(self):
         """Poll for new jobs and execute them in threads"""
-        logger.debug("Polling jobs...")
-
         job_repo = current_domain.repository_for(Job)
         # Check if there are new jobs to process
         job = job_repo.get_next_to_process()
@@ -155,8 +148,8 @@ class Server:
                 )
                 subscriber_object = subscriber_cls()
 
-                logger.info(f"---> Submitting job {job.job_id}")
-                self.submit_job(subscriber_object, job)
+                logger.info(f"Submitting job {job.job_id}")
+                self._submit_job(subscriber_object, job)
 
             # FIXME Add other job types
             # elif ... :
@@ -168,10 +161,8 @@ class Server:
         if not self.SHUTTING_DOWN:
             self.loop.call_later(0.5, self.poll_for_jobs)
 
-    async def poll_for_messages(self):
+    def poll_for_messages(self):
         """This works with `add_done_callback`"""
-        logger.debug("Polling broker for new messages...")
-
         message = self.broker.get_next()
 
         # FIXME Gather maximum `max_workers` messages and wait for the next cycle
@@ -202,49 +193,52 @@ class Server:
             self.loop.call_later(0.5, self.poll_for_messages)
 
     def run(self):
-        try:
-            self.loop.call_soon(self.push_messages)
-            self.loop.call_soon(self.poll_for_messages)
-            self.loop.call_soon(self.poll_for_jobs)
+        with self.domain.domain_context():
+            try:
+                logger.debug("Starting server...")
 
-            if self.test_mode:
-                self.loop.call_soon(self.loop.stop)
+                self.loop.call_soon(self.push_messages)
+                self.loop.call_soon(self.poll_for_messages)
+                self.loop.call_soon(self.poll_for_jobs)
 
-            self.loop.run_forever()
-        except KeyboardInterrupt:
-            # Complete running tasks and cancel safely
-            logger.debug("Caught Keyboard interrupt. Cancelling tasks...")
-            self.SHUTTING_DOWN = True
+                if self.test_mode:
+                    self.loop.call_soon(self.loop.stop)
 
-            def shutdown_exception_handler(loop, context):
-                if "exception" not in context or not isinstance(
-                    context["exception"], asyncio.CancelledError
-                ):
-                    loop.default_exception_handler(context)
+                self.loop.run_forever()
+            except KeyboardInterrupt:
+                # Complete running tasks and cancel safely
+                logger.debug("Caught Keyboard interrupt. Cancelling tasks...")
+                self.SHUTTING_DOWN = True
 
-            self.loop.set_exception_handler(shutdown_exception_handler)
+                def shutdown_exception_handler(loop, context):
+                    if "exception" not in context or not isinstance(
+                        context["exception"], asyncio.CancelledError
+                    ):
+                        loop.default_exception_handler(context)
 
-            ##################
-            # CANCEL Elegantly
-            ##################
-            # Handle shutdown gracefully by waiting for all tasks to be cancelled
-            # tasks = asyncio.gather(*asyncio.all_tasks(loop=loop), loop=loop, return_exceptions=True)
-            # tasks.add_done_callback(lambda t: loop.stop())
-            # tasks.cancel()
+                self.loop.set_exception_handler(shutdown_exception_handler)
 
-            # # Keep the event loop running until it is either destroyed or all
-            # # tasks have really terminated
-            # while not tasks.done() and not loop.is_closed():
-            #     loop.run_forever()
+                ##################
+                # CANCEL Elegantly
+                ##################
+                # Handle shutdown gracefully by waiting for all tasks to be cancelled
+                # tasks = asyncio.gather(*asyncio.all_tasks(loop=loop), loop=loop, return_exceptions=True)
+                # tasks.add_done_callback(lambda t: loop.stop())
+                # tasks.cancel()
 
-            #####################
-            # WAIT FOR COMPLETION
-            #####################
-            pending = asyncio.all_tasks(loop=self.loop)
-            self.loop.run_until_complete(asyncio.gather(*pending))
-        finally:
-            logger.debug("Closing connection...")
-            self.loop.close()
+                # # Keep the event loop running until it is either destroyed or all
+                # # tasks have really terminated
+                # while not tasks.done() and not loop.is_closed():
+                #     loop.run_forever()
+
+                #####################
+                # WAIT FOR COMPLETION
+                #####################
+                pending = asyncio.all_tasks(loop=self.loop)
+                self.loop.run_until_complete(asyncio.gather(*pending))
+            finally:
+                logger.debug("Closing connection...")
+                self.loop.close()
 
     def stop(self):
         self.SHUTTING_DOWN = True

@@ -32,8 +32,7 @@ class TestPublishingToRedis:
 
         # Push to Redis
         server = Server(domain=test_domain, test_mode=True)
-        await server.push_messages()
-        server.stop()
+        server.push_messages()
 
         # Retrieve with an independent Redis instance
         r = redis.Redis.from_url(test_domain.config["BROKERS"]["default"]["URI"])
@@ -64,8 +63,7 @@ class TestPublishingToRedis:
 
         # Push to Redis
         server = Server(domain=test_domain, test_mode=True)
-        await server.push_messages()
-        server.stop()
+        server.push_messages()
 
         # Retrieve with an independent Redis instance
         r = redis.Redis.from_url(test_domain.config["BROKERS"]["default"]["URI"])
@@ -101,8 +99,7 @@ class TestReceivingFromRedis:
 
         # Push to Redis
         server = Server(domain=test_domain, test_mode=True)
-        await server.push_messages()
-        server.stop()
+        server.push_messages()
 
         # Retrieve event
         message = test_domain.brokers["default"].get_next()
@@ -122,8 +119,7 @@ class TestReceivingFromRedis:
 
         # Push to Redis
         server = Server(domain=test_domain, test_mode=True)
-        await server.push_messages()
-        server.stop()
+        server.push_messages()
 
         # Retrieve message
         message = test_domain.brokers["default"].get_next()

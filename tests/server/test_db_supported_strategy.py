@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import sys
 
@@ -111,8 +110,7 @@ class TestDbSupportedStrategy:
         event_log = test_domain.repository_for(EventLog).get_next_to_publish()
         assert event_log is not None
 
-    @pytest.mark.asyncio
-    async def test_that_new_event_is_published_to_broker(self, test_domain):
+    def test_that_new_event_is_published_to_broker(self, test_domain):
         # Register Event
         test_domain.register(PersonAdded)
 
@@ -124,17 +122,14 @@ class TestDbSupportedStrategy:
         server = Server.from_domain_file(
             domain="baz", domain_file="tests/server/support/dummy_domain.py"
         )
-        await server.push_messages()
+        server.push_messages()
         server.stop()
 
         message = test_domain.brokers["default"].get_next()
         assert message is not None
         assert message["payload"]["id"] == "nW4RN2"
 
-    @pytest.mark.asyncio
-    async def test_that_event_is_marked_as_published_after_push_to_broker(
-        self, test_domain
-    ):
+    def test_that_event_is_marked_as_published_after_push_to_broker(self, test_domain):
         # Register Event
         test_domain.register(PersonAdded)
 
@@ -146,7 +141,7 @@ class TestDbSupportedStrategy:
         server = Server.from_domain_file(
             domain="baz", domain_file="tests/server/support/dummy_domain.py"
         )
-        await server.push_messages()
+        server.push_messages()
         server.stop()
 
         eventlog_repo = test_domain.repository_for(EventLog)
@@ -155,8 +150,7 @@ class TestDbSupportedStrategy:
         assert event_record is not None
         assert event_record.status == EventLogStatus.PUBLISHED.value
 
-    @pytest.mark.asyncio
-    async def test_fetching_subscribers_for_event_constructed_from_broker_message(
+    def test_fetching_subscribers_for_event_constructed_from_broker_message(
         self, test_domain
     ):
         # Register Event
@@ -169,7 +163,7 @@ class TestDbSupportedStrategy:
         )
 
         server = Server(domain=test_domain, test_mode=True)
-        await server.push_messages()
+        server.push_messages()
         server.stop()
 
         message = test_domain.brokers["default"].get_next()
@@ -179,8 +173,7 @@ class TestDbSupportedStrategy:
         assert next(iter(subscribers)) == NotifySSOSubscriber
 
     # Test creation of job
-    @pytest.mark.asyncio
-    async def test_subscription_job_creation(self, test_domain):
+    def test_subscription_job_creation(self, test_domain):
         # Register Event
         test_domain.register(PersonAdded)
         test_domain.register(NotifySSOSubscriber)
@@ -191,8 +184,8 @@ class TestDbSupportedStrategy:
         )
 
         server = Server(domain=test_domain, test_mode=True)
-        await server.push_messages()
-        await server.poll_for_messages()
+        server.push_messages()
+        server.poll_for_messages()
         server.stop()
 
         job_repo = test_domain.repository_for(Job)
@@ -202,8 +195,7 @@ class TestDbSupportedStrategy:
         assert job_record.status == JobStatus.NEW.value
         assert job_record.payload["payload"]["payload"]["id"] == "tD4pz3"
 
-    @pytest.mark.asyncio
-    async def test_for_subscription_jobs_per_subscriber(self, test_domain):
+    def test_for_subscription_jobs_per_subscriber(self, test_domain):
         # Register Event
         test_domain.register(PersonAdded)
         test_domain.register(NotifySSOSubscriber)
@@ -215,8 +207,8 @@ class TestDbSupportedStrategy:
         )
 
         server = Server(domain=test_domain, test_mode=True)
-        await server.push_messages()
-        await server.poll_for_messages()
+        server.push_messages()
+        server.poll_for_messages()
         server.stop()
 
         job_repo = test_domain.repository_for(Job)
@@ -238,8 +230,7 @@ class TestDbSupportedStrategy:
     def test_that_the_event_is_marked_as_consumed(self):
         pass
 
-    @pytest.mark.asyncio
-    async def test_that_a_pending_job_is_picked_up_on_poll(self, test_domain):
+    def test_that_a_pending_job_is_picked_up_on_poll(self, test_domain):
         # Register Event
         test_domain.register(PersonAdded)
         test_domain.register(NotifySSOSubscriber)
@@ -251,8 +242,8 @@ class TestDbSupportedStrategy:
         )
 
         server = Server(domain=test_domain, test_mode=True)
-        await server.push_messages()
-        await server.poll_for_messages()
+        server.push_messages()
+        server.poll_for_messages()
         server.stop()
 
         # FIXME Should this be tested from within the server?
@@ -260,8 +251,7 @@ class TestDbSupportedStrategy:
         assert job is not None
         assert job.payload["payload"]["payload"]["id"] == "w93qBz"
 
-    @pytest.mark.asyncio
-    async def test_that_a_job_is_marked_as_in_progress(self, test_domain):
+    def test_that_a_job_is_marked_as_in_progress(self, test_domain):
         # Register Event
         test_domain.register(PersonAdded)
         test_domain.register(NotifySSOSubscriber)
@@ -273,11 +263,11 @@ class TestDbSupportedStrategy:
         )
 
         # Patch `submit_job()` because we don't want to execute the job
-        with patch.object(Server, "submit_job"):
+        with patch.object(Server, "_submit_job"):
             server = Server(domain=test_domain, test_mode=True)
-            await server.push_messages()
-            await server.poll_for_messages()
-            await server.poll_for_jobs()
+            server.push_messages()
+            server.poll_for_messages()
+            server.poll_for_jobs()
 
             job_repo = test_domain.repository_for(Job)
             job_record = job_repo.get_most_recent_job_of_type("SUBSCRIPTION")
@@ -285,9 +275,8 @@ class TestDbSupportedStrategy:
             assert job_record is not None
             assert job_record.status == JobStatus.IN_PROGRESS.value
 
-    @pytest.mark.asyncio
     @patch.object(NotifySSOSubscriber, "__call__")
-    async def test_job_processing_by_subscriber(self, mock, test_domain):
+    def test_job_processing_by_subscriber(self, mock, test_domain):
         # Register Event
         test_domain.register(PersonAdded)
         test_domain.register(NotifySSOSubscriber)
@@ -299,15 +288,14 @@ class TestDbSupportedStrategy:
         )
 
         server = Server(domain=test_domain, test_mode=True)
-        await server.push_messages()
-        await server.poll_for_messages()
-        await server.poll_for_jobs()
+        server.push_messages()
+        server.poll_for_messages()
+        server.poll_for_jobs()
         server.stop()
 
         mock.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_marking_job_as_successful(self, test_domain):
+    def test_marking_job_as_successful(self, test_domain):
         # Register Event
         test_domain.register(PersonAdded)
         test_domain.register(NotifySSOSubscriber)
@@ -318,11 +306,9 @@ class TestDbSupportedStrategy:
         )
 
         server = Server(domain=test_domain, test_mode=True)
-        await server.push_messages()
-        await server.poll_for_messages()
-        await server.poll_for_jobs()
-
-        await asyncio.sleep(0.1)  # Allow for threads to complete
+        server.push_messages()
+        server.poll_for_messages()
+        server.poll_for_jobs()
 
         job_repo = test_domain.repository_for(Job)
         job_record = job_repo.get_most_recent_job_of_type("SUBSCRIPTION")
@@ -331,8 +317,7 @@ class TestDbSupportedStrategy:
         assert job_record.status == JobStatus.COMPLETED.value
 
     # Test marking the job as a failure
-    @pytest.mark.asyncio
-    async def test_marking_job_as_failure(self, test_domain):
+    def test_marking_job_as_failure(self, test_domain):
         # Register Event
         test_domain.register(PersonAdded)
         test_domain.register(NotifySSOSubscriber)
@@ -347,18 +332,14 @@ class TestDbSupportedStrategy:
 
             server = Server(domain=test_domain, test_mode=True)
 
-            await server.push_messages()
-            await server.poll_for_messages()
-            await server.poll_for_jobs()
+            server.push_messages()
+            server.poll_for_messages()
+            server.poll_for_jobs()
 
-            await asyncio.sleep(0.1)  # Allow for threads to complete
-
-            logging.info("---> Checking for Job Status")
             job_repo = test_domain.repository_for(Job)
             job_record = job_repo.get_most_recent_job_of_type("SUBSCRIPTION")
 
             assert job_record is not None
-            logging.info(f"---> Job Record: {job_record.to_dict()}")
             assert job_record.status == JobStatus.ERRORED.value
 
     @pytest.mark.skip(reason="Yet to implement")
