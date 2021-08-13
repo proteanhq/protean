@@ -31,8 +31,10 @@ class IdentityType(Enum):
 
 
 class EventStrategy(Enum):
+    INLINE = "INLINE"
+    INLINE_WITH_EVENTLOG = "INLINE_WITH_EVENTLOG"
     DB_SUPPORTED = "DB_SUPPORTED"
-    NAIVE = "NAIVE"
+    DB_SUPPORTED_WITH_JOBS = "DB_SUPPORTED_WITH_JOBS"
 
 
 class EventExecution(Enum):

@@ -50,7 +50,9 @@ class SendWelcomeEmail(BaseSubscriber):
 class TestDbSupportedStrategy:
     @pytest.fixture(autouse=True)
     def test_domain(self, test_domain):
-        test_domain.config["EVENT_STRATEGY"] = EventStrategy.DB_SUPPORTED.value
+        test_domain.config[
+            "EVENT_STRATEGY"
+        ] = EventStrategy.DB_SUPPORTED_WITH_JOBS.value
         test_domain.config["EVENT_EXECUTION"] = EventExecution.INLINE.value
         test_domain.config["BROKERS"] = {
             "default": {
@@ -66,7 +68,10 @@ class TestDbSupportedStrategy:
         self, test_domain,
     ):
         assert isinstance(test_domain.brokers["default"], RedisBroker)
-        assert test_domain.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED.value
+        assert (
+            test_domain.config["EVENT_STRATEGY"]
+            == EventStrategy.DB_SUPPORTED_WITH_JOBS.value
+        )
         assert test_domain.config["EVENT_EXECUTION"] == EventExecution.INLINE.value
 
     # Test that Event is persisted into database on publish

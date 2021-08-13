@@ -18,6 +18,7 @@ from protean.infra.job import Job, JobTypes
 from protean.utils import (
     DomainObjects,
     EventExecution,
+    EventStrategy,
     fetch_element_cls_from_registry,
     fully_qualified_name,
 )
@@ -40,9 +41,13 @@ class Server:
         self.broker = self.domain.brokers[broker]
         self.test_mode = test_mode
 
-        self.loop = asyncio.get_event_loop()
+        self.loop = asyncio.new_event_loop()
         # FIXME Pick max workers from config
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+        self.executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=3,
+            # Activate domain context before processing
+            initializer=self.domain.domain_context().push,
+        )
 
         self.SHUTTING_DOWN = False
 
@@ -81,6 +86,7 @@ class Server:
             self.loop.call_later(0.5, self.push_messages)
 
     def _handled(self, future, domain, job_id):
+        # FIXME Handle case when future is not done
         if future.done() and not future.exception():
             with domain.domain_context():
                 job = domain.repository_for(Job).get(job_id)
@@ -126,7 +132,7 @@ class Server:
             raise ConfigurationError(
                 {
                     "domain": [
-                        "Unknown Event Execution config - should be among {[e.value for e in EventExecution]}"
+                        f"Unknown Event Execution config - should be among {[e.value for e in EventExecution]}"
                     ]
                 }
             )
@@ -171,11 +177,14 @@ class Server:
             # Reconstruct message back to Event
             subscribers = self.subscribers_for(message)
 
-            if subscribers:
-                with UnitOfWork():
-                    # Collect registered Subscribers from Domain
-                    # FIXME Execute in threads
-                    for subscriber in subscribers:
+            for subscriber in subscribers:
+                if (
+                    current_domain.config["EVENT_STRATEGY"]
+                    == EventStrategy.DB_SUPPORTED_WITH_JOBS.value
+                ):
+                    with UnitOfWork():
+                        # Collect registered Subscribers from Domain
+                        # FIXME Execute in threads
                         job = Job(
                             type=JobTypes.SUBSCRIPTION.value,
                             payload={
@@ -184,6 +193,12 @@ class Server:
                             },
                         )
                         current_domain.repository_for(Job).add(job)
+                else:
+                    try:
+                        subscriber()(message["payload"])
+                    except Exception:
+                        # FIXME Mark EventLog as Errored
+                        pass
 
             # Fetch next message to process
             message = self.broker.get_next()
@@ -202,7 +217,7 @@ class Server:
                 self.loop.call_soon(self.poll_for_jobs)
 
                 if self.test_mode:
-                    self.loop.call_soon(self.loop.stop)
+                    self.loop.call_soon(self.stop)
 
                 self.loop.run_forever()
             except KeyboardInterrupt:
@@ -237,9 +252,19 @@ class Server:
                 pending = asyncio.all_tasks(loop=self.loop)
                 self.loop.run_until_complete(asyncio.gather(*pending))
             finally:
-                logger.debug("Closing connection...")
+                logger.debug("Shutting down...")
+
+                # Signal executor to finish pending futures and free resources
+                self.executor.shutdown(wait=True)
+
+                self.loop.stop()
                 self.loop.close()
 
     def stop(self):
         self.SHUTTING_DOWN = True
+
+        # Signal executor to finish pending futures and free resources
+        self.executor.shutdown(wait=True)
+
         self.loop.stop()
+        self.loop.close()
