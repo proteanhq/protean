@@ -66,8 +66,16 @@ docs_requires = [
     "sphinx-tabs>=3.2.0",
 ]
 
+types_requires = [
+    "types-mock>=0.1.3",
+    "types-python-dateutil>=0.1.6",
+    "types-redis>=3.5.4",
+    "types-Werkzeug>=1.0.5",
+]
+
 dev_requires = (
     docs_requires
+    + types_requires
     + testing_requires
     + [
         "black==19.10b0",

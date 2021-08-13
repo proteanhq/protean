@@ -4,7 +4,7 @@ to register Domain Elements.
 import logging
 import sys
 
-from typing import Any, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 from werkzeug.datastructures import ImmutableDict
 
@@ -13,6 +13,7 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.field.basic import Boolean
+from protean.core.model import BaseModel
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import (
     ConfigurationError,
@@ -150,13 +151,13 @@ class Domain(_PackageBoundObject):
         self.email_providers = EmailProviders(self)
 
         # Cache for holding Model to Entity/Aggregate associations
-        self._models = {}
-        self._constructed_models = {}
+        self._models: Dict[str, BaseModel] = {}
+        self._constructed_models: Dict[str, BaseModel] = {}
 
         #: A list of functions that are called when the domain context
         #: is destroyed.  This is the place to store code that cleans up and
         #: disconnects from databases, for example.
-        self.teardown_domain_context_functions = []
+        self.teardown_domain_context_functions: List[Callable] = []
 
         # Register the EventLog Aggregate  # FIXME Is this the best place to do this?
         if self.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED.value:
@@ -541,7 +542,9 @@ class Domain(_PackageBoundObject):
     # Handling Commands #
     #####################
 
-    def command_handler_for(self, command_cls: BaseCommand) -> BaseCommandHandler:
+    def command_handler_for(
+        self, command_cls: Type[BaseCommand]
+    ) -> Type[BaseCommandHandler]:
         """Retrieve Command Handler associated with a Command
 
         Args:
@@ -552,9 +555,7 @@ class Domain(_PackageBoundObject):
         """
         return self._domain_registry.command_handler_for(command_cls)
 
-    def handle(
-        self, command: BaseCommand, asynchronous: Boolean = True
-    ) -> Optional[Any]:
+    def handle(self, command: BaseCommand, asynchronous: bool = True) -> Optional[Any]:
         """Process command and return results based on specified preference.
 
         By default, Protean does not return values after after processing commands. This behavior
@@ -577,6 +578,7 @@ class Domain(_PackageBoundObject):
             return command_handler(command)
         else:
             self.brokers.publish(command)
+            return None
 
     ########################
     # Broker Functionality #
@@ -590,7 +592,7 @@ class Domain(_PackageBoundObject):
         """
         self.brokers.publish(event_or_command)
 
-    def from_message(self, message: Message) -> Union[BaseCommand, BaseEvent]:
+    def from_message(self, message: Dict) -> Union[BaseCommand, BaseEvent]:
         """Reconstruct Event or Command class from Message.
 
         Messages are pushed into brokers in JSON-stringified form. This method re-casts them

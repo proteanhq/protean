@@ -46,7 +46,7 @@ Read :doc:`user/foreword` to understand Protean's philosophy.
 .. note:: It is assumed that you have some prior knowledge about *Domain-Driven Design* (DDD) and *Command Query
     Responsibility Segregation* (CQRS) architectural patterns.
 
-    If you do not have sufficient background in these topics, you should go through standard texts on these topics
+    If you do not have sufficient background in these topics, you should go through standard texts
     to understand Protean's behavior better.
 
 .. warning:: **Protean** is currently under active development. APIs and interfaces are to be expected to change

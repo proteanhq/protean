@@ -4,7 +4,7 @@ import enum
 
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable, List
 
 from protean import exceptions
 
@@ -41,10 +41,10 @@ class Field(FieldDescriptorMixin, metaclass=ABCMeta):
     }
 
     # Default validators for a Field
-    default_validators = []
+    default_validators: List[Callable] = []
 
     # These values will trigger the self.required check.
-    empty_values = (None, "", [], (), {})
+    empty_values: tuple = (None, "", [], (), {})
 
     def __init__(
         self,

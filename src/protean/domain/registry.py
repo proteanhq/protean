@@ -2,7 +2,7 @@ import logging
 
 from collections import defaultdict
 from enum import Enum
-from typing import Any, Dict
+from typing import Any, Dict, Type
 
 import inflection
 
@@ -96,7 +96,7 @@ class _DomainRegistry:
     def get(self, element_type):
         return self._elements[element_type.value]
 
-    def command_handler_for(self, command_cls: BaseCommand):
+    def command_handler_for(self, command_cls: Type[BaseCommand]):
         return self._commands_to_command_handlers[command_cls]
 
 

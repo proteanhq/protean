@@ -44,7 +44,7 @@ class QuerySet:
         # Aggregates should be loaded in entirety
         # FIXME Should this limit be removed entirely?
         limit: int = 1000,
-        order_by: set = None,
+        order_by: list = None,
     ):
         """Initialize either with empty preferences (when invoked on an Entity)
             or carry forward filters and preferences when chained
