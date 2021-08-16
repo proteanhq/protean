@@ -68,6 +68,7 @@ User Guide
     user/installation
     user/quickstart
     user/composing-a-domain
+    user/eventing
     user/config
     user/cli
 

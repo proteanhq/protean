@@ -46,19 +46,25 @@ extlinks = {
 html_theme = "alabaster"
 
 html_theme_options = {
+    "description": "The Pragmatic Framework for Ambitious Applications",
     "show_powered_by": False,
     "github_user": "proteanhq",
     "github_repo": "protean",
     "github_banner": True,
     "show_related": False,
+    "show_relbar_bottom": True,
+    "font_family": "Lucida Grande",
+    "fixed_sidebar": True,
 }
+
+html_static_path = ["static"]
 
 html_show_sourcelink = False
 html_use_smartypants = True
 html_last_updated_fmt = "%b %d, %Y"
 html_split_index = False
 html_sidebars = {
-    "**": ["globaltoc.html", "sourcelink.html", "searchbox.html"],
+    "**": ["about.html", "localtoc.html", "sourcelink.html", "searchbox.html"],
 }
 html_short_title = "%s-%s" % (project, version)
 

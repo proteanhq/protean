@@ -118,6 +118,10 @@ The following configuration values are used internally by Protean:
             }
         }
 
+.. py:data:: EVENT_STRATEGY
+
+    The event processing strategy to use. Read :ref:`event-processing-strategies` for a detailed discussion.
+
 Configuring from Python Files
 -----------------------------
 

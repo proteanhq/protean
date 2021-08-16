@@ -1,15 +1,32 @@
 import uuid
-
 import pytest
 
+from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
-from protean.exceptions import NotSupportedError
+from protean.core.field.basic import String
+from protean.core.field.embedded import ValueObject
+from protean.core.value_object import BaseValueObject
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.globals import current_domain
 from protean.infra.eventing import EventLog, EventLogRepository
 from protean.utils import fully_qualified_name
 from tests.test_brokers import AddPersonCommand
 
 from .elements import Person, PersonAdded, PersonCommand, PersonService
+
+
+class TestDomainEventDefinition:
+    @pytest.mark.xfail(reason="Yet to implement")
+    def test_that_domain_event_can_only_accommodate_basic_fields(self, test_domain):
+        class Email(BaseValueObject):
+            address = String(max_length=255)
+
+        class User(BaseAggregate):
+            email = ValueObject(Email, required=True)
+            name = String(max_length=50)
+
+        with pytest.raises(IncorrectUsageError):
+            test_domain.register(User)
 
 
 class TestDomainEventInitialization:
