@@ -68,6 +68,9 @@ User Guide
     user/installation
     user/quickstart
     user/composing-a-domain
+    user/domain-definition
+    user/entities-and-vos
+    user/fields
     user/eventing
     user/config
     user/cli

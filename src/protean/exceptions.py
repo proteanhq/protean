@@ -66,7 +66,8 @@ class ValidationError(ProteanException):
     raise this exception.
 
     :param errors: An error message or a list of error messages or a
-    dictionary of error message where key is field name and value is error
+        dictionary of error message where key is field name and value is error
+
     """
 
 

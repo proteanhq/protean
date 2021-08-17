@@ -58,7 +58,7 @@ class TestAggregateIdentity:
 
     def test_that_abstract_aggregates_do_not_have_id_field(self, test_domain):
         @test_domain.aggregate
-        class TimeStamped(BaseAggregate):
+        class TimeStamped:
             created_at = DateTime(default=datetime.utcnow)
             updated_at = DateTime(default=datetime.utcnow)
 

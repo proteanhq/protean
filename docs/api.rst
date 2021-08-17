@@ -16,5 +16,11 @@ Domain Objects
 Configuration
 -------------
 
-.. autoclass:: Config
+.. autoclass:: protean.Config
+    :members:
+
+Exceptions
+----------
+
+.. automodule:: protean.exceptions
     :members:
