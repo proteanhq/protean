@@ -46,20 +46,78 @@ Properties
 
 Entities share all traits of Aggregates like id-based equality, inheritance, and abstraction, except that they cannot enclose other entities. They usually map 1-1 with structures in the persistent store (tables or documents) and only enclose basic fields or Value Objects.
 
+.. // FIXME Unimplemented Feature
+
+Trying to specify other entity fields throws a ``IncorrectUsageError``.
+
 Relationships
 -------------
 
-.. // FIXME Pending documentation
-<COMING SOON>
+Protean provides multiple options with which Aggregates can weave object graphs with enclosed Entities. We will explore the different relationships between an Aggregate and its enclosed Entities with the example domain below.
 
-Reference
-`````````
+.. code-block:: python
+
+    @publishing.aggregate
+    class Post:
+        title = String(max_length=50)
+        created_on = Date(default=datetime.utcnow)
+
+        stats = HasOne('Statistic')
+        comments = HasMany('Comment')
+
+
+    @publishing.entity(aggregate_cls=Post)
+    class Statistic:
+        likes = Integer()
+        dislikes = Integer()
+        post = Reference(Post)
+
+
+    @publishing.entity(aggregate_cls=Post)
+    class Comment:
+        content = String(max_length=500)
+        post = Reference(Post)
+        added_at = DateTime()
 
 HasOne
 ``````
 
+A `HasOne` field establishes a ``has-one`` relation with the remote entity. In the example above, ``Post`` has exactly one ``Statistic`` record associated with it.
+
+.. code-block:: python
+
+    >>> post = Post(title='Foo')
+    >>> post.stats = Statistic(likes=10, dislikes=1)
+    >>> current_domain.repository_for(Post).add(post)
+
 HasMany
 ```````
+
+A `HasMany` field establishes a ``one-to-many`` relation with the remote entity. In the example above, ``Post`` can be associated with one or more comments.
+
+Field values can be added with field-specific utility methods:
+
+.. code-block:: python
+
+    >>> post = Post(title='Foo')
+    >>> comment1 = Comment(content='bar')
+    >>> comment2 = Comment(content='baz')
+    >>> post.add_comments([comment1, comment2])
+    >>> current_domain.repository_for(Post).add(post)
+
+    >>> post.remove_comments(comment2)
+    >>> current_domain.repository_for(Post).add(post)
+
+Reference
+`````````
+
+A ``Reference`` field establishes the opposite relationship with the parent at the data level. Entities that are connected by HasMany and HasOne relationships can reference their owning object.
+
+.. code-block:: python
+
+    >>> reloaded_post = current_domain.repository_for(Post).get(post)
+    >>> assert reloaded_post.comments[0].post == reloaded_post
+    True
 
 Value Objects
 -------------
@@ -143,12 +201,48 @@ A Value Object cannot be altered once initialized. Trying to do so will throw a 
 Embedding Value Objects
 -----------------------
 
-.. // FIXME Pending documentation
-<COMING SOON>
+Value Objects can be embedded into Aggregates and Entities as part of their attributes.
 
-- Automatic generation of name
-- Underscore rules
-- Overriding attribute names
+.. code-block:: python
+
+    @domain.value_object
+    class Money:
+        currency = String(max_length=3)
+        amount = Float()
+
+    @domain.aggregate
+    class Account:
+        name = String(max_length=50)
+        balance = ValueObject(Money)
+
+.. code-block:: python
+
+    >>> Account.meta_.attributes
+    {'name': <protean.core.field.basic.String object at 0x106bc6dc0>,
+    'balance_currency': <protean.core.field.embedded._ShadowField object at 0x106bc61f0>,
+    'balance_amount': <protean.core.field.embedded._ShadowField object at 0x106bc6c40>,
+    'id': <protean.core.field.basic.Auto object at 0x106836850>}
+
+As visible in the output above, the names of Value Object attributes are generated dynamically. The names are a combination of the attribute name in the enclosed container and the names defined in the Value Object, separated by underscores. So `currency` and `amount` are available as `balance_currency` and `balance_amount` in the ``Account`` Aggregate.
+
+You can override these automatically generated names with the `referenced_as` option in the Value Object:
+
+.. code-block:: python
+
+    @domain.value_object
+    class Money:
+        currency = String(max_length=3)
+        amount = Float(referenced_as="amt")
+
+The supplied attribute name is used as-is in enclosed containers:
+
+.. code-block:: python
+
+    >>> Account.meta_.attributes
+    {'name': <protean.core.field.basic.String object at 0x107381700>,
+    'balance_currency': <protean.core.field.embedded._ShadowField object at 0x1073806d0>,
+    'amt': <protean.core.field.embedded._ShadowField object at 0x107380610>,
+    'id': <protean.core.field.basic.Auto object at 0x1073804f0>}
 
 Examples
 --------
