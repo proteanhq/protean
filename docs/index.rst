@@ -71,6 +71,7 @@ User Guide
     user/domain-definition
     user/entities-and-vos
     user/fields
+    user/persistence
     user/eventing
     user/config
     user/cli
