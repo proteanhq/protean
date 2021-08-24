@@ -85,18 +85,18 @@ class TestBalanceVOStructure:
         assert "amount" in Balance.meta_.declared_fields
 
     def test_output_to_dict(self):
-        balance = Balance.build(currency=Currency.USD.value, amount=0.0)
+        balance = Balance(currency=Currency.USD.value, amount=0.0)
         assert balance.to_dict() == {"currency": "USD", "amount": 0.0}
 
     def test_repr_output_of_value_object(self):
-        balance = Balance.build(currency=Currency.USD.value, amount=0.0)
+        balance = Balance(currency=Currency.USD.value, amount=0.0)
         assert (
             repr(balance)
             == "<Balance: Balance object ({'currency': 'USD', 'amount': 0.0})>"
         )
 
     def test_str_output_of_value_object(self):
-        balance = Balance.build(currency=Currency.USD.value, amount=0.0)
+        balance = Balance(currency=Currency.USD.value, amount=0.0)
         assert str(balance) == "Balance object ({'currency': 'USD', 'amount': 0.0})"
 
 
@@ -110,29 +110,29 @@ class TestBalanceVOBehavior:
 
     def test_equivalence(self):
         """Test that two Balance VOs are equal if their values are equal"""
-        balance1 = Balance.build(currency=Currency.USD.value, amount=0.0)
-        balance2 = Balance.build(currency=Currency.USD.value, amount=0.0)
+        balance1 = Balance(currency=Currency.USD.value, amount=0.0)
+        balance2 = Balance(currency=Currency.USD.value, amount=0.0)
 
         assert balance1 == balance2
 
-        balance3 = Balance.build(currency=Currency.INR.value, amount=0.0)
+        balance3 = Balance(currency=Currency.INR.value, amount=0.0)
 
         assert balance3 != balance1
 
     def test_that_only_valid_currencies_can_be_assigned_to_balance_object(self):
         with pytest.raises(ValidationError):
-            Balance.build(currency="FOO", amount=0.0)
+            Balance(currency="FOO", amount=0.0)
 
     def test_that_only_valid_float_values_can_be_assigned_to_balance_object(self):
         with pytest.raises(ValidationError):
-            Balance.build(currency="FOO", amount="abc")
+            Balance(currency="FOO", amount="abc")
 
     def test_that_a_negative_balance_less_than_one_trillion_is_invalid(self):
         with pytest.raises(ValidationError):
-            Balance.build(currency="FOO", amount=-100000000000000.0)
+            Balance(currency="FOO", amount=-100000000000000.0)
 
     def test_that_new_balance_object_is_generated_with_replace_method(self):
-        balance1 = Balance.build(currency=Currency.CAD.value, amount=0.0)
+        balance1 = Balance(currency=Currency.CAD.value, amount=0.0)
         balance2 = balance1.replace()
 
         assert balance2 is not balance1
@@ -209,12 +209,10 @@ class TestBalanceVOEmbedding:
         )
 
     def test_that_account_can_be_initialized_successfully(self):
-        account = Account(
-            balance=Balance.build(currency="USD", amount=150.0), kind="PRIMARY"
-        )
+        account = Account(balance=Balance(currency="USD", amount=150.0), kind="PRIMARY")
         assert account is not None
         assert account.id is not None
-        assert account.balance == Balance.build(currency="USD", amount=150.0)
+        assert account.balance == Balance(currency="USD", amount=150.0)
         assert account.balance_currency == "USD"
         assert account.balance_amount == 150.0
 
@@ -222,7 +220,7 @@ class TestBalanceVOEmbedding:
         account = Account(balance_currency="USD", balance_amount=150.0, kind="PRIMARY")
         assert account is not None
         assert account.id is not None
-        assert account.balance == Balance.build(currency="USD", amount=150.0)
+        assert account.balance == Balance(currency="USD", amount=150.0)
         assert account.balance_currency == "USD"
         assert account.balance_amount == 150.0
 

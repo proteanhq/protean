@@ -429,7 +429,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
                 ]
                 values = {name: kwargs.get(attr) for name, attr in attributes}
                 try:
-                    value_object = field_obj.value_object_cls.build(**values)
+                    value_object = field_obj.value_object_cls(**values)
                     # Set VO value only if the value object is not None/Empty
                     if value_object:
                         setattr(self, field_name, value_object)

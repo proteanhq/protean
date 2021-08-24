@@ -187,15 +187,6 @@ class BaseContainer(metaclass=_ContainerMetaclass):
             logger.error(self.errors)
             raise ValidationError(self.errors)
 
-    @classmethod
-    def build(cls, **values):
-        if values:
-            assert all(
-                attr in list(cls.meta_.declared_fields.keys()) for attr in values.keys()
-            )
-
-        return cls(**values)
-
     def defaults(self):
         """Placeholder method for defaults.
         To be overridden in concrete Containers, when an attribute's default depends on other attribute values.
