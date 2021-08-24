@@ -155,7 +155,7 @@ class ElasticsearchDAO(BaseDAO):
             logger.error(f"Record {identifier} was not found")
             raise ObjectNotFoundError(
                 {
-                    "entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                    "_entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                     f"does not exist."
                 }
             )
@@ -266,7 +266,7 @@ class ElasticsearchDAO(BaseDAO):
             logger.error(f"Database Record not found: {exc}")
             raise ObjectNotFoundError(
                 {
-                    "entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                    "_entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                     f"does not exist."
                 }
             )

@@ -263,7 +263,7 @@ class BaseDAO(metaclass=ABCMeta):
         if not results:
             raise ObjectNotFoundError(
                 {
-                    "entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                    "_entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                     f"does not exist."
                 }
             )
@@ -298,7 +298,7 @@ class BaseDAO(metaclass=ABCMeta):
         if not results:
             raise ObjectNotFoundError(
                 {
-                    "entity": f"`{self.entity_cls.__name__}` object with values {[item for item in kwargs.items()]} "
+                    "_entity": f"`{self.entity_cls.__name__}` object with values {[item for item in kwargs.items()]} "
                     f"does not exist."
                 }
             )

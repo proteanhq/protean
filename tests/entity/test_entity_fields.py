@@ -17,5 +17,5 @@ def test_that_entities_cannot_hold_entities(test_domain):
             address = Address()
 
     assert exc.value.messages == {
-        "entity": ["'address' of type 'Address' cannot be part of an entity."]
+        "_entity": ["'address' of type 'Address' cannot be part of an entity."]
     }

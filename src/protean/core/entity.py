@@ -122,7 +122,7 @@ class _EntityMetaclass(type):
                 if isinstance(attr_obj, BaseEntity):
                     raise IncorrectUsageError(
                         {
-                            "entity": [
+                            "_entity": [
                                 f"'{attr_name}' of type '{type(attr_obj).__name__}' cannot be part of an entity."
                             ]
                         }
@@ -165,7 +165,7 @@ class _EntityMetaclass(type):
                 if new_class.meta_.abstract and new_class.meta_.id_field:
                     raise IncorrectUsageError(
                         {
-                            "entity": [
+                            "_entity": [
                                 "Aggregates marked as abstract cannot have identity fields"
                             ]
                         }

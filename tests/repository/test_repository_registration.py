@@ -88,7 +88,7 @@ class TestRepositoryRegistration:
     #                 pass
 
     #     assert exc.value.messages == {
-    #         "entity": ["Repositories can only be associated with an Aggregate"]
+    #         "_entity": ["Repositories can only be associated with an Aggregate"]
     #     }
 
     def test_retrieving_custom_repository(self, test_domain):
@@ -176,5 +176,5 @@ class TestRepositoryRegistration:
                     database = "UNKNOWN"
 
         assert exc.value.messages == {
-            "entity": ["Repositories should be associated with a valid Database"]
+            "_entity": ["Repositories should be associated with a valid Database"]
         }

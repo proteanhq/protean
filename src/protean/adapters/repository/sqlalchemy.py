@@ -336,7 +336,7 @@ class SADAO(BaseDAO):
             conn.close()
             raise ObjectNotFoundError(
                 {
-                    "entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                    "_entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                     f"does not exist."
                 }
             )
@@ -404,7 +404,7 @@ class SADAO(BaseDAO):
             conn.close()
             raise ObjectNotFoundError(
                 {
-                    "entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                    "_entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                     f"does not exist."
                 }
             )

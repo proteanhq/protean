@@ -283,7 +283,7 @@ class DictDAO(BaseDAO):
             if identifier in conn._db["data"][self.schema_name]:
                 raise ValidationError(
                     {
-                        "entity": f"`{self.__class__.__name__}` object with identifier {identifier} "
+                        "_entity": f"`{self.__class__.__name__}` object with identifier {identifier} "
                         f"is already present."
                     }
                 )
@@ -371,7 +371,7 @@ class DictDAO(BaseDAO):
             if identifier not in conn._db["data"][self.schema_name]:
                 raise ObjectNotFoundError(
                     {
-                        "entity": f"`{self.__class__.__name__}` object with identifier {identifier} "
+                        "_entity": f"`{self.__class__.__name__}` object with identifier {identifier} "
                         f"does not exist."
                     }
                 )
@@ -415,7 +415,7 @@ class DictDAO(BaseDAO):
             if identifier not in conn._db["data"][self.schema_name]:
                 raise ObjectNotFoundError(
                     {
-                        "entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                        "_entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                         f"does not exist."
                     }
                 )

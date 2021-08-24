@@ -175,7 +175,7 @@ def repository_factory(element_cls, **kwargs):
     # FIXME Uncomment
     # if not issubclass(element_cls.meta_.aggregate_cls, BaseAggregate):
     #     raise IncorrectUsageError(
-    #         {"entity": ["Repositories can only be associated with an Aggregate"]}
+    #         {"_entity": ["Repositories can only be associated with an Aggregate"]}
     #     )
 
     # Ensure the value of `database` is among known databases
@@ -183,7 +183,7 @@ def repository_factory(element_cls, **kwargs):
         database.value for database in Database
     ]:
         raise IncorrectUsageError(
-            {"entity": ["Repositories should be associated with a valid Database"]}
+            {"_entity": ["Repositories should be associated with a valid Database"]}
         )
 
     return element_cls

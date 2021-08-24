@@ -3,7 +3,6 @@ import inspect
 import logging
 
 from collections import defaultdict
-from typing import Any, Dict
 
 from protean.core.field.basic import Field
 from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
@@ -11,7 +10,7 @@ from protean.exceptions import InvalidDataError, NotSupportedError, ValidationEr
 logger = logging.getLogger("protean.domain")
 
 
-class _ContainerMetaclass(type):
+class ContainerMeta(type):
     """
     This base metaclass processes the class declaration and
     constructs a meta object that can be used to introspect
@@ -27,7 +26,7 @@ class _ContainerMetaclass(type):
 
         # Ensure initialization is only performed for subclasses of Container
         # (excluding Container class itself).
-        parents = [b for b in bases if isinstance(b, _ContainerMetaclass)]
+        parents = [b for b in bases if isinstance(b, ContainerMeta)]
         if not parents:
             return super().__new__(mcs, name, bases, attrs)
 
@@ -41,7 +40,7 @@ class _ContainerMetaclass(type):
         # Gather `Meta` class/object if defined
         attr_meta = attrs.pop("Meta", None)
         meta = attr_meta or getattr(new_class, "Meta", None)
-        setattr(new_class, "meta_", ContainerMeta(meta))
+        setattr(new_class, "meta_", Options(meta))
 
         # Load declared fields
         new_class._load_fields(attrs)
@@ -73,7 +72,7 @@ class _ContainerMetaclass(type):
                 new_class.meta_.declared_fields[attr_name] = attr_obj
 
 
-class ContainerMeta:
+class Options:
     """ Metadata info for the Container.
 
     Options:
@@ -94,7 +93,6 @@ class ContainerMeta:
 
         # Common Meta attributes
         self.abstract = getattr(meta, "abstract", None) or False
-        self.version = 1
 
         # Initialize Options
         # FIXME Move this to be within the container
@@ -109,7 +107,7 @@ class ContainerMeta:
         return attributes_dict
 
 
-class BaseContainer(metaclass=_ContainerMetaclass):
+class BaseContainer(metaclass=ContainerMeta):
     """The Base class for Protean-Compliant Data Containers.
 
     Provides helper methods to custom define attributes, and find attribute names
