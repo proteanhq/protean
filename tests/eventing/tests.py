@@ -1,9 +1,10 @@
-import pytest
 import logging
 import sys
 
 from datetime import datetime
 from typing import Dict
+
+import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService

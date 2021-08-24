@@ -10,7 +10,6 @@ from .elements import (
     DifferentDbPerson,
     Person,
     PersonAutoSSN,
-    PersonExplicitID,
     Relative,
     SqlDifferentDbPerson,
     SqlPerson,

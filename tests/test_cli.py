@@ -4,11 +4,11 @@ import sys
 from pathlib import Path
 
 import pytest
+
 from click.testing import CliRunner
 
 from protean import Domain
-from protean.cli import find_best_domain, derive_domain
-from protean.cli import NoDomainException
+from protean.cli import NoDomainException, derive_domain, find_best_domain
 
 
 @pytest.fixture

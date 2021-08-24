@@ -32,6 +32,6 @@ def _find_uow():
 # context locals
 _domain_context_stack = LocalStack()
 _uow_context_stack = LocalStack()
-current_domain: "Domain" = LocalProxy(_find_domain)  # type: ignore
-current_uow: "UnitOfWork" = LocalProxy(_find_uow)  # type: ignore
+current_domain: "Domain" = LocalProxy(_find_domain)  # type: ignore  # noqa: F821
+current_uow: "UnitOfWork" = LocalProxy(_find_uow)  # type: ignore  # noqa: F821
 g = LocalProxy(partial(_lookup_domain_object, "g"))  # type: ignore

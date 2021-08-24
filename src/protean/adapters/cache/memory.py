@@ -4,6 +4,7 @@ import time
 
 from threading import RLock
 from typing import Optional, Union
+
 from protean.core.view import BaseView
 
 try:

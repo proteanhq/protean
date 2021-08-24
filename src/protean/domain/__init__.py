@@ -12,7 +12,6 @@ from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
-from protean.core.field.basic import Boolean
 from protean.core.model import BaseModel
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import (
@@ -20,7 +19,7 @@ from protean.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
 )
-from protean.infra.eventing import EventLog, EventLogRepository, Message, MessageType
+from protean.infra.eventing import EventLog, EventLogRepository, MessageType
 from protean.infra.job import Job, JobRepository
 from protean.utils import (
     CommandProcessingType,

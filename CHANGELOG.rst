@@ -1,6 +1,12 @@
 Release History
 ===============
 
+0.6.2
+-----
+
+* Bugfixes for `protean start` command
+* Use `_entity` as the field identifier for Element-level errors
+
 0.6.1
 -----
 

@@ -15,11 +15,12 @@ Why does this file exist, and why not put this in __main__?
   Also see (1) from http://click.pocoo.org/5/setuptools/#setuptools-integration
 """
 import ast
-import click
 import os
 import re
 import sys
 import traceback
+
+import click
 
 
 class NoDomainException(click.UsageError):

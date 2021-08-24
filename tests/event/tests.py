@@ -1,4 +1,5 @@
 import uuid
+
 import pytest
 
 from protean.core.aggregate import BaseAggregate
