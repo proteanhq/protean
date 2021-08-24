@@ -187,15 +187,6 @@ class ViewMeta:
         self.id_field = None
 
     @property
-    def mandatory_fields(self):
-        """ Return the mandatory fields for this view """
-        return {
-            field_name: field_obj
-            for field_name, field_obj in self.attributes.items()
-            if not isinstance(field_obj, Association) and field_obj.required
-        }
-
-    @property
     def unique_fields(self):
         """ Return the unique fields for this view """
         return {

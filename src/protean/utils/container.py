@@ -101,18 +101,9 @@ class ContainerMeta:
         self.declared_fields = {}
 
     @property
-    def mandatory_fields(self):
-        """ Return the mandatory fields for this entity """
-        return {
-            field_name: field_obj
-            for field_name, field_obj in self.attributes.items()
-            if field_obj.required
-        }
-
-    @property
     def attributes(self):
         attributes_dict = {}
-        for field_name, field_obj in self.declared_fields.items():
+        for _, field_obj in self.declared_fields.items():
             attributes_dict[field_obj.get_attribute_name()] = field_obj
 
         return attributes_dict
@@ -250,10 +241,6 @@ class BaseContainer(metaclass=_ContainerMetaclass):
         """Deepclone the command"""
         return copy.deepcopy(self)
 
-    def _clone_with_values(self, **kwargs):
-        """To be implemented in each command"""
-        raise NotImplementedError
-
     @classmethod
     def _extract_options(cls, **opts):
         """A stand-in method for setting customized options on the Domain Element
@@ -262,23 +249,9 @@ class BaseContainer(metaclass=_ContainerMetaclass):
         specific options.
         """
         for key, default in cls.META_OPTIONS:
-            setattr(cls.meta_, key, cls._derive_preference(opts, key, default))
-
-    @classmethod
-    def _derive_preference(cls, kwargs: Dict, key: str, default: Any) -> Any:
-        """A common method to pop an element's preference from multiple sources
-
-        Args:
-            kwargs (Dict): Explicit options provided for element
-            element_cls (Any): The Domain Element to which options may be attached
-            key (str): The attribute to derive
-            default (Any): The default if no options are set
-
-        Returns:
-            Any: The attribute value
-        """
-        return (
-            kwargs.pop(key, None)
-            or (hasattr(cls.meta_, key) and getattr(cls.meta_, key))
-            or default
-        )
+            value = (
+                opts.pop(key, None)
+                or (hasattr(cls.meta_, key) and getattr(cls.meta_, key))
+                or default
+            )
+            setattr(cls.meta_, key, value)
