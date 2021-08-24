@@ -229,6 +229,9 @@ class Association(FieldDescriptorMixin, FieldCacheMixin):
         self.to_cls = to_cls
         self.via = via
 
+        # Associations cannot be marked `required`
+        self.required = False
+
         # FIXME Refactor for general use across all types of associations. Currently used only with `HasOne`
         self.change = None  # Used to store type of change in the association
         self.change_old_value = None  # Used to preserve the old value that was removed
