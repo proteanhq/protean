@@ -3,6 +3,7 @@ import inspect
 import logging
 
 from collections import defaultdict
+from protean.core.field.association import Association
 
 from protean.core.field.basic import Field
 from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
@@ -35,41 +36,60 @@ class ContainerMeta(type):
             if hasattr(base, "Meta") and hasattr(base.Meta, "abstract"):
                 delattr(base.Meta, "abstract")
 
-        new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
-
+        ##############
+        # Load Options
+        ##############
         # Gather `Meta` class/object if defined
-        attr_meta = attrs.pop("Meta", None)
-        meta = attr_meta or getattr(new_class, "Meta", None)
-        setattr(new_class, "meta_", Options(meta))
+        options = attrs.pop("Meta", None)
+        if options and options.__qualname__.split(".")[-2] == name:
+            # `Meta` has been defined in this class
+            attrs["meta_"] = Options(options)
+        else:
+            attrs["meta_"] = Options()
 
-        # Load declared fields
-        new_class._load_fields(attrs)
+        #############
+        # Load Fields
+        #############
+        own_fields = {
+            attr_name: attr_obj
+            for attr_name, attr_obj in attrs.items()
+            if isinstance(attr_obj, (Field, Association))
+        }
 
-        # Load declared fields from Base class, in case this Entity is subclassing another
-        new_class._load_base_class_fields(bases, attrs)
-
-        return new_class
-
-    def _load_base_class_fields(new_class, bases, attrs):
-        """If this class is subclassing another Container, add that Container's
-        fields.  Note that we loop over the bases in *reverse*.
-        This is necessary in order to maintain the correct order of fields.
-        """
+        base_class_fields = {}
         for base in reversed(bases):
             if hasattr(base, "meta_") and hasattr(base.meta_, "declared_fields"):
-                base_class_fields = {
-                    field_name: field_obj
-                    for (field_name, field_obj) in base.meta_.declared_fields.items()
-                    if field_name not in attrs and not field_obj.identifier
-                }
-                new_class._load_fields(base_class_fields)
+                # FIXME Handle case of two diff identifiers in parent and child class
+                # FIXME Add test case to check field ordering
+                base_class_fields.update(
+                    {
+                        field_name: field_obj
+                        for (
+                            field_name,
+                            field_obj,
+                        ) in base.meta_.declared_fields.items()
+                        if field_name not in attrs
+                    }
+                )
 
-    def _load_fields(new_class, attrs):
-        """Load field items into Class"""
-        for attr_name, attr_obj in attrs.items():
-            if isinstance(attr_obj, Field):
-                setattr(new_class, attr_name, attr_obj)
-                new_class.meta_.declared_fields[attr_name] = attr_obj
+        all_fields = {**own_fields, **base_class_fields}
+
+        for attr_name, attr_obj in all_fields.items():
+            attrs[attr_name] = attr_obj
+            attrs["meta_"].declared_fields[attr_name] = attr_obj
+
+        new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
+
+        #################
+        # Default options
+        #################
+        for key, default in new_class._default_options():
+            value = (
+                hasattr(attrs["meta_"], key) and getattr(attrs["meta_"], key)
+            ) or default
+            setattr(new_class.meta_, key, value)
+
+        return new_class
 
 
 class Options:
@@ -85,14 +105,14 @@ class Options:
             or on any of its superclasses will be include in this dictionary.
     """
 
-    def __init__(self, meta):
-        attributes = inspect.getmembers(meta, lambda a: not (inspect.isroutine(a)))
+    def __init__(self, opts=None):
+        attributes = inspect.getmembers(opts, lambda a: not (inspect.isroutine(a)))
         for attr in attributes:
             if not (attr[0].startswith("__") and attr[0].endswith("__")):
                 setattr(self, attr[0], attr[1])
 
         # Common Meta attributes
-        self.abstract = getattr(meta, "abstract", None) or False
+        self.abstract = getattr(opts, "abstract", None) or False
 
         # Initialize Options
         # FIXME Move this to be within the container
@@ -113,9 +133,6 @@ class BaseContainer(metaclass=ContainerMeta):
     Provides helper methods to custom define attributes, and find attribute names
     during runtime.
     """
-
-    # Placeholder for definition custom Element options. Overridden at Element Class level.
-    META_OPTIONS = []
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseContainer:
@@ -240,16 +257,7 @@ class BaseContainer(metaclass=ContainerMeta):
         return copy.deepcopy(self)
 
     @classmethod
-    def _extract_options(cls, **opts):
-        """A stand-in method for setting customized options on the Domain Element
-
-        Empty by default. To be overridden in each Element that expects or needs
-        specific options.
-        """
-        for key, default in cls.META_OPTIONS:
-            value = (
-                opts.pop(key, None)
-                or (hasattr(cls.meta_, key) and getattr(cls.meta_, key))
-                or default
-            )
-            setattr(cls.meta_, key, value)
+    def _default_options(cls):
+        # FIXME Raise exception
+        # raise NotImplementedError
+        return []

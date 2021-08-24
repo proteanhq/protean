@@ -38,12 +38,14 @@ class BaseAggregate(BaseEntity):
 
     element_type = DomainObjects.AGGREGATE
 
-    META_OPTIONS = [("provider", "default"), ("model", None)]
-
     def __new__(cls, *args, **kwargs):
         if cls is BaseAggregate:
             raise TypeError("BaseAggregate cannot be instantiated")
         return super().__new__(cls)
+
+    @classmethod
+    def _default_options(cls):
+        return [("provider", "default"), ("model", None)]
 
 
 def aggregate_factory(element_cls, **kwargs):

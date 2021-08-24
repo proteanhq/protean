@@ -176,5 +176,7 @@ class TestRepositoryRegistration:
                     database = "UNKNOWN"
 
         assert exc.value.messages == {
-            "_entity": ["Repositories should be associated with a valid Database"]
+            "_entity": [
+                "Repository `CustomUserRepository` should be associated with a valid Database"
+            ]
         }

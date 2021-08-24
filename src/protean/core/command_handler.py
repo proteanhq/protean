@@ -15,8 +15,6 @@ class BaseCommandHandler(BaseContainer):
 
     element_type = DomainObjects.COMMAND_HANDLER
 
-    META_OPTIONS = [("command_cls", None), ("broker", "default")]
-
     def __new__(cls, *args, **kwargs):
         if cls is BaseCommandHandler:
             raise TypeError("BaseCommandHandler cannot be instantiated")
@@ -26,6 +24,10 @@ class BaseCommandHandler(BaseContainer):
     def __call__(self, command: BaseCommand) -> Optional[Any]:
         """Placeholder method for receiving notifications on command"""
         pass
+
+    @classmethod
+    def _default_options(cls):
+        return [("command_cls", None), ("broker", "default")]
 
 
 def command_handler_factory(element_cls, **kwargs):

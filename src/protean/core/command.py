@@ -12,8 +12,6 @@ class BaseCommand(BaseContainer):
 
     element_type = DomainObjects.COMMAND
 
-    META_OPTIONS = [("broker", "default")]
-
     class Meta:
         abstract = True
 
@@ -22,6 +20,10 @@ class BaseCommand(BaseContainer):
             super().__init__(*args, **kwargs)
         except ValidationError as exception:
             raise InvalidDataError(exception.messages)
+
+    @classmethod
+    def _default_options(cls):
+        return [("broker", "default")]
 
 
 def command_factory(element_cls, **kwargs):

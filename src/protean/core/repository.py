@@ -24,7 +24,9 @@ class BaseRepository(BaseContainer):
 
     element_type = DomainObjects.REPOSITORY
 
-    META_OPTIONS = [("aggregate_cls", None), ("database", "ALL")]
+    @classmethod
+    def _default_options(cls):
+        return [("aggregate_cls", None), ("database", "ALL")]
 
     def __new__(cls, *args, **kwargs):
         # Prevent instantiation of `BaseRepository itself`
@@ -169,13 +171,17 @@ def repository_factory(element_cls, **kwargs):
 
     if not element_cls.meta_.aggregate_cls:
         raise IncorrectUsageError(
-            "Repositories need to be associated with an Aggregate"
+            {
+                "_entity": [
+                    f"Repository `{element_cls.__name__}` should be associated with an Aggregate"
+                ]
+            }
         )
 
     # FIXME Uncomment
     # if not issubclass(element_cls.meta_.aggregate_cls, BaseAggregate):
     #     raise IncorrectUsageError(
-    #         {"_entity": ["Repositories can only be associated with an Aggregate"]}
+    #         {"_entity": [f"Repository `{element_cls.__name__}` can only be associated with an Aggregate"]}
     #     )
 
     # Ensure the value of `database` is among known databases
@@ -183,7 +189,11 @@ def repository_factory(element_cls, **kwargs):
         database.value for database in Database
     ]:
         raise IncorrectUsageError(
-            {"_entity": ["Repositories should be associated with a valid Database"]}
+            {
+                "_entity": [
+                    f"Repository `{element_cls.__name__}` should be associated with a valid Database"
+                ]
+            }
         )
 
     return element_cls

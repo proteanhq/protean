@@ -57,7 +57,6 @@ class NotSupportedError(Exception):
 
 
 class IncorrectUsageError(ProteanException):
-    # FIXME <unprintable IncorrectUsageError object>
     """Usage of a Domain Element violates principles"""
 
 

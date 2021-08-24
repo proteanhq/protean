@@ -64,7 +64,11 @@ def model_factory(element_cls, **kwargs):
 
     if not element_cls.meta_.entity_cls:
         raise IncorrectUsageError(
-            "Models need to be associated with an Entity or Aggregate"
+            {
+                "_entity": [
+                    f"Model `{element_cls.__name__}` should be associated with an Entity or Aggregate"
+                ]
+            }
         )
 
     return element_cls

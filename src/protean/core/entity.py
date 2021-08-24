@@ -4,7 +4,6 @@ import logging
 
 from collections import defaultdict
 from functools import partial
-from typing import Any, Dict
 from uuid import uuid4
 
 from protean.core.field.association import (
@@ -123,7 +122,7 @@ class _EntityMetaclass(type):
                     raise IncorrectUsageError(
                         {
                             "_entity": [
-                                f"'{attr_name}' of type '{type(attr_obj).__name__}' cannot be part of an entity."
+                                f"`{attr_name}` of type `{type(attr_obj).__name__}` cannot be part of an entity."
                             ]
                         }
                     )
@@ -166,7 +165,8 @@ class _EntityMetaclass(type):
                     raise IncorrectUsageError(
                         {
                             "_entity": [
-                                "Aggregates marked as abstract cannot have identity fields"
+                                f"Abstract Aggregate `{new_class.__name__}` marked as abstract cannot have"
+                                " identity fields"
                             ]
                         }
                     )
@@ -348,8 +348,6 @@ class BaseEntity(metaclass=_EntityMetaclass):
     """
 
     element_type = DomainObjects.ENTITY
-
-    META_OPTIONS = [("provider", "default"), ("model", None), ("aggregate_cls", None)]
 
     def __init__(self, *template, raise_errors=True, **kwargs):  # noqa: C901
         """
@@ -611,33 +609,23 @@ class BaseEntity(metaclass=_EntityMetaclass):
         return clone_copy
 
     @classmethod
+    def _default_options(cls):
+        return [("provider", "default"), ("model", None), ("aggregate_cls", None)]
+
+    @classmethod
     def _extract_options(cls, **opts):
         """A stand-in method for setting customized options on the Domain Element
 
         Empty by default. To be overridden in each Element that expects or needs
         specific options.
         """
-        for key, default in cls.META_OPTIONS:
-            setattr(cls.meta_, key, cls._derive_preference(opts, key, default))
-
-    @classmethod
-    def _derive_preference(cls, kwargs: Dict, key: str, default: Any) -> Any:
-        """A common method to pop an element's preference from multiple sources
-
-        Args:
-            kwargs (Dict): Explicit options provided for element
-            element_cls (Any): The Domain Element to which options may be attached
-            key (str): The attribute to derive
-            default (Any): The default if no options are set
-
-        Returns:
-            Any: The attribute value
-        """
-        return (
-            kwargs.pop(key, None)
-            or (hasattr(cls.meta_, key) and getattr(cls.meta_, key))
-            or default
-        )
+        for key, default in cls._default_options():
+            value = (
+                opts.pop(key, None)
+                or (hasattr(cls.meta_, key) and getattr(cls.meta_, key))
+                or default
+            )
+            setattr(cls.meta_, key, value)
 
 
 def entity_factory(element_cls, **kwargs):
@@ -645,13 +633,21 @@ def entity_factory(element_cls, **kwargs):
 
     if element_cls.meta_.abstract is True:
         raise NotSupportedError(
-            f"{element_cls.__name__} class has been marked abstract"
-            f" and cannot be instantiated"
+            {
+                "_entity": [
+                    f"`{element_cls.__name__}` class has been marked abstract"
+                    f" and cannot be instantiated"
+                ]
+            }
         )
 
     if not element_cls.meta_.aggregate_cls:
         raise IncorrectUsageError(
-            f"Entity `{element_cls.__name__}` needs to be associated with an Aggregate"
+            {
+                "_entity": [
+                    f"Entity `{element_cls.__name__}` needs to be associated with an Aggregate"
+                ]
+            }
         )
 
     return element_cls

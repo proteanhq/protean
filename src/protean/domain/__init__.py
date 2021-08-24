@@ -345,8 +345,7 @@ class Domain(_PackageBoundObject):
 
         if domain_object_type.value not in factories:
             raise IncorrectUsageError(
-                "Unknown Element Type {element_type.value} for class {element_cls.__name__} "
-                " (Error: {exc})",
+                {"_entity": [f"Unknown Element Type `{domain_object_type.value}`"]}
             )
 
         return factories[domain_object_type.value]

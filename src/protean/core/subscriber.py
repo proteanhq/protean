@@ -20,7 +20,9 @@ class BaseSubscriber(BaseContainer):
 
     element_type = DomainObjects.SUBSCRIBER
 
-    META_OPTIONS = [("event", None), ("broker", "default")]
+    @classmethod
+    def _default_options(cls):
+        return [("event", None), ("broker", "default")]
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseSubscriber:
@@ -38,12 +40,20 @@ def subscriber_factory(element_cls, **kwargs):
 
     if not element_cls.meta_.event:
         raise IncorrectUsageError(
-            f"Subscriber `{element_cls.__name__}` needs to be associated with an Event"
+            {
+                "_entity": [
+                    f"Subscriber `{element_cls.__name__}` needs to be associated with an Event"
+                ]
+            }
         )
 
     if not element_cls.meta_.broker:
         raise IncorrectUsageError(
-            f"Subscriber `{element_cls.__name__}` needs to be associated with a Broker"
+            {
+                "_entity": [
+                    f"Subscriber `{element_cls.__name__}` needs to be associated with a Broker"
+                ]
+            }
         )
 
     return element_cls

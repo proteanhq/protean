@@ -44,12 +44,14 @@ class BaseEmail(BaseContainer):
 
     element_type = DomainObjects.EMAIL
 
-    META_OPTIONS = [("provider", "default")]
-
     def __new__(cls, *args, **kwargs):
         if cls is BaseEmail:
             raise TypeError("BaseEmail cannot be instantiated")
         return super().__new__(cls)
+
+    @classmethod
+    def _default_options(cls):
+        return [("provider", "default")]
 
     subject = String()
     data = Dict()

@@ -81,7 +81,9 @@ class TestAggregateIdentity:
                     abstract = True
 
         assert exception.value.messages == {
-            "_entity": ["Aggregates marked as abstract cannot have identity fields"]
+            "_entity": [
+                "Abstract Aggregate `User` marked as abstract cannot have identity fields"
+            ]
         }
 
 

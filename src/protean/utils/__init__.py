@@ -116,12 +116,16 @@ def derive_element_class(element_cls, base_cls, **opts):
         except BaseException as exc:
             logger.debug("Error during Element registration:", repr(exc))
             raise IncorrectUsageError(
-                "Invalid class {element_cls.__name__} for type {element_type.value}"
-                " (Error: {exc})",
+                {
+                    "_entity": [
+                        f"Invalid class `{element_cls.__name__}` of type `{element_cls.element_type.value}`"
+                    ]
+                }
             )
 
-    if callable(getattr(element_cls, "_extract_options", None)):
-        element_cls._extract_options(**opts)
+    if hasattr(element_cls, "meta_"):
+        for key, value in opts.items():
+            setattr(element_cls.meta_, key, value)
 
     return element_cls
 
