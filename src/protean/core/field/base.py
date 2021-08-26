@@ -16,7 +16,16 @@ MISSING_ERROR_MESSAGE = (
 )
 
 
-class Field(FieldDescriptorMixin, metaclass=ABCMeta):
+class FieldBase:
+    """Base class for all Protean fields.
+
+    For now, this is a marker class to support later attribute discovery.
+    """
+
+    pass
+
+
+class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     """Abstract field from which other fields should extend.
 
     :param default: If set, this value will be used during entity loading

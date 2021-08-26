@@ -4,7 +4,7 @@ from protean import exceptions, utils
 from protean.globals import current_domain
 from protean.utils import DomainObjects, fetch_element_cls_from_registry
 
-from .base import Field
+from .base import Field, FieldBase
 from .mixins import FieldCacheMixin, FieldDescriptorMixin
 
 
@@ -220,7 +220,7 @@ class Reference(FieldCacheMixin, Field):
         raise NotImplementedError
 
 
-class Association(FieldDescriptorMixin, FieldCacheMixin):
+class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
     """Base class for all association classes"""
 
     def __init__(self, to_cls, via=None, **kwargs):

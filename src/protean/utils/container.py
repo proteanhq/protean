@@ -3,8 +3,7 @@ import logging
 
 from collections import defaultdict
 
-from protean.core.field.association import Association
-from protean.core.field.basic import Field
+from protean.core.field.base import FieldBase
 from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
 from protean.utils.elements import Options
 
@@ -53,7 +52,7 @@ class ContainerMeta(type):
         own_fields = {
             attr_name: attr_obj
             for attr_name, attr_obj in attrs.items()
-            if isinstance(attr_obj, (Field, Association))
+            if isinstance(attr_obj, FieldBase)
         }
 
         base_class_fields = {}
