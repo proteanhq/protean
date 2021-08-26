@@ -2,6 +2,7 @@ from abc import abstractmethod
 
 from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects
+from protean.utils.elements import Element
 
 
 class ModelMeta:
@@ -22,7 +23,7 @@ class ModelMeta:
             self.database = None
 
 
-class BaseModel:
+class BaseModel(Element):
     """This is a Model representing a data schema in the persistence store. A concrete implementation of this
     model has to be provided by each persistence store plugin.
     """

@@ -6,12 +6,12 @@ from typing import Any, Optional
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.container import BaseContainer
+from protean.utils.elements import Element, OptionsMixin
 
 logger = logging.getLogger("protean.domain.subscriber")
 
 
-class BaseSubscriber(BaseContainer):
+class BaseSubscriber(Element, OptionsMixin):
     """Base Subscriber class that should implemented by all Domain Subscribers.
 
     This is also a marker class that is referenced when subscribers are registered

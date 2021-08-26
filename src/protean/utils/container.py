@@ -1,12 +1,12 @@
 import copy
-import inspect
 import logging
 
 from collections import defaultdict
-from protean.core.field.association import Association
 
+from protean.core.field.association import Association
 from protean.core.field.basic import Field
 from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
+from protean.utils.elements import Options
 
 logger = logging.getLogger("protean.domain")
 
@@ -90,41 +90,6 @@ class ContainerMeta(type):
             setattr(new_class.meta_, key, value)
 
         return new_class
-
-
-class Options:
-    """ Metadata info for the Container.
-
-    Options:
-    - ``abstract``: Indicates that this is an abstract entity (Ignores all other meta options)
-
-    Also acts as a placeholder for generated entity fields like:
-
-        :declared_fields: dict
-            Any instances of `Field` included as attributes on either the class
-            or on any of its superclasses will be include in this dictionary.
-    """
-
-    def __init__(self, opts=None):
-        attributes = inspect.getmembers(opts, lambda a: not (inspect.isroutine(a)))
-        for attr in attributes:
-            if not (attr[0].startswith("__") and attr[0].endswith("__")):
-                setattr(self, attr[0], attr[1])
-
-        # Common Meta attributes
-        self.abstract = getattr(opts, "abstract", None) or False
-
-        # Initialize Options
-        # FIXME Move this to be within the container
-        self.declared_fields = {}
-
-    @property
-    def attributes(self):
-        attributes_dict = {}
-        for _, field_obj in self.declared_fields.items():
-            attributes_dict[field_obj.get_attribute_name()] = field_obj
-
-        return attributes_dict
 
 
 class BaseContainer(metaclass=ContainerMeta):

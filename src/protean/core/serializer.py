@@ -20,6 +20,7 @@ from protean.core.field.basic import (
 )
 from protean.exceptions import NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
+from protean.utils.elements import Element
 
 logger = logging.getLogger("protean.application.serializer")
 
@@ -161,7 +162,7 @@ class SerializerMeta:
         self.declared_fields = declared_fields if declared_fields else {}
 
 
-class BaseSerializer(metaclass=_SerializerMetaclass):
+class BaseSerializer(Element, metaclass=_SerializerMetaclass):
     """The Base class for Protean-Compliant Serializers.
 
     Provides helper methods to load and dump data during runtime, from protean entity objects.

@@ -1,11 +1,12 @@
 import logging
 
 from protean.utils import DomainObjects, derive_element_class
+from protean.utils.elements import Element
 
 logger = logging.getLogger("protean.domain.service")
 
 
-class BaseDomainService:
+class BaseDomainService(Element):
     """Base DomainService class that all other domain services should inherit from.
 
     This is a placeholder class for now. Methods that are implemented

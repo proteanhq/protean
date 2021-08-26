@@ -1,11 +1,12 @@
 import logging
 
 from protean.utils import DomainObjects, derive_element_class
+from protean.utils.elements import Element
 
 logger = logging.getLogger("protean.application")
 
 
-class BaseApplicationService:
+class BaseApplicationService(Element):
     """Base ApplicationService class that all other Application services should inherit from.
 
     This class is a placeholder class for now. Application concepts directly influence the
