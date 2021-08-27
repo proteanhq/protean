@@ -106,3 +106,17 @@ class CeleryBroker(BaseBroker):
                     subscriber.apply([message["payload"]])
         else:
             raise NotImplementedError
+
+    def get_next(self) -> Dict:
+        """Retrieve the next message to process from broker.
+
+        Empty for Celery
+        """
+
+    def _data_reset(self) -> None:
+        """Flush all data in broker instance.
+
+        Useful for clearing cache and running tests.
+
+        Empty for Celery
+        """

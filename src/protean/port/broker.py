@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import logging.config
 
-from abc import abstractmethod
+from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from collections.abc import Iterable
 from typing import Any, Dict, Type, Union
@@ -17,57 +17,7 @@ from protean.utils import DomainObjects, fully_qualified_name
 logger = logging.getLogger("protean.port.broker")
 
 
-class _BrokerMetaclass(type):
-    """
-    This base metaclass processes the class declaration and constructs a meta object that can
-    be used to introspect the Broker class later. Specifically, it sets up a `meta_` attribute on
-    the Broker to an instance of Meta, either the default of one that is defined in the
-    Broker class.
-
-    `meta_` is setup with these attributes:
-        * `aggregate`: The aggregate associated with the repository
-    """
-
-    def __new__(
-        mcs: Type[type], name: str, bases: tuple, attrs: dict, **kwargs: Any
-    ) -> _BrokerMetaclass:
-        """Initialize Broker MetaClass and load attributes"""
-
-        # Ensure initialization is only performed for subclasses of Broker
-        # (excluding Broker class itself).
-        parents = [b for b in bases if isinstance(b, _BrokerMetaclass)]
-        if not parents:
-            return super().__new__(mcs, name, bases, attrs)
-
-        # Remove `abstract` in base classes if defined
-        for base in bases:
-            if hasattr(base, "Meta") and hasattr(base.Meta, "abstract"):
-                delattr(base.Meta, "abstract")
-
-        new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
-
-        # Gather `Meta` class/object if defined
-        attr_meta = attrs.pop("Meta", None)
-        meta = attr_meta or getattr(new_class, "Meta", None)
-        setattr(new_class, "meta_", BrokerMeta(name, meta))
-
-        return new_class
-
-
-class BrokerMeta:
-    """ Metadata info for the Broker.
-
-    Options:
-    - ``aggregate_cls``: The aggregate associated with the repository
-    """
-
-    def __init__(
-        self, entity_name: str, meta: Any
-    ):  # FIXME What is the type of `meta`?
-        self.aggregate_cls = getattr(meta, "aggregate_cls", None)
-
-
-class BaseBroker(metaclass=_BrokerMetaclass):
+class BaseBroker(metaclass=ABCMeta):
     """This class outlines the base broker functions,
     to be satisfied by all implementing brokers.
 
