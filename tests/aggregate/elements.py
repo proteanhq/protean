@@ -111,7 +111,7 @@ class Post(BaseAggregate):
 
 class PostVia(BaseAggregate):
     content = Text(required=True)
-    comments = HasMany("tests.aggregate.elements.CommentVia", via="posting_id")
+    comments = HasMany("CommentVia", via="posting_id")
     author = Reference("tests.aggregate.elements.Author")
 
 

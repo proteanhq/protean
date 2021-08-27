@@ -27,6 +27,11 @@ def fields(class_or_instance):
     return fields_dict
 
 
+def has_fields(class_or_instance):
+    """Check if Protean element encloses fields"""
+    return hasattr(class_or_instance, _FIELDS)
+
+
 def attributes(class_or_instance):
     attributes_dict = {}
     for _, field_obj in fields(class_or_instance).items():

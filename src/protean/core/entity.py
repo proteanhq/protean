@@ -84,9 +84,6 @@ class _EntityMetaclass(type):
         # Set up Relation Fields
         new_class._set_up_reference_fields()
 
-        # Set up ValueObject Fields
-        new_class._set_up_value_object_fields()
-
         # FIXME Temporary change until entity is moved to Container completely
         setattr(new_class, _FIELDS, new_class.meta_.declared_fields)
 
@@ -139,17 +136,6 @@ class _EntityMetaclass(type):
                     shadow_field_name, shadow_field = field.get_shadow_field()
                     new_class.meta_.reference_fields[shadow_field_name] = shadow_field
                     shadow_field.__set_name__(new_class, shadow_field_name)
-
-    def _set_up_value_object_fields(new_class):
-        """Walk through value object fields and setup shadow attributes"""
-        if new_class.meta_.declared_fields:
-            for _, field in new_class.meta_.declared_fields.items():
-                if isinstance(field, ValueObject):
-                    shadow_fields = field.get_shadow_fields()
-                    for shadow_field_name, shadow_field in shadow_fields:
-                        new_class.meta_.value_object_fields[
-                            shadow_field_name
-                        ] = shadow_field
 
     def _set_id_field(new_class):
         """Lookup the id field for this entity and assign"""
@@ -614,7 +600,12 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
     @classmethod
     def _default_options(cls):
-        return [("provider", "default"), ("model", None), ("aggregate_cls", None)]
+        return [
+            ("provider", "default"),
+            ("model", None),
+            ("aggregate_cls", None),
+            ("schema_name", inflection.underscore(cls.__name__)),
+        ]
 
     @classmethod
     def _extract_options(cls, **opts):

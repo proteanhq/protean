@@ -1,6 +1,7 @@
 """This module implements the central domain object, along with decorators
 to register Domain Elements.
 """
+from collections import defaultdict
 import logging
 import sys
 
@@ -12,6 +13,7 @@ from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
+from protean.core.field.association import HasMany, HasOne, Reference
 from protean.core.model import BaseModel
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import (
@@ -29,9 +31,10 @@ from protean.utils import (
     fetch_element_cls_from_registry,
     fully_qualified_name,
 )
+from protean.utils.container import fields, has_fields
 
 from .config import Config, ConfigAttribute
-from .context import DomainContext, _DomainContextGlobals
+from .context import DomainContext, _DomainContextGlobals, has_domain_context
 from .helpers import _PackageBoundObject, get_debug_flag, get_env
 
 logger = logging.getLogger("protean.domain")
@@ -157,6 +160,10 @@ class Domain(_PackageBoundObject):
         #: is destroyed.  This is the place to store code that cleans up and
         #: disconnects from databases, for example.
         self.teardown_domain_context_functions: List[Callable] = []
+
+        # Placeholder array for resolving classes referenced by domain elements
+        # FIXME Should all protean elements be subclassed from a base element?
+        self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
 
         # Register the EventLog Aggregate  # FIXME Is this the best place to do this?
         if self.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED.value:
@@ -372,7 +379,59 @@ class Domain(_PackageBoundObject):
         # Register element with domain
         self._domain_registry.register_element(new_cls)
 
+        # Resolve or record elements to be resolved
+        if has_fields(new_cls):
+            for _, field_obj in fields(new_cls).items():
+                if isinstance(field_obj, (HasOne, HasMany, Reference)) and isinstance(
+                    field_obj.to_cls, str
+                ):
+                    try:
+                        # Attempt to resolve the destination class by querying the active domain
+                        #   if a domain is active. Otherwise, track it as part of `_pending_class_resolutions`
+                        #   for later resolution.
+                        if has_domain_context():
+                            to_cls = fetch_element_cls_from_registry(
+                                field_obj.to_cls,
+                                (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
+                            )
+                            field_obj._resolve_to_cls(to_cls, new_cls)
+                        else:
+                            self._pending_class_resolutions[field_obj.to_cls].append(
+                                (field_obj, new_cls)
+                            )
+                    except ConfigurationError:
+                        # Class was not found yet, so we track it for future resolution
+                        self._pending_class_resolutions[field_obj.to_cls].append(
+                            (field_obj, new_cls)
+                        )
+
+        # Resolve known pending references by full name or class name immediately.
+        #   Otherwise, references will be resolved automatically on domain activation.
+        #
+        # This comes handy when we are manually registering classes one after the other.
+        # Since the domain is already active, the classes become usable as soon as all
+        # referenced classes are registered.
+        if has_domain_context():
+            for name in [fully_qualified_name(new_cls), new_cls.__name__]:
+                if name in self._pending_class_resolutions:
+                    for field_obj, owner_cls in self._pending_class_resolutions[name]:
+                        field_obj._resolve_to_cls(new_cls, owner_cls)
+
         return new_cls
+
+    def _resolve_references(self):
+        """Resolve pending class references in association fields.
+
+        Called by the domain context when domain is activated.
+        """
+        for name in self._pending_class_resolutions:
+            for field_obj, owner_cls in self._pending_class_resolutions[name]:
+                if isinstance(field_obj.to_cls, str):
+                    to_cls = fetch_element_cls_from_registry(
+                        field_obj.to_cls,
+                        (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
+                    )
+                    field_obj._resolve_to_cls(to_cls, owner_cls)
 
     # _cls should never be specified by keyword, so start it with an
     # underscore.  The presence of _cls is used to detect if this
@@ -397,22 +456,18 @@ class Domain(_PackageBoundObject):
         """Register a model class"""
         return self._register_element(DomainObjects.MODEL, model_cls, **kwargs)
 
-    def register(self, element_cls, **kwargs):
-        """Register an element already subclassed with the correct Hierarchy"""
+    def register(self, element_cls: Any, **kwargs: dict) -> Any:
+        """Register an element with the domain.
+
+        Returns the fully-formed domain element, subclassed and associated with
+        all traits necessary for its element type.
+        """
+
+        # Reject unknown Domain Elements, identified by the absence of `element_type` class var
         if getattr(element_cls, "element_type", None) not in [
             element for element in DomainObjects
         ]:
             raise NotImplementedError
-
-        if (
-            hasattr(element_cls, "meta_")
-            and hasattr(element_cls.meta_, "abstract")
-            and element_cls.meta_.abstract is True
-        ):
-            raise NotSupportedError(
-                f"{element_cls.__name__} class has been marked abstract"
-                " and cannot be instantiated"
-            )
 
         return self._register_element(element_cls.element_type, element_cls, **kwargs)
 

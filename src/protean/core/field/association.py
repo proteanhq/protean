@@ -99,12 +99,10 @@ class Reference(FieldCacheMixin, Field):
         else:
             return self.via or self.to_cls.meta_.id_field.attribute_name
 
-    def _resolve_to_cls(self, instance):
+    def _resolve_to_cls(self, to_cls, owner_cls):
         assert isinstance(self.to_cls, str)
 
-        self._to_cls = fetch_element_cls_from_registry(
-            self.to_cls, (DomainObjects.AGGREGATE, DomainObjects.ENTITY)
-        )
+        self._to_cls = to_cls
 
         # Refresh attribute name, now that we know `to_cls` Entity and it has been
         #   initialized with `id_field`
@@ -112,25 +110,19 @@ class Reference(FieldCacheMixin, Field):
 
         # Reset the Shadow attribute's name
         self.relation = _ReferenceField(self)
-        setattr(instance.__class__, self.attribute_name, self.relation)
-        self.relation.__set_name__(instance, self.attribute_name)
+        setattr(owner_cls, self.attribute_name, self.relation)
+        self.relation.__set_name__(owner_cls, self.attribute_name)
 
         # Remove the earlier attribute if it is still attached
         old_attribute_name = "{}_{}".format(self.field_name, "id")
-        if hasattr(instance, old_attribute_name):
-            delattr(instance, old_attribute_name)
+        if hasattr(owner_cls, old_attribute_name):
+            delattr(owner_cls, old_attribute_name)
 
         # Update domain records because we enriched the class structure
-        current_domain._replace_element_by_class(instance.__class__)
+        current_domain._replace_element_by_class(owner_cls)
 
     def __get__(self, instance, owner):
         """Retrieve associated objects"""
-
-        # If `to_cls` was specified as a string, take this opportunity to fetch
-        #   and update the correct entity class against it, if not already done
-        if isinstance(self.to_cls, str):
-            self._resolve_to_cls(instance)
-
         reference_obj = None
         if hasattr(instance, "state_"):
             try:
@@ -160,11 +152,6 @@ class Reference(FieldCacheMixin, Field):
     def __set__(self, instance, value):
         """Override `__set__` to coordinate between relation field and its shadow attribute"""
         if value:
-            # If `to_cls` was specified as a string, take this opportunity to fetch
-            #   and update the correct entity class against it, if not already done
-            if isinstance(self.to_cls, str):
-                self._resolve_to_cls(instance)
-
             value = self._load(value)
 
             if value:
@@ -226,7 +213,7 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
     def __init__(self, to_cls, via=None, **kwargs):
         super().__init__(**kwargs)
 
-        self.to_cls = to_cls
+        self.to_cls = to_cls  # FIXME Test that `to_cls` contains a corresponding `Reference` field
         self.via = via
 
         # Associations cannot be marked `required`
@@ -235,6 +222,14 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         # FIXME Refactor for general use across all types of associations. Currently used only with `HasOne`
         self.change = None  # Used to store type of change in the association
         self.change_old_value = None  # Used to preserve the old value that was removed
+
+    def _resolve_to_cls(self, to_cls, owner_cls):
+        """Resolves class references to actual class object.
+
+        Called by the domain when a new element is registered,
+        and its name matches `to_cls`
+        """
+        self.to_cls = to_cls
 
     def _cast_to_type(self, value):
         """Verify type of value assigned to the association field"""
@@ -255,15 +250,6 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
 
     def __get__(self, instance, owner):
         """Retrieve associated objects"""
-
-        # If `to_cls` was specified as a string, take this opportunity to fetch
-        #   and update the correct entity class against it, if not already done
-        if isinstance(self.to_cls, str):
-            self.to_cls = fetch_element_cls_from_registry(
-                self.to_cls, (DomainObjects.AGGREGATE, DomainObjects.ENTITY)
-            )
-
-            # FIXME Test that `to_cls` contains a corresponding `Reference` field
 
         try:
             reference_obj = self.get_cached_value(instance)
@@ -329,13 +315,6 @@ class HasOne(Association):
         """Setup relationship to be persisted/updated"""
         # If `to_cls` was specified as a string, take this opportunity to fetch
         #   and update the correct entity class against it, if not already done
-        if isinstance(self.to_cls, str):
-            self.to_cls = fetch_element_cls_from_registry(
-                self.to_cls, (DomainObjects.AGGREGATE, DomainObjects.ENTITY)
-            )
-
-            # FIXME Test that `to_cls` contains a corresponding `Reference` field
-
         if value is not None:
             # This updates the parent's unique identifier in the child
             #   so that the foreign key relationship is preserved
@@ -385,19 +364,6 @@ class HasMany(Association):
 
     def __init__(self, to_cls, via=None, **kwargs):
         super().__init__(to_cls, via=via, **kwargs)
-
-        # `_temp_cache` is a data container for holding temporary
-        #   It holds objects that have been added, but not yet persisted,
-        #   as well as objects that have been removed, but are still
-        #   present in the data store.
-        #
-        # The data set returned from Queryset is manipulated automatically
-        #   to be up-to-date with temporary changes.
-        self._temp_cache = {
-            "added": {},
-            "updated": {},
-            "removed": {},
-        }
 
     def add(self, instance, items):
         data = getattr(instance, self.field_name)

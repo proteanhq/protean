@@ -106,6 +106,11 @@ class DomainContext(object):
 
     def __enter__(self):
         self.push()
+
+        # Resolve all pending references
+        #   This call raises an exception if all references are not resolved
+        self.domain._resolve_references()
+
         return self
 
     def __exit__(self, exc_type, exc_value, tb):
