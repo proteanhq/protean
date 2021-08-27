@@ -5,9 +5,34 @@ from collections import defaultdict
 
 from protean.core.field.base import FieldBase
 from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
-from protean.utils.elements import Options
 
 logger = logging.getLogger("protean.domain")
+
+_FIELDS = "__container_fields__"
+
+
+def fields(class_or_instance):
+    """Return a tuple describing the fields of this dataclass.
+
+    Accepts a dataclass or an instance of one. Tuple elements are of
+    type Field.
+    """
+
+    # Might it be worth caching this, per class?
+    try:
+        fields_dict = getattr(class_or_instance, _FIELDS)
+    except AttributeError:
+        raise TypeError("must be called with a dataclass type or instance")
+
+    return fields_dict
+
+
+def attributes(class_or_instance):
+    attributes_dict = {}
+    for _, field_obj in fields(class_or_instance).items():
+        attributes_dict[field_obj.get_attribute_name()] = field_obj
+
+    return attributes_dict
 
 
 class ContainerMeta(type):
@@ -30,65 +55,43 @@ class ContainerMeta(type):
         if not parents:
             return super().__new__(mcs, name, bases, attrs)
 
-        # Remove `abstract` in base classes if defined
-        for base in bases:
-            if hasattr(base, "Meta") and hasattr(base.Meta, "abstract"):
-                delattr(base.Meta, "abstract")
+        # Gather fields in the order specified, starting with base classes
+        fields_dict = {}
 
-        ##############
-        # Load Options
-        ##############
-        # Gather `Meta` class/object if defined
-        options = attrs.pop("Meta", None)
-        if options and options.__qualname__.split(".")[-2] == name:
-            # `Meta` has been defined in this class
-            attrs["meta_"] = Options(options)
-        else:
-            attrs["meta_"] = Options()
+        # Gather fields from base classes first
+        for base in reversed(bases):
+            if hasattr(base, _FIELDS):
+                for field_name, field_obj in fields(base).items():
+                    fields_dict[field_name] = field_obj
 
-        #############
-        # Load Fields
-        #############
-        own_fields = {
+        # Apply own fields next
+        for attr_name, attr_obj in attrs.items():
+            if isinstance(attr_obj, FieldBase):
+                fields_dict[attr_name] = attr_obj
+
+        # Gather all non-field attributes
+        dup_attrs = {
             attr_name: attr_obj
             for attr_name, attr_obj in attrs.items()
-            if isinstance(attr_obj, FieldBase)
+            if attr_name not in fields_dict
         }
 
-        base_class_fields = {}
-        for base in reversed(bases):
-            if hasattr(base, "meta_") and hasattr(base.meta_, "declared_fields"):
-                # FIXME Handle case of two diff identifiers in parent and child class
-                # FIXME Add test case to check field ordering
-                base_class_fields.update(
-                    {
-                        field_name: field_obj
-                        for (
-                            field_name,
-                            field_obj,
-                        ) in base.meta_.declared_fields.items()
-                        if field_name not in attrs
-                    }
-                )
+        # Propagate `__classcell__` if present to the `type.__new__` call.
+        # Failing to do so will result in a RuntimeError in Python 3.8.
+        # https://docs.python.org/3/reference/datamodel.html#creating-the-class-object
+        classcell = attrs.pop("__classcell__", None)
+        if classcell is not None:
+            dup_attrs["__classcell__"] = classcell
 
-        all_fields = {**own_fields, **base_class_fields}
+        # Insert fields in the order in which they were specified
+        #   When field names overlap, the last specified field wins
+        for field_name, field_obj in fields_dict.items():
+            dup_attrs[field_name] = field_obj
 
-        for attr_name, attr_obj in all_fields.items():
-            attrs[attr_name] = attr_obj
-            attrs["meta_"].declared_fields[attr_name] = attr_obj
+        # Store fields in a special field for later reference
+        dup_attrs[_FIELDS] = fields_dict
 
-        new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
-
-        #################
-        # Default options
-        #################
-        for key, default in new_class._default_options():
-            value = (
-                hasattr(attrs["meta_"], key) and getattr(attrs["meta_"], key)
-            ) or default
-            setattr(new_class.meta_, key, value)
-
-        return new_class
+        return super().__new__(mcs, name, bases, dup_attrs, **kwargs)
 
 
 class BaseContainer(metaclass=ContainerMeta):
@@ -141,7 +144,7 @@ class BaseContainer(metaclass=ContainerMeta):
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields
-        for field_name, field_obj in self.meta_.declared_fields.items():
+        for field_name in fields(self):
             if field_name not in loaded_fields:
                 setattr(self, field_name, None)
 
@@ -196,13 +199,10 @@ class BaseContainer(metaclass=ContainerMeta):
         """ Return this object's truthiness to be `False`,
         if all its attributes evaluate to truthiness `False`
         """
-        return any(
-            bool(getattr(self, field_name, None))
-            for field_name in self.meta_.attributes
-        )
+        return any(bool(getattr(self, field_name, None)) for field_name in fields(self))
 
     def __setattr__(self, name, value):
-        if name in self.meta_.declared_fields or name in [
+        if name in fields(self) or name in [
             "errors",
         ]:
             super().__setattr__(name, value)
@@ -213,7 +213,7 @@ class BaseContainer(metaclass=ContainerMeta):
         """ Return data as a dictionary """
         return {
             field_name: field_obj.as_dict(getattr(self, field_name, None))
-            for field_name, field_obj in self.meta_.attributes.items()
+            for field_name, field_obj in fields(self).items()
         }
 
     def clone(self):

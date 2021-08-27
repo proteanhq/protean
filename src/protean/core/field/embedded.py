@@ -2,6 +2,7 @@
 
 from protean.core.field.base import Field
 from protean.utils import DomainObjects, fetch_element_cls_from_registry
+from protean.utils.container import fields
 
 
 class _ShadowField(Field):
@@ -47,10 +48,7 @@ class ValueObject(Field):
         self._value_object_cls = value_object_cls
 
         self.embedded_fields = {}
-        for (
-            field_name,
-            field_obj,
-        ) in self._value_object_cls.meta_.declared_fields.items():
+        for (field_name, field_obj,) in fields(self._value_object_cls).items():
             self.embedded_fields[field_name] = _ShadowField(
                 self,
                 field_name,
@@ -141,7 +139,7 @@ class ValueObject(Field):
                 instance.__dict__.pop(attribute_name, None)
                 self.embedded_fields[field_name].value = None
         else:
-            for field_name in value.meta_.declared_fields:
+            for field_name in fields(value):
                 self.embedded_fields[field_name].value = getattr(value, field_name)
                 attribute_name = self.embedded_fields[field_name].attribute_name
                 instance.__dict__[attribute_name] = getattr(value, field_name)

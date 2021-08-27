@@ -2,11 +2,12 @@ import logging
 
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import BaseContainer
+from protean.utils.elements import OptionsMixin
 
 logger = logging.getLogger("protean.event")
 
 
-class BaseEvent(BaseContainer):
+class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     """Base Event class that all Events should inherit from.
 
     Core functionality associated with Events, like timestamping, are specified

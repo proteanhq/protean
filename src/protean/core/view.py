@@ -13,13 +13,17 @@ from protean.utils import (
     derive_element_class,
     inflection,
 )
-from protean.utils.container import BaseContainer
+from protean.utils.container import BaseContainer, fields
+from protean.utils.elements import OptionsMixin
 
 logger = logging.getLogger("protean.domain.view")
 
 
-class BaseView(BaseContainer):
+class BaseView(BaseContainer, OptionsMixin):
     element_type = DomainObjects.VIEW
+
+    class Meta:
+        abstract = True
 
     @classmethod
     def _default_options(cls):
@@ -44,11 +48,11 @@ class BaseView(BaseContainer):
         """Lookup the id field for this view and assign"""
         # FIXME What does it mean when there are no declared fields?
         #   Does it translate to an abstract view?
-        if subclass.meta_.declared_fields:
+        if fields(subclass):
             try:
                 subclass.meta_.id_field = next(
                     field
-                    for _, field in subclass.meta_.declared_fields.items()
+                    for _, field in fields(subclass).items()
                     if isinstance(field, (Field)) and field.identifier
                 )
             except StopIteration:
@@ -62,7 +66,7 @@ class BaseView(BaseContainer):
 
     @classmethod
     def __validate_for_basic_field_types(subclass):
-        for field_name, field_obj in subclass.meta_.declared_fields.items():
+        for field_name, field_obj in fields(subclass).items():
             if isinstance(field_obj, (Reference, Association, ValueObject)):
                 raise IncorrectUsageError(
                     {

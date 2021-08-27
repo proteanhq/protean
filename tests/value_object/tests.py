@@ -1,6 +1,7 @@
 import pytest
 
 from protean.exceptions import InvalidOperationError, ValidationError
+from protean.utils.container import fields
 
 from .elements import (
     Account,
@@ -74,15 +75,15 @@ class TestEmailVOProperties:
 
 class TestEmailVOStructure:
     def test_email_vo_has_address_field(self):
-        assert len(Email.meta_.declared_fields) == 1
-        assert "address" in Email.meta_.declared_fields
+        assert len(fields(Email)) == 1
+        assert "address" in fields(Email)
 
 
 class TestBalanceVOStructure:
     def test_balance_vo_has_currency_and_amount_fields(self):
-        assert len(Balance.meta_.declared_fields) == 2
-        assert "currency" in Balance.meta_.declared_fields
-        assert "amount" in Balance.meta_.declared_fields
+        assert len(fields(Balance)) == 2
+        assert "currency" in fields(Balance)
+        assert "amount" in fields(Balance)
 
     def test_output_to_dict(self):
         balance = Balance(currency=Currency.USD.value, amount=0.0)
@@ -169,9 +170,7 @@ class TestEmailVOBehavior:
 
 class TestEmailVOEmbedding:
     def test_that_user_has_all_the_required_fields(self):
-        assert all(
-            field_name in User.meta_.declared_fields for field_name in ["email", "name"]
-        )
+        assert all(field_name in fields(User) for field_name in ["email", "name"])
 
     def test_that_user_can_be_initialized_successfully(self):
         user = User(email=Email.from_address("john.doe@gmail.com"))
@@ -203,10 +202,7 @@ class TestEmailVOEmbedding:
 
 class TestBalanceVOEmbedding:
     def test_that_account_has_all_the_required_fields(self):
-        assert all(
-            field_name in Account.meta_.declared_fields
-            for field_name in ["balance", "kind"]
-        )
+        assert all(field_name in fields(Account) for field_name in ["balance", "kind"])
 
     def test_that_account_can_be_initialized_successfully(self):
         account = Account(balance=Balance(currency="USD", amount=150.0), kind="PRIMARY")
@@ -242,14 +238,14 @@ class TestBalanceVOEmbedding:
 
 class TestNamedEmbedding:
     def test_that_explicit_names_are_used(self):
-        assert len(PolymorphicConnection.meta_.declared_fields) == 2
-        assert "connected_id" in PolymorphicConnection.meta_.declared_fields
-        assert "connected_type" in PolymorphicConnection.meta_.declared_fields
+        assert len(fields(PolymorphicConnection)) == 2
+        assert "connected_id" in fields(PolymorphicConnection)
+        assert "connected_type" in fields(PolymorphicConnection)
 
     def test_that_explicit_names_are_preserved_in_aggregate(self):
-        assert len(PolymorphicOwner.meta_.declared_fields) == 2
-        assert "id" in PolymorphicOwner.meta_.declared_fields
-        assert "connector" in PolymorphicOwner.meta_.declared_fields
+        assert len(fields(PolymorphicOwner)) == 2
+        assert "id" in fields(PolymorphicOwner)
+        assert "connector" in fields(PolymorphicOwner)
 
         owner = PolymorphicOwner()
         assert owner.meta_.attributes is not None

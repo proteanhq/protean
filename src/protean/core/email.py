@@ -7,6 +7,7 @@ from protean.utils import (
     derive_element_class,
 )
 from protean.utils.container import BaseContainer
+from protean.utils.elements import OptionsMixin
 
 
 class BaseEmailProvider:
@@ -35,7 +36,7 @@ class BaseEmailProvider:
         )
 
 
-class BaseEmail(BaseContainer):
+class BaseEmail(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     """Base Email class that should implemented by all Domain Email Messages.
 
     This is also a marker class that is referenced when emails are registered
@@ -43,6 +44,9 @@ class BaseEmail(BaseContainer):
     """
 
     element_type = DomainObjects.EMAIL
+
+    class Meta:
+        abstract = True
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseEmail:

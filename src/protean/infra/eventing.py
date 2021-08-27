@@ -8,6 +8,7 @@ from protean.core.repository import BaseRepository
 from protean.globals import current_domain
 from protean.utils import generate_identity
 from protean.utils.container import BaseContainer
+from protean.utils.elements import OptionsMixin
 
 
 class MessageType(Enum):
@@ -15,7 +16,7 @@ class MessageType(Enum):
     COMMAND = "COMMAND"
 
 
-class Message(BaseContainer):
+class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     """Base class for Events and Commands.
 
     It provides concrete implementations for:
@@ -73,7 +74,7 @@ class EventLog(BaseAggregate):
     type = String(max_length=50, required=True)
     owner = String(max_length=50, required=True)
     payload = Dict(required=True)
-    version = Integer(required=True)
+    version = Integer(required=True, default=1)
     status = String(
         max_length=10, choices=EventLogStatus, default=EventLogStatus.NEW.value
     )

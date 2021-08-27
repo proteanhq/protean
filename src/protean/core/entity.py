@@ -29,6 +29,7 @@ from protean.utils import (
     generate_identity,
     inflection,
 )
+from protean.utils.container import _FIELDS
 
 logger = logging.getLogger("protean.domain.entity")
 
@@ -85,6 +86,9 @@ class _EntityMetaclass(type):
 
         # Set up ValueObject Fields
         new_class._set_up_value_object_fields()
+
+        # FIXME Temporary change until entity is moved to Container completely
+        setattr(new_class, _FIELDS, new_class.meta_.declared_fields)
 
         return new_class
 

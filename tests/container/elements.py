@@ -1,5 +1,6 @@
 from protean.core.field.basic import String
 from protean.utils.container import BaseContainer
+from protean.utils.elements import OptionsMixin
 
 
 class CustomBaseContainer(BaseContainer):
@@ -9,6 +10,6 @@ class CustomBaseContainer(BaseContainer):
         return super().__new__(cls)
 
 
-class CustomContainer(CustomBaseContainer):
+class CustomContainer(CustomBaseContainer, OptionsMixin):
     foo = String(max_length=50, required=True)
     bar = String(max_length=50, required=True)
