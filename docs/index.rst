@@ -72,6 +72,7 @@ User Guide
     user/entities-and-vos
     user/fields
     user/persistence
+    user/services
     user/eventing
     user/config
     user/cli
