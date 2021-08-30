@@ -2,7 +2,6 @@ from abc import abstractmethod
 
 from protean import exceptions, utils
 from protean.globals import current_domain
-from protean.utils import DomainObjects, fetch_element_cls_from_registry
 
 from .base import Field, FieldBase
 from .mixins import FieldCacheMixin, FieldDescriptorMixin

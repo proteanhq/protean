@@ -4,7 +4,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.association import HasMany, Reference
-from protean.core.field.basic import Date, DateTime, String, Text
+from protean.core.field.basic import Date, DateTime, String
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.utils import fully_qualified_name
 

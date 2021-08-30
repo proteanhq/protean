@@ -82,12 +82,19 @@ class DomainContext(object):
         # Use a basic "refcount" to track number of domain contexts
         self._ref_count = 0
 
+    def __repr__(self) -> str:
+        return f"Domain Context (domain={self.domain.domain_name})"
+
     def push(self):
         """Binds the domain context to the current context."""
         self._ref_count += 1
         if hasattr(sys, "exc_clear"):
             sys.exc_clear()
         _domain_context_stack.push(self)
+
+        # Resolve all pending references
+        #   This call raises an exception if all references are not resolved
+        self.domain._resolve_references()
 
     def pop(self, exc=_sentinel):
         """Pops the domain context."""
@@ -106,10 +113,6 @@ class DomainContext(object):
 
     def __enter__(self):
         self.push()
-
-        # Resolve all pending references
-        #   This call raises an exception if all references are not resolved
-        self.domain._resolve_references()
 
         return self
 

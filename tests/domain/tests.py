@@ -1,8 +1,13 @@
 import pytest
 
 from protean import Domain
-from protean.exceptions import IncorrectUsageError
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
+from protean.core.field.association import HasMany, HasOne, Reference
+from protean.core.field.basic import DateTime, String, Text
+from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.utils import EventStrategy, fully_qualified_name
+from protean.utils.container import fields
 
 from .elements import UserAggregate, UserEntity, UserFoo, UserVO
 
@@ -75,3 +80,213 @@ class TestDomainAnnotations:
 
         with pytest.raises(IncorrectUsageError):
             test_domain._register_element(DummyElement.FOO, FooBar, aggregate_cls="foo")
+
+
+class TestDomainLevelClassResolution:
+    class TestWhenDomainIsActive:
+        def test_that_unknown_class_reference_is_tracked_at_the_domain_level(
+            self, test_domain
+        ):
+            class Post(BaseAggregate):
+                content = Text(required=True)
+                comments = HasMany("Comment")
+
+            test_domain.register(Post)
+
+            assert "Comment" in test_domain._pending_class_resolutions
+            # The content in _pending_class_resolutions is dict -> tuple array
+            # key: field name
+            # value: tuple of (Field Object, Owning Domain Element)
+            assert (
+                test_domain._pending_class_resolutions["Comment"][0][0]
+                == fields(Post)["comments"]
+            )
+
+        def test_that_class_referenced_is_resolved_as_soon_as_element_is_registered(
+            self, test_domain
+        ):
+            class Post(BaseAggregate):
+                content = Text(required=True)
+                comments = HasMany("Comment")
+
+            test_domain.register(Post)
+
+            # Still a string reference
+            assert isinstance(fields(Post)["comments"].to_cls, str)
+
+            class Comment(BaseEntity):
+                content = Text()
+                added_on = DateTime()
+
+                post = Reference("Post")
+
+                class Meta:
+                    aggregate_cls = Post
+
+            # Still a string reference
+            assert isinstance(fields(Comment)["post"].to_cls, str)
+
+            assert (
+                len(test_domain._pending_class_resolutions) == 1
+            )  # Comment has not been registered yet
+
+            # Registering `Comment` resolves references in both `Comment` and `Post` classes
+            test_domain.register(Comment)
+
+            assert fields(Post)["comments"].to_cls == Comment
+            assert fields(Comment)["post"].to_cls == Post
+
+            assert len(test_domain._pending_class_resolutions) == 0
+
+    class TestWhenDomainHasNotBeenActivatedYet:
+        @pytest.fixture(autouse=True)
+        def test_domain(self):
+            from protean.domain import Domain
+
+            domain = Domain("Test")
+            yield domain
+
+        def test_that_class_reference_is_tracked_at_the_domain_level(self):
+            domain = Domain()
+
+            class Post(BaseAggregate):
+                content = Text(required=True)
+                comments = HasMany("Comment")
+
+            domain.register(Post)
+
+            # Still a string
+            assert isinstance(fields(Post)["comments"].to_cls, str)
+
+            class Comment(BaseEntity):
+                content = Text()
+                added_on = DateTime()
+
+                post = Reference("Post")
+
+                class Meta:
+                    aggregate_cls = Post
+
+            domain.register(Comment)
+
+            assert len(domain._pending_class_resolutions) == 2
+            assert all(
+                field_name in domain._pending_class_resolutions
+                for field_name in ["Comment", "Post"]
+            )
+
+        def test_that_class_reference_is_resolved_on_domain_activation(self):
+            domain = Domain("Inline Domain")
+
+            class Post(BaseAggregate):
+                content = Text(required=True)
+                comments = HasMany("Comment")
+
+            domain.register(Post)
+
+            # Still a string
+            assert isinstance(fields(Post)["comments"].to_cls, str)
+
+            class Comment(BaseEntity):
+                content = Text()
+                added_on = DateTime()
+
+                post = Reference("Post")
+
+                class Meta:
+                    aggregate_cls = Post
+
+            domain.register(Comment)
+
+            with domain.domain_context():
+                # Resolved references
+                assert fields(Post)["comments"].to_cls == Comment
+                assert fields(Comment)["post"].to_cls == Post
+
+                assert len(domain._pending_class_resolutions) == 0
+
+        def test_that_domain_throws_exception_on_unknown_class_references_during_activation(
+            self,
+        ):
+            domain = Domain("Inline Domain")
+
+            class Post(BaseAggregate):
+                content = Text(required=True)
+                comments = HasMany("Comment")
+
+            domain.register(Post)
+
+            # Still a string
+            assert isinstance(fields(Post)["comments"].to_cls, str)
+
+            class Comment(BaseEntity):
+                content = Text()
+                added_on = DateTime()
+
+                post = Reference("Post")
+                foo = Reference("Foo")
+
+                class Meta:
+                    aggregate_cls = Post
+
+            domain.register(Comment)
+
+            with pytest.raises(ConfigurationError) as exc:
+                with domain.domain_context():
+                    pass
+
+            assert (
+                exc.value.args[0]["element"]
+                == "Element Foo not registered in domain Inline Domain"
+            )
+
+            # Remove domain context manually, as we lost it when the exception was raised
+            from protean.globals import _domain_context_stack
+
+            _domain_context_stack.pop()
+
+    class TestWithDifferentTypesOfAssociations:
+        def test_that_has_many_field_references_are_resolved(self, test_domain):
+            class Post(BaseAggregate):
+                content = Text(required=True)
+                comments = HasMany("Comment")
+
+            class Comment(BaseEntity):
+                content = Text()
+                added_on = DateTime()
+
+                post = Reference("Post")
+
+                class Meta:
+                    aggregate_cls = Post
+
+            test_domain.register(Post)
+            test_domain.register(Comment)
+
+            assert fields(Post)["comments"].to_cls == Comment
+            assert fields(Comment)["post"].to_cls == Post
+
+            assert len(test_domain._pending_class_resolutions) == 0
+
+        def test_that_has_one_field_references_are_resolved(self, test_domain):
+            class Account(BaseAggregate):
+                email = String(
+                    required=True, max_length=255, unique=True, identifier=True
+                )
+                author = HasOne("Author")
+
+            class Author(BaseEntity):
+                first_name = String(required=True, max_length=25)
+                last_name = String(max_length=25)
+                account = Reference("Account")
+
+                class Meta:
+                    aggregate_cls = Account
+
+            test_domain.register(Account)
+            test_domain.register(Author)
+
+            assert fields(Account)["author"].to_cls == Author
+            assert fields(Author)["account"].to_cls == Account
+
+            assert len(test_domain._pending_class_resolutions) == 0

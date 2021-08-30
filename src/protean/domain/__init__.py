@@ -21,6 +21,7 @@ from protean.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
 )
+from protean.globals import current_domain
 from protean.infra.eventing import EventLog, EventLogRepository, MessageType
 from protean.infra.job import Job, JobRepository
 from protean.utils import (
@@ -313,6 +314,9 @@ class Domain(_PackageBoundObject):
         for func in reversed(self.teardown_domain_context_functions):
             func(exc)
 
+    def __str__(self) -> str:
+        return f"Domain: {self.domain_name}"
+
     @property
     def registry(self):
         return self._domain_registry
@@ -389,7 +393,7 @@ class Domain(_PackageBoundObject):
                         # Attempt to resolve the destination class by querying the active domain
                         #   if a domain is active. Otherwise, track it as part of `_pending_class_resolutions`
                         #   for later resolution.
-                        if has_domain_context():
+                        if has_domain_context() and current_domain == self:
                             to_cls = fetch_element_cls_from_registry(
                                 field_obj.to_cls,
                                 (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
@@ -411,11 +415,15 @@ class Domain(_PackageBoundObject):
         # This comes handy when we are manually registering classes one after the other.
         # Since the domain is already active, the classes become usable as soon as all
         # referenced classes are registered.
-        if has_domain_context():
+        if has_domain_context() and current_domain == self:
+            # Check by both the class name as well as the class' fully qualified name
             for name in [fully_qualified_name(new_cls), new_cls.__name__]:
                 if name in self._pending_class_resolutions:
                     for field_obj, owner_cls in self._pending_class_resolutions[name]:
                         field_obj._resolve_to_cls(new_cls, owner_cls)
+
+                    # Remove from pending list now that the class has been resolved
+                    del self._pending_class_resolutions[name]
 
         return new_cls
 
@@ -424,7 +432,7 @@ class Domain(_PackageBoundObject):
 
         Called by the domain context when domain is activated.
         """
-        for name in self._pending_class_resolutions:
+        for name in list(self._pending_class_resolutions.keys()):
             for field_obj, owner_cls in self._pending_class_resolutions[name]:
                 if isinstance(field_obj.to_cls, str):
                     to_cls = fetch_element_cls_from_registry(
@@ -432,6 +440,9 @@ class Domain(_PackageBoundObject):
                         (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
                     )
                     field_obj._resolve_to_cls(to_cls, owner_cls)
+
+            # Remove from pending list now that the class has been resolved
+            del self._pending_class_resolutions[name]
 
     # _cls should never be specified by keyword, so start it with an
     # underscore.  The presence of _cls is used to detect if this
