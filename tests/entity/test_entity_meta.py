@@ -1,5 +1,6 @@
 from protean.core.entity import EntityMeta
 from protean.core.field.basic import Auto, Integer, String
+from protean.utils.container import fields
 
 from .elements import (
     AbstractPerson,
@@ -36,17 +37,17 @@ class TestEntityMeta:
         assert hasattr(Person.meta_, "aggregate_cls")
 
     def test_entity_meta_has_declared_fields_on_construction(self):
-        assert Person.meta_.declared_fields is not None
+        assert fields(Person) is not None
         assert all(
-            key in Person.meta_.declared_fields.keys()
+            key in fields(Person).keys()
             for key in ["age", "first_name", "id", "last_name"]
         )
 
     def test_entity_declared_fields_hold_correct_field_types(self):
-        assert type(Person.meta_.declared_fields["first_name"]) is String
-        assert type(Person.meta_.declared_fields["last_name"]) is String
-        assert type(Person.meta_.declared_fields["age"]) is Integer
-        assert type(Person.meta_.declared_fields["id"]) is Auto
+        assert type(fields(Person)["first_name"]) is String
+        assert type(fields(Person)["last_name"]) is String
+        assert type(fields(Person)["age"]) is Integer
+        assert type(fields(Person)["id"]) is Auto
 
     def test_default_and_overridden_abstract_flag_in_meta(self):
         assert getattr(Person.meta_, "abstract") is False

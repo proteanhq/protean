@@ -20,6 +20,7 @@ from protean.core.field.basic import (
 )
 from protean.exceptions import NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
+from protean.utils.container import _FIELDS
 from protean.utils.elements import Element
 
 logger = logging.getLogger("protean.application.serializer")
@@ -50,10 +51,7 @@ class _SerializerMetaclass(type):
                 if hasattr(base, "meta_") and hasattr(base.meta_, "declared_fields"):
                     base_class_fields = {
                         field_name: field_obj
-                        for (
-                            field_name,
-                            field_obj,
-                        ) in base.meta_.declared_fields.items()
+                        for (field_name, field_obj,) in fields(base).items()
                         if field_name not in attrs and not field_obj.identifier
                     }
                     declared_fields.update(base_class_fields)
@@ -141,6 +139,8 @@ class _SerializerMetaclass(type):
         attr_meta = attrs.pop("Meta", None)
         meta = attr_meta or getattr(new_class, "Meta", None)
         setattr(new_class, "meta_", SerializerMeta(meta, declared_fields))
+
+        setattr(new_class, _FIELDS, new_class.meta_.declared_fields)
 
         return new_class
 

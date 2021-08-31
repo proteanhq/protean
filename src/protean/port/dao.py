@@ -8,6 +8,7 @@ from protean.core.field.basic import Auto, Field
 from protean.core.queryset import QuerySet
 from protean.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
 from protean.globals import current_uow
+from protean.utils.container import fields
 from protean.utils.query import Q
 
 logger = logging.getLogger("protean.repository")
@@ -354,7 +355,7 @@ class BaseDAO(metaclass=ABCMeta):
             model_obj = self._create(self.model_cls.from_entity(entity_obj))
 
             # Reverse update auto fields into entity
-            for field_name, field_obj in entity_obj.meta_.declared_fields.items():
+            for field_name, field_obj in fields(entity_obj).items():
                 if isinstance(field_obj, Auto) and not getattr(entity_obj, field_name):
                     if isinstance(model_obj, dict):
                         field_val = model_obj[field_name]
@@ -484,7 +485,7 @@ class BaseDAO(metaclass=ABCMeta):
         # Lookup the objects by filters and raise error if objects exist
         for filter_key, lookup_value in filters.items():
             if self.exists(excludes, **{filter_key: lookup_value}):
-                field_obj = self.entity_cls.meta_.declared_fields[filter_key]
+                field_obj = fields(self.entity_cls)[filter_key]
                 field_obj.fail(
                     "unique",
                     entity_name=self.entity_cls.__name__,

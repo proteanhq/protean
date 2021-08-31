@@ -6,6 +6,7 @@ import pytest
 from protean.core.entity import _EntityMetaclass
 from protean.exceptions import ValidationError
 from protean.utils import fully_qualified_name
+from protean.utils.container import fields
 
 from .elements import (
     AccountWithId,
@@ -28,15 +29,11 @@ class TestAggregateStructure:
         assert fully_qualified_name(Role) in test_domain.registry.aggregates
 
     def test_field_definitions_declared_in_aggregate(self):
-        declared_fields_keys = list(
-            OrderedDict(sorted(Role.meta_.declared_fields.items())).keys()
-        )
+        declared_fields_keys = list(OrderedDict(sorted(fields(Role).items())).keys())
         assert declared_fields_keys == ["created_on", "id", "name"]
 
     def test_declared_reference_fields_in_an_aggregate(self, test_domain):
-        declared_fields_keys = list(
-            OrderedDict(sorted(Post.meta_.declared_fields.items())).keys()
-        )
+        declared_fields_keys = list(OrderedDict(sorted(fields(Post).items())).keys())
         assert declared_fields_keys == ["author", "comments", "content", "id"]
 
     def test_declared_has_one_fields_in_an_aggregate(self, test_domain):
@@ -44,7 +41,7 @@ class TestAggregateStructure:
         #   absent in attributes
         #   present as `author` in declared_fields
         assert all(
-            key in AccountWithId.meta_.declared_fields
+            key in fields(AccountWithId)
             for key in ["author", "email", "id", "password"]
         )
         assert all(
@@ -56,8 +53,7 @@ class TestAggregateStructure:
         #   `account_id` in attributes
         #   `account` in declared_fields
         assert all(
-            key in ProfileWithAccountId.meta_.declared_fields
-            for key in ["about_me", "account"]
+            key in fields(ProfileWithAccountId) for key in ["about_me", "account"]
         )
         assert all(
             key in ProfileWithAccountId.meta_.attributes
@@ -69,8 +65,7 @@ class TestAggregateStructure:
         #   absent in attributes
         #   present as `comments` in declared_fields
         assert all(
-            key in Post.meta_.declared_fields
-            for key in ["comments", "content", "id", "author"]
+            key in fields(Post) for key in ["comments", "content", "id", "author"]
         )
         assert all(
             key in Post.meta_.attributes for key in ["content", "id", "author_id"]
@@ -81,8 +76,7 @@ class TestAggregateStructure:
         #   `post_id` in attributes
         #   `post` in declared_fields
         assert all(
-            key in Comment.meta_.declared_fields
-            for key in ["added_on", "content", "id", "post"]
+            key in fields(Comment) for key in ["added_on", "content", "id", "post"]
         )
         assert all(
             key in Comment.meta_.attributes
@@ -93,13 +87,13 @@ class TestAggregateStructure:
 class TestSubclassedAggregateStructure:
     def test_subclass_aggregate_field_definitions(self):
         declared_fields_keys = list(
-            OrderedDict(sorted(SubclassRole.meta_.declared_fields.items())).keys()
+            OrderedDict(sorted(fields(SubclassRole).items())).keys()
         )
         assert declared_fields_keys == ["created_on", "id", "name"]
 
     def test_that_fields_in_base_classes_are_inherited(self):
         declared_fields_keys = list(
-            OrderedDict(sorted(ConcreteRole.meta_.declared_fields.items())).keys()
+            OrderedDict(sorted(fields(ConcreteRole).items())).keys()
         )
         assert declared_fields_keys == ["bar", "foo", "id"]
 

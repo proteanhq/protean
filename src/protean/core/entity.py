@@ -29,7 +29,7 @@ from protean.utils import (
     generate_identity,
     inflection,
 )
-from protean.utils.container import _FIELDS
+from protean.utils.container import _FIELDS, fields
 
 logger = logging.getLogger("protean.domain.entity")
 
@@ -81,9 +81,6 @@ class _EntityMetaclass(type):
         # Lookup an already defined ID field or create an `Auto` field
         new_class._set_id_field()
 
-        # Set up Relation Fields
-        new_class._set_up_reference_fields()
-
         # FIXME Temporary change until entity is moved to Container completely
         setattr(new_class, _FIELDS, new_class.meta_.declared_fields)
 
@@ -98,7 +95,7 @@ class _EntityMetaclass(type):
             if hasattr(base, "meta_") and hasattr(base.meta_, "declared_fields"):
                 base_class_fields = {
                     field_name: field_obj
-                    for (field_name, field_obj) in base.meta_.declared_fields.items()
+                    for (field_name, field_obj) in fields(base).items()
                     if (
                         field_name not in attrs
                         and not isinstance(field_obj, Association)
@@ -111,8 +108,6 @@ class _EntityMetaclass(type):
         """Load field items into Class.
 
         This method sets up the primary attribute of an association.
-        If Child class has defined an attribute so `parent = field.Reference(Parent)`, then `parent`
-        is set up in this method, while `parent_id` is set up in `_set_up_reference_fields()`.
         """
         for attr_name, attr_obj in attrs.items():
             if isinstance(attr_obj, (Association, Field, Reference)):
@@ -128,44 +123,34 @@ class _EntityMetaclass(type):
                         }
                     )
 
-    def _set_up_reference_fields(new_class):
-        """Walk through relation fields and setup shadow attributes"""
-        if new_class.meta_.declared_fields:
-            for _, field in new_class.meta_.declared_fields.items():
-                if isinstance(field, Reference):
-                    shadow_field_name, shadow_field = field.get_shadow_field()
-                    new_class.meta_.reference_fields[shadow_field_name] = shadow_field
-                    shadow_field.__set_name__(new_class, shadow_field_name)
-
     def _set_id_field(new_class):
         """Lookup the id field for this entity and assign"""
         # FIXME What does it mean when there are no declared fields?
         #   Does it translate to an abstract entity?
-        if new_class.meta_.declared_fields:
-            try:
-                new_class.meta_.id_field = next(
-                    field
-                    for _, field in new_class.meta_.declared_fields.items()
-                    if isinstance(field, (Field, Reference)) and field.identifier
-                )
+        try:
+            new_class.meta_.id_field = next(
+                field
+                for _, field in new_class.meta_.declared_fields.items()
+                if isinstance(field, (Field, Reference)) and field.identifier
+            )
 
-                # If the aggregate/entity has been marked abstract,
-                #   and contains an identifier field, raise exception
-                if new_class.meta_.abstract and new_class.meta_.id_field:
-                    raise IncorrectUsageError(
-                        {
-                            "_entity": [
-                                f"Abstract Aggregate `{new_class.__name__}` marked as abstract cannot have"
-                                " identity fields"
-                            ]
-                        }
-                    )
-            except StopIteration:
-                # If no id field is declared then create one
-                #   If the aggregate/entity is marked abstract,
-                #   avoid creating an identifier field.
-                if not new_class.meta_.abstract:
-                    new_class._create_id_field()
+            # If the aggregate/entity has been marked abstract,
+            #   and contains an identifier field, raise exception
+            if new_class.meta_.abstract and new_class.meta_.id_field:
+                raise IncorrectUsageError(
+                    {
+                        "_entity": [
+                            f"Abstract Aggregate `{new_class.__name__}` marked as abstract cannot have"
+                            " identity fields"
+                        ]
+                    }
+                )
+        except StopIteration:
+            # If no id field is declared then create one
+            #   If the aggregate/entity is marked abstract,
+            #   avoid creating an identifier field.
+            if not new_class.meta_.abstract:
+                new_class._create_id_field()
 
     def _create_id_field(new_class):
         """Create and return a default ID field that is Auto generated"""
@@ -211,7 +196,6 @@ class EntityMeta:
         # Initialize Options
         self.declared_fields = {}
         self.value_object_fields = {}
-        self.reference_fields = {}
         self.id_field = None
 
         # Domain Attributes
@@ -400,7 +384,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         #   This block will dynamically construct value objects from field values
         #   and associated the vo with the entity
         # If the value object was already provided, it will not be overridden.
-        for field_name, field_obj in self.meta_.declared_fields.items():
+        for field_name, field_obj in fields(self).items():
             if isinstance(field_obj, (ValueObject)) and not getattr(self, field_name):
                 attributes = [
                     (embedded_field.field_name, embedded_field.attribute_name)
@@ -428,7 +412,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
             loaded_fields.append(self.meta_.id_field.field_name)
 
         # Load Associations
-        for field_name, field_obj in self.meta_.declared_fields.items():
+        for field_name, field_obj in fields(self).items():
             if isinstance(field_obj, Association):
                 getattr(self, field_name)  # This refreshes the values in associations
 
@@ -449,7 +433,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields
-        for field_name, field_obj in self.meta_.declared_fields.items():
+        for field_name, field_obj in fields(self).items():
             if field_name not in loaded_fields:
                 if not isinstance(field_obj, (Reference, _ReferenceField, Association)):
                     try:
@@ -567,7 +551,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         # FIXME Memoize this function
         field_values = {}
 
-        for field_name, field_obj in self.meta_.declared_fields.items():
+        for field_name, field_obj in fields(self).items():
             if (
                 not isinstance(field_obj, (ValueObject, Reference))
                 and getattr(self, field_name, None) is not None

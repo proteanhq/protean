@@ -1,3 +1,4 @@
+from protean.utils.container import fields
 from .elements import Comment, Post
 
 
@@ -6,12 +7,12 @@ class TestReferenceField:
         assert "post_id" in Comment.meta_.attributes
 
     def test_that_reference_field_does_not_appear_among_fields(self):
-        assert "post_id" not in Comment.meta_.declared_fields
+        assert "post_id" not in fields(Comment)
 
 
 class TestHasOneField:
     def test_that_has_one_field_appears_in_fields(self):
-        assert "meta" in Post.meta_.declared_fields
+        assert "meta" in fields(Post)
 
     def test_that_has_one_field_does_not_appear_in_attributes(self):
         assert "meta" not in Post.meta_.attributes
@@ -19,7 +20,7 @@ class TestHasOneField:
 
 class TestHasManyField:
     def test_that_has_many_field_appears_in_fields(self):
-        assert "comments" in Post.meta_.declared_fields
+        assert "comments" in fields(Post)
 
     def test_that_has_many_field_does_not_appear_in_attributes(self):
         assert "comments" not in Post.meta_.attributes

@@ -4,6 +4,7 @@ import pytest
 
 from protean.core.field.basic import Auto, String
 from protean.exceptions import InvalidOperationError, ValidationError
+from protean.utils.container import fields
 
 from .elements import Adult, NotAPerson, Person, PersonAutoSSN, PersonExplicitID
 
@@ -33,32 +34,27 @@ class TestIdentity:
         assert type(Person.meta_.id_field) is Auto
 
     def test_default_id_field_construction(self):
-        assert "id" in Person.meta_.declared_fields
+        assert "id" in fields(Person)
         assert "id" in Person.meta_.attributes
 
-        assert type(Person.meta_.declared_fields["id"]) is Auto
-        assert Person.meta_.id_field == Person.meta_.declared_fields["id"]
+        assert type(fields(Person)["id"]) is Auto
+        assert Person.meta_.id_field == fields(Person)["id"]
 
     def test_non_default_auto_id_field_construction(self):
-        assert "id" not in PersonAutoSSN.meta_.declared_fields
+        assert "id" not in fields(PersonAutoSSN)
         assert "id" not in PersonAutoSSN.meta_.attributes
 
-        assert type(PersonAutoSSN.meta_.declared_fields["ssn"]) is Auto
+        assert type(fields(PersonAutoSSN)["ssn"]) is Auto
         assert PersonAutoSSN.meta_.id_field.field_name == "ssn"
-        assert (
-            PersonAutoSSN.meta_.id_field == PersonAutoSSN.meta_.declared_fields["ssn"]
-        )
+        assert PersonAutoSSN.meta_.id_field == fields(PersonAutoSSN)["ssn"]
 
     def test_non_default_explicit_id_field_construction(self, test_domain):
-        assert "id" not in PersonExplicitID.meta_.declared_fields
+        assert "id" not in fields(PersonExplicitID)
         assert "id" not in PersonExplicitID.meta_.attributes
 
-        assert type(PersonExplicitID.meta_.declared_fields["ssn"]) is String
+        assert type(fields(PersonExplicitID)["ssn"]) is String
         assert PersonExplicitID.meta_.id_field.field_name == "ssn"
-        assert (
-            PersonExplicitID.meta_.id_field
-            == PersonExplicitID.meta_.declared_fields["ssn"]
-        )
+        assert PersonExplicitID.meta_.id_field == fields(PersonExplicitID)["ssn"]
 
 
 class TestIdentityValues:

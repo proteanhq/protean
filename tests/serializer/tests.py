@@ -3,6 +3,7 @@ import pytest
 from protean.core.field.basic import Integer, String
 from protean.core.serializer import BaseSerializer
 from protean.utils import fully_qualified_name
+from protean.utils.container import fields
 
 from .elements import User, UserSchema
 
@@ -20,8 +21,8 @@ class TestSerializerInitialization:
         assert UserSchema.meta_.aggregate_cls is not None
         assert UserSchema.meta_.aggregate_cls == User
 
-        assert UserSchema.meta_.declared_fields is not None
-        assert all(key in UserSchema.meta_.declared_fields for key in ["name", "age"])
+        assert fields(UserSchema) is not None
+        assert all(key in fields(UserSchema) for key in ["name", "age"])
 
 
 class TestSerializerRegistration:

@@ -1,5 +1,6 @@
 import pytest
 
+from protean.utils.container import fields
 from protean.exceptions import NotSupportedError
 
 from .elements import AbstractRole, ConcreteRole
@@ -35,9 +36,7 @@ class TestAggregateAbstraction:
         class ConcreateSubclass(CustomBaseClass):
             bar = String(max_length=25)
 
-        assert all(
-            key in ConcreateSubclass.meta_.declared_fields for key in ["foo", "bar"]
-        )
+        assert all(key in fields(ConcreateSubclass) for key in ["foo", "bar"])
 
         concrete = ConcreateSubclass(foo="Saturn", bar="Titan")
         assert concrete is not None
