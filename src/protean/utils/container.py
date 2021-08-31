@@ -63,13 +63,13 @@ class ContainerMeta(type):
         # Gather fields in the order specified, starting with base classes
         fields_dict = {}
 
-        # Gather fields from base classes first
+        # ... from base classes first
         for base in reversed(bases):
             if hasattr(base, _FIELDS):
                 for field_name, field_obj in fields(base).items():
                     fields_dict[field_name] = field_obj
 
-        # Apply own fields next
+        # ... Apply own fields next
         for attr_name, attr_obj in attrs.items():
             if isinstance(attr_obj, FieldBase):
                 fields_dict[attr_name] = attr_obj
@@ -90,8 +90,7 @@ class ContainerMeta(type):
 
         # Insert fields in the order in which they were specified
         #   When field names overlap, the last specified field wins
-        for field_name, field_obj in fields_dict.items():
-            dup_attrs[field_name] = field_obj
+        dup_attrs.update(fields_dict)
 
         # Store fields in a special field for later reference
         dup_attrs[_FIELDS] = fields_dict
