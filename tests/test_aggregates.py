@@ -4,7 +4,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.field.association import HasMany, Reference
-from protean.core.field.basic import Date, DateTime, String, Text
+from protean.core.field.basic import Date, DateTime, String
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.utils import fully_qualified_name
 
@@ -120,18 +120,3 @@ class TestAggregateAssociations:
 
         refreshed_post = test_domain.repository_for(Post).get(post.id)
         print([c for c in refreshed_post.comments])
-
-    @pytest.mark.xfail
-    def test_reference_field_with_custom_identifier(self, test_domain):
-        @test_domain.entity(aggregate_cls="Post")
-        class Author:
-            email = String(identifier=True)
-            first_name = String(required=True, max_length=25)
-            last_name = String(max_length=25)
-
-        @test_domain.aggregate
-        class Post:
-            content = Text(required=True)
-            author = Reference("Author")
-
-        assert "account_email" in Post.meta_.reference_fields

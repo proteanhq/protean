@@ -161,7 +161,7 @@ def fetch_element_cls_from_registry(
                 return current_domain._get_element_by_fully_qualified_name(
                     element_types, element
                 ).cls
-            except AssertionError:
+            except ConfigurationError:
                 # Element has not been registered
                 # FIXME print a helpful debug message
                 raise

@@ -6,7 +6,7 @@ import logging.config
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import Any, Dict, Type, Union
+from typing import Any, Dict, Union
 
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler

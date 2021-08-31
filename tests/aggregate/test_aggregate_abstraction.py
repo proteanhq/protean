@@ -6,15 +6,7 @@ from .elements import AbstractRole, ConcreteRole
 
 
 class TestAggregateAbstraction:
-    def test_that_abstract_entities_cannot_be_registered_or_initialized(
-        self, test_domain
-    ):
-        with pytest.raises(NotSupportedError) as exc1:
-            test_domain.register(AbstractRole)
-        assert exc1.value.args[0] == (
-            "AbstractRole class has been marked abstract" " and cannot be instantiated"
-        )
-
+    def test_that_abstract_entities_cannot_be_initialized(self):
         with pytest.raises(NotSupportedError) as exc2:
             AbstractRole(name="Titan")
         assert exc2.value.args[0] == (

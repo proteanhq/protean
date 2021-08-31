@@ -47,3 +47,22 @@ EMAIL_PROVIDERS = {
         "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
     },
 }
+
+LOGGING_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "console": {"format": "%(asctime)s %(name)-12s %(levelname)-8s %(message)s",}
+    },
+    "handlers": {
+        "console": {
+            "level": "INFO",
+            "class": "logging.StreamHandler",
+            "formatter": "console",
+        }
+    },
+    "loggers": {
+        "protean": {"handlers": ["console"], "level": "INFO",},
+        "vfc": {"handlers": ["console"], "level": "INFO",},
+    },
+}
