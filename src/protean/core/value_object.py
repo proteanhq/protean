@@ -6,7 +6,7 @@ from protean.core.field.embedded import ValueObject
 from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import BaseContainer, fields
-from protean.utils.elements import OptionsMixin
+from protean.utils.container import OptionsMixin
 
 logger = logging.getLogger("protean.domain.value_object")
 

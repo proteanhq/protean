@@ -17,7 +17,7 @@ from protean.globals import current_uow
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
 from protean.utils import Database
-from protean.utils.container import id_field
+from protean.utils.container import id_field, attributes
 from protean.utils.query import Q
 
 # Global in-memory store of dict data. Keyed by name, to provide
@@ -41,7 +41,7 @@ class MemoryModel(BaseModel):
     def from_entity(cls, entity) -> "MemoryModel":
         """Convert the entity to a dictionary record """
         dict_obj = {}
-        for attribute_name in entity.meta_.attributes:
+        for attribute_name in attributes(entity):
             dict_obj[attribute_name] = getattr(entity, attribute_name)
         return dict_obj
 

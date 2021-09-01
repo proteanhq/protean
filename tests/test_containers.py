@@ -3,7 +3,7 @@ import pytest
 from protean.core.field.basic import Integer, String
 from protean.exceptions import InvalidDataError, InvalidOperationError
 from protean.utils.container import BaseContainer, fields
-from protean.utils.elements import OptionsMixin
+from protean.utils.container import OptionsMixin
 
 
 class CustomContainerMeta(BaseContainer):

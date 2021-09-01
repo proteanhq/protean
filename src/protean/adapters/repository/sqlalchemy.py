@@ -35,7 +35,7 @@ from protean.globals import current_domain, current_uow
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
 from protean.utils import Database, IdentityType
-from protean.utils.container import id_field
+from protean.utils.container import attributes, id_field
 from protean.utils.query import Q
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
@@ -124,7 +124,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
 
         if "meta_" in dict_:
             entity_cls = dict_["meta_"].entity_cls
-            for _, field_obj in entity_cls.meta_.attributes.items():
+            for _, field_obj in attributes(entity_cls).items():
                 attribute_name = field_obj.attribute_name
 
                 # Map the field if not in attributes
@@ -194,7 +194,7 @@ class SqlalchemyModel(BaseModel):
     def from_entity(cls, entity):
         """ Convert the entity to a model object """
         item_dict = {}
-        for attribute_obj in cls.meta_.entity_cls.meta_.attributes.values():
+        for attribute_obj in attributes(cls.meta_.entity_cls).values():
             if isinstance(attribute_obj, Reference):
                 item_dict[
                     attribute_obj.relation.attribute_name
@@ -209,7 +209,7 @@ class SqlalchemyModel(BaseModel):
     def to_entity(cls, model_obj: "SqlalchemyModel"):
         """ Convert the model object to an entity """
         item_dict = {}
-        for field_name in cls.meta_.entity_cls.meta_.attributes:
+        for field_name in attributes(cls.meta_.entity_cls):
             item_dict[field_name] = getattr(model_obj, field_name, None)
         return cls.meta_.entity_cls(item_dict, raise_errors=False)
 
@@ -342,7 +342,7 @@ class SADAO(BaseDAO):
 
         # Sync DB Record with current changes. When the session is committed, changes are automatically synced
         try:
-            for attribute in self.entity_cls.meta_.attributes:
+            for attribute in attributes(self.entity_cls):
                 if attribute != id_field(self.entity_cls).attribute_name and getattr(
                     model_obj, attribute
                 ) != getattr(db_item, attribute):

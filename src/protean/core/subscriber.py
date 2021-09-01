@@ -6,7 +6,7 @@ from typing import Any, Optional
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.elements import Element, OptionsMixin
+from protean.utils.container import Element, OptionsMixin
 
 logger = logging.getLogger("protean.domain.subscriber")
 

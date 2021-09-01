@@ -1,7 +1,7 @@
 import logging
 
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.elements import Element
+from protean.utils.container import Element
 
 logger = logging.getLogger("protean.application")
 

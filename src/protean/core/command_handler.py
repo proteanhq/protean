@@ -3,7 +3,7 @@ from typing import Any, Optional
 
 from protean.core.command import BaseCommand
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.elements import Element, OptionsMixin
+from protean.utils.container import Element, OptionsMixin
 
 
 class BaseCommandHandler(Element, OptionsMixin):

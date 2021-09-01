@@ -1,11 +1,11 @@
 from protean.core.field.basic import Auto
 from protean.infra.eventing import EventLog
-from protean.utils.container import fields
+from protean.utils.container import fields, attributes
 
 
 def test_event_log_attributes():
     assert all(
-        attribute in EventLog.meta_.attributes
+        attribute in attributes(EventLog)
         for attribute in [
             "message_id",
             "name",

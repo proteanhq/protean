@@ -5,7 +5,7 @@ from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.globals import current_domain
 from protean.utils import Database, DomainObjects, derive_element_class
 from protean.utils.container import fields
-from protean.utils.elements import Element, OptionsMixin
+from protean.utils.container import Element, OptionsMixin
 
 logger = logging.getLogger("protean.repository")
 

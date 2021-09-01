@@ -6,7 +6,7 @@ import pytest
 from protean.core.entity import _EntityMetaclass
 from protean.exceptions import ValidationError
 from protean.utils import fully_qualified_name
-from protean.utils.container import fields
+from protean.utils.container import attributes, fields
 
 from .elements import (
     AccountWithId,
@@ -45,9 +45,9 @@ class TestAggregateStructure:
             for key in ["author", "email", "id", "password"]
         )
         assert all(
-            key in AccountWithId.meta_.attributes for key in ["email", "id", "password"]
+            key in attributes(AccountWithId) for key in ["email", "id", "password"]
         )
-        assert "author" not in AccountWithId.meta_.attributes
+        assert "author" not in attributes(AccountWithId)
 
         # `account` is a Reference field, so it should be present as:
         #   `account_id` in attributes
@@ -56,7 +56,7 @@ class TestAggregateStructure:
             key in fields(ProfileWithAccountId) for key in ["about_me", "account"]
         )
         assert all(
-            key in ProfileWithAccountId.meta_.attributes
+            key in attributes(ProfileWithAccountId)
             for key in ["about_me", "account_id"]
         )
 
@@ -67,10 +67,8 @@ class TestAggregateStructure:
         assert all(
             key in fields(Post) for key in ["comments", "content", "id", "author"]
         )
-        assert all(
-            key in Post.meta_.attributes for key in ["content", "id", "author_id"]
-        )
-        assert "comments" not in Post.meta_.attributes
+        assert all(key in attributes(Post) for key in ["content", "id", "author_id"])
+        assert "comments" not in attributes(Post)
 
         # `post` is a Reference field, so it should be present as:
         #   `post_id` in attributes
@@ -79,7 +77,7 @@ class TestAggregateStructure:
             key in fields(Comment) for key in ["added_on", "content", "id", "post"]
         )
         assert all(
-            key in Comment.meta_.attributes
+            key in attributes(Comment)
             for key in ["added_on", "content", "id", "post_id"]
         )
 

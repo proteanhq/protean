@@ -7,7 +7,7 @@ from protean.utils import (
     derive_element_class,
 )
 from protean.utils.container import BaseContainer
-from protean.utils.elements import OptionsMixin
+from protean.utils.container import OptionsMixin
 
 
 class BaseEmailProvider:

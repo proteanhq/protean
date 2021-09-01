@@ -4,7 +4,7 @@ import pytest
 
 from protean.core.field.basic import Auto, String
 from protean.exceptions import InvalidOperationError, ValidationError
-from protean.utils.container import fields, id_field, _ID_FIELD_NAME
+from protean.utils.container import attributes, fields, id_field, _ID_FIELD_NAME
 
 from .elements import Adult, NotAPerson, Person, PersonAutoSSN, PersonExplicitID
 
@@ -35,14 +35,14 @@ class TestIdentity:
 
     def test_default_id_field_construction(self):
         assert "id" in fields(Person)
-        assert "id" in Person.meta_.attributes
+        assert "id" in attributes(Person)
 
         assert type(fields(Person)["id"]) is Auto
         assert id_field(Person) == fields(Person)["id"]
 
     def test_non_default_auto_id_field_construction(self):
         assert "id" not in fields(PersonAutoSSN)
-        assert "id" not in PersonAutoSSN.meta_.attributes
+        assert "id" not in attributes(PersonAutoSSN)
 
         assert type(fields(PersonAutoSSN)["ssn"]) is Auto
         assert id_field(PersonAutoSSN).field_name == "ssn"
@@ -50,7 +50,7 @@ class TestIdentity:
 
     def test_non_default_explicit_id_field_construction(self, test_domain):
         assert "id" not in fields(PersonExplicitID)
-        assert "id" not in PersonExplicitID.meta_.attributes
+        assert "id" not in attributes(PersonExplicitID)
 
         assert type(fields(PersonExplicitID)["ssn"]) is String
         assert id_field(PersonExplicitID).field_name == "ssn"

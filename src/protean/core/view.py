@@ -14,7 +14,7 @@ from protean.utils import (
     inflection,
 )
 from protean.utils.container import BaseContainer, fields, _ID_FIELD_NAME, id_field
-from protean.utils.elements import OptionsMixin
+from protean.utils.container import OptionsMixin
 
 logger = logging.getLogger("protean.domain.view")
 

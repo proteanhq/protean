@@ -1,6 +1,6 @@
 from protean.core.entity import EntityMeta
 from protean.core.field.basic import Auto, Integer, String
-from protean.utils.container import fields
+from protean.utils.container import attributes, fields
 
 from .elements import (
     AbstractPerson,
@@ -30,7 +30,6 @@ class TestEntityMeta:
 
         # Fields Meta Info
         assert hasattr(Person.meta_, "declared_fields")
-        assert hasattr(Person.meta_, "attributes")
 
         # Domain attributes
         assert hasattr(Person.meta_, "aggregate_cls")
@@ -86,20 +85,19 @@ class TestEntityMeta:
         assert Person.meta_.schema_name != Adult.meta_.schema_name
 
     def test_entity_meta_has_attributes_on_construction(self):
-        assert hasattr(Person.meta_, "attributes")
-        assert list(Person.meta_.attributes.keys()) == [
+        assert list(attributes(Person).keys()) == [
             "first_name",
             "last_name",
             "age",
             "id",
         ]
-        assert list(PersonAutoSSN.meta_.attributes.keys()) == [
+        assert list(attributes(PersonAutoSSN).keys()) == [
             "ssn",
             "first_name",
             "last_name",
             "age",
         ]
-        assert list(Relative.meta_.attributes.keys()) == [
+        assert list(attributes(Relative).keys()) == [
             "first_name",
             "last_name",
             "age",

@@ -16,6 +16,7 @@ from protean.globals import current_domain
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
 from protean.utils import Database, IdentityStrategy, IdentityType
+from protean.utils.container import attributes
 from protean.utils.query import Q
 
 logger = logging.getLogger("protean.repository")
@@ -51,7 +52,7 @@ class ElasticsearchModel(Document):
     def from_entity(cls, entity) -> "ElasticsearchModel":
         """Convert the entity to a Elasticsearch record """
         item_dict = {}
-        for attribute_obj in cls.meta_.entity_cls.meta_.attributes.values():
+        for attribute_obj in attributes(cls.meta_.entity_cls).values():
             if isinstance(attribute_obj, Reference):
                 item_dict[
                     attribute_obj.relation.attribute_name
@@ -76,7 +77,7 @@ class ElasticsearchModel(Document):
 
         # Convert the values in ES Model as a dictionary
         values = item.to_dict()
-        for field_name in cls.meta_.entity_cls.meta_.attributes:
+        for field_name in attributes(cls.meta_.entity_cls):
             item_dict[field_name] = values.get(field_name, None)
 
         identifier = None

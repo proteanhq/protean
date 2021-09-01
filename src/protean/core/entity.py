@@ -29,7 +29,13 @@ from protean.utils import (
     generate_identity,
     inflection,
 )
-from protean.utils.container import _FIELDS, fields, _ID_FIELD_NAME, id_field
+from protean.utils.container import (
+    _FIELDS,
+    fields,
+    _ID_FIELD_NAME,
+    id_field,
+    attributes,
+)
 
 logger = logging.getLogger("protean.domain.entity")
 
@@ -210,23 +216,6 @@ class EntityMeta:
             if isinstance(field_obj, Auto)
         }
 
-    @property
-    def attributes(self):
-        attributes_dict = {}
-        for _, field_obj in self.declared_fields.items():
-            if isinstance(field_obj, ValueObject):
-                shadow_fields = field_obj.get_shadow_fields()
-                for _, shadow_field in shadow_fields:
-                    attributes_dict[shadow_field.attribute_name] = shadow_field
-            elif isinstance(field_obj, Reference):
-                attributes_dict[field_obj.get_attribute_name()] = field_obj.relation
-            elif isinstance(field_obj, Field):
-                attributes_dict[field_obj.get_attribute_name()] = field_obj
-            else:  # This field is an association. Ignore recording it as an attribute
-                pass
-
-        return attributes_dict
-
 
 class _FieldsCacheDescriptor:
     def __get__(self, instance, cls=None):
@@ -378,11 +367,11 @@ class BaseEntity(metaclass=_EntityMetaclass):
         # If the value object was already provided, it will not be overridden.
         for field_name, field_obj in fields(self).items():
             if isinstance(field_obj, (ValueObject)) and not getattr(self, field_name):
-                attributes = [
+                attrs = [
                     (embedded_field.field_name, embedded_field.attribute_name)
                     for embedded_field in field_obj.embedded_fields.values()
                 ]
-                values = {name: kwargs.get(attr) for name, attr in attributes}
+                values = {name: kwargs.get(attr) for name, attr in attrs}
                 try:
                     value_object = field_obj.value_object_cls(**values)
                     # Set VO value only if the value object is not None/Empty
@@ -440,7 +429,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
                         for field_name in err.messages:
                             self.errors[field_name].extend(err.messages[field_name])
 
-        for field_name, field_obj in self.meta_.attributes.items():
+        for field_name, field_obj in attributes(self).items():
             if field_name not in loaded_fields and not hasattr(self, field_name):
                 setattr(self, field_name, None)
 

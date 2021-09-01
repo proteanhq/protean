@@ -1,6 +1,7 @@
 import pytest
 
 from protean.exceptions import ValidationError
+from protean.utils.container import attributes
 
 from .elements import Account, Author, Post, Profile
 
@@ -163,7 +164,7 @@ class TestReferenceFieldAssociation:
         assert author.account.email == account.email
         assert author.account_email == account.email
 
-        assert "account_email" in author.meta_.attributes
+        assert "account_email" in attributes(author)
         author.account_email = None
 
         assert (

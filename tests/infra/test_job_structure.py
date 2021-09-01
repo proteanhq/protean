@@ -1,11 +1,11 @@
 from protean.core.field.basic import Auto
 from protean.infra.job import Job
-from protean.utils.container import fields
+from protean.utils.container import fields, attributes
 
 
 def test_event_log_attributes():
     assert all(
-        attribute in Job.meta_.attributes
+        attribute in attributes(Job)
         for attribute in [
             "job_id",
             "type",

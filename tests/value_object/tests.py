@@ -1,7 +1,7 @@
 import pytest
 
 from protean.exceptions import InvalidOperationError, ValidationError
-from protean.utils.container import fields
+from protean.utils.container import attributes, fields
 
 from .elements import (
     Account,
@@ -248,6 +248,7 @@ class TestNamedEmbedding:
         assert "connector" in fields(PolymorphicOwner)
 
         owner = PolymorphicOwner()
-        assert owner.meta_.attributes is not None
-        assert "connected_id" in owner.meta_.attributes
-        assert "connected_type" in owner.meta_.attributes
+        attrs = attributes(owner)
+        assert attrs is not None
+        assert "connected_id" in attrs
+        assert "connected_type" in attrs
