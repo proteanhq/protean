@@ -1,11 +1,9 @@
-from protean.core.entity import EntityMeta
 from protean.core.field.basic import Auto, Integer, String
-from protean.utils.container import attributes, fields
+from protean.utils.container import attributes, fields, Options
 
 from .elements import (
     AbstractPerson,
     Adult,
-    AdultAbstractPerson,
     ConcretePerson,
     DbPerson,
     DifferentDbPerson,
@@ -17,19 +15,16 @@ from .elements import (
 )
 
 
-class TestEntityMeta:
+class TestOptions:
     def test_entity_meta_structure(self):
         assert hasattr(Person, "meta_")
-        assert type(Person.meta_) is EntityMeta
+        assert type(Person.meta_) is Options
 
         # Persistence attributes
         # FIXME Should these be present as part of Entities, or a separate Model?
         assert hasattr(Person.meta_, "abstract")
         assert hasattr(Person.meta_, "schema_name")
         assert hasattr(Person.meta_, "provider")
-
-        # Fields Meta Info
-        assert hasattr(Person.meta_, "declared_fields")
 
         # Domain attributes
         assert hasattr(Person.meta_, "aggregate_cls")
@@ -56,12 +51,6 @@ class TestEntityMeta:
 
         assert hasattr(ConcretePerson.meta_, "abstract")
         assert getattr(ConcretePerson.meta_, "abstract") is False
-
-    def test_abstract_can_be_overridden_from_entity_concrete_class(self):
-        """Test that `abstract` flag can be overridden"""
-
-        assert hasattr(AdultAbstractPerson.meta_, "abstract")
-        assert getattr(AdultAbstractPerson.meta_, "abstract") is True
 
     def test_default_and_overridden_schema_name_in_meta(self):
         assert getattr(Person.meta_, "schema_name") == "person"

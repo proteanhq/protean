@@ -52,7 +52,7 @@ LOGGING_CONFIG = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "console": {"format": "%(asctime)s %(name)-12s %(levelname)-8s %(message)s",}
+        "console": {"format": "%(asctime)s %(name)-12s %(levelname)-8s %(message)s"}
     },
     "handlers": {
         "console": {
@@ -62,7 +62,7 @@ LOGGING_CONFIG = {
         }
     },
     "loggers": {
-        "protean": {"handlers": ["console"], "level": "INFO",},
-        "vfc": {"handlers": ["console"], "level": "INFO",},
+        "protean": {"handlers": ["console"], "level": "INFO"},
+        "vfc": {"handlers": ["console"], "level": "INFO"},
     },
 }

@@ -30,13 +30,6 @@ class ConcretePerson(BaseView):
     last_name = String(max_length=50)
 
 
-class AdultAbstractPerson(ConcretePerson):
-    age = Integer(default=21)
-
-    class Meta:
-        abstract = True
-
-
 class Person(BaseView):
     person_id = Identifier(identifier=True)
     first_name = String(max_length=50, required=True)
@@ -194,10 +187,6 @@ class TestViewMeta:
         assert hasattr(Person.meta_, "provider")
         assert hasattr(Person.meta_, "cache")
 
-        # Fields Meta Info
-        assert hasattr(Person.meta_, "declared_fields")
-        assert hasattr(Person.meta_, "attributes")
-
         assert id_field(Person) is not None
         assert id_field(Person) == fields(Person)["person_id"]
 
@@ -226,12 +215,6 @@ class TestViewMeta:
 
         assert hasattr(ConcretePerson.meta_, "abstract")
         assert getattr(ConcretePerson.meta_, "abstract") is False
-
-    def test_abstract_can_be_overridden_from_view_concrete_class(self):
-        """Test that `abstract` flag can be overridden"""
-
-        assert hasattr(AdultAbstractPerson.meta_, "abstract")
-        assert getattr(AdultAbstractPerson.meta_, "abstract") is True
 
     def test_default_and_overridden_schema_name_in_meta(self):
         assert getattr(Person.meta_, "schema_name") == "person"

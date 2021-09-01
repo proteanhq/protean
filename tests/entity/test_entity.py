@@ -1,10 +1,10 @@
 from collections import defaultdict
 from enum import Enum
 
-from protean.core.entity import BaseEntity, EntityMeta
+from protean.core.entity import BaseEntity
 from protean.core.field.association import HasOne
 from protean.core.field.basic import Auto, Integer, String
-from protean.utils.container import attributes, fields
+from protean.utils.container import attributes, fields, Options
 
 
 class AbstractPerson(BaseEntity):
@@ -17,13 +17,6 @@ class AbstractPerson(BaseEntity):
 class ConcretePerson(BaseEntity):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
-
-
-class AdultAbstractPerson(ConcretePerson):
-    age = Integer(default=21)
-
-    class Meta:
-        abstract = True
 
 
 class Person(BaseEntity):
@@ -132,15 +125,12 @@ class Building(BaseEntity):
 class TestEntityMeta:
     def test_entity_meta_structure(self):
         assert hasattr(Person, "meta_")
-        assert type(Person.meta_) is EntityMeta
+        assert type(Person.meta_) is Options
 
         # Persistence attributes
         assert hasattr(Person.meta_, "abstract")
         assert hasattr(Person.meta_, "schema_name")
         assert hasattr(Person.meta_, "provider")
-
-        # Fields Meta Info
-        assert hasattr(Person.meta_, "declared_fields")
 
         # Domain attributes
         assert hasattr(Person.meta_, "aggregate_cls")
@@ -167,9 +157,6 @@ class TestEntityMeta:
 
         # Derived Entity is not abstract by default
         assert getattr(ConcretePerson.meta_, "abstract") is False
-
-        # Entity can be marked abstract at any level of inheritance
-        assert getattr(AdultAbstractPerson.meta_, "abstract") is True
 
     def test_default_and_overridden_schema_name_in_meta(self):
         # Default

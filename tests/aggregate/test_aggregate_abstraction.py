@@ -18,9 +18,9 @@ class TestAggregateAbstraction:
         self, test_domain
     ):
         test_domain.register(ConcreteRole)
-        concrete_role = ConcreteRole(name="Titan")
+        concrete_role = ConcreteRole(foo="Titan")
         assert concrete_role is not None
-        assert concrete_role.name == "Titan"
+        assert concrete_role.foo == "Titan"
 
     def test_that_abstract_entities_can_be_created_with_annotations(self, test_domain):
         from protean.core.aggregate import BaseAggregate

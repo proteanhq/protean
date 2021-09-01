@@ -48,7 +48,7 @@ class MemoryModel(BaseModel):
     @classmethod
     def to_entity(cls, item: "MemoryModel"):
         """Convert the dictionary record to an entity """
-        return cls.meta_.entity_cls(item, raise_errors=False)
+        return cls.meta_.entity_cls(item)
 
 
 class MemorySession:

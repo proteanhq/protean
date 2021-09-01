@@ -2,8 +2,8 @@ from collections import OrderedDict
 from datetime import datetime
 
 import pytest
+from protean.core.entity import BaseEntity
 
-from protean.core.entity import _EntityMetaclass
 from protean.exceptions import ValidationError
 from protean.utils import fully_qualified_name
 from protean.utils.container import attributes, fields
@@ -22,7 +22,7 @@ from .elements import (
 
 class TestAggregateStructure:
     def test_aggregate_inheritance(self):
-        assert isinstance(Role, _EntityMetaclass)
+        assert issubclass(Role, BaseEntity)
 
     def test_successful_aggregate_registration(self, test_domain):
         test_domain.register(Role)

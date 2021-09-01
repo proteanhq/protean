@@ -20,7 +20,7 @@ from protean.core.field.basic import (
 )
 from protean.exceptions import NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.container import _FIELDS
+from protean.utils.container import _FIELDS, Options
 from protean.utils.container import Element
 
 logger = logging.getLogger("protean.application.serializer")
@@ -138,28 +138,11 @@ class _SerializerMetaclass(type):
         # Gather `Meta` class/object if defined
         attr_meta = attrs.pop("Meta", None)
         meta = attr_meta or getattr(new_class, "Meta", None)
-        setattr(new_class, "meta_", SerializerMeta(meta, declared_fields))
+        setattr(new_class, "meta_", Options(meta))
 
-        setattr(new_class, _FIELDS, new_class.meta_.declared_fields)
+        setattr(new_class, _FIELDS, declared_fields)
 
         return new_class
-
-
-class SerializerMeta:
-    """ Metadata info for the Serializer.
-
-    Also acts as a placeholder for generated entity fields like:
-
-        :declared_fields: dict
-            Any instances of `Field` included as attributes on either the class
-            or on any of its superclasses will be include in this dictionary.
-    """
-
-    def __init__(self, meta, declared_fields):
-        self.aggregate_cls = getattr(meta, "aggregate_cls", None)
-
-        # Initialize Options
-        self.declared_fields = declared_fields if declared_fields else {}
 
 
 class BaseSerializer(Element, metaclass=_SerializerMetaclass):

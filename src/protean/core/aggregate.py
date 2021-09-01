@@ -2,7 +2,7 @@
 import logging
 
 from protean.core.entity import BaseEntity
-from protean.utils import DomainObjects, derive_element_class
+from protean.utils import DomainObjects, derive_element_class, inflection
 
 logger = logging.getLogger("protean.domain.aggregate")
 
@@ -43,9 +43,16 @@ class BaseAggregate(BaseEntity):
             raise TypeError("BaseAggregate cannot be instantiated")
         return super().__new__(cls)
 
+    class Meta:
+        abstract = True
+
     @classmethod
     def _default_options(cls):
-        return [("provider", "default"), ("model", None)]
+        return [
+            ("provider", "default"),
+            ("model", None),
+            ("schema_name", inflection.underscore(cls.__name__)),
+        ]
 
 
 def aggregate_factory(element_cls, **kwargs):

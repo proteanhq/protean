@@ -95,12 +95,6 @@ class Options:
 
     Options:
     - ``abstract``: Indicates that this is an abstract entity (Ignores all other meta options)
-
-    Also acts as a placeholder for generated entity fields like:
-
-        :declared_fields: dict
-            Any instances of `Field` included as attributes on either the class
-            or on any of its superclasses will be include in this dictionary.
     """
 
     def __init__(self, opts=None):
@@ -111,18 +105,6 @@ class Options:
 
         # Common Meta attributes
         self.abstract = getattr(opts, "abstract", None) or False
-
-        # Initialize Options
-        # FIXME Move this to be within the container
-        self.declared_fields = {}
-
-    @property
-    def attributes(self):
-        attributes_dict = {}
-        for _, field_obj in self.declared_fields.items():
-            attributes_dict[field_obj.get_attribute_name()] = field_obj
-
-        return attributes_dict
 
 
 class OptionsMixin:
@@ -324,9 +306,12 @@ class BaseContainer(metaclass=ContainerMeta):
         return any(bool(getattr(self, field_name, None)) for field_name in fields(self))
 
     def __setattr__(self, name, value):
-        if name in fields(self) or name in [
-            "errors",
-        ]:
+        if (
+            name in attributes(self)
+            or name in fields(self)
+            or name in ["errors", "state_", "_temp_cache"]
+            or name.startswith(("add_", "remove_", "_mark_changed_"))
+        ):
             super().__setattr__(name, value)
         else:
             raise InvalidDataError({name: ["is invalid"]})

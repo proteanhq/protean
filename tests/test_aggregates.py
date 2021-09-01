@@ -37,9 +37,9 @@ class TestAggregateFieldOptions:
         class Person:
             email = String(unique=True)
 
-        p1 = Person(name="John Doe", email="john.doe@example.com")
+        p1 = Person(email="john.doe@example.com")
         test_domain.repository_for(Person).add(p1)
-        p2 = Person(name="Jane Doe", email="john.doe@example.com")
+        p2 = Person(email="john.doe@example.com")
 
         with pytest.raises(ValidationError):
             test_domain.repository_for(Person).add(p2)
