@@ -7,6 +7,7 @@ import redis
 from protean.core.view import BaseView
 from protean.port.cache import BaseCache
 from protean.utils import Cache
+from protean.utils.container import id_field
 from protean.utils.inflection import underscore
 
 
@@ -40,7 +41,7 @@ class RedisCache(BaseCache):
             view (BaseView): View Instance containing data
             ttl (int, float, optional): Timeout in seconds. Defaults to None.
         """
-        identifier = getattr(view, view.meta_.id_field.field_name)
+        identifier = getattr(view, id_field(view).field_name)
         key = f"{underscore(view.__class__.__name__)}:::{identifier}"
 
         ttl = ttl or self.conn_info.get("TTL") or 300
@@ -69,7 +70,7 @@ class RedisCache(BaseCache):
         return len(list(values))
 
     def remove(self, view):
-        identifier = getattr(view, view.meta_.id_field.field_name)
+        identifier = getattr(view, id_field(view).field_name)
         key = f"{underscore(view.__class__.__name__)}:::{identifier}"
         self.r.delete(key)
 

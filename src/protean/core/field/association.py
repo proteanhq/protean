@@ -2,6 +2,7 @@ from abc import abstractmethod
 
 from protean import exceptions, utils
 from protean.globals import current_domain
+from protean.utils.container import id_field
 
 from .base import Field, FieldBase
 from .mixins import FieldCacheMixin, FieldDescriptorMixin
@@ -96,7 +97,7 @@ class Reference(FieldCacheMixin, Field):
         if isinstance(self.to_cls, str):
             return "id"
         else:
-            return self.via or self.to_cls.meta_.id_field.attribute_name
+            return self.via or id_field(self.to_cls).attribute_name
 
     def _resolve_to_cls(self, to_cls, owner_cls):
         assert isinstance(self.to_cls, str)
@@ -156,7 +157,7 @@ class Reference(FieldCacheMixin, Field):
             if value:
                 # Check if the reference object has been saved. Otherwise, throw ValueError
                 # FIXME not a comprehensive check. Should refer to state
-                if getattr(value, value.meta_.id_field.field_name) is None:
+                if getattr(value, id_field(value).field_name) is None:
                     raise ValueError(
                         "Target Object must be saved before being referenced",
                         self.field_name,
@@ -244,7 +245,7 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         return self.via or (
             utils.inflection.underscore(owner.__name__)
             + "_"
-            + owner.meta_.id_field.attribute_name
+            + id_field(owner).attribute_name
         )
 
     def __get__(self, instance, owner):
@@ -254,7 +255,7 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
             reference_obj = self.get_cached_value(instance)
         except KeyError:
             # Fetch target object by own Identifier
-            id_value = getattr(instance, instance.meta_.id_field.field_name)
+            id_value = getattr(instance, id_field(instance).field_name)
             reference_obj = self._fetch_objects(
                 instance, self._linked_attribute(owner), id_value
             )
@@ -317,7 +318,7 @@ class HasOne(Association):
         if value is not None:
             # This updates the parent's unique identifier in the child
             #   so that the foreign key relationship is preserved
-            id_value = getattr(instance, instance.meta_.id_field.field_name)
+            id_value = getattr(instance, id_field(instance).field_name)
             linked_attribute = self._linked_attribute(instance.__class__)
             if hasattr(value, linked_attribute):
                 setattr(
@@ -381,7 +382,7 @@ class HasMany(Association):
                 setattr(
                     item,
                     self._linked_attribute(type(instance)),
-                    getattr(instance, instance.meta_.id_field.field_name),
+                    getattr(instance, id_field(instance).field_name),
                 )
 
                 # Reset Cache
@@ -395,7 +396,7 @@ class HasMany(Association):
                 setattr(
                     item,
                     self._linked_attribute(type(instance)),
-                    getattr(instance, instance.meta_.id_field.field_name),
+                    getattr(instance, id_field(instance).field_name),
                 )
 
                 instance._temp_cache[self.field_name]["updated"][item.id] = item

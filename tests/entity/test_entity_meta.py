@@ -31,7 +31,6 @@ class TestEntityMeta:
         # Fields Meta Info
         assert hasattr(Person.meta_, "declared_fields")
         assert hasattr(Person.meta_, "attributes")
-        assert hasattr(Person.meta_, "id_field")
 
         # Domain attributes
         assert hasattr(Person.meta_, "aggregate_cls")

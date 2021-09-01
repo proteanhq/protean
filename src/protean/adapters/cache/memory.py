@@ -6,6 +6,7 @@ from threading import RLock
 from typing import Optional, Union
 
 from protean.core.view import BaseView
+from protean.utils.container import id_field
 
 try:
     # Python 3.8+
@@ -131,7 +132,7 @@ class MemoryCache(BaseCache):
             view (BaseView): View Instance containing data
             ttl (int, float, optional): Timeout in seconds. Defaults to None.
         """
-        identifier = getattr(view, view.meta_.id_field.field_name)
+        identifier = getattr(view, id_field(view).field_name)
         key = f"{underscore(view.__class__.__name__)}:::{identifier}"
 
         self._db[key] = view.to_dict()
@@ -159,7 +160,7 @@ class MemoryCache(BaseCache):
         return len(list(filter(regex.match, key_list)))
 
     def remove(self, view):
-        identifier = getattr(view, view.meta_.id_field.field_name)
+        identifier = getattr(view, id_field(view).field_name)
         key = f"{underscore(view.__class__.__name__)}:::{identifier}"
         del self._db[key]
 

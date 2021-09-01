@@ -8,7 +8,7 @@ from protean.core.field.basic import Auto, Identifier, Integer, String
 from protean.core.view import BaseView
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.utils import fully_qualified_name
-from protean.utils.container import attributes, fields
+from protean.utils.container import attributes, fields, id_field, _ID_FIELD_NAME
 from protean.utils.elements import Options
 
 
@@ -192,7 +192,9 @@ class TestViewMeta:
         # Fields Meta Info
         assert hasattr(Person.meta_, "declared_fields")
         assert hasattr(Person.meta_, "attributes")
-        assert hasattr(Person.meta_, "id_field")
+
+        assert id_field(Person) is not None
+        assert id_field(Person) == fields(Person)["person_id"]
 
     def test_absence_of_entity_specific_attributes(self):
         assert hasattr(Person.meta_, "aggregate_cls") is False
@@ -261,8 +263,11 @@ class TestIdentity:
     """Grouping of Identity related test cases"""
 
     def test_id_field_in_meta(self):
-        assert hasattr(Person.meta_, "id_field")
-        assert type(Person.meta_.id_field) is Identifier
+        assert hasattr(Person, _ID_FIELD_NAME)
+        assert id_field(Person) is not None
+        assert id_field(Person) == fields(Person)["person_id"]
+
+        assert type(id_field(Person)) is Identifier
         fields(Person)["person_id"].identifier is True
 
     def test_id_field_recognition(self):
@@ -270,7 +275,7 @@ class TestIdentity:
         assert "person_id" in attributes(Person)
 
         assert type(fields(Person)["person_id"]) is Identifier
-        assert Person.meta_.id_field == fields(Person)["person_id"]
+        assert id_field(Person) == fields(Person)["person_id"]
         fields(Person)["person_id"].identifier is True
 
     def test_non_default_auto_id_field_construction(self):
@@ -278,8 +283,8 @@ class TestIdentity:
         assert "id" not in attributes(PersonAutoSSN)
 
         assert type(fields(PersonAutoSSN)["ssn"]) is Auto
-        assert PersonAutoSSN.meta_.id_field.field_name == "ssn"
-        assert PersonAutoSSN.meta_.id_field == fields(PersonAutoSSN)["ssn"]
+        assert id_field(PersonAutoSSN).field_name == "ssn"
+        assert id_field(PersonAutoSSN) == fields(PersonAutoSSN)["ssn"]
         fields(PersonAutoSSN)["ssn"].identifier is True
 
     def test_non_default_explicit_id_field_construction(self, test_domain):
@@ -287,8 +292,8 @@ class TestIdentity:
         assert "id" not in attributes(PersonExplicitID)
 
         assert type(fields(PersonExplicitID)["ssn"]) is String
-        assert PersonExplicitID.meta_.id_field.field_name == "ssn"
-        assert PersonExplicitID.meta_.id_field == fields(PersonExplicitID)["ssn"]
+        assert id_field(PersonExplicitID).field_name == "ssn"
+        assert id_field(PersonExplicitID) == fields(PersonExplicitID)["ssn"]
 
 
 class TestIdentityValues:

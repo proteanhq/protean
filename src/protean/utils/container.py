@@ -9,6 +9,7 @@ from protean.exceptions import InvalidDataError, NotSupportedError, ValidationEr
 logger = logging.getLogger("protean.domain")
 
 _FIELDS = "__container_fields__"
+_ID_FIELD_NAME = "__container_id_field_name__"
 
 
 def fields(class_or_instance):
@@ -25,6 +26,15 @@ def fields(class_or_instance):
         raise TypeError("must be called with a dataclass type or instance")
 
     return fields_dict
+
+
+def id_field(class_or_instance):
+    try:
+        field_name = getattr(class_or_instance, _ID_FIELD_NAME)
+    except AttributeError:
+        raise TypeError("must be called with a dataclass type or instance")
+
+    return fields(class_or_instance)[field_name]
 
 
 def has_fields(class_or_instance):

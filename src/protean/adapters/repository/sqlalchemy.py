@@ -35,6 +35,7 @@ from protean.globals import current_domain, current_uow
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
 from protean.utils import Database, IdentityType
+from protean.utils.container import id_field
 from protean.utils.query import Q
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
@@ -321,9 +322,7 @@ class SADAO(BaseDAO):
 
         # Fetch the record from database
         try:
-            identifier = getattr(
-                model_obj, self.entity_cls.meta_.id_field.attribute_name
-            )
+            identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
             db_item = conn.query(self.model_cls).get(
                 identifier
             )  # This will raise exception if object was not found
@@ -344,11 +343,9 @@ class SADAO(BaseDAO):
         # Sync DB Record with current changes. When the session is committed, changes are automatically synced
         try:
             for attribute in self.entity_cls.meta_.attributes:
-                if attribute != self.entity_cls.meta_.id_field.attribute_name and getattr(
+                if attribute != id_field(self.entity_cls).attribute_name and getattr(
                     model_obj, attribute
-                ) != getattr(
-                    db_item, attribute
-                ):
+                ) != getattr(db_item, attribute):
                     setattr(db_item, attribute, getattr(model_obj, attribute))
         except DatabaseError as exc:
             logger.error(f"Error while updating: {exc}")
@@ -389,9 +386,7 @@ class SADAO(BaseDAO):
 
         # Fetch the record from database
         try:
-            identifier = getattr(
-                model_obj, self.entity_cls.meta_.id_field.attribute_name
-            )
+            identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
             db_item = conn.query(self.model_cls).get(
                 identifier
             )  # This will raise exception if object was not found

@@ -8,7 +8,7 @@ from protean.core.field.basic import Auto, Field
 from protean.core.queryset import QuerySet
 from protean.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
 from protean.globals import current_uow
-from protean.utils.container import fields
+from protean.utils.container import fields, id_field
 from protean.utils.query import Q
 
 logger = logging.getLogger("protean.repository")
@@ -257,7 +257,7 @@ class BaseDAO(metaclass=ABCMeta):
 
         # Filter on the ID field of the entity
         filters = {
-            self.entity_cls.meta_.id_field.field_name: identifier,
+            id_field(self.entity_cls).field_name: identifier,
         }
 
         results = self.query.filter(**filters).all()
@@ -398,12 +398,10 @@ class BaseDAO(metaclass=ABCMeta):
 
                 # If this is a new entity, generate ID
                 if entity_obj.state_.is_new:
-                    if not getattr(
-                        entity_obj, entity_obj.meta_.id_field.field_name, None
-                    ):
+                    if not getattr(entity_obj, id_field(entity_obj).field_name, None):
                         setattr(
                             entity_obj,
-                            entity_obj.meta_.id_field.field_name,
+                            id_field(entity_obj).field_name,
                             self.entity_cls.generate_identity(),
                         )
 

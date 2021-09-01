@@ -29,7 +29,7 @@ from protean.utils import (
     generate_identity,
     inflection,
 )
-from protean.utils.container import _FIELDS, fields
+from protean.utils.container import _FIELDS, fields, _ID_FIELD_NAME, id_field
 
 logger = logging.getLogger("protean.domain.entity")
 
@@ -128,15 +128,17 @@ class _EntityMetaclass(type):
         # FIXME What does it mean when there are no declared fields?
         #   Does it translate to an abstract entity?
         try:
-            new_class.meta_.id_field = next(
+            id_field = next(
                 field
                 for _, field in new_class.meta_.declared_fields.items()
                 if isinstance(field, (Field, Reference)) and field.identifier
             )
 
+            setattr(new_class, _ID_FIELD_NAME, id_field.field_name)
+
             # If the aggregate/entity has been marked abstract,
             #   and contains an identifier field, raise exception
-            if new_class.meta_.abstract and new_class.meta_.id_field:
+            if new_class.meta_.abstract and id_field:
                 raise IncorrectUsageError(
                     {
                         "_entity": [
@@ -161,7 +163,8 @@ class _EntityMetaclass(type):
 
         # Ensure ID field is updated properly in Meta attribute
         new_class.meta_.declared_fields["id"] = id_field
-        new_class.meta_.id_field = id_field
+
+        setattr(new_class, _ID_FIELD_NAME, id_field.field_name)
 
 
 class EntityMeta:
@@ -195,8 +198,6 @@ class EntityMeta:
 
         # Initialize Options
         self.declared_fields = {}
-        self.value_object_fields = {}
-        self.id_field = None
 
         # Domain Attributes
         self.aggregate_cls = getattr(meta, "aggregate_cls", None)
@@ -404,12 +405,13 @@ class BaseEntity(metaclass=_EntityMetaclass):
                         )
 
         # Load Identities
+        id_field_obj = id_field(self)
         if (
-            not getattr(self, self.meta_.id_field.field_name, None)
-            and type(self.meta_.id_field) is Auto
+            not getattr(self, id_field_obj.field_name, None)
+            and type(id_field_obj) is Auto
         ):
-            setattr(self, self.meta_.id_field.field_name, generate_identity())
-            loaded_fields.append(self.meta_.id_field.field_name)
+            setattr(self, id_field_obj.field_name, generate_identity())
+            loaded_fields.append(id_field_obj.field_name)
 
         # Load Associations
         for field_name, field_obj in fields(self).items():
@@ -503,8 +505,8 @@ class BaseEntity(metaclass=_EntityMetaclass):
         # FIXME Check if `==` and `in` operator work with __eq__
 
         if type(other) is type(self):
-            self_id = getattr(self, self.meta_.id_field.field_name)
-            other_id = getattr(other, other.meta_.id_field.field_name)
+            self_id = getattr(self, id_field(self).field_name)
+            other_id = getattr(other, id_field(other).field_name)
 
             return self_id == other_id
 
@@ -514,7 +516,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
         """Overrides the default implementation and bases hashing on identity"""
 
         # FIXME Add Object Class Type to hash
-        return hash(getattr(self, self.meta_.id_field.field_name))
+        return hash(getattr(self, id_field(self).field_name))
 
     def _update_data(self, *data_dict, **kwargs):
         """
@@ -569,10 +571,10 @@ class BaseEntity(metaclass=_EntityMetaclass):
         return "<%s: %s>" % (self.__class__.__name__, self)
 
     def __str__(self):
-        identifier = getattr(self, self.meta_.id_field.field_name)
+        identifier = getattr(self, id_field(self).field_name)
         return "%s object (%s)" % (
             self.__class__.__name__,
-            "{}: {}".format(self.meta_.id_field.field_name, identifier),
+            "{}: {}".format(id_field(self).field_name, identifier),
         )
 
     def clone(self):

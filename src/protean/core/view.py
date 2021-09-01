@@ -13,7 +13,7 @@ from protean.utils import (
     derive_element_class,
     inflection,
 )
-from protean.utils.container import BaseContainer, fields
+from protean.utils.container import BaseContainer, fields, _ID_FIELD_NAME, id_field
 from protean.utils.elements import OptionsMixin
 
 logger = logging.getLogger("protean.domain.view")
@@ -50,11 +50,14 @@ class BaseView(BaseContainer, OptionsMixin):
         #   Does it translate to an abstract view?
         if fields(subclass):
             try:
-                subclass.meta_.id_field = next(
+                id_field = next(
                     field
                     for _, field in fields(subclass).items()
                     if isinstance(field, (Field)) and field.identifier
                 )
+
+                setattr(subclass, _ID_FIELD_NAME, id_field.field_name)
+
             except StopIteration:
                 raise IncorrectUsageError(
                     {
@@ -89,8 +92,8 @@ class BaseView(BaseContainer, OptionsMixin):
         # FIXME Check if `==` and `in` operator work with __eq__
 
         if type(other) is type(self):
-            self_id = getattr(self, self.meta_.id_field.field_name)
-            other_id = getattr(other, other.meta_.id_field.field_name)
+            self_id = getattr(self, id_field(self).field_name)
+            other_id = getattr(other, id_field(other).field_name)
 
             return self_id == other_id
 
@@ -100,7 +103,7 @@ class BaseView(BaseContainer, OptionsMixin):
         """Overrides the default implementation and bases hashing on identity"""
 
         # FIXME Add Object Class Type to hash
-        return hash(getattr(self, self.meta_.id_field.field_name))
+        return hash(getattr(self, id_field(self).field_name))
 
 
 def view_factory(element_cls, **kwargs):

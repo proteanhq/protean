@@ -17,6 +17,7 @@ from protean.globals import current_uow
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
 from protean.utils import Database
+from protean.utils.container import id_field
 from protean.utils.query import Q
 
 # Global in-memory store of dict data. Keyed by name, to provide
@@ -277,7 +278,7 @@ class DictDAO(BaseDAO):
         model_obj = self._set_auto_fields(model_obj)
 
         # Add the entity to the repository
-        identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
+        identifier = model_obj[id_field(self.entity_cls).field_name]
         with conn._db["lock"]:
             # Check if object is present
             if identifier in conn._db["data"][self.schema_name]:
@@ -365,7 +366,7 @@ class DictDAO(BaseDAO):
         """Update the entity record in the dictionary """
         conn = self._get_session()
 
-        identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
+        identifier = model_obj[id_field(self.entity_cls).field_name]
         with conn._db["lock"]:
             # Check if object is present
             if identifier not in conn._db["data"][self.schema_name]:
@@ -409,7 +410,7 @@ class DictDAO(BaseDAO):
         """Delete the entity record in the dictionary """
         conn = self._get_session()
 
-        identifier = model_obj[self.entity_cls.meta_.id_field.field_name]
+        identifier = model_obj[id_field(self.entity_cls).field_name]
         with conn._db["lock"]:
             # Check if object is present
             if identifier not in conn._db["data"][self.schema_name]:

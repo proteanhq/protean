@@ -4,7 +4,7 @@ import pytest
 
 from protean.core.field.basic import Auto, String
 from protean.exceptions import InvalidOperationError, ValidationError
-from protean.utils.container import fields
+from protean.utils.container import fields, id_field, _ID_FIELD_NAME
 
 from .elements import Adult, NotAPerson, Person, PersonAutoSSN, PersonExplicitID
 
@@ -30,31 +30,31 @@ class TestIdentity:
     """Grouping of Identity related test cases"""
 
     def test_id_field_in_meta(self):
-        assert hasattr(Person.meta_, "id_field")
-        assert type(Person.meta_.id_field) is Auto
+        assert hasattr(Person, _ID_FIELD_NAME)
+        assert type(id_field(Person)) is Auto
 
     def test_default_id_field_construction(self):
         assert "id" in fields(Person)
         assert "id" in Person.meta_.attributes
 
         assert type(fields(Person)["id"]) is Auto
-        assert Person.meta_.id_field == fields(Person)["id"]
+        assert id_field(Person) == fields(Person)["id"]
 
     def test_non_default_auto_id_field_construction(self):
         assert "id" not in fields(PersonAutoSSN)
         assert "id" not in PersonAutoSSN.meta_.attributes
 
         assert type(fields(PersonAutoSSN)["ssn"]) is Auto
-        assert PersonAutoSSN.meta_.id_field.field_name == "ssn"
-        assert PersonAutoSSN.meta_.id_field == fields(PersonAutoSSN)["ssn"]
+        assert id_field(PersonAutoSSN).field_name == "ssn"
+        assert id_field(PersonAutoSSN) == fields(PersonAutoSSN)["ssn"]
 
     def test_non_default_explicit_id_field_construction(self, test_domain):
         assert "id" not in fields(PersonExplicitID)
         assert "id" not in PersonExplicitID.meta_.attributes
 
         assert type(fields(PersonExplicitID)["ssn"]) is String
-        assert PersonExplicitID.meta_.id_field.field_name == "ssn"
-        assert PersonExplicitID.meta_.id_field == fields(PersonExplicitID)["ssn"]
+        assert id_field(PersonExplicitID).field_name == "ssn"
+        assert id_field(PersonExplicitID) == fields(PersonExplicitID)["ssn"]
 
 
 class TestIdentityValues:
