@@ -50,6 +50,15 @@ def attributes(class_or_instance):
     return attributes_dict
 
 
+def unique_fields(class_or_instance):
+    """ Return the unique fields for this class or instance """
+    return {
+        field_name: field_obj
+        for field_name, field_obj in attributes(class_or_instance).items()
+        if field_obj.unique
+    }
+
+
 class ContainerMeta(type):
     """
     This base metaclass processes the class declaration and

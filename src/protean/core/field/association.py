@@ -216,8 +216,10 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         self.to_cls = to_cls  # FIXME Test that `to_cls` contains a corresponding `Reference` field
         self.via = via
 
-        # Associations cannot be marked `required`
+        # FIXME Find an elegant way to avoid these declarations in associations
+        # Associations cannot be marked `required` or `unique`
         self.required = False
+        self.unique = False
 
         # FIXME Refactor for general use across all types of associations. Currently used only with `HasOne`
         self.change = None  # Used to store type of change in the association

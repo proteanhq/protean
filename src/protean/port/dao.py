@@ -8,7 +8,7 @@ from protean.core.field.basic import Auto, Field
 from protean.core.queryset import QuerySet
 from protean.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
 from protean.globals import current_uow
-from protean.utils.container import fields, id_field
+from protean.utils.container import fields, id_field, unique_fields
 from protean.utils.query import Q
 
 logger = logging.getLogger("protean.repository")
@@ -466,7 +466,7 @@ class BaseDAO(metaclass=ABCMeta):
         filters, excludes = {}, {}
 
         # Construct filter criteria based on unique fields defined in Entity class
-        for field_name, field_obj in self.entity_cls.meta_.unique_fields.items():
+        for field_name, field_obj in unique_fields(self.entity_cls).items():
             lookup_value = getattr(entity_obj, field_name, None)
 
             # Ignore empty lookup values
