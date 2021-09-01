@@ -5,6 +5,7 @@ import logging
 from collections import defaultdict
 
 from protean.core.field.base import Field, FieldBase
+from protean.core.field.basic import Auto
 from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
 
 logger = logging.getLogger("protean.domain")
@@ -72,6 +73,14 @@ def unique_fields(class_or_instance):
         field_name: field_obj
         for field_name, field_obj in attributes(class_or_instance).items()
         if field_obj.unique
+    }
+
+
+def auto_fields(class_or_instance):
+    return {
+        field_name: field_obj
+        for field_name, field_obj in fields(class_or_instance).items()
+        if isinstance(field_obj, Auto)
     }
 
 

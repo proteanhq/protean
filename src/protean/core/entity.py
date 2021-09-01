@@ -208,14 +208,6 @@ class EntityMeta:
         # Domain Attributes
         self.aggregate_cls = getattr(meta, "aggregate_cls", None)
 
-    @property
-    def auto_fields(self):
-        return {
-            field_name: field_obj
-            for field_name, field_obj in self.declared_fields.items()
-            if isinstance(field_obj, Auto)
-        }
-
 
 class _FieldsCacheDescriptor:
     def __get__(self, instance, cls=None):
