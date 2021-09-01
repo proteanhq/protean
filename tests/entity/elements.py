@@ -18,13 +18,6 @@ class ConcretePerson(BaseEntity):
     last_name = String(max_length=50)
 
 
-class AdultAbstractPerson(ConcretePerson):
-    age = Integer(default=21)
-
-    class Meta:
-        abstract = True
-
-
 class Person(BaseEntity):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)

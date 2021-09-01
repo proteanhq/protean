@@ -211,7 +211,7 @@ class SqlalchemyModel(BaseModel):
         item_dict = {}
         for field_name in attributes(cls.meta_.entity_cls):
             item_dict[field_name] = getattr(model_obj, field_name, None)
-        return cls.meta_.entity_cls(item_dict, raise_errors=False)
+        return cls.meta_.entity_cls(item_dict)
 
 
 class SADAO(BaseDAO):

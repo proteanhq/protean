@@ -17,7 +17,7 @@ from protean.globals import current_uow
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
 from protean.utils import Database
-from protean.utils.container import id_field, attributes
+from protean.utils.container import auto_fields, id_field, attributes
 from protean.utils.query import Q
 
 # Global in-memory store of dict data. Keyed by name, to provide
@@ -48,7 +48,7 @@ class MemoryModel(BaseModel):
     @classmethod
     def to_entity(cls, item: "MemoryModel"):
         """Convert the dictionary record to an entity """
-        return cls.meta_.entity_cls(item, raise_errors=False)
+        return cls.meta_.entity_cls(item)
 
 
 class MemorySession:
@@ -258,7 +258,7 @@ class DictDAO(BaseDAO):
         """Set the values of the auto field using counter"""
         conn = self._get_session()
 
-        for field_name in self.entity_cls.meta_.auto_fields:
+        for field_name in auto_fields(self.entity_cls):
             counter_key = f"{self.schema_name}_{field_name}"
             if not (field_name in model_obj and model_obj[field_name] is not None):
                 # Increment the counter and it should start from 1

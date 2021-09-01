@@ -109,9 +109,7 @@ class TestHasMany:
 
     @pytest.fixture
     def persisted_post(self, test_domain):
-        post = test_domain.get_dao(Post).create(
-            title="Test Post", slug="test-post", content="Do Re Mi Fa"
-        )
+        post = test_domain.get_dao(Post).create(content="Do Re Mi Fa")
         return post
 
     def test_successful_initialization_of_entity_with_has_many_association(

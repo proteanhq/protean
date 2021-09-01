@@ -13,6 +13,11 @@ class Role(BaseAggregate):
     created_on = DateTime(default=datetime.today())
 
 
+class RoleClone(BaseAggregate):
+    name = String(max_length=15, required=True)
+    created_on = DateTime(default=datetime.today())
+
+
 class Person(BaseAggregate):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50, required=True)
@@ -50,13 +55,6 @@ class AbstractRole(BaseAggregate):
 
 class ConcreteRole(AbstractRole):
     bar = String(max_length=25)
-
-
-class FurtherAbstractRole(ConcreteRole):
-    foobar = String(max_length=25)
-
-    class Meta:
-        abstract = True
 
 
 # Aggregates to test Abstraction # END #

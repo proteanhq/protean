@@ -7,7 +7,7 @@ from protean.core.field.basic import Auto, String
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.utils.container import attributes, fields, id_field, _ID_FIELD_NAME
 
-from .elements import PersonAutoSSN, PersonExplicitID, Role, SubclassRole
+from .elements import PersonAutoSSN, PersonExplicitID, Role, RoleClone, SubclassRole
 
 
 class TestProperties:
@@ -125,10 +125,10 @@ class TestEquivalence:
             and one belongs to a different Entity class
         """
         role = Role(id=1, name="ADMIN")
-        person = PersonAutoSSN(id=1, name="ADMIN")
+        role_clone = RoleClone(id=1, name="ADMIN")
 
-        assert role != person  # Even though their identities are the same
-        assert person != role  # Even though their identities are the same
+        assert role != role_clone  # Even though their identities are the same
+        assert role_clone != role  # Even though their identities are the same
 
     def test_that_two_entities_of_inherited_types_are_different_even_with_same_id(self):
         """Test that two entities are not considered equal even if they have the same ID

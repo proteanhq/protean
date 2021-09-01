@@ -31,6 +31,8 @@ from protean.utils import (
 )
 from protean.utils.container import (
     _FIELDS,
+    BaseContainer,
+    OptionsMixin,
     fields,
     _ID_FIELD_NAME,
     id_field,
@@ -38,183 +40,6 @@ from protean.utils.container import (
 )
 
 logger = logging.getLogger("protean.domain.entity")
-
-
-class _EntityMetaclass(type):
-    """
-    This base metaclass processes the class declaration and constructs a meta object that can
-    be used to introspect the Entity class later. Specifically, it sets up a `meta_` attribute on
-    the Entity to an instance of Meta, either the default of one that is defined in the
-    Entity class.
-
-    `meta_` is setup with these attributes:
-        * `declared_fields`: A dictionary that gives a list of any instances of `Field`
-            included as attributes on either the class or on any of its superclasses
-        * `id_field`: The Primary identifier attribute of the Entity
-    """
-
-    def __new__(mcs, name, bases, attrs, **kwargs):
-        """Initialize Entity MetaClass and load attributes"""
-
-        # Ensure initialization is only performed for subclasses of Entity
-        # (excluding Entity class itself).
-        parents = [b for b in bases if isinstance(b, _EntityMetaclass)]
-        if not parents:
-            return super().__new__(mcs, name, bases, attrs)
-
-        # Remove `abstract` if defined in base classes
-        for base in bases:
-            if hasattr(base, "Meta") and hasattr(base.Meta, "abstract"):
-                delattr(base.Meta, "abstract")
-
-        new_class = super().__new__(mcs, name, bases, attrs, **kwargs)
-
-        # Gather `Meta` class/object if defined
-        attr_meta = attrs.pop(
-            "Meta", None
-        )  # Gather Metadata defined in inner `Meta` class
-        entity_meta = EntityMeta(name, attr_meta)  # Initialize the Metadata container
-        setattr(
-            new_class, "meta_", entity_meta
-        )  # Associate the Metadata container with new class
-
-        # Load declared fields
-        new_class._load_fields(attrs)
-
-        # Load declared fields from Base class, in case this Entity is subclassing another
-        new_class._load_base_class_fields(bases, attrs)
-
-        # Lookup an already defined ID field or create an `Auto` field
-        new_class._set_id_field()
-
-        # FIXME Temporary change until entity is moved to Container completely
-        setattr(new_class, _FIELDS, new_class.meta_.declared_fields)
-
-        return new_class
-
-    def _load_base_class_fields(new_class, bases, attrs):
-        """If this class is subclassing another Entity, add that Entity's
-        fields.  Note that we loop over the bases in *reverse*.
-        This is necessary in order to maintain the correct order of fields.
-        """
-        for base in reversed(bases):
-            if hasattr(base, "meta_") and hasattr(base.meta_, "declared_fields"):
-                base_class_fields = {
-                    field_name: field_obj
-                    for (field_name, field_obj) in fields(base).items()
-                    if (
-                        field_name not in attrs
-                        and not isinstance(field_obj, Association)
-                        and not field_obj.identifier
-                    )
-                }
-                new_class._load_fields(base_class_fields)
-
-    def _load_fields(new_class, attrs):
-        """Load field items into Class.
-
-        This method sets up the primary attribute of an association.
-        """
-        for attr_name, attr_obj in attrs.items():
-            if isinstance(attr_obj, (Association, Field, Reference)):
-                setattr(new_class, attr_name, attr_obj)
-                new_class.meta_.declared_fields[attr_name] = attr_obj
-            else:
-                if isinstance(attr_obj, BaseEntity):
-                    raise IncorrectUsageError(
-                        {
-                            "_entity": [
-                                f"`{attr_name}` of type `{type(attr_obj).__name__}` cannot be part of an entity."
-                            ]
-                        }
-                    )
-
-    def _set_id_field(new_class):
-        """Lookup the id field for this entity and assign"""
-        # FIXME What does it mean when there are no declared fields?
-        #   Does it translate to an abstract entity?
-        try:
-            id_field = next(
-                field
-                for _, field in new_class.meta_.declared_fields.items()
-                if isinstance(field, (Field, Reference)) and field.identifier
-            )
-
-            setattr(new_class, _ID_FIELD_NAME, id_field.field_name)
-
-            # If the aggregate/entity has been marked abstract,
-            #   and contains an identifier field, raise exception
-            if new_class.meta_.abstract and id_field:
-                raise IncorrectUsageError(
-                    {
-                        "_entity": [
-                            f"Abstract Aggregate `{new_class.__name__}` marked as abstract cannot have"
-                            " identity fields"
-                        ]
-                    }
-                )
-        except StopIteration:
-            # If no id field is declared then create one
-            #   If the aggregate/entity is marked abstract,
-            #   avoid creating an identifier field.
-            if not new_class.meta_.abstract:
-                new_class._create_id_field()
-
-    def _create_id_field(new_class):
-        """Create and return a default ID field that is Auto generated"""
-        id_field = Auto(identifier=True)
-
-        setattr(new_class, "id", id_field)
-        id_field.__set_name__(new_class, "id")
-
-        # Ensure ID field is updated properly in Meta attribute
-        new_class.meta_.declared_fields["id"] = id_field
-
-        setattr(new_class, _ID_FIELD_NAME, id_field.field_name)
-
-
-class EntityMeta:
-    """ Metadata info for the entity.
-
-    Options:
-    - ``abstract``: Indicates that this is an abstract entity (Ignores all other meta options)
-    - ``schema_name``: name of the schema (table/index/doc) used for persistence of this entity
-        defaults to underscore version of the Entity name.
-    - ``provider``: the name of the datasource associated with this
-        entity, default value is `default`.
-
-    Also acts as a placeholder for generated entity fields like:
-
-        :declared_fields: dict
-            Any instances of `Field` included as attributes on either the class
-            or on any of its superclasses will be include in this dictionary.
-        :id_field: protean.core.Field
-            An instance of the field that will serve as the unique identifier for the entity
-
-    FIXME Make `EntityMeta` immutable
-    """
-
-    def __init__(self, entity_name, meta):
-        self.abstract = getattr(meta, "abstract", None) or False
-        self.schema_name = getattr(meta, "schema_name", None) or inflection.underscore(
-            entity_name
-        )
-        self.provider = getattr(meta, "provider", None) or "default"
-        self.model = getattr(meta, "model", None)
-
-        # Initialize Options
-        self.declared_fields = {}
-
-        # Domain Attributes
-        self.aggregate_cls = getattr(meta, "aggregate_cls", None)
-
-    @property
-    def auto_fields(self):
-        return {
-            field_name: field_obj
-            for field_name, field_obj in self.declared_fields.items()
-            if isinstance(field_obj, Auto)
-        }
 
 
 class _FieldsCacheDescriptor:
@@ -271,7 +96,7 @@ class _EntityState:
     fields_cache = _FieldsCacheDescriptor()
 
 
-class BaseEntity(metaclass=_EntityMetaclass):
+class BaseEntity(BaseContainer, OptionsMixin):
     """The Base class for Protean-Compliant Domain Entities.
 
     Provides helper methods to custom define entity attributes, and query attribute names
@@ -304,7 +129,58 @@ class BaseEntity(metaclass=_EntityMetaclass):
 
     element_type = DomainObjects.ENTITY
 
-    def __init__(self, *template, raise_errors=True, **kwargs):  # noqa: C901
+    def __init_subclass__(subclass) -> None:
+        super().__init_subclass__()
+
+        subclass.__set_id_field()
+
+    @classmethod
+    def __set_id_field(new_class):
+        """Lookup the id field for this entity and assign"""
+        # FIXME What does it mean when there are no declared fields?
+        #   Does it translate to an abstract entity?
+        try:
+            id_field = next(
+                field
+                for _, field in fields(new_class).items()
+                if isinstance(field, (Field, Reference)) and field.identifier
+            )
+
+            setattr(new_class, _ID_FIELD_NAME, id_field.field_name)
+
+            # If the aggregate/entity has been marked abstract,
+            #   and contains an identifier field, raise exception
+            if new_class.meta_.abstract and id_field:
+                raise IncorrectUsageError(
+                    {
+                        "_entity": [
+                            f"Abstract Aggregate `{new_class.__name__}` marked as abstract cannot have"
+                            " identity fields"
+                        ]
+                    }
+                )
+        except StopIteration:
+            # If no id field is declared then create one
+            #   If the aggregate/entity is marked abstract,
+            #   avoid creating an identifier field.
+            if not new_class.meta_.abstract:
+                new_class.__create_id_field()
+
+    @classmethod
+    def __create_id_field(new_class):
+        """Create and return a default ID field that is Auto generated"""
+        id_field = Auto(identifier=True)
+
+        setattr(new_class, "id", id_field)
+        id_field.__set_name__(new_class, "id")
+
+        setattr(new_class, _ID_FIELD_NAME, id_field.field_name)
+
+        field_objects = getattr(new_class, _FIELDS)
+        field_objects["id"] = id_field
+        setattr(new_class, _FIELDS, field_objects)
+
+    def __init__(self, *template, **kwargs):  # noqa: C901
         """
         Initialise the entity object.
 
@@ -331,7 +207,6 @@ class BaseEntity(metaclass=_EntityMetaclass):
             )
 
         self.errors = defaultdict(list)
-        self.raise_errors = raise_errors
 
         # Set up the storage for instance state
         self.state_ = _EntityState()
@@ -441,7 +316,7 @@ class BaseEntity(metaclass=_EntityMetaclass):
             self.errors[field].extend(custom_errors[field])
 
         # Raise any errors found during load
-        if self.errors and self.raise_errors:
+        if self.errors:
             logger.error(f"Error during initialization: {dict(self.errors)}")
             raise ValidationError(self.errors)
 

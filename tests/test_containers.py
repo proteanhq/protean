@@ -1,7 +1,7 @@
 import pytest
 
 from protean.core.field.basic import Integer, String
-from protean.exceptions import InvalidDataError, InvalidOperationError
+from protean.exceptions import InvalidDataError
 from protean.utils.container import BaseContainer, fields
 from protean.utils.container import OptionsMixin
 

@@ -51,6 +51,8 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
         class Comment(BaseEntity):
             content = Text(required=True)
 
+            post = Reference("Post")
+
             class Meta:
                 aggregate_cls = "Post"
 
