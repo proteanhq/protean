@@ -15,8 +15,8 @@ from sqlalchemy.ext import declarative as sa_dec
 from sqlalchemy.ext.declarative import as_declarative, declared_attr
 from sqlalchemy.types import CHAR, TypeDecorator
 
-from protean.core.field.association import Reference, _ReferenceField
-from protean.core.field.basic import (
+from protean.fields.association import Reference, _ReferenceField
+from protean.fields import (
     Auto,
     Boolean,
     Date,
@@ -35,7 +35,7 @@ from protean.globals import current_domain, current_uow
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
 from protean.utils import Database, IdentityType
-from protean.utils.container import attributes, id_field
+from protean.utils.reflection import attributes, id_field
 from protean.utils.query import Q
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)

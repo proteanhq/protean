@@ -1,6 +1,6 @@
 from enum import Enum
 
-from protean.core.field.basic import String
+from protean.fields import String
 from protean.utils import DomainObjects
 
 

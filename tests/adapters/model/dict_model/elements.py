@@ -4,8 +4,8 @@ from collections import defaultdict
 from typing import List
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import Integer, String, Text
-from protean.core.field.embedded import ValueObject
+from protean.fields import Integer, String, Text
+from protean.fields import ValueObject
 from protean.core.model import BaseModel
 from protean.core.repository import BaseRepository
 from protean.core.value_object import BaseValueObject

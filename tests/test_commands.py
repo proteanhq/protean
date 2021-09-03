@@ -1,7 +1,7 @@
 import pytest
 
 from protean.core.command import BaseCommand
-from protean.core.field.basic import Integer, String
+from protean.fields import Integer, String
 from protean.exceptions import (
     InvalidDataError,
     InvalidOperationError,

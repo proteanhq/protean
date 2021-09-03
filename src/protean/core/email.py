@@ -1,6 +1,6 @@
 from abc import abstractmethod
 
-from protean.core.field.basic import Dict, List, String
+from protean.fields import Dict, List, String
 from protean.utils import (
     DomainObjects,
     convert_str_values_to_list,

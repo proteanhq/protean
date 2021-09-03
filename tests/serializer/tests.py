@@ -1,9 +1,9 @@
 import pytest
 
-from protean.core.field.basic import Integer, String
+from protean.fields import Integer, String
 from protean.core.serializer import BaseSerializer
 from protean.utils import fully_qualified_name
-from protean.utils.container import fields
+from protean.utils.reflection import fields
 
 from .elements import User, UserSchema
 

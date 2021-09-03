@@ -1,7 +1,7 @@
 import pytest
 
 from protean.exceptions import NotSupportedError
-from protean.utils.container import fields
+from protean.utils.reflection import fields
 
 from .elements import AbstractRole, ConcreteRole
 
@@ -24,7 +24,7 @@ class TestAggregateAbstraction:
 
     def test_that_abstract_entities_can_be_created_with_annotations(self, test_domain):
         from protean.core.aggregate import BaseAggregate
-        from protean.core.field.basic import String
+        from protean.fields import String
 
         class CustomBaseClass(BaseAggregate):
             foo = String(max_length=25)

@@ -2,8 +2,8 @@ from collections import defaultdict
 from enum import Enum
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import Float, Identifier, Integer, String
-from protean.core.field.embedded import ValueObject
+from protean.fields import Float, Identifier, Integer, String
+from protean.fields import ValueObject
 from protean.core.value_object import BaseValueObject
 
 

@@ -1,9 +1,9 @@
 import pytest
 
 from protean.core.entity import BaseEntity
-from protean.core.field.association import HasOne, Reference
-from protean.core.field.basic import Identifier, String
-from protean.core.field.embedded import ValueObject
+from protean.fields import HasOne, Reference
+from protean.fields import Identifier, String
+from protean.fields import ValueObject
 from protean.core.value_object import BaseValueObject
 from protean.core.view import BaseView
 from protean.exceptions import IncorrectUsageError

@@ -1,6 +1,6 @@
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
-from protean.core.field.basic import Auto, Integer, String
+from protean.fields import Auto, Integer, String
 from protean.core.subscriber import BaseSubscriber
 from protean.globals import current_domain
 

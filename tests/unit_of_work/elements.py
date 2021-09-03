@@ -1,5 +1,5 @@
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import Integer, String
+from protean.fields import Integer, String
 from protean.core.repository import BaseRepository
 
 

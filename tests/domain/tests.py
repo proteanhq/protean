@@ -3,11 +3,11 @@ import pytest
 from protean import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.core.field.association import HasMany, HasOne, Reference
-from protean.core.field.basic import DateTime, String, Text
+from protean.fields import HasMany, HasOne, Reference
+from protean.fields import DateTime, String, Text
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.utils import EventStrategy, fully_qualified_name
-from protean.utils.container import fields
+from protean.utils.reflection import fields
 
 from .elements import UserAggregate, UserEntity, UserFoo, UserVO
 
@@ -50,7 +50,7 @@ class TestDomainRegistration:
     def test_that_an_improperly_subclassed_element_cannot_be_registered(
         self, test_domain
     ):
-        from protean.core.field.basic import String
+        from protean.fields import String
 
         class Foo:
             pass
@@ -70,7 +70,7 @@ class TestDomainAnnotations:
         # Standard Library Imports
         from enum import Enum
 
-        from protean.core.field.basic import String
+        from protean.fields import String
 
         class DummyElement(Enum):
             FOO = "FOO"

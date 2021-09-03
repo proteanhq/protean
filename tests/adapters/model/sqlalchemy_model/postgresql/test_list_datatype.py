@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from protean.core.field.basic import (
+from protean.fields import (
     Auto,
     Boolean,
     Date,

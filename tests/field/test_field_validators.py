@@ -3,7 +3,7 @@ import re
 
 import pytest
 
-from protean.core.field.validators import (
+from protean.fields.validators import (
     MaxLengthValidator,
     MaxValueValidator,
     MinLengthValidator,

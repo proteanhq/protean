@@ -2,9 +2,9 @@ from datetime import datetime
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.core.field.association import HasMany, HasOne, Reference
-from protean.core.field.basic import DateTime, Integer, String, Text
-from protean.core.field.embedded import ValueObject
+from protean.fields import HasMany, HasOne, Reference
+from protean.fields import DateTime, Integer, String, Text
+from protean.fields import ValueObject
 from protean.core.value_object import BaseValueObject
 
 

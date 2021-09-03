@@ -1,7 +1,7 @@
 import pytest
 
 from protean.core.event import BaseEvent
-from protean.core.field.basic import Identifier, Integer, String
+from protean.fields import Identifier, Integer, String
 from protean.core.subscriber import BaseSubscriber
 from protean.utils import fully_qualified_name
 

@@ -4,7 +4,7 @@ from typing import List
 
 import pytest
 
-from protean.core.field.basic import Integer
+from protean.fields import Integer
 
 
 def initialize_domain():

@@ -7,9 +7,9 @@ from elasticsearch_dsl import Keyword, Text
 
 from protean.adapters.repository.elasticsearch import ElasticsearchModel
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import DateTime, Integer, String
-from protean.core.field.basic import Text as ProteanText
-from protean.core.field.embedded import ValueObject
+from protean.fields import DateTime, Integer, String
+from protean.fields import Text as ProteanText
+from protean.fields import ValueObject
 from protean.core.value_object import BaseValueObject
 
 

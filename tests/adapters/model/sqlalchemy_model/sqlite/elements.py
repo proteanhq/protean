@@ -6,8 +6,8 @@ from datetime import datetime
 from sqlalchemy import Column, Text
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import DateTime, Integer, String
-from protean.core.field.embedded import ValueObject
+from protean.fields import DateTime, Integer, String
+from protean.fields import ValueObject
 from protean.core.model import BaseModel
 from protean.core.value_object import BaseValueObject
 

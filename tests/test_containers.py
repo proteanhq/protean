@@ -1,8 +1,9 @@
 import pytest
 
-from protean.core.field.basic import Integer, String
+from protean.fields import Integer, String
 from protean.exceptions import InvalidDataError
-from protean.utils.container import BaseContainer, OptionsMixin, fields
+from protean.utils.container import BaseContainer, OptionsMixin
+from protean.utils.reflection import fields
 
 
 class CustomContainerMeta(BaseContainer):

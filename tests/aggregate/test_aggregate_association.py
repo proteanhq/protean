@@ -1,7 +1,7 @@
 import mock
 import pytest
 
-from protean.utils.container import attributes
+from protean.utils.reflection import attributes
 
 from .elements import (
     Account,
@@ -76,7 +76,7 @@ class TestHasOne:
         )
         assert refreshed_account.profile == profile
 
-    @mock.patch("protean.core.field.association.Association._fetch_objects")
+    @mock.patch("protean.fields.association.Association._fetch_objects")
     def test_that_subsequent_access_after_first_retrieval_do_not_fetch_record_again(
         self, mock, test_domain
     ):
@@ -222,9 +222,7 @@ class TestHasMany:
         test_domain.get_dao(CommentViaWithReference).save(comment2)
 
         refreshed_post = test_domain.get_dao(PostViaWithReference).get(post.id)
-        with mock.patch(
-            "protean.core.field.association.HasMany._fetch_objects"
-        ) as mock_fetch_objects:
+        with mock.patch("protean.fields.HasMany._fetch_objects") as mock_fetch_objects:
             for _ in range(3):
                 getattr(refreshed_post, "comments")
         assert mock_fetch_objects.call_count == 0

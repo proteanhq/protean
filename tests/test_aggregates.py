@@ -3,11 +3,11 @@ from datetime import datetime
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.association import HasMany, Reference
-from protean.core.field.basic import Date, DateTime, String
+from protean.fields import HasMany, Reference
+from protean.fields import Date, DateTime, String
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.utils import fully_qualified_name
-from protean.utils.container import fields
+from protean.utils.reflection import fields
 
 
 class TestAggregateRegistration:

@@ -3,8 +3,8 @@ from datetime import datetime
 import pytest
 
 from protean.core import BaseAggregate, BaseEntity
-from protean.core.field.association import HasMany, Reference
-from protean.core.field.basic import DateTime, Text
+from protean.fields import HasMany, Reference
+from protean.fields import DateTime, Text
 from protean.core.unit_of_work import UnitOfWork
 
 

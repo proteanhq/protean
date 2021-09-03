@@ -8,7 +8,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.core.field.basic import DateTime, String
+from protean.fields import DateTime, String
 from protean.domain.registry import _DomainRegistry
 from protean.utils import DomainObjects
 

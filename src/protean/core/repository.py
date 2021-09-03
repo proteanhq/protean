@@ -1,10 +1,11 @@
 import logging
 
-from protean.core.field.association import HasMany, HasOne
+from protean.fields import HasMany, HasOne
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.globals import current_domain
 from protean.utils import Database, DomainObjects, derive_element_class
-from protean.utils.container import Element, OptionsMixin, fields
+from protean.utils.container import Element, OptionsMixin
+from protean.utils.reflection import fields
 
 logger = logging.getLogger("protean.repository")
 

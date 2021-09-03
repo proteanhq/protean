@@ -2,7 +2,7 @@
 
 import pytest
 
-from protean.core.field.basic import Field
+from protean.fields import Field
 from protean.exceptions import ValidationError
 
 

@@ -2,7 +2,7 @@ import pytest
 
 from protean.adapters.repository.sqlalchemy import Any, Contains, In, Overlap
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import List, String
+from protean.fields import List, String
 
 
 class GenericPostgres(BaseAggregate):

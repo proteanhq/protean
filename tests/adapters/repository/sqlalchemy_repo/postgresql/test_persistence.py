@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import DateTime, Dict, String
+from protean.fields import DateTime, Dict, String
 
 
 class Event(BaseAggregate):

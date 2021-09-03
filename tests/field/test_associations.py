@@ -1,4 +1,4 @@
-from protean.utils.container import attributes, fields
+from protean.utils.reflection import attributes, fields
 
 from .elements import Comment, Post
 

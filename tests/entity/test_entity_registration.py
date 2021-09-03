@@ -1,6 +1,6 @@
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.core.field.basic import String
+from protean.fields import String
 from protean.utils import fully_qualified_name
 
 
@@ -51,7 +51,7 @@ class TestEntityRegistration:
     def test_register_entity_against_a_dummy_aggregate(self, test_domain):
         # Though the registration succeeds, this will eventually fail
         #   when the domain tries to resolve the aggregate.
-        from protean.core.field.basic import String
+        from protean.fields import String
 
         @test_domain.entity(aggregate_cls="foo")
         class FooBar:

@@ -13,7 +13,7 @@ from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
-from protean.core.field.association import HasMany, HasOne, Reference
+from protean.fields import HasMany, HasOne, Reference
 from protean.core.model import BaseModel
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import (
@@ -32,7 +32,7 @@ from protean.utils import (
     fetch_element_cls_from_registry,
     fully_qualified_name,
 )
-from protean.utils.container import fields, has_fields
+from protean.utils.reflection import fields, has_fields
 
 from .config import Config, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals, has_domain_context

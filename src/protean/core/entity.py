@@ -6,14 +6,13 @@ from collections import defaultdict
 from functools import partial
 from uuid import uuid4
 
-from protean.core.field.association import (
-    Association,
+from protean.fields import (
     HasMany,
     Reference,
-    _ReferenceField,
 )
-from protean.core.field.basic import Auto, Field
-from protean.core.field.embedded import ValueObject
+from protean.fields.association import _ReferenceField, Association
+from protean.fields import Auto, Field
+from protean.fields import ValueObject
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -29,11 +28,10 @@ from protean.utils import (
     generate_identity,
     inflection,
 )
-from protean.utils.container import (
+from protean.utils.container import BaseContainer, OptionsMixin
+from protean.utils.reflection import (
     _FIELDS,
     _ID_FIELD_NAME,
-    BaseContainer,
-    OptionsMixin,
     attributes,
     fields,
     id_field,

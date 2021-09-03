@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import DateTime, Integer, String
+from protean.fields import DateTime, Integer, String
 from protean.core.repository import BaseRepository
 
 

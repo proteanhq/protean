@@ -1,4 +1,4 @@
-from protean.core.field.basic import Identifier, Integer, String
+from protean.fields import Identifier, Integer, String
 from protean.core.view import BaseView
 
 

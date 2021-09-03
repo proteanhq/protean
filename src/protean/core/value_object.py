@@ -1,8 +1,8 @@
 """Value Object Functionality and Classes"""
 import logging
 
-from protean.core.field.association import Association, Reference
-from protean.core.field.embedded import ValueObject
+from protean.fields.association import Association
+from protean.fields import Reference, ValueObject
 from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import BaseContainer, OptionsMixin, fields

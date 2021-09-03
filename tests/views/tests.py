@@ -4,17 +4,12 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.field.basic import Auto, Identifier, Integer, String
+from protean.fields import Auto, Identifier, Integer, String
 from protean.core.view import BaseView
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.utils import fully_qualified_name
-from protean.utils.container import (
-    _ID_FIELD_NAME,
-    Options,
-    attributes,
-    fields,
-    id_field,
-)
+from protean.utils.container import Options
+from protean.utils.reflection import _ID_FIELD_NAME, attributes, fields, id_field
 
 
 class AbstractPerson(BaseView):

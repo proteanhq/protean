@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import types as sa_types
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.field.basic import (
+from protean.fields import (
     Auto,
     Boolean,
     Date,

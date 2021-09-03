@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.field.basic import String
+from protean.fields import String
 from protean.core.repository import BaseRepository
 from protean.exceptions import IncorrectUsageError
 from protean.utils import Database, fully_qualified_name

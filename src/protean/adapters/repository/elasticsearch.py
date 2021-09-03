@@ -10,13 +10,13 @@ from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Document, Index, Search, query
 
-from protean.core.field.association import Reference
+from protean.fields import Reference
 from protean.exceptions import ObjectNotFoundError
 from protean.globals import current_domain
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
 from protean.utils import Database, IdentityStrategy, IdentityType
-from protean.utils.container import attributes
+from protean.utils.reflection import attributes
 from protean.utils.query import Q
 
 logger = logging.getLogger("protean.repository")
