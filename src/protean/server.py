@@ -25,7 +25,7 @@ from protean.utils import (
 from protean.utils.importlib import import_from_full_path
 
 logging.basicConfig(
-    level=logging.DEBUG,  # FIXME Pick up log level from config
+    level=logging.INFO,  # FIXME Pick up log level from config
     format="%(threadName)10s %(name)18s: %(message)s",
     stream=sys.stderr,
 )

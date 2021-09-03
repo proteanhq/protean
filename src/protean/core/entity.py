@@ -133,6 +133,7 @@ class BaseEntity(BaseContainer, OptionsMixin):
         super().__init_subclass__()
 
         subclass.__set_id_field()
+        subclass.__set_up_reference_fields()
 
     @classmethod
     def __set_id_field(new_class):
@@ -179,6 +180,14 @@ class BaseEntity(BaseContainer, OptionsMixin):
         field_objects = getattr(new_class, _FIELDS)
         field_objects["id"] = id_field
         setattr(new_class, _FIELDS, field_objects)
+
+    @classmethod
+    def __set_up_reference_fields(subclass):
+        """Walk through relation fields and setup shadow attributes"""
+        for _, field in fields(subclass).items():
+            if isinstance(field, Reference):
+                shadow_field_name, shadow_field = field.get_shadow_field()
+                shadow_field.__set_name__(subclass, shadow_field_name)
 
     def __init__(self, *template, **kwargs):  # noqa: C901
         """

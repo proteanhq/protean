@@ -1,6 +1,8 @@
 import mock
 import pytest
 
+from protean.utils.container import attributes
+
 from .elements import (
     Account,
     AccountVia,
@@ -240,3 +242,8 @@ class TestHasMany:
 
         updated_post = test_domain.get_dao(Post).get(persisted_post.id)
         assert len(updated_post.comments) == 12
+
+
+class TestReference:
+    def test_that_reference_field_attribute_name_is_set_properly(self):
+        assert attributes(Author)["account_email"].attribute_name is not None
