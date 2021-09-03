@@ -6,19 +6,14 @@ from collections import defaultdict
 from functools import partial
 from uuid import uuid4
 
-from protean.fields import (
-    HasMany,
-    Reference,
-)
-from protean.fields.association import _ReferenceField, Association
-from protean.fields import Auto, Field
-from protean.fields import ValueObject
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
     ValidationError,
 )
+from protean.fields import Auto, Field, HasMany, Reference, ValueObject
+from protean.fields.association import Association, _ReferenceField
 from protean.globals import current_domain
 from protean.utils import (
     DomainObjects,

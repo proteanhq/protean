@@ -4,12 +4,12 @@ from abc import ABCMeta, abstractmethod
 from typing import Any
 
 from protean.core.entity import BaseEntity
-from protean.fields import Auto, Field
 from protean.core.queryset import QuerySet
 from protean.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
+from protean.fields import Auto, Field
 from protean.globals import current_uow
-from protean.utils.reflection import fields, id_field, unique_fields
 from protean.utils.query import Q
+from protean.utils.reflection import fields, id_field, unique_fields
 
 logger = logging.getLogger("protean.repository")
 

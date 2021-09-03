@@ -7,8 +7,8 @@ from mock import patch
 
 from protean.adapters.broker.redis import RedisBroker
 from protean.core.event import BaseEvent
-from protean.fields import Auto, Integer, String
 from protean.core.subscriber import BaseSubscriber
+from protean.fields import Auto, Integer, String
 from protean.infra.eventing import EventLog, EventLogStatus
 from protean.infra.job import Job, JobStatus
 from protean.server import Server

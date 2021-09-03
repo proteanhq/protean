@@ -3,9 +3,8 @@ from datetime import datetime
 import pytest
 
 from protean.core import BaseAggregate, BaseEntity
-from protean.fields import HasMany, Reference
-from protean.fields import DateTime, Text
 from protean.core.unit_of_work import UnitOfWork
+from protean.fields import DateTime, HasMany, Reference, Text
 
 
 class Comment(BaseEntity):

@@ -2,8 +2,8 @@
 
 import pytest
 
-from protean.fields import Field
 from protean.exceptions import ValidationError
+from protean.fields import Field
 
 
 class DummyStringField(Field):

@@ -7,6 +7,7 @@ from datetime import datetime
 import pytest
 
 from protean.core.aggregate import BaseAggregate
+from protean.exceptions import ValidationError
 from protean.fields import (
     Auto,
     Boolean,
@@ -19,7 +20,6 @@ from protean.fields import (
     String,
     Text,
 )
-from protean.exceptions import ValidationError
 
 
 class TestStringField:

@@ -1,6 +1,6 @@
 from protean.core.aggregate import BaseAggregate
-from protean.fields import Integer, String
 from protean.core.repository import BaseRepository
+from protean.fields import Integer, String
 
 
 class Person(BaseAggregate):

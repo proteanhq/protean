@@ -2,8 +2,8 @@ from datetime import datetime
 from enum import Enum
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import Auto, DateTime, Dict, String
 from protean.core.repository import BaseRepository
+from protean.fields import Auto, DateTime, Dict, String
 from protean.globals import current_domain
 
 

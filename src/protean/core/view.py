@@ -1,12 +1,12 @@
 """View Functionality and Classes"""
 import logging
 
-from protean.fields.association import Association
-from protean.fields import Field, Reference, ValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.fields import Field, Reference, ValueObject
+from protean.fields.association import Association
 from protean.utils import DomainObjects, derive_element_class, inflection
 from protean.utils.container import BaseContainer, OptionsMixin
-from protean.utils.reflection import fields, id_field, _ID_FIELD_NAME
+from protean.utils.reflection import _ID_FIELD_NAME, fields, id_field
 
 logger = logging.getLogger("protean.domain.view")
 

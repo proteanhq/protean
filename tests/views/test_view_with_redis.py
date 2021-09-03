@@ -1,5 +1,5 @@
-from protean.fields import Identifier, Integer, String
 from protean.core.view import BaseView
+from protean.fields import Identifier, Integer, String
 
 
 class Person(BaseView):

@@ -2,9 +2,8 @@ from collections import defaultdict
 from enum import Enum
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import Float, Identifier, Integer, String
-from protean.fields import ValueObject
 from protean.core.value_object import BaseValueObject
+from protean.fields import Float, Identifier, Integer, String, ValueObject
 
 
 class Email(BaseValueObject):

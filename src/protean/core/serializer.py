@@ -3,6 +3,7 @@ import logging
 
 from marshmallow import Schema, fields
 
+from protean.exceptions import NotSupportedError
 from protean.fields import (
     Boolean,
     Date,
@@ -18,7 +19,6 @@ from protean.fields import (
     String,
     Text,
 )
-from protean.exceptions import NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, Options
 from protean.utils.reflection import _FIELDS

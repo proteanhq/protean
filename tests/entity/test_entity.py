@@ -2,8 +2,7 @@ from collections import defaultdict
 from enum import Enum
 
 from protean.core.entity import BaseEntity
-from protean.fields import HasOne
-from protean.fields import Auto, Integer, String
+from protean.fields import Auto, HasOne, Integer, String
 from protean.utils.container import Options
 from protean.utils.reflection import attributes, fields
 

@@ -3,9 +3,8 @@ from datetime import datetime
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import HasMany, Reference
-from protean.fields import Date, DateTime, String
 from protean.exceptions import IncorrectUsageError, ValidationError
+from protean.fields import Date, DateTime, HasMany, Reference, String
 from protean.utils import fully_qualified_name
 from protean.utils.reflection import fields
 

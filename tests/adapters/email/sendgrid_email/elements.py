@@ -1,9 +1,9 @@
 from protean.core.aggregate import BaseAggregate
 from protean.core.email import BaseEmail
 from protean.core.event import BaseEvent
-from protean.fields import Integer, String
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import InsufficientDataError, InvalidDataError
+from protean.fields import Integer, String
 from protean.globals import current_domain
 
 

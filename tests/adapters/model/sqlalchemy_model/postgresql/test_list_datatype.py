@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 
+from protean.exceptions import ValidationError
 from protean.fields import (
     Auto,
     Boolean,
@@ -13,7 +14,6 @@ from protean.fields import (
     List,
     String,
 )
-from protean.exceptions import ValidationError
 
 from .elements import IntegerListUser, ListUser
 

@@ -1,12 +1,12 @@
 import pytest
 
 from protean.core.command import BaseCommand
-from protean.fields import Integer, String
 from protean.exceptions import (
     InvalidDataError,
     InvalidOperationError,
     NotSupportedError,
 )
+from protean.fields import Integer, String
 from protean.utils import fully_qualified_name
 
 

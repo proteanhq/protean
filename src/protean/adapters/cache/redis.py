@@ -7,8 +7,8 @@ import redis
 from protean.core.view import BaseView
 from protean.port.cache import BaseCache
 from protean.utils import Cache
-from protean.utils.reflection import id_field
 from protean.utils.inflection import underscore
+from protean.utils.reflection import id_field
 
 
 class RedisCache(BaseCache):

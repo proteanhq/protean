@@ -6,8 +6,8 @@ import pytest
 from redis import Redis
 
 from protean.adapters.cache.redis import RedisCache
-from protean.fields import Identifier, String
 from protean.core.view import BaseView
+from protean.fields import Identifier, String
 from protean.utils import Cache
 
 

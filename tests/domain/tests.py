@@ -3,9 +3,8 @@ import pytest
 from protean import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.fields import HasMany, HasOne, Reference
-from protean.fields import DateTime, String, Text
 from protean.exceptions import ConfigurationError, IncorrectUsageError
+from protean.fields import DateTime, HasMany, HasOne, Reference, String, Text
 from protean.utils import EventStrategy, fully_qualified_name
 from protean.utils.reflection import fields
 

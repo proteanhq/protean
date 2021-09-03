@@ -1,8 +1,8 @@
 from typing import List
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import Integer, String
 from protean.core.repository import BaseRepository
+from protean.fields import Integer, String
 from protean.globals import current_domain
 from protean.utils import Database, fully_qualified_name
 

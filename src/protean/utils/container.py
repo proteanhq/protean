@@ -4,9 +4,10 @@ import logging
 
 from collections import defaultdict
 
-from .reflection import _FIELDS, fields, attributes
-from protean.fields import FieldBase
 from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
+from protean.fields import FieldBase
+
+from .reflection import _FIELDS, attributes, fields
 
 logger = logging.getLogger("protean.domain")
 

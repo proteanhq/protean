@@ -4,10 +4,9 @@ from collections import defaultdict
 from datetime import datetime
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import DateTime, Integer, String
-from protean.fields import ValueObject
 from protean.core.repository import BaseRepository
 from protean.core.value_object import BaseValueObject
+from protean.fields import DateTime, Integer, String, ValueObject
 
 
 class Person(BaseAggregate):

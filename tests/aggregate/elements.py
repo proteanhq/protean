@@ -3,9 +3,17 @@ from typing import List
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.fields import HasMany, HasOne, Reference
-from protean.fields import Auto, DateTime, Integer, String, Text
 from protean.core.repository import BaseRepository
+from protean.fields import (
+    Auto,
+    DateTime,
+    HasMany,
+    HasOne,
+    Integer,
+    Reference,
+    String,
+    Text,
+)
 
 
 class Role(BaseAggregate):

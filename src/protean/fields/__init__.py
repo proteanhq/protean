@@ -1,4 +1,5 @@
-from .association import Reference, HasMany, HasOne
+from . import validators
+from .association import HasMany, HasOne, Reference
 from .base import Field, FieldBase
 from .basic import (
     Auto,
@@ -10,10 +11,9 @@ from .basic import (
     Identifier,
     Integer,
     List,
-    String,
-    Text,
     Method,
     Nested,
+    String,
+    Text,
 )
 from .embedded import ValueObject
-from . import validators

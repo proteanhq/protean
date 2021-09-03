@@ -1,8 +1,8 @@
 import pytest
 
 from protean.core.entity import BaseEntity
-from protean.fields import Boolean, Dict, Integer, List
 from protean.exceptions import ValidationError
+from protean.fields import Boolean, Dict, Integer, List
 
 
 class TestFields:

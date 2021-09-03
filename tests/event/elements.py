@@ -2,8 +2,8 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
-from protean.fields import Identifier, Integer, String
 from protean.core.unit_of_work import UnitOfWork
+from protean.fields import Identifier, Integer, String
 from protean.globals import current_domain
 
 

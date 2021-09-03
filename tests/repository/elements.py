@@ -4,10 +4,9 @@ from collections import defaultdict
 from typing import List
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import Integer, String
-from protean.fields import ValueObject
 from protean.core.repository import BaseRepository
 from protean.core.value_object import BaseValueObject
+from protean.fields import Integer, String, ValueObject
 from protean.globals import current_domain
 
 

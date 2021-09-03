@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy import types as sa_types
 
 from protean.core.aggregate import BaseAggregate
+from protean.exceptions import ValidationError
 from protean.fields import (
     Auto,
     Boolean,
@@ -16,7 +17,6 @@ from protean.fields import (
     List,
     String,
 )
-from protean.exceptions import ValidationError
 
 
 class ArrayUser(BaseAggregate):

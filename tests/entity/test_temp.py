@@ -1,8 +1,8 @@
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import String
 from protean.exceptions import NotSupportedError
+from protean.fields import String
 
 
 # Aggregates to test Abstraction # START #

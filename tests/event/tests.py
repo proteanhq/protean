@@ -4,10 +4,9 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
-from protean.fields import String
-from protean.fields import ValueObject
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.fields import String, ValueObject
 from protean.globals import current_domain
 from protean.infra.eventing import EventLog, EventLogRepository
 from protean.utils import fully_qualified_name

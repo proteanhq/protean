@@ -3,6 +3,7 @@ import re
 
 import pytest
 
+from protean.exceptions import ValidationError
 from protean.fields.validators import (
     MaxLengthValidator,
     MaxValueValidator,
@@ -10,7 +11,6 @@ from protean.fields.validators import (
     MinValueValidator,
     RegexValidator,
 )
-from protean.exceptions import ValidationError
 
 TEST_DATA = [
     # (validator, value, expected),

@@ -6,10 +6,9 @@ from datetime import datetime
 from sqlalchemy import Column, Text
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import DateTime, Integer, List, String
-from protean.fields import ValueObject
 from protean.core.model import BaseModel
 from protean.core.value_object import BaseValueObject
+from protean.fields import DateTime, Integer, List, String, ValueObject
 
 
 class Person(BaseAggregate):
