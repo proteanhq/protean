@@ -3,9 +3,7 @@ import re
 from collections import defaultdict
 from datetime import datetime
 
-from protean.core.aggregate import BaseAggregate
-from protean.core.repository import BaseRepository
-from protean.core.value_object import BaseValueObject
+from protean import BaseAggregate, BaseRepository, BaseValueObject
 from protean.fields import DateTime, Integer, String, ValueObject
 
 

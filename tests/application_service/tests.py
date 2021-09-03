@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.application_service import BaseApplicationService
+from protean import BaseApplicationService
 from protean.utils import fully_qualified_name
 
 from .elements import DummyApplicationService

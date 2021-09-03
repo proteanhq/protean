@@ -2,11 +2,8 @@ import pytest
 
 from mock import patch
 
+from protean import BaseCommand, BaseCommandHandler, BaseEvent, BaseSubscriber
 from protean.adapters.broker.inline import InlineBroker
-from protean.core.command import BaseCommand
-from protean.core.command_handler import BaseCommandHandler
-from protean.core.event import BaseEvent
-from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError
 from protean.fields import Auto, Integer, String
 from protean.infra.eventing import EventLog

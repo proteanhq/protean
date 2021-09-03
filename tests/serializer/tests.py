@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.serializer import BaseSerializer
+from protean import BaseSerializer
 from protean.fields import Integer, String
 from protean.utils import fully_qualified_name
 from protean.utils.reflection import fields

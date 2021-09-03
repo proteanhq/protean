@@ -1,4 +1,4 @@
-from protean.core.queryset import Q
+from protean import Q
 
 
 class TestQ:

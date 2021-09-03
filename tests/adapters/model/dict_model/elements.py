@@ -3,10 +3,7 @@ import re
 from collections import defaultdict
 from typing import List
 
-from protean.core.aggregate import BaseAggregate
-from protean.core.model import BaseModel
-from protean.core.repository import BaseRepository
-from protean.core.value_object import BaseValueObject
+from protean import BaseAggregate, BaseModel, BaseRepository, BaseValueObject
 from protean.fields import Integer, String, Text, ValueObject
 from protean.globals import current_domain
 

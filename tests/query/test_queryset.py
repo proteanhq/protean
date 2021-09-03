@@ -1,7 +1,7 @@
 """ Test the Q object used for managing filter criteria """
 import pytest
 
-from protean.core.queryset import QuerySet
+from protean import QuerySet
 from protean.utils.query import Q
 
 from .elements import Person

@@ -1,4 +1,4 @@
-from protean.core.domain_service import BaseDomainService
+from protean import BaseDomainService
 
 
 class DummyDomainService(BaseDomainService):

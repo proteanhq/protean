@@ -5,7 +5,7 @@ import pytest
 
 from sqlalchemy.orm.session import Session
 
-from protean.core.queryset import Q, QuerySet
+from protean import Q, QuerySet
 from protean.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
 
 from .elements import Person, User

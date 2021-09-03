@@ -8,8 +8,8 @@ import sys
 
 from typing import Dict, List
 
-from protean.core.subscriber import BaseSubscriber
 from protean import UnitOfWork
+from protean.core.subscriber import BaseSubscriber
 from protean.domain import Domain
 from protean.exceptions import ConfigurationError
 from protean.globals import current_domain

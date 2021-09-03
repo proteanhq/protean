@@ -2,8 +2,8 @@ import time
 
 import pytest
 
+from protean import BaseView
 from protean.adapters.cache.memory import MemoryCache
-from protean.core.view import BaseView
 from protean.fields import Identifier, String
 from protean.port.cache import BaseCache
 from protean.utils import Cache

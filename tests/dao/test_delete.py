@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.queryset import Q
+from protean import Q
 from protean.exceptions import ObjectNotFoundError
 
 from .elements import Person, PersonRepository, User

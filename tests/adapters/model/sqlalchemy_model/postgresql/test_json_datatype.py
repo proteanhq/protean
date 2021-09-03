@@ -4,7 +4,7 @@ import pytest
 
 from sqlalchemy import types as sa_types
 
-from protean.core.aggregate import BaseAggregate
+from protean import BaseAggregate
 from protean.fields import DateTime, Dict, String
 from protean.globals import current_domain
 

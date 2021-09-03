@@ -2,9 +2,7 @@ import uuid
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
-from protean.core.event import BaseEvent
-from protean.core.value_object import BaseValueObject
+from protean import BaseAggregate, BaseEvent, BaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import String, ValueObject
 from protean.globals import current_domain

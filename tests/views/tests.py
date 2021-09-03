@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.view import BaseView
+from protean import BaseView
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.fields import Auto, Identifier, Integer, String
 from protean.utils import fully_qualified_name

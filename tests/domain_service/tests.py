@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.domain_service import BaseDomainService
+from protean import BaseDomainService
 from protean.utils import fully_qualified_name
 
 from .elements import DummyDomainService

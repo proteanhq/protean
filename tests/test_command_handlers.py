@@ -1,8 +1,6 @@
 import pytest
 
-from protean.core.aggregate import BaseAggregate
-from protean.core.command import BaseCommand
-from protean.core.command_handler import BaseCommandHandler
+from protean import BaseAggregate, BaseCommand, BaseCommandHandler
 from protean.fields import Integer, String
 from protean.globals import current_domain
 from protean.utils import CommandProcessingType

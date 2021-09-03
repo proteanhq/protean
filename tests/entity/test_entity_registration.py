@@ -1,5 +1,4 @@
-from protean.core.aggregate import BaseAggregate
-from protean.core.entity import BaseEntity
+from protean import BaseAggregate, BaseEntity
 from protean.fields import String
 from protean.utils import fully_qualified_name
 
