@@ -5,8 +5,8 @@ import pytest
 from protean import BaseAggregate
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import Date, DateTime, HasMany, Reference, String
+from protean.reflection import fields
 from protean.utils import fully_qualified_name
-from protean.utils.reflection import fields
 
 
 class TestAggregateRegistration:

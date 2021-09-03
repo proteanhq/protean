@@ -2,9 +2,9 @@ from collections import defaultdict
 from enum import Enum
 
 from protean import BaseEntity
+from protean.container import Options
 from protean.fields import Auto, HasOne, Integer, String
-from protean.utils.container import Options
-from protean.utils.reflection import attributes, fields
+from protean.reflection import attributes, fields
 
 
 class AbstractPerson(BaseEntity):

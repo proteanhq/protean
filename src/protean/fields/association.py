@@ -2,7 +2,7 @@ from abc import abstractmethod
 
 from protean import exceptions, utils
 from protean.globals import current_domain
-from protean.utils.reflection import id_field
+from protean.reflection import id_field
 
 from .base import Field, FieldBase
 from .mixins import FieldCacheMixin, FieldDescriptorMixin

@@ -24,6 +24,7 @@ from protean.fields import HasMany, HasOne, Reference
 from protean.globals import current_domain
 from protean.infra.eventing import EventLog, EventLogRepository, MessageType
 from protean.infra.job import Job, JobRepository
+from protean.reflection import fields, has_fields
 from protean.utils import (
     CommandProcessingType,
     DomainObjects,
@@ -32,7 +33,6 @@ from protean.utils import (
     fetch_element_cls_from_registry,
     fully_qualified_name,
 )
-from protean.utils.reflection import fields, has_fields
 
 from .config import Config, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals, has_domain_context

@@ -1,11 +1,11 @@
 """Value Object Functionality and Classes"""
 import logging
 
+from protean.container import BaseContainer, OptionsMixin, fields
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Reference, ValueObject
 from protean.fields.association import Association
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.container import BaseContainer, OptionsMixin, fields
 
 logger = logging.getLogger("protean.domain.value_object")
 

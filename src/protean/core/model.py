@@ -1,8 +1,8 @@
 from abc import abstractmethod
 
+from protean.container import Element
 from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects
-from protean.utils.container import Element
 
 
 class ModelMeta:

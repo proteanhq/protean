@@ -1,7 +1,7 @@
 import pytest
 
 from protean.exceptions import ValidationError
-from protean.utils.reflection import attributes
+from protean.reflection import attributes
 
 from .elements import Account, Author, Post, Profile
 

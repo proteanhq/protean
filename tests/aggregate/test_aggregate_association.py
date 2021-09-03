@@ -1,7 +1,7 @@
 import mock
 import pytest
 
-from protean.utils.reflection import attributes
+from protean.reflection import attributes
 
 from .elements import (
     Account,

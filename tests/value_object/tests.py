@@ -1,7 +1,7 @@
 import pytest
 
 from protean.exceptions import InvalidOperationError, ValidationError
-from protean.utils.reflection import attributes, fields
+from protean.reflection import attributes, fields
 
 from .elements import (
     Account,

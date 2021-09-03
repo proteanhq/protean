@@ -1,8 +1,8 @@
 """Module for defining embedded fields"""
 
 from protean.fields import Field
+from protean.reflection import fields
 from protean.utils import DomainObjects, fetch_element_cls_from_registry
-from protean.utils.reflection import fields
 
 
 class _ShadowField(Field):

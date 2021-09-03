@@ -1,6 +1,6 @@
 from protean.fields import Auto
 from protean.infra.eventing import EventLog
-from protean.utils.reflection import attributes, fields
+from protean.reflection import attributes, fields
 
 
 def test_event_log_attributes():

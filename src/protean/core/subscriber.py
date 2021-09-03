@@ -3,10 +3,10 @@ import logging
 from abc import abstractmethod
 from typing import Any, Optional
 
+from protean.container import Element, OptionsMixin
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.container import Element, OptionsMixin
 
 logger = logging.getLogger("protean.domain.subscriber")
 

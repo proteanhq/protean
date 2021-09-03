@@ -3,8 +3,8 @@ import pytest
 from protean import BaseAggregate, BaseEntity, Domain
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import DateTime, HasMany, HasOne, Reference, String, Text
+from protean.reflection import fields
 from protean.utils import EventStrategy, fully_qualified_name
-from protean.utils.reflection import fields
 
 from .elements import UserAggregate, UserEntity, UserFoo, UserVO
 

@@ -15,9 +15,9 @@ from protean.fields import Reference
 from protean.globals import current_domain
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
+from protean.reflection import attributes
 from protean.utils import Database, IdentityStrategy, IdentityType
 from protean.utils.query import Q
-from protean.utils.reflection import attributes
 
 logger = logging.getLogger("protean.repository")
 

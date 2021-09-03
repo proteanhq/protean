@@ -5,8 +5,8 @@ import pytest
 
 from protean import BaseEntity
 from protean.exceptions import ValidationError
+from protean.reflection import attributes, fields
 from protean.utils import fully_qualified_name
-from protean.utils.reflection import attributes, fields
 
 from .elements import (
     AccountWithId,
