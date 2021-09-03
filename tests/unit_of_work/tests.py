@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.unit_of_work import UnitOfWork
+from protean import UnitOfWork
 from protean.exceptions import InvalidOperationError
 
 

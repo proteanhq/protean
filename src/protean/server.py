@@ -9,7 +9,7 @@ import sys
 from typing import Dict, List
 
 from protean.core.subscriber import BaseSubscriber
-from protean.core.unit_of_work import UnitOfWork
+from protean import UnitOfWork
 from protean.domain import Domain
 from protean.exceptions import ConfigurationError
 from protean.globals import current_domain
