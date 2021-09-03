@@ -1,7 +1,7 @@
 import pytest
 
-from protean.utils.container import fields
 from protean.exceptions import NotSupportedError
+from protean.utils.container import fields
 
 from .elements import AbstractRole, ConcreteRole
 

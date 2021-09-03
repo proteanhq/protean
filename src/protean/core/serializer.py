@@ -20,8 +20,7 @@ from protean.core.field.basic import (
 )
 from protean.exceptions import NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.container import _FIELDS, Options
-from protean.utils.container import Element
+from protean.utils.container import _FIELDS, Element, Options
 
 logger = logging.getLogger("protean.application.serializer")
 

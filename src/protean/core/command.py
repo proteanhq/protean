@@ -1,7 +1,6 @@
 from protean.exceptions import InvalidDataError, ValidationError
 from protean.utils import DomainObjects, derive_element_class
-from protean.utils.container import BaseContainer
-from protean.utils.container import OptionsMixin
+from protean.utils.container import BaseContainer, OptionsMixin
 
 
 class BaseCommand(BaseContainer, OptionsMixin):

@@ -7,8 +7,7 @@ from protean.core.field.basic import Auto, DateTime, Dict, Identifier, Integer, 
 from protean.core.repository import BaseRepository
 from protean.globals import current_domain
 from protean.utils import generate_identity
-from protean.utils.container import BaseContainer
-from protean.utils.container import OptionsMixin
+from protean.utils.container import BaseContainer, OptionsMixin
 
 
 class MessageType(Enum):

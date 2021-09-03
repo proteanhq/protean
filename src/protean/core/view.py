@@ -4,17 +4,15 @@ import logging
 from protean.core.field.association import Association, Reference
 from protean.core.field.base import Field
 from protean.core.field.embedded import ValueObject
-from protean.exceptions import (
-    IncorrectUsageError,
-    NotSupportedError,
+from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.utils import DomainObjects, derive_element_class, inflection
+from protean.utils.container import (
+    _ID_FIELD_NAME,
+    BaseContainer,
+    OptionsMixin,
+    fields,
+    id_field,
 )
-from protean.utils import (
-    DomainObjects,
-    derive_element_class,
-    inflection,
-)
-from protean.utils.container import BaseContainer, fields, _ID_FIELD_NAME, id_field
-from protean.utils.container import OptionsMixin
 
 logger = logging.getLogger("protean.domain.view")
 

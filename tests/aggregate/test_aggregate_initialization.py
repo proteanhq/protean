@@ -2,8 +2,8 @@ from collections import OrderedDict
 from datetime import datetime
 
 import pytest
-from protean.core.entity import BaseEntity
 
+from protean.core.entity import BaseEntity
 from protean.exceptions import ValidationError
 from protean.utils import fully_qualified_name
 from protean.utils.container import attributes, fields

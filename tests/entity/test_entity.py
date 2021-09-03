@@ -4,7 +4,7 @@ from enum import Enum
 from protean.core.entity import BaseEntity
 from protean.core.field.association import HasOne
 from protean.core.field.basic import Auto, Integer, String
-from protean.utils.container import attributes, fields, Options
+from protean.utils.container import Options, attributes, fields
 
 
 class AbstractPerson(BaseEntity):

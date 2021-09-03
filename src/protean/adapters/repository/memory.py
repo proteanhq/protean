@@ -17,7 +17,7 @@ from protean.globals import current_uow
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
 from protean.utils import Database
-from protean.utils.container import auto_fields, id_field, attributes
+from protean.utils.container import attributes, auto_fields, id_field
 from protean.utils.query import Q
 
 # Global in-memory store of dict data. Keyed by name, to provide

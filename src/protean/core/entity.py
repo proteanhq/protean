@@ -31,12 +31,12 @@ from protean.utils import (
 )
 from protean.utils.container import (
     _FIELDS,
+    _ID_FIELD_NAME,
     BaseContainer,
     OptionsMixin,
-    fields,
-    _ID_FIELD_NAME,
-    id_field,
     attributes,
+    fields,
+    id_field,
 )
 
 logger = logging.getLogger("protean.domain.entity")

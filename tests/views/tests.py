@@ -9,11 +9,11 @@ from protean.core.view import BaseView
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.utils import fully_qualified_name
 from protean.utils.container import (
+    _ID_FIELD_NAME,
+    Options,
     attributes,
     fields,
     id_field,
-    _ID_FIELD_NAME,
-    Options,
 )
 
 

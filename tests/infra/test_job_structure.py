@@ -1,6 +1,6 @@
 from protean.core.field.basic import Auto
 from protean.infra.job import Job
-from protean.utils.container import fields, attributes
+from protean.utils.container import attributes, fields
 
 
 def test_event_log_attributes():

@@ -5,7 +5,7 @@ import pytest
 
 from protean.core.field.basic import Auto, String
 from protean.exceptions import InvalidOperationError, ValidationError
-from protean.utils.container import attributes, fields, id_field, _ID_FIELD_NAME
+from protean.utils.container import _ID_FIELD_NAME, attributes, fields, id_field
 
 from .elements import PersonAutoSSN, PersonExplicitID, Role, RoleClone, SubclassRole
 

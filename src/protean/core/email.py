@@ -6,8 +6,7 @@ from protean.utils import (
     convert_str_values_to_list,
     derive_element_class,
 )
-from protean.utils.container import BaseContainer
-from protean.utils.container import OptionsMixin
+from protean.utils.container import BaseContainer, OptionsMixin
 
 
 class BaseEmailProvider:

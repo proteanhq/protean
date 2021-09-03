@@ -1,4 +1,5 @@
 from protean.utils.container import attributes, fields
+
 from .elements import Comment, Post
 
 

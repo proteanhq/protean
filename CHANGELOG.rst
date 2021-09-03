@@ -1,6 +1,15 @@
 Release History
 ===============
 
+0.7.0
+-----
+
+* Simplify Container structure and refactor metaclass usage
+* Migrate data elements to inherit from `BaseContainer`
+* Remove `meta_` fields and use module functions
+* Resolve associated classes dynamically and on domain activation
+* Remove custom Meta classes and replace with `Options`
+
 0.6.2
 -----
 

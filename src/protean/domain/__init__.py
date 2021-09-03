@@ -1,10 +1,10 @@
 """This module implements the central domain object, along with decorators
 to register Domain Elements.
 """
-from collections import defaultdict
 import logging
 import sys
 
+from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 from werkzeug.datastructures import ImmutableDict
