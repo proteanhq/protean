@@ -589,6 +589,15 @@ class SAProvider(BaseProvider):
         if current_uow and current_uow.in_progress:
             current_uow.rollback()
 
+    def _create_database_artifacts(self):
+        for _, aggregate_record in self.domain.registry.aggregates.items():
+            self.domain.get_dao(aggregate_record.cls)
+
+        self._metadata.create_all()
+
+    def _drop_database_artifacts(self):
+        self._metadata.drop_all()
+
     def decorate_model_class(self, entity_cls, model_cls):
         schema_name = derive_schema_name(model_cls)
 

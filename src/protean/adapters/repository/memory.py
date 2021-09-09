@@ -248,6 +248,14 @@ class MemoryProvider(BaseProvider):
 
         return items
 
+    def _create_database_artifacts(self):
+        """Dummy placeholder. Nothing to do."""
+        pass
+
+    def _drop_database_artifacts(self):
+        """Dummy placeholder. Nothing to do."""
+        pass
+
 
 class DictDAO(BaseDAO):
     """A repository for storing data in a dictionary """

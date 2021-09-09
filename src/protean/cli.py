@@ -211,14 +211,29 @@ def server(domain_path, broker, test_mode):
 
 @main.command()
 def test():
-    # Standard Library Imports
-    import sys
+    import subprocess
 
-    import pytest
+    # Generic protean tests
+    subprocess.call(
+        [
+            "pytest",
+            "--cache-clear",
+            "--slow",
+            "--sqlite",
+            "--postgresql",
+            "--elasticsearch",
+            "--redis",
+            "tests",
+        ]
+    )
 
-    errno = pytest.main(["-vv", "--cache-clear", "--flake8"])
+    # Test against each supported database
+    for db in ["POSTGRESQL", "ELASTICSEARCH", "SQLITE"]:
+        print(f"Running tests for DB: {db}...")
 
-    sys.exit(errno)
+        subprocess.call(
+            ["pytest", f"--db={db}", "tests/adapters/repository/test_generic.py"]
+        )
 
 
 @main.command()

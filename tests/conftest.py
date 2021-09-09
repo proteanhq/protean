@@ -34,6 +34,13 @@ def pytest_addoption(parser):
         "--sendgrid", action="store_true", default=False, help="Run Sendgrid tests"
     )
 
+    parser.addoption(
+        "--db",
+        action="store",
+        default="MEMORY",
+        help="Run tests against a Database type",
+    )
+
 
 def pytest_collection_modifyitems(config, items):
     """Configure special markers on tests, so as to control execution"""
@@ -88,6 +95,33 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_redis)
         if "sendgrid" in item.keywords and run_sendgrid is False:
             item.add_marker(skip_sendgrid)
+
+
+@pytest.fixture(scope="session")
+def db_config(request):
+    try:
+        return {
+            "MEMORY": {"PROVIDER": "protean.adapters.MemoryProvider"},
+            "POSTGRESQL": {
+                "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
+                "DATABASE": "POSTGRESQL",
+                "DATABASE_URI": "postgresql://postgres:postgres@localhost:5432/postgres",
+            },
+            "ELASTICSEARCH": {
+                "PROVIDER": "protean.adapters.repository.elasticsearch.ESProvider",
+                "DATABASE": "ELASTICSEARCH",
+                "DATABASE_URI": {"hosts": ["localhost"]},
+            },
+            "SQLITE": {
+                "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
+                "DATABASE": "SQLITE",
+                "DATABASE_URI": "sqlite:///test.db",
+            },
+        }[request.config.getoption("--db")]
+    except KeyError as e:
+        raise KeyError(
+            f"Invalid database option: {request.config.getoption('--db')}"
+        ) from e
 
 
 @pytest.fixture(autouse=True)

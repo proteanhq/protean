@@ -127,7 +127,7 @@ class Providers:
                 provider_cls = getattr(
                     importlib.import_module(provider_module), provider_class
                 )
-                provider = provider_cls(provider_name, self, conn_info)
+                provider = provider_cls(provider_name, self.domain, conn_info)
 
                 provider_objects[provider_name] = provider
 

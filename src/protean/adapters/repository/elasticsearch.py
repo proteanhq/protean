@@ -476,6 +476,22 @@ class ESProvider(BaseProvider):
                     body={"query": {"match_all": {}}},
                 )
 
+    def _create_database_artifacts(self):
+        for _, aggregate_record in self.domain.registry.aggregates.items():
+            index = Index(
+                aggregate_record.cls.meta_.schema_name, using=self.get_connection()
+            )
+            if not index.exists():
+                index.create()
+
+    def _drop_database_artifacts(self):
+        for _, aggregate_record in self.domain.registry.aggregates.items():
+            index = Index(
+                aggregate_record.cls.meta_.schema_name, using=self.get_connection()
+            )
+            if index.exists():
+                index.delete()
+
 
 class DefaultLookup(BaseLookup):
     """Base class with default implementation of expression construction"""

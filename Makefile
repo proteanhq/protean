@@ -17,7 +17,7 @@ html:
 	@cd docs; $(MAKE) html
 
 test-full: up
-	pytest --slow --sqlite --postgresql --elasticsearch --redis tests
+	protean test
 
 cov: up
     pytest --slow --sqlite --postgresql --elasticsearch --redis --cov=protean --cov-config .coveragerc tests
