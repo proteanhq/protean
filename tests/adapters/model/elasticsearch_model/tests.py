@@ -1,6 +1,12 @@
+from datetime import datetime
+
 import pytest
 
+from elasticsearch_dsl import Keyword, Text
+
+from protean import BaseAggregate
 from protean.adapters.repository.elasticsearch import ElasticsearchModel
+from protean.fields import DateTime, Integer, String
 
 from .elements import (
     ComplexUser,
@@ -68,6 +74,140 @@ class TestDefaultModel:
 
         # FIXME Verify default constructed fields
         # assert model_cls.name._params is None
+
+
+@pytest.mark.elasticsearch
+class TestModelOptions:
+    class TestModelName:
+        def test_default_generated_index_name(self, test_domain):
+            class Person(BaseAggregate):
+                name = String(max_length=50, required=True)
+                about = Text()
+
+            test_domain.register(Person)
+            model_cls = test_domain.get_model(Person)
+
+            assert model_cls.__name__ == "PersonModel"
+            assert model_cls._index._name == "person"
+
+        def test_explicit_index_name(self, test_domain):
+            class Person(BaseAggregate):
+                name = String(max_length=50, required=True)
+                about = Text()
+
+                class Meta:
+                    schema_name = "people"
+
+            test_domain.register(Person)
+            model_cls = test_domain.get_model(Person)
+
+            assert model_cls._index._name == "people"
+
+        def test_explicit_index_name_in_custom_model(self, test_domain):
+            class Person(BaseAggregate):
+                name = String(max_length=50, required=True)
+                about = Text()
+
+            class PeopleModel(ElasticsearchModel):
+                name = Text(fields={"raw": Keyword()})
+                about = Text()
+
+                class Index:
+                    name = "people"
+
+            test_domain.register(Person)
+            test_domain.register_model(PeopleModel, entity_cls=Person)
+
+            model_cls = test_domain.get_model(Person)
+            assert model_cls.__name__ == "PeopleModel"
+            assert model_cls._index._name == "people"
+
+    class TestModelNamespacePrefix:
+        @pytest.fixture(autouse=True)
+        def prefix_namespace(self, test_domain):
+            test_domain.config["DATABASES"]["default"]["NAMESPACE_PREFIX"] = "foo"
+
+        def test_generated_index_name_with_namespace_prefix(self, test_domain):
+            class Person(BaseAggregate):
+                name = String(max_length=50, required=True)
+                about = Text()
+
+            test_domain.register(Person)
+            model_cls = test_domain.get_model(Person)
+
+            assert model_cls.__name__ == "PersonModel"
+            assert model_cls._index._name == "foo-person"
+
+        def test_explicit_index_name_with_namespace_prefix(self, test_domain):
+            class Person(BaseAggregate):
+                name = String(max_length=50, required=True)
+                about = Text()
+
+                class Meta:
+                    schema_name = "people"
+
+            test_domain.register(Person)
+            model_cls = test_domain.get_model(Person)
+
+            assert model_cls._index._name == "foo-people"
+
+        def test_explicit_index_name_with_namespace_prefix_in_custom_model(
+            self, test_domain
+        ):
+            class Person(BaseAggregate):
+                name = String(max_length=50, required=True)
+                about = Text()
+
+            class PeopleModel(ElasticsearchModel):
+                name = Text(fields={"raw": Keyword()})
+                about = Text()
+
+                class Index:
+                    name = "custom-people"
+
+            test_domain.register(Person)
+            test_domain.register_model(PeopleModel, entity_cls=Person)
+
+            model_cls = test_domain.get_model(Person)
+            assert model_cls.__name__ == "PeopleModel"
+            assert model_cls._index._name == "custom-people"
+
+    class TestModelSettings:
+        @pytest.fixture(autouse=True)
+        def attach_settings(self, test_domain):
+            test_domain.config["DATABASES"]["default"]["SETTINGS"] = {
+                "number_of_shards": 2
+            }
+
+        def test_provider_level_settings(self, test_domain):
+            class Person(BaseAggregate):
+                name = String(max_length=50, required=True)
+                about = Text()
+
+            test_domain.register(Person)
+            model_cls = test_domain.get_model(Person)
+
+            assert model_cls._index._settings == {"number_of_shards": 2}
+
+        def test_settings_override_in_custom_model(self, test_domain):
+            class Person(BaseAggregate):
+                name = String(max_length=50, required=True)
+                about = Text()
+
+            class PeopleModel(ElasticsearchModel):
+                name = Text(fields={"raw": Keyword()})
+                about = Text()
+
+                class Index:
+                    settings = {"number_of_shards": 2}
+
+            test_domain.register(Person)
+            test_domain.register_model(PeopleModel, entity_cls=Person)
+
+            model_cls = test_domain.get_model(Person)
+            assert model_cls.__name__ == "PeopleModel"
+            assert model_cls._index._name == "*"
+            assert model_cls._index._settings == {"number_of_shards": 2}
 
 
 @pytest.mark.elasticsearch

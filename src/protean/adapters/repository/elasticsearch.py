@@ -399,7 +399,7 @@ class ESProvider(BaseProvider):
         if schema_name in self._model_classes:
             return self._model_classes[schema_name]
 
-        # If `model_cls` is already subclassed from SqlAlchemyModel,
+        # If `model_cls` is already subclassed from ElasticsearchModel,
         #   this method call is a no-op
         if issubclass(model_cls, ElasticsearchModel):
             return model_cls
@@ -416,6 +416,11 @@ class ESProvider(BaseProvider):
             meta_.entity_cls = entity_cls
 
             custom_attrs.update({"meta_": meta_})
+
+            # Construct Inner Index class with options
+            index_cls = type("Index", (object,), {"name": schema_name})
+            custom_attrs.update({"Index": index_cls})
+
             # FIXME Ensure the custom model attributes are constructed properly
             decorated_model_cls = type(
                 model_cls.__name__, (ElasticsearchModel, model_cls), custom_attrs
@@ -439,9 +444,25 @@ class ESProvider(BaseProvider):
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls
 
-            attrs = {
-                "meta_": meta_,
-            }
+            # Construct Inner Index class with options
+            options = {}
+            if (
+                "NAMESPACE_PREFIX" in self.conn_info
+                and self.conn_info["NAMESPACE_PREFIX"]
+            ):
+                options[
+                    "name"
+                ] = f"{self.conn_info['NAMESPACE_PREFIX']}-{entity_cls.meta_.schema_name}"
+            else:
+                options["name"] = entity_cls.meta_.schema_name
+
+            if "SETTINGS" in self.conn_info and self.conn_info["SETTINGS"]:
+                options["settings"] = self.conn_info["SETTINGS"]
+
+            index_cls = type("Index", (object,), options)
+
+            attrs = {"meta_": meta_, "Index": index_cls}
+
             # FIXME Ensure the custom model attributes are constructed properly
             model_cls = type(
                 entity_cls.__name__ + "Model", (ElasticsearchModel,), attrs
@@ -469,7 +490,11 @@ class ESProvider(BaseProvider):
 
         for _, aggregate_record in current_domain.registry.aggregates.items():
             provider = current_domain.get_provider(aggregate_record.cls.meta_.provider)
-            if provider.conn_info["DATABASE"] == Database.ELASTICSEARCH.value:
+            if provider.conn_info[
+                "DATABASE"
+            ] == Database.ELASTICSEARCH.value and conn.indices.exists(
+                aggregate_record.cls.meta_.schema_name
+            ):
                 conn.delete_by_query(
                     refresh=True,
                     index=aggregate_record.cls.meta_.schema_name,

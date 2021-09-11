@@ -1,8 +1,9 @@
-import pytest
 import re
 
 from collections import defaultdict
 from typing import List
+
+import pytest
 
 from protean import BaseAggregate, BaseRepository, BaseValueObject
 from protean.fields import Integer, String, ValueObject

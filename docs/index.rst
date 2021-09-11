@@ -77,6 +77,14 @@ User Guide
     user/config
     user/cli
 
+Adapters
+--------
+
+.. toctree::
+    :maxdepth: 1
+
+    adapters/database
+
 API Reference
 -------------
 
