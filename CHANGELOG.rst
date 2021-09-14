@@ -1,6 +1,11 @@
 Release History
 ===============
 
+Dev
+---
+
+* Introduce state to Views to allow persistence
+
 0.7.0
 -----
 

@@ -140,7 +140,7 @@ class TestViewRegistration:
 
     def test_setting_provider_in_decorator_based_registration(self, test_domain):
         @test_domain.view
-        class Comment(BaseView):
+        class Comment:
             comment_id = Identifier(identifier=True)
             content = String(max_length=500)
 
@@ -361,3 +361,10 @@ class TestEquivalence:
         person2 = Person(person_id=12345, first_name="John", last_name="Doe")
 
         assert hash(person1) == hash(person2)
+
+
+class TestView:
+    def test_that_views_have_state(self):
+        person = Person(person_id=12, first_name="John", last_name="Doe")
+        assert person.state_ is not None
+        assert person.state_.is_new is True

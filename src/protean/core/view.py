@@ -2,6 +2,7 @@
 import logging
 
 from protean.container import BaseContainer, OptionsMixin
+from protean.core.entity import _EntityState
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import Field, Reference, ValueObject
 from protean.fields.association import Association
@@ -71,6 +72,12 @@ class BaseView(BaseContainer, OptionsMixin):
                         ]
                     }
                 )
+
+    def __init__(self, *template, **kwargs):
+        super().__init__(*template, **kwargs)
+
+        # Set up the storage for instance state
+        self.state_ = _EntityState()
 
     def __eq__(self, other):
         """Equivalence check to be based only on Identity"""
