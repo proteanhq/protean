@@ -5,9 +5,8 @@ from protean.container import BaseContainer, OptionsMixin
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.repository import BaseRepository
-from protean.fields import Auto, DateTime, Dict, Identifier, Integer, String
+from protean.fields import Auto, DateTime, Dict, Integer, String
 from protean.globals import current_domain
-from protean.utils import generate_identity
 
 
 class MessageType(Enum):
@@ -24,7 +23,7 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     - Serialization and De-serialization
     """
 
-    message_id = Identifier(identifier=True, default=generate_identity)
+    message_id = Auto(identifier=True)
     name = String(max_length=50)
     owner = String(max_length=50)
     type = String(max_length=15, choices=MessageType)
