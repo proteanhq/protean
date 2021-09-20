@@ -171,6 +171,7 @@ class List(Field):
             Integer,
             String,
             Text,
+            Dict,
         ]:
             raise ValidationError({"content_type": ["Content type not supported"]})
         self.content_type = content_type
