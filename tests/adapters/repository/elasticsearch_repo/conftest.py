@@ -40,25 +40,14 @@ def setup_db():
         domain.register(User)
         domain.register(ComplexUser)
 
-        provider = domain.get_provider("default")
-        conn = provider.get_connection()
-
-        for _, aggregate_record in domain.registry.aggregates.items():
-            index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
-            if not index.exists():
-                index.create()
+        domain.get_provider("default")._create_database_artifacts()
 
         yield
 
-        # Drop all indexes at the end of test suite
-        for _, aggregate_record in domain.registry.aggregates.items():
-            index = Index(aggregate_record.cls.meta_.schema_name, using=conn)
-            if index.exists():
-                index.delete()
+        domain.get_provider("default")._drop_database_artifacts()
 
 
 @pytest.fixture(autouse=True)
 def run_around_tests(test_domain):
     yield
-    if test_domain.providers.has_provider("default"):
-        test_domain.get_provider("default")._data_reset()
+    test_domain.get_provider("default")._data_reset()

@@ -1,12 +1,10 @@
-from datetime import datetime
-
 import pytest
 
 from elasticsearch_dsl import Keyword, Text
 
 from protean import BaseAggregate
 from protean.adapters.repository.elasticsearch import ElasticsearchModel
-from protean.fields import DateTime, Integer, String
+from protean.fields import String
 
 from .elements import (
     ComplexUser,
@@ -136,7 +134,7 @@ class TestModelOptions:
             model_cls = test_domain.get_model(Person)
 
             assert model_cls.__name__ == "PersonModel"
-            assert model_cls._index._name == "foo-person"
+            assert model_cls._index._name == "foo_person"
 
         def test_explicit_index_name_with_namespace_prefix(self, test_domain):
             class Person(BaseAggregate):
@@ -149,7 +147,7 @@ class TestModelOptions:
             test_domain.register(Person)
             model_cls = test_domain.get_model(Person)
 
-            assert model_cls._index._name == "foo-people"
+            assert model_cls._index._name == "foo_people"
 
         def test_explicit_index_name_with_namespace_prefix_in_custom_model(
             self, test_domain
@@ -199,6 +197,7 @@ class TestModelOptions:
                 about = Text()
 
                 class Index:
+                    name = "people"
                     settings = {"number_of_shards": 2}
 
             test_domain.register(Person)
@@ -206,7 +205,7 @@ class TestModelOptions:
 
             model_cls = test_domain.get_model(Person)
             assert model_cls.__name__ == "PeopleModel"
-            assert model_cls._index._name == "*"
+            assert model_cls._index._name == "people"
             assert model_cls._index._settings == {"number_of_shards": 2}
 
 
@@ -265,6 +264,19 @@ class TestCustomModel:
         model_cls = test_domain.get_model(Provider)
         assert model_cls.__name__ == "ProviderCustomModel"
 
+    def test_that_explicit_schema_name_takes_precedence_over_generated(
+        self, test_domain
+    ):
+        test_domain.register(Provider)
+        test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
+
+        # FIXME Should schema name be equated to the overridden name in the model?
+        assert Provider.meta_.schema_name == "provider"
+        assert ProviderCustomModel.meta_.schema == "providers"
+
+        model = test_domain.get_model(Provider)
+        assert model._index._name == "providers"
+
     def test_that_custom_model_is_persisted_via_dao(self, test_domain):
         test_domain.register(Provider)
         test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
@@ -313,18 +325,16 @@ class TestCustomModel:
         test_domain.register(Receiver)
 
         @test_domain.model(entity_cls=Receiver)
-        class ReceiverInlineModel(ElasticsearchModel):
+        class ReceiverInlineModel:
+            id = Keyword()
             name = Text(fields={"raw": Keyword()})
 
-        test_domain.register(Provider)
-        test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
-
-        provider_dao = test_domain.get_dao(Provider)
-        provider = provider_dao.create(name="John", about="Me, Myself, and Jane")
-
-        provider = provider_dao.get(provider.id)
-        assert provider is not None
-        assert provider.name == "John"
+        # Create the index
+        model_cls = test_domain.get_model(Receiver)
+        conn = test_domain.get_provider("default").get_connection()
+        if model_cls._index.exists(using=conn):
+            conn.indices.delete(model_cls._index._name)
+        model_cls.init(using=conn)
 
         receiver_dao = test_domain.get_dao(Receiver)
         receiver = receiver_dao.create(name="John")
@@ -332,3 +342,5 @@ class TestCustomModel:
         receiver = receiver_dao.get(receiver.id)
         assert receiver is not None
         assert receiver.name == "John"
+
+        conn.indices.delete(model_cls._index._name)

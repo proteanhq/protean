@@ -4,23 +4,18 @@ import logging
 
 from collections import defaultdict
 from functools import partial
-from uuid import uuid4
 
 from protean.container import BaseContainer, OptionsMixin
 from protean.exceptions import (
-    ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
     ValidationError,
 )
 from protean.fields import Auto, Field, HasMany, Reference, ValueObject
 from protean.fields.association import Association, _ReferenceField
-from protean.globals import current_domain
 from protean.reflection import _FIELDS, _ID_FIELD_NAME, attributes, fields, id_field
 from protean.utils import (
     DomainObjects,
-    IdentityStrategy,
-    IdentityType,
     derive_element_class,
     generate_identity,
     inflection,

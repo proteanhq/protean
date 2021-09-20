@@ -8,14 +8,14 @@ import elasticsearch_dsl
 
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
-from elasticsearch_dsl import Document, Index, Search, query
+from elasticsearch_dsl import Document, Index, Search, query, Keyword, Mapping
 
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import Reference
 from protean.globals import current_domain
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
-from protean.reflection import attributes
+from protean.reflection import attributes, id_field
 from protean.utils import Database, IdentityStrategy, IdentityType
 from protean.utils.query import Q
 
@@ -38,13 +38,6 @@ operators = {
 }
 
 
-def derive_schema_name(model_cls):
-    if hasattr(model_cls.meta_, "schema_name"):
-        return model_cls.meta_.schema_name
-    else:
-        return model_cls.meta_.entity_cls.meta_.schema_name
-
-
 class ElasticsearchModel(Document):
     """A model for the Elasticsearch index"""
 
@@ -64,9 +57,12 @@ class ElasticsearchModel(Document):
 
         model_obj = cls(**item_dict)
 
-        if "id" in item_dict:
-            model_obj.meta.id = model_obj.id
-            del model_obj._d_["id"]  # pylint: disable=W0212
+        # Elasticsearch stores identity in a special field `meta.id`.
+        # Set `meta.id` to the identifier set in entity
+        id_field_name = id_field(cls.meta_.entity_cls).field_name
+
+        if id_field_name in item_dict:
+            model_obj.meta.id = item_dict[id_field_name]
 
         return model_obj
 
@@ -90,7 +86,11 @@ class ElasticsearchModel(Document):
         else:
             identifier = item.meta.id
 
-        item_dict["id"] = identifier
+        # Elasticsearch stores identity in a special field `meta.id`.
+        # Extract identity from `meta.id` and set identifier
+        id_field_name = id_field(cls.meta_.entity_cls).field_name
+        item_dict[id_field_name] = identifier
+
         entity_obj = cls.meta_.entity_cls(item_dict)
 
         return entity_obj
@@ -127,48 +127,6 @@ class ESSession:
 class ElasticsearchDAO(BaseDAO):
     def __repr__(self) -> str:
         return f"ElasticsearchDAO <{self.entity_cls.__name__}>"
-
-    def get(self, identifier: Any):
-        """Retrieve a specific Record from the Repository by its `identifier`.
-
-        This method internally uses the `filter` method to fetch records.
-
-        Returns exactly one record that matches the identifier.
-
-        Throws `ObjectNotFoundError` if no record was found for the identifier.
-
-        Throws `TooManyObjectsError` if multiple records were found for the identifier.
-
-        :param identifier: id of the record to be fetched from the data store.
-        """
-        logger.debug(
-            f"Lookup `{self.entity_cls.__name__}` object with identifier {identifier}"
-        )
-
-        conn = self._get_session()
-        result = None
-
-        try:
-            result = self.model_cls.get(
-                id=identifier, using=conn, index=self.entity_cls.meta_.schema_name
-            )
-        except NotFoundError:
-            logger.error(f"Record {identifier} was not found")
-            raise ObjectNotFoundError(
-                {
-                    "_entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                    f"does not exist."
-                }
-            )
-        except Exception as error:
-            logger.error(f"Unknown error occurred when fetching {identifier}: {error}")
-            raise (
-                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                f"does not exist."
-            )
-
-        entity = self.model_cls.to_entity(result)
-        return entity
 
     def _build_filters(self, criteria: Q):
         """ Recursively Build the filters from the criteria object"""
@@ -213,7 +171,7 @@ class ElasticsearchDAO(BaseDAO):
         if criteria.children:
             q = self._build_filters(criteria)
 
-        s = Search(using=conn, index=self.entity_cls.meta_.schema_name).query(q)
+        s = Search(using=conn, index=self.model_cls._index._name).query(q)
 
         if order_by:
             s = s.sort(*order_by)
@@ -241,9 +199,7 @@ class ElasticsearchDAO(BaseDAO):
 
         try:
             model_obj.save(
-                refresh=True,
-                index=model_obj.meta_.entity_cls.meta_.schema_name,
-                using=conn,
+                refresh=True, index=self.model_cls._index._name, using=conn,
             )
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
@@ -261,7 +217,7 @@ class ElasticsearchDAO(BaseDAO):
         try:
             # Calling `get` will raise `NotFoundError` if record was not found
             self.model_cls.get(
-                id=identifier, using=conn, index=self.entity_cls.meta_.schema_name
+                id=identifier, using=conn, index=self.model_cls._index._name
             )
         except NotFoundError as exc:
             logger.error(f"Database Record not found: {exc}")
@@ -274,9 +230,7 @@ class ElasticsearchDAO(BaseDAO):
 
         try:
             model_obj.save(
-                refresh=True,
-                index=model_obj.meta_.entity_cls.meta_.schema_name,
-                using=conn,
+                refresh=True, index=self.model_cls._index._name, using=conn,
             )
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
@@ -294,9 +248,7 @@ class ElasticsearchDAO(BaseDAO):
 
         try:
             model_obj.delete(
-                index=model_obj.meta_.entity_cls.meta_.schema_name,
-                using=conn,
-                refresh=True,
+                index=self.model_cls._index._name, using=conn, refresh=True,
             )
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
@@ -313,7 +265,7 @@ class ElasticsearchDAO(BaseDAO):
         if criteria and criteria.children:
             q = self._build_filters(criteria)
 
-        s = Search(using=conn, index=self.entity_cls.meta_.schema_name).query(q)
+        s = Search(using=conn, index=self.model_cls._index._name).query(q)
 
         # Return the results
         try:
@@ -347,6 +299,17 @@ class ESProvider(BaseProvider):
 
         # A temporary cache of already constructed model classes
         self._model_classes = {}
+
+    def derive_schema_name(self, entity_cls):
+        schema_name = entity_cls.meta_.schema_name
+
+        # Prepend Namespace prefix if one has been provided
+        if "NAMESPACE_PREFIX" in self.conn_info and self.conn_info["NAMESPACE_PREFIX"]:
+            schema_name = (
+                f"{self.conn_info['NAMESPACE_PREFIX']}_{entity_cls.meta_.schema_name}"
+            )
+
+        return schema_name
 
     def _extract_lookup(self, key):
         """Extract lookup method based on key name format"""
@@ -393,7 +356,7 @@ class ESProvider(BaseProvider):
         return ElasticsearchDAO(self.domain, self, entity_cls, model_cls)
 
     def decorate_model_class(self, entity_cls, model_cls):
-        schema_name = derive_schema_name(model_cls)
+        schema_name = self.derive_schema_name(entity_cls)
 
         # Return the model class if it was already seen/decorated
         if schema_name in self._model_classes:
@@ -410,15 +373,12 @@ class ESProvider(BaseProvider):
                 if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
             }
 
-            from protean.core.model import ModelMeta
-
-            meta_ = ModelMeta()
-            meta_.entity_cls = entity_cls
-
-            custom_attrs.update({"meta_": meta_})
-
             # Construct Inner Index class with options
-            index_cls = type("Index", (object,), {"name": schema_name})
+            options = {}
+            options["name"] = model_cls.meta_.schema or schema_name
+            if "SETTINGS" in self.conn_info and self.conn_info["SETTINGS"]:
+                options["settings"] = self.conn_info["SETTINGS"]
+            index_cls = type("Index", (object,), options)
             custom_attrs.update({"Index": index_cls})
 
             # FIXME Ensure the custom model attributes are constructed properly
@@ -446,16 +406,7 @@ class ESProvider(BaseProvider):
 
             # Construct Inner Index class with options
             options = {}
-            if (
-                "NAMESPACE_PREFIX" in self.conn_info
-                and self.conn_info["NAMESPACE_PREFIX"]
-            ):
-                options[
-                    "name"
-                ] = f"{self.conn_info['NAMESPACE_PREFIX']}-{entity_cls.meta_.schema_name}"
-            else:
-                options["name"] = entity_cls.meta_.schema_name
-
+            options["name"] = self.derive_schema_name(entity_cls)
             if "SETTINGS" in self.conn_info and self.conn_info["SETTINGS"]:
                 options["settings"] = self.conn_info["SETTINGS"]
 
@@ -467,6 +418,14 @@ class ESProvider(BaseProvider):
             model_cls = type(
                 entity_cls.__name__ + "Model", (ElasticsearchModel,), attrs
             )
+
+            # Create Dynamic Mapping and associate with index
+            # FIXME Expand to all types of fields
+            id_field_name = id_field(entity_cls).field_name
+            m = Mapping()
+            m.field(id_field_name, Keyword())
+
+            model_cls._index.mapping(m)
 
             # Memoize the constructed model class
             self._model_classes[entity_cls.meta_.schema_name] = model_cls
@@ -488,34 +447,60 @@ class ESProvider(BaseProvider):
         """Utility method to reset data in DB between tests"""
         conn = self.get_connection()
 
-        for _, aggregate_record in current_domain.registry.aggregates.items():
-            provider = current_domain.get_provider(aggregate_record.cls.meta_.provider)
+        elements = {
+            **self.domain.registry.aggregates,
+            **self.domain.registry.entities,
+            **self.domain.registry.views,
+        }
+        for _, element_record in elements.items():
+            provider = current_domain.get_provider(element_record.cls.meta_.provider)
+            model_cls = self.domain.get_model(element_record.cls)
             if provider.conn_info[
                 "DATABASE"
             ] == Database.ELASTICSEARCH.value and conn.indices.exists(
-                aggregate_record.cls.meta_.schema_name
+                model_cls._index._name
             ):
+                print(f"---> Deleting {model_cls}: {model_cls._index._name}")
                 conn.delete_by_query(
                     refresh=True,
-                    index=aggregate_record.cls.meta_.schema_name,
+                    index=model_cls._index._name,
                     body={"query": {"match_all": {}}},
                 )
 
     def _create_database_artifacts(self):
-        for _, aggregate_record in self.domain.registry.aggregates.items():
-            index = Index(
-                aggregate_record.cls.meta_.schema_name, using=self.get_connection()
-            )
-            if not index.exists():
-                index.create()
+        conn = self.get_connection()
+
+        elements = {
+            **self.domain.registry.aggregates,
+            **self.domain.registry.entities,
+            **self.domain.registry.views,
+        }
+        for _, element_record in elements.items():
+            provider = current_domain.get_provider(element_record.cls.meta_.provider)
+            model_cls = current_domain.get_model(element_record.cls)
+            if provider.conn_info[
+                "DATABASE"
+            ] == Database.ELASTICSEARCH.value and not model_cls._index.exists(
+                using=conn
+            ):
+                # We use model_cls here to ensure the index is created along with mappings
+                model_cls.init(using=conn)
 
     def _drop_database_artifacts(self):
-        for _, aggregate_record in self.domain.registry.aggregates.items():
-            index = Index(
-                aggregate_record.cls.meta_.schema_name, using=self.get_connection()
-            )
-            if index.exists():
-                index.delete()
+        conn = self.get_connection()
+
+        elements = {
+            **self.domain.registry.aggregates,
+            **self.domain.registry.entities,
+            **self.domain.registry.views,
+        }
+        for _, element_record in elements.items():
+            model_cls = self.domain.get_model(element_record.cls)
+            provider = current_domain.get_provider(element_record.cls.meta_.provider)
+            if provider.conn_info[
+                "DATABASE"
+            ] == Database.ELASTICSEARCH.value and model_cls._index.exists(using=conn):
+                conn.indices.delete(model_cls._index._name)
 
 
 class DefaultLookup(BaseLookup):
@@ -541,8 +526,6 @@ class Exact(DefaultLookup):
 
 @ESProvider.register_lookup
 class In(DefaultLookup):
-    """In Match Query"""
-
     lookup_name = "in"
 
     def process_target(self):
@@ -556,8 +539,6 @@ class In(DefaultLookup):
 
 @ESProvider.register_lookup
 class GreaterThan(DefaultLookup):
-    """Greater than Query"""
-
     lookup_name = "gt"
 
     def as_expression(self):
@@ -568,8 +549,6 @@ class GreaterThan(DefaultLookup):
 
 @ESProvider.register_lookup
 class GreaterThanOrEqual(DefaultLookup):
-    """Greater than or Equal Query"""
-
     lookup_name = "gte"
 
     def as_expression(self):
@@ -580,8 +559,6 @@ class GreaterThanOrEqual(DefaultLookup):
 
 @ESProvider.register_lookup
 class LessThan(DefaultLookup):
-    """Less than Query"""
-
     lookup_name = "lt"
 
     def as_expression(self):
@@ -592,8 +569,6 @@ class LessThan(DefaultLookup):
 
 @ESProvider.register_lookup
 class LessThanOrEqual(DefaultLookup):
-    """Less than or Equal Query"""
-
     lookup_name = "lte"
 
     def as_expression(self):
@@ -604,7 +579,7 @@ class LessThanOrEqual(DefaultLookup):
 
 @ESProvider.register_lookup
 class Contains(DefaultLookup):
-    """Exact Contains Query"""
+    """Case-sensitive Contains Query"""
 
     lookup_name = "contains"
 
@@ -635,8 +610,6 @@ class IContains(DefaultLookup):
 
 @ESProvider.register_lookup
 class Startswith(DefaultLookup):
-    """Exact Contains Query"""
-
     lookup_name = "startswith"
 
     def as_expression(self):
@@ -648,8 +621,6 @@ class Startswith(DefaultLookup):
 
 @ESProvider.register_lookup
 class Endswith(DefaultLookup):
-    """Exact Contains Query"""
-
     lookup_name = "endswith"
 
     def as_expression(self):
