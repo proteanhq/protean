@@ -396,15 +396,6 @@ class BaseDAO(metaclass=ABCMeta):
                 # Perform unique checks. Raises validation errors if unique constraints are violated.
                 self._validate_unique(entity_obj)
 
-                # If this is a new entity, generate ID
-                if entity_obj.state_.is_new:
-                    if not getattr(entity_obj, id_field(entity_obj).field_name, None):
-                        setattr(
-                            entity_obj,
-                            id_field(entity_obj).field_name,
-                            self.entity_cls.generate_identity(),
-                        )
-
                 self._create(self.model_cls.from_entity(entity_obj))
 
             # Set Entity status to saved to let everybody know it has been persisted

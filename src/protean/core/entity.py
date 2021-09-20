@@ -327,23 +327,6 @@ class BaseEntity(BaseContainer, OptionsMixin):
         """
         return defaultdict(list)
 
-    @classmethod
-    def generate_identity(cls):
-        """Generate Unique Identifier, based on configured strategy"""
-        if current_domain.config["IDENTITY_STRATEGY"] == IdentityStrategy.UUID.value:
-            if current_domain.config["IDENTITY_TYPE"] == IdentityType.INTEGER.value:
-                return uuid4().int
-            elif current_domain.config["IDENTITY_TYPE"] == IdentityType.STRING.value:
-                return str(uuid4())
-            elif current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID.value:
-                return uuid4()
-            else:
-                raise ConfigurationError(
-                    f'Unknown Identity Type {current_domain.config["IDENTITY_TYPE"]}'
-                )
-
-        return None  # Database will generate the identity
-
     def __eq__(self, other):
         """Equivalence check to be based only on Identity"""
 
