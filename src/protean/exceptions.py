@@ -17,6 +17,9 @@ class ProteanException(Exception):
     def __str__(self):
         return f"{dict(self.messages)}"
 
+    def __reduce__(self):
+        return (ProteanException, (self.messages,))
+
 
 class ConfigurationError(Exception):
     """Improper Configuration encountered like:
