@@ -8,13 +8,13 @@ from protean.utils import DomainObjects, fetch_element_cls_from_registry
 class _ShadowField(Field):
     """Shadow Attribute Field to back Value Object Fields"""
 
-    def __init__(self, owner, field_name, field_type, **kwargs):
+    def __init__(self, owner, field_name, field_obj, **kwargs):
         """Preserve link to owner, and original field type for later reference"""
         super().__init__(**kwargs)
 
         self.owner = owner
         self.field_name = field_name
-        self.field_type = field_type
+        self.field_obj = field_obj
 
     def __set__(self, instance, value):
         """Override `__set__` to update owner field and silently fail to update values.
@@ -52,7 +52,7 @@ class ValueObject(Field):
             self.embedded_fields[field_name] = _ShadowField(
                 self,
                 field_name,
-                field_obj.__class__,
+                field_obj,
                 # FIXME Pass all other kwargs here
                 #   Because we want the shadow field to mimic the behavior of the actual field
                 #   Which means that ShadowField somehow has to become an Integer, Float, String, etc.
@@ -102,10 +102,16 @@ class ValueObject(Field):
 
     def as_dict(self, value):
         """Return JSON-compatible value of self"""
-        return {
-            field_obj.attribute_name: getattr(value, field_name)
-            for field_name, field_obj in self.embedded_fields.items()
-        }
+        return (
+            {
+                shadow_field_obj.attribute_name: shadow_field_obj.field_obj.as_dict(
+                    getattr(value, field_name, None)
+                )
+                for field_name, shadow_field_obj in self.embedded_fields.items()
+            }
+            if value
+            else None
+        )
 
     def __set__(self, instance, value):
         """Override `__set__` to coordinate between value object and its embedded fields"""
