@@ -50,9 +50,7 @@ all_external_requires = [
 
 testing_requires = all_external_requires + [
     "mock==4.0.2",
-    "passlib==1.7.2",
     "pluggy==0.13.1",
-    "pyjwt==1.7.1",
     "pytest-asyncio>=0.15.1",
     "pytest-cov==2.8.1",
     "pytest-flake8>=1.0.7",

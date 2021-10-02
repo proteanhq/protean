@@ -223,6 +223,10 @@ class Domain(_PackageBoundObject):
                     for file in files:
                         file_base_name = os.path.basename(file)
 
+                        # Ignore if the file is not a python file
+                        if os.path.splitext(file_base_name)[1] != ".py":
+                            continue
+
                         # Construct the module path to import from
                         if file_base_name != "__init__":
                             sub_module_name = os.path.splitext(file_base_name)[0]

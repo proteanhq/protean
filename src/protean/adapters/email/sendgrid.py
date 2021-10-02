@@ -1,6 +1,7 @@
 """ Define the send-grid email provider """
 import logging
 
+from python_http_client.exceptions import HTTPError
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, TemplateId
 
@@ -31,11 +32,14 @@ class SendgridEmailProvider(BaseEmailProvider):
 
             if response.status_code != 202:
                 logger.error(
-                    f"Error encountered while sending Email: {response.status_code}"
+                    f"Failure: ({response.status_code}) - "
+                    f"{response.reason} - {response.body}"
                 )
 
             logger.debug("Email pushed to SendGrid successfully.")
+        except HTTPError as e:
+            logger.error(f"{e}: {e.to_dict}")
         except Exception as e:
-            logger.error(f"Error encountered while sending Email: {e}")
+            logger.error(f"Exception: Error while sending email: {e}")
 
         return True
