@@ -92,9 +92,9 @@ class TestCachePersistenceFlows:
         cache.add(token1)
         cache.add(token2)
 
-        values = cache.get_all("token:::qu*")
-        assert len(values) == 2
-        assert all(key in values for key in ["token:::qux", "token:::quux"])
+        tokens = cache.get_all("token:::qu*")
+        assert len(tokens) == 2
+        assert all(token in tokens for token in [token1, token2])
 
     def test_counting_keys_in_cache(self, test_domain):
         cache = test_domain.cache_for(Token)

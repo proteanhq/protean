@@ -150,9 +150,14 @@ class MemoryCache(BaseCache):
     def get_all(self, key_pattern, last_position=0, size=25):
         # FIXME Handle Pagination with Last Position
         # FIXME Handle Pagination with Size
+        view_name = key_pattern.split(":::")[0]
+        view_cls = self._views[view_name]
+
         key_list = self._db.keys()
         regex = re.compile(key_pattern)
-        return list(filter(regex.match, key_list))
+        results = list(filter(regex.match, key_list))
+
+        return [view_cls(self._db.get(key)) for key in results]
 
     def count(self, key_pattern):
         key_list = self._db.keys()
