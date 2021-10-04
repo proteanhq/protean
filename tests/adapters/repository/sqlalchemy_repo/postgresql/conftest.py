@@ -31,7 +31,7 @@ def setup_db():
     with domain.domain_context():
         # Create all associated tables
         from .elements import Alien, ComplexUser, Person, User
-        from .test_associations import Comment, Post
+        from .test_associations import Comment, Post, Audit
         from .test_persistence import Event
 
         domain.register(Alien)
@@ -41,6 +41,7 @@ def setup_db():
         domain.register(User)
         domain.register(Post)
         domain.register(Comment)
+        domain.register(Audit)
 
         domain.get_dao(Alien)
         domain.get_dao(ComplexUser)
@@ -49,6 +50,7 @@ def setup_db():
         domain.get_dao(User)
         domain.get_dao(Post)
         domain.get_dao(Comment)
+        domain.get_dao(Audit)
 
         for provider in domain.providers_list():
             provider._metadata.create_all()

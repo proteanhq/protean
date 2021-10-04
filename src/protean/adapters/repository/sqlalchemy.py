@@ -31,6 +31,7 @@ from protean.fields import (
     Text,
 )
 from protean.fields.association import Reference, _ReferenceField
+from protean.fields.embedded import _ShadowField
 from protean.globals import current_domain, current_uow
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
@@ -51,6 +52,7 @@ class GUID(TypeDecorator):
     """
 
     impl = CHAR
+    cache_ok = True
 
     def load_dialect_impl(self, dialect):
         if dialect.name == "postgresql":
@@ -104,7 +106,7 @@ def _get_identity_type():
 class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
     """ Metaclass for the Sqlalchemy declarative schema """
 
-    def __init__(cls, classname, bases, dict_):
+    def __init__(cls, classname, bases, dict_):  # noqa: C901
         # Update the class attrs with the entity attributes
 
         field_mapping = {
@@ -129,6 +131,10 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
 
                 # Map the field if not in attributes
                 if attribute_name not in cls.__dict__:
+                    # Derive field based on field enclosed within ShadowField
+                    if isinstance(field_obj, _ShadowField):
+                        field_obj = field_obj.field_obj
+
                     field_cls = type(field_obj)
                     type_args = []
                     type_kwargs = {}
