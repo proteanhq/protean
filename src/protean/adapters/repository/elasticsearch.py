@@ -8,7 +8,7 @@ import elasticsearch_dsl
 
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
-from elasticsearch_dsl import Document, Index, Search, query, Keyword, Mapping
+from elasticsearch_dsl import Document, Index, Keyword, Mapping, Search, query
 
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import Reference

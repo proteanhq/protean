@@ -1,9 +1,9 @@
 from datetime import datetime
-from protean.core.value_object import BaseValueObject
 
+from protean import BaseAggregate
+from protean.core.value_object import BaseValueObject
 from protean.fields.basic import DateTime, String
 from protean.fields.embedded import ValueObject
-from protean import BaseAggregate
 
 
 class SimpleVO(BaseValueObject):

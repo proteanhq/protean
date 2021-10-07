@@ -31,7 +31,7 @@ def setup_db():
     with domain.domain_context():
         # Create all associated tables
         from .elements import Alien, ComplexUser, Person, User
-        from .test_associations import Comment, Post, Audit
+        from .test_associations import Audit, Comment, Post
         from .test_persistence import Event
 
         domain.register(Alien)

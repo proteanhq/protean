@@ -37,8 +37,8 @@ def setup_db():
             ComplexUser,
             Person,
             Provider,
-            User,
             ProviderCustomModel,
+            User,
         )
 
         domain.register(Person)

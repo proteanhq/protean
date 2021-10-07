@@ -6,11 +6,7 @@ from collections import defaultdict
 from functools import partial
 
 from protean.container import BaseContainer, OptionsMixin
-from protean.exceptions import (
-    IncorrectUsageError,
-    NotSupportedError,
-    ValidationError,
-)
+from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Auto, Field, HasMany, Reference, ValueObject
 from protean.fields.association import Association, _ReferenceField
 from protean.reflection import _FIELDS, _ID_FIELD_NAME, attributes, fields, id_field
