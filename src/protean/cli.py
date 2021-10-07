@@ -31,7 +31,7 @@ class NoDomainException(click.UsageError):
 @click.version_option()
 @click.pass_context
 def main(ctx):
-    """CLI utilities for the Protean"""
+    """CLI utilities for Protean"""
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
 

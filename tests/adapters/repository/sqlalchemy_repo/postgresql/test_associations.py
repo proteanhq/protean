@@ -16,13 +16,13 @@ class Comment(BaseEntity):
         aggregate_cls = "Post"
 
 
-class Permission(BaseValueObject):
-    dict_object = Dict()
-
-
 class Post(BaseAggregate):
     content = Text(required=True)
     comments = HasMany(Comment)
+
+
+class Permission(BaseValueObject):
+    dict_object = Dict()
 
 
 class Audit(BaseAggregate):

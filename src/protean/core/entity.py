@@ -252,11 +252,9 @@ class BaseEntity(BaseContainer, OptionsMixin):
 
         # Load Identities
         id_field_obj = id_field(self)
-        if (
-            not getattr(self, id_field_obj.field_name, None)
-            and type(id_field_obj) is Auto
-        ):
-            setattr(self, id_field_obj.field_name, generate_identity())
+        if type(id_field_obj) is Auto:
+            if not getattr(self, id_field_obj.field_name, None):
+                setattr(self, id_field_obj.field_name, generate_identity())
             loaded_fields.append(id_field_obj.field_name)
 
         # Load Associations

@@ -1,10 +1,18 @@
 Release History
 ===============
 
-Dev
----
+0.8.0
+-----
 
-* Introduce state to Views to allow persistence
+* Move `fields` module to be under main package
+* Allow `List` fields to contain `Dict` objects
+* Elasticsearch adapter bugfixes and model enhancements
+* Make views stateful to allow persistence and retrieval
+* Auto-generate Event's `message_id`
+* Support pickling of Protean exceptions
+* Bugfix - Fetch view objects instead of simply IDs in `cache.get_all()`
+* Bugfix - Generate embedded ValueObject's data properly in `to_dict()`
+* Bugfix - Derive SQLAlchemy field types correctly for embedded value object fields
 
 0.7.0
 -----

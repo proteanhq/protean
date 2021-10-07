@@ -460,7 +460,6 @@ class ESProvider(BaseProvider):
             ] == Database.ELASTICSEARCH.value and conn.indices.exists(
                 model_cls._index._name
             ):
-                print(f"---> Deleting {model_cls}: {model_cls._index._name}")
                 conn.delete_by_query(
                     refresh=True,
                     index=model_cls._index._name,

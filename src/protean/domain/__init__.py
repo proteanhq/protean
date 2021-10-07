@@ -173,7 +173,7 @@ class Domain(_PackageBoundObject):
             self.register(Job)
             self.register(JobRepository)
 
-    def init(self):
+    def init(self):  # noqa: C901
         """ Parse the domain folder, and attach elements dynamically to the domain.
 
         Protean parses all files in the domain file's folder, as well as under it,
