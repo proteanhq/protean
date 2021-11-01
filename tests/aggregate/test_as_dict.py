@@ -164,6 +164,6 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
         user = User(email=Email(address="john.doe@gmail.com"), password="secret")
         assert user.to_dict() == {
             "id": user.id,
-            "email_address": "john.doe@gmail.com",
+            "email": {"address": "john.doe@gmail.com",},
             "password": "secret",
         }

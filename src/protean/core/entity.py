@@ -387,7 +387,9 @@ class BaseEntity(BaseContainer, OptionsMixin):
             elif isinstance(field_obj, ValueObject):
                 value = field_obj.as_dict(getattr(self, field_name, None))
                 if value:
-                    field_values.update(value)
+                    field_values[field_name] = field_obj.as_dict(
+                        getattr(self, field_name, None)
+                    )
 
         return field_values
 

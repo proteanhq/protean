@@ -5,7 +5,7 @@ import logging
 from collections import defaultdict
 
 from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
-from protean.fields import FieldBase
+from protean.fields import FieldBase, ValueObject
 
 from .reflection import _FIELDS, attributes, fields
 
@@ -173,6 +173,29 @@ class BaseContainer(metaclass=ContainerMeta):
         for field_name, val in kwargs.items():
             loaded_fields.append(field_name)
             setattr(self, field_name, val)
+
+        # Load Value Objects from associated fields
+        #   This block will dynamically construct value objects from field values
+        #   and associated the vo with the entity
+        # If the value object was already provided, it will not be overridden.
+        for field_name, field_obj in fields(self).items():
+            if isinstance(field_obj, (ValueObject)) and not getattr(self, field_name):
+                attrs = [
+                    (embedded_field.field_name, embedded_field.attribute_name)
+                    for embedded_field in field_obj.embedded_fields.values()
+                ]
+                values = {name: kwargs.get(attr) for name, attr in attrs}
+                try:
+                    value_object = field_obj.value_object_cls(**values)
+                    # Set VO value only if the value object is not None/Empty
+                    if value_object:
+                        setattr(self, field_name, value_object)
+                        loaded_fields.append(field_name)
+                except ValidationError as err:
+                    for sub_field_name in err.messages:
+                        self.errors["{}_{}".format(field_name, sub_field_name)].extend(
+                            err.messages[sub_field_name]
+                        )
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields

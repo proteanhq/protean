@@ -36,7 +36,7 @@ class TestAsDict:
     def test_embedded_simple_vo(self):
         vo = SimpleVO(foo="foo", bar="bar")
         simple = SimpleVOEntity(id=12, vo=vo)
-        assert simple.to_dict() == {"id": 12, "vo_foo": "foo", "vo_bar": "bar"}
+        assert simple.to_dict() == {"id": 12, "vo": {"foo": "foo", "bar": "bar"}}
 
     def test_datetime_vo_dict(self):
         now = datetime.utcnow()
@@ -47,4 +47,4 @@ class TestAsDict:
         now = datetime.utcnow()
         vo = VOWithDateTime(foo="foo", now=now)
         simple = EntityWithDateTimeVO(id=12, vo=vo)
-        assert simple.to_dict() == {"id": 12, "vo_foo": "foo", "vo_now": str(now)}
+        assert simple.to_dict() == {"id": 12, "vo": {"foo": "foo", "now": str(now)}}

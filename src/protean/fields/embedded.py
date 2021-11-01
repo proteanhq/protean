@@ -96,6 +96,10 @@ class ValueObject(Field):
         return shadow_fields
 
     def _cast_to_type(self, value):
+        # If the supplied value is a dict, reconstruct value object
+        if isinstance(value, dict):
+            value = self._value_object_cls(**value)
+
         if not isinstance(value, self._value_object_cls):
             self.fail("invalid", value=value)
         return value
@@ -104,7 +108,7 @@ class ValueObject(Field):
         """Return JSON-compatible value of self"""
         return (
             {
-                shadow_field_obj.attribute_name: shadow_field_obj.field_obj.as_dict(
+                field_name: shadow_field_obj.field_obj.as_dict(
                     getattr(value, field_name, None)
                 )
                 for field_name, shadow_field_obj in self.embedded_fields.items()

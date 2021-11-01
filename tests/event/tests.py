@@ -14,17 +14,39 @@ from .elements import Person, PersonAdded, PersonCommand, PersonService
 
 
 class TestDomainEventDefinition:
-    @pytest.mark.xfail(reason="Yet to implement")
-    def test_that_domain_event_can_only_accommodate_basic_fields(self, test_domain):
+    def test_that_domain_event_can_accommodate_value_objects(self, test_domain):
         class Email(BaseValueObject):
             address = String(max_length=255)
 
-        class User(BaseAggregate):
+        class UserAdded(BaseEvent):
             email = ValueObject(Email, required=True)
             name = String(max_length=50)
 
-        with pytest.raises(IncorrectUsageError):
-            test_domain.register(User)
+        test_domain.register(UserAdded)
+        event = UserAdded(email_address="john.doe@gmail.com", name="John Doe")
+
+        assert event is not None
+        assert event.email == Email(address="john.doe@gmail.com")
+        assert event.email_address == "john.doe@gmail.com"
+
+        assert event.to_dict() == {
+            "email": {"address": "john.doe@gmail.com",},
+            "name": "John Doe",
+        }
+
+    def test_that_domain_event_can_be_reconstructed_from_dict_enclosing_vo(
+        self, test_domain
+    ):
+        class Email(BaseValueObject):
+            address = String(max_length=255)
+
+        class UserAdded(BaseEvent):
+            email = ValueObject(Email, required=True)
+            name = String(max_length=50)
+
+        assert UserAdded(
+            {"email": {"address": "john.doe@gmail.com",}, "name": "John Doe",}
+        ) == UserAdded(email_address="john.doe@gmail.com", name="John Doe")
 
 
 class TestDomainEventInitialization:

@@ -272,7 +272,10 @@ class Auto(Field):
 
     def as_dict(self, value):
         """Return JSON-compatible value of self"""
-        return value
+        if not value:
+            return None
+
+        return value if isinstance(value, int) else str(value)
 
 
 class Identifier(Field):
