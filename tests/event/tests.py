@@ -2,8 +2,8 @@ import uuid
 
 import pytest
 
-from protean import BaseAggregate, BaseEvent, BaseValueObject
-from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean import BaseEvent, BaseValueObject
+from protean.exceptions import NotSupportedError
 from protean.fields import String, ValueObject
 from protean.globals import current_domain
 from protean.infra.eventing import EventLog, EventLogRepository
@@ -30,7 +30,7 @@ class TestDomainEventDefinition:
         assert event.email_address == "john.doe@gmail.com"
 
         assert event.to_dict() == {
-            "email": {"address": "john.doe@gmail.com",},
+            "email": {"address": "john.doe@gmail.com"},
             "name": "John Doe",
         }
 
@@ -45,7 +45,7 @@ class TestDomainEventDefinition:
             name = String(max_length=50)
 
         assert UserAdded(
-            {"email": {"address": "john.doe@gmail.com",}, "name": "John Doe",}
+            {"email": {"address": "john.doe@gmail.com"}, "name": "John Doe"}
         ) == UserAdded(email_address="john.doe@gmail.com", name="John Doe")
 
 

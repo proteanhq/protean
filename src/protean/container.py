@@ -138,7 +138,7 @@ class BaseContainer(metaclass=ContainerMeta):
             raise TypeError("BaseContainer cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, *template, **kwargs):
+    def __init__(self, *template, **kwargs):  # noqa: C901
         """
         Initialise the container.
 
