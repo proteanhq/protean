@@ -19,5 +19,5 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         abstract = True
 
 
-def domain_event_factory(element_cls, **kwargs):
+def event_factory(element_cls, **kwargs):
     return derive_element_class(element_cls, BaseEvent)
