@@ -1,6 +1,7 @@
 """This module implements the central domain object, along with decorators
 to register Domain Elements.
 """
+import asyncio
 import importlib
 import logging
 import sys
@@ -22,9 +23,16 @@ from protean.exceptions import (
     NotSupportedError,
 )
 from protean.fields import HasMany, HasOne, Reference
-from protean.globals import current_domain
-from protean.infra.eventing import EventLog, EventLogRepository, MessageType
+from protean.globals import current_domain, g
+from protean.infra.eventing import (
+    EventLog,
+    EventLogRepository,
+    Message,
+    MessageType,
+    Subscription,
+)
 from protean.infra.job import Job, JobRepository
+from protean.utils.inflection import underscore
 from protean.reflection import fields, has_fields
 from protean.utils import (
     CommandProcessingType,
@@ -173,11 +181,13 @@ class Domain(_PackageBoundObject):
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
 
         # Register the EventLog Aggregate  # FIXME Is this the best place to do this?
-        if self.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED.value:
-            self.register(EventLog)
-            self.register(EventLogRepository)
-            self.register(Job)
-            self.register(JobRepository)
+        # if self.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED.value:
+        #     self.register(EventLog)
+        #     self.register(EventLogRepository)
+        #     self.register(Job)
+        #     self.register(JobRepository)
+
+        self.loop = asyncio.new_event_loop()
 
     def init(self):  # noqa: C901
         """ Parse the domain folder, and attach elements dynamically to the domain.
@@ -778,3 +788,15 @@ class Domain(_PackageBoundObject):
             self._event_store = store
 
         return self._event_store
+
+    def process(
+        self, obj: Union[BaseCommand, BaseEvent], identifier: str = None
+    ) -> None:
+        identifier = identifier if identifier is not None else g.trace_id
+        stream_name = f"{obj.meta_.stream_name}-{identifier}"
+
+        self.event_store.write(
+            stream_name,
+            obj.__class__.__name__,  # FIXME Enclose Command/Event class within Domain Namespace
+            obj.to_dict(),
+        )

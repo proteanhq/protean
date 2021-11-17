@@ -1,6 +1,7 @@
 from protean.container import BaseContainer, OptionsMixin
 from protean.exceptions import InvalidDataError, ValidationError
 from protean.utils import DomainObjects, derive_element_class
+from protean.utils import inflection
 
 
 class BaseCommand(BaseContainer, OptionsMixin):
@@ -23,7 +24,10 @@ class BaseCommand(BaseContainer, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return [("broker", "default")]
+        return [
+            ("broker", "default"),
+            ("stream_name", inflection.underscore(cls.__name__)),
+        ]
 
 
 def command_factory(element_cls, **kwargs):

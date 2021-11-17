@@ -19,7 +19,7 @@ class BaseEventHandler(Element, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return [("stream_name", None)]
+        return [("event", None), ("stream_name", None)]
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseEventHandler:
@@ -40,6 +40,15 @@ def event_handler_factory(element_cls, **kwargs):
             {
                 "_entity": [
                     f"BaseEventHandler `{element_cls.__name__}` needs to be associated with a stream"
+                ]
+            }
+        )
+
+    if not element_cls.meta_.event:
+        raise IncorrectUsageError(
+            {
+                "_entity": [
+                    f"BaseEventHandler `{element_cls.__name__}` needs to be associated with an event"
                 ]
             }
         )

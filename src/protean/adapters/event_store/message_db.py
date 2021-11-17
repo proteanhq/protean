@@ -4,6 +4,7 @@ from uuid import uuid4
 from psycopg2.extras import register_uuid, Json, RealDictCursor
 
 from protean.exceptions import ConfigurationError
+from protean.utils.inflection import underscore
 
 # Support UUID data type
 # https://www.psycopg.org/docs/extras.html#uuid-data-type
@@ -48,7 +49,7 @@ class MessageDB:
         result = self._cursor.fetchone()
         return result["write_message"]
 
-    def read(self, stream_name, position, no_of_messages):
+    def read(self, stream_name, position=0, no_of_messages=1000):
         if "-" in stream_name:
             sql = "SELECT * FROM get_stream_messages(%(stream_name)s, %(position)s, %(batch_size)s);"
         else:
@@ -77,6 +78,16 @@ class MessageDB:
 
         self._connection.commit()
         return message
+
+    def fetch(self, aggregate_cls, identifier):
+        stream_name = f"{underscore(aggregate_cls.__name__)}-{identifier}"
+        stream = self.read(stream_name)
+
+        aggregate = aggregate_cls()
+        for event in stream:
+            aggregate.apply(event["data"])
+
+        return aggregate
 
     def _clear(self):
         """Utility function to empty messages, to be used only by test harness.
