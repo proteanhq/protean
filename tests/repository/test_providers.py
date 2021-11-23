@@ -14,7 +14,9 @@ class PersonGeneric(BaseAggregate):
 
 class PersonCustomRepository(BaseRepository):
     def find_adults(self, minimum_age: int = 21) -> List[PersonGeneric]:
-        return current_domain.get_dao(PersonGeneric).filter(age__gte=minimum_age)
+        return current_domain.repository_for(PersonGeneric)._dao.filter(
+            age__gte=minimum_age
+        )
 
     class Meta:
         aggregate_cls = PersonGeneric
@@ -31,7 +33,9 @@ class PersonSQLite(BaseAggregate):
 
 class PersonSQLiteGenericRepository(BaseRepository):
     def find_adults(self, minimum_age: int = 21) -> List[PersonGeneric]:
-        return current_domain.get_dao(PersonGeneric).filter(age__gte=minimum_age)
+        return current_domain.repository_for(PersonGeneric)._dao.filter(
+            age__gte=minimum_age
+        )
 
     class Meta:
         aggregate_cls = PersonSQLite

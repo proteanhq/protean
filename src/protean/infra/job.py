@@ -48,15 +48,15 @@ class JobRepository(BaseRepository):
         aggregate_cls = Job
 
     def get_most_recent_job_of_type(self, type: str) -> Job:
-        job_dao = current_domain.get_dao(Job)
+        job_dao = current_domain.repository_for(Job)._dao
         return job_dao.query.filter(type=type).order_by("-created_at").all().first
 
     def get_all_jobs_of_type(self, type: str) -> Job:
-        job_dao = current_domain.get_dao(Job)
+        job_dao = current_domain.repository_for(Job)._dao
         return job_dao.query.filter(type=type).order_by("-created_at").all().items
 
     def get_next_to_process(self) -> Job:
-        event_dao = current_domain.get_dao(Job)
+        event_dao = current_domain.repository_for(Job)._dao
         return (
             event_dao.query.filter(status=JobStatus.NEW.value)
             .order_by("created_at")

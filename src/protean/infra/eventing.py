@@ -109,7 +109,7 @@ class EventLogRepository(BaseRepository):
         aggregate_cls = EventLog
 
     def get_most_recent_event_by_type_cls(self, event_cls: BaseEvent) -> EventLog:
-        event_dao = current_domain.get_dao(EventLog)
+        event_dao = current_domain.repository_for(EventLog)._dao
         return (
             event_dao.query.filter(name=event_cls.__name__)
             .order_by("-created_at")
@@ -118,7 +118,7 @@ class EventLogRepository(BaseRepository):
         )
 
     def get_next_to_publish(self) -> EventLog:
-        event_dao = current_domain.get_dao(EventLog)
+        event_dao = current_domain.repository_for(EventLog)._dao
         return (
             event_dao.query.filter(status=EventLogStatus.NEW.value)
             .order_by("created_at")
@@ -127,19 +127,19 @@ class EventLogRepository(BaseRepository):
         )
 
     def get_most_recent_event_by_type(self, event_name: str) -> EventLog:
-        event_dao = current_domain.get_dao(EventLog)
+        event_dao = current_domain.repository_for(EventLog)._dao
         return (
             event_dao.query.filter(name=event_name).order_by("-created_at").all().first
         )
 
     def get_all_events_of_type(self, event_name: str) -> EventLog:
-        event_dao = current_domain.get_dao(EventLog)
+        event_dao = current_domain.repository_for(EventLog)._dao
         return (
             event_dao.query.filter(name=event_name).order_by("-created_at").all().items
         )
 
     def get_all_events_of_type_cls(self, event_cls: BaseEvent) -> EventLog:
-        event_dao = current_domain.get_dao(EventLog)
+        event_dao = current_domain.repository_for(EventLog)._dao
         return (
             event_dao.query.filter(name=event_cls.__name__)
             .order_by("-created_at")

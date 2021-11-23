@@ -13,7 +13,7 @@ class GenericPostgres(BaseAggregate):
 @pytest.mark.postgresql
 class TestLookups:
     def test_any_lookup(self, test_domain):
-        model_cls = test_domain.get_model(GenericPostgres)
+        model_cls = test_domain.repository_for(GenericPostgres)._model
 
         identifier = "foobar"
         lookup = Any("ids", identifier, model_cls)
@@ -23,7 +23,7 @@ class TestLookups:
         assert expr.compile().params == {"param_1": "foobar"}
 
     def test_contains_lookup_with_array(self, test_domain):
-        model_cls = test_domain.get_model(GenericPostgres)
+        model_cls = test_domain.repository_for(GenericPostgres)._model
 
         identifier = ["foo", "bar"]
         lookup = Contains("ids", identifier, model_cls)
@@ -33,7 +33,7 @@ class TestLookups:
         assert expr.compile().params == {"ids_1": ["foo", "bar"]}
 
     def test_overlap_lookup_with_array(self, test_domain):
-        model_cls = test_domain.get_model(GenericPostgres)
+        model_cls = test_domain.repository_for(GenericPostgres)._model
 
         identifier = ["foo", "bar"]
         lookup = Overlap("ids", identifier, model_cls)
@@ -43,7 +43,7 @@ class TestLookups:
         assert expr.compile().params == {"ids_1": ["foo", "bar"]}
 
     def test_in_lookup(self, test_domain):
-        model_cls = test_domain.get_model(GenericPostgres)
+        model_cls = test_domain.repository_for(GenericPostgres)._model
 
         target_roles = ["foo", "bar", "baz"]
         lookup = In("role", target_roles, model_cls)

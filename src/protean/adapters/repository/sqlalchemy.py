@@ -597,7 +597,7 @@ class SAProvider(BaseProvider):
 
     def _create_database_artifacts(self):
         for _, aggregate_record in self.domain.registry.aggregates.items():
-            self.domain.get_dao(aggregate_record.cls)
+            self.domain.repository_for(aggregate_record.cls)._dao
 
         self._metadata.create_all()
 

@@ -36,15 +36,15 @@ class TestHasOne:
         self, test_domain
     ):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
         author = Author(first_name="John", last_name="Doe", account=account)
-        test_domain.get_dao(Author).save(author)
+        test_domain.repository_for(Author)._dao.save(author)
 
         assert all(key in author.__dict__ for key in ["account", "account_email"])
         assert author.account.email == account.email
         assert author.account_email == account.email
 
-        refreshed_account = test_domain.get_dao(Account).get(account.email)
+        refreshed_account = test_domain.repository_for(Account)._dao.get(account.email)
         assert refreshed_account.author.id == author.id
         assert refreshed_account.author == author
 
@@ -52,13 +52,15 @@ class TestHasOne:
         self, test_domain
     ):
         account = AccountVia(email="john.doe@gmail.com", password="a1b2c3")
-        test_domain.get_dao(AccountVia).save(account)
+        test_domain.repository_for(AccountVia)._dao.save(account)
         profile = ProfileVia(
             profile_id="12345", about_me="Lorem Ipsum", account_email=account.email
         )
-        test_domain.get_dao(ProfileVia).save(profile)
+        test_domain.repository_for(ProfileVia)._dao.save(profile)
 
-        refreshed_account = test_domain.get_dao(AccountVia).get(account.email)
+        refreshed_account = test_domain.repository_for(AccountVia)._dao.get(
+            account.email
+        )
         assert refreshed_account.profile == profile
 
     def test_successful_has_one_initialization_with_a_class_containing_via_and_reference(
@@ -67,13 +69,13 @@ class TestHasOne:
         account = AccountViaWithReference(
             email="john.doe@gmail.com", password="a1b2c3", username="johndoe"
         )
-        test_domain.get_dao(AccountViaWithReference).save(account)
+        test_domain.repository_for(AccountViaWithReference)._dao.save(account)
         profile = ProfileViaWithReference(about_me="Lorem Ipsum", ac=account)
-        test_domain.get_dao(ProfileViaWithReference).save(profile)
+        test_domain.repository_for(ProfileViaWithReference)._dao.save(profile)
 
-        refreshed_account = test_domain.get_dao(AccountViaWithReference).get(
-            account.email
-        )
+        refreshed_account = test_domain.repository_for(
+            AccountViaWithReference
+        )._dao.get(account.email)
         assert refreshed_account.profile == profile
 
     @mock.patch("protean.fields.association.Association._fetch_objects")
@@ -83,15 +85,15 @@ class TestHasOne:
         account = AccountViaWithReference(
             email="john.doe@gmail.com", password="a1b2c3", username="johndoe"
         )
-        test_domain.get_dao(AccountViaWithReference).save(account)
+        test_domain.repository_for(AccountViaWithReference)._dao.save(account)
         profile = ProfileViaWithReference(about_me="Lorem Ipsum", ac=account)
-        test_domain.get_dao(ProfileViaWithReference).save(profile)
+        test_domain.repository_for(ProfileViaWithReference)._dao.save(profile)
 
         mock.return_value = profile
 
-        refreshed_account = test_domain.get_dao(AccountViaWithReference).get(
-            account.email
-        )
+        refreshed_account = test_domain.repository_for(
+            AccountViaWithReference
+        )._dao.get(account.email)
         for _ in range(3):
             getattr(refreshed_account, "profile")
         assert (
@@ -111,7 +113,7 @@ class TestHasMany:
 
     @pytest.fixture
     def persisted_post(self, test_domain):
-        post = test_domain.get_dao(Post).create(content="Do Re Mi Fa")
+        post = test_domain.repository_for(Post)._dao.create(content="Do Re Mi Fa")
         return post
 
     def test_successful_initialization_of_entity_with_has_many_association(
@@ -163,16 +165,16 @@ class TestHasMany:
         self, test_domain
     ):
         post = PostVia(content="Lorem Ipsum")
-        test_domain.get_dao(PostVia).save(post)
+        test_domain.repository_for(PostVia)._dao.save(post)
         comment1 = CommentVia(id=101, content="First Comment", posting_id=post.id)
         comment2 = CommentVia(id=102, content="First Comment", posting_id=post.id)
-        test_domain.get_dao(CommentVia).save(comment1)
-        test_domain.get_dao(CommentVia).save(comment2)
+        test_domain.repository_for(CommentVia)._dao.save(comment1)
+        test_domain.repository_for(CommentVia)._dao.save(comment2)
 
         assert comment1.posting_id == post.id
         assert comment2.posting_id == post.id
 
-        refreshed_post = test_domain.get_dao(PostVia).get(post.id)
+        refreshed_post = test_domain.repository_for(PostVia)._dao.get(post.id)
         assert len(refreshed_post.comments) == 2
         assert "comments" in refreshed_post.__dict__  # Available after access
 
@@ -185,20 +187,22 @@ class TestHasMany:
         self, test_domain
     ):
         post = PostViaWithReference(content="Lorem Ipsum")
-        test_domain.get_dao(PostViaWithReference).save(post)
+        test_domain.repository_for(PostViaWithReference)._dao.save(post)
         comment1 = CommentViaWithReference(
             id=101, content="First Comment", posting=post
         )
         comment2 = CommentViaWithReference(
             id=102, content="First Comment", posting=post
         )
-        test_domain.get_dao(CommentViaWithReference).save(comment1)
-        test_domain.get_dao(CommentViaWithReference).save(comment2)
+        test_domain.repository_for(CommentViaWithReference)._dao.save(comment1)
+        test_domain.repository_for(CommentViaWithReference)._dao.save(comment2)
 
         assert comment1.posting_id == post.id
         assert comment2.posting_id == post.id
 
-        refreshed_post = test_domain.get_dao(PostViaWithReference).get(post.id)
+        refreshed_post = test_domain.repository_for(PostViaWithReference)._dao.get(
+            post.id
+        )
         assert len(refreshed_post.comments) == 2
         assert "comments" in refreshed_post.__dict__  # Available after access
 
@@ -211,17 +215,19 @@ class TestHasMany:
         self, test_domain
     ):
         post = PostViaWithReference(content="Lorem Ipsum")
-        test_domain.get_dao(PostViaWithReference).save(post)
+        test_domain.repository_for(PostViaWithReference)._dao.save(post)
         comment1 = CommentViaWithReference(
             id=101, content="First Comment", posting=post
         )
         comment2 = CommentViaWithReference(
             id=102, content="First Comment", posting=post
         )
-        test_domain.get_dao(CommentViaWithReference).save(comment1)
-        test_domain.get_dao(CommentViaWithReference).save(comment2)
+        test_domain.repository_for(CommentViaWithReference)._dao.save(comment1)
+        test_domain.repository_for(CommentViaWithReference)._dao.save(comment2)
 
-        refreshed_post = test_domain.get_dao(PostViaWithReference).get(post.id)
+        refreshed_post = test_domain.repository_for(PostViaWithReference)._dao.get(
+            post.id
+        )
         with mock.patch("protean.fields.HasMany._fetch_objects") as mock_fetch_objects:
             for _ in range(3):
                 getattr(refreshed_post, "comments")
@@ -234,11 +240,11 @@ class TestHasMany:
             comment = Comment(
                 content=f"Comment {i}", post_id=persisted_post.id
             )  # FIXME This should not be necessary
-            test_domain.get_dao(Comment).save(comment)
+            test_domain.repository_for(Comment)._dao.save(comment)
             persisted_post.add_comments(comment)
-            test_domain.get_dao(Post).save(persisted_post)
+            test_domain.repository_for(Post)._dao.save(persisted_post)
 
-        updated_post = test_domain.get_dao(Post).get(persisted_post.id)
+        updated_post = test_domain.repository_for(Post)._dao.get(persisted_post.id)
         assert len(updated_post.comments) == 12
 
 

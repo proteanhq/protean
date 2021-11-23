@@ -693,26 +693,11 @@ class Domain(_PackageBoundObject):
     # Repository Functionality #
     ############################
 
-    def get_model(self, aggregate_cls):
-        return self.providers.get_model(aggregate_cls)
-
-    def has_provider(self, provider_name):
-        return self.providers.has_provider(provider_name)
-
-    def get_provider(self, provider_name):
-        return self.providers.get_provider(provider_name)
-
     def get_connection(self, provider_name="default"):
         return self.providers.get_connection(provider_name)
 
-    def providers_list(self):
-        return self.providers.providers_list()
-
     def repository_for(self, aggregate_cls):
         return self.providers.repository_for(aggregate_cls)
-
-    def get_dao(self, aggregate_cls):
-        return self.providers.get_dao(aggregate_cls)
 
     #######################
     # Cache Functionality #

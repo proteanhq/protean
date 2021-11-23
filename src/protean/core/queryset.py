@@ -154,9 +154,6 @@ class QuerySet:
         # Destroy any cached results
         self._result_cache = None
 
-        # Fetch Model class and connected repository from Domain
-        model_cls = self._domain.get_model(self._entity_cls)
-
         # Call the read method of the dao
         results = self._owner_dao._filter(
             self._criteria, self._offset, self._limit, self._order_by
@@ -165,7 +162,7 @@ class QuerySet:
         # Convert the returned results to entity and return it
         entity_items = []
         for item in results.items:
-            entity = model_cls.to_entity(item)
+            entity = self._owner_dao.model_cls.to_entity(item)
             entity.state_.mark_retrieved()
             entity_items.append(entity)
         results.items = entity_items
@@ -216,9 +213,6 @@ class QuerySet:
         # Destroy any cached results
         self._result_cache = None
 
-        # Fetch Model class and connected repository from Domain
-        model_cls = self._domain.get_model(self._entity_cls)
-
         try:
             # Call the raw method of the repository
             results = self._owner_dao._raw(query, data)
@@ -226,7 +220,7 @@ class QuerySet:
             # Convert the returned results to entity and return it
             entity_items = []
             for item in results.items:
-                entity = model_cls.to_entity(item)
+                entity = self._owner_dao.model_cls.to_entity(item)
                 entity.state_.mark_retrieved()
                 entity_items.append(entity)
             results.items = entity_items

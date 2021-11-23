@@ -75,7 +75,7 @@ class TestCommandHandlerInvocation:
         assert result is None
 
         # Verify there is no side-effect of the command handler yet
-        people = current_domain.get_dao(Person).query.all().items
+        people = current_domain.repository_for(Person).all()
         assert len(people) == 0
 
     def test_synchronous_command_handler_invocation(self, test_domain):

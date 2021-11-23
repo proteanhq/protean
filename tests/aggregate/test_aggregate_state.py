@@ -21,8 +21,10 @@ class TestState:
         assert not person.state_.is_persisted
 
     def test_that_retrieved_objects_are_not_marked_as_new(self, test_domain):
-        person = test_domain.get_dao(Person).create(first_name="John", last_name="Doe")
-        db_person = test_domain.get_dao(Person).get(person.id)
+        person = test_domain.repository_for(Person)._dao.create(
+            first_name="John", last_name="Doe"
+        )
+        db_person = test_domain.repository_for(Person)._dao.get(person.id)
 
         assert not db_person.state_.is_new
 
@@ -32,7 +34,7 @@ class TestState:
         person = Person(first_name="John", last_name="Doe")
         assert person.state_.is_new
 
-        test_domain.get_dao(Person).save(person)
+        test_domain.repository_for(Person)._dao.save(person)
         assert person.state_.is_persisted
 
     def test_that_a_new_entity_still_shows_as_new_if_persistence_failed(
@@ -41,40 +43,48 @@ class TestState:
         person = Person(first_name="John", last_name="Doe")
         try:
             del person.first_name
-            test_domain.get_dao(Person).save(person)
+            test_domain.repository_for(Person)._dao.save(person)
         except ValidationError:
             assert person.state_.is_new
 
     def test_that_a_changed_entity_still_shows_as_changed_if_persistence_failed(
         self, test_domain
     ):
-        person = test_domain.get_dao(Person).create(first_name="John", last_name="Doe")
+        person = test_domain.repository_for(Person)._dao.create(
+            first_name="John", last_name="Doe"
+        )
 
         person.first_name = "Jane"
         assert person.state_.is_changed
 
         try:
             del person.first_name
-            test_domain.get_dao(Person).save(person)
+            test_domain.repository_for(Person)._dao.save(person)
         except ValidationError:
             assert person.state_.is_changed
 
     def test_that_entity_is_marked_as_not_new_after_successful_persistence(
         self, test_domain
     ):
-        person = test_domain.get_dao(Person).create(first_name="John", last_name="Doe")
+        person = test_domain.repository_for(Person)._dao.create(
+            first_name="John", last_name="Doe"
+        )
         assert not person.state_.is_new
 
     def test_that_aggregate_copying_resets_state_in_the_new_aggregate_object(
         self, test_domain
     ):
-        person1 = test_domain.get_dao(Person).create(first_name="John", last_name="Doe")
+        person1 = test_domain.repository_for(Person)._dao.create(
+            first_name="John", last_name="Doe"
+        )
         person2 = person1.clone()
 
         assert person2.state_.is_new
 
     def test_that_entity_marked_as_changed_if_attributes_are_updated(self, test_domain):
-        person = test_domain.get_dao(Person).create(first_name="John", last_name="Doe")
+        person = test_domain.repository_for(Person)._dao.create(
+            first_name="John", last_name="Doe"
+        )
         assert not person.state_.is_changed
 
         person.first_name = "Jane"
@@ -88,16 +98,20 @@ class TestState:
         assert not person.state_.is_changed
 
     def test_that_aggregate_is_marked_as_not_changed_after_save(self, test_domain):
-        person = test_domain.get_dao(Person).create(first_name="John", last_name="Doe")
+        person = test_domain.repository_for(Person)._dao.create(
+            first_name="John", last_name="Doe"
+        )
         person.first_name = "Jane"
         assert person.state_.is_changed
 
-        test_domain.get_dao(Person).save(person)
+        test_domain.repository_for(Person)._dao.save(person)
         assert not person.state_.is_changed
 
     def test_that_an_entity_is_marked_as_destroyed_after_delete(self, test_domain):
-        person = test_domain.get_dao(Person).create(first_name="John", last_name="Doe")
+        person = test_domain.repository_for(Person)._dao.create(
+            first_name="John", last_name="Doe"
+        )
         assert not person.state_.is_destroyed
 
-        test_domain.get_dao(Person).delete(person)
+        test_domain.repository_for(Person)._dao.delete(person)
         assert person.state_.is_destroyed

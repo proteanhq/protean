@@ -12,12 +12,12 @@ class TestModel:
         test_domain.register(Person)
 
     def test_that_model_class_is_created_automatically(self, test_domain):
-        model_cls = test_domain.get_model(Person)
+        model_cls = test_domain.repository_for(Person)._model
         assert issubclass(model_cls, SqlalchemyModel)
         assert model_cls.__name__ == "PersonModel"
 
     def test_conversation_from_entity_to_model(self, test_domain):
-        model_cls = test_domain.get_model(Person)
+        model_cls = test_domain.repository_for(Person)._model
         person = Person(first_name="John", last_name="Doe")
         person_model_obj = model_cls.from_entity(person)
 
@@ -28,7 +28,7 @@ class TestModel:
         assert person_model_obj.last_name == "Doe"
 
     def test_conversation_from_model_to_entity(self, test_domain):
-        model_cls = test_domain.get_model(Person)
+        model_cls = test_domain.repository_for(Person)._model
         person = Person(first_name="John", last_name="Doe")
         person_model_obj = model_cls.from_entity(person)
 
@@ -38,7 +38,7 @@ class TestModel:
     def test_dynamically_constructed_model_attributes(self, test_domain):
         from sqlalchemy import String
 
-        model_cls = test_domain.get_model(Person)
+        model_cls = test_domain.repository_for(Person)._model
 
         assert model_cls.__name__ == "PersonModel"
         assert type(model_cls.first_name.type) is String
@@ -51,12 +51,12 @@ class TestModelWithVO:
         test_domain.register(ComplexUser)
 
     def test_that_model_class_is_created_automatically(self, test_domain):
-        model_cls = test_domain.get_model(ComplexUser)
+        model_cls = test_domain.repository_for(ComplexUser)._model
         assert issubclass(model_cls, SqlalchemyModel)
         assert model_cls.__name__ == "ComplexUserModel"
 
     def test_conversation_from_entity_to_model(self, test_domain):
-        model_cls = test_domain.get_model(ComplexUser)
+        model_cls = test_domain.repository_for(ComplexUser)._model
 
         user1 = ComplexUser(email_address="john.doe@gmail.com", password="d4e5r6")
         user2 = ComplexUser(
@@ -81,7 +81,7 @@ class TestModelWithVO:
         assert hasattr(user2_model_obj, "email") is False
 
     def test_conversation_from_model_to_entity(self, test_domain):
-        model_cls = test_domain.get_model(ComplexUser)
+        model_cls = test_domain.repository_for(ComplexUser)._model
         user1 = ComplexUser(email_address="john.doe@gmail.com", password="d4e5r6")
         user1_model_obj = model_cls.from_entity(user1)
 
@@ -92,7 +92,7 @@ class TestModelWithVO:
 @pytest.mark.sqlite
 class TestCustomModel:
     def test_that_custom_model_can_be_associated_with_entity(self, test_domain):
-        model_cls = test_domain.get_model(Provider)
+        model_cls = test_domain.repository_for(Provider)._model
         assert model_cls.__name__ == "ProviderCustomModel"
 
     def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
@@ -104,12 +104,11 @@ class TestCustomModel:
         class ReceiverInlineModel:
             name = Column(Text)
 
-        test_domain.get_dao(Receiver)
+        test_domain.repository_for(Receiver)._dao
 
-        provider = test_domain.get_provider("default")
-        provider._metadata.create_all()
+        test_domain.providers["default"]._metadata.create_all()
 
-        model_cls = test_domain.get_model(Receiver)
+        model_cls = test_domain.repository_for(Receiver)._model
         assert model_cls.__name__ == "ReceiverInlineModel"
 
         assert type(model_cls.name.type) is Text

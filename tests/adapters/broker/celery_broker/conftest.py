@@ -54,5 +54,5 @@ def run_around_tests(test_domain):
     # Flush all in Redis
     # FIXME
 
-    if test_domain.providers.has_provider("default"):
-        test_domain.get_provider("default")._data_reset()
+    if "default" in test_domain.providers:
+        test_domain.providers["default"]._data_reset()

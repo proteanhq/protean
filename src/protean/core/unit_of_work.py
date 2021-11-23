@@ -99,7 +99,7 @@ class UnitOfWork:
         self._reset()
 
     def _get_session(self, provider_name):
-        provider = self.domain.get_provider(provider_name)
+        provider = self.domain.providers[provider_name]
         return provider.get_session()
 
     def _initialize_session(self, provider_name):

@@ -19,7 +19,7 @@ class Event(BaseAggregate):
 def test_json_data_type_association(test_domain):
     test_domain.register(Event)
 
-    model_cls = test_domain.get_model(Event)
+    model_cls = test_domain.repository_for(Event)._model
     type(model_cls.payload.property.columns[0].type) == sa_types.JSON
 
 
@@ -27,7 +27,7 @@ def test_json_data_type_association(test_domain):
 def test_basic_dict_data_type_operations(test_domain):
     test_domain.register(Event)
 
-    model_cls = test_domain.get_model(Event)
+    model_cls = test_domain.repository_for(Event)._model
 
     event = Event(
         name="UserCreated", payload={"email": "john.doe@gmail.com", "password": "*****"}
@@ -43,7 +43,7 @@ def test_basic_dict_data_type_operations(test_domain):
 def test_json_with_array_data(test_domain):
     test_domain.register(Event)
 
-    model_cls = test_domain.get_model(Event)
+    model_cls = test_domain.repository_for(Event)._model
 
     event = Event(
         name="UserCreated",
@@ -73,9 +73,9 @@ def test_persistence_of_json_with_array_data(test_domain):
             {"email": "john.doe1234@gmail.com", "password": "*****"},
         ],
     )
-    current_domain.get_dao(Event).save(event)
+    current_domain.repository_for(Event).add(event)
 
-    refreshed_event = current_domain.get_dao(Event).get(event.id)
+    refreshed_event = current_domain.repository_for(Event).get(event.id)
     assert refreshed_event is not None
     assert refreshed_event.payload == [
         {"email": "john.doe@gmail.com", "password": "*****"},

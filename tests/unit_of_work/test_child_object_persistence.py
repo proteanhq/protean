@@ -18,8 +18,8 @@ class TestUnitOfWorkRegistration:
 
     @pytest.fixture
     def persisted_post(self, test_domain):
-        post = test_domain.get_dao(Post).create(
-            title="Test Post", slug="test-post", content="Do Re Mi Fa"
+        post = test_domain.repository_for(Post).add(
+            Post(title="Test Post", slug="test-post", content="Do Re Mi Fa")
         )
         return post
 
@@ -34,7 +34,7 @@ class TestUnitOfWorkRegistration:
             repo.add(persisted_post)
 
             # FIXME Refactor `outside_uow` to be a global thread variable
-            # post_dao = test_domain.get_dao(Post)
+            # post_dao = test_domain.repository_for(Post)._dao
             # assert len(post_dao.outside_uow().get(persisted_post.id).comments) == 0
 
         post = repo.get(persisted_post.id)

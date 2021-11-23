@@ -22,7 +22,7 @@ from .elements import IntegerListUser, ListUser
 def test_basic_array_data_type_support(test_domain):
     test_domain.register(ListUser)
 
-    model_cls = test_domain.get_model(ListUser)
+    model_cls = test_domain.repository_for(ListUser)._model
     user = ListUser(email="john.doe@gmail.com", roles=["ADMIN", "USER"])
     user_model_obj = model_cls.from_entity(user)
 
@@ -46,7 +46,7 @@ def test_array_content_type_validation(test_domain):
             ListUser(**kwargs)
         assert exception.value.messages["roles"][0].startswith("Invalid value")
 
-    model_cls = test_domain.get_model(IntegerListUser)
+    model_cls = test_domain.repository_for(IntegerListUser)._model
     user = IntegerListUser(email="john.doe@gmail.com", roles=[1, 2])
     user_model_obj = model_cls.from_entity(user)
 

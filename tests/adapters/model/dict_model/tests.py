@@ -11,12 +11,12 @@ class TestModel:
         test_domain.register(Person)
 
     def test_that_model_class_is_created_automatically(self, test_domain):
-        model_cls = test_domain.get_model(Person)
+        model_cls = test_domain.repository_for(Person)._model
         assert issubclass(model_cls, MemoryModel)
         assert model_cls.__name__ == "PersonModel"
 
     def test_conversation_from_entity_to_model(self, test_domain):
-        model_cls = test_domain.get_model(Person)
+        model_cls = test_domain.repository_for(Person)._model
 
         person = Person(first_name="John", last_name="Doe")
 
@@ -29,7 +29,7 @@ class TestModel:
         assert person_model_obj["last_name"] == "Doe"
 
     def test_conversation_from_model_to_entity(self, test_domain):
-        model_cls = test_domain.get_model(Person)
+        model_cls = test_domain.repository_for(Person)._model
         person = Person(first_name="John", last_name="Doe")
         person_model_obj = model_cls.from_entity(person)
 
@@ -43,12 +43,12 @@ class TestModelWithVO:
         test_domain.register(User)
 
     def test_that_model_class_is_created_automatically(self, test_domain):
-        model_cls = test_domain.get_model(User)
+        model_cls = test_domain.repository_for(User)._model
         assert issubclass(model_cls, MemoryModel)
         assert model_cls.__name__ == "UserModel"
 
     def test_conversation_from_entity_to_model(self, test_domain):
-        model_cls = test_domain.get_model(User)
+        model_cls = test_domain.repository_for(User)._model
 
         user1 = User(email_address="john.doe@gmail.com", password="d4e5r6")
         user2 = User(email=Email(address="john.doe@gmail.com"), password="d4e5r6")
@@ -71,7 +71,7 @@ class TestModelWithVO:
         assert "email" not in user2_model_obj
 
     def test_conversion_from_model_to_entity(self, test_domain):
-        model_cls = test_domain.get_model(User)
+        model_cls = test_domain.repository_for(User)._model
         user1 = User(email_address="john.doe@gmail.com", password="d4e5r6")
         user1_model_obj = model_cls.from_entity(user1)
 
@@ -85,8 +85,10 @@ class TestCustomModel:
         test_domain.register(Provider)
         test_domain.register(ProviderCustomModel)
 
-        model_cls = test_domain.get_model(Provider)
-        assert model_cls.__name__ == "ProviderCustomModel"
+        assert (
+            test_domain.repository_for(Provider)._model.__name__
+            == "ProviderCustomModel"
+        )
 
     def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
         from protean.fields import Text
@@ -97,7 +99,8 @@ class TestCustomModel:
         class ReceiverInlineModel:
             about = Text()
 
-        model_cls = test_domain.get_model(Receiver)
+        model_cls = test_domain.repository_for(Receiver)._model
+
         assert model_cls.__name__ == "ReceiverInlineModel"
 
         # FIXME This test will fail in the future

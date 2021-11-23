@@ -18,7 +18,7 @@ class Event(BaseAggregate):
 def test_json_data_type_association(test_domain):
     test_domain.register(Event)
 
-    model_cls = test_domain.get_model(Event)
+    model_cls = test_domain.repository_for(Event)._model
     type(model_cls.payload.property.columns[0].type) == sa_types.PickleType
 
 
@@ -26,7 +26,7 @@ def test_json_data_type_association(test_domain):
 def test_basic_array_data_type_operations(test_domain):
     test_domain.register(Event)
 
-    model_cls = test_domain.get_model(Event)
+    model_cls = test_domain.repository_for(Event)._model
 
     event = Event(
         name="UserCreated", payload={"email": "john.doe@gmail.com", "password": "*****"}

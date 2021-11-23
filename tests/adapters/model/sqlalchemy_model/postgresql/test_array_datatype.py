@@ -35,7 +35,7 @@ class IntegerArrayUser(BaseAggregate):
 def test_array_data_type_association(test_domain):
     test_domain.register(ArrayUser)
 
-    model_cls = test_domain.get_model(ArrayUser)
+    model_cls = test_domain.repository_for(ArrayUser)._model
     type(model_cls.roles.property.columns[0].type) == sa_types.ARRAY
 
 
@@ -43,7 +43,7 @@ def test_array_data_type_association(test_domain):
 def test_basic_array_data_type_operations(test_domain):
     test_domain.register(ArrayUser)
 
-    model_cls = test_domain.get_model(ArrayUser)
+    model_cls = test_domain.repository_for(ArrayUser)._model
 
     user = ArrayUser(
         email="john.doe@gmail.com", roles=["ADMIN", "USER"], integers=[9, 10]
@@ -59,7 +59,7 @@ def test_basic_array_data_type_operations(test_domain):
 def test_array_any_query(test_domain):
     test_domain.register(ArrayUser)
 
-    dao = current_domain.get_dao(ArrayUser)
+    dao = current_domain.repository_for(ArrayUser)._dao
 
     dao.create(
         email="john.doe.12345@gmail.com", roles=["JUDGE", "ADMIN"], integers=[9, 10]
@@ -73,7 +73,7 @@ def test_array_any_query(test_domain):
 def test_array_contains_query(test_domain):
     test_domain.register(ArrayUser)
 
-    dao = current_domain.get_dao(ArrayUser)
+    dao = current_domain.repository_for(ArrayUser)._dao
     dao.create(
         email="john.doe.12345@gmail.com", roles=["JUDGE", "ADMIN"], integers=[9, 10]
     )
@@ -92,7 +92,7 @@ def test_array_contains_query(test_domain):
 def test_array_overlap_query(test_domain):
     test_domain.register(ArrayUser)
 
-    dao = current_domain.get_dao(ArrayUser)
+    dao = current_domain.repository_for(ArrayUser)._dao
     dao.create(
         email="john.doe.12345@gmail.com", roles=["JUDGE", "ADMIN"], integers=[9, 10]
     )
@@ -116,7 +116,7 @@ def test_array_content_type_validation(test_domain):
             ArrayUser(**kwargs)
         assert exception.value.messages["roles"][0].startswith("Invalid value")
 
-    model_cls = test_domain.get_model(IntegerArrayUser)
+    model_cls = test_domain.repository_for(IntegerArrayUser)._model
     user = IntegerArrayUser(email="john.doe@gmail.com", roles=[1, 2])
     user_model_obj = model_cls.from_entity(user)
 

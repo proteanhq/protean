@@ -12,7 +12,7 @@ class TestAggregatesWithEntities:
 
     @pytest.fixture
     def persisted_post(self, test_domain):
-        post = test_domain.get_dao(Post).create(
+        post = test_domain.repository_for(Post)._dao.create(
             title="Test Post", slug="test-post", content="Do Re Mi Fa"
         )
         return post

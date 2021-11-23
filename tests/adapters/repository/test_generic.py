@@ -18,7 +18,7 @@ class Person(BaseAggregate):
 
 class PersonRepository(BaseRepository):
     def find_adults(self, minimum_age: int = 21) -> List[Person]:
-        return current_domain.get_dao(Person).filter(age__gte=minimum_age)
+        return current_domain.repository_for(Person)._dao.filter(age__gte=minimum_age)
 
     class Meta:
         aggregate_cls = Person
@@ -80,12 +80,12 @@ def setup_db(db_config):
             domain.register(element)
 
         # Call provider to create structures
-        domain.get_provider("default")._create_database_artifacts()
+        domain.providers["default"]._create_database_artifacts()
 
         yield
 
         # Drop structures
-        domain.get_provider("default")._drop_database_artifacts()
+        domain.providers["default"]._drop_database_artifacts()
 
 
 class TestPersistenceViaRepository:
@@ -94,16 +94,16 @@ class TestPersistenceViaRepository:
             Person(first_name="John", last_name="Doe")
         )
 
-        assert len(test_domain.get_dao(Person).query.all().items) == 1
+        assert len(test_domain.repository_for(Person)._dao.query.all().items) == 1
 
     def test_that_aggregate_can_be_removed_with_repository(self, test_domain):
         person = Person(first_name="John", last_name="Doe")
         test_domain.repository_for(Person).add(person)
 
-        assert test_domain.get_dao(Person).query.all().first == person
+        assert test_domain.repository_for(Person)._dao.query.all().first == person
 
         test_domain.repository_for(Person).remove(person)
-        assert len(test_domain.get_dao(Person).query.all().items) == 0
+        assert len(test_domain.repository_for(Person)._dao.query.all().items) == 0
 
     def test_that_an_aggregate_can_be_retrieved_with_repository(self, test_domain):
         person = Person(first_name="John", last_name="Doe")

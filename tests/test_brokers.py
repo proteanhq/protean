@@ -245,7 +245,7 @@ class TestEventPublish:
             PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
         )
 
-        events = test_domain.get_dao(EventLog).query.all()
+        events = test_domain.repository_for(EventLog).all()
         assert len(events) == 1
 
 

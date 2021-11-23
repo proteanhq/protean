@@ -22,7 +22,7 @@ def test_persistence_and_retrieval(test_domain):
     )
     repo.add(event)
 
-    event_dup = test_domain.get_dao(Event).find_by(name="UserCreated")
+    event_dup = test_domain.repository_for(Event)._dao.find_by(name="UserCreated")
     assert event_dup is not None
     assert event_dup.payload is not None
     assert event_dup.payload == {"email": "john.doe@gmail.com", "password": "*****"}

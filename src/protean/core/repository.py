@@ -5,7 +5,12 @@ from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import HasMany, HasOne
 from protean.globals import current_domain
 from protean.reflection import fields
-from protean.utils import Database, DomainObjects, derive_element_class
+from protean.utils import (
+    Database,
+    DomainObjects,
+    derive_element_class,
+    fully_qualified_name,
+)
 
 logger = logging.getLogger("protean.repository")
 
@@ -34,6 +39,49 @@ class BaseRepository(Element, OptionsMixin):
         if cls is BaseRepository:
             raise TypeError("BaseRepository cannot be instantiated")
         return super().__new__(cls)
+
+    def __init__(self, domain: "Domain", provider: "BaseProvider") -> None:
+        self._domain = domain
+        self._provider = provider
+
+    @property
+    def _model(self) -> "BaseModel":
+        """Retrieve Model class connected to Entity"""
+        # If a model was associated with the aggregate record, give it a higher priority
+        #   and do not bake a new model class from aggregate/entity attributes
+        custom_model_cls = None
+        if fully_qualified_name(self.meta_.aggregate_cls) in self._domain._models:
+            custom_model_cls = self._domain._models[
+                fully_qualified_name(self.meta_.aggregate_cls)
+            ]
+
+        # FIXME This is the provide support for activating database specific models
+        #   This needs to be enhanced to allow Protean to hold multiple models per Aggregate/Entity
+        #   per database.
+        #
+        #   If no database is specified, model can be used for all databases
+        if custom_model_cls and (
+            custom_model_cls.meta_.database is None
+            or custom_model_cls.meta_.database == self._provider.conn_info["DATABASE"]
+        ):
+            # Get the decorated model class.
+            #   This is a no-op if the provider decides that the model is fully-baked
+            model_cls = self._provider.decorate_model_class(
+                self.meta_.aggregate_cls, custom_model_cls
+            )
+        else:
+            # No model was associated with the aggregate/entity explicitly.
+            #   So ask the Provider to bake a new model, initialized properly for this aggregate
+            #   and return it
+            model_cls = self._provider.construct_model_class(self.meta_.aggregate_cls)
+
+        return model_cls
+
+    @property
+    def _dao(self):
+        """Retrieve a DAO registered for the Aggregate with a live connection"""
+        # Fixate on Model class at the domain level because an explicit model may have been registered
+        return self._provider.get_dao(self.meta_.aggregate_cls, self._model)
 
     def add(self, aggregate):  # noqa: C901
         """This method helps persist or update aggregates into the persistence store.
@@ -71,44 +119,41 @@ class BaseRepository(Element, OptionsMixin):
         for field_name, field in fields(aggregate).items():
             if isinstance(field, HasMany):
                 for _, item in aggregate._temp_cache[field_name]["removed"].items():
-                    dao = current_domain.get_dao(field.to_cls)
-                    dao.delete(item)
+                    current_domain.repository_for(field.to_cls)._dao.delete(item)
                 aggregate._temp_cache[field_name][
                     "removed"
                 ] = {}  # Empty contents of `removed` cache
 
                 for _, item in aggregate._temp_cache[field_name]["updated"].items():
-                    dao = current_domain.get_dao(field.to_cls)
-                    dao.save(item)
+                    current_domain.repository_for(field.to_cls)._dao.save(item)
                 aggregate._temp_cache[field_name][
                     "updated"
                 ] = {}  # Empty contents of `added` cache
 
                 for _, item in aggregate._temp_cache[field_name]["added"].items():
-                    dao = current_domain.get_dao(field.to_cls)
                     item.state_.mark_new()
-                    dao.save(item)
+                    current_domain.repository_for(field.to_cls)._dao.save(item)
                 aggregate._temp_cache[field_name][
                     "added"
                 ] = {}  # Empty contents of `added` cache
 
             if isinstance(field, HasOne):
                 if field.has_changed:
-                    dao = current_domain.get_dao(field.to_cls)
+                    to_cls_repo = current_domain.repository_for(field.to_cls)
                     if field.change == "ADDED":
-                        dao.save(field.value)
+                        to_cls_repo._dao.save(field.value)
                     elif field.change == "UPDATED":
                         if field.change_old_value is not None:
                             # The object was replaced, so delete the old record
-                            dao.delete(field.change_old_value)
+                            to_cls_repo._dao.delete(field.change_old_value)
                         else:
                             # The same object was updated
                             # FIXME This should have been automatic with `is_changed` flag in `state_`
                             field.value.state_.mark_changed()
 
-                        dao.save(field.value)
+                        to_cls_repo._dao.save(field.value)
                     else:
-                        dao.delete(field.change_old_value)
+                        to_cls_repo._dao.delete(field.change_old_value)
 
                     # Reset temporary fields after processing
                     field.change = None
@@ -118,8 +163,7 @@ class BaseRepository(Element, OptionsMixin):
         if (not aggregate.state_.is_persisted) or (
             aggregate.state_.is_persisted and aggregate.state_.is_changed
         ):
-            dao = current_domain.get_dao(self.meta_.aggregate_cls)
-            dao.save(aggregate)
+            self._dao.save(aggregate)
 
         return aggregate
 
@@ -138,8 +182,7 @@ class BaseRepository(Element, OptionsMixin):
         transaction in progress, changes are committed immediately to the persistence store. This mechanism
         is part of the DAO's design, and is automatically used wherever one tries to persist data.
         """
-        dao = current_domain.get_dao(self.meta_.aggregate_cls)
-        dao.delete(aggregate)
+        self._dao.delete(aggregate)
 
         return aggregate
 
@@ -156,19 +199,17 @@ class BaseRepository(Element, OptionsMixin):
         `find_residents_of_area(zipcode)`, etc. It is also possible to make use of more complicated,
         domain-friendly design patterns like the `Specification` pattern.
         """
-        dao = current_domain.get_dao(self.meta_.aggregate_cls)
-        return dao.get(identifier)
+        return self._dao.get(identifier)
 
     def all(self):
         """This is a utility method to fetch all records of own type from persistence store.
 
         Returns a list of all records."""
-        dao = current_domain.get_dao(self.meta_.aggregate_cls)
-        return dao.query.all().items
+        return self._dao.query.all().items
 
 
-def repository_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseRepository, **kwargs)
+def repository_factory(element_cls, **opts):
+    element_cls = derive_element_class(element_cls, BaseRepository, **opts)
 
     if not element_cls.meta_.aggregate_cls:
         raise IncorrectUsageError(

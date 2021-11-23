@@ -453,8 +453,10 @@ class ESProvider(BaseProvider):
             **self.domain.registry.views,
         }
         for _, element_record in elements.items():
-            provider = current_domain.get_provider(element_record.cls.meta_.provider)
-            model_cls = self.domain.get_model(element_record.cls)
+            provider = current_domain.providers[element_record.cls.meta_.provider]
+            repo = self.domain.repository_for(element_record.cls)
+
+            model_cls = repo._model
             if provider.conn_info[
                 "DATABASE"
             ] == Database.ELASTICSEARCH.value and conn.indices.exists(
@@ -475,8 +477,8 @@ class ESProvider(BaseProvider):
             **self.domain.registry.views,
         }
         for _, element_record in elements.items():
-            provider = current_domain.get_provider(element_record.cls.meta_.provider)
-            model_cls = current_domain.get_model(element_record.cls)
+            provider = current_domain.providers[element_record.cls.meta_.provider]
+            model_cls = current_domain.repository_for(element_record.cls)._model
             if provider.conn_info[
                 "DATABASE"
             ] == Database.ELASTICSEARCH.value and not model_cls._index.exists(
@@ -494,8 +496,8 @@ class ESProvider(BaseProvider):
             **self.domain.registry.views,
         }
         for _, element_record in elements.items():
-            model_cls = self.domain.get_model(element_record.cls)
-            provider = current_domain.get_provider(element_record.cls.meta_.provider)
+            model_cls = self.domain.repository_for(element_record.cls)._model
+            provider = current_domain.providers[element_record.cls.meta_.provider]
             if provider.conn_info[
                 "DATABASE"
             ] == Database.ELASTICSEARCH.value and model_cls._index.exists(using=conn):

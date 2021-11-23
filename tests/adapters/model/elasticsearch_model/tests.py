@@ -23,12 +23,12 @@ class TestDefaultModel:
         test_domain.register(Person)
 
     def test_that_model_class_is_created_automatically(self, test_domain):
-        model_cls = test_domain.get_model(Person)
+        model_cls = test_domain.repository_for(Person)._model
         assert issubclass(model_cls, ElasticsearchModel)
         assert model_cls.__name__ == "PersonModel"
 
     def test_conversation_from_entity_to_model(self, test_domain):
-        model_cls = test_domain.get_model(Person)
+        model_cls = test_domain.repository_for(Person)._model
         person = Person(first_name="John", last_name="Doe")
         person_model_obj = model_cls.from_entity(person)
 
@@ -43,7 +43,7 @@ class TestDefaultModel:
         assert person_model_obj.meta.id == person.id
 
     def test_conversation_from_model_to_entity(self, test_domain):
-        model_cls = test_domain.get_model(Person)
+        model_cls = test_domain.repository_for(Person)._model
         person = Person(first_name="John", last_name="Doe")
         person_model_obj = model_cls.from_entity(person)
 
@@ -58,7 +58,7 @@ class TestDefaultModel:
         test_domain.register(Receiver)
 
         # Ensure that index is created for `Receiver` - START
-        provider = test_domain.get_provider("default")
+        provider = test_domain.providers["default"]
         conn = provider.get_connection()
 
         for _, aggregate_record in test_domain.registry.aggregates.items():
@@ -67,7 +67,7 @@ class TestDefaultModel:
                 index.create()
         # Ensure that index is created for `Receiver` - END
 
-        model_cls = test_domain.get_model(Receiver)
+        model_cls = test_domain.repository_for(Receiver)._model
         assert model_cls.__name__ == "ReceiverModel"
 
         # FIXME Verify default constructed fields
@@ -83,7 +83,7 @@ class TestModelOptions:
                 about = Text()
 
             test_domain.register(Person)
-            model_cls = test_domain.get_model(Person)
+            model_cls = test_domain.repository_for(Person)._model
 
             assert model_cls.__name__ == "PersonModel"
             assert model_cls._index._name == "person"
@@ -97,7 +97,7 @@ class TestModelOptions:
                     schema_name = "people"
 
             test_domain.register(Person)
-            model_cls = test_domain.get_model(Person)
+            model_cls = test_domain.repository_for(Person)._model
 
             assert model_cls._index._name == "people"
 
@@ -116,7 +116,7 @@ class TestModelOptions:
             test_domain.register(Person)
             test_domain.register_model(PeopleModel, entity_cls=Person)
 
-            model_cls = test_domain.get_model(Person)
+            model_cls = test_domain.repository_for(Person)._model
             assert model_cls.__name__ == "PeopleModel"
             assert model_cls._index._name == "people"
 
@@ -131,7 +131,7 @@ class TestModelOptions:
                 about = Text()
 
             test_domain.register(Person)
-            model_cls = test_domain.get_model(Person)
+            model_cls = test_domain.repository_for(Person)._model
 
             assert model_cls.__name__ == "PersonModel"
             assert model_cls._index._name == "foo_person"
@@ -145,7 +145,7 @@ class TestModelOptions:
                     schema_name = "people"
 
             test_domain.register(Person)
-            model_cls = test_domain.get_model(Person)
+            model_cls = test_domain.repository_for(Person)._model
 
             assert model_cls._index._name == "foo_people"
 
@@ -166,7 +166,7 @@ class TestModelOptions:
             test_domain.register(Person)
             test_domain.register_model(PeopleModel, entity_cls=Person)
 
-            model_cls = test_domain.get_model(Person)
+            model_cls = test_domain.repository_for(Person)._model
             assert model_cls.__name__ == "PeopleModel"
             assert model_cls._index._name == "custom-people"
 
@@ -183,7 +183,7 @@ class TestModelOptions:
                 about = Text()
 
             test_domain.register(Person)
-            model_cls = test_domain.get_model(Person)
+            model_cls = test_domain.repository_for(Person)._model
 
             assert model_cls._index._settings == {"number_of_shards": 2}
 
@@ -203,7 +203,7 @@ class TestModelOptions:
             test_domain.register(Person)
             test_domain.register_model(PeopleModel, entity_cls=Person)
 
-            model_cls = test_domain.get_model(Person)
+            model_cls = test_domain.repository_for(Person)._model
             assert model_cls.__name__ == "PeopleModel"
             assert model_cls._index._name == "people"
             assert model_cls._index._settings == {"number_of_shards": 2}
@@ -216,12 +216,12 @@ class TestModelWithVO:
         test_domain.register(ComplexUser)
 
     def test_that_model_class_is_created_automatically(self, test_domain):
-        model_cls = test_domain.get_model(ComplexUser)
+        model_cls = test_domain.repository_for(ComplexUser)._model
         assert issubclass(model_cls, ElasticsearchModel)
         assert model_cls.__name__ == "ComplexUserModel"
 
     def test_conversation_from_entity_to_model(self, test_domain):
-        model_cls = test_domain.get_model(ComplexUser)
+        model_cls = test_domain.repository_for(ComplexUser)._model
 
         user1 = ComplexUser(email_address="john.doe@gmail.com", password="d4e5r6")
         user2 = ComplexUser(
@@ -247,7 +247,7 @@ class TestModelWithVO:
         assert hasattr(user2_model_obj, "email") is False
 
     def test_conversation_from_model_to_entity(self, test_domain):
-        model_cls = test_domain.get_model(ComplexUser)
+        model_cls = test_domain.repository_for(ComplexUser)._model
         user1 = ComplexUser(email_address="john.doe@gmail.com", password="d4e5r6")
         user1_model_obj = model_cls.from_entity(user1)
 
@@ -261,7 +261,7 @@ class TestCustomModel:
         test_domain.register(Provider)
         test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
 
-        model_cls = test_domain.get_model(Provider)
+        model_cls = test_domain.repository_for(Provider)._model
         assert model_cls.__name__ == "ProviderCustomModel"
 
     def test_that_explicit_schema_name_takes_precedence_over_generated(
@@ -274,14 +274,14 @@ class TestCustomModel:
         assert Provider.meta_.schema_name == "provider"
         assert ProviderCustomModel.meta_.schema == "providers"
 
-        model = test_domain.get_model(Provider)
+        model = test_domain.repository_for(Provider)._model
         assert model._index._name == "providers"
 
     def test_that_custom_model_is_persisted_via_dao(self, test_domain):
         test_domain.register(Provider)
         test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
 
-        provider_dao = test_domain.get_dao(Provider)
+        provider_dao = test_domain.repository_for(Provider)._dao
         provider = provider_dao.create(name="John", about="Me, Myself, and Jane")
         assert provider is not None
 
@@ -289,7 +289,7 @@ class TestCustomModel:
         test_domain.register(Provider)
         test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
 
-        provider_dao = test_domain.get_dao(Provider)
+        provider_dao = test_domain.repository_for(Provider)._dao
         provider = provider_dao.create(name="John", about="Me, Myself, and Jane")
 
         provider = provider_dao.get(provider.id)
@@ -306,7 +306,7 @@ class TestCustomModel:
             name = Text(fields={"raw": Keyword()})
 
         # Ensure that index is created for `Receiver` - START
-        provider = test_domain.get_provider("default")
+        provider = test_domain.providers["default"]
         conn = provider.get_connection()
 
         for _, aggregate_record in test_domain.registry.aggregates.items():
@@ -315,7 +315,7 @@ class TestCustomModel:
                 index.create()
         # Ensure that index is created for `Receiver` - END
 
-        model_cls = test_domain.get_model(Receiver)
+        model_cls = test_domain.repository_for(Receiver)._model
         assert model_cls.__name__ == "ReceiverInlineModel"
         assert model_cls.name._params["fields"] == {"raw": Keyword()}
 
@@ -330,13 +330,13 @@ class TestCustomModel:
             name = Text(fields={"raw": Keyword()})
 
         # Create the index
-        model_cls = test_domain.get_model(Receiver)
-        conn = test_domain.get_provider("default").get_connection()
+        model_cls = test_domain.repository_for(Receiver)._model
+        conn = test_domain.providers["default"].get_connection()
         if model_cls._index.exists(using=conn):
             conn.indices.delete(model_cls._index._name)
         model_cls.init(using=conn)
 
-        receiver_dao = test_domain.get_dao(Receiver)
+        receiver_dao = test_domain.repository_for(Receiver)._dao
         receiver = receiver_dao.create(name="John")
 
         receiver = receiver_dao.get(receiver.id)

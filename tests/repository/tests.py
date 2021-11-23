@@ -9,19 +9,22 @@ def register_elements(test_domain):
 
 
 def test_that_aggregate_can_be_persisted_with_repository(test_domain):
-    test_domain.repository_for(Person).add(Person(first_name="John", last_name="Doe"))
+    person_repo = test_domain.repository_for(Person)
+    person_repo.add(Person(first_name="John", last_name="Doe"))
 
-    assert len(test_domain.get_dao(Person).query.all().items) == 1
+    assert len(person_repo.all()) == 1
 
 
 def test_that_aggregate_can_be_removed_with_repository(test_domain):
     person = Person(first_name="John", last_name="Doe")
-    test_domain.repository_for(Person).add(person)
 
-    assert test_domain.get_dao(Person).query.all().first == person
+    person_repo = test_domain.repository_for(Person)
+    person_repo.add(person)
 
-    test_domain.repository_for(Person).remove(person)
-    assert len(test_domain.get_dao(Person).query.all().items) == 0
+    assert person_repo.all()[0] == person
+
+    person_repo.remove(person)
+    assert len(person_repo.all()) == 0
 
 
 def test_that_an_aggregate_can_be_retrieved_with_repository(test_domain):

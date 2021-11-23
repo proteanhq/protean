@@ -21,7 +21,7 @@ class TestElasticsearchRepository:
 
     @pytest.fixture
     def persisted_person(self, test_domain, identifier):
-        person = test_domain.get_dao(Person).create(
+        person = test_domain.repository_for(Person)._dao.create(
             id=identifier, first_name="John", last_name="Doe"
         )
         return person
@@ -39,7 +39,7 @@ class TestElasticsearchRepository:
         person = Person(first_name="John", last_name="Doe")
         person_repo.add(person)
 
-        persisted_person = test_domain.get_dao(Person).get(person.id)
+        persisted_person = test_domain.repository_for(Person)._dao.get(person.id)
         assert persisted_person is not None
         assert persisted_person == person
 
@@ -48,9 +48,9 @@ class TestElasticsearchRepository:
         person = Person(first_name="John", last_name="Doe")
         person_repo.add(person)
 
-        assert test_domain.get_dao(Person).get(person.id) == person
+        assert test_domain.repository_for(Person)._dao.get(person.id) == person
 
         person_repo.remove(person)
 
         with pytest.raises(ObjectNotFoundError):
-            test_domain.get_dao(Person).get(person.id)
+            test_domain.repository_for(Person)._dao.get(person.id)

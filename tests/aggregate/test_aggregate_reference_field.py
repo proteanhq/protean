@@ -29,7 +29,7 @@ class TestReferenceFieldAssociation:
         author = Author(first_name="John", last_name="Doe", account=account)
 
         assert not author.state_.is_persisted
-        test_domain.get_dao(Author).save(author)
+        test_domain.repository_for(Author)._dao.save(author)
 
         assert author.state_.is_persisted
 
@@ -48,9 +48,9 @@ class TestReferenceFieldAssociation:
         self, test_domain
     ):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
         author = Author(first_name="John", last_name="Doe", account=account)
-        test_domain.get_dao(Author).save(author)
+        test_domain.repository_for(Author)._dao.save(author)
 
         assert all(key in author.__dict__ for key in ["account", "account_email"])
         assert author.account.email == account.email
@@ -58,9 +58,9 @@ class TestReferenceFieldAssociation:
 
     def test_save_after_value_assignment_during_initialization(self, test_domain):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
         author = Author(first_name="John", last_name="Doe", account=account)
-        test_domain.get_dao(Author).save(author)
+        test_domain.repository_for(Author)._dao.save(author)
 
         assert all(key in author.__dict__ for key in ["account", "account_email"])
         assert author.account.email == account.email
@@ -68,7 +68,7 @@ class TestReferenceFieldAssociation:
 
     def test_save_after_explicit_reference_value_assignment(self, test_domain):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
 
         author = Author(first_name="John", last_name="Doe")
         assert (
@@ -77,7 +77,7 @@ class TestReferenceFieldAssociation:
 
         # Explicitly assign value to reference field
         author.account = account
-        test_domain.get_dao(Author).save(author)
+        test_domain.repository_for(Author)._dao.save(author)
 
         assert all(key in author.__dict__ for key in ["account", "account_email"])
         assert author.account_email == account.email
@@ -86,11 +86,11 @@ class TestReferenceFieldAssociation:
         self, test_domain
     ):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
         author = Author(first_name="John", last_name="Doe", account=account)
-        test_domain.get_dao(Author).save(author)
+        test_domain.repository_for(Author)._dao.save(author)
 
-        author = test_domain.get_dao(Author).get(author.id)
+        author = test_domain.repository_for(Author)._dao.get(author.id)
         # Reference attribute is not loaded automatically
         assert "account" not in author.__dict__
         assert author.account_email == account.email
@@ -103,13 +103,13 @@ class TestReferenceFieldAssociation:
         self, test_domain
     ):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
 
         author = Author(first_name="John", last_name="Doe", account_email=account.email)
         assert "account_email" in author.__dict__
         assert "account" not in author.__dict__
 
-        test_domain.get_dao(Author).save(author)
+        test_domain.repository_for(Author)._dao.save(author)
 
         assert author.account.email == account.email
         assert author.account_email == account.email
@@ -122,13 +122,13 @@ class TestReferenceFieldAssociation:
         self, test_domain
     ):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
 
         author = Author(first_name="John", last_name="Doe")
         author.account_email = account.email
         assert "account" not in author.__dict__
 
-        test_domain.get_dao(Author).save(author)
+        test_domain.repository_for(Author)._dao.save(author)
 
         assert author.account.email == account.email
         assert author.account_email == account.email
@@ -141,7 +141,7 @@ class TestReferenceFieldAssociation:
         self, test_domain
     ):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
         author = Author(first_name="John", last_name="Doe", account=account)
 
         assert author.account.email == account.email
@@ -158,7 +158,7 @@ class TestReferenceFieldAssociation:
         self, test_domain
     ):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
         author = Author(first_name="John", last_name="Doe", account=account)
 
         assert author.account.email == account.email
@@ -178,7 +178,7 @@ class TestReferenceFieldAssociation:
         self, test_domain
     ):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
         author = Author(first_name="John", last_name="Doe", account=account)
 
         del author.account
@@ -193,7 +193,7 @@ class TestReferenceFieldAssociation:
         self, test_domain
     ):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
         author = Author(first_name="John", last_name="Doe", account=account)
 
         del author.account_email
@@ -208,9 +208,9 @@ class TestReferenceFieldAssociation:
         account = Account(
             email="john.doe@gmail.com", password="a1b2c3", username="johndoe"
         )
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
         profile = Profile(about_me="Lorem Ipsum", account=account)
-        test_domain.get_dao(Profile).save(profile)
+        test_domain.repository_for(Profile)._dao.save(profile)
 
         assert all(key in profile.__dict__ for key in ["account", "account_username"])
         assert hasattr(profile, "account_username")
@@ -222,10 +222,10 @@ class TestReferenceFieldAssociation:
         account = Account(
             email="john.doe@gmail.com", password="a1b2c3", username="johndoe"
         )
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
         profile = Profile(about_me="Lorem Ipsum")
         profile.account_username = account.username
-        test_domain.get_dao(Profile).save(profile)
+        test_domain.repository_for(Profile)._dao.save(profile)
 
         assert hasattr(profile, "account_username")
         assert profile.account.email == account.email
@@ -237,7 +237,7 @@ class TestReferenceFieldAssociation:
         account = Account(
             email="john.doe@gmail.com", password="a1b2c3", username="johndoe"
         )
-        test_domain.get_dao(Account).save(account)
+        test_domain.repository_for(Account)._dao.save(account)
         author = Author(first_name="John", last_name="Doe", account_email=account.email)
 
         for _ in range(3):

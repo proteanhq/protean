@@ -25,7 +25,7 @@ class TestAggregatePersistenceWithRepository:
 
     @pytest.fixture
     def person_dao(self, test_domain):
-        return test_domain.get_dao(Person)
+        return test_domain.repository_for(Person)._dao
 
     def test_new_object_persistence_with_no_uow(self, test_domain):
         repo = test_domain.repository_for(Person)

@@ -1,8 +1,16 @@
 """ Package for  Concrete Implementations of Protean repositories """
+import collections
 import importlib
 import logging
 
 from collections import defaultdict
+
+try:
+    # Python 3.8+
+    collectionsAbc = collections.abc
+except AttributeError:  # pragma: no cover
+    # Until Python 3.7
+    collectionsAbc = collections
 
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
@@ -11,7 +19,7 @@ from protean.utils import DomainObjects, fully_qualified_name
 logger = logging.getLogger("protean.repository")
 
 
-class Providers:
+class Providers(collectionsAbc.MutableMapping):
     def __init__(self, domain):
         self.domain = domain
 
@@ -33,6 +41,31 @@ class Providers:
         #    }
         # }
         self._repositories = defaultdict(lambda: defaultdict(str))
+
+    def __getitem__(self, key):
+        if self._providers is None:
+            self._initialize()
+        return self._providers[key]
+
+    def __iter__(self):
+        if self._providers is None:
+            self._initialize()
+        return iter(self._providers)
+
+    def __len__(self):
+        if self._providers is None:
+            self._initialize()
+        return len(self._providers)
+
+    def __setitem__(self, key, value):
+        if self._providers is None:
+            self._initialize()
+        self._providers[key] = value
+
+    def __delitem__(self, key):
+        if self._providers is None:
+            self._initialize()
+        del self._providers[key]
 
     def _construct_repository(self, aggregate_cls):
         repository_cls = type(
@@ -67,49 +100,7 @@ class Providers:
 
         self._repositories[aggregate_name][database] = repository_cls
 
-    def get_model(self, aggregate_cls):
-        """Retrieve Model class connected to Entity"""
-        # Return model if already constructed
-        if fully_qualified_name(aggregate_cls) in self.domain._constructed_models:
-            return self.domain._constructed_models[fully_qualified_name(aggregate_cls)]
-
-        # Fixate on the provider associated with the aggregate class
-        aggregate_record = self.domain._get_element_by_class(
-            (DomainObjects.AGGREGATE, DomainObjects.ENTITY, DomainObjects.VIEW),
-            aggregate_cls,
-        )
-        provider = self.get_provider(aggregate_record.cls.meta_.provider)
-
-        # If a model was associated with the aggregate record, give it a higher priority
-        #   and do not bake a new model class from aggregate/entity attributes
-        custom_model_cls = None
-        if fully_qualified_name(aggregate_cls) in self.domain._models:
-            custom_model_cls = self.domain._models[fully_qualified_name(aggregate_cls)]
-
-        # FIXME This is the provide support for activating database specific models
-        #   This needs to be enhanced to allow Protean to hold multiple models per Aggregate/Entity
-        #   per database.
-        #
-        #   If no database is specified, model can be used for all databases
-        if custom_model_cls and (
-            custom_model_cls.meta_.database is None
-            or custom_model_cls.meta_.database == provider.conn_info["DATABASE"]
-        ):
-            # Get the decorated model class.
-            #   This is a no-op if the provider decides that the model is fully-baked
-            model_cls = provider.decorate_model_class(
-                aggregate_record.cls, custom_model_cls
-            )
-        else:
-            # No model was associated with the aggregate/entity explicitly.
-            #   So ask the Provider to bake a new model, initialized properly for this aggregate
-            #   and return it
-            model_cls = provider.construct_model_class(aggregate_record.cls)
-
-        self.domain._constructed_models[fully_qualified_name(aggregate_cls)] = model_cls
-        return model_cls
-
-    def _initialize_providers(self):
+    def _initialize(self):
         """Read config file and initialize providers"""
         configured_providers = self.domain.config["DATABASES"]
         provider_objects = {}
@@ -133,47 +124,24 @@ class Providers:
 
         self._providers = provider_objects
 
-    def has_provider(self, provider_name):
-        if self._providers is None:
-            self._initialize_providers()
-
-        return provider_name in self._providers
-
-    def get_provider(self, provider_name):
-        """Retrieve the provider object with a given provider name"""
-        if self._providers is None:
-            self._initialize_providers()
-
-        try:
-            return self._providers[provider_name]
-        except KeyError:
-            raise AssertionError(f"No Provider registered with name {provider_name}")
-
     def get_connection(self, provider_name="default"):
         """Fetch connection from Provider"""
         if self._providers is None:
-            self._initialize_providers()
+            self._initialize()
 
         try:
             return self._providers[provider_name].get_connection()
         except KeyError:
             raise AssertionError(f"No Provider registered with name {provider_name}")
 
-    def providers_list(self):
-        """A generator that helps users iterator through providers"""
-        if self._providers is None:
-            self._initialize_providers()
-
-        for provider_name in self._providers:
-            yield self._providers[provider_name]
-
     def repository_for(self, aggregate_cls):
         """Retrieve a Repository registered for the Aggregate"""
         if self._providers is None:
-            self._initialize_providers()
+            self._initialize()
 
-        provider = aggregate_cls.meta_.provider
-        database = self.get_provider(provider).conn_info["DATABASE"]
+        provider_name = aggregate_cls.meta_.provider
+        provider = self._providers[provider_name]
+        database = provider.conn_info["DATABASE"]
 
         aggregate_name = fully_qualified_name(aggregate_cls)
 
@@ -206,18 +174,4 @@ class Providers:
         else:
             repository_cls = self._repositories[aggregate_name]["ALL"]
 
-        return repository_cls()
-
-    def get_dao(self, aggregate_cls):
-        """Retrieve a DAO registered for the Aggregate with a live connection"""
-        # Fixate on the provider associated with the aggregate class
-        aggregate_record = self.domain._get_element_by_class(
-            (DomainObjects.AGGREGATE, DomainObjects.ENTITY, DomainObjects.VIEW),
-            aggregate_cls,
-        )
-        provider = self.get_provider(aggregate_record.cls.meta_.provider)
-
-        # Fixate on Model class at the domain level because an explicit model may have been registered
-        model_cls = self.get_model(aggregate_record.cls)
-
-        return provider.get_dao(aggregate_record.cls, model_cls)
+        return repository_cls(self.domain, provider)

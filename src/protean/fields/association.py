@@ -147,7 +147,7 @@ class Reference(FieldCacheMixin, Field):
 
     def _fetch_objects(self, key, value):
         """Fetch Multiple linked objects"""
-        return current_domain.get_dao(self.to_cls).find_by(**{key: value})
+        return current_domain.repository_for(self.to_cls)._dao.find_by(**{key: value})
 
     def __set__(self, instance, value):
         """Override `__set__` to coordinate between relation field and its shadow attribute"""
@@ -346,7 +346,8 @@ class HasOne(Association):
     def _fetch_objects(self, instance, key, value):
         """Fetch single linked object"""
         try:
-            return current_domain.get_dao(self.to_cls).find_by(**{key: value})
+            repo = current_domain.repository_for(self.to_cls)
+            return repo._dao.find_by(**{key: value})
         except exceptions.ObjectNotFoundError:
             return None
 
@@ -427,8 +428,8 @@ class HasMany(Association):
 
         This method returns a well-formed query, containing the foreign-key constraint.
         """
-        children_dao = current_domain.get_dao(self.to_cls)
-        temp_data = children_dao.query.filter(**{key: value}).all().items
+        children_repo = current_domain.repository_for(self.to_cls)
+        temp_data = children_repo._dao.query.filter(**{key: value}).all().items
 
         # Add objects in temporary cache
         for _, item in instance._temp_cache[self.field_name]["added"].items():

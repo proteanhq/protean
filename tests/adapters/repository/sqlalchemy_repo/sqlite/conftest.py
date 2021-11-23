@@ -38,23 +38,23 @@ def setup_db():
         domain.register(User)
         domain.register(ComplexUser)
 
-        domain.get_dao(Person)
-        domain.get_dao(Alien)
-        domain.get_dao(User)
-        domain.get_dao(ComplexUser)
+        domain.repository_for(Person)._dao
+        domain.repository_for(Alien)._dao
+        domain.repository_for(User)._dao
+        domain.repository_for(ComplexUser)._dao
 
-        for provider in domain.providers_list():
+        for _, provider in domain.providers.items():
             provider._metadata.create_all()
 
         yield
 
         # Drop all tables at the end of test suite
-        for provider in domain.providers_list():
+        for _, provider in domain.providers.items():
             provider._metadata.drop_all()
 
 
 @pytest.fixture(autouse=True)
 def run_around_tests(test_domain):
     yield
-    if test_domain.providers.has_provider("default"):
-        test_domain.get_provider("default")._data_reset()
+    if "default" in test_domain.providers:
+        test_domain.providers["default"]._data_reset()

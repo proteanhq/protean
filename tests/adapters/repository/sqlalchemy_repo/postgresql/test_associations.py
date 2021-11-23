@@ -59,6 +59,6 @@ def test_embedded_dict_field_in_value_object(test_domain):
     audit = Audit(permission=Permission(dict_object={"foo": "bar"}))
     audit_repo.add(audit)
 
-    assert test_domain.get_dao(Audit).get(audit.id).permission_dict_object == {
+    assert test_domain.repository_for(Audit).get(audit.id).permission_dict_object == {
         "foo": "bar"
     }

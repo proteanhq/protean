@@ -31,7 +31,7 @@ class TestTransactions:
         repo = test_domain.repository_for(Person)
         repo.add(self.persisted_person(test_domain))
 
-        person_dao = test_domain.get_dao(Person)
+        person_dao = test_domain.repository_for(Person)._dao
 
         # Initiate a UnitOfWork Session
         with UnitOfWork():
@@ -53,7 +53,7 @@ class TestTransactions:
         person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
-        person_dao = test_domain.get_dao(Person)
+        person_dao = test_domain.repository_for(Person)._dao
 
         # Initiate a UnitOfWork Session
         with UnitOfWork():
@@ -76,7 +76,7 @@ class TestTransactions:
         person_to_be_added = self.persisted_person(test_domain)
         repo.add(person_to_be_added)
 
-        person_dao = test_domain.get_dao(Person)
+        person_dao = test_domain.repository_for(Person)._dao
 
         # Initiate a UnitOfWork Session
         with UnitOfWork():
@@ -99,7 +99,7 @@ class TestTransactions:
         repo.add(person_to_be_updated)
         repo.add(person_to_be_deleted)
 
-        person_dao = test_domain.get_dao(Person)
+        person_dao = test_domain.repository_for(Person)._dao
 
         # Initiate a UnitOfWork Session
         with UnitOfWork():
@@ -140,7 +140,7 @@ class TestTransactions:
         repo.add(person_to_be_updated)
         repo.add(person_to_be_deleted)
 
-        person_dao = test_domain.get_dao(Person)
+        person_dao = test_domain.repository_for(Person)._dao
 
         # Initiate a UnitOfWork Session
         uow = UnitOfWork()
@@ -182,7 +182,7 @@ class TestTransactions:
         repo.add(person_to_be_updated)
         repo.add(person_to_be_deleted)
 
-        person_dao = test_domain.get_dao(Person)
+        person_dao = test_domain.repository_for(Person)._dao
 
         # Initiate a UnitOfWork Session
         uow = UnitOfWork()

@@ -48,14 +48,14 @@ def setup_db():
         domain.register(Provider)
         domain.register_model(ProviderCustomModel, entity_cls=Provider)
 
-        domain.get_provider("default")._create_database_artifacts()
+        domain.providers["default"]._create_database_artifacts()
 
         yield
 
-        domain.get_provider("default")._drop_database_artifacts()
+        domain.providers["default"]._drop_database_artifacts()
 
 
 @pytest.fixture(autouse=True)
 def run_around_tests(test_domain):
     yield
-    test_domain.get_provider("default")._data_reset()
+    test_domain.providers["default"]._data_reset()

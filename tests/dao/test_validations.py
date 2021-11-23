@@ -16,10 +16,12 @@ class TestValidations:
 
     def test_unique(self, test_domain):
         """ Test the unique constraints for the entity """
-        test_domain.get_dao(User).create(email="john.doe@gmail.com", password="a1b2c3")
+        test_domain.repository_for(User)._dao.create(
+            email="john.doe@gmail.com", password="a1b2c3"
+        )
 
         with pytest.raises(ValidationError) as err:
-            test_domain.get_dao(User).create(
+            test_domain.repository_for(User)._dao.create(
                 email="john.doe@gmail.com", password="d4e5r6"
             )
         assert err.value.messages == {
@@ -48,12 +50,12 @@ class TestValidations:
     def test_that_primitive_validations_on_type_are_thrown_correctly_on_update(
         self, test_domain
     ):
-        person = test_domain.get_dao(Person).create(
+        person = test_domain.repository_for(Person)._dao.create(
             first_name="John", last_name="Doe", age=22
         )
 
         with pytest.raises(ValidationError) as error:
-            test_domain.get_dao(Person).update(
+            test_domain.repository_for(Person)._dao.update(
                 person, age="x"
             )  # Age should be an integer
 
