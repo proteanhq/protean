@@ -1,5 +1,7 @@
 import logging
 
+from functools import cached_property
+
 from protean.container import Element, OptionsMixin
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import HasMany, HasOne
@@ -44,7 +46,7 @@ class BaseRepository(Element, OptionsMixin):
         self._domain = domain
         self._provider = provider
 
-    @property
+    @cached_property
     def _model(self) -> "BaseModel":
         """Retrieve Model class connected to Entity"""
         # If a model was associated with the aggregate record, give it a higher priority
@@ -77,7 +79,7 @@ class BaseRepository(Element, OptionsMixin):
 
         return model_cls
 
-    @property
+    @cached_property
     def _dao(self):
         """Retrieve a DAO registered for the Aggregate with a live connection"""
         # Fixate on Model class at the domain level because an explicit model may have been registered

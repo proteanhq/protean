@@ -5,6 +5,7 @@ import logging
 import sys
 
 from collections import defaultdict
+from functools import cache, cached_property
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 from werkzeug.datastructures import ImmutableDict
@@ -321,7 +322,7 @@ class Domain(_PackageBoundObject):
     def __str__(self) -> str:
         return f"Domain: {self.domain_name}"
 
-    @property
+    @cached_property
     def registry(self):
         return self._domain_registry
 
@@ -696,6 +697,7 @@ class Domain(_PackageBoundObject):
     def get_connection(self, provider_name="default"):
         return self.providers.get_connection(provider_name)
 
+    @cache
     def repository_for(self, aggregate_cls):
         return self.providers.repository_for(aggregate_cls)
 
