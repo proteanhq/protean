@@ -358,6 +358,11 @@ class QuerySet:
         return self._data.first
 
     @property
+    def last(self):
+        """Return the last result"""
+        return self._data.last
+
+    @property
     def has_next(self):
         """Return True if there are more values present"""
         return self._data.has_next

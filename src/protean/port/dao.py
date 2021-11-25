@@ -44,9 +44,15 @@ class ResultSet(object):
 
     @property
     def first(self):
-        """Is the first item from results"""
+        """Return the first item from results"""
         if self.items:
             return self.items[0]
+
+    @property
+    def last(self):
+        """Return the last item from results"""
+        if self.items:
+            return self.items[-1]
 
     def __bool__(self):
         """Returns `True` when the resultset is not empty"""

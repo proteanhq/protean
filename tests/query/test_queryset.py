@@ -592,6 +592,34 @@ class TestCriteriaConstruction:
         assert query.first.id == 2
         assert query.all().first.id == 5
 
+    def test_last(self, test_domain):
+        """Test that the first item is retrieved correctly from the resultset"""
+        person_repo = test_domain.repository_for(Person)
+
+        # Add multiple entries to the DB
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
+
+        query = person_repo._dao.query.order_by("age")
+        assert query.last.id == 2
+
+    def test_first_with_cache(self, test_domain):
+        """Test that the first item is retrieved correctly from the resultset"""
+        person_repo = test_domain.repository_for(Person)
+
+        # Add multiple entries to the DB
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
+
+        query = person_repo._dao.query.order_by("age")
+        assert query.last.id == 2
+
+        person_repo.add(Person(id=5, first_name="Berry", age=8, last_name="John"))
+        assert query.last.id == 2
+        assert query.all().last.id == 5
+
     def test_raw(self, test_domain):
         """Test raw queries"""
         person_repo = test_domain.repository_for(Person)

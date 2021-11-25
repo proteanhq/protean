@@ -14,6 +14,14 @@ class TestResultSet:
         assert resultset.first == "foo"
         assert [item for item in resultset] == ["foo", "bar"]  # Test __iter__
 
+    def test_resultset_first_and_last(self):
+        resultset = ResultSet(
+            offset=0, limit=10, total=2, items=["foo", "bar", "baz", "qux"]
+        )
+
+        assert resultset.first == "foo"
+        assert resultset.last == "qux"
+
     def test_pagination_properties_of_resultset(self):
         resultset = ResultSet(offset=0, limit=10, total=2, items=["foo", "bar"])
         has_next_resultset = ResultSet(offset=0, limit=2, total=4, items=["foo", "bar"])

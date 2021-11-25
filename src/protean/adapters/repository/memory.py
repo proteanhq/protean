@@ -361,7 +361,20 @@ class DictDAO(BaseDAO):
             if o_key.startswith("-"):
                 reverse = True
                 o_key = o_key[1:]
-            items = sorted(items, key=itemgetter(o_key), reverse=reverse)
+
+            null_items = [item for item in items if not item.get(o_key)]
+            non_null_items = [item for item in items if item.get(o_key)]
+            sorted_items = sorted(
+                non_null_items, key=itemgetter(o_key), reverse=reverse
+            )
+
+            # null values sort as if larger than any non-null value
+            # So in reverse (DESC) order, null values come first
+            # in ASC order, null values come last
+            if reverse:
+                items = null_items + sorted_items
+            else:
+                items = sorted_items + null_items
 
         result = ResultSet(
             offset=offset,
