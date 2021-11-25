@@ -513,6 +513,7 @@ operators = {
     "lt": "<",
     "lte": "<=",
     "in": "in",
+    "any": "any",
 }
 
 
@@ -649,5 +650,25 @@ class In(MemoryLookup):
 
     def process_target(self):
         """Ensure target is a list or tuple"""
-        assert type(self.target) in (list, tuple)
-        return super().process_target()
+        target = super().process_target()
+        return f"[{target}]" if not isinstance(target, list) else target
+
+
+@MemoryProvider.register_lookup
+class Any(MemoryLookup):
+    """Any Query for Lists"""
+
+    lookup_name = "any"
+
+    def process_source(self):
+        """Ensure source is a list"""
+        source = super().process_source()
+        return f"[{source}]" if not isinstance(source, list) else source
+
+    def process_target(self):
+        """Ensure target is a list"""
+        target = super().process_target()
+        return f"[{target}]" if not isinstance(target, list) else target
+
+    def as_expression(self):
+        return f"any(x in {self.process_target()} for x in {self.process_source()})"
