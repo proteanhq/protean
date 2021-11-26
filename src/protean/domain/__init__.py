@@ -335,6 +335,7 @@ class Domain(_PackageBoundObject):
         from protean.core.email import email_factory
         from protean.core.entity import entity_factory
         from protean.core.event import domain_event_factory
+        from protean.core.event_sourced_aggregate import event_sourced_aggregate_factory
         from protean.core.model import model_factory
         from protean.core.repository import repository_factory
         from protean.core.serializer import serializer_factory
@@ -348,6 +349,7 @@ class Domain(_PackageBoundObject):
             DomainObjects.COMMAND.value: command_factory,
             DomainObjects.COMMAND_HANDLER.value: command_handler_factory,
             DomainObjects.EVENT.value: domain_event_factory,
+            DomainObjects.EVENT_SOURCED_AGGREGATE.value: event_sourced_aggregate_factory,
             DomainObjects.DOMAIN_SERVICE.value: domain_service_factory,
             DomainObjects.EMAIL.value: email_factory,
             DomainObjects.ENTITY.value: entity_factory,
@@ -579,6 +581,11 @@ class Domain(_PackageBoundObject):
 
     def event(self, _cls=None, **kwargs):
         return self._domain_element(DomainObjects.EVENT, _cls=_cls, **kwargs,)
+
+    def event_sourced_aggregate(self, _cls=None, **kwargs):
+        return self._domain_element(
+            DomainObjects.EVENT_SOURCED_AGGREGATE, _cls=_cls, **kwargs,
+        )
 
     def domain_service(self, _cls=None, **kwargs):
         return self._domain_element(DomainObjects.DOMAIN_SERVICE, _cls=_cls, **kwargs,)
