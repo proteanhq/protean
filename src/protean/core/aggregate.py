@@ -1,13 +1,15 @@
 """Aggregate Functionality and Classes"""
 import logging
+from protean.container import EventedMixin
 
 from protean.core.entity import BaseEntity
+from protean.core.event import BaseEvent
 from protean.utils import DomainObjects, derive_element_class, inflection
 
 logger = logging.getLogger("protean.domain.aggregate")
 
 
-class BaseAggregate(BaseEntity):
+class BaseAggregate(EventedMixin, BaseEntity):
     """The Base class for Protean-Compliant Domain Aggregates.
 
     Provides helper methods to custom define aggregate attributes, and query attribute names
@@ -45,6 +47,9 @@ class BaseAggregate(BaseEntity):
 
     class Meta:
         abstract = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     @classmethod
     def _default_options(cls):

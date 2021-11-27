@@ -7,7 +7,7 @@ from .elements import Person, PersonRepository
 
 class TestAggregatePersistenceWithMemoryProvider:
     def test_retrieval_from_provider_connection(self, test_domain):
-        conn = test_domain.get_connection()
+        conn = test_domain.providers["default"].get_connection()
         assert conn is not None
 
         conn._db["data"]["foo"] = "bar"
@@ -52,19 +52,6 @@ class TestAggregatePersistenceWithRepository:
         # Re-fetch and check that the details have changed
         updated_person = repo.get(person.id)
         assert updated_person.last_name == "Dane"
-
-    def test_object_delete_with_no_uow(self, test_domain):
-        # Add a Person to the repository
-        repo = test_domain.repository_for(Person)
-        person = Person(first_name="John", last_name="Doe")
-        repo.add(person)
-
-        # Remove the person from repository
-        repo.remove(person)
-
-        # Re-fetch and check that the details have changed
-        with pytest.raises(ObjectNotFoundError):
-            repo.get(person.id)
 
     def test_that_an_aggregate_object_can_be_persisted_via_dao(self, person_dao):
         person = Person(first_name="John", last_name="Doe", age=35)

@@ -13,13 +13,6 @@ def test_retrieving_message_store_from_domain(test_domain):
     assert isinstance(test_domain.event_store, MessageDBStore)
 
 
-def test_message_db_initialization(test_domain):
-    assert test_domain.event_store._store.connection_pool is not None
-
-    conn = test_domain.event_store._store.connection_pool.get_connection()
-    assert isinstance(conn, extensions.connection)
-
-
 def test_error_on_message_db_initialization():
     domain = Domain()
     domain.config["EVENT_STORE"][
@@ -27,7 +20,7 @@ def test_error_on_message_db_initialization():
     ] = "postgresql://message_store@localhost:5433/dummy"
 
     with pytest.raises(ConfigurationError) as exc:
-        domain.event_store
+        domain.event_store.write("testStream-123", "Event1", {"foo": f"bar"})
 
     assert 'FATAL:  database "dummy" does not exist' in str(exc.value)
 

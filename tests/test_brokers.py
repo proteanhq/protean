@@ -6,9 +6,7 @@ from protean import BaseCommand, BaseCommandHandler, BaseEvent, BaseSubscriber
 from protean.adapters.broker.inline import InlineBroker
 from protean.exceptions import ConfigurationError
 from protean.fields import Auto, Integer, String
-from protean.infra.eventing import EventLog
 from protean.port.broker import BaseBroker
-from protean.utils import CommandProcessingType
 
 
 class PersonAdded(BaseEvent):
@@ -141,52 +139,6 @@ class TestBrokerInitialization:
         del test_domain.brokers["default"]
         assert spy.call_count == 0
 
-    def test_that_brokers_are_initialized_on_publishing_an_event(
-        self, mocker, test_domain
-    ):
-        spy = mocker.spy(test_domain.brokers, "_initialize")
-        test_domain.publish(
-            PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
-        )
-        assert spy.call_count == 1
-
-    def test_that_brokers_are_not_reinitialized_on_publishing_an_event(
-        self, mocker, test_domain
-    ):
-        len(test_domain.brokers)  # Triggers initialization
-
-        spy = mocker.spy(test_domain.brokers, "_initialize")
-        test_domain.publish(
-            PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
-        )
-        assert spy.call_count == 0
-
-    def test_that_brokers_are_initialized_on_receiving_a_command(
-        self, mocker, test_domain
-    ):
-        test_domain.register(AddPersonCommand)
-        test_domain.register(AddNewPersonCommandHandler)
-
-        spy = mocker.spy(test_domain.brokers, "_initialize")
-        test_domain.publish(
-            AddPersonCommand(first_name="John", last_name="Doe", age=21)
-        )
-        assert spy.call_count == 1
-
-    def test_that_brokers_are_not_reinitialized_on_receiving_a_command(
-        self, mocker, test_domain
-    ):
-        test_domain.register(AddPersonCommand)
-        test_domain.register(AddNewPersonCommandHandler)
-
-        len(test_domain.brokers)  # Triggers initialization
-
-        spy = mocker.spy(test_domain.brokers, "_initialize")
-        test_domain.publish(
-            AddPersonCommand(first_name="John", last_name="Doe", age=21)
-        )
-        assert spy.call_count == 0
-
     def test_that_brokers_can_be_registered_manually(self, test_domain):
         duplicate_broker = InlineBroker("duplicate broker", test_domain, {})
 
@@ -224,31 +176,6 @@ class TestBrokerSubscriberInitialization:
         NotifySSOSubscriber.meta_.broker = "default"
 
 
-class TestEventPublish:
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(PersonAdded)
-
-    def test_that_broker_receives_event(self, mocker, test_domain):
-        spy = mocker.spy(test_domain.brokers, "publish")
-
-        test_domain.publish(
-            PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
-        )
-
-        assert spy.call_count == 1
-
-    def test_that_event_log_is_populated(self, mocker, test_domain):
-        test_domain.register(EventLog)
-
-        test_domain.publish(
-            PersonAdded(id="1234", first_name="John", last_name="Doe", age=24,)
-        )
-
-        events = test_domain.repository_for(EventLog).all()
-        assert len(events) == 1
-
-
 class TestBrokerCommandHandlerInitialization:
     def test_that_registered_command_handlers_are_initialized(self, test_domain):
         test_domain.register(AddNewPersonCommandHandler)
@@ -279,16 +206,3 @@ class TestBrokerCommandHandlerInitialization:
 
         # Reset the broker after test
         AddNewPersonCommandHandler.meta_.broker = "default"
-
-
-class TestCommandPublish:
-    @patch.object(AddNewPersonCommandHandler, "__call__")
-    def test_that_brokers_receive_a_command(self, mock, test_domain):
-        test_domain.register(AddPersonCommand)
-        test_domain.register(AddNewPersonCommandHandler)
-
-        test_domain.config["COMMAND_PROCESSING"] = CommandProcessingType.SYNC.value
-
-        command = AddPersonCommand(first_name="John", last_name="Doe", age=21)
-        test_domain.handle(command)
-        mock.assert_called_once_with(command)

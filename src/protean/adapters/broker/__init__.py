@@ -2,8 +2,6 @@ import collections
 import importlib
 import logging
 
-from protean.infra.eventing import EventLogStatus, Message, MessageType
-
 try:
     # Python 3.8+
     collectionsAbc = collections.abc
@@ -12,8 +10,6 @@ except AttributeError:  # pragma: no cover
     collectionsAbc = collections
 
 from protean.exceptions import ConfigurationError
-from protean.globals import current_domain, current_uow
-from protean.utils import EventStrategy
 
 logger = logging.getLogger("protean.broker")
 
@@ -95,73 +91,4 @@ class Brokers(collectionsAbc.MutableMapping):
 
             self._brokers[broker_name].register(
                 command_handler.meta_.command_cls, command_handler
-            )
-
-    def invoke(self, object):
-        message = Message.to_message(object)
-
-        # Follow a naive strategy and dispatch event directly to message broker
-        #   If the operation is enclosed in a Unit of Work, delegate the responsibility
-        #   of publishing the message to the UoW
-        if current_uow:
-            logger.debug(
-                f"Recording {object.__class__.__name__} "
-                f"with values {object.to_dict()} in {current_uow}"
-            )
-            current_uow.register_message(message)
-        else:
-            logger.debug(
-                f"Publishing {object.__class__.__name__} with values {object.to_dict()}"
-            )
-            for _, broker in self._brokers.items():
-                broker.publish(message)
-
-    def publish(self, object):
-        """Publish an object to all registered brokers"""
-        if self._brokers is None:
-            self._initialize()
-
-        message = Message.to_message(object)
-
-        if message["type"] == MessageType.EVENT.value:
-            if current_domain.config["EVENT_STRATEGY"] == EventStrategy.INLINE.value:
-                self.invoke(object)
-            elif (
-                current_domain.config["EVENT_STRATEGY"]
-                == EventStrategy.INLINE_WITH_EVENTLOG.value
-            ):
-                # Log event into table
-                from protean.infra.eventing import EventLog
-
-                event = EventLog.from_message(message)
-                event.status = EventLogStatus.PUBLISHED.value
-                self.domain.repository_for(EventLog).add(event)
-
-                self.invoke(object)
-            elif current_domain.config["EVENT_STRATEGY"] in [
-                EventStrategy.DB_SUPPORTED.value,
-                EventStrategy.DB_SUPPORTED_WITH_JOBS.value,
-            ]:
-                # Log event into a table and trigger a push asynchronously
-                # This will give a chance to recover from errors.
-                from protean.infra.eventing import EventLog
-
-                self.domain.repository_for(EventLog).add(EventLog.from_message(message))
-            else:
-                raise ConfigurationError(
-                    {
-                        "domain": [
-                            f"Unknown Event Execution config - should be among {[e.value for e in EventStrategy]}"
-                        ]
-                    }
-                )
-        elif message["type"] == MessageType.COMMAND.value:
-            self._brokers[object.meta_.broker].publish(message)
-        else:
-            raise ConfigurationError(
-                {
-                    "domain": [
-                        f"Unknown Message Type {object.__name__} - should be an Event or a Command"
-                    ]
-                }
             )

@@ -4,7 +4,7 @@ from protean import BaseAggregate, BaseEntity, Domain
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import DateTime, HasMany, HasOne, Reference, String, Text
 from protean.reflection import fields
-from protean.utils import EventStrategy, fully_qualified_name
+from protean.utils import fully_qualified_name
 
 from .elements import UserAggregate, UserEntity, UserFoo, UserVO
 
@@ -14,12 +14,7 @@ class TestDomainInitialization:
         domain = Domain(__name__)
         assert domain is not None
         assert domain.registry is not None
-        if domain.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED.value:
-            assert len(domain.registry.aggregates) == 2
-            assert "protean.infra.eventing.EventLog" in domain.registry.aggregates
-            assert "protean.infra.job.Job" in domain.registry.aggregates
-        else:
-            assert domain.registry.aggregates == {}
+        assert domain.registry.aggregates == {}
 
 
 class TestDomainRegistration:

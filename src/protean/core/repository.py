@@ -169,25 +169,6 @@ class BaseRepository(Element, OptionsMixin):
 
         return aggregate
 
-    def remove(self, aggregate):
-        """This method helps remove aggregates from the persistence store.
-
-        Returns the removed aggregate.
-
-        Protean mimics the behavior of a `set` collection in such methods. The repository promotes the
-        illusion that we are dealing with collection like objects, so that the domain layer remains clean
-        and oblivious to underlying persistence mechanisms. All changes are synced to the persistence store
-        automatically by the Repository as and when appropriate.
-
-        If there is a :ref:`Unit of Work <unit-of-work>` in progress, then the changes are performed on the
-        UoW's active session. They are committed whenever the entire UoW is committed. If there is no
-        transaction in progress, changes are committed immediately to the persistence store. This mechanism
-        is part of the DAO's design, and is automatically used wherever one tries to persist data.
-        """
-        self._dao.delete(aggregate)
-
-        return aggregate
-
     def get(self, identifier):
         """This is a utility method to fetch data from the persistence store by its key identifier. All child objects,
         including enclosed entities, are returned as part of this call.

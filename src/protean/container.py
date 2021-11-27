@@ -260,7 +260,7 @@ class BaseContainer(metaclass=ContainerMeta):
         if (
             name in attributes(self)
             or name in fields(self)
-            or name in ["errors", "state_", "_temp_cache"]
+            or name in ["errors", "state_", "_temp_cache", "_events"]
             or name.startswith(("add_", "remove_", "_mark_changed_"))
         ):
             super().__setattr__(name, value)
@@ -283,3 +283,13 @@ class BaseContainer(metaclass=ContainerMeta):
         # FIXME Raise exception
         # raise NotImplementedError
         return []
+
+
+class EventedMixin:
+    def __init__(self, *args, **kwargs) -> None:
+        self._events = []
+
+        super().__init__(*args, **kwargs)
+
+    def trigger(self, event: "BaseEvent") -> None:
+        self._events.append(event)

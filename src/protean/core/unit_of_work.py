@@ -114,6 +114,3 @@ class UnitOfWork:
             return self._sessions[provider_name]
         else:
             return self._initialize_session(provider_name)
-
-    def register_message(self, message):
-        self._messages_to_dispatch.append(message)

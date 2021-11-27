@@ -12,10 +12,19 @@ class MessageDBStore(BaseEventStore):
     def __init__(self, domain, conn_info) -> None:
         super().__init__("MessageDB", domain, conn_info)
 
-        try:
-            self._store = MessageDB.from_url(conn_info["DATABASE_URI"])
-        except psycopg2.OperationalError as exc:
-            raise ConfigurationError(f"Unable to connect to Event Store - {str(exc)}")
+        self._client = None
+
+    @property
+    def client(self):
+        if self._client is None:
+            try:
+                self._client = MessageDB.from_url(self.conn_info["DATABASE_URI"])
+            except psycopg2.OperationalError as exc:
+                raise ConfigurationError(
+                    f"Unable to connect to Event Store - {str(exc)}"
+                )
+
+        return self._client
 
     def write(
         self,
@@ -25,15 +34,15 @@ class MessageDBStore(BaseEventStore):
         metadata: Dict = None,
         expected_version: int = None,
     ) -> int:
-        return self._store.write(
+        return self.client.write(
             stream_name, message_type, data, metadata, expected_version
         )
 
     def read(self, stream_name: str) -> List[Dict[str, Any]]:
-        return self._store.read(stream_name)
+        return self.client.read(stream_name)
 
     def read_last_message(self, stream_name) -> Dict[str, Any]:
-        return self._store.read_last_message(stream_name)
+        return self.client.read_last_message(stream_name)
 
     def _data_reset(self):
         """Utility function to empty messages, to be used only by test harness.

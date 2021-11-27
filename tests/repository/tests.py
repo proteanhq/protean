@@ -15,18 +15,6 @@ def test_that_aggregate_can_be_persisted_with_repository(test_domain):
     assert len(person_repo.all()) == 1
 
 
-def test_that_aggregate_can_be_removed_with_repository(test_domain):
-    person = Person(first_name="John", last_name="Doe")
-
-    person_repo = test_domain.repository_for(Person)
-    person_repo.add(person)
-
-    assert person_repo.all()[0] == person
-
-    person_repo.remove(person)
-    assert len(person_repo.all()) == 0
-
-
 def test_that_an_aggregate_can_be_retrieved_with_repository(test_domain):
     person = Person(first_name="John", last_name="Doe")
     test_domain.repository_for(Person).add(person)

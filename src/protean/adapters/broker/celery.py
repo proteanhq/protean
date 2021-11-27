@@ -7,7 +7,6 @@ from typing import Dict
 from celery import Celery, Task
 from kombu import Queue
 
-from protean.infra.eventing import MessageType
 from protean.port.broker import BaseBroker
 from protean.utils import (
     DomainObjects,
@@ -95,17 +94,14 @@ class CeleryBroker(BaseBroker):
                 ] = decorated_cls_instance
 
     def publish(self, message: Dict):
-        if message["type"] == MessageType.EVENT.value:
-            event_cls = fetch_element_cls_from_registry(
-                message["name"], (DomainObjects.EVENT,)
-            )
-            for subscriber in self._subscribers[fully_qualified_name(event_cls)]:
-                if self.conn_info["IS_ASYNC"]:
-                    subscriber.apply_async([message["payload"]], queue=subscriber.name)
-                else:
-                    subscriber.apply([message["payload"]])
-        else:
-            raise NotImplementedError
+        event_cls = fetch_element_cls_from_registry(
+            message["name"], (DomainObjects.EVENT,)
+        )
+        for subscriber in self._subscribers[fully_qualified_name(event_cls)]:
+            if self.conn_info["IS_ASYNC"]:
+                subscriber.apply_async([message["payload"]], queue=subscriber.name)
+            else:
+                subscriber.apply([message["payload"]])
 
     def get_next(self) -> Dict:
         """Retrieve the next message to process from broker.

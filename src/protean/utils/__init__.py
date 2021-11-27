@@ -30,23 +30,6 @@ class IdentityType(Enum):
     UUID = "UUID"
 
 
-class EventStrategy(Enum):
-    INLINE = "INLINE"
-    INLINE_WITH_EVENTLOG = "INLINE_WITH_EVENTLOG"
-    DB_SUPPORTED = "DB_SUPPORTED"
-    DB_SUPPORTED_WITH_JOBS = "DB_SUPPORTED_WITH_JOBS"
-
-
-class EventExecution(Enum):
-    THREADED = "THREADED"
-    INLINE = "INLINE"
-
-
-class CommandProcessingType(Enum):
-    SYNC = "SYNC"
-    ASYNC = "ASYNC"
-
-
 class Database(Enum):
     ELASTICSEARCH = "ELASTICSEARCH"
     MEMORY = "MEMORY"

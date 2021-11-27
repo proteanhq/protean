@@ -3,7 +3,6 @@ import pytest
 from protean import BaseAggregate, BaseCommand, BaseCommandHandler
 from protean.fields import Integer, String
 from protean.globals import current_domain
-from protean.utils import CommandProcessingType
 
 
 class Person(BaseAggregate):
@@ -51,55 +50,3 @@ class TestCommandHandlerDefinition:
         handler = test_domain.command_handler_for(AddPersonCommand)
         assert handler is not None
         assert handler == AddNewPersonCommandHandler
-
-
-class TestCommandHandlerInvocation:
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(Person)
-        test_domain.register(AddPersonCommand)
-        test_domain.register(AddNewPersonCommandHandler)
-
-    def test_async_command_handler_invocation(self, test_domain):
-        # COMMAND_PROCESSING is ASYNC by default
-        assert (
-            test_domain.config["COMMAND_PROCESSING"]
-            == CommandProcessingType.ASYNC.value
-        )
-
-        result = test_domain.handle(
-            AddPersonCommand(first_name="John", last_name="Doe")
-        )
-
-        # Verify that no result was returned
-        assert result is None
-
-        # Verify there is no side-effect of the command handler yet
-        people = current_domain.repository_for(Person).all()
-        assert len(people) == 0
-
-    def test_synchronous_command_handler_invocation(self, test_domain):
-        test_domain.config["COMMAND_PROCESSING"] = CommandProcessingType.SYNC.value
-
-        result = test_domain.handle(
-            AddPersonCommand(first_name="John", last_name="Doe")
-        )
-
-        # Verify that no result was returned
-        assert result is not None
-        assert result.first_name == "John"
-
-    def test_overridden_sync_or_async_behavior(self, test_domain):
-        # COMMAND_PROCESSING is ASYNC by default
-        assert (
-            test_domain.config["COMMAND_PROCESSING"]
-            == CommandProcessingType.ASYNC.value
-        )
-
-        result = test_domain.handle(
-            AddPersonCommand(first_name="John", last_name="Doe"), asynchronous=False,
-        )
-
-        # Verify that no result was returned
-        assert result is not None
-        assert result.first_name == "John"

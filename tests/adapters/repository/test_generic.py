@@ -96,15 +96,6 @@ class TestPersistenceViaRepository:
 
         assert len(test_domain.repository_for(Person)._dao.query.all().items) == 1
 
-    def test_that_aggregate_can_be_removed_with_repository(self, test_domain):
-        person = Person(first_name="John", last_name="Doe")
-        test_domain.repository_for(Person).add(person)
-
-        assert test_domain.repository_for(Person)._dao.query.all().first == person
-
-        test_domain.repository_for(Person).remove(person)
-        assert len(test_domain.repository_for(Person)._dao.query.all().items) == 0
-
     def test_that_an_aggregate_can_be_retrieved_with_repository(self, test_domain):
         person = Person(first_name="John", last_name="Doe")
         test_domain.repository_for(Person).add(person)

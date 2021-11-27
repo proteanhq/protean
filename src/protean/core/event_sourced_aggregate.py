@@ -1,13 +1,13 @@
 import logging
 
-from protean.container import BaseContainer, OptionsMixin
+from protean.container import BaseContainer, EventedMixin, OptionsMixin
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils import inflection
 
 logger = logging.getLogger("protean.event")
 
 
-class BaseEventSourcedAggregate(BaseContainer, OptionsMixin):
+class BaseEventSourcedAggregate(BaseContainer, OptionsMixin, EventedMixin):
     """Base Event Sourced Aggregate class that all EventSourced Aggregates should inherit from.
     """
 

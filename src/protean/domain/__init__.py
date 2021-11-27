@@ -20,18 +20,12 @@ from protean.domain.registry import _DomainRegistry
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
-    NotSupportedError,
 )
 from protean.fields import HasMany, HasOne, Reference
 from protean.globals import current_domain
-from protean.infra.eventing import EventLog, EventLogRepository, MessageType
-from protean.infra.job import Job, JobRepository
 from protean.reflection import fields, has_fields
 from protean.utils import (
-    CommandProcessingType,
     DomainObjects,
-    EventExecution,
-    EventStrategy,
     fetch_element_cls_from_registry,
     fully_qualified_name,
 )
@@ -62,7 +56,7 @@ class Domain(_PackageBoundObject):
     :param domain_name: the name of the domain
     """
 
-    from protean.utils import EventStrategy, IdentityStrategy, IdentityType
+    from protean.utils import IdentityStrategy, IdentityType
 
     config_class = Config
     domain_context_globals_class = _DomainContextGlobals
@@ -105,9 +99,6 @@ class Domain(_PackageBoundObject):
             "AUTOLOAD_DOMAIN": True,
             "IDENTITY_STRATEGY": IdentityStrategy.UUID.value,
             "IDENTITY_TYPE": IdentityType.STRING.value,
-            "EVENT_STRATEGY": EventStrategy.DB_SUPPORTED.value,
-            "EVENT_EXECUTION": EventExecution.INLINE.value,
-            "COMMAND_PROCESSING": CommandProcessingType.ASYNC.value,
             "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider"}},
             "EVENT_STORE": {
                 "PROVIDER": "protean.adapters.event_store.message_db.MessageDBStore",
@@ -172,13 +163,6 @@ class Domain(_PackageBoundObject):
         # Placeholder array for resolving classes referenced by domain elements
         # FIXME Should all protean elements be subclassed from a base element?
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
-
-        # Register the EventLog Aggregate  # FIXME Is this the best place to do this?
-        if self.config["EVENT_STRATEGY"] == EventStrategy.DB_SUPPORTED.value:
-            self.register(EventLog)
-            self.register(EventLogRepository)
-            self.register(Job)
-            self.register(JobRepository)
 
     def init(self):  # noqa: C901
         """ Parse the domain folder, and attach elements dynamically to the domain.
@@ -652,63 +636,11 @@ class Domain(_PackageBoundObject):
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
         """
-        if (
-            not asynchronous
-            or self.config["COMMAND_PROCESSING"] == CommandProcessingType.SYNC.value
-        ):
-            command_handler = self.command_handler_for(command.__class__)()
-            return command_handler(command)
-        else:
-            self.brokers.publish(command)
-            return None
-
-    ########################
-    # Broker Functionality #
-    ########################
-
-    def publish(self, event_or_command: Union[BaseCommand, BaseEvent]):
-        """Publish Events and Commands to all configured brokers.
-
-        Args:
-            event_or_command (Union[BaseCommand, BaseEvent]): The Event or Command object containing data to be pushed
-        """
-        self.brokers.publish(event_or_command)
-
-    def from_message(self, message: Dict) -> Union[BaseCommand, BaseEvent]:
-        """Reconstruct Event or Command class from Message.
-
-        Messages are pushed into brokers in JSON-stringified form. This method re-casts them
-        back into their respective Event and Command objects.
-
-        Args:
-            message (Message): Message retrieved from the broker
-
-        Raises:
-            NotSupportedError: Raised when the message is not Event or Command payload
-
-        Returns:
-            Union[BaseCommand, BaseEvent]: The Event or Command object reconstructed from the message
-        """
-        if message["type"] == MessageType.EVENT.value:
-            event_cls = fetch_element_cls_from_registry(
-                message["name"], (DomainObjects.EVENT,)
-            )
-            return event_cls(message["payload"])
-        elif message["type"] == MessageType.COMMAND.value:
-            command_cls = fetch_element_cls_from_registry(
-                message["name"], (DomainObjects.COMMAND,)
-            )
-            return command_cls(message["payload"])
-        else:
-            # FIXME What is the correct error to raise here?
-            raise NotSupportedError({"message": ["Unknown object type in message"]})
+        raise NotImplementedError
 
     ############################
     # Repository Functionality #
     ############################
-
-    def get_connection(self, provider_name="default"):
-        return self.providers.get_connection(provider_name)
 
     @cache
     def repository_for(self, aggregate_cls):
