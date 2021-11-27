@@ -29,6 +29,7 @@ celery_requires = ["celery[redis]~=4.4.2"]
 sendgrid_requires = ["sendgrid>=6.1.3"]
 flask_requires = ["flask>=1.1.1"]
 marshmallow_requires = ["marshmallow>=3.5.1"]
+message_db_requires = ["message-db-py>=0.1.0"]
 
 install_requires = marshmallow_requires + [
     "click>=7.0",
@@ -46,6 +47,7 @@ all_external_requires = [
     + sendgrid_requires
     + flask_requires
     + marshmallow_requires
+    + message_db_requires
 ]
 
 testing_requires = all_external_requires + [
@@ -133,6 +135,7 @@ setup(
         "sendgrid": sendgrid_requires,
         "flask": flask_requires,
         "marshmallow": marshmallow_requires,
+        "message_db": message_db_requires,
         "external": all_external_requires,
         "test": testing_requires,
         "tests": testing_requires,

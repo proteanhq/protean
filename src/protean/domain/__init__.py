@@ -1,6 +1,7 @@
 """This module implements the central domain object, along with decorators
 to register Domain Elements.
 """
+import importlib
 import logging
 import sys
 
@@ -108,6 +109,10 @@ class Domain(_PackageBoundObject):
             "EVENT_EXECUTION": EventExecution.INLINE.value,
             "COMMAND_PROCESSING": CommandProcessingType.ASYNC.value,
             "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider"}},
+            "EVENT_STORE": {
+                "PROVIDER": "protean.adapters.event_store.message_db.MessageDBStore",
+                "DATABASE_URI": "postgresql://message_store@localhost:5433/message_store",
+            },
             "CACHES": {
                 "default": {
                     "PROVIDER": "protean.adapters.cache.memory.MemoryCache",
@@ -150,6 +155,7 @@ class Domain(_PackageBoundObject):
         self.config = self.make_config(instance_relative_config)
 
         self.providers = Providers(self)
+        self._event_store = None
         self.brokers = Brokers(self)
         self.caches = Caches(self)
         self.email_providers = EmailProviders(self)
@@ -724,3 +730,33 @@ class Domain(_PackageBoundObject):
 
     def send_email(self, email):
         return self.email_providers.send_email(email)
+
+    #############################
+    # Event Store Functionality #
+    #############################
+
+    @property
+    def event_store(self):
+        if not self._event_store:
+            logger.debug("Initializing Event Store...")
+
+            configured_event_store = self.config["EVENT_STORE"]
+            if configured_event_store and isinstance(configured_event_store, dict):
+                event_store_full_path = configured_event_store["PROVIDER"]
+                event_store_module, event_store_class = event_store_full_path.rsplit(
+                    ".", maxsplit=1
+                )
+
+                event_store_cls = getattr(
+                    importlib.import_module(event_store_module), event_store_class
+                )
+
+                store = event_store_cls(self, configured_event_store)
+            else:
+                raise ConfigurationError(
+                    "Configure at least one event store in the domain"
+                )
+
+            self._event_store = store
+
+        return self._event_store
