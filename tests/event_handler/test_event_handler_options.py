@@ -1,5 +1,10 @@
-from protean import BaseEvent, BaseEventHandler
+from protean import BaseAggregate, BaseEvent, BaseEventHandler
 from protean.fields import Identifier, String
+
+
+class User(BaseAggregate):
+    email = String()
+    name = String()
 
 
 class Registered(BaseEvent):
@@ -7,31 +12,26 @@ class Registered(BaseEvent):
     email = String()
 
 
-def test_event_option_specified_during_registration(test_domain):
-    class SendInviteEmail(BaseEventHandler):
-        def __call__(self, event: Registered) -> None:
-            pass
+def test_aggregate_cls_specified_during_registration(test_domain):
+    class UserEventHandlers(BaseEventHandler):
+        pass
 
-    test_domain.register(SendInviteEmail, event=Registered)
-    assert SendInviteEmail.meta_.event == Registered
+    test_domain.register(UserEventHandlers, aggregate_cls=User)
+    assert UserEventHandlers.meta_.aggregate_cls == User
 
 
-def test_event_option_specified_as_a_meta_attribute(test_domain):
-    class SendInviteEmail(BaseEventHandler):
-        def __call__(self, event: Registered) -> None:
-            pass
-
+def test_aggregate_cls_specified_as_a_meta_attribute(test_domain):
+    class UserEventHandlers(BaseEventHandler):
         class Meta:
-            event = Registered
+            aggregate_cls = User
 
-    test_domain.register(SendInviteEmail)
-    assert SendInviteEmail.meta_.event == Registered
+    test_domain.register(UserEventHandlers)
+    assert UserEventHandlers.meta_.aggregate_cls == User
 
 
-def test_stream_name_option_defined_via_annotation(test_domain,):
-    @test_domain.event_handler(event=Registered)
-    class SendInviteEmail(BaseEventHandler):
-        def __call__(self, event: Registered) -> None:
-            pass
+def test_aggregate_cls_defined_via_annotation(test_domain,):
+    @test_domain.event_handler(aggregate_cls=User)
+    class UserEventHandlers(BaseEventHandler):
+        pass
 
-    assert SendInviteEmail.meta_.event == Registered
+    assert UserEventHandlers.meta_.aggregate_cls == User
