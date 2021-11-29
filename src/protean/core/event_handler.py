@@ -1,3 +1,4 @@
+import functools
 import inspect
 import logging
 
@@ -6,6 +7,7 @@ from typing import Callable
 
 from protean import BaseEvent
 from protean.container import Element, OptionsMixin
+from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, derive_element_class, fully_qualified_name
 
@@ -51,8 +53,15 @@ class handle:
         Returns:
             Callable: Handler method with `_event_cls` attribute
         """
-        setattr(fn, "_event_cls", self._event_cls)
-        return fn
+
+        @functools.wraps(fn)
+        def wrapper(instance, event):
+            # Wrap function call within a UoW
+            with UnitOfWork():
+                fn(instance, event)
+
+        setattr(wrapper, "_event_cls", self._event_cls)
+        return wrapper
 
 
 def event_handler_factory(element_cls, **kwargs):
