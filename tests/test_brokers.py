@@ -174,35 +174,3 @@ class TestBrokerSubscriberInitialization:
 
         # Reset the broker after test
         NotifySSOSubscriber.meta_.broker = "default"
-
-
-class TestBrokerCommandHandlerInitialization:
-    def test_that_registered_command_handlers_are_initialized(self, test_domain):
-        test_domain.register(AddNewPersonCommandHandler)
-
-        assert (
-            "tests.test_brokers.AddPersonCommand"
-            in test_domain.brokers["default"]._command_handlers
-        )
-        assert (
-            test_domain.brokers["default"]._command_handlers[
-                "tests.test_brokers.AddPersonCommand"
-            ]
-            is AddNewPersonCommandHandler
-        )
-        assert (
-            test_domain.command_handler_for(AddPersonCommand)
-            == AddNewPersonCommandHandler
-        )
-
-    def test_that_subscribers_with_unknown_brokers_cannot_be_initialized(
-        self, test_domain
-    ):
-        AddNewPersonCommandHandler.meta_.broker = "unknown"
-        test_domain.register(AddNewPersonCommandHandler)
-
-        with pytest.raises(ConfigurationError):
-            len(test_domain.brokers)  # Triggers initialization
-
-        # Reset the broker after test
-        AddNewPersonCommandHandler.meta_.broker = "default"

@@ -90,7 +90,7 @@ class TestUnitOfWorkTransactions:
             repo_with_uow.add(person_to_be_updated)
 
             # Test that the underlying database is untouched
-            assert len(person_dao.outside_uow().query.all().items) == 2
+            assert len(person_dao.outside_uow().query.all().items) == 1
             assert (
                 person_dao.outside_uow().get(person_to_be_updated.id).last_name
                 != "FooBar"
@@ -125,7 +125,7 @@ class TestUnitOfWorkTransactions:
         repo_with_uow.add(person_to_be_updated)
 
         # Test that the underlying database is untouched
-        assert len(person_dao.outside_uow().query.all().items) == 2
+        assert len(person_dao.outside_uow().query.all().items) == 1
         assert (
             person_dao.outside_uow().get(person_to_be_updated.id).last_name != "FooBar"
         )
@@ -159,7 +159,7 @@ class TestUnitOfWorkTransactions:
         repo_with_uow.add(person_to_be_updated)
 
         # Test that the underlying database is untouched
-        assert len(person_dao.outside_uow().query.all().items) == 2
+        assert len(person_dao.outside_uow().query.all().items) == 1
         assert (
             person_dao.outside_uow().get(person_to_be_updated.id).last_name != "FooBar"
         )
@@ -167,7 +167,7 @@ class TestUnitOfWorkTransactions:
         uow.rollback()
 
         assert uow.in_progress is False
-        assert len(person_dao.query.all().items) == 2
+        assert len(person_dao.query.all().items) == 1
         assert person_dao.get(person_to_be_updated.id).last_name != "FooBar"
 
     def test_session_is_destroyed_after_commit(self, test_domain):

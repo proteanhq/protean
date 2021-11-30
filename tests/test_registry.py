@@ -117,23 +117,3 @@ def test_that_re_registering_an_element_has_no_effect():
     assert (
         "tests.test_registry.Role" in register._elements[DomainObjects.AGGREGATE.value]
     )
-
-
-def test_retrieving_command_handler_for_a_command():
-    registry = _DomainRegistry()
-
-    class SignupCommand(BaseCommand):
-        first_name = String(required=True)
-        email = String(required=True)
-
-    class SignupCommandHandler(BaseCommandHandler):
-        class Meta:
-            command_cls = SignupCommand
-
-        def __call__(self, command: BaseCommand) -> Any:
-            return True
-
-    registry.register_element(SignupCommand)
-    registry.register_element(SignupCommandHandler)
-
-    assert registry.command_handler_for(SignupCommand) == SignupCommandHandler
