@@ -1,6 +1,19 @@
 Release History
 ===============
 
+DEV
+---
+
+* Output VO values as nested dicts instead of a forced flat structure.
+* Enclose DAOs within repositories to encourage DB interaction solely through repos.
+* Cache registry, repositories, daos, and models with `@cache`.
+* Fix sorting issue with null values in Memory DB.
+* Add `any` filter and allow scalar values to `in` operator in Memory DB.
+* Remove `remove` method from repository to discourage hard deletes.
+* Add MessageDB Event store adapter.
+* Introduce EventSourced Aggregates and Event Handlers.
+* Wrap EventHandler execution within UoWs.
+
 0.8.0
 -----
 

@@ -5,7 +5,9 @@ import logging
 
 from typing import Any, Union
 
+from protean.globals import current_uow
 from protean.utils.query import Q
+from protean.utils import DomainObjects
 
 logger = logging.getLogger("protean.repository.queryset")
 
@@ -165,6 +167,11 @@ class QuerySet:
             entity = self._owner_dao.model_cls.to_entity(item)
             entity.state_.mark_retrieved()
             entity_items.append(entity)
+
+            # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
+            #   like persisting events raised by the aggregate.
+            if current_uow and entity.element_type == DomainObjects.AGGREGATE:
+                current_uow._seen.add(entity)
         results.items = entity_items
 
         # Cache results

@@ -9,6 +9,7 @@ from protean.exceptions import ObjectNotFoundError, TooManyObjectsError, Validat
 from protean.fields import Auto, Field
 from protean.globals import current_uow
 from protean.reflection import fields, id_field, unique_fields
+from protean.utils import DomainObjects
 from protean.utils.query import Q
 
 logger = logging.getLogger("protean.repository")
@@ -373,6 +374,11 @@ class BaseDAO(metaclass=ABCMeta):
             # Set Entity status to saved to let everybody know it has been persisted
             entity_obj.state_.mark_saved()
 
+            # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
+            #   like persisting events raised by the aggregate.
+            if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
+                current_uow._seen.add(entity_obj)
+
             return entity_obj
         except ValidationError as exc:
             logger.error(f"Failed creating entity because of {exc}")
@@ -406,6 +412,11 @@ class BaseDAO(metaclass=ABCMeta):
 
             # Set Entity status to saved to let everybody know it has been persisted
             entity_obj.state_.mark_saved()
+
+            # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
+            #   like persisting events raised by the aggregate.
+            if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
+                current_uow._seen.add(entity_obj)
 
             return entity_obj
         except Exception as exc:
@@ -445,6 +456,11 @@ class BaseDAO(metaclass=ABCMeta):
 
             # Set Entity status to saved to let everybody know it has been persisted
             entity_obj.state_.mark_saved()
+
+            # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
+            #   like persisting events raised by the aggregate.
+            if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
+                current_uow._seen.add(entity_obj)
 
             return entity_obj
         except Exception as exc:

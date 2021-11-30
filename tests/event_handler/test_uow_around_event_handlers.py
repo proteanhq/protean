@@ -25,7 +25,7 @@ class UserEventHandlers(BaseEventHandler):
 
 
 @mock.patch("protean.core.event_handler.UnitOfWork.__enter__")
-@mock.patch("tests.event_handler.test_uow_around_handlers.dummy")
+@mock.patch("tests.event_handler.test_uow_around_event_handlers.dummy")
 @mock.patch("protean.core.event_handler.UnitOfWork.__exit__")
 def test_that_method_is_enclosed_in_uow(mock_exit, mock_dummy, mock_enter, test_domain):
     mock_parent = mock.Mock()

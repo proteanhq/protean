@@ -20,7 +20,7 @@ class UnitOfWork:
         self._in_progress = False
 
         self._sessions = {}
-        self._messages_to_dispatch = []
+        self._seen = set()
 
     @property
     def in_progress(self):
@@ -55,10 +55,9 @@ class UnitOfWork:
             for _, session in self._sessions.items():
                 session.commit()
 
-            # FIXME Let Async Server pick up messages from committed transaction
-            for message in self._messages_to_dispatch:
-                for _, broker in self.domain.brokers.items():
-                    broker.publish(message)
+            for item in self._seen:
+                if item._events:
+                    pass  # FIXME Write events
 
             logger.debug("Commit Successful")
         except Exception as exc:
@@ -77,7 +76,7 @@ class UnitOfWork:
             session.close()
 
         self._sessions = {}
-        self._messages_to_dispatch = []
+        self._seen = set()
         self._in_progress = False
 
     def rollback(self):
