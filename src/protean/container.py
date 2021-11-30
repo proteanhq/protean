@@ -42,6 +42,8 @@ class OptionsMixin:
         Args:
             subclass (Protean Element): Subclass to initialize with metadata
         """
+        super().__init_subclass__()
+
         # Retrieve inner Meta class
         # Gather `Meta` class/object if defined
         options = getattr(subclass, "Meta", None)

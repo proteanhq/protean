@@ -78,17 +78,3 @@ class Brokers(collectionsAbc.MutableMapping):
                 )
 
             self._brokers[broker_name].register(subscriber.meta_.event, subscriber)
-
-        # Initialize command handlers for Brokers
-        for _, command_handler_record in self.domain.registry.command_handlers.items():
-            command_handler = command_handler_record.cls
-            broker_name = command_handler.meta_.broker
-
-            if broker_name not in self._brokers:
-                raise ConfigurationError(
-                    f"Broker {broker_name} has not been configured."
-                )
-
-            self._brokers[broker_name].register(
-                command_handler.meta_.command_cls, command_handler
-            )

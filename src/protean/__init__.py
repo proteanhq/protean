@@ -8,7 +8,7 @@ from .core.domain_service import BaseDomainService
 from .core.email import BaseEmail
 from .core.entity import BaseEntity
 from .core.event import BaseEvent
-from .core.event_handler import BaseEventHandler, handle
+from .core.event_handler import BaseEventHandler
 from .core.event_sourced_aggregate import BaseEventSourcedAggregate
 from .core.model import BaseModel
 from .core.queryset import Q, QuerySet
@@ -21,3 +21,4 @@ from .core.view import BaseView
 from .domain import Domain
 from .domain.config import Config
 from .utils import get_version
+from .utils.mixins import handle
