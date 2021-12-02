@@ -3,7 +3,6 @@ import logging
 from protean.container import EventedMixin
 
 from protean.core.entity import BaseEntity
-from protean.core.event import BaseEvent
 from protean.utils import DomainObjects, derive_element_class, inflection
 
 logger = logging.getLogger("protean.domain.aggregate")

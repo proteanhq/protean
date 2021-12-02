@@ -1,6 +1,5 @@
 import pytest
 
-from mock import patch
 
 from protean import BaseCommand, BaseCommandHandler, BaseEvent, BaseSubscriber
 from protean.adapters.broker.inline import InlineBroker

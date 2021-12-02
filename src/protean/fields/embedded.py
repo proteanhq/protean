@@ -20,7 +20,6 @@ class _ShadowField(Field):
         """Override `__set__` to update owner field and silently fail to update values.
         When the value object's value is set, the embedded fields will be automatically filled.
         """
-        pass
 
     def __delete__(self, instance):
         """Nullify values and linkages"""

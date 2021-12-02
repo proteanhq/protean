@@ -2,8 +2,6 @@ import os
 
 import pytest
 
-from elasticsearch_dsl import Index
-
 
 def initialize_domain():
     from protean.domain import Domain

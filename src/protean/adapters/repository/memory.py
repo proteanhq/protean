@@ -250,11 +250,9 @@ class MemoryProvider(BaseProvider):
 
     def _create_database_artifacts(self):
         """Dummy placeholder. Nothing to do."""
-        pass
 
     def _drop_database_artifacts(self):
         """Dummy placeholder. Nothing to do."""
-        pass
 
 
 class DictDAO(BaseDAO):

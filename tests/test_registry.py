@@ -1,11 +1,10 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any
 
 import inflection
 import pytest
 
-from protean import BaseAggregate, BaseCommand, BaseCommandHandler
+from protean import BaseAggregate
 from protean.domain.registry import _DomainRegistry
 from protean.fields import DateTime, String
 from protean.utils import DomainObjects

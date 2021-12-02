@@ -22,8 +22,6 @@ class FieldBase:
     For now, this is a marker class to support later attribute discovery.
     """
 
-    pass
-
 
 class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     """Abstract field from which other fields should extend.
@@ -151,12 +149,10 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         All subclasses must implement this method.
         Raise a :exc:`ValidationError` if validation does not succeed.
         """
-        pass
 
     @abstractmethod
     def as_dict(self):
         """Return JSON-compatible value of field"""
-        pass
 
     def _run_validators(self, value):
         """Perform validation on ``value``. Raise a :exc:`ValidationError` if

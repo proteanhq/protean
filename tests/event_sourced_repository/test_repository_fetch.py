@@ -1,8 +1,6 @@
-import pytest
-
 from protean import BaseEventSourcedAggregate
 from protean.fields import Integer, String
-from protean.utils import DomainObjects, fully_qualified_name
+from protean.utils import DomainObjects
 
 
 class User(BaseEventSourcedAggregate):

@@ -15,8 +15,6 @@ logger = logging.getLogger("protean.domain")
 class Element:
     """Base class for all Protean elements"""
 
-    pass
-
 
 class Options:
     """ Metadata info for the Container.

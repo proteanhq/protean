@@ -2,8 +2,6 @@ import os
 
 import pytest
 
-from redis import Redis
-
 
 def initialize_domain():
     from protean.domain import Domain

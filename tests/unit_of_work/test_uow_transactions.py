@@ -4,7 +4,6 @@ import string
 import pytest
 
 from protean import UnitOfWork
-from protean.exceptions import ObjectNotFoundError
 
 from .elements import Person, PersonRepository
 

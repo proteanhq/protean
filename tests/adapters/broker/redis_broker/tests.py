@@ -1,12 +1,8 @@
-import json
-
 import pytest
 import redis
 
 from protean.adapters.broker.redis import RedisBroker
 from protean.globals import current_domain
-
-from .elements import PersonAdded
 
 
 @pytest.mark.redis

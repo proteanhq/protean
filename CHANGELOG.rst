@@ -12,7 +12,9 @@ DEV
 * Remove `remove` method from repository to discourage hard deletes.
 * Add MessageDB Event store adapter.
 * Introduce EventSourced Aggregates and Event Handlers.
+* Introduce EventSourced Repositories.
 * Wrap EventHandler execution within UoWs.
+* Add `autoflake` to `pre-commit`
 
 0.8.0
 -----

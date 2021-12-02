@@ -22,8 +22,6 @@ class ProteanTask(Task):
     """The default base class for all Task classes constructed from Subscribers/Command Handlers.
     """
 
-    pass
-
 
 class CeleryBroker(BaseBroker):
     def __init__(self, name, domain, conn_info):

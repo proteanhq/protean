@@ -1,6 +1,5 @@
 import pytest
 
-from protean.exceptions import ObjectNotFoundError
 
 from .elements import Person, PersonRepository
 

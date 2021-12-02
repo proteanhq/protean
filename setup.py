@@ -51,6 +51,7 @@ all_external_requires = [
 ]
 
 testing_requires = all_external_requires + [
+    "autoflake>=1.4",
     "mock==4.0.2",
     "pluggy==0.13.1",
     "pytest-asyncio>=0.15.1",

@@ -28,4 +28,3 @@ class InlineBroker(BaseBroker):
 
     def _data_reset(self) -> None:
         """No-Op"""
-        pass

@@ -2,14 +2,12 @@ import uuid
 
 import pytest
 
-from protean import BaseAggregate, BaseEvent, BaseValueObject
+from protean import BaseEvent, BaseValueObject
 from protean.exceptions import NotSupportedError
 from protean.fields import String, ValueObject
-from protean.globals import current_domain
 from protean.utils import fully_qualified_name
-from tests.test_brokers import AddPersonCommand
 
-from .elements import Person, PersonAdded, PersonCommand, PersonService
+from .elements import Person, PersonAdded
 
 
 class TestDomainEventDefinition:

@@ -1,7 +1,6 @@
 import json
 import pytest
 
-from psycopg2 import extensions
 
 from protean import Domain
 from protean.adapters.event_store.message_db import MessageDBStore
