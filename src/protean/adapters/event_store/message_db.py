@@ -1,11 +1,11 @@
-import psycopg2
+from typing import Any, Dict, List
 
-from typing import List, Dict, Any
+import psycopg2
 
 from message_db.client import MessageDB
 
-from protean.port.event_store import BaseEventStore
 from protean.exceptions import ConfigurationError
+from protean.port.event_store import BaseEventStore
 
 
 class MessageDBStore(BaseEventStore):

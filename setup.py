@@ -52,6 +52,7 @@ all_external_requires = [
 
 testing_requires = all_external_requires + [
     "autoflake>=1.4",
+    "isort>=5.10.1",
     "mock==4.0.2",
     "pluggy==0.13.1",
     "pytest-asyncio>=0.15.1",
@@ -83,7 +84,7 @@ dev_requires = (
         "check-manifest==0.42",
         "coverage==5.1",
         "docutils==0.16",
-        "pre-commit==2.6.0",
+        "pre-commit>=2.16.0",
         "tox==3.15.0",
         "twine==3.1.1",
     ]

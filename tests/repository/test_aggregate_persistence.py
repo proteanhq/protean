@@ -1,6 +1,5 @@
 import pytest
 
-
 from .elements import Person, PersonRepository
 
 

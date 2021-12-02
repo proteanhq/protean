@@ -16,10 +16,7 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.model import BaseModel
 from protean.domain.registry import _DomainRegistry
-from protean.exceptions import (
-    ConfigurationError,
-    IncorrectUsageError,
-)
+from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import HasMany, HasOne, Reference
 from protean.globals import current_domain
 from protean.reflection import fields, has_fields

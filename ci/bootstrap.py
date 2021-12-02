@@ -31,9 +31,9 @@ if __name__ == "__main__":
         compile(open(activate, "rb").read(), activate, "exec"), dict(__file__=activate)
     )
 
-    import jinja2
-
     import subprocess
+
+    import jinja2
 
     jinja = jinja2.Environment(
         loader=jinja2.FileSystemLoader(join(base_path, "ci", "templates")),

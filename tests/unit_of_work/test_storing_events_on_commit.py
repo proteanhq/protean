@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from protean import BaseEventSourcedAggregate, BaseEvent, BaseCommandHandler, handle
+from protean import BaseCommandHandler, BaseEvent, BaseEventSourcedAggregate, handle
 from protean.core.command import BaseCommand
 from protean.fields import String
 from protean.fields.basic import Identifier

@@ -1,6 +1,6 @@
 import logging
-from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 
+from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.globals import _uow_context_stack, current_domain
 

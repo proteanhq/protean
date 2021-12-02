@@ -2,7 +2,6 @@ from uuid import uuid4
 
 import pytest
 
-
 from .elements import Person
 
 

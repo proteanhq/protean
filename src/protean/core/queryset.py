@@ -6,8 +6,8 @@ import logging
 from typing import Any, Union
 
 from protean.globals import current_uow
-from protean.utils.query import Q
 from protean.utils import DomainObjects
+from protean.utils.query import Q
 
 logger = logging.getLogger("protean.repository.queryset")
 

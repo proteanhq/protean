@@ -1,7 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from typing import Any, Dict, List, Type
 
-from protean import BaseEventSourcedAggregate, BaseEvent
+from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.fields import Identifier
 
 

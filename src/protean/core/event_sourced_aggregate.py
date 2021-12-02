@@ -1,8 +1,7 @@
 import logging
 
 from protean.container import BaseContainer, EventedMixin, OptionsMixin
-from protean.utils import DomainObjects, derive_element_class
-from protean.utils import inflection
+from protean.utils import DomainObjects, derive_element_class, inflection
 
 logger = logging.getLogger("protean.event")
 

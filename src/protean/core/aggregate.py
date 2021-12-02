@@ -1,7 +1,7 @@
 """Aggregate Functionality and Classes"""
 import logging
-from protean.container import EventedMixin
 
+from protean.container import EventedMixin
 from protean.core.entity import BaseEntity
 from protean.utils import DomainObjects, derive_element_class, inflection
 

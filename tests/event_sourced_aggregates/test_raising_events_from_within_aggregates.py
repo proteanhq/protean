@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import mock
-
 from uuid import uuid4
 
-from protean import BaseEventSourcedAggregate, BaseEvent, BaseCommandHandler, handle
+import mock
+
+from protean import BaseCommandHandler, BaseEvent, BaseEventSourcedAggregate, handle
 from protean.core.command import BaseCommand
 from protean.fields import Identifier, String
 from protean.globals import current_domain

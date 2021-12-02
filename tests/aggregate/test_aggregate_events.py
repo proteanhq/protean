@@ -1,10 +1,10 @@
-import pytest
-
 from enum import Enum
 
+import pytest
+
 from protean import BaseAggregate, BaseEvent
-from protean.fields import Identifier, String
 from protean.core.unit_of_work import UnitOfWork
+from protean.fields import Identifier, String
 from protean.globals import current_domain
 
 

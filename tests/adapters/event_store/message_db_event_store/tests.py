@@ -1,6 +1,6 @@
 import json
-import pytest
 
+import pytest
 
 from protean import Domain
 from protean.adapters.event_store.message_db import MessageDBStore
