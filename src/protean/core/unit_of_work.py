@@ -1,4 +1,5 @@
 import logging
+from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.globals import _uow_context_stack, current_domain
@@ -41,6 +42,10 @@ class UnitOfWork:
         self._in_progress = True
         _uow_context_stack.push(self)
 
+    def _store_events(self, item: BaseEventSourcedAggregate) -> None:
+        for event in item._events:
+            current_domain.event_store.store.append(item, event)
+
     def commit(self):
         # Raise error if there the Unit Of Work is not active
         logger.debug(f"Committing {self}...")
@@ -57,7 +62,8 @@ class UnitOfWork:
 
             for item in self._seen:
                 if item._events:
-                    pass  # FIXME Write events
+                    self._store_events(item)
+                item._events = []
 
             logger.debug("Commit Successful")
         except Exception as exc:

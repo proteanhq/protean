@@ -28,10 +28,10 @@ class User(BaseAggregate):
     status = String(choices=UserStatus)
 
     def activate(self):
-        self.trigger(UserActivated(user_id=self.id))
+        self.raise_(UserActivated(user_id=self.id))
 
     def change_name(self, name):
-        self.trigger(UserRenamed(user_id=self.id, name=name))
+        self.raise_(UserRenamed(user_id=self.id, name=name))
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +45,7 @@ def test_that_aggregate_has_events_list():
     assert user._events == []
 
 
-def test_events_are_registered_on_trigger():
+def test_raising_events():
     user = User(name="John Doe", email="john.doe@example.com")
     user.activate()
 
@@ -73,7 +73,3 @@ def test_that_events_are_empty_after_uow():
         user_repo.add(user)
 
     assert len(user._events) == 0
-
-
-def test_that_events_are_persisted_by_uow():
-    pass

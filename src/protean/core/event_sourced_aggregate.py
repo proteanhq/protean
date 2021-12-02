@@ -7,7 +7,7 @@ from protean.utils import inflection
 logger = logging.getLogger("protean.event")
 
 
-class BaseEventSourcedAggregate(BaseContainer, OptionsMixin, EventedMixin):
+class BaseEventSourcedAggregate(EventedMixin, OptionsMixin, BaseContainer):
     """Base Event Sourced Aggregate class that all EventSourced Aggregates should inherit from.
     """
 

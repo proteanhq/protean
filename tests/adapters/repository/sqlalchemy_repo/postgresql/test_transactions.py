@@ -4,7 +4,6 @@ import string
 import pytest
 
 from protean import UnitOfWork
-from protean.exceptions import ObjectNotFoundError
 
 from .elements import Person, PersonRepository
 
@@ -68,36 +67,13 @@ class TestTransactions:
 
         assert person_dao.get(person.id).last_name == "Dane"
 
-    def test_deleted_objects_are_committed_as_part_of_one_transaction(
-        self, test_domain
-    ):
-        # Add a Person the database
-        repo = test_domain.repository_for(Person)
-        person_to_be_added = self.persisted_person(test_domain)
-        repo.add(person_to_be_added)
-
-        person_dao = test_domain.repository_for(Person)._dao
-
-        # Initiate a UnitOfWork Session
-        with UnitOfWork():
-            repo = test_domain.repository_for(Person)
-            persisted_person = repo.get(person_to_be_added.id)
-            repo.remove(persisted_person)
-
-            # Test that the underlying database is untouched
-            assert len(person_dao.outside_uow().query.all().items) == 1
-
-        assert len(person_dao.query.all().items) == 0
-
     def test_changed_objects_are_committed_as_part_of_one_transaction(
         self, test_domain
     ):
         # Add a Person the database
         repo = test_domain.repository_for(Person)
         person_to_be_updated = self.persisted_person(test_domain)
-        person_to_be_deleted = self.persisted_person(test_domain)
         repo.add(person_to_be_updated)
-        repo.add(person_to_be_deleted)
 
         person_dao = test_domain.repository_for(Person)._dao
 
@@ -113,22 +89,16 @@ class TestTransactions:
             person_to_be_updated.last_name = "FooBar"
             repo_with_uow.add(person_to_be_updated)
 
-            # Remove an existing Person record
-            repo_with_uow.remove(person_to_be_deleted)
-
             # Test that the underlying database is untouched
-            assert len(person_dao.query.all().items) == 2
+            assert len(person_dao.query.all().items) == 1
             assert (
                 person_dao.outside_uow().get(person_to_be_updated.id).last_name
                 != "FooBar"
             )
-            assert person_dao.get(person_to_be_deleted.id) is not None
 
         assert len(person_dao.query.all().items) == 2
         assert person_dao.get(person_to_be_added.id) is not None
         assert person_dao.get(person_to_be_updated.id).last_name == "FooBar"
-        with pytest.raises(ObjectNotFoundError):
-            person_dao.get(person_to_be_deleted.id)
 
     def test_changed_objects_are_committed_as_part_of_one_transaction_on_explict_commit(
         self, test_domain
@@ -136,9 +106,7 @@ class TestTransactions:
         # Add a Person the database
         repo = test_domain.repository_for(Person)
         person_to_be_updated = self.persisted_person(test_domain)
-        person_to_be_deleted = self.persisted_person(test_domain)
         repo.add(person_to_be_updated)
-        repo.add(person_to_be_deleted)
 
         person_dao = test_domain.repository_for(Person)._dao
 
@@ -156,15 +124,11 @@ class TestTransactions:
         person_to_be_updated.last_name = "FooBar"
         repo_with_uow.add(person_to_be_updated)
 
-        # Remove an existing Person record
-        repo_with_uow.remove(person_to_be_deleted)
-
         # Test that the underlying database is untouched
-        assert len(person_dao.query.all().items) == 2
+        assert len(person_dao.query.all().items) == 1
         assert (
             person_dao.outside_uow().get(person_to_be_updated.id).last_name != "FooBar"
         )
-        assert person_dao.get(person_to_be_deleted.id) is not None
 
         uow.commit()
 
@@ -172,15 +136,11 @@ class TestTransactions:
         assert len(person_dao.query.all().items) == 2
         assert person_dao.get(person_to_be_added.id) is not None
         assert person_dao.get(person_to_be_updated.id).last_name == "FooBar"
-        with pytest.raises(ObjectNotFoundError):
-            person_dao.get(person_to_be_deleted.id)
 
     def test_all_changes_are_discarded_on_rollback(self, test_domain):
         repo = test_domain.repository_for(Person)
         person_to_be_updated = self.persisted_person(test_domain)
-        person_to_be_deleted = self.persisted_person(test_domain)
         repo.add(person_to_be_updated)
-        repo.add(person_to_be_deleted)
 
         person_dao = test_domain.repository_for(Person)._dao
 
@@ -198,22 +158,17 @@ class TestTransactions:
         person_to_be_updated.last_name = "FooBar"
         repo_with_uow.add(person_to_be_updated)
 
-        # Remove an existing Person record
-        repo_with_uow.remove(person_to_be_deleted)
-
         # Test that the underlying database is untouched
-        assert len(person_dao.query.all().items) == 2
+        assert len(person_dao.query.all().items) == 1
         assert (
             person_dao.outside_uow().get(person_to_be_updated.id).last_name != "FooBar"
         )
-        assert person_dao.get(person_to_be_deleted.id) is not None
 
         uow.rollback()
 
         assert uow.in_progress is False
-        assert len(person_dao.query.all().items) == 2
+        assert len(person_dao.query.all().items) == 1
         assert person_dao.get(person_to_be_updated.id).last_name != "FooBar"
-        assert person_dao.get(person_to_be_deleted.id) is not None
 
     def test_session_is_destroyed_after_commit(self, test_domain):
         uow = UnitOfWork()

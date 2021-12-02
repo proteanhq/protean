@@ -56,6 +56,7 @@ class BaseAggregate(EventedMixin, BaseEntity):
         return [
             ("provider", "default"),
             ("model", None),
+            ("stream_name", inflection.underscore(cls.__name__)),
             ("schema_name", inflection.underscore(cls.__name__)),
         ]
 

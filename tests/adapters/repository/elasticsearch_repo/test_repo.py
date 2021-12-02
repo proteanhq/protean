@@ -42,15 +42,3 @@ class TestElasticsearchRepository:
         persisted_person = test_domain.repository_for(Person)._dao.get(person.id)
         assert persisted_person is not None
         assert persisted_person == person
-
-    def test_removal_through_repository(self, test_domain):
-        person_repo = test_domain.repository_for(Person)
-        person = Person(first_name="John", last_name="Doe")
-        person_repo.add(person)
-
-        assert test_domain.repository_for(Person)._dao.get(person.id) == person
-
-        person_repo.remove(person)
-
-        with pytest.raises(ObjectNotFoundError):
-            test_domain.repository_for(Person)._dao.get(person.id)

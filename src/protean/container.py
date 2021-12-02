@@ -69,6 +69,9 @@ class OptionsMixin:
             ) or default
             setattr(subclass.meta_, key, value)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
 
 class ContainerMeta(type):
     """
@@ -289,9 +292,9 @@ class BaseContainer(metaclass=ContainerMeta):
 
 class EventedMixin:
     def __init__(self, *args, **kwargs) -> None:
-        self._events = []
-
         super().__init__(*args, **kwargs)
 
-    def trigger(self, event: "BaseEvent") -> None:
+        self._events = []
+
+    def raise_(self, event: "BaseEvent") -> None:
         self._events.append(event)

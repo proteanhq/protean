@@ -156,4 +156,4 @@ def run_around_tests(test_domain):
     for _, cache in test_domain.caches.items():
         cache.flush_all()
 
-    test_domain.event_store._data_reset()
+    test_domain.event_store.store._data_reset()

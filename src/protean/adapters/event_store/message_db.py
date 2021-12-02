@@ -26,7 +26,7 @@ class MessageDBStore(BaseEventStore):
 
         return self._client
 
-    def write(
+    def _write(
         self,
         stream_name: str,
         message_type: str,
@@ -38,10 +38,10 @@ class MessageDBStore(BaseEventStore):
             stream_name, message_type, data, metadata, expected_version
         )
 
-    def read(self, stream_name: str) -> List[Dict[str, Any]]:
+    def _read(self, stream_name: str) -> List[Dict[str, Any]]:
         return self.client.read(stream_name)
 
-    def read_last_message(self, stream_name) -> Dict[str, Any]:
+    def _read_last_message(self, stream_name) -> Dict[str, Any]:
         return self.client.read_last_message(stream_name)
 
     def _data_reset(self):

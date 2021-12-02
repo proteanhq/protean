@@ -1,5 +1,8 @@
 from abc import ABCMeta, abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Type
+
+from protean import BaseEventSourcedAggregate, BaseEvent
+from protean.fields import Identifier
 
 
 class BaseEventStore(metaclass=ABCMeta):
@@ -18,7 +21,7 @@ class BaseEventStore(metaclass=ABCMeta):
         self.conn_info = conn_info
 
     @abstractmethod
-    def write(
+    def _write(
         self,
         stream_name: str,
         message_type: str,
@@ -29,7 +32,7 @@ class BaseEventStore(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def read(
+    def _read(
         self,
         stream_name: str,
         sql: str = None,
@@ -39,7 +42,19 @@ class BaseEventStore(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def read_last_message(self, stream_name) -> Dict[str, Any]:
+    def _read_last_message(self, stream_name) -> Dict[str, Any]:
+        pass
+
+    def append(self, aggregate: BaseEventSourcedAggregate, event: BaseEvent) -> int:
+        return self._write(
+            f"{aggregate.meta_.stream_name}-{aggregate.id}",
+            event.__class__.__name__,
+            event.to_dict(),  # FIXME Handle expected version
+        )
+
+    def load(
+        self, aggregate_cls: Type[BaseEventSourcedAggregate], identifier: Identifier
+    ) -> BaseEventSourcedAggregate:
         pass
 
     @abstractmethod

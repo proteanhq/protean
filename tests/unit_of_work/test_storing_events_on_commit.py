@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import mock
-
 from uuid import uuid4
 
 from protean import BaseEventSourcedAggregate, BaseEvent, BaseCommandHandler, handle
 from protean.core.command import BaseCommand
-from protean.fields import Identifier, String
+from protean.fields import String
+from protean.fields.basic import Identifier
 from protean.globals import current_domain
 
 
@@ -58,8 +57,7 @@ class UserCommandHandler(BaseCommandHandler):
         User.register(command)
 
 
-@mock.patch("protean.core.unit_of_work.UnitOfWork._store_events")
-def test_that_events_can_be_raised_from_within_aggregates(mock_uow_store_events):
+def test_persisting_events_on_commit(test_domain):
     identifier = str(uuid4())
     UserCommandHandler().register_user(
         Register(
@@ -70,11 +68,6 @@ def test_that_events_can_be_raised_from_within_aggregates(mock_uow_store_events)
         )
     )
 
-    mock_uow_store_events.assert_called_with(
-        User(
-            id=identifier,
-            email="john.doe@example.com",
-            name="John Doe",
-            password_hash="hash",
-        )
-    )
+    events = test_domain.event_store.store._read(f"user-{identifier}")
+
+    assert len(events) == 1
