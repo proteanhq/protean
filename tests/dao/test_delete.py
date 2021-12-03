@@ -14,7 +14,7 @@ class TestDAODeleteFunctionality:
         test_domain.register(User)
 
     def test_delete_an_object_in_repository_by_id(self, test_domain):
-        """ Delete an object in the reposoitory by ID"""
+        """Delete an object in the reposoitory by ID"""
         person = test_domain.repository_for(Person)._dao.create(
             id=3, first_name="John", last_name="Doe", age=22
         )
@@ -50,7 +50,7 @@ class TestDAODeleteFunctionality:
         assert person_records.total == 0
 
     def test_deleting_a_persisted_entity(self, test_domain):
-        """ Delete an object in the reposoitory by ID"""
+        """Delete an object in the reposoitory by ID"""
         person = test_domain.repository_for(Person)._dao.create(
             id=3, first_name="Jim", last_name="Carrey"
         )

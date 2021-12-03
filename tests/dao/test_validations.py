@@ -15,7 +15,7 @@ class TestValidations:
         test_domain.register(User)
 
     def test_unique(self, test_domain):
-        """ Test the unique constraints for the entity """
+        """Test the unique constraints for the entity"""
         test_domain.repository_for(User)._dao.create(
             email="john.doe@gmail.com", password="a1b2c3"
         )

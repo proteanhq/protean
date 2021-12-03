@@ -372,7 +372,7 @@ class BaseEntity(BaseContainer, OptionsMixin):
             raise ValidationError(self.errors)
 
     def to_dict(self):
-        """ Return entity data as a dictionary """
+        """Return entity data as a dictionary"""
         # FIXME Memoize this function
         field_values = {}
 

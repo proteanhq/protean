@@ -17,7 +17,7 @@ class Element:
 
 
 class Options:
-    """ Metadata info for the Container.
+    """Metadata info for the Container.
 
     Options:
     - ``abstract``: Indicates that this is an abstract entity (Ignores all other meta options)
@@ -254,7 +254,7 @@ class BaseContainer(metaclass=ContainerMeta):
         )
 
     def __bool__(self):
-        """ Return this object's truthiness to be `False`,
+        """Return this object's truthiness to be `False`,
         if all its attributes evaluate to truthiness `False`
         """
         return any(bool(getattr(self, field_name, None)) for field_name in fields(self))
@@ -271,7 +271,7 @@ class BaseContainer(metaclass=ContainerMeta):
             raise InvalidDataError({name: ["is invalid"]})
 
     def to_dict(self):
-        """ Return data as a dictionary """
+        """Return data as a dictionary"""
         return {
             field_name: field_obj.as_dict(getattr(self, field_name, None))
             for field_name, field_obj in fields(self).items()

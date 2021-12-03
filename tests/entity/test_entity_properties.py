@@ -121,7 +121,7 @@ class TestEquivalence:
 
     def test_that_two_entities_of_different_types_are_different_even_with_same_id(self):
         """Test that two entities are not considered equal even if they have the same ID
-            and one belongs to a different Entity class
+        and one belongs to a different Entity class
         """
         not_a_person = NotAPerson(id=12345, first_name="John", last_name="Doe")
         person = Person(id=12345, first_name="John", last_name="Doe")
@@ -131,7 +131,7 @@ class TestEquivalence:
 
     def test_that_two_entities_of_inherited_types_are_different_even_with_same_id(self):
         """Test that two entities are not considered equal even if they have the same ID
-            and one is subclassed from the other
+        and one is subclassed from the other
         """
         adult = Adult(id=12345, first_name="John", last_name="Doe")
         person = Person(id=12345, first_name="John", last_name="Doe")

@@ -14,7 +14,7 @@ class DummyStringField(Field):
     }
 
     def _cast_to_type(self, value: str):
-        """ Value must me a string type"""
+        """Value must me a string type"""
         if type(value) != str:
             self.fail("invalid_type")
         return value
@@ -48,7 +48,7 @@ class TestField:
             name._load(None)
 
     def test_defaults(self):
-        """ Test default value is set when no value is supplied"""
+        """Test default value is set when no value is supplied"""
         # Test with default value as constant
         name = DummyStringField(default="dummy")
         assert name._load("") == "dummy"
@@ -58,20 +58,20 @@ class TestField:
         assert name._load("") == "dummy"
 
     def test_type_validation(self):
-        """ Test type checking validation for the Field"""
+        """Test type checking validation for the Field"""
         with pytest.raises(ValidationError):
             name = DummyStringField()
             name._load(1)
 
     def test_validators(self):
-        """ Test custom validators defined for the field"""
+        """Test custom validators defined for the field"""
 
         with pytest.raises(ValidationError):
             name = DummyStringField(validators=[MinLengthValidator(min_length=5)])
             name._load("Dum")
 
     def test_error_message(self):
-        """ Test that proper error message is generated"""
+        """Test that proper error message is generated"""
 
         # Test the basic error message
         try:
@@ -105,7 +105,7 @@ class TestField:
             }
 
     def test_default_validators(self):
-        """ Test that default validators for a Field are called"""
+        """Test that default validators for a Field are called"""
 
         def medium_string_validator(value):
             """Function checks the max length of a field"""

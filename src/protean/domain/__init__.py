@@ -124,7 +124,9 @@ class Domain(_PackageBoundObject):
     ):
 
         _PackageBoundObject.__init__(
-            self, domain_name, root_path=root_path,
+            self,
+            domain_name,
+            root_path=root_path,
         )
 
         self.domain_name = domain_name
@@ -161,7 +163,7 @@ class Domain(_PackageBoundObject):
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
 
     def init(self):  # noqa: C901
-        """ Parse the domain folder, and attach elements dynamically to the domain.
+        """Parse the domain folder, and attach elements dynamically to the domain.
 
         Protean parses all files in the domain file's folder, as well as under it,
         to load elements. So, all domain files are to be nested under the file contain
@@ -443,7 +445,10 @@ class Domain(_PackageBoundObject):
     # underscore.  The presence of _cls is used to detect if this
     # decorator is being called with parameters or not.
     def _domain_element(
-        self, element_type, _cls=None, **kwargs,
+        self,
+        element_type,
+        _cls=None,
+        **kwargs,
     ):
         """Returns the registered class after decoarating it and recording its presence in the domain"""
 
@@ -554,32 +559,56 @@ class Domain(_PackageBoundObject):
     ######################
 
     def aggregate(self, _cls=None, **kwargs):
-        return self._domain_element(DomainObjects.AGGREGATE, _cls=_cls, **kwargs,)
+        return self._domain_element(
+            DomainObjects.AGGREGATE,
+            _cls=_cls,
+            **kwargs,
+        )
 
     def application_service(self, _cls=None, **kwargs):
         return self._domain_element(
-            DomainObjects.APPLICATION_SERVICE, _cls=_cls, **kwargs,
+            DomainObjects.APPLICATION_SERVICE,
+            _cls=_cls,
+            **kwargs,
         )
 
     def command(self, _cls=None, **kwargs):
-        return self._domain_element(DomainObjects.COMMAND, _cls=_cls, **kwargs,)
+        return self._domain_element(
+            DomainObjects.COMMAND,
+            _cls=_cls,
+            **kwargs,
+        )
 
     def command_handler(self, _cls=None, **kwargs):
         return self._domain_element(DomainObjects.COMMAND_HANDLER, _cls=_cls, **kwargs)
 
     def event(self, _cls=None, **kwargs):
-        return self._domain_element(DomainObjects.EVENT, _cls=_cls, **kwargs,)
+        return self._domain_element(
+            DomainObjects.EVENT,
+            _cls=_cls,
+            **kwargs,
+        )
 
     def event_handler(self, _cls=None, **kwargs):
-        return self._domain_element(DomainObjects.EVENT_HANDLER, _cls=_cls, **kwargs,)
+        return self._domain_element(
+            DomainObjects.EVENT_HANDLER,
+            _cls=_cls,
+            **kwargs,
+        )
 
     def event_sourced_aggregate(self, _cls=None, **kwargs):
         return self._domain_element(
-            DomainObjects.EVENT_SOURCED_AGGREGATE, _cls=_cls, **kwargs,
+            DomainObjects.EVENT_SOURCED_AGGREGATE,
+            _cls=_cls,
+            **kwargs,
         )
 
     def domain_service(self, _cls=None, **kwargs):
-        return self._domain_element(DomainObjects.DOMAIN_SERVICE, _cls=_cls, **kwargs,)
+        return self._domain_element(
+            DomainObjects.DOMAIN_SERVICE,
+            _cls=_cls,
+            **kwargs,
+        )
 
     def entity(self, _cls=None, **kwargs):
         return self._domain_element(DomainObjects.ENTITY, _cls=_cls, **kwargs)
@@ -597,13 +626,25 @@ class Domain(_PackageBoundObject):
         return self._domain_element(DomainObjects.SERIALIZER, _cls=_cls, **kwargs)
 
     def subscriber(self, _cls=None, **kwargs):
-        return self._domain_element(DomainObjects.SUBSCRIBER, _cls=_cls, **kwargs,)
+        return self._domain_element(
+            DomainObjects.SUBSCRIBER,
+            _cls=_cls,
+            **kwargs,
+        )
 
     def value_object(self, _cls=None, **kwargs):
-        return self._domain_element(DomainObjects.VALUE_OBJECT, _cls=_cls, **kwargs,)
+        return self._domain_element(
+            DomainObjects.VALUE_OBJECT,
+            _cls=_cls,
+            **kwargs,
+        )
 
     def view(self, _cls=None, **kwargs):
-        return self._domain_element(DomainObjects.VIEW, _cls=_cls, **kwargs,)
+        return self._domain_element(
+            DomainObjects.VIEW,
+            _cls=_cls,
+            **kwargs,
+        )
 
     #####################
     # Handling Commands #

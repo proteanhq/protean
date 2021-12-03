@@ -13,7 +13,7 @@ class TestDAOSaveFunctionality:
         test_domain.register(User)
 
     def test_creation_throws_error_on_missing_fields(self, test_domain):
-        """ Add an entity to the repository missing a required attribute"""
+        """Add an entity to the repository missing a required attribute"""
         with pytest.raises(ValidationError) as err:
             test_domain.repository_for(Person)._dao.create(last_name="Doe")
 

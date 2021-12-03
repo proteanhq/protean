@@ -7,8 +7,8 @@ from protean.fields import Float, Identifier, Integer, String, ValueObject
 
 class Email(BaseValueObject):
     """An email address value object, with two clearly identified parts:
-        * local_part
-        * domain_part
+    * local_part
+    * domain_part
     """
 
     # This is the external facing data attribute
@@ -16,7 +16,7 @@ class Email(BaseValueObject):
 
     @classmethod
     def from_address(cls, address):
-        """ Construct an Email VO from an email address.
+        """Construct an Email VO from an email address.
 
         email = Email.from_address('john.doe@gmail.com')
 
@@ -28,7 +28,7 @@ class Email(BaseValueObject):
 
     @classmethod
     def validate(cls, address):
-        """ Business rules of Email address """
+        """Business rules of Email address"""
         if (
             type(address) is not str
             or "@" not in address
@@ -50,7 +50,7 @@ class MyOrgEmail(Email):
 
 
 class Currency(Enum):
-    """ Set of choices for the status"""
+    """Set of choices for the status"""
 
     USD = "USD"
     INR = "INR"
@@ -59,8 +59,8 @@ class Currency(Enum):
 
 class Balance(BaseValueObject):
     """A composite amount object, containing two parts:
-        * currency code - a three letter unique currency code
-        * amount - a float value
+    * currency code - a three letter unique currency code
+    * amount - a float value
     """
 
     currency = String(max_length=3, choices=Currency)

@@ -122,7 +122,7 @@ class TestEquivalence:
 
     def test_that_two_entities_of_different_types_are_different_even_with_same_id(self):
         """Test that two entities are not considered equal even if they have the same ID
-            and one belongs to a different Entity class
+        and one belongs to a different Entity class
         """
         role = Role(id=1, name="ADMIN")
         role_clone = RoleClone(id=1, name="ADMIN")
@@ -132,7 +132,7 @@ class TestEquivalence:
 
     def test_that_two_entities_of_inherited_types_are_different_even_with_same_id(self):
         """Test that two entities are not considered equal even if they have the same ID
-            and one is subclassed from the other
+        and one is subclassed from the other
         """
         role = Role(id=1, name="ADMIN")
         subclass_role = SubclassRole(id=1, name="ADMIN")

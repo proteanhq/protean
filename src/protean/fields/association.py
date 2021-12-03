@@ -288,13 +288,15 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
     def __set__(self, instance, value):
         """Cannot set values through an association"""
         raise exceptions.NotSupportedError(
-            "Object does not support the operation being performed", self.field_name,
+            "Object does not support the operation being performed",
+            self.field_name,
         )
 
     def __delete__(self, instance):
         """Cannot pop values for an association"""
         raise exceptions.NotSupportedError(
-            "Object does not support the operation being performed", self.field_name,
+            "Object does not support the operation being performed",
+            self.field_name,
         )
 
     def get_cache_name(self):
@@ -424,7 +426,7 @@ class HasMany(Association):
                     self.delete_cached_value(instance)
 
     def _fetch_objects(self, instance, key, value):
-        """ Fetch linked entities.
+        """Fetch linked entities.
 
         This method returns a well-formed query, containing the foreign-key constraint.
         """

@@ -47,7 +47,7 @@ class TestDAORetrievalFunctionality:
         assert people.first.first_name == "Baby"
 
     def test_traversal_of_filter_results(self, test_domain):
-        """ Test the traversal of the filter results"""
+        """Test the traversal of the filter results"""
         for counter in range(1, 5):
             test_domain.repository_for(Person)._dao.create(
                 id=counter, first_name=f"John{counter}", last_name="Doe"

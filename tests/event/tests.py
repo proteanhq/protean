@@ -27,7 +27,9 @@ class TestDomainEventDefinition:
         assert event.email_address == "john.doe@gmail.com"
 
         assert event.to_dict() == {
-            "email": {"address": "john.doe@gmail.com",},
+            "email": {
+                "address": "john.doe@gmail.com",
+            },
             "name": "John Doe",
         }
 
@@ -41,9 +43,17 @@ class TestDomainEventDefinition:
             email = ValueObject(Email, required=True)
             name = String(max_length=50)
 
-        assert UserAdded(
-            {"email": {"address": "john.doe@gmail.com",}, "name": "John Doe",}
-        ) == UserAdded(email_address="john.doe@gmail.com", name="John Doe")
+        assert (
+            UserAdded(
+                {
+                    "email": {
+                        "address": "john.doe@gmail.com",
+                    },
+                    "name": "John Doe",
+                }
+            )
+            == UserAdded(email_address="john.doe@gmail.com", name="John Doe")
+        )
 
 
 class TestDomainEventInitialization:

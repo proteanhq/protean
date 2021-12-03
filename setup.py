@@ -17,7 +17,8 @@ from setuptools import find_packages, setup
 def read(*names, **kwargs):
     """Helper method to read files"""
     return io.open(
-        join(dirname(__file__), *names), encoding=kwargs.get("encoding", "utf8"),
+        join(dirname(__file__), *names),
+        encoding=kwargs.get("encoding", "utf8"),
     ).read()
 
 
@@ -80,7 +81,7 @@ dev_requires = (
     + types_requires
     + testing_requires
     + [
-        "black==19.10b0",
+        "black==21.11b1",
         "check-manifest==0.42",
         "coverage==5.1",
         "docutils==0.16",

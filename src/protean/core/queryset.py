@@ -49,7 +49,7 @@ class QuerySet:
         order_by: list = None,
     ):
         """Initialize either with empty preferences (when invoked on an Entity)
-            or carry forward filters and preferences when chained
+        or carry forward filters and preferences when chained
         """
         self._owner_dao = owner_dao
         self._domain = domain

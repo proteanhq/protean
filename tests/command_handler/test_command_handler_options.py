@@ -29,7 +29,9 @@ def test_aggregate_cls_specified_as_a_meta_attribute(test_domain):
     assert UserCommandHandlers.meta_.aggregate_cls == User
 
 
-def test_aggregate_cls_defined_via_annotation(test_domain,):
+def test_aggregate_cls_defined_via_annotation(
+    test_domain,
+):
     @test_domain.command_handler(aggregate_cls=User)
     class UserCommandHandlers(BaseCommandHandler):
         pass

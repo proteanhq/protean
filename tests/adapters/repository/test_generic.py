@@ -31,7 +31,7 @@ class Email(BaseValueObject):
     address = String(max_length=254, required=True)
 
     def clean(self):
-        """ Business rules of Email address """
+        """Business rules of Email address"""
         errors = defaultdict(list)
 
         if not bool(re.match(Email.REGEXP, self.address)):

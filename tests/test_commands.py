@@ -24,14 +24,18 @@ class TestCommandInitialization:
 
     def test_that_a_concrete_dto_can_be_instantiated(self):
         command = UserRegistrationCommand(
-            email="john.doe@gmail.com", username="john.doe", password="secret1!",
+            email="john.doe@gmail.com",
+            username="john.doe",
+            password="secret1!",
         )
         assert command is not None
 
     def test_that_invalid_data_input_throws_an_exception(self):
         with pytest.raises(InvalidDataError) as exception1:
             UserRegistrationCommand(
-                foo="bar", username="john.doe", password="secret1!",
+                foo="bar",
+                username="john.doe",
+                password="secret1!",
             )
         assert exception1.value.messages == {"foo": ["is invalid"]}
 

@@ -47,7 +47,10 @@ class ValueObject(Field):
         self._value_object_cls = value_object_cls
 
         self.embedded_fields = {}
-        for (field_name, field_obj,) in fields(self._value_object_cls).items():
+        for (
+            field_name,
+            field_obj,
+        ) in fields(self._value_object_cls).items():
             self.embedded_fields[field_name] = _ShadowField(
                 self,
                 field_name,

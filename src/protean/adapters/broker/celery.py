@@ -19,14 +19,16 @@ logger = logging.getLogger("protean.adapters.celery")
 
 
 class ProteanTask(Task):
-    """The default base class for all Task classes constructed from Subscribers/Command Handlers.
-    """
+    """The default base class for all Task classes constructed from Subscribers/Command Handlers."""
 
 
 class CeleryBroker(BaseBroker):
     def __init__(self, name, domain, conn_info):
         super().__init__(name, domain, conn_info)
-        self.celery_app = Celery(broker=conn_info["URI"], backend=conn_info["URI"],)
+        self.celery_app = Celery(
+            broker=conn_info["URI"],
+            backend=conn_info["URI"],
+        )
 
         self.celery_app.conf.update(enable_utc=True)
 

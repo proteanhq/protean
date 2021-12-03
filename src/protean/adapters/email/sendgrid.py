@@ -18,7 +18,7 @@ class SendgridEmailProvider(BaseEmailProvider):
         self.sg_client = SendGridAPIClient(self.conn_info["API_KEY"])
 
     def send_email(self, message, dynamic_template=False):
-        """ Send messages via the sendgrid api"""
+        """Send messages via the sendgrid api"""
 
         email = Mail(
             from_email=message.from_email or self.conn_info["DEFAULT_FROM_EMAIL"],

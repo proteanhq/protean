@@ -51,7 +51,10 @@ class _SerializerMetaclass(type):
                 if hasattr(base, "meta_") and hasattr(base.meta_, "declared_fields"):
                     base_class_fields = {
                         field_name: field_obj
-                        for (field_name, field_obj,) in fields(base).items()
+                        for (
+                            field_name,
+                            field_obj,
+                        ) in fields(base).items()
                         if field_name not in attrs and not field_obj.identifier
                     }
                     declared_fields.update(base_class_fields)

@@ -35,7 +35,7 @@ class TestDAOUpdateFunctionality:
             test_domain.repository_for(Person)._dao.update(person, {"age": 10})
 
     def test_updating_record_with_dictionary_args(self, test_domain):
-        """ Update an existing entity in the repository"""
+        """Update an existing entity in the repository"""
         person = test_domain.repository_for(Person)._dao.create(
             id=2, first_name="Johnny", last_name="John", age=2
         )
@@ -46,7 +46,7 @@ class TestDAOUpdateFunctionality:
         assert u_person.age == 10
 
     def test_updating_record_with_kwargs(self, test_domain):
-        """ Update an existing entity in the repository"""
+        """Update an existing entity in the repository"""
         person = test_domain.repository_for(Person)._dao.create(
             id=2, first_name="Johnny", last_name="John", age=2
         )
@@ -57,7 +57,7 @@ class TestDAOUpdateFunctionality:
         assert u_person.age == 10
 
     def test_updating_record_with_both_dictionary_args_and_kwargs(self, test_domain):
-        """ Update an existing entity in the repository"""
+        """Update an existing entity in the repository"""
         person = test_domain.repository_for(Person)._dao.create(
             id=2, first_name="Johnny", last_name="John", age=2
         )

@@ -116,8 +116,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         instance.__dict__.pop(self.field_name, None)
 
     def fail(self, key, **kwargs):
-        """A helper method that simply raises a `ValidationError`.
-        """
+        """A helper method that simply raises a `ValidationError`."""
         try:
             msg = self.error_messages[key]
         except KeyError:

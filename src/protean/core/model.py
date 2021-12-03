@@ -6,7 +6,7 @@ from protean.utils import DomainObjects
 
 
 class ModelMeta:
-    """ Metadata info for the Model.
+    """Metadata info for the Model.
 
     Options:
     - ``entity_cls``: The Entity that this model is associated with

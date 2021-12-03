@@ -56,7 +56,7 @@ def attributes(class_or_instance):
 
 
 def unique_fields(class_or_instance):
-    """ Return the unique fields for this class or instance """
+    """Return the unique fields for this class or instance"""
     return {
         field_name: field_obj
         for field_name, field_obj in attributes(class_or_instance).items()

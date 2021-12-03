@@ -5,7 +5,7 @@ from protean.exceptions import ValidationError
 
 
 class MinLengthValidator:
-    """ Validate the minimum length for the field value"""
+    """Validate the minimum length for the field value"""
 
     def __init__(self, min_length):
         self.min_length = min_length
@@ -17,7 +17,7 @@ class MinLengthValidator:
 
 
 class MaxLengthValidator:
-    """ Validate the maximum length for the field value"""
+    """Validate the maximum length for the field value"""
 
     def __init__(self, max_length):
         self.max_length = max_length
@@ -29,7 +29,7 @@ class MaxLengthValidator:
 
 
 class MinValueValidator:
-    """ Validate the minimum value for the field"""
+    """Validate the minimum value for the field"""
 
     def __init__(self, min_value):
         self.min_value = min_value
@@ -41,7 +41,7 @@ class MinValueValidator:
 
 
 class MaxValueValidator:
-    """ Validate the maximum value for the field"""
+    """Validate the maximum value for the field"""
 
     def __init__(self, max_value):
         self.max_value = max_value

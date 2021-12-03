@@ -43,7 +43,7 @@ class ElasticsearchModel(Document):
 
     @classmethod
     def from_entity(cls, entity) -> "ElasticsearchModel":
-        """Convert the entity to a Elasticsearch record """
+        """Convert the entity to a Elasticsearch record"""
         item_dict = {}
         for attribute_obj in attributes(cls.meta_.entity_cls).values():
             if isinstance(attribute_obj, Reference):
@@ -68,7 +68,7 @@ class ElasticsearchModel(Document):
 
     @classmethod
     def to_entity(cls, item: "ElasticsearchModel"):
-        """Convert the elasticsearch document to an entity """
+        """Convert the elasticsearch document to an entity"""
         item_dict = {}
 
         # Convert the values in ES Model as a dictionary
@@ -129,7 +129,7 @@ class ElasticsearchDAO(BaseDAO):
         return f"ElasticsearchDAO <{self.entity_cls.__name__}>"
 
     def _build_filters(self, criteria: Q):
-        """ Recursively Build the filters from the criteria object"""
+        """Recursively Build the filters from the criteria object"""
         composed_query = query.Q()
 
         if criteria.connector == criteria.AND:
@@ -199,7 +199,9 @@ class ElasticsearchDAO(BaseDAO):
 
         try:
             model_obj.save(
-                refresh=True, index=self.model_cls._index._name, using=conn,
+                refresh=True,
+                index=self.model_cls._index._name,
+                using=conn,
             )
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
@@ -230,7 +232,9 @@ class ElasticsearchDAO(BaseDAO):
 
         try:
             model_obj.save(
-                refresh=True, index=self.model_cls._index._name, using=conn,
+                refresh=True,
+                index=self.model_cls._index._name,
+                using=conn,
             )
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
@@ -248,7 +252,9 @@ class ElasticsearchDAO(BaseDAO):
 
         try:
             model_obj.delete(
-                index=self.model_cls._index._name, using=conn, refresh=True,
+                index=self.model_cls._index._name,
+                using=conn,
+                refresh=True,
             )
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")

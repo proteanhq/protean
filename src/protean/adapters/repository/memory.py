@@ -40,7 +40,7 @@ class MemoryModel(BaseModel):
 
     @classmethod
     def from_entity(cls, entity) -> "MemoryModel":
-        """Convert the entity to a dictionary record """
+        """Convert the entity to a dictionary record"""
         dict_obj = {}
         for attribute_name in attributes(entity):
             dict_obj[attribute_name] = getattr(entity, attribute_name)
@@ -48,7 +48,7 @@ class MemoryModel(BaseModel):
 
     @classmethod
     def to_entity(cls, item: "MemoryModel"):
-        """Convert the dictionary record to an entity """
+        """Convert the dictionary record to an entity"""
         return cls.meta_.entity_cls(item)
 
 
@@ -117,7 +117,7 @@ class MemoryProvider(BaseProvider):
         return MemorySession(self)
 
     def get_connection(self, session_cls=None):
-        """Return the dictionary database object """
+        """Return the dictionary database object"""
         return MemorySession(self, new_connection=True)
 
     def _data_reset(self):
@@ -256,7 +256,7 @@ class MemoryProvider(BaseProvider):
 
 
 class DictDAO(BaseDAO):
-    """A repository for storing data in a dictionary """
+    """A repository for storing data in a dictionary"""
 
     def __repr__(self) -> str:
         return f"DictDAO <{self.entity_cls.__name__}>"
@@ -384,7 +384,7 @@ class DictDAO(BaseDAO):
         return result
 
     def _update(self, model_obj):
-        """Update the entity record in the dictionary """
+        """Update the entity record in the dictionary"""
         conn = self._get_session()
 
         identifier = model_obj[id_field(self.entity_cls).field_name]
@@ -407,7 +407,7 @@ class DictDAO(BaseDAO):
         return model_obj
 
     def _update_all(self, criteria: Q, *args, **kwargs):
-        """Update all objects satisfying the criteria """
+        """Update all objects satisfying the criteria"""
         conn = self._get_session()
 
         items = self._filter_items(criteria, conn._db["data"][self.schema_name])
@@ -428,7 +428,7 @@ class DictDAO(BaseDAO):
         return update_count
 
     def _delete(self, model_obj):
-        """Delete the entity record in the dictionary """
+        """Delete the entity record in the dictionary"""
         conn = self._get_session()
 
         identifier = model_obj[id_field(self.entity_cls).field_name]

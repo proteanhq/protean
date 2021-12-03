@@ -23,9 +23,9 @@ class ProteanException(Exception):
 
 class ConfigurationError(Exception):
     """Improper Configuration encountered like:
-        * An important configuration variable is missing
-        * Re-registration of Models
-        * Incorrect associations
+    * An important configuration variable is missing
+    * Re-registration of Models
+    * Incorrect associations
     """
 
 
@@ -74,7 +74,7 @@ class ValidationError(ProteanException):
 
 
 class UsecaseExecutionError(Exception):
-    """ Raised when a failure response is encountered on executing a usecase
+    """Raised when a failure response is encountered on executing a usecase
 
     :param value: a tuple comprising of the error code and error message
     :type value: tuple

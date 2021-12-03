@@ -165,7 +165,9 @@ class TestConfig:
         assert "foo option 1" == foo_options["foo_option_1"]
         assert "foo option 2" == foo_options["foo_option_2"]
         bar_options = domain.config.get_namespace(
-            "BAR_", lowercase=False, trim_namespace=False,
+            "BAR_",
+            lowercase=False,
+            trim_namespace=False,
         )
         assert 2 == len(bar_options)
         assert "bar stuff 1" == bar_options["BAR_STUFF_1"]

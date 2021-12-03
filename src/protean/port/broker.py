@@ -46,8 +46,7 @@ class BaseBroker(metaclass=ABCMeta):
 
     @abstractmethod
     def get_next(self) -> Dict:
-        """Retrieve the next message to process from broker.
-        """
+        """Retrieve the next message to process from broker."""
 
     @abstractmethod
     def _data_reset(self) -> None:

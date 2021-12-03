@@ -61,7 +61,7 @@ class TestDAODeleteFunctionality:
         test_domain.register(Person)
 
     def test_delete_an_object_in_repository_by_id(self, test_domain):
-        """ Delete an object in the repository by ID"""
+        """Delete an object in the repository by ID"""
         person = test_domain.repository_for(Person)._dao.create(
             id="3", first_name="John", last_name="Doe", age=22
         )
@@ -101,7 +101,7 @@ class TestDAODeleteFunctionality:
         assert person_records.total == 0
 
     def test_deleting_a_persisted_entity(self, test_domain):
-        """ Delete an object in the repository by ID"""
+        """Delete an object in the repository by ID"""
         person = test_domain.repository_for(Person)._dao.create(
             id="3", first_name="Jim", last_name="Carrey"
         )
@@ -238,7 +238,7 @@ class TestDAORetrievalFunctionality:
         assert people.first.first_name == "Baby"
 
     def test_traversal_of_filter_results(self, test_domain):
-        """ Test the traversal of the filter results"""
+        """Test the traversal of the filter results"""
         for counter in range(1, 5):
             test_domain.repository_for(Person)._dao.create(
                 id=str(counter), first_name=f"John{counter}", last_name="Doe"
@@ -603,7 +603,7 @@ class TestDAOSaveFunctionality:
         test_domain.register(Person)
 
     def test_creation_throws_error_on_missing_fields(self, test_domain):
-        """ Add an entity to the repository missing a required attribute"""
+        """Add an entity to the repository missing a required attribute"""
         with pytest.raises(ValidationError) as err:
             test_domain.repository_for(Person)._dao.create(last_name="Doe")
 
@@ -664,7 +664,7 @@ class TestDAOUpdateFunctionality:
             test_domain.repository_for(Person)._dao.update(person, {"age": 10})
 
     def test_updating_record_with_dictionary_args(self, test_domain):
-        """ Update an existing entity in the repository"""
+        """Update an existing entity in the repository"""
         person = test_domain.repository_for(Person)._dao.create(
             id="2", first_name="Johnny", last_name="John", age=2
         )
@@ -675,7 +675,7 @@ class TestDAOUpdateFunctionality:
         assert u_person.age == 10
 
     def test_updating_record_with_kwargs(self, test_domain):
-        """ Update an existing entity in the repository"""
+        """Update an existing entity in the repository"""
         person = test_domain.repository_for(Person)._dao.create(
             id="2", first_name="Johnny", last_name="John", age=2
         )
@@ -686,7 +686,7 @@ class TestDAOUpdateFunctionality:
         assert u_person.age == 10
 
     def test_updating_record_with_both_dictionary_args_and_kwargs(self, test_domain):
-        """ Update an existing entity in the repository"""
+        """Update an existing entity in the repository"""
         person = test_domain.repository_for(Person)._dao.create(
             id="2", first_name="Johnny", last_name="John", age=2
         )
@@ -814,7 +814,7 @@ class TestDAOValidations:
         test_domain.register(User)
 
     def test_unique(self, test_domain):
-        """ Test the unique constraints for the entity """
+        """Test the unique constraints for the entity"""
         test_domain.repository_for(User)._dao.create(
             email="john.doe@gmail.com", password="a1b2c3"
         )

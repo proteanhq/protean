@@ -7,7 +7,7 @@ from protean.utils.importlib import perform_import
 
 
 def test_perform_import():
-    """ Test the perform import function """
+    """Test the perform import function"""
 
     # Test importing of None
     mod = perform_import(None)

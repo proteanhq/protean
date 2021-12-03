@@ -35,7 +35,7 @@ class TTLDict(collectionsAbc.MutableMapping):
         )
 
     def set_ttl(self, key, ttl, now=None):
-        """ Set TTL for the given key """
+        """Set TTL for the given key"""
         if now is None:
             now = time.time()
         with self._lock:
@@ -43,7 +43,7 @@ class TTLDict(collectionsAbc.MutableMapping):
             self._values[key] = (now + ttl, value)
 
     def get_ttl(self, key, now=None):
-        """ Return remaining TTL for a key """
+        """Return remaining TTL for a key"""
         if now is None:
             now = time.time()
         with self._lock:
@@ -51,13 +51,13 @@ class TTLDict(collectionsAbc.MutableMapping):
             return expire - now
 
     def expire_at(self, key, timestamp):
-        """ Set the key expire timestamp """
+        """Set the key expire timestamp"""
         with self._lock:
             _expire, value = self._values[key]
             self._values[key] = (timestamp, value)
 
     def is_expired(self, key, now=None, remove=False):
-        """ Check if key has expired """
+        """Check if key has expired"""
         with self._lock:
             if now is None:
                 now = time.time()
