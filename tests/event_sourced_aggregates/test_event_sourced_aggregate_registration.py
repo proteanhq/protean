@@ -1,11 +1,12 @@
 import pytest
 
 from protean import BaseEventSourcedAggregate
-from protean.fields import Integer, String
+from protean.fields import Identifier, Integer, String
 from protean.utils import fully_qualified_name
 
 
 class User(BaseEventSourcedAggregate):
+    id = Identifier(identifier=True)  # FIXME Auto-attach identifier
     name = String()
     age = Integer()
 
@@ -24,6 +25,7 @@ def test_registering_an_event_sourced_aggregate_via_annotation(test_domain):
 
         @test_domain.event_sourced_aggregate
         class Person:
+            id = Identifier(identifier=True)  # FIXME Auto-attach identifier
             name = String()
             age = Integer()
 

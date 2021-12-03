@@ -1,17 +1,21 @@
 from protean import BaseEventSourcedAggregate
 from protean.fields import Integer, String
+from protean.fields.basic import Identifier
 
 
 class User(BaseEventSourcedAggregate):
+    id = Identifier(identifier=True)  # FIXME Auto-attach identifier
     name = String()
     age = Integer()
 
 
 class AdminUser(BaseEventSourcedAggregate):
+    id = Identifier(identifier=True)  # FIXME Auto-attach identifier
     name = String()
 
 
 class Person(BaseEventSourcedAggregate):
+    id = Identifier(identifier=True)  # FIXME Auto-attach identifier
     name = String()
     age = Integer()
 
@@ -34,6 +38,7 @@ def test_stream_name_option_of_an_event_sourced_aggregate_defined_via_annotation
 ):
     @test_domain.event_sourced_aggregate
     class Adult(BaseEventSourcedAggregate):
+        id = Identifier(identifier=True)  # FIXME Auto-attach identifier
         name = String()
         age = Integer()
 
@@ -41,6 +46,7 @@ def test_stream_name_option_of_an_event_sourced_aggregate_defined_via_annotation
 
     @test_domain.event_sourced_aggregate(stream_name="children")
     class Child(BaseEventSourcedAggregate):
+        id = Identifier(identifier=True)  # FIXME Auto-attach identifier
         name = String()
         age = Integer()
 

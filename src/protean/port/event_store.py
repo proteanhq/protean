@@ -1,8 +1,13 @@
+import json
+
 from abc import ABCMeta, abstractmethod
+from collections import deque
 from typing import Any, Dict, List, Type
 
 from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.fields import Identifier
+from protean.reflection import id_field
+from protean.utils import fully_qualified_name
 
 
 class BaseEventStore(metaclass=ABCMeta):
@@ -46,16 +51,25 @@ class BaseEventStore(metaclass=ABCMeta):
         pass
 
     def append(self, aggregate: BaseEventSourcedAggregate, event: BaseEvent) -> int:
+        identifier = getattr(aggregate, id_field(aggregate).field_name)
+
         return self._write(
-            f"{aggregate.meta_.stream_name}-{aggregate.id}",
-            event.__class__.__name__,
+            f"{aggregate.meta_.stream_name}-{identifier}",
+            fully_qualified_name(event.__class__),
             event.to_dict(),  # FIXME Handle expected version
         )
 
     def load(
         self, aggregate_cls: Type[BaseEventSourcedAggregate], identifier: Identifier
     ) -> BaseEventSourcedAggregate:
-        pass
+        events = deque(self._read(f"{aggregate_cls.meta_.stream_name}-{identifier}"))
+
+        first_event = events.popleft()
+        aggregate = aggregate_cls(**json.loads(first_event["data"]))
+        for event in events:
+            aggregate._apply(event)
+
+        return aggregate
 
     @abstractmethod
     def _data_reset(self) -> None:

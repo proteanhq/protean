@@ -29,23 +29,26 @@ def command_handler_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseCommandHandler, **kwargs)
 
     # Iterate through methods marked as `@handle` and construct a handler map
-    methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
-    for method_name, method in methods:
-        if not (
-            method_name.startswith("__") and method_name.endswith("__")
-        ) and hasattr(method, "_target_cls"):
-            if (
-                fully_qualified_name(method._target_cls) in element_cls._handlers
-                and len(element_cls._handlers[fully_qualified_name(method._target_cls)])
-                != 0
-            ):
-                raise NotSupportedError(
-                    f"Command {method._target_cls.__name__} cannot be handled by multiple handlers"
-                )
+    if not element_cls._handlers:  # Protect against re-registration
+        methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
+        for method_name, method in methods:
+            if not (
+                method_name.startswith("__") and method_name.endswith("__")
+            ) and hasattr(method, "_target_cls"):
+                if (
+                    fully_qualified_name(method._target_cls) in element_cls._handlers
+                    and len(
+                        element_cls._handlers[fully_qualified_name(method._target_cls)]
+                    )
+                    != 0
+                ):
+                    raise NotSupportedError(
+                        f"Command {method._target_cls.__name__} cannot be handled by multiple handlers"
+                    )
 
-            element_cls._handlers[fully_qualified_name(method._target_cls)].append(
-                method
-            )
+                element_cls._handlers[fully_qualified_name(method._target_cls)].append(
+                    method
+                )
 
     if not element_cls.meta_.aggregate_cls:
         raise IncorrectUsageError(

@@ -7,8 +7,7 @@ from protean.core.unit_of_work import UnitOfWork
 
 
 class handle:
-    """Class decorator to mark handler methods in EventHandler classes.
-    """
+    """Class decorator to mark handler methods in EventHandler classes."""
 
     def __init__(self, target_cls: Union["BaseEvent", "BaseCommand"]) -> None:
         self._target_cls = target_cls
@@ -39,7 +38,8 @@ class HandlerMixin:
         super().__init_subclass__()
 
         # Associate a `_handlers` map with subclasses.
-        #   It can be initialized here because the same object
+        #   It needs to be initialized here because if it
+        #   were initialized in __init__, the same collection object
         #   would be made available across all subclasses,
         #   defeating its purpose.
         setattr(subclass, "_handlers", defaultdict(list))

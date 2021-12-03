@@ -24,8 +24,8 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
         return super().__new__(cls)
 
 
-def event_handler_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseEventHandler, **kwargs)
+def event_handler_factory(element_cls, **opts):
+    element_cls = derive_element_class(element_cls, BaseEventHandler, **opts)
 
     # Iterate through methods marked as `@handle` and construct a handler map
     methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)

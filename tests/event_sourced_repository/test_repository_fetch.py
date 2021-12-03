@@ -1,9 +1,10 @@
 from protean import BaseEventSourcedAggregate
-from protean.fields import Integer, String
+from protean.fields import Identifier, Integer, String
 from protean.utils import DomainObjects
 
 
 class User(BaseEventSourcedAggregate):
+    id = Identifier(identifier=True)  # FIXME Auto-attach identifier
     name = String()
     age = Integer()
 

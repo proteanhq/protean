@@ -4,7 +4,7 @@ from protean import BaseEventSourcedAggregate
 from protean.container import Element, OptionsMixin
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier
-from protean.globals import current_uow
+from protean.globals import current_domain, current_uow
 from protean.utils import DomainObjects, derive_element_class
 
 logger = logging.getLogger("protean.event_sourced_repository")
@@ -30,7 +30,9 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         current_uow._seen.add(aggregate)
 
     def get(self, identifier: Identifier):
-        pass
+        return current_domain.event_store.store.load(
+            self.meta_.aggregate_cls, identifier
+        )
 
 
 def event_sourced_repository_factory(element_cls, **opts):

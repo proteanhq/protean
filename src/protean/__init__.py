@@ -9,7 +9,7 @@ from .core.email import BaseEmail
 from .core.entity import BaseEntity
 from .core.event import BaseEvent
 from .core.event_handler import BaseEventHandler
-from .core.event_sourced_aggregate import BaseEventSourcedAggregate
+from .core.event_sourced_aggregate import BaseEventSourcedAggregate, apply
 from .core.model import BaseModel
 from .core.queryset import Q, QuerySet
 from .core.repository import BaseRepository
