@@ -3,18 +3,13 @@ import collections
 import importlib
 import logging
 
-try:
-    collectionsAbc = collections.abc
-except AttributeError:
-    collectionsAbc = collections
-
 from protean.exceptions import ConfigurationError
 from protean.utils.inflection import underscore
 
 logger = logging.getLogger("protean.cache")
 
 
-class Caches(collectionsAbc.MutableMapping):
+class Caches(collections.abc.MutableMapping):
     def __init__(self, domain):
         self.domain = domain
 

@@ -2,19 +2,12 @@ import collections
 import importlib
 import logging
 
-try:
-    # Python 3.8+
-    collectionsAbc = collections.abc
-except AttributeError:  # pragma: no cover
-    # Until Python 3.7
-    collectionsAbc = collections
-
 from protean.exceptions import ConfigurationError
 
 logger = logging.getLogger("protean.broker")
 
 
-class Brokers(collectionsAbc.MutableMapping):
+class Brokers(collections.abc.MutableMapping):
     def __init__(self, domain):
         self.domain = domain
         self._brokers = None

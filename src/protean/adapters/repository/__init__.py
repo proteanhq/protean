@@ -5,13 +5,6 @@ import logging
 
 from collections import defaultdict
 
-try:
-    # Python 3.8+
-    collectionsAbc = collections.abc
-except AttributeError:  # pragma: no cover
-    # Until Python 3.7
-    collectionsAbc = collections
-
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
 from protean.utils import fully_qualified_name
@@ -19,7 +12,7 @@ from protean.utils import fully_qualified_name
 logger = logging.getLogger("protean.repository")
 
 
-class Providers(collectionsAbc.MutableMapping):
+class Providers(collections.abc.MutableMapping):
     def __init__(self, domain):
         self.domain = domain
 

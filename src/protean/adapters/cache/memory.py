@@ -6,21 +6,13 @@ from threading import RLock
 from typing import Optional, Union
 
 from protean.core.view import BaseView
-from protean.reflection import id_field
-
-try:
-    # Python 3.8+
-    collectionsAbc = collections.abc
-except AttributeError:  # pragma: no cover
-    # Until Python 3.7
-    collectionsAbc = collections
-
 from protean.port.cache import BaseCache
+from protean.reflection import id_field
 from protean.utils import Cache
 from protean.utils.inflection import underscore
 
 
-class TTLDict(collectionsAbc.MutableMapping):
+class TTLDict(collections.abc.MutableMapping):
     def __init__(self, default_ttl, *args, **kwargs):
         self._default_ttl = default_ttl
         self._values = {}
