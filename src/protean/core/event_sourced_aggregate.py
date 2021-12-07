@@ -45,7 +45,7 @@ class BaseEventSourcedAggregate(EventedMixin, OptionsMixin, BaseContainer):
         #   were initialized in __init__, the same collection object
         #   would be made available across all subclasses,
         #   defeating its purpose.
-        setattr(subclass, "_projections", defaultdict(list))
+        setattr(subclass, "_projections", defaultdict(set))
 
         # Store associated events
         setattr(subclass, "_events_cls_map", {})
@@ -142,17 +142,16 @@ def event_sourced_aggregate_factory(element_cls, **opts):
     element_cls = derive_element_class(element_cls, BaseEventSourcedAggregate, **opts)
 
     # Iterate through methods marked as `@apply` and construct a projections map
-    if not element_cls._projections:
-        methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
-        for method_name, method in methods:
-            if not (
-                method_name.startswith("__") and method_name.endswith("__")
-            ) and hasattr(method, "_event_cls"):
-                element_cls._projections[
-                    fully_qualified_name(method._event_cls)
-                ].append(method)
-                element_cls._events_cls_map[
-                    fully_qualified_name(method._event_cls)
-                ] = method._event_cls
+    methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
+    for method_name, method in methods:
+        if not (
+            method_name.startswith("__") and method_name.endswith("__")
+        ) and hasattr(method, "_event_cls"):
+            element_cls._projections[fully_qualified_name(method._event_cls)].add(
+                method
+            )
+            element_cls._events_cls_map[
+                fully_qualified_name(method._event_cls)
+            ] = method._event_cls
 
     return element_cls

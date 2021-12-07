@@ -42,4 +42,4 @@ class HandlerMixin:
         #   were initialized in __init__, the same collection object
         #   would be made available across all subclasses,
         #   defeating its purpose.
-        setattr(subclass, "_handlers", defaultdict(list))
+        setattr(subclass, "_handlers", defaultdict(set))

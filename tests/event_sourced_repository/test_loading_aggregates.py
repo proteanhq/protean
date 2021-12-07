@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import pytest
-
 from uuid import uuid4
+
+import pytest
 
 from protean import (
     BaseCommandHandler,
     BaseEvent,
     BaseEventSourcedAggregate,
-    handle,
     apply,
+    handle,
 )
 from protean.core.command import BaseCommand
 from protean.fields import Identifier, String

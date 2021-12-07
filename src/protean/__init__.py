@@ -20,5 +20,6 @@ from .core.value_object import BaseValueObject
 from .core.view import BaseView
 from .domain import Domain
 from .domain.config import Config
+from .server import Engine
 from .utils import get_version
 from .utils.mixins import handle

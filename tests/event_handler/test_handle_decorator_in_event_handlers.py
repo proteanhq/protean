@@ -55,11 +55,11 @@ def test_that_multiple_handlers_can_be_recorded_against_event_handler(test_domai
     assert len(UserEventHandlers._handlers[fully_qualified_name(Registered)]) == 1
     assert len(UserEventHandlers._handlers[fully_qualified_name(AddressChanged)]) == 1
     assert (
-        UserEventHandlers._handlers[fully_qualified_name(Registered)][0]
+        next(iter(UserEventHandlers._handlers[fully_qualified_name(Registered)]))
         == UserEventHandlers.send_email_notification
     )
     assert (
-        UserEventHandlers._handlers[fully_qualified_name(AddressChanged)][0]
+        next(iter(UserEventHandlers._handlers[fully_qualified_name(AddressChanged)]))
         == UserEventHandlers.updated_billing_address
     )
 

@@ -46,7 +46,7 @@ def command_handler_factory(element_cls, **kwargs):
                         f"Command {method._target_cls.__name__} cannot be handled by multiple handlers"
                     )
 
-                element_cls._handlers[fully_qualified_name(method._target_cls)].append(
+                element_cls._handlers[fully_qualified_name(method._target_cls)].add(
                     method
                 )
 

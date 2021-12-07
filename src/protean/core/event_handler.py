@@ -33,9 +33,7 @@ def event_handler_factory(element_cls, **opts):
         if not (
             method_name.startswith("__") and method_name.endswith("__")
         ) and hasattr(method, "_target_cls"):
-            element_cls._handlers[fully_qualified_name(method._target_cls)].append(
-                method
-            )
+            element_cls._handlers[fully_qualified_name(method._target_cls)].add(method)
 
     if not element_cls.meta_.aggregate_cls:
         raise IncorrectUsageError(
