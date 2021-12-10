@@ -27,14 +27,6 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
 def event_handler_factory(element_cls, **opts):
     element_cls = derive_element_class(element_cls, BaseEventHandler, **opts)
 
-    # Iterate through methods marked as `@handle` and construct a handler map
-    methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
-    for method_name, method in methods:
-        if not (
-            method_name.startswith("__") and method_name.endswith("__")
-        ) and hasattr(method, "_target_cls"):
-            element_cls._handlers[fully_qualified_name(method._target_cls)].add(method)
-
     if not element_cls.meta_.aggregate_cls:
         raise IncorrectUsageError(
             {
@@ -43,5 +35,14 @@ def event_handler_factory(element_cls, **opts):
                 ]
             }
         )
+
+    # Iterate through methods marked as `@handle` and construct a handler map
+    methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
+    for method_name, method in methods:
+        if not (
+            method_name.startswith("__") and method_name.endswith("__")
+        ) and hasattr(method, "_target_cls"):
+            # `_handlers` is a dictionary mapping the event to the handler method.
+            element_cls._handlers[fully_qualified_name(method._target_cls)].add(method)
 
     return element_cls

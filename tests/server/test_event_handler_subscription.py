@@ -47,7 +47,7 @@ def test_subscriptions_to_event_handler(test_domain):
 
 
 @mock.patch("tests.server.test_event_handler_subscription.dummy")
-def test_call_to_event_handler(mock_dummy, test_domain):
+def test_event_handler_invocation(mock_dummy, test_domain):
     test_domain.register(UserEventHandler, aggregate_cls=User)
 
     identifier = str(uuid4())
@@ -66,3 +66,26 @@ def test_call_to_event_handler(mock_dummy, test_domain):
     engine.run()
 
     mock_dummy.assert_called_once()  # FIXME Verify content
+
+
+@mock.patch("tests.server.test_event_handler_subscription.dummy")
+def test_processing_multiple_events(mock_dummy, test_domain):
+    test_domain.register(UserEventHandler, aggregate_cls=User)
+
+    for i in range(10):
+        identifier = str(uuid4())
+        test_domain.event_store.store._write(
+            f"user-{identifier}",
+            fully_qualified_name(Registered),
+            Registered(
+                id=identifier,
+                email=f"john.doe.{i}@gmail.com",
+                name=f"John Doe {i}",
+                password_hash="hash",
+            ).to_dict(),
+        )
+
+    engine = Engine(test_domain, test_mode=True)
+    engine.run()
+
+    assert mock_dummy.call_count == 10

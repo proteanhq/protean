@@ -28,6 +28,15 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
 def command_handler_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseCommandHandler, **kwargs)
 
+    if not element_cls.meta_.aggregate_cls:
+        raise IncorrectUsageError(
+            {
+                "_entity": [
+                    f"Command Handler `{element_cls.__name__}` needs to be associated with an Aggregate"
+                ]
+            }
+        )
+
     # Iterate through methods marked as `@handle` and construct a handler map
     if not element_cls._handlers:  # Protect against re-registration
         methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
@@ -35,6 +44,7 @@ def command_handler_factory(element_cls, **kwargs):
             if not (
                 method_name.startswith("__") and method_name.endswith("__")
             ) and hasattr(method, "_target_cls"):
+                # Do not allow multiple handlers per command
                 if (
                     fully_qualified_name(method._target_cls) in element_cls._handlers
                     and len(
@@ -46,17 +56,9 @@ def command_handler_factory(element_cls, **kwargs):
                         f"Command {method._target_cls.__name__} cannot be handled by multiple handlers"
                     )
 
+                # `_handlers` maps the command to its handler method
                 element_cls._handlers[fully_qualified_name(method._target_cls)].add(
                     method
                 )
-
-    if not element_cls.meta_.aggregate_cls:
-        raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Event Handler `{element_cls.__name__}` needs to be associated with an Aggregate"
-                ]
-            }
-        )
 
     return element_cls
