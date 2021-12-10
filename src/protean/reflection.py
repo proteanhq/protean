@@ -1,3 +1,5 @@
+from typing import Any
+
 _FIELDS = "__container_fields__"
 _ID_FIELD_NAME = "__container_id_field_name__"
 
@@ -25,6 +27,18 @@ def id_field(class_or_instance):
         raise TypeError("must be called with a dataclass type or instance")
 
     return fields(class_or_instance)[field_name]
+
+
+def has_id_field(class_or_instance: Any) -> bool:
+    """Check if class/instance has an identity attribute.
+
+    Args:
+        class_or_instance (Any): Domain Element to check.
+
+    Returns:
+        bool: True if the element has an identity field.
+    """
+    return hasattr(class_or_instance, _ID_FIELD_NAME)
 
 
 def has_fields(class_or_instance):
