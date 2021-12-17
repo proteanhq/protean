@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from uuid import uuid4
-
-import mock
+import pytest
 
 from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
-from protean.fields import Identifier, String
+from protean.fields import DateTime, Identifier, String
 from protean.server import Engine
 from protean.utils import fully_qualified_name
 
@@ -15,6 +13,11 @@ class Registered(BaseEvent):
     email = String()
     name = String()
     password_hash = String()
+
+
+class Activated(BaseEvent):
+    id = Identifier()
+    activated_at = DateTime()
 
 
 class User(BaseEventSourcedAggregate):
@@ -30,14 +33,29 @@ def dummy(*args):
 
 class UserEventHandler(BaseEventHandler):
     @handle(Registered)
-    def send_notification(self, event: Registered) -> None:
+    def send_activation_email(self, event: Registered) -> None:
+        dummy(event)
+
+    @handle(Activated)
+    def provision_user(self, event: Activated) -> None:
+        dummy(event)
+
+    @handle(Activated)
+    def send_welcome_email(self, event: Activated) -> None:
         dummy(event)
 
 
-def test_subscriptions_to_event_handler(test_domain):
+@pytest.fixture(autouse=True)
+def register(test_domain):
     test_domain.register(UserEventHandler, aggregate_cls=User)
 
-    engine = Engine(test_domain, test_mode=True)
+
+@pytest.fixture
+def engine(test_domain):
+    return Engine(test_domain, test_mode=True)
+
+
+def test_event_subscriptions(engine):
     assert len(engine._event_subscriptions) == 1
     assert fully_qualified_name(UserEventHandler) in engine._event_subscriptions
     assert (
@@ -46,46 +64,20 @@ def test_subscriptions_to_event_handler(test_domain):
     )
 
 
-@mock.patch("tests.server.test_event_handler_subscription.dummy")
-def test_event_handler_invocation(mock_dummy, test_domain):
-    test_domain.register(UserEventHandler, aggregate_cls=User)
+def test_event_handler_method_mappings(engine):
+    assert len(engine._event_handlers) == 2
 
-    identifier = str(uuid4())
-    test_domain.event_store.store._write(
-        f"user-{identifier}",
-        fully_qualified_name(Registered),
-        Registered(
-            id=identifier,
-            email="john.doe@gmail.com",
-            name="John Doe",
-            password_hash="hash",
-        ).to_dict(),
+    registered_event_methods = [
+        method.__name__
+        for method in engine._event_handlers[fully_qualified_name(Registered)]
+    ]
+    assert registered_event_methods == ["send_activation_email"]
+
+    activated_event_methods = [
+        method.__name__
+        for method in engine._event_handlers[fully_qualified_name(Activated)]
+    ]
+    assert all(
+        event_method in activated_event_methods
+        for event_method in ["send_welcome_email", "provision_user"]
     )
-
-    engine = Engine(test_domain, test_mode=True)
-    engine.run()
-
-    mock_dummy.assert_called_once()  # FIXME Verify content
-
-
-@mock.patch("tests.server.test_event_handler_subscription.dummy")
-def test_processing_multiple_events(mock_dummy, test_domain):
-    test_domain.register(UserEventHandler, aggregate_cls=User)
-
-    for i in range(10):
-        identifier = str(uuid4())
-        test_domain.event_store.store._write(
-            f"user-{identifier}",
-            fully_qualified_name(Registered),
-            Registered(
-                id=identifier,
-                email=f"john.doe.{i}@gmail.com",
-                name=f"John Doe {i}",
-                password_hash="hash",
-            ).to_dict(),
-        )
-
-    engine = Engine(test_domain, test_mode=True)
-    engine.run()
-
-    assert mock_dummy.call_count == 10

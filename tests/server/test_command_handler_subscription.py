@@ -1,6 +1,4 @@
-from uuid import uuid4
-
-import mock
+import pytest
 
 from protean import BaseCommand, BaseCommandHandler, BaseEventSourcedAggregate, handle
 from protean.fields import Identifier, String
@@ -19,6 +17,10 @@ class Register(BaseCommand):
     email = String()
 
 
+class Activate(BaseCommand):
+    user_id = Identifier()
+
+
 def dummy(*args):
     pass
 
@@ -28,15 +30,24 @@ class UserCommandHandler(BaseCommandHandler):
     def register(self, command: Register) -> None:
         dummy(self, command)
 
-    class Meta:
-        aggregate_cls = User
+    @handle(Activate)
+    def activate(self, command: Activate) -> None:
+        dummy(self, command)
 
 
-def test_subscriptions_to_event_handler(test_domain):
+@pytest.fixture(autouse=True)
+def register(test_domain):
     test_domain.register(UserCommandHandler, aggregate_cls=User)
 
-    engine = Engine(test_domain, test_mode=True)
+
+@pytest.fixture
+def engine(test_domain):
+    return Engine(test_domain, test_mode=True)
+
+
+def test_command_handler_subscriptions(engine):
     assert len(engine._command_subscriptions) == 1
+
     assert fully_qualified_name(UserCommandHandler) in engine._command_subscriptions
     assert (
         engine._command_subscriptions[
@@ -46,21 +57,14 @@ def test_subscriptions_to_event_handler(test_domain):
     )
 
 
-@mock.patch("tests.server.test_command_handler_subscription.dummy")
-def test_call_to_event_handler(mock_dummy, test_domain):
-    test_domain.register(UserCommandHandler, aggregate_cls=User)
+def test_event_handler_method_mappings(engine):
+    assert len(engine._command_handlers) == 2
 
-    identifier = str(uuid4())
-    test_domain.event_store.store._write(
-        f"user:command-{identifier}",
-        fully_qualified_name(Register),
-        Register(
-            user_id=identifier,
-            email="john.doe@gmail.com",
-        ).to_dict(),
+    assert (
+        next(iter(engine._command_handlers[fully_qualified_name(Register)])).__name__
+        == "register"
     )
-
-    engine = Engine(test_domain, test_mode=True)
-    engine.run()
-
-    mock_dummy.assert_called_once()  # FIXME Verify content
+    assert (
+        next(iter(engine._command_handlers[fully_qualified_name(Activate)])).__name__
+        == "activate"
+    )

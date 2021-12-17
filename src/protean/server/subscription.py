@@ -21,6 +21,7 @@ class Subscription:
         position_update_interval: int = 10,
         origin_stream_name: str = None,
         tick_interval: int = 1,
+        test_mode: bool = False,
     ) -> None:
         self.event_store = event_store
         self.loop = loop
@@ -37,9 +38,11 @@ class Subscription:
 
         self.current_position: int = 0
         self.messages_since_last_position_write: int = 0
-        self.keep_going: bool = True
 
-    def load_position(self):
+        self.keep_going: bool = not test_mode
+
+    async def load_position(self):
+        print(f"Loading position... {self.subscriber_id}")
         message = self.event_store._read_last_message(self.subscriber_stream_name)
         if message:
             data = json.loads(message["data"])
@@ -47,7 +50,7 @@ class Subscription:
         else:
             self.current_position = 0
 
-    def update_read_position(self, position):
+    async def update_read_position(self, position):
         self.current_position = position
         self.messages_since_last_position_write += 1
 
@@ -64,57 +67,51 @@ class Subscription:
             self.subscriber_stream_name, "Read", {"position": position}
         )
 
-    def get_next_batch_of_messages(self):
-        return self.event_store._read(self.stream_name)  # FIXME Implement filtering
+    async def get_next_batch_of_messages(self):
+        return self.event_store._read(
+            self.stream_name,
+            position=self.current_position + 1,
+            no_of_messages=self.messages_per_tick,
+        )  # FIXME Implement filtering
 
-    def process_batch(self, messages):
+    async def process_batch(self, messages):
+        print(f"Processing {len(messages)}...")
         for message in messages:
             try:
-                self.handle_message(message)
+                await self.handle_message(message)
                 print(
                     f"Position: {message['position']}, Global Position: {message['global_position']}"
                 )
-                self.update_read_position(message["global_position"])
+                await self.update_read_position(message["global_position"])
             except Exception as exc:
                 self.log_error(message, exc)
 
         return len(messages)
 
     def log_error(self, last_message, error):
-        pass
+        print(f"{str(error) - {last_message}}")
 
-    def handle_message(self, message):
-        # handler = self.handlers.get(message["type"], None) or self.handlers.get(
-        #     "any", None
-        # )
+    async def handle_message(self, message):
+        for handler in self.handler()._handlers[message["type"]]:
+            handler_method = getattr(self.handler(), handler.__name__)
+            return handler_method(message["data"])
 
-        # if handler:
-        #     return handler(message)
-        handler_obj = self.handler()
-
-        for handler in handler_obj._handlers[message["type"]]:
-            getattr(handler_obj, handler.__name__)(message["data"])
-
-        return True
-
-    def start(self):
+    async def start(self):
         print(f"Starting {self.subscriber_id}...")
 
         # Load own position from Event store
-        self.load_position()
-        return self.poll()
+        await self.load_position()
+        self.loop.create_task(self.poll())
 
-    def stop(self):
-        self.keep_going = False
-        print(f"Stopped {self.subscriber_id}.")
-
-    def poll(self):
-        self.tick()
+    async def poll(self):
+        print(f"Polling for {self.subscriber_id}")
+        await self.tick()
 
         if self.keep_going:
-            self.loop.call_later(self.tick_interval, self.poll)
+            await asyncio.sleep(self.tick_interval)
+            self.loop.create_task(self.poll())
 
-    def tick(self):
-        messages = self.get_next_batch_of_messages()
+    async def tick(self):
+        messages = await self.get_next_batch_of_messages()
         if messages:
-            return self.process_batch(messages)
+            return await self.process_batch(messages)

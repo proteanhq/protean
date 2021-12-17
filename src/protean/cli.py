@@ -232,3 +232,23 @@ def livereload_docs():
     server.watch("docs/**/*.rst", shell("make html"))
     server.watch("./*.rst", shell("make html"))
     server.serve(root="build/html", debug=True)
+
+
+@main.command()
+@click.option("-d", "--domain-path")
+@click.option("-t", "--test-mode", is_flag=True)
+def server(domain_path, test_mode):
+    """Run Async Background Server"""
+    # FIXME Accept MAX_WORKERS as command-line input as well
+    from protean.server import Engine
+
+    domain = derive_domain(domain_path)
+    if not domain:
+        raise NoDomainException(
+            "Could not locate a Protean domain. You did not provide "
+            'the "PROTEAN_DOMAIN" environment variable or pass a domain file in options '
+            'and a "domain.py" module was not found in the current directory.'
+        )
+
+    engine = Engine(domain, test_mode=test_mode)
+    engine.run()

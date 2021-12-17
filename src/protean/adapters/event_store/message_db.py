@@ -38,8 +38,16 @@ class MessageDBStore(BaseEventStore):
             stream_name, message_type, data, metadata, expected_version
         )
 
-    def _read(self, stream_name: str) -> List[Dict[str, Any]]:
-        return self.client.read(stream_name)
+    def _read(
+        self,
+        stream_name: str,
+        sql: str = None,
+        position: int = 0,
+        no_of_messages: int = 1000,
+    ) -> List[Dict[str, Any]]:
+        return self.client.read(
+            stream_name, position=position, no_of_messages=no_of_messages
+        )
 
     def _read_last_message(self, stream_name) -> Dict[str, Any]:
         return self.client.read_last_message(stream_name)

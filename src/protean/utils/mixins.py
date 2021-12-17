@@ -96,8 +96,13 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         )
 
     @classmethod
+    def to_event(cls, message: Message) -> "BaseEvent":
+        event_record = current_domain.registry.events[message.type]
+        return event_record.cls(message.data)
+
+    @classmethod
     def to_command_message(
-        cls, aggregate_cls: Type["BaseEventSourcedAggregate"], command: "Command"
+        cls, aggregate_cls: Type["BaseEventSourcedAggregate"], command: "BaseCommand"
     ) -> Message:
         if has_id_field(command):
             identifier = getattr(command, id_field(command).field_name)
@@ -112,3 +117,8 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             data=command.to_dict(),
             # schema_version=command.meta_.version,  # FIXME Maintain version for command
         )
+
+    @classmethod
+    def to_command(cls, message: Message) -> "BaseCommand":
+        command_record = current_domain.registry.commands[message.type]
+        return command_record.cls(message.data)
