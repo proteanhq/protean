@@ -31,7 +31,7 @@ class BaseCommand(BaseContainer, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return [("broker", "default")]
+        return [("aggregate_cls", None)]
 
     @classmethod
     def __track_id_field(subclass):

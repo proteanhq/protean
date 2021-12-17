@@ -19,6 +19,9 @@ class Register(BaseCommand):
     email = String()
     name = String()
 
+    class Meta:
+        aggregate_cls = User
+
 
 class Registered(BaseEvent):
     id = Identifier()
@@ -37,6 +40,9 @@ class SendEmailCommand(BaseCommand):
     to = String()
     subject = String()
     content = String()
+
+    class Meta:
+        aggregate_cls = SendEmail
 
 
 def test_construct_message_from_event(test_domain):
@@ -64,7 +70,7 @@ def test_construct_message_from_command(test_domain):
     identifier = str(uuid4())
     command = Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
 
-    message = Message.to_command_message(User, command)
+    message = Message.to_command_message(command)
 
     assert message is not None
     assert type(message) is Message
@@ -86,7 +92,7 @@ def test_construct_message_from_command_without_identifier(test_domain):
     identifier = str(uuid4())
     command = SendEmailCommand(to="john.doe@gmail.com", subject="Foo", content="Bar")
 
-    message = Message.to_command_message(SendEmail, command)
+    message = Message.to_command_message(command)
 
     assert message is not None
     assert type(message) is Message

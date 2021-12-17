@@ -4,10 +4,9 @@ from abc import ABCMeta, abstractmethod
 from collections import deque
 from typing import Any, Dict, List, Type
 
-from protean import BaseEvent, BaseEventSourcedAggregate
+from protean import BaseCommand, BaseEvent, BaseEventSourcedAggregate
 from protean.fields import Identifier
-from protean.reflection import id_field
-from protean.utils import fully_qualified_name
+from protean.utils.mixins import Message
 
 
 class BaseEventStore(metaclass=ABCMeta):
@@ -50,13 +49,24 @@ class BaseEventStore(metaclass=ABCMeta):
     def _read_last_message(self, stream_name) -> Dict[str, Any]:
         pass
 
-    def append(self, aggregate: BaseEventSourcedAggregate, event: BaseEvent) -> int:
-        identifier = getattr(aggregate, id_field(aggregate).field_name)
+    def append_event(
+        self, aggregate: BaseEventSourcedAggregate, event: BaseEvent
+    ) -> int:
+        message = Message.to_event_message(aggregate, event)
 
         return self._write(
-            f"{aggregate.meta_.stream_name}-{identifier}",
-            fully_qualified_name(event.__class__),
-            event.to_dict(),  # FIXME Handle expected version
+            message.stream_name,
+            message.type,
+            message.data,  # FIXME Add metadata
+        )
+
+    def append_command(self, command: BaseCommand) -> int:
+        message = Message.to_command_message(command)
+
+        return self._write(
+            message.stream_name,
+            message.type,
+            message.data,  # FIXME Add metadata
         )
 
     def load(

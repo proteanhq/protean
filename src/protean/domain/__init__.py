@@ -649,24 +649,10 @@ class Domain(_PackageBoundObject):
     #####################
     # Handling Commands #
     #####################
-
-    def command_handler_for(
-        self, command_cls: Type[BaseCommand]
-    ) -> Type[BaseCommandHandler]:
-        """Retrieve Command Handler associated with a Command
-
-        Args:
-            command_cls (BaseCommand): Command class to be processed
-
-        Returns:
-            BaseCommandHandler: Command Handler associated with the Command class
-        """
-        return self._domain_registry.command_handler_for(command_cls)
-
-    def handle(self, command: BaseCommand, asynchronous: bool = True) -> Optional[Any]:
+    def process(self, command: BaseCommand, asynchronous: bool = True) -> Optional[Any]:
         """Process command and return results based on specified preference.
 
-        By default, Protean does not return values after after processing commands. This behavior
+        By default, Protean does not return values after processing commands. This behavior
         can be overridden either by setting COMMAND_PROCESSING in config to "SYNC" or by specifying
         ``asynchronous=False`` when calling the domain's ``handle`` method.
 
@@ -678,7 +664,8 @@ class Domain(_PackageBoundObject):
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
         """
-        raise NotImplementedError
+        # FIXME Implement synchronous processing and return values
+        return self.event_store.store.append_command(command)
 
     ############################
     # Repository Functionality #

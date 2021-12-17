@@ -4,11 +4,12 @@ import functools
 
 from collections import defaultdict
 from enum import Enum
-from typing import Callable, Dict, Type, Union
+from typing import Callable, Dict, Union
 from uuid import uuid4
 
 from protean.container import BaseContainer, OptionsMixin
 from protean.core.unit_of_work import UnitOfWork
+from protean.exceptions import IncorrectUsageError
 from protean.fields import Auto, DateTime, Dict, Integer, String
 from protean.globals import current_domain
 from protean.reflection import has_id_field, id_field
@@ -101,16 +102,26 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         return event_record.cls(message.data)
 
     @classmethod
-    def to_command_message(
-        cls, aggregate_cls: Type["BaseEventSourcedAggregate"], command: "BaseCommand"
-    ) -> Message:
+    def to_command_message(cls, command: "BaseCommand") -> Message:
+        # FIXME Should `aggregate_cls` be a mandatory attribute
+        if not command.meta_.aggregate_cls:
+            raise IncorrectUsageError(
+                {
+                    "_entity": [
+                        f"Command `{command.__class__.__name__}` needs to be associated with an Aggregate"
+                    ]
+                }
+            )
+
         if has_id_field(command):
             identifier = getattr(command, id_field(command).field_name)
         else:
             identifier = str(uuid4())
 
+        stream_name = command.meta_.aggregate_cls.meta_.stream_name
+
         return cls(
-            stream_name=f"{aggregate_cls.meta_.stream_name}:command-{identifier}",
+            stream_name=f"{stream_name}:command-{identifier}",
             owner=current_domain.domain_name,
             type=fully_qualified_name(command.__class__),
             kind=MessageType.COMMAND.value,

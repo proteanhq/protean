@@ -8,7 +8,7 @@ from protean import (
 from protean.fields import Identifier, String
 from tests.server.test_command_handling import UserCommandHandler
 
-domain = Domain()
+baz = Domain(domain_name="FooBar")
 
 
 class Registered(BaseEvent):
@@ -44,6 +44,6 @@ class UserEventHandler(BaseEventHandler):
         pass
 
 
-domain.register(User)
-domain.register(UserCommandHandler, aggregate_cls=User)
-domain.register(UserEventHandler, aggregate_cls=User)
+baz.register(User)
+baz.register(UserCommandHandler, aggregate_cls=User)
+baz.register(UserEventHandler, aggregate_cls=User)

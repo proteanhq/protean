@@ -20,9 +20,15 @@ class Register(BaseCommand):
     user_id = Identifier()
     email = String()
 
+    class Meta:
+        aggregate_cls = User
+
 
 class Activate(BaseCommand):
     user_id = Identifier()
+
+    class Meta:
+        aggregate_cls = User
 
 
 def dummy(*args):
@@ -50,7 +56,7 @@ async def test_handler_invocation(test_domain):
         user_id=identifier,
         email="john.doe@example.com",
     )
-    message = Message.to_command_message(User, command)
+    message = Message.to_command_message(command)
 
     engine = Engine(domain=test_domain, test_mode=True)
     await engine.handle_message(message)

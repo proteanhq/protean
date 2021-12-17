@@ -18,6 +18,9 @@ class Register(BaseCommand):
     email = String()
     name = String()
 
+    class Meta:
+        aggregate_cls = User
+
 
 class Registered(BaseEvent):
     id = Identifier()
@@ -36,6 +39,9 @@ class SendEmailCommand(BaseCommand):
     to = String()
     subject = String()
     content = String()
+
+    class Meta:
+        aggregate_cls = SendEmail
 
 
 @pytest.fixture(autouse=True)
@@ -61,7 +67,7 @@ def test_construct_event_from_message(test_domain):
 def test_construct_command_from_message(test_domain):
     identifier = str(uuid4())
     command = Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
-    message = Message.to_command_message(User, command)
+    message = Message.to_command_message(command)
 
     reconstructed_command = Message.to_command(message)
     assert isinstance(reconstructed_command, Register)
