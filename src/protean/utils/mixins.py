@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import json
 
 from collections import defaultdict
 from enum import Enum
@@ -9,8 +10,9 @@ from uuid import uuid4
 
 from protean.container import BaseContainer, OptionsMixin
 from protean.core.unit_of_work import UnitOfWork
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Auto, DateTime, Dict, Integer, String
+from protean.fields import Auto, DateTime, Dict, Integer, String, ValueObject
 from protean.globals import current_domain
 from protean.reflection import has_id_field, id_field
 from protean.utils import fully_qualified_name
@@ -62,6 +64,12 @@ class MessageType(Enum):
     COMMAND = "COMMAND"
 
 
+class MessageMetadata(BaseValueObject):
+    kind = String(max_length=7, required=True, choices=MessageType)
+    owner = String(max_length=50)
+    schema_version = Integer()
+
+
 class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     """Base class for Events and Commands.
     It provides concrete implementations for:
@@ -72,13 +80,28 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 
     message_id = Auto(identifier=True)
     stream_name = String(max_length=255)
-    owner = String(max_length=50)
     type = String()
-    kind = String(max_length=15, choices=MessageType)
     data = Dict()
-    schema_version = Integer()
     expected_version = Integer()
+
+    # Attributes filled when message is loaded from store
     time = DateTime()
+    position = Integer()
+    global_position = Integer()
+
+    metadata = ValueObject(MessageMetadata)
+
+    @classmethod
+    def from_raw_message(cls, message: Dict) -> Message:
+        return Message(
+            stream_name=message["stream_name"],
+            type=message["type"],
+            data=json.loads(message["data"]),
+            metadata=MessageMetadata(**json.loads(message["metadata"])),
+            position=message["position"],
+            global_position=message["global_position"],
+            time=message["time"],
+        )
 
     @classmethod
     def to_event_message(
@@ -88,18 +111,25 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 
         return cls(
             stream_name=f"{aggregate.meta_.stream_name}-{identifier}",
-            owner=current_domain.domain_name,
             type=fully_qualified_name(event.__class__),
-            kind=event.element_type.value,
             data=event.to_dict(),
-            # schema_version=event.meta_.version,  # FIXME Maintain version for event
+            metadata=MessageMetadata(
+                kind=MessageType.EVENT.value,
+                owner=current_domain.domain_name,
+                # schema_version=event.meta_.version,  # FIXME Maintain version for event
+            )
             # expected_version=aggregate.version  # FIXME Maintain version for Aggregates
         )
 
-    @classmethod
-    def to_event(cls, message: Message) -> "BaseEvent":
-        event_record = current_domain.registry.events[message.type]
-        return event_record.cls(message.data)
+    def to_object(self) -> Union["BaseEvent", "BaseCommand"]:
+        if self.metadata.kind == MessageType.EVENT.value:
+            element_record = current_domain.registry.events[self.type]
+        elif self.metadata.kind == MessageType.COMMAND.value:
+            element_record = current_domain.registry.commands[self.type]
+        else:
+            raise NotImplementedError  # FIXME Handle unknown messages better
+
+        return element_record.cls(**self.data)
 
     @classmethod
     def to_command_message(cls, command: "BaseCommand") -> Message:
@@ -122,14 +152,11 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 
         return cls(
             stream_name=f"{stream_name}:command-{identifier}",
-            owner=current_domain.domain_name,
             type=fully_qualified_name(command.__class__),
-            kind=MessageType.COMMAND.value,
             data=command.to_dict(),
+            metadata=MessageMetadata(
+                kind=MessageType.COMMAND.value,
+                owner=current_domain.domain_name,
+            )
             # schema_version=command.meta_.version,  # FIXME Maintain version for command
         )
-
-    @classmethod
-    def to_command(cls, message: Message) -> "BaseCommand":
-        command_record = current_domain.registry.commands[message.type]
-        return command_record.cls(message.data)

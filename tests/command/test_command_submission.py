@@ -50,7 +50,7 @@ def test_command_submission(test_domain):
         )
     )
 
-    messages = test_domain.event_store.store._read("user:command")
+    messages = test_domain.event_store.store.read("user:command")
 
     assert len(messages) == 1
     messages[0].stream_name == f"user:command-{identifier}"

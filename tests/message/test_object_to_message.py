@@ -56,11 +56,20 @@ def test_construct_message_from_event(test_domain):
     assert message is not None
     assert type(message) is Message
 
+    # Verify Message Content
+    assert message.type == fully_qualified_name(Registered)
+    assert message.stream_name == f"{User.meta_.stream_name}-{identifier}"
+    assert message.metadata.kind == "EVENT"
+    assert message.metadata.owner == test_domain.domain_name
+    assert message.data == event.to_dict()
+    assert message.time is None
+
+    # Verify Message Dict
     message_dict = message.to_dict()
 
     assert message_dict["type"] == fully_qualified_name(Registered)
-    assert message_dict["kind"] == "EVENT"
-    assert message_dict["owner"] == test_domain.domain_name
+    assert message_dict["metadata"]["kind"] == "EVENT"
+    assert message_dict["metadata"]["owner"] == test_domain.domain_name
     assert message_dict["stream_name"] == f"{User.meta_.stream_name}-{identifier}"
     assert message_dict["data"] == event.to_dict()
     assert message_dict["time"] is None
@@ -75,11 +84,19 @@ def test_construct_message_from_command(test_domain):
     assert message is not None
     assert type(message) is Message
 
-    message_dict = message.to_dict()
+    # Verify Message Content
+    assert message.type == fully_qualified_name(Register)
+    assert message.stream_name == f"{User.meta_.stream_name}:command-{identifier}"
+    assert message.metadata.kind == "COMMAND"
+    assert message.metadata.owner == test_domain.domain_name
+    assert message.data == command.to_dict()
+    assert message.time is None
 
+    # Verify Message Dict
+    message_dict = message.to_dict()
     assert message_dict["type"] == fully_qualified_name(Register)
-    assert message_dict["kind"] == "COMMAND"
-    assert message_dict["owner"] == test_domain.domain_name
+    assert message_dict["metadata"]["kind"] == "COMMAND"
+    assert message_dict["metadata"]["owner"] == test_domain.domain_name
     assert (
         message_dict["stream_name"] == f"{User.meta_.stream_name}:command-{identifier}"
     )

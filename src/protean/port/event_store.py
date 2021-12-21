@@ -49,6 +49,23 @@ class BaseEventStore(metaclass=ABCMeta):
     def _read_last_message(self, stream_name) -> Dict[str, Any]:
         pass
 
+    def read(
+        self,
+        stream_name: str,
+        sql: str = None,
+        position: int = 0,
+        no_of_messages: int = 1000,
+    ):
+        raw_messages = self._read(
+            stream_name, sql=sql, position=position, no_of_messages=no_of_messages
+        )
+
+        messages = []
+        for raw_message in raw_messages:
+            messages.append(Message.from_raw_message(raw_message))
+
+        return messages
+
     def append_event(
         self, aggregate: BaseEventSourcedAggregate, event: BaseEvent
     ) -> int:
@@ -57,7 +74,8 @@ class BaseEventStore(metaclass=ABCMeta):
         return self._write(
             message.stream_name,
             message.type,
-            message.data,  # FIXME Add metadata
+            message.data,
+            metadata=message.metadata.to_dict(),
         )
 
     def append_command(self, command: BaseCommand) -> int:
@@ -66,13 +84,17 @@ class BaseEventStore(metaclass=ABCMeta):
         return self._write(
             message.stream_name,
             message.type,
-            message.data,  # FIXME Add metadata
+            message.data,
+            metadata=message.metadata.to_dict(),
         )
 
     def load(
         self, aggregate_cls: Type[BaseEventSourcedAggregate], identifier: Identifier
     ) -> BaseEventSourcedAggregate:
         events = deque(self._read(f"{aggregate_cls.meta_.stream_name}-{identifier}"))
+
+        if not events:
+            return None
 
         first_event = events.popleft()
         aggregate = aggregate_cls(**json.loads(first_event["data"]))

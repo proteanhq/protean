@@ -12,8 +12,7 @@ class Subscription:
 
     def __init__(
         self,
-        event_store: BaseEventStore,
-        loop: asyncio.BaseEventLoop,
+        engine: "Engine",
         subscriber_id: str,
         stream_name: str,
         handler: Union[BaseEventHandler, BaseCommandHandler],
@@ -21,10 +20,11 @@ class Subscription:
         position_update_interval: int = 10,
         origin_stream_name: str = None,
         tick_interval: int = 1,
-        test_mode: bool = False,
     ) -> None:
-        self.event_store = event_store
-        self.loop = loop
+        self.engine = engine
+
+        self.store: BaseEventStore = engine.domain.event_store.store
+        self.loop = engine.loop
 
         self.subscriber_id = subscriber_id
         self.stream_name = stream_name
@@ -39,11 +39,11 @@ class Subscription:
         self.current_position: int = 0
         self.messages_since_last_position_write: int = 0
 
-        self.keep_going: bool = not test_mode
+        self.keep_going: bool = not engine.test_mode
 
     async def load_position(self):
         print(f"Loading position... {self.subscriber_id}")
-        message = self.event_store._read_last_message(self.subscriber_stream_name)
+        message = self.store._read_last_message(self.subscriber_stream_name)
         if message:
             data = json.loads(message["data"])
             self.current_position = data["position"]
@@ -63,12 +63,12 @@ class Subscription:
         print(f"Updating Read Position... {self.subscriber_id} - {position}")
 
         self.messages_since_last_position_write = 0
-        return self.event_store._write(
+        return self.store._write(
             self.subscriber_stream_name, "Read", {"position": position}
         )
 
     async def get_next_batch_of_messages(self):
-        return self.event_store._read(
+        return self.store.read(
             self.stream_name,
             position=self.current_position + 1,
             no_of_messages=self.messages_per_tick,
@@ -78,11 +78,8 @@ class Subscription:
         print(f"Processing {len(messages)}...")
         for message in messages:
             try:
-                await self.handle_message(message)
-                print(
-                    f"Position: {message['position']}, Global Position: {message['global_position']}"
-                )
-                await self.update_read_position(message["global_position"])
+                await self.engine.handle_message(message)
+                await self.update_read_position(message.global_position)
             except Exception as exc:
                 self.log_error(message, exc)
 
@@ -90,11 +87,6 @@ class Subscription:
 
     def log_error(self, last_message, error):
         print(f"{str(error) - {last_message}}")
-
-    async def handle_message(self, message):
-        for handler in self.handler()._handlers[message["type"]]:
-            handler_method = getattr(self.handler(), handler.__name__)
-            return handler_method(message["data"])
 
     async def start(self):
         print(f"Starting {self.subscriber_id}...")

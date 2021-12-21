@@ -12,6 +12,7 @@ from protean import (
     handle,
 )
 from protean.core.command import BaseCommand
+from protean.exceptions import ObjectNotFoundError
 from protean.fields import Identifier, String
 from protean.globals import current_domain
 
@@ -98,7 +99,22 @@ class UserCommandHandler(BaseCommandHandler):
 @pytest.fixture(autouse=True)
 def register(test_domain):
     test_domain.register(User)
+    test_domain.register(Register)
+    test_domain.register(Registered)
+    test_domain.register(ChangeAddress)
+    test_domain.register(AddressChanged)
     test_domain.register(UserCommandHandler)
+
+
+def test_fetching_non_existing_aggregates(test_domain):
+    with pytest.raises(ObjectNotFoundError) as exc:
+        current_domain.repository_for(User).get("foobar")
+
+    assert exc is not None
+    # FIXME errors should be a list
+    assert exc.value.messages == {
+        "_entity": "`User` object with identifier foobar does not exist."
+    }
 
 
 def test_loading_aggregates_from_first_event(test_domain):

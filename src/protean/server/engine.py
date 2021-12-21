@@ -29,12 +29,10 @@ class Engine:
         self._event_handlers = defaultdict(set)
         for handler_name, record in self.domain.registry.event_handlers.items():
             self._event_subscriptions[handler_name] = Subscription(
-                self.domain.event_store.store,
-                self.loop,
+                self,
                 handler_name,
                 record.cls.meta_.aggregate_cls.meta_.stream_name,
                 record.cls,
-                test_mode=self.test_mode,
             )
 
             # Handler methods are instance methods, so we deconstruct the event handler,
@@ -49,12 +47,10 @@ class Engine:
         self._command_handlers = defaultdict(set)
         for handler_name, record in self.domain.registry.command_handlers.items():
             self._command_subscriptions[handler_name] = Subscription(
-                self.domain.event_store.store,
-                self.loop,
+                self,
                 handler_name,
                 f"{record.cls.meta_.aggregate_cls.meta_.stream_name}:command",
                 record.cls,
-                test_mode=self.test_mode,
             )
 
             # Handler methods are instance methods, so we deconstruct the event handler,
@@ -74,12 +70,13 @@ class Engine:
         pass
 
     async def handle_message(self, message) -> None:
-        if message.kind == "EVENT":
+        self.domain.domain_context().push()
+        if message.metadata.kind == "EVENT":
             for handler_method in self._event_handlers[message.type]:
-                handler_method(message.data)
-        elif message.kind == "COMMAND":
+                handler_method(message.to_object())
+        elif message.metadata.kind == "COMMAND":
             handler_method = next(iter(self._command_handlers[message.type]))
-            handler_method(message.data)
+            handler_method(message.to_object())
 
     async def shutdown(self, signal=None):
         """Cleanup tasks tied to the service's shutdown."""
@@ -106,6 +103,7 @@ class Engine:
         def handle_exception(loop, context):
             # context["message"] will always be there; but context["exception"] may not
             msg = context.get("exception", context["message"])
+
             logging.error(f"Caught exception: {msg}")
             logging.info("Shutting down...")
             asyncio.create_task(self.shutdown(loop))

@@ -69,7 +69,7 @@ class BaseEventSourcedAggregate(EventedMixin, OptionsMixin, BaseContainer):
                 raise IncorrectUsageError(
                     {
                         "_entity": [
-                            f"View `{subclass.__name__}` needs to have at least one identifier"
+                            f"Event Sourced Aggregate `{subclass.__name__}` needs to have at least one identifier"
                         ]
                     }
                 )

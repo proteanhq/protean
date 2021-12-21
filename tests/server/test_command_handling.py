@@ -49,6 +49,8 @@ class UserCommandHandler(BaseCommandHandler):
 @pytest.mark.asyncio
 async def test_handler_invocation(test_domain):
     test_domain.register(User)
+    test_domain.register(Register)
+    test_domain.register(Activate)
     test_domain.register(UserCommandHandler, aggregate_cls=User)
 
     identifier = str(uuid4())

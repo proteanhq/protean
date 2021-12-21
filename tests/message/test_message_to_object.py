@@ -59,7 +59,7 @@ def test_construct_event_from_message(test_domain):
     user = User(**event.to_dict())
     message = Message.to_event_message(user, event)
 
-    reconstructed_event = Message.to_event(message)
+    reconstructed_event = message.to_object()
     assert isinstance(reconstructed_event, Registered)
     assert reconstructed_event.id == identifier
 
@@ -69,6 +69,6 @@ def test_construct_command_from_message(test_domain):
     command = Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
     message = Message.to_command_message(command)
 
-    reconstructed_command = Message.to_command(message)
+    reconstructed_command = message.to_object()
     assert isinstance(reconstructed_command, Register)
     assert reconstructed_command.id == identifier

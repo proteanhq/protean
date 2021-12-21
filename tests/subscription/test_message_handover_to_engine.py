@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import mock
 import pytest
 
 from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
 from protean.fields import Identifier, String
+from protean.globals import current_domain
 from protean.server import Engine
+from protean.server.subscription import Subscription
+from protean.utils import TypeMatcher, fully_qualified_name
 from protean.utils.mixins import Message
 
 counter = 0
@@ -38,9 +42,11 @@ class UserEventHandler(BaseEventHandler):
 
 
 @pytest.mark.asyncio
-async def test_handler_invocation(test_domain):
+@mock.patch("protean.server.engine.Engine.handle_message")
+async def test_that_subscription_invokes_engine_handler_on_message(
+    mock_handle_message, test_domain
+):
     test_domain.register(User)
-    test_domain.register(Registered)
     test_domain.register(UserEventHandler, aggregate_cls=User)
 
     identifier = str(uuid4())
@@ -56,10 +62,12 @@ async def test_handler_invocation(test_domain):
         name="John Doe",
         password_hash="hash",
     )
-    message = Message.to_event_message(user, event)
+    current_domain.event_store.store.append_event(user, event)
 
-    engine = Engine(domain=test_domain, test_mode=True)
-    await engine.handle_message(message)
+    engine = Engine(test_domain, test_mode=True)
+    subscription = Subscription(
+        engine, fully_qualified_name(UserEventHandler), "user", UserEventHandler
+    )
+    await subscription.poll()
 
-    global counter
-    assert counter == 1
+    mock_handle_message.assert_called_once_with(TypeMatcher(Message))
