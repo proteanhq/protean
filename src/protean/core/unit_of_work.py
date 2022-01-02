@@ -44,7 +44,7 @@ class UnitOfWork:
 
     def _store_events(self, item: BaseEventSourcedAggregate) -> None:
         for event in item._events:
-            current_domain.event_store.store.append_event(item, event)
+            current_domain.event_store.store.append_aggregate_event(item, event)
 
     def commit(self):
         # Raise error if there the Unit Of Work is not active

@@ -51,7 +51,7 @@ def test_construct_message_from_event(test_domain):
     user = User(**event.to_dict())
 
     # This simulates the call by UnitOfWork
-    message = Message.to_event_message(user, event)
+    message = Message.to_aggregate_event_message(user, event)
 
     assert message is not None
     assert type(message) is Message

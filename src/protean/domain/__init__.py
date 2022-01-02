@@ -14,6 +14,7 @@ from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
+from protean.core.event import BaseEvent
 from protean.core.model import BaseModel
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import ConfigurationError, IncorrectUsageError
@@ -666,6 +667,24 @@ class Domain(_PackageBoundObject):
         """
         # FIXME Implement synchronous processing and return values
         return self.event_store.store.append_command(command)
+
+    ###################
+    # Handling Events #
+    ###################
+    def raise_(self, stream_name: str, event: BaseEvent) -> None:
+        """Raise Domain Event.
+
+        The events that are raised at the domain level are not associated with Aggregates. So the stream
+        name has to be specified explicitly.
+
+        Args:
+            stream_name (str): Stream of event
+            event (BaseEvent): Event to record
+
+        Returns:
+            None: Returns nothing.
+        """
+        self.event_store.store.append_event(stream_name, event)
 
     ############################
     # Repository Functionality #

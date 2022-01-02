@@ -66,10 +66,20 @@ class BaseEventStore(metaclass=ABCMeta):
 
         return messages
 
-    def append_event(
+    def append_aggregate_event(
         self, aggregate: BaseEventSourcedAggregate, event: BaseEvent
     ) -> int:
-        message = Message.to_event_message(aggregate, event)
+        message = Message.to_aggregate_event_message(aggregate, event)
+
+        return self._write(
+            message.stream_name,
+            message.type,
+            message.data,
+            metadata=message.metadata.to_dict(),
+        )
+
+    def append_event(self, stream_name: str, event: BaseEvent) -> int:
+        message = Message.to_event_message(stream_name, event)
 
         return self._write(
             message.stream_name,

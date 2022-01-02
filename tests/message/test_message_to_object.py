@@ -57,7 +57,7 @@ def test_construct_event_from_message(test_domain):
     identifier = str(uuid4())
     event = Registered(id=identifier, email="john.doe@gmail.com", name="John Doe")
     user = User(**event.to_dict())
-    message = Message.to_event_message(user, event)
+    message = Message.to_aggregate_event_message(user, event)
 
     reconstructed_event = message.to_object()
     assert isinstance(reconstructed_event, Registered)

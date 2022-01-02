@@ -62,7 +62,7 @@ async def test_that_subscription_invokes_engine_handler_on_message(
         name="John Doe",
         password_hash="hash",
     )
-    current_domain.event_store.store.append_event(user, event)
+    current_domain.event_store.store.append_aggregate_event(user, event)
 
     engine = Engine(test_domain, test_mode=True)
     subscription = Subscription(

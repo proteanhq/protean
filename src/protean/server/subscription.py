@@ -42,7 +42,6 @@ class Subscription:
         self.keep_going: bool = not engine.test_mode
 
     async def load_position(self):
-        print(f"Loading position... {self.subscriber_id}")
         message = self.store._read_last_message(self.subscriber_stream_name)
         if message:
             data = json.loads(message["data"])
@@ -75,7 +74,6 @@ class Subscription:
         )  # FIXME Implement filtering
 
     async def process_batch(self, messages):
-        print(f"Processing {len(messages)}...")
         for message in messages:
             try:
                 await self.engine.handle_message(message)
@@ -86,7 +84,8 @@ class Subscription:
         return len(messages)
 
     def log_error(self, last_message, error):
-        print(f"{str(error) - {last_message}}")
+        print(str(error))
+        # FIXME Better Debug : print(f"{str(error) - {last_message}}")
 
     async def start(self):
         print(f"Starting {self.subscriber_id}...")
@@ -96,7 +95,6 @@ class Subscription:
         self.loop.create_task(self.poll())
 
     async def poll(self):
-        print(f"Polling for {self.subscriber_id}")
         await self.tick()
 
         if self.keep_going:

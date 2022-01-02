@@ -5,7 +5,6 @@ from uuid import uuid4
 from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.fields import String
 from protean.fields.basic import Identifier
-from protean.utils.mixins import Message
 
 
 class Registered(BaseEvent):
@@ -18,18 +17,12 @@ class User(BaseEventSourcedAggregate):
     email = String()
 
 
-def test_reading_messages(test_domain):
+def test_appending_messages_to_aggregate(test_domain):
     identifier = str(uuid4())
     event = Registered(id=identifier, email="john.doe@example.com")
     user = User(id=identifier, email="john.doe@example.com")
     test_domain.event_store.store.append_aggregate_event(user, event)
 
-    messages = test_domain.event_store.store.read("user")
+    messages = test_domain.event_store.store._read("user")
 
     assert len(messages) == 1
-
-    message = messages[0]
-    assert isinstance(message, Message)
-    assert message.stream_name == f"user-{identifier}"
-    assert message.metadata.kind == "EVENT"
-    assert message.data == event.to_dict()

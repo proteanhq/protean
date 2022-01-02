@@ -104,7 +104,7 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         )
 
     @classmethod
-    def to_event_message(
+    def to_aggregate_event_message(
         cls, aggregate: "BaseEventSourcedAggregate", event: "BaseEvent"
     ) -> Message:
         identifier = getattr(aggregate, id_field(aggregate).field_name)
@@ -130,6 +130,24 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             raise NotImplementedError  # FIXME Handle unknown messages better
 
         return element_record.cls(**self.data)
+
+    @classmethod
+    def to_event_message(cls, stream_name: str, event: "BaseEvent"):
+        if has_id_field(event):
+            identifier = getattr(event, id_field(event).field_name)
+        else:
+            identifier = str(uuid4())
+
+        return cls(
+            stream_name=f"{stream_name}-{identifier}",
+            type=fully_qualified_name(event.__class__),
+            data=event.to_dict(),
+            metadata=MessageMetadata(
+                kind=MessageType.EVENT.value,
+                owner=current_domain.domain_name,
+            )
+            # schema_version=command.meta_.version,  # FIXME Maintain version for command
+        )
 
     @classmethod
     def to_command_message(cls, command: "BaseCommand") -> Message:
