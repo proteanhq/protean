@@ -2,6 +2,8 @@
 
 import datetime
 
+from uuid import UUID
+
 from dateutil.parser import parse as date_parser
 
 from protean.exceptions import InvalidOperationError, ValidationError
@@ -305,6 +307,8 @@ class Identifier(Field):
 
     def as_dict(self, value):
         """Return JSON-compatible value of self"""
+        if isinstance(value, UUID):
+            return str(value)
         return value
 
 
