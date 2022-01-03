@@ -14,13 +14,16 @@ class User(BaseEventSourcedAggregate):
 class UserLoggedIn(BaseEvent):
     user_id = Identifier(identifier=True)
 
+    class Meta:
+        stream_name = "authentication"
+
 
 def test_raising_event(test_domain):
     test_domain.register(User)
     test_domain.register(UserLoggedIn)
 
     identifier = str(uuid4())
-    test_domain.raise_("authentication", UserLoggedIn(user_id=identifier))
+    test_domain.raise_(UserLoggedIn(user_id=identifier))
 
     messages = test_domain.event_store.store.read("authentication")
 

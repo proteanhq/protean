@@ -20,7 +20,7 @@ class Register(BaseCommand):
     name = String()
 
 
-def test_command_submission_without_aggregate(test_domain):
+def test_command_definition_without_aggregate_or_stream(test_domain):
     test_domain.register(User)
     test_domain.register(Register)
 
@@ -33,11 +33,13 @@ def test_command_submission_without_aggregate(test_domain):
             )
         )
     assert exc.value.messages == {
-        "_entity": [f"Command `Register` needs to be associated with an Aggregate"]
+        "_entity": [
+            f"Command `Register` needs to be associated with an aggregate or a stream"
+        ]
     }
 
 
-def test_command_submission(test_domain):
+def test_command_associated_with_aggregate(test_domain):
     test_domain.register(User)
     test_domain.register(Register, aggregate_cls=User)
 
@@ -54,3 +56,21 @@ def test_command_submission(test_domain):
 
     assert len(messages) == 1
     messages[0].stream_name == f"user:command-{identifier}"
+
+
+def test_command_associated_with_stream_name(test_domain):
+    test_domain.register(Register, stream_name="foo")
+
+    identifier = str(uuid4())
+    test_domain.process(
+        Register(
+            user_id=identifier,
+            email="john.doe@gmail.com",
+            name="John Doe",
+        )
+    )
+
+    messages = test_domain.event_store.store.read("foo:command")
+
+    assert len(messages) == 1
+    messages[0].stream_name == f"foo:command-{identifier}"

@@ -62,7 +62,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
         messages = []
         for raw_message in raw_messages:
-            messages.append(Message.from_raw_message(raw_message))
+            messages.append(Message.from_dict(raw_message))
 
         return messages
 
@@ -78,8 +78,8 @@ class BaseEventStore(metaclass=ABCMeta):
             metadata=message.metadata.to_dict(),
         )
 
-    def append_event(self, stream_name: str, event: BaseEvent) -> int:
-        message = Message.to_event_message(stream_name, event)
+    def append_event(self, event: BaseEvent) -> int:
+        message = Message.to_event_message(event)
 
         return self._write(
             message.stream_name,

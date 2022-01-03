@@ -671,20 +671,17 @@ class Domain(_PackageBoundObject):
     ###################
     # Handling Events #
     ###################
-    def raise_(self, stream_name: str, event: BaseEvent) -> None:
-        """Raise Domain Event.
-
-        The events that are raised at the domain level are not associated with Aggregates. So the stream
-        name has to be specified explicitly.
+    def raise_(self, event: BaseEvent) -> None:
+        """Raise Domain Event in the stream specified in its options, or using the associated
+        aggregate's stream name.
 
         Args:
-            stream_name (str): Stream of event
             event (BaseEvent): Event to record
 
         Returns:
             None: Returns nothing.
         """
-        self.event_store.store.append_event(stream_name, event)
+        self.event_store.store.append_event(event)
 
     ############################
     # Repository Functionality #

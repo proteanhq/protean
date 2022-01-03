@@ -31,7 +31,7 @@ class BaseCommand(BaseContainer, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return [("aggregate_cls", None)]
+        return [("aggregate_cls", None), ("stream_name", None)]
 
     @classmethod
     def __track_id_field(subclass):

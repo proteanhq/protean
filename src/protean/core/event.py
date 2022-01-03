@@ -27,6 +27,10 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             subclass.__track_id_field()
 
     @classmethod
+    def _default_options(cls):
+        return [("aggregate_cls", None), ("stream_name", None)]
+
+    @classmethod
     def __track_id_field(subclass):
         """Check if an identifier field has been associated with the command.
 

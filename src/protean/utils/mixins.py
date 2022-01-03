@@ -92,7 +92,7 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     metadata = ValueObject(MessageMetadata)
 
     @classmethod
-    def from_raw_message(cls, message: Dict) -> Message:
+    def from_dict(cls, message: Dict) -> Message:
         return Message(
             stream_name=message["stream_name"],
             type=message["type"],
@@ -132,11 +132,26 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         return element_record.cls(**self.data)
 
     @classmethod
-    def to_event_message(cls, stream_name: str, event: "BaseEvent"):
+    def to_event_message(cls, event: "BaseEvent"):
+        # FIXME Should one of `aggregate_cls` or `stream_name` be mandatory?
+        if not (event.meta_.aggregate_cls or event.meta_.stream_name):
+            raise IncorrectUsageError(
+                {
+                    "_entity": [
+                        f"Event `{event.__class__.__name__}` needs to be associated with an aggregate or a stream"
+                    ]
+                }
+            )
+
         if has_id_field(event):
             identifier = getattr(event, id_field(event).field_name)
         else:
             identifier = str(uuid4())
+
+        # Use explicit stream name if provided, or fallback on Aggregate's stream name
+        stream_name = (
+            event.meta_.stream_name or event.meta_.aggregate_cls.meta_.stream_name
+        )
 
         return cls(
             stream_name=f"{stream_name}-{identifier}",
@@ -146,27 +161,31 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
                 kind=MessageType.EVENT.value,
                 owner=current_domain.domain_name,
             )
-            # schema_version=command.meta_.version,  # FIXME Maintain version for command
+            # schema_version=command.meta_.version,  # FIXME Maintain version for event
         )
 
     @classmethod
     def to_command_message(cls, command: "BaseCommand") -> Message:
-        # FIXME Should `aggregate_cls` be a mandatory attribute
-        if not command.meta_.aggregate_cls:
+        # FIXME Should one of `aggregate_cls` or `stream_name` be mandatory?
+        if not (command.meta_.aggregate_cls or command.meta_.stream_name):
             raise IncorrectUsageError(
                 {
                     "_entity": [
-                        f"Command `{command.__class__.__name__}` needs to be associated with an Aggregate"
+                        f"Command `{command.__class__.__name__}` needs to be associated with an aggregate or a stream"
                     ]
                 }
             )
 
+        # Use the value of an identifier field if specified, or generate a new uuid
         if has_id_field(command):
             identifier = getattr(command, id_field(command).field_name)
         else:
             identifier = str(uuid4())
 
-        stream_name = command.meta_.aggregate_cls.meta_.stream_name
+        # Use explicit stream name if provided, or fallback on Aggregate's stream name
+        stream_name = (
+            command.meta_.stream_name or command.meta_.aggregate_cls.meta_.stream_name
+        )
 
         return cls(
             stream_name=f"{stream_name}:command-{identifier}",

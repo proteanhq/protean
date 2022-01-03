@@ -10,11 +10,14 @@ from protean.utils.mixins import Message
 class UserLoggedIn(BaseEvent):
     user_id = Identifier(identifier=True)
 
+    class Meta:
+        stream_name = "authentication"
+
 
 def test_appending_raw_events(test_domain):
     identifier = str(uuid4())
     event = UserLoggedIn(user_id=identifier)
-    test_domain.event_store.store.append_event("authentication", event)
+    test_domain.event_store.store.append_event(event)
 
     messages = test_domain.event_store.store.read("authentication")
 
