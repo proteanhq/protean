@@ -30,7 +30,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         current_uow._seen.add(aggregate)
 
     def get(self, identifier: Identifier):
-        aggregate = current_domain.event_store.store.load(
+        aggregate = current_domain.event_store.store.load_aggregate(
             self.meta_.aggregate_cls, identifier
         )
 

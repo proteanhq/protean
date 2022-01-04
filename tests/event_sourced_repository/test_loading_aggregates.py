@@ -14,6 +14,7 @@ from protean import (
 from protean.core.command import BaseCommand
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import Identifier, String
+from protean.fields.basic import Boolean
 from protean.globals import current_domain
 
 
@@ -48,6 +49,8 @@ class User(BaseEventSourcedAggregate):
     password_hash = String()
     address = String()
 
+    is_registered = Boolean()
+
     @classmethod
     def register(cls, command: Register) -> User:
         user = cls(
@@ -71,6 +74,10 @@ class User(BaseEventSourcedAggregate):
         if address != self.address:
             self.address = address
             self.raise_(AddressChanged(user_id=self.user_id, address=address))
+
+    @apply(Registered)
+    def registered(self, event: Registered) -> None:
+        self.is_registered = True
 
     @apply(AddressChanged)
     def address_changed(self, event: AddressChanged) -> None:
@@ -136,7 +143,11 @@ def test_loading_aggregates_from_first_event(test_domain):
         email="john.doe@example.com",
         name="John Doe",
         password_hash="hash",
+        is_registered=True,
     )
+
+    # Ensure that the first event is applied as well
+    assert user.is_registered is True
 
 
 def test_loading_aggregates_from_events(test_domain):
@@ -166,4 +177,8 @@ def test_loading_aggregates_from_events(test_domain):
         name="John Doe",
         password_hash="hash",
         address="foobar",
+        is_registered=True,
     )
+
+    # Ensure that the first event is applied as well
+    assert user.is_registered is True

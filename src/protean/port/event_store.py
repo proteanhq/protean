@@ -98,7 +98,7 @@ class BaseEventStore(metaclass=ABCMeta):
             metadata=message.metadata.to_dict(),
         )
 
-    def load(
+    def load_aggregate(
         self, aggregate_cls: Type[BaseEventSourcedAggregate], identifier: Identifier
     ) -> BaseEventSourcedAggregate:
         events = deque(self._read(f"{aggregate_cls.meta_.stream_name}-{identifier}"))
@@ -106,8 +106,11 @@ class BaseEventStore(metaclass=ABCMeta):
         if not events:
             return None
 
+        # Handle first event separately, since we need to initialize the aggregate with its data
         first_event = events.popleft()
         aggregate = aggregate_cls(**json.loads(first_event["data"]))
+        aggregate._apply(first_event)
+
         for event in events:
             aggregate._apply(event)
 
