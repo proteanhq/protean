@@ -88,3 +88,7 @@ class UsecaseExecutionError(Exception):
         self.orig_trace = orig_trace
 
         super().__init__(**kwargs)
+
+
+class SendError(Exception):
+    """Raised on email dispatch failure."""

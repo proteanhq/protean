@@ -1,7 +1,7 @@
 from abc import abstractmethod
 
 from protean.container import BaseContainer, OptionsMixin
-from protean.fields import Dict, List, String
+from protean.fields import Dict, List, String, Text
 from protean.utils import (
     DomainObjects,
     convert_str_values_to_list,
@@ -24,10 +24,9 @@ class BaseEmailProvider:
         self.fail_silently = fail_silently
 
     @abstractmethod
-    def send_email(self, email_messages):
+    def send_email(self, email_message):
         """
-        Send one or more EmailMessage objects and return the number of email
-        messages sent.
+        Send EmailMessage object via registered email provider.
         """
         raise NotImplementedError(
             "Concrete implementations of BaseEmailBackend "
@@ -44,25 +43,23 @@ class BaseEmail(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 
     element_type = DomainObjects.EMAIL
 
-    class Meta:
-        abstract = True
-
-    def __new__(cls, *args, **kwargs):
-        if cls is BaseEmail:
-            raise TypeError("BaseEmail cannot be instantiated")
-        return super().__new__(cls)
-
     @classmethod
     def _default_options(cls):
         return [("provider", "default")]
 
     subject = String()
-    data = Dict()
     from_email = String()
     to = List(content_type=String)
     bcc = List(content_type=String)
     cc = List(content_type=String)
     reply_to = String()
+
+    # Supplied content
+    text = Text()
+    html = Text()
+
+    # JSON data with template
+    data = Dict()
     template = String()
 
     def defaults(self):

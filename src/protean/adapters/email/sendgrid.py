@@ -6,6 +6,7 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, TemplateId
 
 from protean.core.email import BaseEmailProvider
+from protean.exceptions import SendError
 
 logger = logging.getLogger("protean.email.sendgrid")
 
@@ -17,7 +18,7 @@ class SendgridEmailProvider(BaseEmailProvider):
         super().__init__(*args, **kwargs)
         self.sg_client = SendGridAPIClient(self.conn_info["API_KEY"])
 
-    def send_email(self, message, dynamic_template=False):
+    def send_email(self, message):
         """Send messages via the sendgrid api"""
 
         email = Mail(
@@ -39,7 +40,9 @@ class SendgridEmailProvider(BaseEmailProvider):
             logger.debug("Email pushed to SendGrid successfully.")
         except HTTPError as e:
             logger.error(f"{e}: {e.to_dict}")
+            raise SendError(f"Exception: HTTPError - Failed to send email - str(e)")
         except Exception as e:
             logger.error(f"Exception: Error while sending email: {e}")
+            raise SendError(f"Exception: Failed to send email - str(e)")
 
         return True

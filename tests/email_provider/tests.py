@@ -10,9 +10,11 @@ from .elements import Person, PersonAdded, WelcomeEmail, WelcomeNewPerson
 
 
 class TestEmailInitialization:
-    def test_that_base_email_class_cannot_be_instantiated(self):
-        with pytest.raises(TypeError):
+    def test_that_base_email_class_can_be_instantiated(self):
+        try:
             BaseEmail()
+        except Exception:
+            pytest.fail("BaseEmail class should be instantiable")
 
     def test_that_email_can_be_instantiated(self, test_domain):
         test_domain.register(WelcomeEmail)
