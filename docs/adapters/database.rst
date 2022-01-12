@@ -23,7 +23,9 @@ Additional options are available for finer control:
 .. py:data:: NAMESPACE_PREFIX
 
     Index names in Elasticsearch instance are prefixed with the specified string. For example, if the namespace
-    prefix is "prod", the index of an aggregate `Person` will be `prod-person`.
+    prefix is "prod", the index of an aggregate `Person` will be `prod_person`. You can set your own separator
+    by passing `NAMESPACE_SEPARATOR`. For example, if the `NAMESPACE_SEPARATOR` is `-`, the index of the above
+    mentioned aggregate will be `prod-person`.
 
 .. py:data:: SETTINGS
 
