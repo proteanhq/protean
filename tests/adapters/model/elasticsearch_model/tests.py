@@ -136,6 +136,19 @@ class TestModelOptions:
             assert model_cls.__name__ == "PersonModel"
             assert model_cls._index._name == "foo_person"
 
+        def test_generated_index_name_with_namespace_separator(self, test_domain):
+            test_domain.config["DATABASES"]["default"]["NAMESPACE_SEPARATOR"] = "#"
+
+            class Person(BaseAggregate):
+                name = String(max_length=50, required=True)
+                about = Text()
+
+            test_domain.register(Person)
+            model_cls = test_domain.get_model(Person)
+
+            assert model_cls.__name__ == "PersonModel"
+            assert model_cls._index._name == "foo#person"
+
         def test_explicit_index_name_with_namespace_prefix(self, test_domain):
             class Person(BaseAggregate):
                 name = String(max_length=50, required=True)

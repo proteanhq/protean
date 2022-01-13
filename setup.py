@@ -17,7 +17,8 @@ from setuptools import find_packages, setup
 def read(*names, **kwargs):
     """Helper method to read files"""
     return io.open(
-        join(dirname(__file__), *names), encoding=kwargs.get("encoding", "utf8"),
+        join(dirname(__file__), *names),
+        encoding=kwargs.get("encoding", "utf8"),
     ).read()
 
 
@@ -88,7 +89,7 @@ dev_requires = (
 
 setup(
     name="protean",
-    version="0.8.0",
+    version="0.8.1",
     license="BSD 3-Clause License",
     description="Protean Application Framework",
     long_description="%s\n%s"
