@@ -311,9 +311,15 @@ class ESProvider(BaseProvider):
 
         # Prepend Namespace prefix if one has been provided
         if "NAMESPACE_PREFIX" in self.conn_info and self.conn_info["NAMESPACE_PREFIX"]:
-            schema_name = (
-                f"{self.conn_info['NAMESPACE_PREFIX']}_{entity_cls.meta_.schema_name}"
-            )
+            # Use custom separator if provided
+            separator = "_"
+            if (
+                "NAMESPACE_SEPARATOR" in self.conn_info
+                and self.conn_info["NAMESPACE_SEPARATOR"]
+            ):
+                separator = self.conn_info["NAMESPACE_SEPARATOR"]
+
+            schema_name = f"{self.conn_info['NAMESPACE_PREFIX']}{separator}{entity_cls.meta_.schema_name}"
 
         return schema_name
 

@@ -16,6 +16,11 @@ DEV
 * Wrap EventHandler execution within UoWs.
 * Add `autoflake` to `pre-commit`
 
+0.8.1
+-----
+
+* Allow custom separator in Elasticsearch namespaces
+
 0.8.0
 -----
 
