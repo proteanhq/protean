@@ -25,6 +25,11 @@ Additional options are available for finer control:
     Index names in Elasticsearch instance are prefixed with the specified string. For example, if the namespace
     prefix is "prod", the index of an aggregate `Person` will be `prod-person`.
 
+.. py:data:: NAMESPACE_SEPARATOR
+
+    Custom character to join NAMESPACE_PREFIX and index name. Default is hyphen (`-`). For example, with
+    `NAMESPACE_SEPARATOR` as `_`, the index of aggregate `Person` will be `prod_person`.
+
 .. py:data:: SETTINGS
 
     Index settings passed on to Elasticsearch instance.

@@ -1,6 +1,11 @@
 Release History
 ===============
 
+0.8.1
+-----
+
+* Allow custom separator in Elasticsearch namespaces
+
 0.8.0
 -----
 

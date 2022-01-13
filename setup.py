@@ -17,7 +17,8 @@ from setuptools import find_packages, setup
 def read(*names, **kwargs):
     """Helper method to read files"""
     return io.open(
-        join(dirname(__file__), *names), encoding=kwargs.get("encoding", "utf8"),
+        join(dirname(__file__), *names),
+        encoding=kwargs.get("encoding", "utf8"),
     ).read()
 
 
