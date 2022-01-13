@@ -13,50 +13,9 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Auto, DateTime, Dict, Integer, String, ValueObject
-from protean.globals import current_domain
+from protean.globals import current_domain, g
 from protean.reflection import has_id_field, id_field
 from protean.utils import fully_qualified_name
-
-
-class handle:
-    """Class decorator to mark handler methods in EventHandler and CommandHandler classes."""
-
-    def __init__(self, target_cls: Union["BaseEvent", "BaseCommand"]) -> None:
-        self._target_cls = target_cls
-
-    def __call__(self, fn: Callable) -> Callable:
-        """Marks the method with a special `_target_cls` attribute to be able to
-        construct a map of handlers later.
-
-        Args:
-            fn (Callable): Handler method
-
-        Returns:
-            Callable: Handler method with `_target_cls` attribute
-        """
-
-        @functools.wraps(fn)
-        def wrapper(instance, target_obj):
-            # Wrap function call within a UoW
-            with UnitOfWork():
-                fn(instance, target_obj)
-
-        setattr(wrapper, "_target_cls", self._target_cls)
-        return wrapper
-
-
-class HandlerMixin:
-    """Mixin to add common handler behavior to Event Handlers and Command Handlers"""
-
-    def __init_subclass__(subclass) -> None:
-        super().__init_subclass__()
-
-        # Associate a `_handlers` map with subclasses.
-        #   It needs to be initialized here because if it
-        #   were initialized in __init__, the same collection object
-        #   would be made available across all subclasses,
-        #   defeating its purpose.
-        setattr(subclass, "_handlers", defaultdict(set))
 
 
 class MessageType(Enum):
@@ -68,6 +27,8 @@ class MessageMetadata(BaseValueObject):
     kind = String(max_length=7, required=True, choices=MessageType)
     owner = String(max_length=50)
     schema_version = Integer()
+
+    origin_stream_name = String()
 
 
 class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
@@ -90,6 +51,21 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     global_position = Integer()
 
     metadata = ValueObject(MessageMetadata)
+
+    @classmethod
+    def derived_metadata(cls, new_message_type: str) -> Dict:
+        additional_metadata = {}
+
+        if hasattr(g, "message_in_context"):
+            if (
+                new_message_type == "COMMAND"
+                and g.message_in_context.metadata.kind == "EVENT"
+            ):
+                additional_metadata[
+                    "origin_stream_name"
+                ] = g.message_in_context.stream_name
+
+        return additional_metadata
 
     @classmethod
     def from_dict(cls, message: Dict) -> Message:
@@ -116,6 +92,7 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             metadata=MessageMetadata(
                 kind=MessageType.EVENT.value,
                 owner=current_domain.domain_name,
+                **cls.derived_metadata(MessageType.EVENT.value)
                 # schema_version=event.meta_.version,  # FIXME Maintain version for event
             )
             # expected_version=aggregate.version  # FIXME Maintain version for Aggregates
@@ -160,6 +137,7 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             metadata=MessageMetadata(
                 kind=MessageType.EVENT.value,
                 owner=current_domain.domain_name,
+                **cls.derived_metadata(MessageType.EVENT.value),
             )
             # schema_version=command.meta_.version,  # FIXME Maintain version for event
         )
@@ -194,6 +172,54 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             metadata=MessageMetadata(
                 kind=MessageType.COMMAND.value,
                 owner=current_domain.domain_name,
+                **cls.derived_metadata(MessageType.COMMAND.value),
             )
             # schema_version=command.meta_.version,  # FIXME Maintain version for command
         )
+
+
+class handle:
+    """Class decorator to mark handler methods in EventHandler and CommandHandler classes."""
+
+    def __init__(self, target_cls: Union["BaseEvent", "BaseCommand"]) -> None:
+        self._target_cls = target_cls
+
+    def __call__(self, fn: Callable) -> Callable:
+        """Marks the method with a special `_target_cls` attribute to be able to
+        construct a map of handlers later.
+
+        Args:
+            fn (Callable): Handler method
+
+        Returns:
+            Callable: Handler method with `_target_cls` attribute
+        """
+
+        @functools.wraps(fn)
+        def wrapper(instance, target_obj):
+            # Wrap function call within a UoW
+            with UnitOfWork():
+                fn(instance, target_obj)
+
+        setattr(wrapper, "_target_cls", self._target_cls)
+        return wrapper
+
+
+class HandlerMixin:
+    """Mixin to add common handler behavior to Event Handlers and Command Handlers"""
+
+    def __init_subclass__(subclass) -> None:
+        super().__init_subclass__()
+
+        # Associate a `_handlers` map with subclasses.
+        #   It needs to be initialized here because if it
+        #   were initialized in __init__, the same collection object
+        #   would be made available across all subclasses,
+        #   defeating its purpose.
+        setattr(subclass, "_handlers", defaultdict(set))
+
+    @classmethod
+    def _handle(cls, message: Message) -> None:
+        self = cls()
+        for handler_method in cls._handlers[message.type]:
+            handler_method(self, message.to_object())

@@ -245,8 +245,8 @@ def server(domain_path, test_mode):
     domain = derive_domain(domain_path)
     if not domain:
         raise NoDomainException(
-            "Could not locate a Protean domain. You did not provide "
-            'the "PROTEAN_DOMAIN" environment variable or pass a domain file in options '
+            "Could not locate a Protean domain. You should provide a domain in"
+            '"PROTEAN_DOMAIN" environment variable or pass a domain file in options '
             'and a "domain.py" module was not found in the current directory.'
         )
 

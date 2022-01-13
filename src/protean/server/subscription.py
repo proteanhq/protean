@@ -1,10 +1,17 @@
 import asyncio
 import json
+import logging
 
 from typing import Union
 
 from protean import BaseCommandHandler, BaseEventHandler
 from protean.port import BaseEventStore
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s,%(msecs)d %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 
 class Subscription:
@@ -54,6 +61,7 @@ class Subscription:
         self.messages_since_last_position_write += 1
 
         if self.messages_since_last_position_write == self.position_update_interval:
+            logging.debug(f"Updating position in {self.subscriber_id} to {position}")
             return self.write_position(position)
 
         return
@@ -74,9 +82,10 @@ class Subscription:
         )  # FIXME Implement filtering
 
     async def process_batch(self, messages):
+        logging.debug(f"Processing {len(messages)} messages...")
         for message in messages:
             try:
-                await self.engine.handle_message(message)
+                await self.engine.handle_message(self.handler, message)
                 await self.update_read_position(message.global_position)
             except Exception as exc:
                 self.log_error(message, exc)

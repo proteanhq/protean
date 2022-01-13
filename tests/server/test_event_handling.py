@@ -59,7 +59,7 @@ async def test_handler_invocation(test_domain):
     message = Message.to_aggregate_event_message(user, event)
 
     engine = Engine(domain=test_domain, test_mode=True)
-    await engine.handle_message(message)
+    await engine.handle_message(UserEventHandler, message)
 
     global counter
     assert counter == 1

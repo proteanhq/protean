@@ -61,7 +61,7 @@ async def test_handler_invocation(test_domain):
     message = Message.to_command_message(command)
 
     engine = Engine(domain=test_domain, test_mode=True)
-    await engine.handle_message(message)
+    await engine.handle_message(UserCommandHandler, message)
 
     global counter
     assert counter == 1

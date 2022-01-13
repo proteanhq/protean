@@ -46,25 +46,10 @@ def engine(test_domain):
 
 
 def test_command_handler_subscriptions(engine):
-    assert len(engine._command_subscriptions) == 1
+    assert len(engine._subscriptions) == 1
 
-    assert fully_qualified_name(UserCommandHandler) in engine._command_subscriptions
+    assert fully_qualified_name(UserCommandHandler) in engine._subscriptions
     assert (
-        engine._command_subscriptions[
-            fully_qualified_name(UserCommandHandler)
-        ].stream_name
+        engine._subscriptions[fully_qualified_name(UserCommandHandler)].stream_name
         == "user:command"
-    )
-
-
-def test_event_handler_method_mappings(engine):
-    assert len(engine._command_handlers) == 2
-
-    assert (
-        next(iter(engine._command_handlers[fully_qualified_name(Register)])).__name__
-        == "register"
-    )
-    assert (
-        next(iter(engine._command_handlers[fully_qualified_name(Activate)])).__name__
-        == "activate"
     )

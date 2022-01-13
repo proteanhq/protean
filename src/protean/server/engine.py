@@ -4,8 +4,11 @@ import asyncio
 import logging
 import signal
 
-from collections import defaultdict
+from typing import Union
 
+from protean.core.command_handler import BaseCommandHandler
+from protean.core.event_handler import BaseEventHandler
+from protean.globals import g
 from protean.utils.importlib import import_from_full_path
 
 from .subscription import Subscription
@@ -25,41 +28,22 @@ class Engine:
         self.loop = asyncio.get_event_loop()
 
         # FIXME Gather all handlers
-        self._event_subscriptions = {}
-        self._event_handlers = defaultdict(set)
+        self._subscriptions = {}
         for handler_name, record in self.domain.registry.event_handlers.items():
-            self._event_subscriptions[handler_name] = Subscription(
+            self._subscriptions[handler_name] = Subscription(
                 self,
                 handler_name,
                 record.cls.meta_.aggregate_cls.meta_.stream_name,
                 record.cls,
             )
 
-            # Handler methods are instance methods, so we deconstruct the event handler,
-            #   initialize a handler object and create a dictionary mapping event FQNs to instance methods.
-            handler_obj = record.cls()
-            for event_name, handler_methods in record.cls._handlers.items():
-                for method in handler_methods:
-                    instance_method = getattr(handler_obj, method.__name__)
-                    self._event_handlers[event_name].add(instance_method)
-
-        self._command_subscriptions = {}
-        self._command_handlers = defaultdict(set)
         for handler_name, record in self.domain.registry.command_handlers.items():
-            self._command_subscriptions[handler_name] = Subscription(
+            self._subscriptions[handler_name] = Subscription(
                 self,
                 handler_name,
                 f"{record.cls.meta_.aggregate_cls.meta_.stream_name}:command",
                 record.cls,
             )
-
-            # Handler methods are instance methods, so we deconstruct the event handler,
-            #   initialize a handler object and create a dictionary mapping event FQNs to instance methods.
-            handler_obj = record.cls()
-            for command_name, handler_methods in record.cls._handlers.items():
-                for method in handler_methods:
-                    instance_method = getattr(handler_obj, method.__name__)
-                    self._command_handlers[command_name].add(instance_method)
 
     @classmethod
     def from_domain_file(cls, domain: str, domain_file: str, **kwargs) -> Engine:
@@ -69,14 +53,25 @@ class Engine:
     def handle_results(self, results, message):
         pass
 
-    async def handle_message(self, message) -> None:
-        self.domain.domain_context().push()
-        if message.metadata.kind == "EVENT":
-            for handler_method in self._event_handlers[message.type]:
-                handler_method(message.to_object())
-        elif message.metadata.kind == "COMMAND":
-            handler_method = next(iter(self._command_handlers[message.type]))
-            handler_method(message.to_object())
+    async def handle_message(
+        self, handler_cls: Union[BaseCommandHandler, BaseEventHandler], message
+    ) -> None:
+        logging.debug(f"Processing {message.type} in {handler_cls.__name__}")
+        with self.domain.domain_context():
+            # Set context from current message, so that further processes
+            #   carry the metadata forward.
+            g.message_in_context = message
+
+            try:
+                handler_cls._handle(message)
+            except Exception as exc:
+                logging.error(
+                    f"Error while handling message {message.stream_name} in {handler_cls.__name__} - {str(exc)}"
+                )
+                # FIXME Implement mechanisms to track errors
+
+            # Reset message context
+            g.pop("message_in_context")
 
     async def shutdown(self, signal=None):
         """Cleanup tasks tied to the service's shutdown."""
@@ -110,17 +105,12 @@ class Engine:
 
         self.loop.set_exception_handler(handle_exception)
 
-        if not (
-            len(self._event_subscriptions) > 0 or len(self._command_subscriptions) > 0
-        ):
+        if len(self._subscriptions) == 0:
             logging.info("No subscriptions to start. Exiting...")
 
         # Start consumption, one per subscription
         try:
-            for _, subscription in self._event_subscriptions.items():
-                self.loop.create_task(subscription.start())
-
-            for _, subscription in self._command_subscriptions.items():
+            for _, subscription in self._subscriptions.items():
                 self.loop.create_task(subscription.start())
 
             self.loop.run_forever()

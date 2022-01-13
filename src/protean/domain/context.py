@@ -11,7 +11,7 @@ logger = logging.getLogger("protean.application")
 
 
 class _DomainContextGlobals(object):
-    """A plain object. Used as a namespace for storing data during an
+    """A plain object. Used as a namespace for storing data for the duration of a
     domain context.
 
     Creating a domain context automatically creates this object, which is

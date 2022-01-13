@@ -51,14 +51,5 @@ class EmailProviders:
         if self._email_providers is None:
             self._initialize_email_providers()
 
-        if current_uow:
-            logger.debug(
-                f"Recording email {email.__class__.__name__} "
-                f"to be sent to {repr(email)} in {current_uow}"
-            )
-            current_uow.register_email(email)
-        else:
-            logger.debug(
-                f"Pushing {email.__class__.__name__} with content {repr(email)}"
-            )
-            self._email_providers[email.meta_.provider].send_email(email)
+        logger.debug(f"Pushing {email.__class__.__name__} with content {repr(email)}")
+        self._email_providers[email.meta_.provider].send_email(email)

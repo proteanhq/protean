@@ -70,4 +70,4 @@ async def test_that_subscription_invokes_engine_handler_on_message(
     )
     await subscription.poll()
 
-    mock_handle_message.assert_called_once_with(TypeMatcher(Message))
+    mock_handle_message.assert_called_once_with(UserEventHandler, TypeMatcher(Message))

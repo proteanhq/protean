@@ -34,7 +34,7 @@ def test_that_a_handler_is_recorded_against_command_handler(test_domain):
     assert fully_qualified_name(Register) in UserCommandHandlers._handlers
 
 
-def test_that_multiple_handlers_can_be_recorded_against_event_handler(test_domain):
+def test_that_multiple_handlers_can_be_recorded_against_command_handler(test_domain):
     class UserCommandHandlers(BaseCommandHandler):
         @handle(Register)
         def register(self, event: Register) -> None:
@@ -68,7 +68,9 @@ def test_that_multiple_handlers_can_be_recorded_against_event_handler(test_domai
     )
 
 
-def test_that_multiple_handlers_cannot_be_recorded_against_the_same_event(test_domain):
+def test_that_multiple_handlers_cannot_be_recorded_against_the_same_command(
+    test_domain,
+):
     class UserCommandHandlers(BaseCommandHandler):
         @handle(Register)
         def register(self, event: Register) -> None:

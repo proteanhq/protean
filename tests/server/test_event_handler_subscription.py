@@ -56,28 +56,9 @@ def engine(test_domain):
 
 
 def test_event_subscriptions(engine):
-    assert len(engine._event_subscriptions) == 1
-    assert fully_qualified_name(UserEventHandler) in engine._event_subscriptions
+    assert len(engine._subscriptions) == 1
+    assert fully_qualified_name(UserEventHandler) in engine._subscriptions
     assert (
-        engine._event_subscriptions[fully_qualified_name(UserEventHandler)].stream_name
+        engine._subscriptions[fully_qualified_name(UserEventHandler)].stream_name
         == "user"
-    )
-
-
-def test_event_handler_method_mappings(engine):
-    assert len(engine._event_handlers) == 2
-
-    registered_event_methods = [
-        method.__name__
-        for method in engine._event_handlers[fully_qualified_name(Registered)]
-    ]
-    assert registered_event_methods == ["send_activation_email"]
-
-    activated_event_methods = [
-        method.__name__
-        for method in engine._event_handlers[fully_qualified_name(Activated)]
-    ]
-    assert all(
-        event_method in activated_event_methods
-        for event_method in ["send_welcome_email", "provision_user"]
     )

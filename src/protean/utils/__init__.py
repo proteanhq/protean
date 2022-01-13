@@ -114,13 +114,7 @@ def derive_element_class(element_cls, base_cls, **opts):
             element_cls = type(element_cls.__name__, (base_cls,), new_dict)
         except BaseException as exc:
             logger.debug("Error during Element registration:", repr(exc))
-            raise IncorrectUsageError(
-                {
-                    "_entity": [
-                        f"Invalid class `{element_cls.__name__}` of type `{element_cls.element_type.value}`"
-                    ]
-                }
-            )
+            raise
 
     if hasattr(element_cls, "meta_"):
         for key, value in opts.items():
