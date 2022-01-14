@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 
 import pytest
 
@@ -100,7 +100,7 @@ class TestAggregateAssociations:
         @test_domain.aggregate
         class Post:
             name = String(max_length=50)
-            created_on = Date(default=datetime.utcnow)
+            created_on = Date(default=date.today)
 
             comments = HasMany("Comment")
 

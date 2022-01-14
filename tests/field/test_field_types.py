@@ -305,20 +305,41 @@ class TestDateField:
     def test_type_casting(self):
         """ Test type casting and validation for the Field"""
 
-        age = Date()
-
-        # Test datetime being passed as value
-        assert age._load(datetime.now()) == datetime.now().date()
+        birthday = Date()
 
         # Test string dates being passed as value
         expected = datetime(2018, 3, 16).date()
-        assert age._load("2018-03-16") == expected
-        assert age._load("2018-03-16 10:23:32") == expected
-        assert age._load("16th March 2018") == expected
+        assert birthday._load("2018-03-16") == expected
+        assert birthday._load("16th March 2018") == expected
+        assert birthday._load("2018-03-16 00:00:00") == expected
 
         # Test for invalid date
         with pytest.raises(ValidationError):
-            assert age._load("15 Marchs")
+            assert birthday._load("15 Marchs")
+
+    def test_null_values(self):
+        birthday = Date()
+
+        assert birthday._load(None) == None
+        assert birthday._load('') == None
+
+    def test_disallowing_datetime(self):
+        birthday = Date()
+
+        with pytest.raises(ValidationError) as exc:
+            birthday._load(datetime.now())
+
+        assert exc.value.messages['unlinked'][0].startswith("Expected a date but got a datetime")
+
+        with pytest.raises(ValidationError):
+            birthday._load("2018-03-16 10:23:32")
+
+    def test_invalid_date_value(self):
+        birthday = Date()
+
+        # Test for invalid date
+        with pytest.raises(ValidationError):
+            birthday._load("15 Marchs")
 
 
 class TestDateTimeField:
@@ -353,6 +374,11 @@ class TestDateTimeField:
         with pytest.raises(ValidationError):
             assert created_at._load("2018-03-16 10 23 32")
 
+    def test_null_values(self):
+        created_at = DateTime()
+
+        assert created_at._load(None) == None
+        assert created_at._load('') == None
 
 class TestTextField:
     """ Test the Text Field Implementation"""

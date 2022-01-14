@@ -349,16 +349,26 @@ class Date(Field):
 
     default_error_messages = {
         "invalid": '"{value}" has an invalid date format.',
+        'datetime': 'Expected a date but got a datetime {value}.',
     }
 
     def _cast_to_type(self, value):
-        """ Convert the value to a date and raise error on failures"""
+        """Convert the value to a date and raise error on failures"""
+        if isinstance(value, str) and not value:
+            return None
+
         if isinstance(value, datetime.datetime):
-            return value.date()
+            self.fail("datetime", value=value)
+
         if isinstance(value, datetime.date):
             return value
+
         try:
             value = date_parser(value)
+
+            if not(value.hour == 0 and value.minute == 0 and value.second == 0 and value.microsecond == 0):
+                self.fail("datetime", value=value)
+
             return value.date()
         except ValueError:
             self.fail("invalid", value=value)
@@ -374,8 +384,12 @@ class DateTime(Field):
 
     def _cast_to_type(self, value):
         """ Convert the value to a datetime and raise error on failures"""
+        if isinstance(value, str) and not value:
+            return None
+
         if isinstance(value, datetime.datetime):
             return value
+
         if isinstance(value, datetime.date):
             value = datetime.datetime(value.year, value.month, value.day)
             return value
