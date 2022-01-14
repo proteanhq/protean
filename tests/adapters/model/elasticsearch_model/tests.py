@@ -144,7 +144,7 @@ class TestModelOptions:
                 about = Text()
 
             test_domain.register(Person)
-            model_cls = test_domain.get_model(Person)
+            model_cls = test_domain.repository_for(Person)._model
 
             assert model_cls.__name__ == "PersonModel"
             assert model_cls._index._name == "foo#person"
