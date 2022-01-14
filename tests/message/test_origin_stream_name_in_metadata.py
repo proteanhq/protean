@@ -39,20 +39,29 @@ def user_id():
     return str(uuid4())
 
 
-@pytest.fixture
-def in_command_context(test_domain, user_id):
-    command_message = Message.to_command_message(
+def register_command_message(user_id):
+    return Message.to_command_message(
         Register(
             user_id=user_id,
             email="john.doe@gmail.com",
             name="John Doe",
         )
     )
-    g.message_in_context = command_message
 
 
-@pytest.fixture
-def in_event_context(test_domain, user_id):
+def registered_event_message(user_id):
+    return Message.to_event_message(
+        Registered(
+            user_id=user_id,
+            email="john.doe@gmail.com",
+            name="John Doe",
+        )
+    )
+
+
+def test_origin_stream_name_in_event_from_command_without_origin_stream_name(user_id):
+    g.message_in_context = register_command_message(user_id)
+
     event_message = Message.to_event_message(
         Registered(
             user_id=user_id,
@@ -60,24 +69,29 @@ def in_event_context(test_domain, user_id):
             name="John Doe",
         )
     )
-    g.message_in_context = event_message
+    assert event_message.metadata.origin_stream_name == None
 
 
-def test_origin_stream_name_in_event_from_command(in_command_context, user_id):
+def test_origin_stream_name_in_event_from_command_with_origin_stream_name(user_id):
+    command_message = register_command_message(user_id)
+    command_message.metadata.origin_stream_name = "foo"
+    g.message_in_context = command_message
+
     event_message = Message.to_event_message(
-        Register(
+        Registered(
             user_id=user_id,
             email="john.doe@gmail.com",
             name="John Doe",
         )
     )
 
-    assert event_message.metadata.origin_stream_name == None
+    assert event_message.metadata.origin_stream_name == "foo"
 
 
-def test_origin_stream_name_in_aggregate_event_from_command(
-    in_command_context, user_id
+def test_origin_stream_name_in_aggregate_event_from_command_without_origin_stream_name(
+    user_id,
 ):
+    g.message_in_context = register_command_message(user_id)
     user = User(
         id=user_id,
         email="john.doe@gmail.com",
@@ -95,7 +109,32 @@ def test_origin_stream_name_in_aggregate_event_from_command(
     assert event_message.metadata.origin_stream_name == None
 
 
-def test_origin_stream_name_in_command_from_event(in_event_context, user_id):
+def test_origin_stream_name_in_aggregate_event_from_command_with_origin_stream_name(
+    user_id,
+):
+    command_message = register_command_message(user_id)
+    command_message.metadata.origin_stream_name = "foo"
+    g.message_in_context = command_message
+
+    user = User(
+        id=user_id,
+        email="john.doe@gmail.com",
+        name="John Doe",
+    )
+    event_message = Message.to_aggregate_event_message(
+        user,
+        Register(
+            user_id=user_id,
+            email="john.doe@gmail.com",
+            name="John Doe",
+        ),
+    )
+
+    assert event_message.metadata.origin_stream_name == "foo"
+
+
+def test_origin_stream_name_in_command_from_event(user_id):
+    g.message_in_context = registered_event_message(user_id)
     command_message = Message.to_command_message(
         Register(
             user_id=user_id,

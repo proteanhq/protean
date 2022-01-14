@@ -65,6 +65,14 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
                     "origin_stream_name"
                 ] = g.message_in_context.stream_name
 
+            if (
+                new_message_type == "EVENT"
+                and g.message_in_context.metadata.kind == "COMMAND"
+                and g.message_in_context.metadata.origin_stream_name is not None
+            ):
+                additional_metadata[
+                    "origin_stream_name"
+                ] = g.message_in_context.metadata.origin_stream_name
         return additional_metadata
 
     @classmethod
