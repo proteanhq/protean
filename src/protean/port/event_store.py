@@ -49,6 +49,13 @@ class BaseEventStore(metaclass=ABCMeta):
     def _read_last_message(self, stream_name) -> Dict[str, Any]:
         pass
 
+    def category(self, stream_name: str) -> str:
+        if not stream_name:
+            return ""
+
+        stream_category, _, _ = stream_name.partition("-")
+        return stream_category
+
     def read(
         self,
         stream_name: str,
