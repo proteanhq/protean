@@ -2,10 +2,11 @@ import asyncio
 import json
 import logging
 
-from typing import Union
+from typing import List, Union
 
 from protean import BaseCommandHandler, BaseEventHandler
 from protean.port import BaseEventStore
+from protean.utils.mixins import Message
 
 logging.basicConfig(
     level=logging.INFO,
@@ -74,12 +75,30 @@ class Subscription:
             self.subscriber_stream_name, "Read", {"position": position}
         )
 
+    def filter_on_origin(self, messages: List[Message]) -> List[Message]:
+        if not self.origin_stream_name:
+            return messages
+
+        filtered_messages = []
+
+        for message in messages:
+            origin_stream = message.metadata and self.store.category(
+                message.metadata.origin_stream_name
+            )
+
+            if self.origin_stream_name == origin_stream:
+                filtered_messages.append(message)
+
+        return filtered_messages
+
     async def get_next_batch_of_messages(self):
-        return self.store.read(
+        messages = self.store.read(
             self.stream_name,
             position=self.current_position + 1,
             no_of_messages=self.messages_per_tick,
         )  # FIXME Implement filtering
+
+        return self.filter_on_origin(messages)
 
     async def process_batch(self, messages):
         logging.debug(f"Processing {len(messages)} messages...")
