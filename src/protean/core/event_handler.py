@@ -16,7 +16,7 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return [("aggregate_cls", None)]
+        return [("aggregate_cls", None), ("stream_name", None), ("source_stream", None)]
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseEventHandler:
@@ -27,11 +27,11 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
 def event_handler_factory(element_cls, **opts):
     element_cls = derive_element_class(element_cls, BaseEventHandler, **opts)
 
-    if not element_cls.meta_.aggregate_cls:
+    if not (element_cls.meta_.aggregate_cls or element_cls.meta_.stream_name):
         raise IncorrectUsageError(
             {
                 "_entity": [
-                    f"Event Handler `{element_cls.__name__}` needs to be associated with an Aggregate"
+                    f"Event Handler `{element_cls.__name__}` needs to be associated with an aggregate or a stream"
                 ]
             }
         )

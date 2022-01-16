@@ -33,8 +33,10 @@ class Engine:
             self._subscriptions[handler_name] = Subscription(
                 self,
                 handler_name,
-                record.cls.meta_.aggregate_cls.meta_.stream_name,
+                record.cls.meta_.stream_name
+                or record.cls.meta_.aggregate_cls.meta_.stream_name,
                 record.cls,
+                origin_stream_name=record.cls.meta_.source_stream,
             )
 
         for handler_name, record in self.domain.registry.command_handlers.items():

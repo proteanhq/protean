@@ -63,6 +63,9 @@ def fully_qualified_name(cls):
     return ".".join([cls.__module__, cls.__name__])
 
 
+fqn = fully_qualified_name
+
+
 def singleton(cls):
     """Make a class a Singleton class (only one instance)"""
 
