@@ -31,7 +31,7 @@ from .config import Config, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals, has_domain_context
 from .helpers import _PackageBoundObject, get_debug_flag, get_env
 
-logger = logging.getLogger("protean.domain")
+logger = logging.getLogger(__name__)
 
 # a singleton sentinel value for parameter defaults
 _sentinel = object()

@@ -9,7 +9,7 @@ from protean.globals import current_uow
 from protean.utils import DomainObjects
 from protean.utils.query import Q
 
-logger = logging.getLogger("protean.repository.queryset")
+logger = logging.getLogger(__name__)
 
 
 class QuerySet:

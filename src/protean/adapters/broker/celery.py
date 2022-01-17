@@ -15,7 +15,7 @@ from protean.utils import (
 )
 from protean.utils.inflection import underscore
 
-logger = logging.getLogger("protean.adapters.celery")
+logger = logging.getLogger(__name__)
 
 
 class ProteanTask(Task):

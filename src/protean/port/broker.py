@@ -14,7 +14,7 @@ from protean.core.event import BaseEvent
 from protean.core.subscriber import BaseSubscriber
 from protean.utils import DomainObjects, fully_qualified_name
 
-logger = logging.getLogger("protean.port.broker")
+logger = logging.getLogger(__name__)
 
 
 class BaseBroker(metaclass=ABCMeta):

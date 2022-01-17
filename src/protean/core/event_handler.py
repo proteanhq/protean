@@ -6,7 +6,7 @@ from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, derive_element_class, fully_qualified_name
 from protean.utils.mixins import HandlerMixin
 
-logger = logging.getLogger("protean.domain.event_handler")
+logger = logging.getLogger(__name__)
 
 
 class BaseEventHandler(Element, HandlerMixin, OptionsMixin):

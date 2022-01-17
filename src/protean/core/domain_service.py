@@ -3,7 +3,7 @@ import logging
 from protean.container import Element
 from protean.utils import DomainObjects, derive_element_class
 
-logger = logging.getLogger("protean.domain.service")
+logger = logging.getLogger(__name__)
 
 
 class BaseDomainService(Element):

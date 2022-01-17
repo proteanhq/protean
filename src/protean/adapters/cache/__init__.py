@@ -6,7 +6,7 @@ import logging
 from protean.exceptions import ConfigurationError
 from protean.utils.inflection import underscore
 
-logger = logging.getLogger("protean.cache")
+logger = logging.getLogger(__name__)
 
 
 class Caches(collections.abc.MutableMapping):

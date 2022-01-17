@@ -7,7 +7,7 @@ from protean.globals import _domain_context_stack
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
 
-logger = logging.getLogger("protean.application")
+logger = logging.getLogger(__name__)
 
 
 class _DomainContextGlobals(object):

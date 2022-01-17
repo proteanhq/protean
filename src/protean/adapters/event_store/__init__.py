@@ -7,7 +7,7 @@ from protean.core.event_sourced_repository import (
 )
 from protean.exceptions import ConfigurationError
 
-logger = logging.getLogger("protean.event_store")
+logger = logging.getLogger(__name__)
 
 
 class EventStore:

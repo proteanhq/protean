@@ -3,7 +3,7 @@ import logging
 
 from protean.core.email import BaseEmailProvider
 
-logger = logging.getLogger("protean.adapters.email")
+logger = logging.getLogger(__name__)
 
 
 class DummyEmailProvider(BaseEmailProvider):

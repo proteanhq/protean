@@ -4,7 +4,7 @@ import logging
 
 from protean.exceptions import ConfigurationError
 
-logger = logging.getLogger("protean.broker")
+logger = logging.getLogger(__name__)
 
 
 class Brokers(collections.abc.MutableMapping):

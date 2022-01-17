@@ -9,7 +9,7 @@ from protean.fields import FieldBase, ValueObject
 
 from .reflection import _FIELDS, attributes, fields
 
-logger = logging.getLogger("protean.domain")
+logger = logging.getLogger(__name__)
 
 
 class Element:

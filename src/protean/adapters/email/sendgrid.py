@@ -8,7 +8,7 @@ from sendgrid.helpers.mail import Mail, TemplateId
 from protean.core.email import BaseEmailProvider
 from protean.exceptions import SendError
 
-logger = logging.getLogger("protean.email.sendgrid")
+logger = logging.getLogger(__name__)
 
 
 class SendgridEmailProvider(BaseEmailProvider):

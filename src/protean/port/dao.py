@@ -12,7 +12,7 @@ from protean.reflection import fields, id_field, unique_fields
 from protean.utils import DomainObjects
 from protean.utils.query import Q
 
-logger = logging.getLogger("protean.repository")
+logger = logging.getLogger(__name__)
 
 
 class ResultSet(object):

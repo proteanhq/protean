@@ -40,7 +40,7 @@ from protean.utils import Database, IdentityType
 from protean.utils.query import Q
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
-logger = logging.getLogger("protean.repository")
+logger = logging.getLogger(__name__)
 
 
 class GUID(TypeDecorator):

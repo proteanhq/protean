@@ -9,7 +9,7 @@ from protean.fields.association import Association
 from protean.reflection import _ID_FIELD_NAME, fields, id_field
 from protean.utils import DomainObjects, derive_element_class, inflection
 
-logger = logging.getLogger("protean.domain.view")
+logger = logging.getLogger(__name__)
 
 
 class BaseView(BaseContainer, OptionsMixin):

@@ -17,7 +17,7 @@ from protean.utils import (
     inflection,
 )
 
-logger = logging.getLogger("protean.domain.entity")
+logger = logging.getLogger(__name__)
 
 
 class _FieldsCacheDescriptor:

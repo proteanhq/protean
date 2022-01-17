@@ -14,6 +14,8 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
+logger = logging.getLogger(__name__)
+
 
 class Subscription:
     """Subscriber implementation."""
@@ -54,21 +56,22 @@ class Subscription:
         if message:
             data = json.loads(message["data"])
             self.current_position = data["position"]
+            logger.debug(f"Loaded position {self.current_position} from last message")
         else:
             self.current_position = 0
+            logger.debug("No previous messages - Starting at position 0")
 
     async def update_read_position(self, position):
         self.current_position = position
         self.messages_since_last_position_write += 1
 
         if self.messages_since_last_position_write == self.position_update_interval:
-            logging.debug(f"Updating position in {self.subscriber_id} to {position}")
             return self.write_position(position)
 
         return
 
     def write_position(self, position):
-        print(f"Updating Read Position... {self.subscriber_id} - {position}")
+        print(f"Updating Read Position of {self.subscriber_id} to {position}")
 
         self.messages_since_last_position_write = 0
         return self.store._write(
@@ -89,6 +92,7 @@ class Subscription:
             if self.origin_stream_name == origin_stream:
                 filtered_messages.append(message)
 
+        logger.debug(f"Filtered {len(filtered_messages)} out of {len(messages)}")
         return filtered_messages
 
     async def get_next_batch_of_messages(self):
@@ -112,11 +116,11 @@ class Subscription:
         return len(messages)
 
     def log_error(self, last_message, error):
-        print(str(error))
+        logger.error(str(error))
         # FIXME Better Debug : print(f"{str(error) - {last_message}}")
 
     async def start(self):
-        print(f"Starting {self.subscriber_id}...")
+        logger.debug(f"Starting {self.subscriber_id}")
 
         # Load own position from Event store
         await self.load_position()

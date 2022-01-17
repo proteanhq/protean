@@ -19,6 +19,8 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
+logger = logging.getLogger(__name__)
+
 
 class Engine:
     def __init__(self, domain: "Domain", test_mode: str = False) -> None:
@@ -58,7 +60,7 @@ class Engine:
     async def handle_message(
         self, handler_cls: Union[BaseCommandHandler, BaseEventHandler], message
     ) -> None:
-        logging.debug(f"Processing {message.type} in {handler_cls.__name__}")
+        logger.debug(f"Processing {message.type} in {handler_cls.__name__}")
         with self.domain.domain_context():
             # Set context from current message, so that further processes
             #   carry the metadata forward.
@@ -67,7 +69,7 @@ class Engine:
             try:
                 handler_cls._handle(message)
             except Exception as exc:
-                logging.error(
+                logger.error(
                     f"Error while handling message {message.stream_name} in {handler_cls.__name__} - {str(exc)}"
                 )
                 # FIXME Implement mechanisms to track errors
@@ -78,13 +80,13 @@ class Engine:
     async def shutdown(self, signal=None):
         """Cleanup tasks tied to the service's shutdown."""
         if signal:
-            logging.info(f"Received exit signal {signal.name}...")
+            logger.info(f"Received exit signal {signal.name}...")
 
         tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
 
         [task.cancel() for task in tasks]
 
-        logging.info(f"Cancelling {len(tasks)} outstanding tasks")
+        logger.info(f"Cancelling {len(tasks)} outstanding tasks")
         await asyncio.gather(*tasks, return_exceptions=True)
         self.loop.stop()
 
@@ -101,14 +103,14 @@ class Engine:
             # context["message"] will always be there; but context["exception"] may not
             msg = context.get("exception", context["message"])
 
-            logging.error(f"Caught exception: {msg}")
-            logging.info("Shutting down...")
+            logger.error(f"Caught exception: {msg}")
+            logger.info("Shutting down...")
             asyncio.create_task(self.shutdown(loop))
 
         self.loop.set_exception_handler(handle_exception)
 
         if len(self._subscriptions) == 0:
-            logging.info("No subscriptions to start. Exiting...")
+            logger.info("No subscriptions to start. Exiting...")
 
         # Start consumption, one per subscription
         try:
@@ -118,4 +120,4 @@ class Engine:
             self.loop.run_forever()
         finally:
             self.loop.close()
-            logging.debug("Successfully shutdown Protean Engine.")
+            logger.debug("Successfully shutdown Protean Engine.")

@@ -19,7 +19,7 @@ from protean.reflection import attributes, id_field
 from protean.utils import Database, IdentityStrategy, IdentityType
 from protean.utils.query import Q
 
-logger = logging.getLogger("protean.repository")
+logger = logging.getLogger(__name__)
 
 operators = {
     "exact": "__eq__",

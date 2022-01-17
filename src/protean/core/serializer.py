@@ -23,7 +23,7 @@ from protean.fields import (
 from protean.reflection import _FIELDS
 from protean.utils import DomainObjects, derive_element_class
 
-logger = logging.getLogger("protean.application.serializer")
+logger = logging.getLogger(__name__)
 
 
 class _SerializerMetaclass(type):

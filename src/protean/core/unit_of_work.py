@@ -4,7 +4,7 @@ from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.globals import _uow_context_stack, current_domain
 
-logger = logging.getLogger("protean.core.unit_of_work")
+logger = logging.getLogger(__name__)
 
 
 class UnitOfWork:

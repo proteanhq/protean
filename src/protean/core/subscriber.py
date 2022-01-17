@@ -8,7 +8,7 @@ from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, derive_element_class
 
-logger = logging.getLogger("protean.domain.subscriber")
+logger = logging.getLogger(__name__)
 
 
 class BaseSubscriber(Element, OptionsMixin):

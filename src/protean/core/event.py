@@ -5,7 +5,7 @@ from protean.fields import Field
 from protean.reflection import _ID_FIELD_NAME, fields
 from protean.utils import DomainObjects, derive_element_class
 
-logger = logging.getLogger("protean.event")
+logger = logging.getLogger(__name__)
 
 
 class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin

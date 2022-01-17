@@ -8,7 +8,7 @@ import inflection
 
 from protean.utils import DomainObjects, fully_qualified_name
 
-logger = logging.getLogger("protean.domain")
+logger = logging.getLogger(__name__)
 
 
 class _DomainRegistry:

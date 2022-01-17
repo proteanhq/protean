@@ -63,6 +63,5 @@ LOGGING_CONFIG = {
     },
     "loggers": {
         "protean": {"handlers": ["console"], "level": "INFO"},
-        "vfc": {"handlers": ["console"], "level": "INFO"},
     },
 }

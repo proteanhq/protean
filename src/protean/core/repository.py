@@ -14,7 +14,7 @@ from protean.utils import (
     fully_qualified_name,
 )
 
-logger = logging.getLogger("protean.repository")
+logger = logging.getLogger(__name__)
 
 
 class BaseRepository(Element, OptionsMixin):

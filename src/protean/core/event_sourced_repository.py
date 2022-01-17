@@ -7,7 +7,7 @@ from protean.fields import Identifier
 from protean.globals import current_domain, current_uow
 from protean.utils import DomainObjects, derive_element_class
 
-logger = logging.getLogger("protean.event_sourced_repository")
+logger = logging.getLogger(__name__)
 
 
 class BaseEventSourcedRepository(Element, OptionsMixin):
