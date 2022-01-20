@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import functools
-import json
 
 from collections import defaultdict
 from enum import Enum
@@ -31,7 +30,18 @@ class MessageMetadata(BaseValueObject):
     origin_stream_name = String()
 
 
-class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
+class CoreMessage(BaseContainer):
+    global_position = Auto(increment=True, identifier=True)
+    position = Integer()
+    time = DateTime()
+    id = Auto()
+    stream_name = String(max_length=255)
+    type = String()
+    data = Dict()
+    metadata = ValueObject(MessageMetadata)
+
+
+class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
     """Base class for Events and Commands.
     It provides concrete implementations for:
     - ID generation
@@ -39,18 +49,7 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     - Serialization and De-serialization
     """
 
-    message_id = Auto(identifier=True)
-    stream_name = String(max_length=255)
-    type = String()
-    data = Dict()
     expected_version = Integer()
-
-    # Attributes filled when message is loaded from store
-    time = DateTime()
-    position = Integer()
-    global_position = Integer()
-
-    metadata = ValueObject(MessageMetadata)
 
     @classmethod
     def derived_metadata(cls, new_message_type: str) -> Dict:
@@ -80,8 +79,8 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         return Message(
             stream_name=message["stream_name"],
             type=message["type"],
-            data=json.loads(message["data"]),
-            metadata=MessageMetadata(**json.loads(message["metadata"])),
+            data=message["data"],
+            metadata=MessageMetadata(**message["metadata"]),
             position=message["position"],
             global_position=message["global_position"],
             time=message["time"],

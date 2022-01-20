@@ -98,8 +98,7 @@ class Domain(_PackageBoundObject):
             "IDENTITY_TYPE": IdentityType.STRING.value,
             "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider"}},
             "EVENT_STORE": {
-                "PROVIDER": "protean.adapters.event_store.message_db.MessageDBStore",
-                "DATABASE_URI": "postgresql://message_store@localhost:5433/message_store",
+                "PROVIDER": "protean.adapters.event_store.memory.MemoryEventStore",
             },
             "CACHES": {
                 "default": {
@@ -372,7 +371,8 @@ class Domain(_PackageBoundObject):
         #       class Account:
         #  ```
 
-        new_cls = self.factory_for(element_type)(element_cls, **kwargs)
+        factory = self.factory_for(element_type)
+        new_cls = factory(element_cls, **kwargs)
 
         if element_type == DomainObjects.MODEL:
             # Remember model association with aggregate/entity class, for easy fetching

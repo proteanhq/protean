@@ -202,6 +202,7 @@ def test():
             "--postgresql",
             "--elasticsearch",
             "--redis",
+            "--message_db",
             "tests",
         ]
     )

@@ -68,18 +68,15 @@ def setup_db():
         domain.repository_for(ListUser)._dao
         domain.repository_for(IntegerListUser)._dao
 
-        for _, provider in domain.providers.items():
-            provider._metadata.create_all()
+        domain.providers["default"]._metadata.create_all()
 
         yield
 
         # Drop all tables at the end of test suite
-        for _, provider in domain.providers.items():
-            provider._metadata.drop_all()
+        domain.providers["default"]._metadata.drop_all()
 
 
 @pytest.fixture(autouse=True)
 def run_around_tests(test_domain):
     yield
-    if "default" in test_domain.providers:
-        test_domain.providers["default"]._data_reset()
+    test_domain.providers["default"]._data_reset()

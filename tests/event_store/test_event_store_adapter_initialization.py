@@ -1,11 +1,11 @@
 import mock
 
-from protean.adapters.event_store.message_db import MessageDBStore
+from protean.adapters.event_store.memory import MemoryEventStore
 
 
 def test_domain_event_store_attribute(test_domain):
     assert test_domain.event_store is not None
-    assert isinstance(test_domain.event_store.store, MessageDBStore)
+    assert isinstance(test_domain.event_store.store, MemoryEventStore)
 
 
 @mock.patch("protean.adapters.event_store.EventStore._initialize")

@@ -33,6 +33,9 @@ def pytest_addoption(parser):
         "--redis", action="store_true", default=False, help="Run Redis based tests"
     )
     parser.addoption(
+        "--message_db", action="store_true", default=False, help="Run Redis based tests"
+    )
+    parser.addoption(
         "--sendgrid", action="store_true", default=False, help="Run Sendgrid tests"
     )
 
@@ -50,7 +53,9 @@ def pytest_collection_modifyitems(config, items):
         run_pending
     ) = (
         run_sqlite
-    ) = run_postgresql = run_elasticsearch = run_redis = run_sendgrid = False
+    ) = (
+        run_postgresql
+    ) = run_elasticsearch = run_redis = run_message_db = run_sendgrid = False
 
     if config.getoption("--slow"):
         # --slow given in cli: do not skip slow tests
@@ -71,6 +76,9 @@ def pytest_collection_modifyitems(config, items):
     if config.getoption("--redis"):
         run_redis = True
 
+    if config.getoption("--message_db"):
+        run_message_db = True
+
     if config.getoption("--sendgrid"):
         run_sendgrid = True
 
@@ -80,6 +88,7 @@ def pytest_collection_modifyitems(config, items):
     skip_postgresql = pytest.mark.skip(reason="need --postgresql option to run")
     skip_elasticsearch = pytest.mark.skip(reason="need --elasticsearch option to run")
     skip_redis = pytest.mark.skip(reason="need --redis option to run")
+    skip_message_db = pytest.mark.skip(reason="need --message_db option to run")
     skip_sendgrid = pytest.mark.skip(reason="need --sendgrid option to run")
 
     for item in items:
@@ -95,6 +104,8 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_elasticsearch)
         if "redis" in item.keywords and run_redis is False:
             item.add_marker(skip_redis)
+        if "message_db" in item.keywords and run_message_db is False:
+            item.add_marker(skip_message_db)
         if "sendgrid" in item.keywords and run_sendgrid is False:
             item.add_marker(skip_sendgrid)
 

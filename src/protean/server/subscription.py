@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 
 from typing import List, Union
@@ -54,8 +53,7 @@ class Subscription:
     async def load_position(self):
         message = self.store._read_last_message(self.subscriber_stream_name)
         if message:
-            data = json.loads(message["data"])
-            self.current_position = data["position"]
+            self.current_position = message["data"]["position"]
             logger.debug(f"Loaded position {self.current_position} from last message")
         else:
             self.current_position = 0

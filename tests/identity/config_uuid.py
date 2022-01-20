@@ -17,6 +17,7 @@ DATABASES = {
         "DATABASE": Database.SQLITE.value,
         "DATABASE_URI": "sqlite:///test.db",
     },
+    "memory": {"PROVIDER": "protean.adapters.MemoryProvider"},
 }
 
 IDENTITY_STRATEGY = IdentityStrategy.UUID.value

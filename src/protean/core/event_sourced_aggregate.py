@@ -1,6 +1,5 @@
 import functools
 import inspect
-import json
 import logging
 
 from collections import defaultdict
@@ -107,9 +106,7 @@ class BaseEventSourcedAggregate(EventedMixin, OptionsMixin, BaseContainer):
         """
         # FIXME Handle case of missing projection
         for fn in self._projections[event_dict["type"]]:
-            event = self._events_cls_map[event_dict["type"]](
-                **json.loads(event_dict["data"])
-            )
+            event = self._events_cls_map[event_dict["type"]](**event_dict["data"])
             fn(self, event)
 
 

@@ -103,6 +103,10 @@ class Engine:
             # context["message"] will always be there; but context["exception"] may not
             msg = context.get("exception", context["message"])
 
+            import traceback
+
+            traceback.print_stack(context.get("exception"))
+
             logger.error(f"Caught exception: {msg}")
             logger.info("Shutting down...")
             asyncio.create_task(self.shutdown(loop))

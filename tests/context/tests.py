@@ -5,14 +5,6 @@ from protean.globals import current_domain, g
 
 class TestDomainContext:
     @pytest.fixture
-    def test_domain(self):
-        from protean.domain import Domain
-
-        domain = Domain("Test")
-
-        yield domain
-
-    @pytest.fixture
     def test_domain_context(self, test_domain):
         with test_domain.domain_context() as context:
             yield context

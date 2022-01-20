@@ -20,6 +20,7 @@ IDENTITY_TYPE = IdentityType.UUID.value
 # Define the databases
 DATABASES = {
     "default": {"PROVIDER": "protean.adapters.MemoryProvider"},
+    "memory": {"PROVIDER": "protean.adapters.MemoryProvider"},
 }
 
 CACHES = {

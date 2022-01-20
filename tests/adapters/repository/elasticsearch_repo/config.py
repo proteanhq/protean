@@ -24,4 +24,5 @@ DATABASES = {
         "DATABASE": Database.ELASTICSEARCH.value,
         "DATABASE_URI": {"hosts": ["localhost"]},
     },
+    "memory": {"PROVIDER": "protean.adapters.MemoryProvider"},
 }

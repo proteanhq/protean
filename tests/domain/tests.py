@@ -136,6 +136,9 @@ class TestDomainLevelClassResolution:
             from protean.domain import Domain
 
             domain = Domain("Test")
+            domain.config["DATABASES"]["memory"] = {
+                "PROVIDER": "protean.adapters.MemoryProvider"
+            }
             yield domain
 
         def test_that_class_reference_is_tracked_at_the_domain_level(self):

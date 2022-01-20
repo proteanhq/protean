@@ -11,6 +11,7 @@ SECRET_KEY = "W4cCfcN@CvF67Fe$rFBt3!8e"
 # Database Configuration
 DATABASES = {
     "default": {"PROVIDER": "protean.adapters.MemoryProvider"},
+    "memory": {"PROVIDER": "protean.adapters.MemoryProvider"},
 }
 
 # Identity strategy to use when persisting Entities/Aggregates.

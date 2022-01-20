@@ -24,4 +24,5 @@ DATABASES = {
         "DATABASE": Database.POSTGRESQL.value,
         "DATABASE_URI": "postgresql://postgres:postgres@localhost:5432/postgres",
     },
+    "memory": {"PROVIDER": "protean.adapters.MemoryProvider"},
 }

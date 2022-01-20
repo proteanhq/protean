@@ -8,7 +8,7 @@ build:
 	docker-compose build
 
 up:
-	docker-compose up -d redis elasticsearch postgres
+	docker-compose up -d redis elasticsearch postgres message-db
 
 down:
 	docker-compose down --remove-orphans
@@ -20,4 +20,4 @@ test-full: up
 	protean test
 
 cov: up
-    pytest --slow --sqlite --postgresql --elasticsearch --redis --cov=protean --cov-config .coveragerc tests
+    pytest --slow --sqlite --postgresql --elasticsearch --redis --message_db --cov=protean --cov-config .coveragerc tests

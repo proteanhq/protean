@@ -1,6 +1,6 @@
 # cSpell: disable
 
-from protean.utils import Database, IdentityStrategy, IdentityType
+from protean.utils import IdentityStrategy, IdentityType
 
 ####################
 # CORE             #
@@ -18,11 +18,7 @@ IDENTITY_STRATEGY = IdentityStrategy.UUID.value
 IDENTITY_TYPE = IdentityType.UUID.value
 
 # Define the databases
-DATABASES = {
-    "default": {
-        "PROVIDER": "protean.adapters.repository.elasticsearch.ESProvider",
-        "DATABASE": Database.ELASTICSEARCH.value,
-        "DATABASE_URI": {"hosts": ["localhost"]},
-    },
-    "memory": {"PROVIDER": "protean.adapters.MemoryProvider"},
+EVENT_STORE = {
+    "PROVIDER": "protean.adapters.event_store.message_db.MessageDBStore",
+    "DATABASE_URI": "postgresql://message_store@localhost:5433/message_store",
 }

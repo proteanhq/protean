@@ -37,7 +37,7 @@ class EventStore:
                     importlib.import_module(event_store_module), event_store_class
                 )
 
-                store = event_store_cls(self, configured_event_store)
+                store = event_store_cls(self.domain, configured_event_store)
             else:
                 raise ConfigurationError(
                     "Configure at least one event store in the domain"

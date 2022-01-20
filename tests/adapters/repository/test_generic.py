@@ -55,7 +55,10 @@ def initialize_domain():
 @pytest.fixture
 def test_domain(db_config):
     domain = initialize_domain()
-    domain.config["DATABASES"] = {"default": db_config}
+    domain.config["DATABASES"] = {
+        "default": db_config,
+        "memory": {"PROVIDER": "protean.adapters.MemoryProvider"},
+    }
 
     with domain.domain_context():
         yield domain
