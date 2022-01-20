@@ -6,6 +6,8 @@ import os
 
 import pytest
 
+from uuid import UUID
+
 
 def pytest_addoption(parser):
     """Additional options for running tests with pytest"""
@@ -157,3 +159,13 @@ def run_around_tests(test_domain):
         cache.flush_all()
 
     test_domain.event_store.store._data_reset()
+
+
+def assert_str_is_uuid(value: str) -> None:
+    try:
+        UUID(value)
+    except ValueError:
+        pytest.fail("Invalid UUID")
+
+
+pytest.assert_str_is_uuid = assert_str_is_uuid

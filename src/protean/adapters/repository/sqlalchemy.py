@@ -23,6 +23,7 @@ from protean.fields import (
     Date,
     DateTime,
     Dict,
+    Field,
     Float,
     Identifier,
     Integer,
@@ -107,10 +108,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
     """Metaclass for the Sqlalchemy declarative schema"""
 
     def __init__(cls, classname, bases, dict_):  # noqa: C901
-        # Update the class attrs with the entity attributes
-
         field_mapping = {
-            Auto: _get_identity_type(),
             Boolean: sa_types.Boolean,
             Date: sa_types.Date,
             DateTime: sa_types.DateTime,
@@ -124,6 +122,19 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
             _ReferenceField: _get_identity_type(),
         }
 
+        def field_mapping_for(field_obj: Field):
+            """Return SQLAlchemy-equivalent type for Protean's field"""
+            field_cls = type(field_obj)
+
+            if field_cls is Auto:
+                if field_obj.increment is True:
+                    return sa_types.Integer
+                else:
+                    return _get_identity_type()
+
+            return field_mapping.get(field_cls)
+
+        # Update the class attrs with the entity attributes
         if "meta_" in dict_:
             entity_cls = dict_["meta_"].entity_cls
             for _, field_obj in attributes(entity_cls).items():
@@ -140,7 +151,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                     type_kwargs = {}
 
                     # Get the SA type
-                    sa_type_cls = field_mapping.get(field_cls)
+                    sa_type_cls = field_mapping_for(field_obj)
 
                     # Upgrade to Postgresql specific Data Types
                     if cls.metadata.bind.dialect.name == "postgresql":

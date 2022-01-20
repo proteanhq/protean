@@ -266,7 +266,7 @@ class DictDAO(BaseDAO):
         conn = self._get_session()
 
         for field_name, field_obj in fields(self.entity_cls).items():
-            if type(field_obj) is Auto:
+            if type(field_obj) is Auto and field_obj.increment:
                 counter_key = f"{self.schema_name}_{field_name}"
                 if not (field_name in model_obj and model_obj[field_name] is not None):
                     # Increment the counter and it should start from 1
@@ -360,8 +360,8 @@ class DictDAO(BaseDAO):
                 reverse = True
                 o_key = o_key[1:]
 
-            null_items = [item for item in items if not item.get(o_key)]
-            non_null_items = [item for item in items if item.get(o_key)]
+            null_items = [item for item in items if item.get(o_key) is None]
+            non_null_items = [item for item in items if item.get(o_key) is not None]
             sorted_items = sorted(
                 non_null_items, key=itemgetter(o_key), reverse=reverse
             )
