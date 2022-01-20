@@ -5,7 +5,7 @@ import logging
 import sys
 
 from collections import defaultdict
-from functools import cache, cached_property
+from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional, Type
 
 from werkzeug.datastructures import ImmutableDict
@@ -310,7 +310,8 @@ class Domain(_PackageBoundObject):
     def __str__(self) -> str:
         return f"Domain: {self.domain_name}"
 
-    @cached_property
+    @property
+    @lru_cache()
     def registry(self):
         return self._domain_registry
 
@@ -687,7 +688,7 @@ class Domain(_PackageBoundObject):
     # Repository Functionality #
     ############################
 
-    @cache
+    @lru_cache(maxsize=None)
     def repository_for(self, aggregate_cls):
         if aggregate_cls.element_type == DomainObjects.EVENT_SOURCED_AGGREGATE:
             return self.event_store.repository_for(aggregate_cls)
