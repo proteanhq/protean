@@ -105,6 +105,7 @@ class Subscription:
     async def process_batch(self, messages):
         logging.debug(f"Processing {len(messages)} messages...")
         for message in messages:
+            logging.info(f"{message.type}-{message.id} : {message.to_dict()}")
             try:
                 await self.engine.handle_message(self.handler, message)
                 await self.update_read_position(message.global_position)

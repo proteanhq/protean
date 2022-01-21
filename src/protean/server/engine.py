@@ -60,7 +60,6 @@ class Engine:
     async def handle_message(
         self, handler_cls: Union[BaseCommandHandler, BaseEventHandler], message
     ) -> None:
-        logger.debug(f"Processing {message.type} in {handler_cls.__name__}")
         with self.domain.domain_context():
             # Set context from current message, so that further processes
             #   carry the metadata forward.
@@ -68,6 +67,10 @@ class Engine:
 
             try:
                 handler_cls._handle(message)
+
+                logger.info(
+                    f"{handler_cls.__name__} processed {message.type}-{message.id} successfully."
+                )
             except Exception as exc:
                 logger.error(
                     f"Error while handling message {message.stream_name} in {handler_cls.__name__} - {str(exc)}"

@@ -84,6 +84,7 @@ class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
             position=message["position"],
             global_position=message["global_position"],
             time=message["time"],
+            id=message["id"],
         )
 
     @classmethod
