@@ -1,7 +1,11 @@
 import logging
 
 from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
-from protean.exceptions import InvalidOperationError, ValidationError
+from protean.exceptions import (
+    ExpectedVersionError,
+    InvalidOperationError,
+    ValidationError,
+)
 from protean.globals import _uow_context_stack, current_domain
 
 logger = logging.getLogger(__name__)
@@ -66,6 +70,16 @@ class UnitOfWork:
                 item._events = []
 
             logger.debug("Commit Successful")
+        except ValueError as exc:
+            logger.error(str(exc))
+            self.rollback()
+
+            # Extact message based on message store platform in use
+            if str(exc).startswith("P0001-ERROR"):
+                msg = str(exc).split("P0001-ERROR:  ")[1]
+            else:
+                msg = str(exc)
+            raise ExpectedVersionError(msg) from None
         except Exception as exc:
             logger.error(
                 f"Error during Commit: {str(exc)}. Rolling back Transaction..."

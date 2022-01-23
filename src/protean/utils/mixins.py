@@ -102,8 +102,8 @@ class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
                 owner=current_domain.domain_name,
                 **cls.derived_metadata(MessageType.EVENT.value)
                 # schema_version=event.meta_.version,  # FIXME Maintain version for event
-            )
-            # expected_version=aggregate.version  # FIXME Maintain version for Aggregates
+            ),
+            expected_version=aggregate._version,  # FIXME Maintain version for Aggregates
         )
 
     def to_object(self) -> Union["BaseEvent", "BaseCommand"]:

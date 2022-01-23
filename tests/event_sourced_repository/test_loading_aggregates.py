@@ -149,8 +149,10 @@ def test_loading_aggregates_from_first_event(test_domain):
     # Ensure that the first event is applied as well
     assert user.is_registered is True
 
+    assert user._version == 0
 
-def test_loading_aggregates_from_events(test_domain):
+
+def test_loading_aggregates_from_multiple_events(test_domain):
     identifier = str(uuid4())
     UserCommandHandler().register_user(
         Register(
@@ -182,3 +184,5 @@ def test_loading_aggregates_from_events(test_domain):
 
     # Ensure that the first event is applied as well
     assert user.is_registered is True
+
+    assert user._version == 1

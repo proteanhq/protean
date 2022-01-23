@@ -92,3 +92,7 @@ class UsecaseExecutionError(Exception):
 
 class SendError(Exception):
     """Raised on email dispatch failure."""
+
+
+class ExpectedVersionError(Exception):
+    """Raised on expected version conflicts in EventSourcing"""

@@ -7,7 +7,7 @@ from typing import Callable, Dict
 
 from protean.container import BaseContainer, EventedMixin, OptionsMixin
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Field
+from protean.fields import Field, Integer
 from protean.reflection import _ID_FIELD_NAME, fields, id_field
 from protean.utils import (
     DomainObjects,
@@ -23,6 +23,9 @@ class BaseEventSourcedAggregate(EventedMixin, OptionsMixin, BaseContainer):
     """Base Event Sourced Aggregate class that all EventSourced Aggregates should inherit from."""
 
     element_type = DomainObjects.EVENT_SOURCED_AGGREGATE
+
+    # Track current version of Aggregate
+    _version = Integer(default=-1)
 
     class Meta:
         abstract = True
@@ -130,6 +133,7 @@ class apply:
         @functools.wraps(fn)
         def wrapper(instance, event_obj):
             fn(instance, event_obj)
+            instance._version += 1
 
         setattr(wrapper, "_event_cls", self._event_cls)
         return wrapper

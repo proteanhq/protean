@@ -47,7 +47,7 @@ class MemoryMessageRepository(BaseRepository):
                 f"(Stream: {stream_name}, Stream Version: {_stream_version})"
             )
 
-        next_position = _stream_version + 1
+        next_position = _stream_version
 
         self.add(
             MemoryMessage(

@@ -63,6 +63,7 @@ def test_construct_message_from_event(test_domain):
     assert message.metadata.owner == test_domain.domain_name
     assert message.data == event.to_dict()
     assert message.time is None
+    assert message.expected_version == user._version
 
     # Verify Message Dict
     message_dict = message.to_dict()
@@ -73,6 +74,7 @@ def test_construct_message_from_event(test_domain):
     assert message_dict["stream_name"] == f"{User.meta_.stream_name}-{identifier}"
     assert message_dict["data"] == event.to_dict()
     assert message_dict["time"] is None
+    assert message_dict["expected_version"] == user._version
 
 
 def test_construct_message_from_command(test_domain):
