@@ -26,10 +26,21 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
     def __init__(self, domain: "Domain") -> None:
         self._domain = domain
 
-    def add(self, aggregate: BaseEventSourcedAggregate):
+    def add(self, aggregate: BaseEventSourcedAggregate) -> None:
         current_uow._seen.add(aggregate)
 
-    def get(self, identifier: Identifier):
+    def get(self, identifier: Identifier) -> BaseEventSourcedAggregate:
+        """Retrieve a fully-formed Aggregate from a stream of Events.
+
+        Args:
+            identifier (Identifier): Aggregate identifier
+
+        Raises:
+            ObjectNotFoundError: When no stream with identifier is found
+
+        Returns:
+            BaseEventSourcedAggregate: The fully-loaded aggregate object
+        """
         aggregate = current_domain.event_store.store.load_aggregate(
             self.meta_.aggregate_cls, identifier
         )

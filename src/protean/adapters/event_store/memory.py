@@ -41,13 +41,13 @@ class MemoryMessageRepository(BaseRepository):
         # Fetch stream version
         _stream_version = self.stream_version(stream_name)
 
-        if expected_version and expected_version != _stream_version:
-            raise Exception(
+        if expected_version is not None and expected_version != _stream_version:
+            raise ValueError(
                 f"Wrong expected version: {expected_version} "
                 f"(Stream: {stream_name}, Stream Version: {_stream_version})"
             )
 
-        next_position = _stream_version
+        next_position = _stream_version + 1
 
         self.add(
             MemoryMessage(
@@ -55,7 +55,7 @@ class MemoryMessageRepository(BaseRepository):
                 position=next_position,
                 type=message_type,
                 data=data,
-                metadata=MessageMetadata(**metadata),
+                metadata=MessageMetadata(**metadata) if metadata else None,
                 time=datetime.utcnow(),
             )
         )
@@ -70,21 +70,18 @@ class MemoryMessageRepository(BaseRepository):
         no_of_messages: int = 1000,
     ):
         repo = current_domain.repository_for(MemoryMessage)
-        if self.is_category(stream_name):
-            items = (
-                repo._dao.query.filter(stream_name__contains=stream_name)
-                .order_by("position")
-                .all()
-                .items
-            )
-        else:
-            items = (
-                repo._dao.query.filter(stream_name=stream_name)
-                .order_by("position")
-                .all()
-                .items
-            )
+        q = (
+            repo._dao.query.filter(position__gte=position)
+            .order_by("position")
+            .limit(no_of_messages)
+        )
 
+        if self.is_category(stream_name):
+            q = q.filter(stream_name__contains=stream_name)
+        else:
+            q = q.filter(stream_name=stream_name)
+
+        items = q.all().items
         return [item.to_dict() for item in items]
 
 
@@ -119,7 +116,9 @@ class MemoryEventStore(BaseEventStore):
 
     def _read_last_message(self, stream_name) -> Dict[str, Any]:
         repo = self.domain.repository_for(MemoryMessage)
-        return repo.read(stream_name)[-1]
+
+        messages = repo.read(stream_name)
+        return messages[-1] if messages else None
 
     def _data_reset(self) -> None:
         """Flush all events.

@@ -115,3 +115,7 @@ class TestMessageDBEventStore:
 
         message = test_domain.event_store.store._read_last_message("testStream-123")
         assert message["position"] == 4
+
+    def test_read_last_message_when_there_are_no_messages(self, test_domain):
+        message = test_domain.event_store.store._read_last_message("foo-bar")
+        assert message is None

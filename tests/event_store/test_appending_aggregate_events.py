@@ -3,18 +3,39 @@ from __future__ import annotations
 from uuid import uuid4
 
 from protean import BaseEvent, BaseEventSourcedAggregate
+from protean.core.event_sourced_aggregate import apply
 from protean.fields import String
 from protean.fields.basic import Identifier
 
 
 class Registered(BaseEvent):
     id = Identifier()
+    name = String()
     email = String()
+
+
+class Activated(BaseEvent):
+    id = Identifier()
+
+
+class Renamed(BaseEvent):
+    id = Identifier()
+    name = String()
 
 
 class User(BaseEventSourcedAggregate):
     id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     email = String()
+    name = String()
+    status = String(default="INACTIVE")
+
+    @apply(Activated)
+    def activated(self, event: Activated) -> None:
+        self.status = "ACTIVE"
+
+    @apply(Renamed)
+    def renamed(self, event: Renamed) -> None:
+        self.name = event.name
 
 
 def test_appending_messages_to_aggregate(test_domain):
@@ -26,3 +47,26 @@ def test_appending_messages_to_aggregate(test_domain):
     messages = test_domain.event_store.store._read("user")
 
     assert len(messages) == 1
+
+
+def test_version_increment_on_new_event(test_domain):
+    identifier = str(uuid4())
+    event1 = Registered(id=identifier, email="john.doe@example.com")
+
+    user = User(**event1.to_dict())
+    test_domain.event_store.store.append_aggregate_event(user, event1)
+
+    events = test_domain.event_store.store._read(f"user-{identifier}")
+    assert events[0]["position"] == 0
+
+    event2 = Activated(id=identifier)
+    test_domain.event_store.store.append_aggregate_event(user, event2)
+
+    events = test_domain.event_store.store._read(f"user-{identifier}")
+    assert events[-1]["position"] == 1
+
+    event3 = Renamed(id=identifier, name="Jane Doe")
+    test_domain.event_store.store.append_aggregate_event(user, event3)
+
+    events = test_domain.event_store.store._read(f"user-{identifier}")
+    assert events[-1]["position"] == 2

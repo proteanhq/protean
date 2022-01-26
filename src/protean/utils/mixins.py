@@ -23,7 +23,7 @@ class MessageType(Enum):
 
 
 class MessageMetadata(BaseValueObject):
-    kind = String(max_length=7, required=True, choices=MessageType)
+    kind = String(max_length=7, choices=MessageType)  # FIXME Make this field mandatory?
     owner = String(max_length=50)
     schema_version = Integer()
 

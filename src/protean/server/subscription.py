@@ -45,7 +45,7 @@ class Subscription:
 
         self.subscriber_stream_name = f"subscriber_position-${subscriber_id}"
 
-        self.current_position: int = 0
+        self.current_position: int = -1
         self.messages_since_last_position_write: int = 0
 
         self.keep_going: bool = not engine.test_mode
