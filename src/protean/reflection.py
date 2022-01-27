@@ -76,3 +76,23 @@ def unique_fields(class_or_instance):
         for field_name, field_obj in attributes(class_or_instance).items()
         if field_obj.unique
     }
+
+
+def declared_fields(class_or_instance):
+    """Return a tuple describing the declared fields of this dataclass.
+
+    Accepts a dataclass or an instance of one. Tuple elements are of
+    type Field.
+
+    `_version` is a auto-controlled, internal field, so is not returned
+    among declared fields.
+    """
+
+    # Might it be worth caching this, per class?
+    try:
+        fields_dict = dict(getattr(class_or_instance, _FIELDS))
+        fields_dict.pop("_version", None)
+    except AttributeError:
+        raise TypeError("must be called with a dataclass type or instance")
+
+    return fields_dict

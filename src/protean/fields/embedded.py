@@ -1,7 +1,7 @@
 """Module for defining embedded fields"""
 
 from protean.fields import Field
-from protean.reflection import fields
+from protean.reflection import declared_fields
 from protean.utils import DomainObjects, fetch_element_cls_from_registry
 
 
@@ -50,7 +50,7 @@ class ValueObject(Field):
         for (
             field_name,
             field_obj,
-        ) in fields(self._value_object_cls).items():
+        ) in declared_fields(self._value_object_cls).items():
             self.embedded_fields[field_name] = _ShadowField(
                 self,
                 field_name,
@@ -151,7 +151,7 @@ class ValueObject(Field):
                 instance.__dict__.pop(attribute_name, None)
                 self.embedded_fields[field_name].value = None
         else:
-            for field_name in fields(value):
+            for field_name in declared_fields(value):
                 self.embedded_fields[field_name].value = getattr(value, field_name)
                 attribute_name = self.embedded_fields[field_name].attribute_name
                 instance.__dict__[attribute_name] = getattr(value, field_name)

@@ -5,10 +5,15 @@ from typing import Any
 
 from protean.core.entity import BaseEntity
 from protean.core.queryset import QuerySet
-from protean.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
+from protean.exceptions import (
+    ExpectedVersionError,
+    ObjectNotFoundError,
+    TooManyObjectsError,
+    ValidationError,
+)
 from protean.fields import Auto, Field
 from protean.globals import current_uow
-from protean.reflection import fields, id_field, unique_fields
+from protean.reflection import declared_fields, id_field, unique_fields
 from protean.utils import DomainObjects
 from protean.utils.query import Q
 
@@ -362,7 +367,7 @@ class BaseDAO(metaclass=ABCMeta):
             model_obj = self._create(self.model_cls.from_entity(entity_obj))
 
             # Reverse update auto fields into entity
-            for field_name, field_obj in fields(entity_obj).items():
+            for field_name, field_obj in declared_fields(entity_obj).items():
                 if isinstance(field_obj, Auto) and not getattr(entity_obj, field_name):
                     if isinstance(model_obj, dict):
                         field_val = model_obj[field_name]
@@ -384,6 +389,21 @@ class BaseDAO(metaclass=ABCMeta):
             logger.error(f"Failed creating entity because of {exc}")
             raise
 
+    def _validate_and_update_version(self, entity_obj) -> None:
+        if entity_obj.state_.is_persisted:
+            identifier = getattr(entity_obj, id_field(self.entity_cls).field_name)
+            persisted_entity = self.get(identifier)
+
+            if persisted_entity._version != entity_obj._version:
+                raise ExpectedVersionError(
+                    f"Wrong expected version: {entity_obj._version} "
+                    f"(Aggregate: {self.entity_cls.__name__}({identifier}), Version: {persisted_entity._version})"
+                )
+
+            entity_obj._version += 1
+        else:
+            entity_obj._version = 0
+
     def save(self, entity_obj):
         """Create or update an entity in the data store, depending on its state. An identity for entity record is
         generated, if not already present.
@@ -399,6 +419,9 @@ class BaseDAO(metaclass=ABCMeta):
         :param entity_obj: Entity object to be persisted
         """
         logger.debug(f"Saving `{self.entity_cls.__name__}` object")
+
+        if entity_obj.element_type == DomainObjects.AGGREGATE:
+            self._validate_and_update_version(entity_obj)
 
         try:
             # Build the model object and create it
@@ -416,6 +439,9 @@ class BaseDAO(metaclass=ABCMeta):
             # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
             #   like persisting events raised by the aggregate.
             if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
+                # The element may have changed from the time it was loaded or may have been
+                #   updated multiple times. We retain the last copy in seen.
+                current_uow._seen.discard(entity_obj)
                 current_uow._seen.add(entity_obj)
 
             return entity_obj
@@ -496,7 +522,7 @@ class BaseDAO(metaclass=ABCMeta):
         # Lookup the objects by filters and raise error if objects exist
         for filter_key, lookup_value in filters.items():
             if self.exists(excludes, **{filter_key: lookup_value}):
-                field_obj = fields(self.entity_cls)[filter_key]
+                field_obj = declared_fields(self.entity_cls)[filter_key]
                 field_obj.fail(
                     "unique",
                     entity_name=self.entity_cls.__name__,

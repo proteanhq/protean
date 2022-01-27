@@ -8,7 +8,7 @@ from typing import Callable, Dict
 from protean.container import BaseContainer, EventedMixin, OptionsMixin
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Field, Integer
-from protean.reflection import _ID_FIELD_NAME, fields, id_field
+from protean.reflection import _ID_FIELD_NAME, declared_fields, has_fields, id_field
 from protean.utils import (
     DomainObjects,
     derive_element_class,
@@ -57,11 +57,11 @@ class BaseEventSourcedAggregate(EventedMixin, OptionsMixin, BaseContainer):
         """Lookup the id field for this view and assign"""
         # FIXME What does it mean when there are no declared fields?
         #   Does it translate to an abstract view?
-        if fields(subclass):
+        if has_fields(subclass):
             try:
                 id_field = next(
                     field
-                    for _, field in fields(subclass).items()
+                    for _, field in declared_fields(subclass).items()
                     if isinstance(field, (Field)) and field.identifier
                 )
 

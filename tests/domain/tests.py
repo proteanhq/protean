@@ -3,7 +3,7 @@ import pytest
 from protean import BaseAggregate, BaseEntity, Domain
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import DateTime, HasMany, HasOne, Reference, String, Text
-from protean.reflection import fields
+from protean.reflection import declared_fields
 from protean.utils import fully_qualified_name
 
 from .elements import UserAggregate, UserEntity, UserFoo, UserVO
@@ -91,7 +91,7 @@ class TestDomainLevelClassResolution:
             # value: tuple of (Field Object, Owning Domain Element)
             assert (
                 test_domain._pending_class_resolutions["Comment"][0][0]
-                == fields(Post)["comments"]
+                == declared_fields(Post)["comments"]
             )
 
         def test_that_class_referenced_is_resolved_as_soon_as_element_is_registered(
@@ -104,7 +104,7 @@ class TestDomainLevelClassResolution:
             test_domain.register(Post)
 
             # Still a string reference
-            assert isinstance(fields(Post)["comments"].to_cls, str)
+            assert isinstance(declared_fields(Post)["comments"].to_cls, str)
 
             class Comment(BaseEntity):
                 content = Text()
@@ -116,7 +116,7 @@ class TestDomainLevelClassResolution:
                     aggregate_cls = Post
 
             # Still a string reference
-            assert isinstance(fields(Comment)["post"].to_cls, str)
+            assert isinstance(declared_fields(Comment)["post"].to_cls, str)
 
             assert (
                 len(test_domain._pending_class_resolutions) == 1
@@ -125,8 +125,8 @@ class TestDomainLevelClassResolution:
             # Registering `Comment` resolves references in both `Comment` and `Post` classes
             test_domain.register(Comment)
 
-            assert fields(Post)["comments"].to_cls == Comment
-            assert fields(Comment)["post"].to_cls == Post
+            assert declared_fields(Post)["comments"].to_cls == Comment
+            assert declared_fields(Comment)["post"].to_cls == Post
 
             assert len(test_domain._pending_class_resolutions) == 0
 
@@ -151,7 +151,7 @@ class TestDomainLevelClassResolution:
             domain.register(Post)
 
             # Still a string
-            assert isinstance(fields(Post)["comments"].to_cls, str)
+            assert isinstance(declared_fields(Post)["comments"].to_cls, str)
 
             class Comment(BaseEntity):
                 content = Text()
@@ -180,7 +180,7 @@ class TestDomainLevelClassResolution:
             domain.register(Post)
 
             # Still a string
-            assert isinstance(fields(Post)["comments"].to_cls, str)
+            assert isinstance(declared_fields(Post)["comments"].to_cls, str)
 
             class Comment(BaseEntity):
                 content = Text()
@@ -195,8 +195,8 @@ class TestDomainLevelClassResolution:
 
             with domain.domain_context():
                 # Resolved references
-                assert fields(Post)["comments"].to_cls == Comment
-                assert fields(Comment)["post"].to_cls == Post
+                assert declared_fields(Post)["comments"].to_cls == Comment
+                assert declared_fields(Comment)["post"].to_cls == Post
 
                 assert len(domain._pending_class_resolutions) == 0
 
@@ -212,7 +212,7 @@ class TestDomainLevelClassResolution:
             domain.register(Post)
 
             # Still a string
-            assert isinstance(fields(Post)["comments"].to_cls, str)
+            assert isinstance(declared_fields(Post)["comments"].to_cls, str)
 
             class Comment(BaseEntity):
                 content = Text()
@@ -258,8 +258,8 @@ class TestDomainLevelClassResolution:
             test_domain.register(Post)
             test_domain.register(Comment)
 
-            assert fields(Post)["comments"].to_cls == Comment
-            assert fields(Comment)["post"].to_cls == Post
+            assert declared_fields(Post)["comments"].to_cls == Comment
+            assert declared_fields(Comment)["post"].to_cls == Post
 
             assert len(test_domain._pending_class_resolutions) == 0
 
@@ -281,7 +281,7 @@ class TestDomainLevelClassResolution:
             test_domain.register(Account)
             test_domain.register(Author)
 
-            assert fields(Account)["author"].to_cls == Author
-            assert fields(Author)["account"].to_cls == Account
+            assert declared_fields(Account)["author"].to_cls == Author
+            assert declared_fields(Author)["account"].to_cls == Account
 
             assert len(test_domain._pending_class_resolutions) == 0

@@ -1,7 +1,7 @@
 from protean.container import BaseContainer, OptionsMixin
 from protean.exceptions import InvalidDataError, ValidationError
 from protean.fields import Field
-from protean.reflection import _ID_FIELD_NAME, fields
+from protean.reflection import _ID_FIELD_NAME, declared_fields
 from protean.utils import DomainObjects, derive_element_class
 
 
@@ -39,11 +39,11 @@ class BaseCommand(BaseContainer, OptionsMixin):
 
         When an identifier is provided, its value is used to construct
         unique stream name."""
-        if fields(subclass):
+        if declared_fields(subclass):
             try:
                 id_field = next(
                     field
-                    for _, field in fields(subclass).items()
+                    for _, field in declared_fields(subclass).items()
                     if isinstance(field, (Field)) and field.identifier
                 )
 

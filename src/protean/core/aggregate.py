@@ -3,6 +3,7 @@ import logging
 
 from protean.container import EventedMixin
 from protean.core.entity import BaseEntity
+from protean.fields import Integer
 from protean.utils import DomainObjects, derive_element_class, inflection
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,9 @@ class BaseAggregate(EventedMixin, BaseEntity):
         if cls is BaseAggregate:
             raise TypeError("BaseAggregate cannot be instantiated")
         return super().__new__(cls)
+
+    # Track current version of Aggregate
+    _version = Integer(default=-1)
 
     class Meta:
         abstract = True

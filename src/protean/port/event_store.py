@@ -101,7 +101,6 @@ class BaseEventStore(metaclass=ABCMeta):
             message.type,
             message.data,
             metadata=message.metadata.to_dict(),
-            expected_version=message.expected_version,
         )
 
     def append_command(self, command: BaseCommand) -> int:

@@ -91,6 +91,9 @@ class ElasticsearchModel(Document):
         id_field_name = id_field(cls.meta_.entity_cls).field_name
         item_dict[id_field_name] = identifier
 
+        # Set version from document meta
+        item_dict["_version"] = item.meta.version
+
         entity_obj = cls.meta_.entity_cls(item_dict)
 
         return entity_obj
@@ -105,6 +108,7 @@ class ESSession:
 
     def __init__(self, provider, new_connection=False):
         self._provider = provider
+        self.is_active = True
 
     def add(self, element):
         dao = self._provider.get_dao(element.__class__)
@@ -164,14 +168,18 @@ class ElasticsearchDAO(BaseDAO):
         Filter objects from the data store. Method must return a `ResultSet`
         object
         """
-        conn = self._get_session()
+        conn = self.provider.get_connection()
 
         # Build the filters from the criteria
         q = elasticsearch_dsl.Q()
         if criteria.children:
             q = self._build_filters(criteria)
 
-        s = Search(using=conn, index=self.model_cls._index._name).query(q)
+        s = (
+            Search(using=conn, index=self.model_cls._index._name)
+            .query(q)
+            .params(version=True)
+        )
 
         if order_by:
             s = s.sort(*order_by)
@@ -195,7 +203,7 @@ class ElasticsearchDAO(BaseDAO):
 
     def _create(self, model_obj: Any):
         """Create a new model object from the entity"""
-        conn = self._get_session()
+        conn = self.provider.get_connection()
 
         try:
             model_obj.save(
@@ -211,7 +219,7 @@ class ElasticsearchDAO(BaseDAO):
 
     def _update(self, model_obj: Any):
         """Update a model object in the data store and return it"""
-        conn = self._get_session()
+        conn = self.provider.get_connection()
 
         identifier = model_obj.meta.id
 

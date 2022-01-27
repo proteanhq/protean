@@ -4,7 +4,7 @@ import pytest
 
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.fields import Auto, String
-from protean.reflection import _ID_FIELD_NAME, attributes, fields, id_field
+from protean.reflection import _ID_FIELD_NAME, attributes, declared_fields, id_field
 
 from .elements import Adult, NotAPerson, Person, PersonAutoSSN, PersonExplicitID
 
@@ -34,27 +34,27 @@ class TestIdentity:
         assert type(id_field(Person)) is Auto
 
     def test_default_id_field_construction(self):
-        assert "id" in fields(Person)
+        assert "id" in declared_fields(Person)
         assert "id" in attributes(Person)
 
-        assert type(fields(Person)["id"]) is Auto
-        assert id_field(Person) == fields(Person)["id"]
+        assert type(declared_fields(Person)["id"]) is Auto
+        assert id_field(Person) == declared_fields(Person)["id"]
 
     def test_non_default_auto_id_field_construction(self):
-        assert "id" not in fields(PersonAutoSSN)
+        assert "id" not in declared_fields(PersonAutoSSN)
         assert "id" not in attributes(PersonAutoSSN)
 
-        assert type(fields(PersonAutoSSN)["ssn"]) is Auto
+        assert type(declared_fields(PersonAutoSSN)["ssn"]) is Auto
         assert id_field(PersonAutoSSN).field_name == "ssn"
-        assert id_field(PersonAutoSSN) == fields(PersonAutoSSN)["ssn"]
+        assert id_field(PersonAutoSSN) == declared_fields(PersonAutoSSN)["ssn"]
 
     def test_non_default_explicit_id_field_construction(self, test_domain):
-        assert "id" not in fields(PersonExplicitID)
+        assert "id" not in declared_fields(PersonExplicitID)
         assert "id" not in attributes(PersonExplicitID)
 
-        assert type(fields(PersonExplicitID)["ssn"]) is String
+        assert type(declared_fields(PersonExplicitID)["ssn"]) is String
         assert id_field(PersonExplicitID).field_name == "ssn"
-        assert id_field(PersonExplicitID) == fields(PersonExplicitID)["ssn"]
+        assert id_field(PersonExplicitID) == declared_fields(PersonExplicitID)["ssn"]
 
 
 class TestIdentityValues:

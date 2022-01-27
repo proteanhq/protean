@@ -7,6 +7,7 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.globals import _uow_context_stack, current_domain
+from protean.utils import DomainObjects
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,11 @@ class UnitOfWork:
 
             for item in self._seen:
                 if item._events:
-                    self._store_events(item)
+                    if item.element_type == DomainObjects.EVENT_SOURCED_AGGREGATE:
+                        self._store_events(item)
+                    else:
+                        for event in item._events:
+                            current_domain.event_store.store.append_event(event)
                 item._events = []
 
             logger.debug("Commit Successful")

@@ -9,7 +9,14 @@ from protean.container import BaseContainer, OptionsMixin
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Auto, Field, HasMany, Reference, ValueObject
 from protean.fields.association import Association, _ReferenceField
-from protean.reflection import _FIELDS, _ID_FIELD_NAME, attributes, fields, id_field
+from protean.reflection import (
+    _FIELDS,
+    _ID_FIELD_NAME,
+    attributes,
+    declared_fields,
+    fields,
+    id_field,
+)
 from protean.utils import (
     DomainObjects,
     derive_element_class,
@@ -121,7 +128,7 @@ class BaseEntity(BaseContainer, OptionsMixin):
         try:
             id_field = next(
                 field
-                for _, field in fields(new_class).items()
+                for _, field in declared_fields(new_class).items()
                 if isinstance(field, (Field, Reference)) and field.identifier
             )
 
@@ -162,7 +169,7 @@ class BaseEntity(BaseContainer, OptionsMixin):
     @classmethod
     def __set_up_reference_fields(subclass):
         """Walk through relation fields and setup shadow attributes"""
-        for _, field in fields(subclass).items():
+        for _, field in declared_fields(subclass).items():
             if isinstance(field, Reference):
                 shadow_field_name, shadow_field = field.get_shadow_field()
                 shadow_field.__set_name__(subclass, shadow_field_name)
@@ -227,7 +234,7 @@ class BaseEntity(BaseContainer, OptionsMixin):
         #   This block will dynamically construct value objects from field values
         #   and associated the vo with the entity
         # If the value object was already provided, it will not be overridden.
-        for field_name, field_obj in fields(self).items():
+        for field_name, field_obj in declared_fields(self).items():
             if isinstance(field_obj, (ValueObject)) and not getattr(self, field_name):
                 attrs = [
                     (embedded_field.field_name, embedded_field.attribute_name)
@@ -247,14 +254,14 @@ class BaseEntity(BaseContainer, OptionsMixin):
                         )
 
         # Load Identities
-        for field_name, field_obj in fields(self).items():
+        for field_name, field_obj in declared_fields(self).items():
             if type(field_obj) is Auto and not field_obj.increment:
                 if not getattr(self, field_obj.field_name, None):
                     setattr(self, field_obj.field_name, generate_identity())
                 loaded_fields.append(field_obj.field_name)
 
         # Load Associations
-        for field_name, field_obj in fields(self).items():
+        for field_name, field_obj in declared_fields(self).items():
             if isinstance(field_obj, Association):
                 getattr(self, field_name)  # This refreshes the values in associations
 
@@ -376,7 +383,7 @@ class BaseEntity(BaseContainer, OptionsMixin):
         # FIXME Memoize this function
         field_values = {}
 
-        for field_name, field_obj in fields(self).items():
+        for field_name, field_obj in declared_fields(self).items():
             if (
                 not isinstance(field_obj, (ValueObject, Reference))
                 and getattr(self, field_name, None) is not None

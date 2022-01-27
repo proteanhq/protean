@@ -3,7 +3,7 @@ import pytest
 from protean.container import BaseContainer, OptionsMixin
 from protean.exceptions import InvalidDataError
 from protean.fields import Integer, String
-from protean.reflection import fields
+from protean.reflection import declared_fields
 
 
 class CustomContainerMeta(BaseContainer):
@@ -52,12 +52,20 @@ class TestContainerInheritance:
         class ChildCustomContainer(CustomContainer):
             baz = String()
 
-        assert list(fields(ChildCustomContainer).keys()) == ["foo", "bar", "baz"]
+        assert list(declared_fields(ChildCustomContainer).keys()) == [
+            "foo",
+            "bar",
+            "baz",
+        ]
 
     def test_field_order_when_overridden_after_inheritance(self):
         class ChildCustomContainer(CustomContainer):
             baz = String()
             foo = Integer()
 
-        assert list(fields(ChildCustomContainer).keys()) == ["foo", "bar", "baz"]
-        assert isinstance(fields(ChildCustomContainer)["foo"], Integer)
+        assert list(declared_fields(ChildCustomContainer).keys()) == [
+            "foo",
+            "bar",
+            "baz",
+        ]
+        assert isinstance(declared_fields(ChildCustomContainer)["foo"], Integer)

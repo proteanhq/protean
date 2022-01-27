@@ -2,10 +2,12 @@ import re
 
 from collections import defaultdict
 from typing import List
+from uuid import uuid4
 
 import pytest
 
-from protean import BaseAggregate, BaseRepository, BaseValueObject
+from protean import BaseAggregate, BaseRepository, BaseValueObject, UnitOfWork
+from protean.exceptions import ExpectedVersionError
 from protean.fields import Integer, String, ValueObject
 from protean.globals import current_domain
 
@@ -110,3 +112,30 @@ class TestPersistenceViaRepository:
         test_domain.repository_for(Person).add(person)
 
         assert test_domain.repository_for(Person).all() == [person]
+
+
+class TestConcurrency:
+    def test_expected_version_error_on_version_mismatch(self, test_domain):
+        identifier = str(uuid4())
+
+        with UnitOfWork():
+            repo = test_domain.repository_for(Person)
+            person = Person(id=identifier, first_name="John", last_name="Doe")
+            repo.add(person)
+
+        person_dup1 = repo.get(identifier)
+        person_dup2 = repo.get(identifier)
+
+        with UnitOfWork():
+            person_dup1.first_name = "Jane"
+            repo.add(person_dup1)
+
+        with pytest.raises(ExpectedVersionError) as exc:
+            with UnitOfWork():
+                person_dup2.first_name = "Baby"
+                repo.add(person_dup2)
+
+        assert exc.value.args[0] == (
+            f"Wrong expected version: {person_dup2._version} "
+            f"(Aggregate: Person({identifier}), Version: {person_dup2._version+1})"
+        )

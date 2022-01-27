@@ -6,7 +6,7 @@ from protean.core.entity import _EntityState
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import Field, Reference, ValueObject
 from protean.fields.association import Association
-from protean.reflection import _ID_FIELD_NAME, fields, id_field
+from protean.reflection import _ID_FIELD_NAME, declared_fields, id_field
 from protean.utils import DomainObjects, derive_element_class, inflection
 
 logger = logging.getLogger(__name__)
@@ -41,11 +41,11 @@ class BaseView(BaseContainer, OptionsMixin):
         """Lookup the id field for this view and assign"""
         # FIXME What does it mean when there are no declared fields?
         #   Does it translate to an abstract view?
-        if fields(subclass):
+        if declared_fields(subclass):
             try:
                 id_field = next(
                     field
-                    for _, field in fields(subclass).items()
+                    for _, field in declared_fields(subclass).items()
                     if isinstance(field, (Field)) and field.identifier
                 )
 
@@ -62,7 +62,7 @@ class BaseView(BaseContainer, OptionsMixin):
 
     @classmethod
     def __validate_for_basic_field_types(subclass):
-        for field_name, field_obj in fields(subclass).items():
+        for field_name, field_obj in declared_fields(subclass).items():
             if isinstance(field_obj, (Reference, Association, ValueObject)):
                 raise IncorrectUsageError(
                     {

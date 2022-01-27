@@ -5,7 +5,7 @@ import pytest
 from protean import BaseAggregate
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import Date, DateTime, HasMany, Reference, String
-from protean.reflection import fields
+from protean.reflection import declared_fields
 from protean.utils import fully_qualified_name
 
 
@@ -65,7 +65,7 @@ class TestAggregateIdentity:
             class Meta:
                 abstract = True
 
-        assert "id" not in fields(TimeStamped)
+        assert "id" not in declared_fields(TimeStamped)
 
     def test_that_abstract_aggregates_cannot_have_a_declared_id_field(
         self, test_domain

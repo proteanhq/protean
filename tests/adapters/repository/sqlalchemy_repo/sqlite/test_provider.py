@@ -80,6 +80,6 @@ class TestProviders:
         assert next(results)[0] == 2
 
         results = provider.raw(
-            "SELECT * FROM person where last_name = 'John' and age in (6,7)"
+            "SELECT first_name FROM person where last_name = 'John' and age in (6,7)"
         )
         assert next(results)[0] == "Murdock"

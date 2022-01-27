@@ -4,7 +4,7 @@ from enum import Enum
 from protean import BaseEntity
 from protean.container import Options
 from protean.fields import Auto, HasOne, Integer, String
-from protean.reflection import attributes, fields
+from protean.reflection import attributes, declared_fields
 
 
 class AbstractPerson(BaseEntity):
@@ -136,17 +136,17 @@ class TestEntityMeta:
         assert hasattr(Person.meta_, "aggregate_cls")
 
     def test_entity_meta_has_declared_fields_on_construction(self):
-        assert fields(Person) is not None
+        assert declared_fields(Person) is not None
         assert all(
-            key in fields(Person).keys()
+            key in declared_fields(Person).keys()
             for key in ["age", "first_name", "id", "last_name"]
         )
 
     def test_entity_declared_fields_hold_correct_field_types(self):
-        assert type(fields(Person)["first_name"]) is String
-        assert type(fields(Person)["last_name"]) is String
-        assert type(fields(Person)["age"]) is Integer
-        assert type(fields(Person)["id"]) is Auto
+        assert type(declared_fields(Person)["first_name"]) is String
+        assert type(declared_fields(Person)["last_name"]) is String
+        assert type(declared_fields(Person)["age"]) is Integer
+        assert type(declared_fields(Person)["id"]) is Auto
 
     def test_default_and_overridden_abstract_flags(self):
         # Entity is not abstract by default

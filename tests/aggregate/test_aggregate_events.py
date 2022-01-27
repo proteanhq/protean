@@ -13,15 +13,6 @@ class UserStatus(Enum):
     ARCHIVED = "ARCHIVED"
 
 
-class UserActivated(BaseEvent):
-    user_id = Identifier(required=True)
-
-
-class UserRenamed(BaseEvent):
-    user_id = Identifier(required=True)
-    name = String(required=True, max_length=50)
-
-
 class User(BaseAggregate):
     name = String(max_length=50, required=True)
     email = String(required=True)
@@ -32,6 +23,21 @@ class User(BaseAggregate):
 
     def change_name(self, name):
         self.raise_(UserRenamed(user_id=self.id, name=name))
+
+
+class UserActivated(BaseEvent):
+    user_id = Identifier(required=True)
+
+    class Meta:
+        aggregate_cls = User
+
+
+class UserRenamed(BaseEvent):
+    user_id = Identifier(required=True)
+    name = String(required=True, max_length=50)
+
+    class Meta:
+        aggregate_cls = User
 
 
 @pytest.fixture(autouse=True)

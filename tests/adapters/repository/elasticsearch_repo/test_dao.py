@@ -695,12 +695,15 @@ class TestDAOSaveFunctionality:
 
     def test_multiple_persistence_for_an_aggregate(self, test_domain):
         """Test that save can be invoked again on an already existing entity, to update values"""
+        repo = test_domain.repository_for(Person)
         person = Person(first_name="Johnny", last_name="John")
-        test_domain.repository_for(Person)._dao.save(person)
+        repo._dao.save(person)
 
+        person = repo.get(person.id)
         person.last_name = "Janey"
         test_domain.repository_for(Person)._dao.save(person)
 
+        person = repo.get(person.id)
         test_domain.repository_for(Person)._dao.get(person.id)
         assert person.last_name == "Janey"
 

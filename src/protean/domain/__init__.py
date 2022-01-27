@@ -20,7 +20,7 @@ from protean.domain.registry import _DomainRegistry
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import HasMany, HasOne, Reference
 from protean.globals import current_domain
-from protean.reflection import fields, has_fields
+from protean.reflection import declared_fields, has_fields
 from protean.utils import (
     DomainObjects,
     fetch_element_cls_from_registry,
@@ -384,7 +384,7 @@ class Domain(_PackageBoundObject):
 
         # Resolve or record elements to be resolved
         if has_fields(new_cls):
-            for _, field_obj in fields(new_cls).items():
+            for _, field_obj in declared_fields(new_cls).items():
                 if isinstance(field_obj, (HasOne, HasMany, Reference)) and isinstance(
                     field_obj.to_cls, str
                 ):

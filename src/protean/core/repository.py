@@ -6,7 +6,7 @@ from protean.container import Element, OptionsMixin
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import HasMany, HasOne
 from protean.globals import current_domain
-from protean.reflection import fields
+from protean.reflection import declared_fields
 from protean.utils import (
     Database,
     DomainObjects,
@@ -120,7 +120,7 @@ class BaseRepository(Element, OptionsMixin):
         #
         # The details of in-transit child objects are maintained as part of the `has_many_field` itself
         #   in a variable called `_temp_cache`
-        for field_name, field in fields(aggregate).items():
+        for field_name, field in declared_fields(aggregate).items():
             if isinstance(field, HasMany):
                 for _, item in aggregate._temp_cache[field_name]["removed"].items():
                     current_domain.repository_for(field.to_cls)._dao.delete(item)
