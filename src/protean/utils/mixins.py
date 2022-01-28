@@ -10,7 +10,7 @@ from uuid import uuid4
 from protean.container import BaseContainer, OptionsMixin
 from protean.core.unit_of_work import UnitOfWork
 from protean.core.value_object import BaseValueObject
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import Auto, DateTime, Dict, Integer, String, ValueObject
 from protean.globals import current_domain, g
 from protean.reflection import has_id_field, id_field
@@ -113,6 +113,11 @@ class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
             element_record = current_domain.registry.commands[self.type]
         else:
             raise NotImplementedError  # FIXME Handle unknown messages better
+
+        if not element_record:
+            raise ConfigurationError(
+                f"Element {self.type.split('.')[-1]} is not registered with the domain"
+            )
 
         return element_record.cls(**self.data)
 
@@ -229,5 +234,9 @@ class HandlerMixin:
     @classmethod
     def _handle(cls, message: Message) -> None:
         self = cls()
-        for handler_method in cls._handlers[message.type]:
+
+        # Use Event-specific handlers if available, or fallback on `$any` if defined
+        handlers = cls._handlers[message.type] or cls._handlers["$any"]
+
+        for handler_method in handlers:
             handler_method(self, message.to_object())

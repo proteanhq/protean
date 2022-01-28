@@ -99,9 +99,30 @@ def test_reading_messages_from_position(test_domain):
         event = Renamed(id=identifier, name=f"John Doe {i}")
         test_domain.event_store.store.append_aggregate_event(user, event)
 
-    messages = test_domain.event_store.store.read(f"user-{identifier}")
-
     messages = test_domain.event_store.store.read(f"user-{identifier}", position=5)
+
+    assert len(messages) == 7  # Read until end, 1000 messages by default
+    assert messages[0].data["name"] == "John Doe 5"
+
+
+def test_reading_messages_from_position_with_limit(test_domain):
+    identifier = str(uuid4())
+    event1 = Registered(id=identifier, email="john.doe@example.com")
+    user = User(**event1.to_dict())
+    test_domain.event_store.store.append_aggregate_event(user, event1)
+
+    event2 = Activated(id=identifier)
+    test_domain.event_store.store.append_aggregate_event(user, event2)
+
+    for i in range(2, 12):  # Account for 2 previous events
+        event = Renamed(id=identifier, name=f"John Doe {i}")
+        test_domain.event_store.store.append_aggregate_event(user, event)
+
+    messages = test_domain.event_store.store.read(
+        f"user-{identifier}", position=5, no_of_messages=2
+    )
+
+    assert len(messages) == 2
     assert messages[0].data["name"] == "John Doe 5"
 
 

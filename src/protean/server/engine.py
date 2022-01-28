@@ -8,6 +8,7 @@ from typing import Union
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
+from protean.exceptions import ConfigurationError
 from protean.globals import g
 from protean.utils.importlib import import_from_full_path
 
@@ -71,6 +72,11 @@ class Engine:
                 logger.info(
                     f"{handler_cls.__name__} processed {message.type}-{message.id} successfully."
                 )
+            except ConfigurationError as exc:
+                logger.error(
+                    f"Error while handling message {message.stream_name} in {handler_cls.__name__} - {str(exc)}"
+                )
+                raise
             except Exception as exc:
                 logger.error(
                     f"Error while handling message {message.stream_name} in {handler_cls.__name__} - {str(exc)}"

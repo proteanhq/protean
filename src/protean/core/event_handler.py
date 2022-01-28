@@ -43,6 +43,13 @@ def event_handler_factory(element_cls, **opts):
             method_name.startswith("__") and method_name.endswith("__")
         ) and hasattr(method, "_target_cls"):
             # `_handlers` is a dictionary mapping the event to the handler method.
-            element_cls._handlers[fully_qualified_name(method._target_cls)].add(method)
+            if method._target_cls == "$any":
+                # This replaces any existing `$any` handler, by design. An Event Handler
+                # can have only one `$any` handler method.
+                element_cls._handlers["$any"] = {method}
+            else:
+                element_cls._handlers[fully_qualified_name(method._target_cls)].add(
+                    method
+                )
 
     return element_cls

@@ -76,7 +76,9 @@ class MemoryMessageRepository(BaseRepository):
             .limit(no_of_messages)
         )
 
-        if self.is_category(stream_name):
+        if stream_name == "$all":
+            pass  # Don't filter on stream name
+        elif self.is_category(stream_name):
             q = q.filter(stream_name__contains=stream_name)
         else:
             q = q.filter(stream_name=stream_name)
