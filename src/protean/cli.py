@@ -189,31 +189,42 @@ def derive_domain(domain_path):
 
 
 @main.command()
-def test():
+@click.option("-c", "--category")
+def test(category):
     import subprocess
 
-    # Generic protean tests
-    subprocess.call(
-        [
-            "pytest",
-            "--cache-clear",
-            "--slow",
-            "--sqlite",
-            "--postgresql",
-            "--elasticsearch",
-            "--redis",
-            "--message_db",
-            "tests",
-        ]
-    )
-
-    # Test against each supported database
-    for db in ["POSTGRESQL", "ELASTICSEARCH", "SQLITE"]:
-        print(f"Running tests for DB: {db}...")
-
+    if category:
+        if category == "EVENTSTORE":
+            for store in ["MEMORY", "MESSAGE_DB"]:
+                print(f"Running tests for EVENTSTORE: {store}...")
+                subprocess.call(["pytest", "-m", "eventstore", f"--store={store}"])
+    else:
+        # Run full suite
         subprocess.call(
-            ["pytest", f"--db={db}", "tests/adapters/repository/test_generic.py"]
+            [
+                "pytest",
+                "--cache-clear",
+                "--slow",
+                "--sqlite",
+                "--postgresql",
+                "--elasticsearch",
+                "--redis",
+                "--message_db",
+                "tests",
+            ]
         )
+
+        # Test against each supported database
+        for db in ["POSTGRESQL", "ELASTICSEARCH", "SQLITE"]:
+            print(f"Running tests for DB: {db}...")
+
+            subprocess.call(
+                ["pytest", f"--db={db}", "tests/adapters/repository/test_generic.py"]
+            )
+
+        for store in ["MEMORY", "MESSAGE_DB"]:
+            print(f"Running tests for EVENTSTORE: {store}...")
+            subprocess.call(["pytest", "-m", "eventstore", f"--store={store}"])
 
 
 @main.command()

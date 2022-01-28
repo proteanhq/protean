@@ -39,6 +39,7 @@ def test_command_definition_without_aggregate_or_stream(test_domain):
     }
 
 
+@pytest.mark.eventstore
 def test_command_associated_with_aggregate(test_domain):
     test_domain.register(User)
     test_domain.register(Register, aggregate_cls=User)
@@ -58,6 +59,7 @@ def test_command_associated_with_aggregate(test_domain):
     messages[0].stream_name == f"user:command-{identifier}"
 
 
+@pytest.mark.eventstore
 def test_command_associated_with_stream_name(test_domain):
     test_domain.register(Register, stream_name="foo")
 

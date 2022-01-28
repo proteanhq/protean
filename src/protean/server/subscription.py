@@ -69,7 +69,7 @@ class Subscription:
         return
 
     def write_position(self, position):
-        print(f"Updating Read Position of {self.subscriber_id} to {position}")
+        logger.debug(f"Updating Read Position of {self.subscriber_id} to {position}")
 
         self.messages_since_last_position_write = 0
         return self.store._write(

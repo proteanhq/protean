@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
+
 from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.core.event_sourced_aggregate import apply
 from protean.fields import String
@@ -38,6 +40,7 @@ class User(BaseEventSourcedAggregate):
         self.name = event.name
 
 
+@pytest.mark.eventstore
 def test_appending_messages_to_aggregate(test_domain):
     identifier = str(uuid4())
     event = Registered(id=identifier, email="john.doe@example.com")
@@ -49,6 +52,7 @@ def test_appending_messages_to_aggregate(test_domain):
     assert len(messages) == 1
 
 
+@pytest.mark.eventstore
 def test_version_increment_on_new_event(test_domain):
     identifier = str(uuid4())
     event1 = Registered(id=identifier, email="john.doe@example.com")

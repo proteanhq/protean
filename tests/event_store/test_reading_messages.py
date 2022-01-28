@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
+
 from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.fields import String
 from protean.fields.basic import Identifier
@@ -28,6 +30,7 @@ class User(BaseEventSourcedAggregate):
     name = String(max_length=50)
 
 
+@pytest.mark.eventstore
 def test_reading_a_message(test_domain):
     identifier = str(uuid4())
     event = Registered(id=identifier, email="john.doe@example.com")
@@ -45,6 +48,7 @@ def test_reading_a_message(test_domain):
     assert message.data == event.to_dict()
 
 
+@pytest.mark.eventstore
 def test_reading_many_messages(test_domain):
     identifier = str(uuid4())
     event1 = Registered(id=identifier, email="john.doe@example.com")
@@ -64,6 +68,7 @@ def test_reading_many_messages(test_domain):
     assert messages[1].data == event2.to_dict()
 
 
+@pytest.mark.eventstore
 def test_limiting_no_of_messages(test_domain):
     identifier = str(uuid4())
     event1 = Registered(id=identifier, email="john.doe@example.com")
@@ -86,6 +91,7 @@ def test_limiting_no_of_messages(test_domain):
     assert len(messages) == 5
 
 
+@pytest.mark.eventstore
 def test_reading_messages_from_position(test_domain):
     identifier = str(uuid4())
     event1 = Registered(id=identifier, email="john.doe@example.com")
@@ -105,6 +111,7 @@ def test_reading_messages_from_position(test_domain):
     assert messages[0].data["name"] == "John Doe 5"
 
 
+@pytest.mark.eventstore
 def test_reading_messages_from_position_with_limit(test_domain):
     identifier = str(uuid4())
     event1 = Registered(id=identifier, email="john.doe@example.com")
@@ -126,6 +133,7 @@ def test_reading_messages_from_position_with_limit(test_domain):
     assert messages[0].data["name"] == "John Doe 5"
 
 
+@pytest.mark.eventstore
 def test_reading_messages_by_category(test_domain):
     identifier = str(uuid4())
     event1 = Registered(id=identifier, email="john.doe@example.com")

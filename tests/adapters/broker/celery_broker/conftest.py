@@ -42,15 +42,3 @@ def setup_redis():
 
     # Close connection to Redis
     # FIXME
-
-
-@pytest.fixture(autouse=True)
-def run_around_tests(test_domain):
-
-    yield
-
-    # Flush all in Redis
-    # FIXME
-
-    if "default" in test_domain.providers:
-        test_domain.providers["default"]._data_reset()

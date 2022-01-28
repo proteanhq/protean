@@ -42,6 +42,7 @@ class UserEventHandler(BaseEventHandler):
 
 
 @pytest.mark.asyncio
+@pytest.mark.eventstore
 @mock.patch("protean.server.engine.Engine.handle_message")
 async def test_that_subscription_invokes_engine_handler_on_message(
     mock_handle_message, test_domain

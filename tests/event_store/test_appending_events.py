@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
+
 from protean import BaseEvent
 from protean.fields.basic import Identifier
 from protean.utils.mixins import Message
@@ -14,6 +16,7 @@ class UserLoggedIn(BaseEvent):
         stream_name = "authentication"
 
 
+@pytest.mark.eventstore
 def test_appending_raw_events(test_domain):
     identifier = str(uuid4())
     event = UserLoggedIn(user_id=identifier)

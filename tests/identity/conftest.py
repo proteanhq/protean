@@ -52,12 +52,3 @@ def test_domain_with_uuid_identity():
 
     with domain.domain_context():
         yield domain
-
-
-@pytest.fixture(autouse=True)
-def run_around_tests(test_domain):
-
-    yield
-
-    if "default" in test_domain.providers:
-        test_domain.providers["default"]._data_reset()

@@ -74,9 +74,3 @@ def setup_db():
 
         # Drop all tables at the end of test suite
         domain.providers["default"]._metadata.drop_all()
-
-
-@pytest.fixture(autouse=True)
-def run_around_tests(test_domain):
-    yield
-    test_domain.providers["default"]._data_reset()

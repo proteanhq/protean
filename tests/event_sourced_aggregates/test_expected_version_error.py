@@ -65,6 +65,7 @@ def register_elements(test_domain):
     test_domain.register(User)
 
 
+@pytest.mark.eventstore
 def test_expected_version_error(test_domain):
     identifier = str(uuid4())
 

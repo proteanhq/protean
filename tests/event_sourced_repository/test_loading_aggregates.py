@@ -113,6 +113,7 @@ def register(test_domain):
     test_domain.register(UserCommandHandler)
 
 
+@pytest.mark.eventstore
 def test_fetching_non_existing_aggregates(test_domain):
     with pytest.raises(ObjectNotFoundError) as exc:
         current_domain.repository_for(User).get("foobar")
@@ -124,6 +125,7 @@ def test_fetching_non_existing_aggregates(test_domain):
     }
 
 
+@pytest.mark.eventstore
 def test_loading_aggregates_from_first_event(test_domain):
     identifier = str(uuid4())
     UserCommandHandler().register_user(
@@ -152,6 +154,7 @@ def test_loading_aggregates_from_first_event(test_domain):
     assert user._version == 0
 
 
+@pytest.mark.eventstore
 def test_loading_aggregates_from_multiple_events(test_domain):
     identifier = str(uuid4())
     UserCommandHandler().register_user(

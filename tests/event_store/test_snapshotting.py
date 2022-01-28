@@ -65,6 +65,7 @@ def register_elements(test_domain):
     test_domain.register(User)
 
 
+@pytest.mark.eventstore
 def test_that_a_new_stream_has_no_snapshot(test_domain):
     identifier = str(uuid4())
     repo = test_domain.repository_for(User)
@@ -82,6 +83,7 @@ def test_that_a_new_stream_has_no_snapshot(test_domain):
     assert snapshot is None
 
 
+@pytest.mark.eventstore
 def test_that_snapshot_is_constructed_after_threshold(test_domain):
     identifier = str(uuid4())
     repo = test_domain.repository_for(User)
@@ -109,6 +111,7 @@ def test_that_snapshot_is_constructed_after_threshold(test_domain):
     assert snapshot["data"]["name"] == "John Doe 10"
 
 
+@pytest.mark.eventstore
 def test_that_a_stream_can_have_multiple_snapshots_but_latest_is_considered(
     test_domain,
 ):
@@ -136,7 +139,7 @@ def test_that_a_stream_can_have_multiple_snapshots_but_latest_is_considered(
     assert snapshot["data"]["name"] == "John Doe 20"
 
 
-@pytest.mark.skip(reason="Yet to implement")
+@pytest.mark.eventstore
 def test_that_a_stream_with_a_snapshop_and_no_further_events_is_reconstructed_correctly(
     test_domain,
 ):
@@ -165,6 +168,7 @@ def test_that_a_stream_with_a_snapshop_and_no_further_events_is_reconstructed_co
 
 
 @pytest.mark.skip(reason="Yet to implement")
+@pytest.mark.eventstore
 def test_that_snapshots_preserve_performance_even_with_large_no_of_events(test_domain):
     # Measure the time taken to load aggregate with 10 events
     # Add 1000 events to Aggregate

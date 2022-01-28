@@ -51,9 +51,3 @@ def setup_db():
         yield
 
         domain.providers["default"]._drop_database_artifacts()
-
-
-@pytest.fixture(autouse=True)
-def run_around_tests(test_domain):
-    yield
-    test_domain.providers["default"]._data_reset()

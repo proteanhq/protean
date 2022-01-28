@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
+
 from protean import BaseCommandHandler, BaseEvent, BaseEventSourcedAggregate, handle
 from protean.core.command import BaseCommand
 from protean.fields import String
@@ -57,6 +59,7 @@ class UserCommandHandler(BaseCommandHandler):
         User.register(command)
 
 
+@pytest.mark.eventstore
 def test_persisting_events_on_commit(test_domain):
     identifier = str(uuid4())
     UserCommandHandler().register_user(

@@ -38,12 +38,24 @@ def pytest_addoption(parser):
     parser.addoption(
         "--sendgrid", action="store_true", default=False, help="Run Sendgrid tests"
     )
+    parser.addoption(
+        "--eventstore",
+        action="store_true",
+        default=False,
+        help="Run Eventstore tests on all plugins",
+    )
 
     parser.addoption(
         "--db",
         action="store",
         default="MEMORY",
         help="Run tests against a Database type",
+    )
+    parser.addoption(
+        "--store",
+        action="store",
+        default="MEMORY",
+        help="Run tests against a Eventstore type",
     )
 
 
@@ -111,6 +123,24 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(scope="session")
+def store_config(request):
+    try:
+        return {
+            "MEMORY": {
+                "PROVIDER": "protean.adapters.event_store.memory.MemoryEventStore",
+            },
+            "MESSAGE_DB": {
+                "PROVIDER": "protean.adapters.event_store.message_db.MessageDBStore",
+                "DATABASE_URI": "postgresql://message_store@localhost:5433/message_store",
+            },
+        }[request.config.getoption("--store", "MEMORY")]
+    except KeyError as e:
+        raise KeyError(
+            f"Invalid store option: {request.config.getoption('--store')}"
+        ) from e
+
+
+@pytest.fixture(scope="session")
 def db_config(request):
     try:
         return {
@@ -138,7 +168,7 @@ def db_config(request):
 
 
 @pytest.fixture(autouse=True)
-def test_domain():
+def test_domain(store_config):
     from protean.domain import Domain
 
     domain = Domain("Test")
@@ -149,6 +179,8 @@ def test_domain():
 
     if os.path.exists(config_path):
         domain.config.from_pyfile(config_path)
+
+    domain.config["EVENT_STORE"] = store_config
 
     with domain.domain_context():
         yield domain

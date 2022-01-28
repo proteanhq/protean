@@ -1,5 +1,7 @@
 from uuid import uuid4
 
+import pytest
+
 from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.fields import String
 from protean.fields.basic import Identifier
@@ -18,6 +20,7 @@ class UserLoggedIn(BaseEvent):
         stream_name = "authentication"
 
 
+@pytest.mark.eventstore
 def test_raising_event(test_domain):
     test_domain.register(User)
     test_domain.register(UserLoggedIn)

@@ -69,6 +69,7 @@ def test_that_events_are_registered_in_the_right_order():
     assert isinstance(user._events[1], UserActivated)
 
 
+@pytest.mark.eventstore
 def test_that_events_are_empty_after_uow():
     user = User(name="John Doe", email="john.doe@example.com")
     user.change_name("Jane Doe")

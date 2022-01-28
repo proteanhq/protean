@@ -51,6 +51,7 @@ class SystemMetrics(BaseEventHandler):
 
 
 @pytest.mark.asyncio
+@pytest.mark.eventstore
 async def test_that_any_message_can_be_handled_with_any_handler(test_domain):
     test_domain.register(User)
     test_domain.register(Registered)
