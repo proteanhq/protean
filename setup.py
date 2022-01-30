@@ -37,7 +37,7 @@ install_requires = marshmallow_requires + [
     "cookiecutter>=1.7.0",
     "inflection>=0.5.1",
     "python-dateutil>=2.8.1",
-    "werkzeug>=1.0.0",
+    "werkzeug>=2.0.0",
 ]
 
 all_external_requires = [

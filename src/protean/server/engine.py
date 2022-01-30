@@ -11,6 +11,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ConfigurationError
 from protean.globals import g
 from protean.utils.importlib import import_from_full_path
+from protean.utils.mixins import Message
 
 from .subscription import Subscription
 
@@ -59,7 +60,7 @@ class Engine:
         pass
 
     async def handle_message(
-        self, handler_cls: Union[BaseCommandHandler, BaseEventHandler], message
+        self, handler_cls: Union[BaseCommandHandler, BaseEventHandler], message: Message
     ) -> None:
         with self.domain.domain_context():
             # Set context from current message, so that further processes

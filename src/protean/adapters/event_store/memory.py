@@ -14,6 +14,9 @@ class MemoryMessage(BaseAggregate, CoreMessage):
 
 
 class MemoryMessageRepository(BaseRepository):
+    class Meta:
+        aggregate_cls = MemoryMessage
+
     def is_category(self, stream_name: str) -> bool:
         if not stream_name:
             return False
@@ -93,7 +96,7 @@ class MemoryEventStore(BaseEventStore):
 
         self.domain = domain
         self.domain._register_element(DomainObjects.AGGREGATE, MemoryMessage)
-        self.domain.register(MemoryMessageRepository, aggregate_cls=MemoryMessage)
+        self.domain.register(MemoryMessageRepository)
 
     def _write(
         self,

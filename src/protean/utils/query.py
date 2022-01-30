@@ -4,7 +4,7 @@ import functools
 import inspect
 import logging
 
-logger = logging.getLogger("protean.repository")
+logger = logging.getLogger(__name__)
 
 
 def subclasses(cls):

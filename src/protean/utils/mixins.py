@@ -233,10 +233,8 @@ class HandlerMixin:
 
     @classmethod
     def _handle(cls, message: Message) -> None:
-        self = cls()
-
         # Use Event-specific handlers if available, or fallback on `$any` if defined
         handlers = cls._handlers[message.type] or cls._handlers["$any"]
 
         for handler_method in handlers:
-            handler_method(self, message.to_object())
+            handler_method(cls(), message.to_object())

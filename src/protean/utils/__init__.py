@@ -15,7 +15,7 @@ import pkg_resources
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.globals import current_domain
 
-logger = logging.getLogger("protean.utils")
+logger = logging.getLogger(__name__)
 
 
 class IdentityStrategy(Enum):

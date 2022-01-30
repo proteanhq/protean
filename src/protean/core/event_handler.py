@@ -14,6 +14,9 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
 
     element_type = DomainObjects.EVENT_HANDLER
 
+    class Meta:
+        abstract = True
+
     @classmethod
     def _default_options(cls):
         return [("aggregate_cls", None), ("stream_name", None), ("source_stream", None)]

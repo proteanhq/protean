@@ -3,6 +3,7 @@ import inspect
 import logging
 
 from collections import defaultdict
+from typing import Type, Union
 
 from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
 from protean.fields import FieldBase, ValueObject
@@ -23,14 +24,32 @@ class Options:
     - ``abstract``: Indicates that this is an abstract entity (Ignores all other meta options)
     """
 
-    def __init__(self, opts=None):
-        attributes = inspect.getmembers(opts, lambda a: not (inspect.isroutine(a)))
-        for attr in attributes:
-            if not (attr[0].startswith("__") and attr[0].endswith("__")):
-                setattr(self, attr[0], attr[1])
+    def __init__(self, opts: Union[dict, Type] = None):
+        if opts:
+            if inspect.isclass(opts):
+                attributes = inspect.getmembers(
+                    opts, lambda a: not (inspect.isroutine(a))
+                )
+                for attr in attributes:
+                    if not (attr[0].startswith("__") and attr[0].endswith("__")):
+                        setattr(self, attr[0], attr[1])
+            elif isinstance(opts, dict):
+                for opt_name, opt_value in opts.items():
+                    setattr(self, opt_name, opt_value)
 
         # Common Meta attributes
         self.abstract = getattr(opts, "abstract", None) or False
+
+    def __eq__(self, other):
+        """Equivalence check based only on data."""
+        if type(other) is not type(self):
+            return False
+
+        return self.__dict__ == other.__dict__
+
+    def __hash__(self):
+        """Overrides the default implementation and bases hashing on values"""
+        return hash(frozenset(self.__dict__.items()))
 
 
 class OptionsMixin:
@@ -230,9 +249,9 @@ class BaseContainer(metaclass=ContainerMeta):
         return defaultdict(list)
 
     def __eq__(self, other):
-        """Equivalence check for commands is based only on data.
+        """Equivalence check for containers is based only on data.
 
-        Two Commands are considered equal if they have the same data.
+        Two container objects are considered equal if they have the same data.
         """
         if type(other) is not type(self):
             return False
