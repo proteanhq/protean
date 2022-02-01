@@ -3,7 +3,7 @@ import logging
 
 from marshmallow import Schema, fields
 
-from protean.container import Element, Options
+from protean.container import Element, Options, OptionsMixin
 from protean.exceptions import NotSupportedError
 from protean.fields import (
     Boolean,
@@ -71,6 +71,10 @@ class _SerializerMetaclass(type):
 
             return declared_fields
 
+        @classmethod
+        def _default_options(cls):
+            return []
+
         # Ensure initialization is only performed for subclasses of Serializer
         # (excluding Serializer class itself).
         parents = [b for b in bases if isinstance(b, _SerializerMetaclass)]
@@ -135,8 +139,9 @@ class _SerializerMetaclass(type):
         # Explicit redefinition element_type  necessary because `attrs`
         #   are reset when a serializer class is initialized.
         attrs["element_type"] = DomainObjects.SERIALIZER
+        attrs["_default_options"] = _default_options
 
-        new_class = type(name, (Schema,), attrs)
+        new_class = type(name, (Schema, Element, OptionsMixin), attrs)
 
         # Gather `Meta` class/object if defined
         attr_meta = attrs.pop("Meta", None)
@@ -148,10 +153,11 @@ class _SerializerMetaclass(type):
         return new_class
 
 
-class BaseSerializer(Element, metaclass=_SerializerMetaclass):
+class BaseSerializer(metaclass=_SerializerMetaclass):
     """The Base class for Protean-Compliant Serializers.
 
-    Provides helper methods to load and dump data during runtime, from protean entity objects.
+    Provides helper methods to load and dump data during runtime, from protean entity objects. Core Protean
+    attributes like `element_type`, `meta_`, and `_default_options` are initialized in metaclass.
 
     Basic Usage::
 
@@ -182,4 +188,4 @@ class BaseSerializer(Element, metaclass=_SerializerMetaclass):
 
 
 def serializer_factory(element_cls, **kwargs):
-    return derive_element_class(element_cls, BaseSerializer)
+    return derive_element_class(element_cls, BaseSerializer, **kwargs)

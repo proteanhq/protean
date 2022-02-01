@@ -19,6 +19,20 @@ def test_options_construction_from_dict():
     assert opts.foo == "bar"
 
 
+def test_tracking_currently_active_attributes():
+    opts = Options({"foo": "bar"})
+    assert opts._opts == {"abstract", "foo"}
+
+    setattr(opts, "baz", "qux")
+    assert opts._opts == {"abstract", "foo", "baz"}
+
+    opts.waldo = "fred"
+    assert opts._opts == {"abstract", "foo", "baz", "waldo"}
+
+    del opts.baz
+    assert opts._opts == {"abstract", "foo", "waldo"}
+
+
 def test_option_objects_equality():
     assert Options() == Options()
     assert Options(Meta) == Options({"foo": "bar"})
@@ -35,3 +49,14 @@ def test_option_objects_equality():
         foo = "baz"
 
     assert Options(Meta) != Options(Meta3)
+
+
+def test_merging_two_option_objects():
+    opt1 = Options({"foo": "bar", "baz": "qux"})
+    opt2 = Options({"baz": "quz"})
+
+    merged1 = opt1 + opt2
+    assert merged1.baz == "quz"
+
+    merged2 = opt2 + opt1
+    assert merged2.baz == "qux"

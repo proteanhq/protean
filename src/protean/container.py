@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import copy
 import inspect
 import logging
 
 from collections import defaultdict
-from typing import Type, Union
+from typing import Any, Type, Union
 
 from protean.exceptions import InvalidDataError, NotSupportedError, ValidationError
 from protean.fields import FieldBase, ValueObject
@@ -20,11 +22,13 @@ class Element:
 class Options:
     """Metadata info for the Container.
 
-    Options:
+    Common options:
     - ``abstract``: Indicates that this is an abstract entity (Ignores all other meta options)
     """
 
-    def __init__(self, opts: Union[dict, Type] = None):
+    def __init__(self, opts: Union[dict, Type] = None) -> None:
+        self._opts = set()
+
         if opts:
             if inspect.isclass(opts):
                 attributes = inspect.getmembers(
@@ -33,6 +37,7 @@ class Options:
                 for attr in attributes:
                     if not (attr[0].startswith("__") and attr[0].endswith("__")):
                         setattr(self, attr[0], attr[1])
+
             elif isinstance(opts, dict):
                 for opt_name, opt_value in opts.items():
                     setattr(self, opt_name, opt_value)
@@ -40,16 +45,35 @@ class Options:
         # Common Meta attributes
         self.abstract = getattr(opts, "abstract", None) or False
 
-    def __eq__(self, other):
+    def __setattr__(self, __name: str, __value: Any) -> None:
+        # Ignore if `_opts` is being set
+        if __name != "_opts":
+            self._opts.add(__name)
+
+        super().__setattr__(__name, __value)
+
+    def __delattr__(self, __name: str) -> None:
+        self._opts.discard(__name)
+
+        super().__delattr__(__name)
+
+    def __eq__(self, other) -> bool:
         """Equivalence check based only on data."""
         if type(other) is not type(self):
             return False
 
         return self.__dict__ == other.__dict__
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         """Overrides the default implementation and bases hashing on values"""
         return hash(frozenset(self.__dict__.items()))
+
+    def __add__(self, other: Options) -> None:
+        new_options = copy.copy(self)
+        for opt in other._opts:
+            setattr(new_options, opt, getattr(other, opt))
+
+        return new_options
 
 
 class OptionsMixin:
@@ -78,13 +102,16 @@ class OptionsMixin:
             subclass.meta_ = Options()
 
         # Assign default options for remaining items
+        subclass._set_defaults()
+
+    @classmethod
+    def _set_defaults(cls):
+        # Assign default options for remaining items
         #   with the help of `_default_options()` method defined in the Element's Root.
         #   Element Roots are `Event`, `Subscriber`, `Repository`, and so on.
-        for key, default in subclass._default_options():
-            value = (
-                hasattr(subclass.meta_, key) and getattr(subclass.meta_, key)
-            ) or default
-            setattr(subclass.meta_, key, value)
+        for key, default in cls._default_options():
+            value = (hasattr(cls.meta_, key) and getattr(cls.meta_, key)) or default
+            setattr(cls.meta_, key, value)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

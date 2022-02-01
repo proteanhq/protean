@@ -123,6 +123,9 @@ def derive_element_class(element_cls, base_cls, **opts):
         for key, value in opts.items():
             setattr(element_cls.meta_, key, value)
 
+    # Assign default options for remaining items
+    element_cls._set_defaults()
+
     return element_cls
 
 

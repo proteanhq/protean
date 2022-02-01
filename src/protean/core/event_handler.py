@@ -19,7 +19,17 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return [("aggregate_cls", None), ("stream_name", None), ("source_stream", None)]
+        aggregate_cls = (
+            getattr(cls.meta_, "aggregate_cls")
+            if hasattr(cls.meta_, "aggregate_cls")
+            else None
+        )
+
+        return [
+            ("aggregate_cls", None),
+            ("stream_name", aggregate_cls.meta_.stream_name if aggregate_cls else None),
+            ("source_stream", None),
+        ]
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseEventHandler:
