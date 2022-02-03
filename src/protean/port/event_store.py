@@ -161,10 +161,12 @@ class BaseEventStore(metaclass=ABCMeta):
 
             # Also apply the first event in case a method has been specified
             aggregate._apply(first_event)
+            aggregate._version += 1
 
         # Apply all other events one-by-one
         for event in events:
             aggregate._apply(event)
+            aggregate._version += 1
 
         # If there are more events than SNAPSHOT_THRESHOLD, create a new snapshot
         if (

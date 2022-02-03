@@ -3,9 +3,10 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate, UnitOfWork, apply
-from protean.exceptions import ExpectedVersionError
+from protean import BaseEvent, BaseEventSourcedAggregate, apply
+from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
+from protean.utils.mixins import Message
 
 
 class UserStatus(Enum):
@@ -66,29 +67,43 @@ def register_elements(test_domain):
 
 
 @pytest.mark.eventstore
-def test_expected_version_error(test_domain):
+def test_applying_events():
     identifier = str(uuid4())
 
-    with UnitOfWork():
-        repo = test_domain.repository_for(User)
-        user = User.register(
-            user_id=identifier, name="John Doe", email="john.doe@example.com"
-        )
-        repo.add(user)
-
-    user_dup1 = repo.get(identifier)
-    user_dup2 = repo.get(identifier)
-
-    with UnitOfWork():
-        user_dup1.activate()
-        repo.add(user_dup1)
-
-    with pytest.raises(ExpectedVersionError) as exc:
-        with UnitOfWork():
-            user_dup2.change_name("Mike")
-            repo.add(user_dup2)
-
-    assert (
-        exc.value.args[0]
-        == f"Wrong expected version: 0 (Stream: user-{identifier}, Stream Version: 1)"
+    registered = UserRegistered(
+        user_id=identifier, name="John Doe", email="john.doe@example.com"
     )
+    activated = UserActivated(user_id=identifier)
+    renamed = UserRenamed(user_id=identifier, name="Jane Doe")
+
+    user = User.register(**registered.to_dict())
+
+    msg_registered = Message.to_aggregate_event_message(user, registered)
+    user._apply(msg_registered.to_dict())
+    assert user.status == UserStatus.INACTIVE.value
+
+    msg_activated = Message.to_aggregate_event_message(user, activated)
+    user._apply(msg_activated.to_dict())
+    assert user.status == UserStatus.ACTIVE.value
+
+    msg_renamed = Message.to_aggregate_event_message(user, renamed)
+    user._apply(msg_renamed.to_dict())
+    assert user.name == "Jane Doe"
+
+
+def test_that_apply_decorator_without_event_cls_raises_error():
+    class Sent(BaseEvent):
+        email_id = Identifier()
+
+    with pytest.raises(IncorrectUsageError) as exc:
+
+        class _(BaseEventSourcedAggregate):
+            email_id = Identifier(identifier=True)
+
+            @apply
+            def sent(self, _: Sent) -> None:
+                pass
+
+    assert exc.value.messages == {
+        "_entity": [f"Apply method is missing Event class argument"]
+    }

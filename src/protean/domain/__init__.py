@@ -15,6 +15,7 @@ from protean.adapters.event_store import EventStore
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
 from protean.core.model import BaseModel
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import ConfigurationError, IncorrectUsageError
@@ -23,6 +24,7 @@ from protean.globals import current_domain
 from protean.reflection import declared_fields, has_fields
 from protean.utils import (
     DomainObjects,
+    EventProcessing,
     fetch_element_cls_from_registry,
     fully_qualified_name,
 )
@@ -97,6 +99,7 @@ class Domain(_PackageBoundObject):
             "IDENTITY_STRATEGY": IdentityStrategy.UUID.value,
             "IDENTITY_TYPE": IdentityType.STRING.value,
             "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider"}},
+            "EVENT_PROCESSING": EventProcessing.ASYNC.value,
             "EVENT_STORE": {
                 "PROVIDER": "protean.adapters.event_store.memory.MemoryEventStore",
             },
@@ -683,6 +686,17 @@ class Domain(_PackageBoundObject):
             None: Returns nothing.
         """
         self.event_store.store.append_event(event)
+
+    def handlers_for(self, event: BaseEvent) -> List[BaseEventHandler]:
+        """Return Event Handlers listening to a specific event
+
+        Args:
+            event (BaseEvent): Event to be consumed
+
+        Returns:
+            List[BaseEventHandler]: Event Handlers that have registered to consume the event
+        """
+        return self.event_store.handlers_for(event)
 
     ############################
     # Repository Functionality #

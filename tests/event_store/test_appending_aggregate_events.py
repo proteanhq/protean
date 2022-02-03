@@ -31,13 +31,22 @@ class User(BaseEventSourcedAggregate):
     name = String()
     status = String(default="INACTIVE")
 
+    @apply(Registered)
+    def registered(self, _: Registered) -> None:
+        self.status = "INACTIVE"
+
     @apply(Activated)
-    def activated(self, event: Activated) -> None:
+    def activated(self, _: Activated) -> None:
         self.status = "ACTIVE"
 
     @apply(Renamed)
     def renamed(self, event: Renamed) -> None:
         self.name = event.name
+
+
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(User)
 
 
 @pytest.mark.eventstore

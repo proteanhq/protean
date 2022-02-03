@@ -93,8 +93,13 @@ class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
     ) -> Message:
         identifier = getattr(aggregate, id_field(aggregate).field_name)
 
+        # Use explicit stream name if provided, or fallback on Aggregate's stream name
+        stream_name = (
+            event.meta_.stream_name or event.meta_.aggregate_cls.meta_.stream_name
+        )
+
         return cls(
-            stream_name=f"{aggregate.meta_.stream_name}-{identifier}",
+            stream_name=f"{stream_name}-{identifier}",
             type=fully_qualified_name(event.__class__),
             data=event.to_dict(),
             metadata=MessageMetadata(

@@ -1,10 +1,9 @@
 from enum import Enum
-from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate, UnitOfWork, apply
-from protean.exceptions import ExpectedVersionError
+from protean import BaseEvent, BaseEventSourcedAggregate, apply
+from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
 
 
@@ -60,35 +59,36 @@ class User(BaseEventSourcedAggregate):
         self.name = event.name
 
 
+class Email(BaseEventSourcedAggregate):
+    email_id = Identifier(identifier=True)
+
+    @apply(UserRegistered)
+    def registered(self, _: UserRegistered):
+        pass
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(User)
 
 
 @pytest.mark.eventstore
-def test_expected_version_error(test_domain):
-    identifier = str(uuid4())
+def test_that_event_is_associated_with_aggregate_by_apply_methods():
+    assert UserRegistered.meta_.aggregate_cls == User
+    assert UserActivated.meta_.aggregate_cls == User
+    assert UserRenamed.meta_.aggregate_cls == User
 
-    with UnitOfWork():
-        repo = test_domain.repository_for(User)
-        user = User.register(
-            user_id=identifier, name="John Doe", email="john.doe@example.com"
-        )
-        repo.add(user)
 
-    user_dup1 = repo.get(identifier)
-    user_dup2 = repo.get(identifier)
+@pytest.mark.eventstore
+def test_that_trying_to_associate_an_event_with_multiple_aggregates_throws_an_error(
+    test_domain,
+):
+    with pytest.raises(IncorrectUsageError) as exc:
+        test_domain.register(Email)
 
-    with UnitOfWork():
-        user_dup1.activate()
-        repo.add(user_dup1)
-
-    with pytest.raises(ExpectedVersionError) as exc:
-        with UnitOfWork():
-            user_dup2.change_name("Mike")
-            repo.add(user_dup2)
-
-    assert (
-        exc.value.args[0]
-        == f"Wrong expected version: 0 (Stream: user-{identifier}, Stream Version: 1)"
-    )
+    assert exc.value.messages == {
+        "_entity": [
+            "UserRegistered Event cannot be associated with Email"
+            " because it is already associated with User"
+        ]
+    }

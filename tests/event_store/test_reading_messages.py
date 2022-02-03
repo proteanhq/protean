@@ -10,24 +10,33 @@ from protean.fields.basic import Identifier
 from protean.utils.mixins import Message
 
 
+class User(BaseEventSourcedAggregate):
+    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
+    email = String()
+    name = String(max_length=50)
+
+
 class Registered(BaseEvent):
     id = Identifier()
     email = String()
 
+    class Meta:
+        aggregate_cls = User
+
 
 class Activated(BaseEvent):
     id = Identifier(required=True)
+
+    class Meta:
+        aggregate_cls = User
 
 
 class Renamed(BaseEvent):
     id = Identifier(required=True)
     name = String(required=True, max_length=50)
 
-
-class User(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
-    email = String()
-    name = String(max_length=50)
+    class Meta:
+        aggregate_cls = User
 
 
 @pytest.mark.eventstore

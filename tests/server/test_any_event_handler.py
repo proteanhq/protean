@@ -15,18 +15,21 @@ def count_up():
     counter += 1
 
 
+class User(BaseEventSourcedAggregate):
+    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
+    email = String()
+    name = String()
+    password_hash = String()
+
+
 class Registered(BaseEvent):
     id = Identifier()
     email = String()
     name = String()
     password_hash = String()
 
-
-class User(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
-    email = String()
-    name = String()
-    password_hash = String()
+    class Meta:
+        aggregate_cls = User
 
 
 class UserEventHandler(BaseEventHandler):

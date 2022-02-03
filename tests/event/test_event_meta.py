@@ -31,3 +31,25 @@ def test_event_definition_without_aggregate_or_stream(test_domain):
             f"Event `UserLoggedIn` needs to be associated with an aggregate or a stream"
         ]
     }
+
+
+def test_event_definition_with_just_aggregate_cls(test_domain):
+    test_domain.register(User)
+    test_domain.register(UserLoggedIn, aggregate_cls=User)
+
+    try:
+        identifier = str(uuid4())
+        test_domain.raise_(UserLoggedIn(user_id=identifier))
+    except IncorrectUsageError:
+        pytest.fail("Failed raising event when associated with Aggregate")
+
+
+def test_event_definition_with_just_stream(test_domain):
+    test_domain.register(User)
+    test_domain.register(UserLoggedIn, stream_name="user")
+
+    try:
+        identifier = str(uuid4())
+        test_domain.raise_(UserLoggedIn(user_id=identifier))
+    except IncorrectUsageError:
+        pytest.fail("Failed raising event when associated with Aggregate")

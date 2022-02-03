@@ -30,6 +30,11 @@ class IdentityType(Enum):
     UUID = "UUID"
 
 
+class EventProcessing(Enum):
+    SYNC = "SYNC"
+    ASYNC = "ASYNC"
+
+
 class Database(Enum):
     ELASTICSEARCH = "ELASTICSEARCH"
     MEMORY = "MEMORY"

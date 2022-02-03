@@ -28,6 +28,9 @@ class Registered(BaseEvent):
     email = String()
     name = String()
 
+    class Meta:
+        aggregate_cls = User
+
 
 class SendEmail(BaseEventSourcedAggregate):
     id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute

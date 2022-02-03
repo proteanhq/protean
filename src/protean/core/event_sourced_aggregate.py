@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Callable, Dict
 
 from protean.container import BaseContainer, EventedMixin, OptionsMixin
+from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Field, Integer
 from protean.reflection import _ID_FIELD_NAME, declared_fields, has_fields, id_field
@@ -109,7 +110,11 @@ class BaseEventSourcedAggregate(EventedMixin, OptionsMixin, BaseContainer):
         """
         # FIXME Handle case of missing projection
         for fn in self._projections[event_dict["type"]]:
-            event = self._events_cls_map[event_dict["type"]](**event_dict["data"])
+            # Reconstruct Event object
+            event_cls = self._events_cls_map[event_dict["type"]]
+            event = event_cls(**event_dict["data"])
+
+            # Call event handler method
             fn(self, event)
 
 
@@ -117,6 +122,15 @@ class apply:
     """Class decorator to mark methods in EventHandler classes."""
 
     def __init__(self, event_cls: "BaseEvent") -> None:
+        # Will throw error if the `apply` method is defined without event class
+        # E.g.
+        # @apply
+        # def mark_published(self, event: Published):
+        #     ...
+        if not inspect.isclass(event_cls):
+            raise IncorrectUsageError(
+                {"_entity": ["Apply method is missing Event class argument"]}
+            )
         self._event_cls = event_cls
 
     def __call__(self, fn: Callable) -> Callable:
@@ -133,7 +147,6 @@ class apply:
         @functools.wraps(fn)
         def wrapper(instance, event_obj):
             fn(instance, event_obj)
-            instance._version += 1
 
         setattr(wrapper, "_event_cls", self._event_cls)
         return wrapper
@@ -154,5 +167,27 @@ def event_sourced_aggregate_factory(element_cls, **opts):
             element_cls._events_cls_map[
                 fully_qualified_name(method._event_cls)
             ] = method._event_cls
+
+            # Associate Event with the aggregate class
+            if inspect.isclass(method._event_cls) and issubclass(
+                method._event_cls, BaseEvent
+            ):
+                # An Event can only be associated with one aggregate class, but multiple event handlers
+                #   can consume it.
+                if (
+                    method._event_cls.meta_.aggregate_cls
+                    and method._event_cls.meta_.aggregate_cls != element_cls
+                ):
+                    raise IncorrectUsageError(
+                        {
+                            "_entity": [
+                                f"{method._event_cls.__name__} Event cannot be associated with"
+                                f" {element_cls.__name__} because it is already associated with"
+                                f" {method._event_cls.meta_.aggregate_cls.__name__}"
+                            ]
+                        }
+                    )
+
+                method._event_cls.meta_.aggregate_cls = element_cls
 
     return element_cls

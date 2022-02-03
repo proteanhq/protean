@@ -1,4 +1,4 @@
-from protean.utils import Database, IdentityStrategy, IdentityType
+from protean.utils import Database, EventProcessing, IdentityStrategy, IdentityType
 
 DEBUG = True
 TESTING = True
@@ -36,6 +36,8 @@ IDENTITY_STRATEGY = IdentityStrategy.UUID.value
 #   * INTEGER
 #   * STRING (Default)
 IDENTITY_TYPE = IdentityType.STRING.value
+
+EVENT_PROCESSING = EventProcessing.SYNC.value
 
 # Messaging Mediums
 BROKERS = {

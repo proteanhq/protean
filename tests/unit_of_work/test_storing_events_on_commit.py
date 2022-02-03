@@ -18,13 +18,6 @@ class Register(BaseCommand):
     password_hash = String()
 
 
-class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
-
-
 class User(BaseEventSourcedAggregate):
     id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     email = String()
@@ -51,6 +44,16 @@ class User(BaseEventSourcedAggregate):
         current_domain.repository_for(User).add(user)
 
         return user
+
+
+class Registered(BaseEvent):
+    id = Identifier()
+    email = String()
+    name = String()
+    password_hash = String()
+
+    class Meta:
+        aggregate_cls = User
 
 
 class UserCommandHandler(BaseCommandHandler):

@@ -1,6 +1,10 @@
 import importlib
 import logging
 
+from collections import defaultdict
+from typing import List
+
+from protean import BaseEvent, BaseEventHandler
 from protean.core.event_sourced_repository import (
     BaseEventSourcedRepository,
     event_sourced_repository_factory,
@@ -14,6 +18,7 @@ class EventStore:
     def __init__(self, domain):
         self.domain = domain
         self._event_store = None
+        self._event_streams = None
 
     @property
     def store(self):
@@ -45,7 +50,19 @@ class EventStore:
 
             self._event_store = store
 
+            self._initialize_streams()
+
         return self._event_store
+
+    def _initialize_streams(self):
+        self._event_streams = defaultdict(set)
+
+        for _, record in self.domain.registry.event_handlers.items():
+            stream_name = (
+                record.cls.meta_.stream_name
+                or record.cls.meta_.aggregate_cls.meta_.stream_name
+            )
+            self._event_streams[stream_name].add(record.cls)
 
     def repository_for(self, aggregate_cls):
         if self._event_store is None:
@@ -58,3 +75,12 @@ class EventStore:
             repository_cls, aggregate_cls=aggregate_cls
         )
         return repository_cls(self.domain)
+
+    def handlers_for(self, event: BaseEvent) -> List[BaseEventHandler]:
+        if self._event_streams is None:
+            self._initialize_streams()
+
+        stream_name = (
+            event.meta_.stream_name or event.meta_.aggregate_cls.meta_.stream_name
+        )
+        return self._event_streams.get(stream_name, [])

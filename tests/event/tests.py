@@ -33,9 +33,7 @@ class TestDomainEventDefinition:
             "name": "John Doe",
         }
 
-    def test_that_domain_event_can_be_reconstructed_from_dict_enclosing_vo(
-        self, test_domain
-    ):
+    def test_that_domain_event_can_be_reconstructed_from_dict_enclosing_vo(self):
         class Email(BaseValueObject):
             address = String(max_length=255)
 

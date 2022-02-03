@@ -1,13 +1,12 @@
 import logging
 
-from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 from protean.exceptions import (
     ExpectedVersionError,
     InvalidOperationError,
     ValidationError,
 )
 from protean.globals import _uow_context_stack, current_domain
-from protean.utils import DomainObjects
+from protean.utils import DomainObjects, EventProcessing, fqn
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +46,6 @@ class UnitOfWork:
         self._in_progress = True
         _uow_context_stack.push(self)
 
-    def _store_events(self, item: BaseEventSourcedAggregate) -> None:
-        for event in item._events:
-            current_domain.event_store.store.append_aggregate_event(item, event)
-
     def commit(self):
         # Raise error if there the Unit Of Work is not active
         logger.debug(f"Committing {self}...")
@@ -65,14 +60,34 @@ class UnitOfWork:
             for _, session in self._sessions.items():
                 session.commit()
 
+            events = []
             for item in self._seen:
                 if item._events:
                     if item.element_type == DomainObjects.EVENT_SOURCED_AGGREGATE:
-                        self._store_events(item)
+                        for event in item._events:
+                            current_domain.event_store.store.append_aggregate_event(
+                                item, event
+                            )
+                            events.append((item, event))
                     else:
                         for event in item._events:
                             current_domain.event_store.store.append_event(event)
+                            events.append((item, event))
                 item._events = []
+
+            # Iteratively consume all events produced in this session
+            if current_domain.config["EVENT_PROCESSING"] == EventProcessing.SYNC.value:
+                # Handover events to process instantly
+                for _, event in events:
+                    handler_classes = current_domain.handlers_for(event)
+                    for handler_cls in handler_classes:
+                        handler_methods = (
+                            handler_cls._handlers[fqn(event.__class__)]
+                            or handler_cls._handlers["$any"]
+                        )
+
+                        for handler_method in handler_methods:
+                            handler_method(handler_cls(), event)
 
             logger.debug("Commit Successful")
         except ValueError as exc:

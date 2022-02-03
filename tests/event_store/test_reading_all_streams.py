@@ -3,28 +3,39 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
+import pytest
+
 from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.fields import DateTime, Identifier, String, Text
-
-
-class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-
-
-class Activated(BaseEvent):
-    id = Identifier(required=True)
-
-
-class Renamed(BaseEvent):
-    id = Identifier(required=True)
-    name = String(required=True, max_length=50)
 
 
 class User(BaseEventSourcedAggregate):
     id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     email = String()
     name = String(max_length=50)
+
+
+class Registered(BaseEvent):
+    id = Identifier()
+    email = String()
+
+    class Meta:
+        aggregate_cls = User
+
+
+class Activated(BaseEvent):
+    id = Identifier(required=True)
+
+    class Meta:
+        aggregate_cls = User
+
+
+class Renamed(BaseEvent):
+    id = Identifier(required=True)
+    name = String(required=True, max_length=50)
+
+    class Meta:
+        aggregate_cls = User
 
 
 class Post(BaseEventSourcedAggregate):
@@ -38,12 +49,19 @@ class Created(BaseEvent):
     topic = String()
     content = Text()
 
+    class Meta:
+        aggregate_cls = Post
+
 
 class Published(BaseEvent):
     id = Identifier(required=True)
     published_time = DateTime(default=datetime.utcnow)
 
+    class Meta:
+        aggregate_cls = Post
 
+
+@pytest.mark.eventstore
 def test_reading_messages_from_all_streams(test_domain):
     user_identifier = str(uuid4())
     event1 = Registered(id=user_identifier, email="john.doe@example.com")

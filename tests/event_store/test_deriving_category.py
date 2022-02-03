@@ -1,3 +1,7 @@
+import pytest
+
+
+@pytest.mark.eventstore
 def test_deriving_category(test_domain):
     assert test_domain.event_store.store.category(None) == ""
     assert test_domain.event_store.store.category("") == ""
