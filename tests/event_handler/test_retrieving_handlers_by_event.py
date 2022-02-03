@@ -29,6 +29,14 @@ class Activated(BaseEvent):
     activated_at = DateTime()
 
 
+class Renamed(BaseEvent):
+    id = Identifier()
+    name = String()
+
+    class Meta:
+        aggregate_cls = User
+
+
 class Sent(BaseEvent):
     email = String()
     sent_at = DateTime()
@@ -56,11 +64,20 @@ class EmailEventHandler(BaseEventHandler):
 
 class UserMetrics(BaseEventHandler):
     @handle(Registered)
-    def count_registrations(self, _: BaseEventHandler) -> None:
+    def count_registrations(self, _: BaseEvent) -> None:
         pass
 
     class Meta:
         aggregate_cls = User
+
+
+class AllEventsHandler(BaseEventHandler):
+    class Meta:
+        stream_name = "$all"
+
+    @handle("$any")
+    def universal_handler(self, _: BaseEvent) -> None:
+        pass
 
 
 def test_retrieving_handler_by_event(test_domain):
@@ -70,3 +87,22 @@ def test_retrieving_handler_by_event(test_domain):
 
     assert test_domain.handlers_for(Registered()) == {UserEventHandler, UserMetrics}
     assert test_domain.handlers_for(Sent()) == {EmailEventHandler}
+
+
+def test_that_all_streams_handler_is_returned(test_domain):
+    test_domain.register(AllEventsHandler)
+    assert test_domain.handlers_for(Renamed()) == {AllEventsHandler}
+
+
+def test_that_all_streams_handler_is_always_returned_with_other_handlers(test_domain):
+    test_domain.register(AllEventsHandler)
+    test_domain.register(UserEventHandler, aggregate_cls=User)
+    test_domain.register(UserMetrics, aggregate_cls=User)
+    test_domain.register(EmailEventHandler, aggregate_cls=Email)
+
+    assert test_domain.handlers_for(Registered()) == {
+        UserEventHandler,
+        UserMetrics,
+        AllEventsHandler,
+    }
+    assert test_domain.handlers_for(Sent()) == {EmailEventHandler, AllEventsHandler}

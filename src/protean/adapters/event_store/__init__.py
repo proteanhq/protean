@@ -80,7 +80,11 @@ class EventStore:
         if self._event_streams is None:
             self._initialize_streams()
 
+        all_stream_handlers = self._event_streams.get("$all", set())
+
         stream_name = (
             event.meta_.stream_name or event.meta_.aggregate_cls.meta_.stream_name
         )
-        return self._event_streams.get(stream_name, [])
+        stream_handlers = self._event_streams.get(stream_name, set())
+
+        return set.union(stream_handlers, all_stream_handlers)
