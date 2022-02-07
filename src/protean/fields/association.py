@@ -151,22 +151,21 @@ class Reference(FieldCacheMixin, Field):
 
     def __set__(self, instance, value):
         """Override `__set__` to coordinate between relation field and its shadow attribute"""
-        if value:
-            value = self._load(value)
+        value = self._load(value)
 
-            if value:
-                # Check if the reference object has been saved. Otherwise, throw ValueError
-                # FIXME not a comprehensive check. Should refer to state
-                if getattr(value, id_field(value).field_name) is None:
-                    raise ValueError(
-                        "Target Object must be saved before being referenced",
-                        self.field_name,
-                    )
-                else:
-                    self._set_own_value(instance, value)
-                    self._set_relation_value(
-                        instance, getattr(value, self.linked_attribute)
-                    )
+        if value:
+            # Check if the reference object has been saved. Otherwise, throw ValueError
+            # FIXME not a comprehensive check. Should refer to state
+            if getattr(value, id_field(value).field_name) is None:
+                raise ValueError(
+                    "Target Object must be saved before being referenced",
+                    self.field_name,
+                )
+            else:
+                self._set_own_value(instance, value)
+                self._set_relation_value(
+                    instance, getattr(value, self.linked_attribute)
+                )
         else:
             self._reset_values(instance)
 
@@ -317,8 +316,6 @@ class HasOne(Association):
 
     def __set__(self, instance, value):
         """Setup relationship to be persisted/updated"""
-        # If `to_cls` was specified as a string, take this opportunity to fetch
-        #   and update the correct entity class against it, if not already done
         if value is not None:
             # This updates the parent's unique identifier in the child
             #   so that the foreign key relationship is preserved
@@ -345,11 +342,18 @@ class HasOne(Association):
 
         self._set_own_value(instance, value)
 
-    def _fetch_objects(self, instance, key, value):
+    def _fetch_objects(self, instance, key, identifier):
         """Fetch single linked object"""
         try:
             repo = current_domain.repository_for(self.to_cls)
-            return repo._dao.find_by(**{key: value})
+            value = repo._dao.find_by(**{key: identifier})
+
+            # Set up linkage with owner element
+            setattr(
+                value, key, identifier
+            )  # This overwrites any existing linkage, which is correct
+
+            return value
         except exceptions.ObjectNotFoundError:
             return None
 
@@ -432,6 +436,10 @@ class HasMany(Association):
         """
         children_repo = current_domain.repository_for(self.to_cls)
         temp_data = children_repo._dao.query.filter(**{key: value}).all().items
+
+        # Set up linkage with owner element
+        for item in temp_data:
+            setattr(item, key, value)
 
         # Add objects in temporary cache
         for _, item in instance._temp_cache[self.field_name]["added"].items():

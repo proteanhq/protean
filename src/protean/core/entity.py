@@ -8,7 +8,7 @@ from functools import partial
 from protean.container import BaseContainer, OptionsMixin
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Auto, Field, HasMany, Reference, ValueObject
-from protean.fields.association import Association, _ReferenceField
+from protean.fields.association import Association
 from protean.reflection import (
     _FIELDS,
     _ID_FIELD_NAME,
@@ -211,6 +211,14 @@ class BaseEntity(BaseContainer, OptionsMixin):
         # Placeholder for temporary association values
         self._temp_cache = defaultdict(lambda: defaultdict(dict))
 
+        # Collect Reference field attribute names to prevent accidental overwriting
+        # of shadow fields.
+        reference_attributes = {
+            field_obj.attribute_name: field_obj.field_name
+            for field_obj in declared_fields(self).values()
+            if isinstance(field_obj, Reference)
+        }
+
         # Load the attributes based on the template
         loaded_fields = []
         for dictionary in template:
@@ -226,12 +234,17 @@ class BaseEntity(BaseContainer, OptionsMixin):
 
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
-            loaded_fields.append(field_name)
             try:
                 setattr(self, field_name, val)
             except ValidationError as err:
                 for field_name in err.messages:
                     self.errors[field_name].extend(err.messages[field_name])
+            else:
+                loaded_fields.append(field_name)
+
+                # Also note reference field name if its attribute was loaded
+                if field_name in reference_attributes:
+                    loaded_fields.append(reference_attributes[field_name])
 
         # Load Value Objects from associated fields
         #   This block will dynamically construct value objects from field values
@@ -287,7 +300,7 @@ class BaseEntity(BaseContainer, OptionsMixin):
         # for required fields
         for field_name, field_obj in fields(self).items():
             if field_name not in loaded_fields:
-                if not isinstance(field_obj, (Reference, _ReferenceField, Association)):
+                if not isinstance(field_obj, Association):
                     try:
                         setattr(self, field_name, None)
 

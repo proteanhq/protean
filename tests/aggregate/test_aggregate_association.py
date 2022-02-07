@@ -233,20 +233,6 @@ class TestHasMany:
                 getattr(refreshed_post, "comments")
         assert mock_fetch_objects.call_count == 0
 
-    def test_that_entities_up_to_configured_limit_value_are_retrieved(
-        self, test_domain, persisted_post
-    ):
-        for i in range(1, 13):
-            comment = Comment(
-                content=f"Comment {i}", post_id=persisted_post.id
-            )  # FIXME This should not be necessary
-            test_domain.repository_for(Comment)._dao.save(comment)
-            persisted_post.add_comments(comment)
-            test_domain.repository_for(Post)._dao.save(persisted_post)
-
-        updated_post = test_domain.repository_for(Post)._dao.get(persisted_post.id)
-        assert len(updated_post.comments) == 12
-
 
 class TestReference:
     def test_that_reference_field_attribute_name_is_set_properly(self):

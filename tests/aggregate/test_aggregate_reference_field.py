@@ -86,11 +86,11 @@ class TestReferenceFieldAssociation:
         self, test_domain
     ):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")
-        test_domain.repository_for(Account)._dao.save(account)
+        test_domain.repository_for(Account).add(account)
         author = Author(first_name="John", last_name="Doe", account=account)
-        test_domain.repository_for(Author)._dao.save(author)
+        test_domain.repository_for(Author).add(author)
 
-        author = test_domain.repository_for(Author)._dao.get(author.id)
+        author = test_domain.repository_for(Author).get(author.id)
         # Reference attribute is not loaded automatically
         assert "account" not in author.__dict__
         assert author.account_email == account.email
