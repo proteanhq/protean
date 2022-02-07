@@ -7,6 +7,7 @@ from protean.exceptions import (
     NotSupportedError,
 )
 from protean.fields import Integer, String
+from protean.reflection import fields
 from protean.utils import fully_qualified_name
 
 
@@ -109,3 +110,47 @@ class TestCommandProperties:
         )
 
         assert command1 != command2
+
+
+class TestCommandInheritance:
+    class AbstractCommand(BaseCommand):
+        foo = String()
+
+        class Meta:
+            abstract = True
+
+    class ConcreteCommand(AbstractCommand):
+        bar = String()
+
+    def test_inheritance_of_parent_fields(self):
+        assert all(
+            field_name in fields(TestCommandInheritance.ConcreteCommand)
+            for field_name in ["foo", "bar"]
+        )
+
+    def test_inheritance_of_parent_fields_with_annotations(self, test_domain):
+        @test_domain.command
+        class AbstractCommand2:
+            foo = String()
+
+            class Meta:
+                abstract = True
+
+        @test_domain.command
+        class ConcreteCommand2(AbstractCommand2):
+            bar = String()
+
+        assert all(
+            field_name in fields(ConcreteCommand2) for field_name in ["foo", "bar"]
+        )
+
+    def test_inheritance_of_parent_fields_with_child_annotation_alone(
+        self, test_domain
+    ):
+        @test_domain.command
+        class ConcreteCommand3(TestCommandInheritance.AbstractCommand):
+            bar = String()
+
+        assert all(
+            field_name in fields(ConcreteCommand3) for field_name in ["foo", "bar"]
+        )

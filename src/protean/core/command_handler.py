@@ -1,6 +1,7 @@
 import inspect
 
 from protean.container import Element, OptionsMixin
+from protean.core.command import BaseCommand
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class, fully_qualified_name
 from protean.utils.mixins import HandlerMixin
@@ -60,5 +61,17 @@ def command_handler_factory(element_cls, **kwargs):
                 element_cls._handlers[fully_qualified_name(method._target_cls)].add(
                     method
                 )
+
+                # Associate Command with the handler's stream
+                if inspect.isclass(method._target_cls) and issubclass(
+                    method._target_cls, BaseCommand
+                ):
+                    # Order of preference:
+                    #   1. Stream name defined in command
+                    #   2. Stream name derived from aggregate associated with command handler
+                    method._target_cls.meta_.stream_name = (
+                        method._target_cls.meta_.stream_name
+                        or element_cls.meta_.aggregate_cls.meta_.stream_name
+                    )
 
     return element_cls

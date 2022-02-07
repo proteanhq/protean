@@ -6,7 +6,7 @@ import sys
 
 from collections import defaultdict
 from functools import lru_cache
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional
 
 from werkzeug.datastructures import ImmutableDict
 
@@ -23,10 +23,11 @@ from protean.fields import HasMany, HasOne, Reference
 from protean.globals import current_domain
 from protean.reflection import declared_fields, has_fields
 from protean.utils import (
+    CommandProcessing,
     DomainObjects,
     EventProcessing,
     fetch_element_cls_from_registry,
-    fully_qualified_name,
+    fqn,
 )
 
 from .config import Config, ConfigAttribute
@@ -100,6 +101,7 @@ class Domain(_PackageBoundObject):
             "IDENTITY_TYPE": IdentityType.STRING.value,
             "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider"}},
             "EVENT_PROCESSING": EventProcessing.ASYNC.value,
+            "COMMAND_PROCESSING": CommandProcessing.ASYNC.value,
             "EVENT_STORE": {
                 "PROVIDER": "protean.adapters.event_store.memory.MemoryEventStore",
             },
@@ -380,7 +382,7 @@ class Domain(_PackageBoundObject):
 
         if element_type == DomainObjects.MODEL:
             # Remember model association with aggregate/entity class, for easy fetching
-            self._models[fully_qualified_name(new_cls.meta_.entity_cls)] = new_cls
+            self._models[fqn(new_cls.meta_.entity_cls)] = new_cls
 
         # Register element with domain
         self._domain_registry.register_element(new_cls)
@@ -419,7 +421,7 @@ class Domain(_PackageBoundObject):
         # referenced classes are registered.
         if has_domain_context() and current_domain == self:
             # Check by both the class name as well as the class' fully qualified name
-            for name in [fully_qualified_name(new_cls), new_cls.__name__]:
+            for name in [fqn(new_cls), new_cls.__name__]:
                 if name in self._pending_class_resolutions:
                     for field_obj, owner_cls in self._pending_class_resolutions[name]:
                         field_obj._resolve_to_cls(new_cls, owner_cls)
@@ -545,7 +547,7 @@ class Domain(_PackageBoundObject):
 
     def _get_element_by_class(self, element_types, element_cls):
         """Fetch Domain record with Element class details"""
-        element_qualname = fully_qualified_name(element_cls)
+        element_qualname = fqn(element_cls)
         return self._get_element_by_fully_qualified_name(
             element_types, element_qualname
         )
@@ -669,8 +671,31 @@ class Domain(_PackageBoundObject):
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
         """
-        # FIXME Implement synchronous processing and return values
-        return self.event_store.store.append_command(command)
+        position = self.event_store.store.append_command(command)
+
+        if (
+            not asynchronous
+            or self.config["COMMAND_PROCESSING"] == CommandProcessing.SYNC.value
+        ):
+            handler_class = self.command_handler_for(command)
+            if handler_class:
+                handler_method = next(
+                    iter(handler_class._handlers[fqn(command.__class__)])
+                )
+                handler_method(handler_class(), command)
+
+        return position
+
+    def command_handler_for(self, command: BaseCommand) -> Optional[BaseCommandHandler]:
+        """Return Command Handler for a specific command.
+
+        Args:
+            command (BaseCommand): Command to process
+
+        Returns:
+            Optional[BaseCommandHandler]: Command Handler registered to process the command
+        """
+        return self.event_store.command_handler_for(command)
 
     ###################
     # Handling Events #

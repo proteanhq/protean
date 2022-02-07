@@ -39,6 +39,21 @@ def test_command_definition_without_aggregate_or_stream(test_domain):
     }
 
 
+def test_that_abstract_commands_can_be_defined_without_aggregate_or_stream(test_domain):
+    class AbstractCommand(BaseCommand):
+        foo = String()
+
+        class Meta:
+            abstract = True
+
+    try:
+        test_domain.register(AbstractCommand)
+    except:
+        pytest.fail(
+            "Abstract commands should be definable without being associated with an aggregate or a stream"
+        )
+
+
 @pytest.mark.eventstore
 def test_command_associated_with_aggregate(test_domain):
     test_domain.register(User)
