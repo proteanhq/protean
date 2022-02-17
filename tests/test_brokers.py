@@ -1,10 +1,22 @@
 import pytest
 
-from protean import BaseCommand, BaseCommandHandler, BaseEvent, BaseSubscriber
+from protean import (
+    BaseAggregate,
+    BaseCommand,
+    BaseCommandHandler,
+    BaseEvent,
+    BaseSubscriber,
+)
 from protean.adapters.broker.inline import InlineBroker
 from protean.exceptions import ConfigurationError
 from protean.fields import Auto, Integer, String
 from protean.port.broker import BaseBroker
+
+
+class Person(BaseAggregate):
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50, required=True)
+    age = Integer(default=21)
 
 
 class PersonAdded(BaseEvent):
@@ -12,6 +24,9 @@ class PersonAdded(BaseEvent):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50, required=True)
     age = Integer(default=21)
+
+    class Meta:
+        aggregate_cls = Person
 
 
 class NotifySSOSubscriber(BaseSubscriber):
@@ -142,6 +157,59 @@ class TestBrokerInitialization:
 
         test_domain.brokers["duplicate"] = duplicate_broker
         assert len(test_domain.brokers) == 2
+
+    def test_that_brokers_are_initialized_on_publishing_an_event(
+        self, mocker, test_domain
+    ):
+        spy = mocker.spy(test_domain.brokers, "_initialize")
+        test_domain.publish(
+            PersonAdded(
+                id="1234",
+                first_name="John",
+                last_name="Doe",
+                age=24,
+            )
+        )
+        assert spy.call_count == 1
+
+    def test_that_brokers_are_not_reinitialized_on_publishing_an_event(
+        self, mocker, test_domain
+    ):
+        len(test_domain.brokers)  # Triggers initialization
+
+        spy = mocker.spy(test_domain.brokers, "_initialize")
+        test_domain.publish(
+            PersonAdded(
+                id="1234",
+                first_name="John",
+                last_name="Doe",
+                age=24,
+            )
+        )
+        assert spy.call_count == 0
+
+
+class TestEventPublish:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Person)
+        test_domain.register(PersonAdded)
+
+    @pytest.mark.eventstore
+    def test_that_event_is_persisted_on_publish(self, mocker, test_domain):
+        test_domain.publish(
+            PersonAdded(
+                id="1234",
+                first_name="John",
+                last_name="Doe",
+                age=24,
+            )
+        )
+
+        messages = test_domain.event_store.store.read("person")
+
+        assert len(messages) == 1
+        messages[0].stream_name == f"person-1234"
 
 
 class TestBrokerSubscriberInitialization:

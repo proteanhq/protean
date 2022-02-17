@@ -25,6 +25,7 @@ class UnitOfWork:
         self._in_progress = False
 
         self._sessions = {}
+        self._messages_to_dispatch = []
         self._seen = set()
 
     @property
@@ -59,6 +60,14 @@ class UnitOfWork:
         try:
             for _, session in self._sessions.items():
                 session.commit()
+
+            # Push messages to all brokers
+            # FIXME Send message to its designated broker?
+            # FIXME Send messages through domain.brokers.publish?
+            for message in self._messages_to_dispatch:
+                for _, broker in self.domain.brokers.items():
+                    broker.publish(message)
+            self._messages_to_dispatch = []  # Empty after dispatch
 
             events = []
             for item in self._seen:
@@ -116,6 +125,7 @@ class UnitOfWork:
             session.close()
 
         self._sessions = {}
+        self._messages_to_dispatch = []
         self._seen = set()
         self._in_progress = False
 
@@ -153,3 +163,6 @@ class UnitOfWork:
             return self._sessions[provider_name]
         else:
             return self._initialize_session(provider_name)
+
+    def register_message(self, message):  # FIXME Add annotations
+        self._messages_to_dispatch.append(message)

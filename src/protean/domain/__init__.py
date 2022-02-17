@@ -6,7 +6,7 @@ import sys
 
 from collections import defaultdict
 from functools import lru_cache
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from werkzeug.datastructures import ImmutableDict
 
@@ -652,6 +652,20 @@ class Domain(_PackageBoundObject):
             _cls=_cls,
             **kwargs,
         )
+
+    ########################
+    # Broker Functionality #
+    ########################
+
+    def publish(self, event: BaseEvent) -> None:
+        """Publish Events to all configured brokers.
+        Args:
+            event_or_command (BaseEvent): The Event object containing data to be pushed
+        """
+        # Persist event in Message Store
+        self.event_store.store.append_event(event)
+
+        self.brokers.publish(event)
 
     #####################
     # Handling Commands #

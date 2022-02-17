@@ -2,7 +2,10 @@ import collections
 import importlib
 import logging
 
+from protean.core.event import BaseEvent
 from protean.exceptions import ConfigurationError
+from protean.globals import current_uow
+from protean.utils.mixins import Message
 
 logger = logging.getLogger(__name__)
 
@@ -71,3 +74,26 @@ class Brokers(collections.abc.MutableMapping):
                 )
 
             self._brokers[broker_name].register(subscriber.meta_.event, subscriber)
+
+    def publish(self, object: BaseEvent) -> None:
+        """Publish an object to all registered brokers"""
+        if self._brokers is None:
+            self._initialize()
+
+        message = Message.to_message(object)
+
+        # Follow a naive strategy and dispatch event directly to message broker
+        #   If the operation is enclosed in a Unit of Work, delegate the responsibility
+        #   of publishing the message to the UoW
+        if current_uow:
+            logger.debug(
+                f"Recording {object.__class__.__name__} "
+                f"with values {object.to_dict()} in {current_uow}"
+            )
+            current_uow.register_message(message)
+        else:
+            logger.debug(
+                f"Publishing {object.__class__.__name__} with values {object.to_dict()}"
+            )
+            for _, broker in self._brokers.items():
+                broker.publish(message)

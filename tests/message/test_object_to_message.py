@@ -24,7 +24,7 @@ class Register(BaseCommand):
 
 
 class Registered(BaseEvent):
-    id = Identifier()
+    id = Identifier(identifier=True)
     email = String()
     name = String()
 
@@ -109,7 +109,7 @@ def test_construct_message_from_command(test_domain):
     assert message_dict["time"] is None
 
 
-def test_construct_message_from_command_without_identifier(test_domain):
+def test_construct_message_from_command_without_identifier():
     """Test that a new UUID is used as identifier when there is no explicit identifier specified"""
     identifier = str(uuid4())
     command = SendEmailCommand(to="john.doe@gmail.com", subject="Foo", content="Bar")
@@ -128,3 +128,34 @@ def test_construct_message_from_command_without_identifier(test_domain):
         UUID(identifier, version=4)
     except ValueError:
         pytest.fail("Command identifier is not a valid UUID")
+
+
+def test_construct_message_from_either_event_or_command():
+    identifier = str(uuid4())
+    command = Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
+
+    message = Message.to_message(command)
+
+    assert message is not None
+    assert type(message) is Message
+
+    # Verify Message Content
+    assert message.type == fully_qualified_name(Register)
+    assert message.stream_name == f"{User.meta_.stream_name}:command-{identifier}"
+    assert message.metadata.kind == "COMMAND"
+    assert message.data == command.to_dict()
+
+    event = Registered(id=identifier, email="john.doe@gmail.com", name="John Doe")
+
+    # This simulates the call by UnitOfWork
+    message = Message.to_message(event)
+
+    assert message is not None
+    assert type(message) is Message
+
+    # Verify Message Content
+    assert message.type == fully_qualified_name(Registered)
+    assert message.stream_name == f"{User.meta_.stream_name}-{identifier}"
+    assert message.metadata.kind == "EVENT"
+    assert message.data == event.to_dict()
+    assert message.time is None

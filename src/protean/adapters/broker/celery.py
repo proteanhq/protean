@@ -14,6 +14,7 @@ from protean.utils import (
     fully_qualified_name,
 )
 from protean.utils.inflection import underscore
+from protean.utils.mixins import Message
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ class CeleryBroker(BaseBroker):
 
         Arguments:
             consumer_cls {BaseSubscriber} -- The Subscriber or Command Handler class
-                                             to be converted into a Celery Task
+                to be converted into a Celery Task
 
         Returns:
             ProteanTask -- Decorated and Registered Celery Task class
@@ -93,15 +94,15 @@ class CeleryBroker(BaseBroker):
                     fully_qualified_name(initiator)
                 ] = decorated_cls_instance
 
-    def publish(self, message: Dict):
+    def publish(self, message: Message) -> None:
         event_cls = fetch_element_cls_from_registry(
             message["name"], (DomainObjects.EVENT,)
         )
         for subscriber in self._subscribers[fully_qualified_name(event_cls)]:
             if self.conn_info["IS_ASYNC"]:
-                subscriber.apply_async([message["payload"]], queue=subscriber.name)
+                subscriber.apply_async([message.data], queue=subscriber.name)
             else:
-                subscriber.apply([message["payload"]])
+                subscriber.apply([message.data])
 
     def get_next(self) -> Dict:
         """Retrieve the next message to process from broker.

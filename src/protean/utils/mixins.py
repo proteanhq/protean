@@ -8,6 +8,9 @@ from typing import Callable, Dict, Union
 from uuid import uuid4
 
 from protean.container import BaseContainer, OptionsMixin
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
+from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 from protean.core.unit_of_work import UnitOfWork
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ConfigurationError, IncorrectUsageError
@@ -89,7 +92,7 @@ class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
 
     @classmethod
     def to_aggregate_event_message(
-        cls, aggregate: "BaseEventSourcedAggregate", event: "BaseEvent"
+        cls, aggregate: BaseEventSourcedAggregate, event: BaseEvent
     ) -> Message:
         identifier = getattr(aggregate, id_field(aggregate).field_name)
 
@@ -111,7 +114,7 @@ class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
             expected_version=aggregate._version,  # FIXME Maintain version for Aggregates
         )
 
-    def to_object(self) -> Union["BaseEvent", "BaseCommand"]:
+    def to_object(self) -> Union[BaseEvent, BaseCommand]:
         if self.metadata.kind == MessageType.EVENT.value:
             element_record = current_domain.registry.events[self.type]
         elif self.metadata.kind == MessageType.COMMAND.value:
@@ -127,7 +130,16 @@ class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
         return element_record.cls(**self.data)
 
     @classmethod
-    def to_event_message(cls, event: "BaseEvent"):
+    def to_message(cls, object: Union[BaseEvent, BaseCommand]) -> Message:
+        if isinstance(object, BaseEvent):
+            return cls.to_event_message(object)
+        elif isinstance(object, BaseCommand):
+            return cls.to_command_message(object)
+        else:
+            return NotImplementedError()
+
+    @classmethod
+    def to_event_message(cls, event: BaseEvent) -> Message:
         # FIXME Should one of `aggregate_cls` or `stream_name` be mandatory?
         if not (event.meta_.aggregate_cls or event.meta_.stream_name):
             raise IncorrectUsageError(
@@ -161,7 +173,7 @@ class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
         )
 
     @classmethod
-    def to_command_message(cls, command: "BaseCommand") -> Message:
+    def to_command_message(cls, command: BaseCommand) -> Message:
         # FIXME Should one of `aggregate_cls` or `stream_name` be mandatory?
         if not (command.meta_.aggregate_cls or command.meta_.stream_name):
             raise IncorrectUsageError(
@@ -199,7 +211,7 @@ class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
 class handle:
     """Class decorator to mark handler methods in EventHandler and CommandHandler classes."""
 
-    def __init__(self, target_cls: Union["BaseEvent", "BaseCommand"]) -> None:
+    def __init__(self, target_cls: Union[BaseEvent, BaseCommand]) -> None:
         self._target_cls = target_cls
 
     def __call__(self, fn: Callable) -> Callable:

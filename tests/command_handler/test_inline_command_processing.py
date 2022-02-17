@@ -29,7 +29,7 @@ class UserCommandHandlers(BaseCommandHandler):
         counter += 1
 
 
-def test_that_a_handler_is_recorded_against_command_handler(test_domain):
+def test_that_command_can_be_processed_inline(test_domain):
     test_domain.register(User)
     test_domain.register(UserCommandHandlers, aggregate_cls=User)
 
@@ -37,3 +37,16 @@ def test_that_a_handler_is_recorded_against_command_handler(test_domain):
 
     test_domain.process(Register(user_id=str(uuid4()), email="john.doe@gmail.com"))
     assert counter == 1
+
+
+def test_that_command_is_persisted_in_message_store(test_domain):
+    test_domain.register(User)
+    test_domain.register(UserCommandHandlers, aggregate_cls=User)
+
+    identifier = str(uuid4())
+    test_domain.process(Register(user_id=identifier, email="john.doe@gmail.com"))
+
+    messages = test_domain.event_store.store.read("user:command")
+
+    assert len(messages) == 1
+    messages[0].stream_name == f"user:command-{identifier}"
