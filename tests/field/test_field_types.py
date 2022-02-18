@@ -320,8 +320,8 @@ class TestDateField:
     def test_null_values(self):
         birthday = Date()
 
-        assert birthday._load(None) == None
-        assert birthday._load("") == None
+        assert birthday._load(None) is None
+        assert birthday._load("") is None
 
     def test_disallowing_datetime(self):
         birthday = Date()
@@ -379,8 +379,8 @@ class TestDateTimeField:
     def test_null_values(self):
         created_at = DateTime()
 
-        assert created_at._load(None) == None
-        assert created_at._load("") == None
+        assert created_at._load(None) is None
+        assert created_at._load("") is None
 
 
 class TestTextField:

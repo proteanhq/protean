@@ -69,7 +69,7 @@ def test_origin_stream_name_in_event_from_command_without_origin_stream_name(use
             name="John Doe",
         )
     )
-    assert event_message.metadata.origin_stream_name == None
+    assert event_message.metadata.origin_stream_name is None
 
 
 def test_origin_stream_name_in_event_from_command_with_origin_stream_name(user_id):
@@ -106,7 +106,7 @@ def test_origin_stream_name_in_aggregate_event_from_command_without_origin_strea
         ),
     )
 
-    assert event_message.metadata.origin_stream_name == None
+    assert event_message.metadata.origin_stream_name is None
 
 
 def test_origin_stream_name_in_aggregate_event_from_command_with_origin_stream_name(

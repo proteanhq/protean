@@ -28,7 +28,7 @@ def test_event_definition_without_aggregate_or_stream(test_domain):
 
     assert exc.value.messages == {
         "_entity": [
-            f"Event `UserLoggedIn` needs to be associated with an aggregate or a stream"
+            "Event `UserLoggedIn` needs to be associated with an aggregate or a stream"
         ]
     }
 

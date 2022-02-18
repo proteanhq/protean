@@ -23,7 +23,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             raise TypeError("BaseEventSourcedRepository cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, domain: "Domain") -> None:
+    def __init__(self, domain) -> None:
         self._domain = domain
 
     def add(self, aggregate: BaseEventSourcedAggregate) -> None:

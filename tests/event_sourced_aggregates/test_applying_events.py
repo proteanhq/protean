@@ -105,5 +105,5 @@ def test_that_apply_decorator_without_event_cls_raises_error():
                 pass
 
     assert exc.value.messages == {
-        "_entity": [f"Apply method is missing Event class argument"]
+        "_entity": ["Apply method is missing Event class argument"]
     }

@@ -107,7 +107,7 @@ def test_automatic_association_of_events_with_aggregate_and_stream():
     assert Activate.meta_.aggregate_cls is None
     assert Activate.meta_.stream_name == "user"
 
-    assert Subscribe.meta_.aggregate_cls == None
+    assert Subscribe.meta_.aggregate_cls is None
     assert Subscribe.meta_.stream_name == "subscriptions"
 
     assert Send.meta_.aggregate_cls is None

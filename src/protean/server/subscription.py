@@ -21,7 +21,7 @@ class Subscription:
 
     def __init__(
         self,
-        engine: "Engine",
+        engine,
         subscriber_id: str,
         stream_name: str,
         handler: Union[BaseEventHandler, BaseCommandHandler],

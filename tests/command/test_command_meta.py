@@ -34,7 +34,7 @@ def test_command_definition_without_aggregate_or_stream(test_domain):
         )
     assert exc.value.messages == {
         "_entity": [
-            f"Command `Register` needs to be associated with an aggregate or a stream"
+            "Command `Register` needs to be associated with an aggregate or a stream"
         ]
     }
 
@@ -48,7 +48,7 @@ def test_that_abstract_commands_can_be_defined_without_aggregate_or_stream(test_
 
     try:
         test_domain.register(AbstractCommand)
-    except:
+    except Exception:
         pytest.fail(
             "Abstract commands should be definable without being associated with an aggregate or a stream"
         )

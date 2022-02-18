@@ -187,7 +187,7 @@ class BaseContainer(metaclass=ContainerMeta):
             raise TypeError("BaseContainer cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, *template, **kwargs):
+    def __init__(self, *template, **kwargs):  # noqa: C901
         """
         Initialise the container.
 
@@ -340,5 +340,5 @@ class EventedMixin:
 
         self._events = []
 
-    def raise_(self, event: "BaseEvent") -> None:
+    def raise_(self, event) -> None:
         self._events.append(event)

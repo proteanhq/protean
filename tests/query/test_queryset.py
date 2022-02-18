@@ -604,7 +604,7 @@ class TestCriteriaConstruction:
         query = person_repo._dao.query.order_by("age")
         assert query.last.id == 2
 
-    def test_first_with_cache(self, test_domain):
+    def test_last_with_cache(self, test_domain):
         """Test that the first item is retrieved correctly from the resultset"""
         person_repo = test_domain.repository_for(Person)
 

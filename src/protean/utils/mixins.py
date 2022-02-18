@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Callable, Dict, Union
 from uuid import uuid4
 
+from protean import fields
 from protean.container import BaseContainer, OptionsMixin
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
@@ -14,7 +15,6 @@ from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 from protean.core.unit_of_work import UnitOfWork
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ConfigurationError, IncorrectUsageError
-from protean.fields import Auto, DateTime, Dict, Integer, String, ValueObject
 from protean.globals import current_domain, g
 from protean.reflection import has_id_field, id_field
 from protean.utils import fully_qualified_name
@@ -26,22 +26,24 @@ class MessageType(Enum):
 
 
 class MessageMetadata(BaseValueObject):
-    kind = String(max_length=7, choices=MessageType)  # FIXME Make this field mandatory?
-    owner = String(max_length=50)
-    schema_version = Integer()
+    kind = fields.String(
+        max_length=7, choices=MessageType
+    )  # FIXME Make this field mandatory?
+    owner = fields.String(max_length=50)
+    schema_version = fields.Integer()
 
-    origin_stream_name = String()
+    origin_stream_name = fields.String()
 
 
 class CoreMessage(BaseContainer):
-    global_position = Auto(increment=True, identifier=True)
-    position = Integer()
-    time = DateTime()
-    id = Auto()
-    stream_name = String(max_length=255)
-    type = String()
-    data = Dict()
-    metadata = ValueObject(MessageMetadata)
+    global_position = fields.Auto(increment=True, identifier=True)
+    position = fields.Integer()
+    time = fields.DateTime()
+    id = fields.Auto()
+    stream_name = fields.String(max_length=255)
+    type = fields.String()
+    data = fields.Dict()
+    metadata = fields.ValueObject(MessageMetadata)
 
 
 class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
@@ -52,7 +54,7 @@ class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
     - Serialization and De-serialization
     """
 
-    expected_version = Integer()
+    expected_version = fields.Integer()
 
     @classmethod
     def derived_metadata(cls, new_message_type: str) -> Dict:

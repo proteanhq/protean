@@ -209,7 +209,7 @@ class TestEventPublish:
         messages = test_domain.event_store.store.read("person")
 
         assert len(messages) == 1
-        messages[0].stream_name == f"person-1234"
+        messages[0].stream_name == "person-1234"
 
 
 class TestBrokerSubscriberInitialization:

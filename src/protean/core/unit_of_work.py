@@ -47,7 +47,7 @@ class UnitOfWork:
         self._in_progress = True
         _uow_context_stack.push(self)
 
-    def commit(self):
+    def commit(self):  # noqa: C901
         # Raise error if there the Unit Of Work is not active
         logger.debug(f"Committing {self}...")
         if not self._in_progress:

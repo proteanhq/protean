@@ -40,9 +40,9 @@ class SendgridEmailProvider(BaseEmailProvider):
             logger.debug("Email pushed to SendGrid successfully.")
         except HTTPError as e:
             logger.error(f"{e}: {e.to_dict}")
-            raise SendError(f"Exception: HTTPError - Failed to send email - str(e)")
+            raise SendError(f"Exception: HTTPError - Failed to send email - {str(e)}")
         except Exception as e:
             logger.error(f"Exception: Error while sending email: {e}")
-            raise SendError(f"Exception: Failed to send email - str(e)")
+            raise SendError(f"Exception: Failed to send email - {str(e)}")
 
         return True

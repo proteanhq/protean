@@ -43,7 +43,7 @@ def test_automatic_incrementing_of_identifier_field(test_domain):
     test_domain.register(AutoTest)
 
     auto1 = AutoTest()
-    assert auto1.auto_field == None  # Ensure value is unset before saving
+    assert auto1.auto_field is None  # Ensure value is unset before saving
     test_domain.repository_for(AutoTest).add(auto1)
     refreshed_auto1 = test_domain.repository_for(AutoTest)._dao.query.all().items[0]
     assert refreshed_auto1.auto_field == 1
@@ -62,7 +62,7 @@ def test_automatic_incrementing_of_non_identifier_fields(test_domain):
     test_domain.register(AutoTest)
 
     auto1 = AutoTest()
-    assert auto1.auto_field == None  # Ensure value is unset before saving
+    assert auto1.auto_field is None  # Ensure value is unset before saving
     test_domain.repository_for(AutoTest).add(auto1)
     refreshed_auto1 = test_domain.repository_for(AutoTest)._dao.query.all().items[0]
     assert refreshed_auto1.auto_field == 1

@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class Engine:
-    def __init__(self, domain: "Domain", test_mode: str = False) -> None:
+    def __init__(self, domain, test_mode: str = False) -> None:
         self.domain = domain
         self.test_mode = test_mode
 

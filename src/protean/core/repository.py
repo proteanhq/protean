@@ -42,13 +42,13 @@ class BaseRepository(Element, OptionsMixin):
             raise TypeError("BaseRepository cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, domain: "Domain", provider: "BaseProvider") -> None:
+    def __init__(self, domain, provider) -> None:
         self._domain = domain
         self._provider = provider
 
     @property
     @lru_cache()
-    def _model(self) -> "BaseModel":
+    def _model(self):
         """Retrieve Model class connected to Entity"""
         # If a model was associated with the aggregate record, give it a higher priority
         #   and do not bake a new model class from aggregate/entity attributes
