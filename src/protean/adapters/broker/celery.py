@@ -96,7 +96,7 @@ class CeleryBroker(BaseBroker):
 
     def publish(self, message: Message) -> None:
         event_cls = fetch_element_cls_from_registry(
-            message["name"], (DomainObjects.EVENT,)
+            message.type, (DomainObjects.EVENT,)
         )
         for subscriber in self._subscribers[fully_qualified_name(event_cls)]:
             if self.conn_info["IS_ASYNC"]:

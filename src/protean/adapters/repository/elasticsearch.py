@@ -91,8 +91,9 @@ class ElasticsearchModel(Document):
         id_field_name = id_field(cls.meta_.entity_cls).field_name
         item_dict[id_field_name] = identifier
 
-        # Set version from document meta
-        item_dict["_version"] = item.meta.version
+        # Set version from document meta, only if `_version` attr is present
+        if hasattr(cls.meta_.entity_cls, "_version"):
+            item_dict["_version"] = item.meta.version
 
         entity_obj = cls.meta_.entity_cls(item_dict)
 
