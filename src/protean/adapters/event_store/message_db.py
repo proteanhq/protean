@@ -1,4 +1,5 @@
 from typing import Any, Dict, List
+from urllib.parse import urlparse
 
 import psycopg2
 
@@ -55,14 +56,18 @@ class MessageDBStore(BaseEventStore):
     def _data_reset(self):
         """Utility function to empty messages, to be used only by test harness.
 
-        This method is designed to work only with the postgres instance run in the configured docker container:
-        Port is locked to 5433 and it is assumed that the default user does not have a password, both of which
+        This method is designed to work only with the postgres instance running in the configured docker container:
+        User is locked to `postgres` and it is assumed that the default user does not have a password, both of which
         should not be the configuration in production.
 
-        Any changes to docker configuration will need to updated here.
+        Any changes to configuration will need to updated here.
         """
+        parsed = urlparse(self.domain.config["EVENT_STORE"]["DATABASE_URI"])
         conn = psycopg2.connect(
-            dbname="message_store", user="postgres", port=5433, host="localhost"
+            dbname=parsed.path[1:],
+            user="postgres",
+            port=parsed.port,
+            host=parsed.hostname,
         )
 
         cursor = conn.cursor()

@@ -4,17 +4,37 @@ Release History
 DEV
 ---
 
-* Output VO values as nested dicts instead of a forced flat structure.
-* Enclose DAOs within repositories to encourage DB interaction solely through repos.
-* Cache registry, repositories, daos, and models with `@cache`.
-* Fix sorting issue with null values in Memory DB.
-* Add `any` filter and allow scalar values to `in` operator in Memory DB.
-* Remove `remove` method from repository to discourage hard deletes.
-* Add MessageDB Event store adapter.
-* Introduce EventSourced Aggregates and Event Handlers.
-* Introduce EventSourced Repositories.
-* Wrap EventHandler execution within UoWs.
+
+
+0.9.1
+-----
+
+* Bugfix - Use Domain's EventStore connection details for clearing events after test runs
+
+0.9.0
+-----
+
+* Output VO values as nested dicts instead of a forced flat structure
+* Enclose DAOs within repositories to encourage DB interaction solely through repos
+* Remove `remove` method from repository to discourage hard deletes
+* Manage concurrency with Aggregate versions
+* Add MessageDB Event store adapter
+* Add stand-in Memory Event store
+* Introduce EventSourced Aggregates and Event Handlers
+* Introduce EventSourced Repositories
+* Allow filtering of messages from their origin stream
+* Allow Event Handlers to listen to other streams and ALL streams
+* Allow Command Handler methods to handle any event
+* Wrap EventHandler and CommandHandler methods execute within UnitOfWork
+* Associate Commands and Events with streams (explicit and via Aggregates)
+* Support processing events and commands in synchronous mode.
+* Allow asynchronous command processing by submitting commands to domain
 * Add `autoflake` to `pre-commit`
+* Treat empty string value as None in Date and DateTime Fields
+* Support inter-attribute dependencies in Option defaults
+* Cache registry, repositories, daos, and models with `@cache`
+* Fix sorting issue with null values in Memory DB
+* Add `any` filter and allow scalar values to `in` operator in Memory DB
 
 0.8.1
 -----
