@@ -26,6 +26,45 @@ from protean.utils import DomainObjects, derive_element_class
 logger = logging.getLogger(__name__)
 
 
+def derive_marshmallow_field_from(field_obj: Field):
+    if isinstance(field_obj, Boolean):
+        return fields.Boolean()
+    elif isinstance(field_obj, Date):
+        return fields.Date()
+    elif isinstance(field_obj, DateTime):
+        return fields.DateTime()
+    elif isinstance(field_obj, Identifier):
+        return fields.String()
+    elif isinstance(field_obj, String):
+        return fields.String()
+    elif isinstance(field_obj, Text):
+        return fields.String()
+    elif isinstance(field_obj, Integer):
+        return fields.Integer()
+    elif isinstance(field_obj, Float):
+        return fields.Float()
+    elif isinstance(field_obj, Method):
+        return fields.Method(field_obj.method_name)
+    elif isinstance(field_obj, List):
+        return fields.List(
+            # `field_obj.content_type` holds the class of the associated field,
+            #   but this method works with objects (uses `isinstance`)
+            #
+            # We need to use `isinstance` because we need to pass the entire field
+            #   object into this method, to be able to extract other attributes.
+            #
+            # So we instantiate the field in `field_obj.content_type` before calling
+            #   the method.
+            derive_marshmallow_field_from(field_obj.content_type())
+        )
+    elif isinstance(field_obj, Dict):  # FIXME Accept type param in Dict field
+        return fields.Dict(keys=fields.Str())
+    elif isinstance(field_obj, Nested):
+        return fields.Nested(field_obj.schema_name, many=field_obj.many)
+    else:
+        raise NotSupportedError("{} Field not supported".format(type(field_obj)))
+
+
 class _SerializerMetaclass(type):
     """
     This base metaclass processes the class declaration and constructs a Marshmellow Class meta object that can
@@ -91,38 +130,7 @@ class _SerializerMetaclass(type):
 
         schema_fields = {}
         for field_name, field_obj in all_fields.items():
-            if isinstance(field_obj, Boolean):
-                schema_fields[field_name] = fields.Boolean()
-            elif isinstance(field_obj, Date):
-                schema_fields[field_name] = fields.Date()
-            elif isinstance(field_obj, DateTime):
-                schema_fields[field_name] = fields.DateTime()
-            elif isinstance(field_obj, Identifier):
-                schema_fields[field_name] = fields.String()
-            elif isinstance(field_obj, String):
-                schema_fields[field_name] = fields.String()
-            elif isinstance(field_obj, Text):
-                schema_fields[field_name] = fields.String()
-            elif isinstance(field_obj, Integer):
-                schema_fields[field_name] = fields.Integer()
-            elif isinstance(field_obj, Float):
-                schema_fields[field_name] = fields.Float()
-            elif isinstance(field_obj, Method):
-                schema_fields[field_name] = fields.Method(field_obj.method_name)
-            elif isinstance(field_obj, List):
-                schema_fields[field_name] = fields.List(
-                    fields.String()
-                )  # FIXME Accept type param in List field
-            elif isinstance(field_obj, Dict):  # FIXME Accept type param in Dict field
-                schema_fields[field_name] = fields.Dict(keys=fields.Str())
-            elif isinstance(field_obj, Nested):
-                schema_fields[field_name] = fields.Nested(
-                    field_obj.schema_name, many=field_obj.many
-                )
-            else:
-                raise NotSupportedError(
-                    "{} Field not supported".format(type(field_obj))
-                )
+            schema_fields[field_name] = derive_marshmallow_field_from(field_obj)
 
         # Remove Protean fields from Serializer class
         for field_name in schema_fields:
