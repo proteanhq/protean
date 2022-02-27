@@ -218,11 +218,9 @@ def test(category):
         for db in ["POSTGRESQL", "ELASTICSEARCH", "SQLITE"]:
             print(f"Running tests for DB: {db}...")
 
-            subprocess.call(
-                ["pytest", f"--db={db}", "tests/adapters/repository/test_generic.py"]
-            )
+            subprocess.call(["pytest", "-m", "database", f"--db={db}"])
 
-        for store in ["MEMORY", "MESSAGE_DB"]:
+        for store in ["MESSAGE_DB"]:
             print(f"Running tests for EVENTSTORE: {store}...")
             subprocess.call(["pytest", "-m", "eventstore", f"--store={store}"])
 

@@ -27,6 +27,11 @@ class _DomainRegistry:
         for element_type in DomainObjects:
             self._elements[element_type.value] = defaultdict(dict)
 
+    def _reset(self):
+        for element_type in DomainObjects:
+            self._elements[element_type.value] = defaultdict(dict)
+        self._elements_by_name: Dict[str, list] = {}
+
     def _is_invalid_element_cls(self, element_cls):
         """Ensure that we are dealing with an element class, that:
 

@@ -38,18 +38,27 @@ def pytest_addoption(parser):
     parser.addoption(
         "--sendgrid", action="store_true", default=False, help="Run Sendgrid tests"
     )
+
+    # Options to run Database tests
     parser.addoption(
-        "--eventstore",
+        "--database",
         action="store_true",
         default=False,
-        help="Run Eventstore tests on all plugins",
+        help="Database test marker",
     )
-
     parser.addoption(
         "--db",
         action="store",
         default="MEMORY",
         help="Run tests against a Database type",
+    )
+
+    # Options to run EventStore tests
+    parser.addoption(
+        "--eventstore",
+        action="store_true",
+        default=False,
+        help="Eventstore test marker",
     )
     parser.addoption(
         "--store",
@@ -121,6 +130,11 @@ def pytest_collection_modifyitems(config, items):
         if "sendgrid" in item.keywords and run_sendgrid is False:
             item.add_marker(skip_sendgrid)
 
+        # Automatically add the `db` fixture to tests marked with `database`
+        #   to setup and destroy database artifacts
+        if item.get_closest_marker("database"):
+            item.fixturenames.append("db")
+
 
 @pytest.fixture(scope="session")
 def store_config(request):
@@ -160,7 +174,7 @@ def db_config(request):
                 "DATABASE": "SQLITE",
                 "DATABASE_URI": "sqlite:///test.db",
             },
-        }[request.config.getoption("--db")]
+        }[request.config.getoption("--db", "MEMORY")]
     except KeyError as e:
         raise KeyError(
             f"Invalid database option: {request.config.getoption('--db')}"
@@ -168,7 +182,7 @@ def db_config(request):
 
 
 @pytest.fixture(autouse=True)
-def test_domain(store_config):
+def test_domain(db_config, store_config):
     from protean.domain import Domain
 
     domain = Domain("Test")
@@ -180,10 +194,23 @@ def test_domain(store_config):
     if os.path.exists(config_path):
         domain.config.from_pyfile(config_path)
 
+    domain.config["DATABASES"]["default"] = db_config
     domain.config["EVENT_STORE"] = store_config
 
     with domain.domain_context():
         yield domain
+
+
+@pytest.fixture
+def db(test_domain):
+    # Call provider to create structures
+    test_domain.providers["default"]._create_database_artifacts()
+
+    yield
+
+    # Drop structures
+    test_domain.providers["default"]._drop_database_artifacts()
+    test_domain.registry._reset()
 
 
 @pytest.fixture(autouse=True)

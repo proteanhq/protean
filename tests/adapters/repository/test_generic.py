@@ -47,25 +47,6 @@ class User(BaseAggregate):
     password = String(required=True, max_length=255)
 
 
-def initialize_domain():
-    from protean.domain import Domain
-
-    domain = Domain("Database Tests")
-    return domain
-
-
-@pytest.fixture
-def test_domain(db_config):
-    domain = initialize_domain()
-    domain.config["DATABASES"] = {
-        "default": db_config,
-        "memory": {"PROVIDER": "protean.adapters.MemoryProvider"},
-    }
-
-    with domain.domain_context():
-        yield domain
-
-
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Person)
@@ -73,26 +54,7 @@ def register_elements(test_domain):
     test_domain.register(User)
 
 
-@pytest.fixture(scope="session", autouse=True)
-def setup_db(db_config):
-    domain = initialize_domain()
-    domain.config["DATABASES"] = {"default": db_config}
-
-    with domain.domain_context():
-        elements = [Person, User]
-
-        for element in elements:
-            domain.register(element)
-
-        # Call provider to create structures
-        domain.providers["default"]._create_database_artifacts()
-
-        yield
-
-        # Drop structures
-        domain.providers["default"]._drop_database_artifacts()
-
-
+@pytest.mark.database
 class TestPersistenceViaRepository:
     def test_that_aggregate_can_be_persisted_with_repository(self, test_domain):
         test_domain.repository_for(Person).add(
@@ -114,6 +76,7 @@ class TestPersistenceViaRepository:
         assert test_domain.repository_for(Person).all() == [person]
 
 
+@pytest.mark.database
 class TestConcurrency:
     def test_expected_version_error_on_version_mismatch(self, test_domain):
         identifier = str(uuid4())

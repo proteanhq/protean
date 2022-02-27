@@ -614,6 +614,7 @@ class SAProvider(BaseProvider):
 
     def _drop_database_artifacts(self):
         self._metadata.drop_all()
+        self._metadata.clear()
 
     def decorate_model_class(self, entity_cls, model_cls):
         schema_name = derive_schema_name(model_cls)
