@@ -280,13 +280,16 @@ class Auto(Field):
 class Identifier(Field):
     """Concrete field implementation for Identifiers.
 
-    An identity field cannot be changed.
+    An identity field is immutable and cannot be changed once set.
 
-    Values can be Integers or Strings.
+    Values can be UUIDs, Integers or Strings.
     """
 
     def _cast_to_type(self, value):
-        """Perform no validation for identifier fields. Return the value as is"""
+        """Verify that value is either a UUID, a String or an Integer"""
+        # A Boolean value is tested for specifically because `isinstance(value, int)` is `True` for Boolean values
+        if not (isinstance(value, (UUID, str, int))) or isinstance(value, bool):
+            self.fail("invalid", value=value)
         return value
 
     def __set__(self, instance, value):

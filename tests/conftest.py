@@ -210,6 +210,9 @@ def db(test_domain):
 
     # Drop structures
     test_domain.providers["default"]._drop_database_artifacts()
+
+    # Remove registry content so that `_data_reset()` called on providers
+    #   later (in `run_around_tests`) has no effect
     test_domain.registry._reset()
 
 
