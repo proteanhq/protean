@@ -1,0 +1,12 @@
+[coverage:run]
+branch = true
+omit =
+    tests/*
+source =
+    {{ package_name }}
+parallel = true
+
+[coverage:report]
+show_missing = true
+precision = 2
+omit = *migrations*

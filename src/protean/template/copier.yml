@@ -1,0 +1,42 @@
+_templates_suffix: .jinja
+
+project_name:
+  type: str
+
+short_description:
+  type: str
+
+package_name:
+  type: str
+  default: "{{ project_name|lower|replace(' ','_')|replace('-','_') }}"
+
+domain_name:
+  type: str
+  default: "{{ package_name }}"
+
+database:
+  type: str
+  choices:
+    Memory: memory
+    PostgreSQL: postgresql
+    SQLite: sqlite
+    ElasticSearch: elasticsearch
+  default: memory
+
+broker:
+  type: str
+  choices:
+    Memory: memory
+    Redis: redis
+    Celery: celery
+  default: memory
+
+cache:
+  type: str
+  choices:
+    Memory: memory
+    Redis: redis
+  default: memory
+
+_tasks:
+  - "cd {{ package_name }}; pip install -e ."

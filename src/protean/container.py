@@ -220,8 +220,13 @@ class BaseContainer(metaclass=ContainerMeta):
 
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
-            loaded_fields.append(field_name)
-            setattr(self, field_name, val)
+            try:
+                setattr(self, field_name, val)
+            except ValidationError as err:
+                for field_name in err.messages:
+                    self.errors[field_name].extend(err.messages[field_name])
+            finally:
+                loaded_fields.append(field_name)
 
         # Load Value Objects from associated fields
         #   This block will dynamically construct value objects from field values

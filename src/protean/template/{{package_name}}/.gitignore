@@ -73,7 +73,6 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-*.ipynb
 
 # pyenv
 .python-version
@@ -130,7 +129,6 @@ output/*/index.html
 .appveyor.token
 *.bak
 .testmondata
-*.rdb
 
 # VS Code
 .vscode
@@ -142,13 +140,3 @@ docs/.doctrees
 TODO
 *.todo
 todos
-
-# SQLite DBs
-*.db
-
-# Temporary Python files
-tester*.py
-tester-*
-
-# Temporary Docs folder
-docs-old/*
