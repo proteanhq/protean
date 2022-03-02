@@ -27,7 +27,6 @@ class Published(BaseEvent):
 
 
 class Post(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     topic = String()
     content = Text()
     is_published = Boolean(default=False)

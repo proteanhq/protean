@@ -10,7 +10,6 @@ from protean.fields import DateTime, Identifier, String, Text
 
 
 class User(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     email = String()
     name = String(max_length=50)
 
@@ -39,7 +38,6 @@ class Renamed(BaseEvent):
 
 
 class Post(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     topic = String()
     content = Text()
 

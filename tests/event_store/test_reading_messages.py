@@ -11,7 +11,6 @@ from protean.utils.mixins import Message
 
 
 class User(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     email = String()
     name = String(max_length=50)
 

@@ -9,7 +9,6 @@ from protean.utils.mixins import Message
 
 
 class User(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     email = String()
     name = String()
 
@@ -33,7 +32,6 @@ class Registered(BaseEvent):
 
 
 class SendEmail(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     to = String()
     subject = String()
     content = String()

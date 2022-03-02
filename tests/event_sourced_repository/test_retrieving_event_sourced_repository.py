@@ -3,12 +3,11 @@ import pytest
 from protean import BaseEventSourcedAggregate
 from protean.core.event_sourced_repository import BaseEventSourcedRepository
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Identifier, Integer, String
+from protean.fields import Integer, String
 from protean.utils import DomainObjects
 
 
 class User(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach identifier
     name = String()
     age = Integer()
 

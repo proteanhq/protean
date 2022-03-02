@@ -39,7 +39,7 @@ class Registered(BaseEvent):
 
 
 class User(BaseEventSourcedAggregate):
-    user_id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
+    user_id = Identifier(identifier=True)
     email = String()
     name = String()
     password_hash = String()

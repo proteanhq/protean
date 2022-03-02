@@ -26,7 +26,6 @@ class Renamed(BaseEvent):
 
 
 class User(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     email = String()
     name = String()
     status = String(default="INACTIVE")

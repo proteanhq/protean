@@ -16,7 +16,6 @@ def count_up():
 
 
 class User(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     email = String()
     name = String()
     password_hash = String()

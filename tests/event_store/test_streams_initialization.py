@@ -7,14 +7,12 @@ from protean.fields import DateTime, Identifier, String
 
 
 class User(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     email = String()
     name = String()
     password_hash = String()
 
 
 class Email(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     email = String()
     sent_at = DateTime()
 

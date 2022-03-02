@@ -14,14 +14,12 @@ from protean.utils.mixins import Message
 
 
 class User(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     email = String()
     name = String()
     password_hash = String()
 
 
 class Email(BaseEventSourcedAggregate):
-    id = Identifier(identifier=True)  # FIXME Auto-attach ID attribute
     email = String()
     sent_at = DateTime()
 

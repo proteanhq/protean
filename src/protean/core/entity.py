@@ -5,9 +5,9 @@ import logging
 from collections import defaultdict
 from functools import partial
 
-from protean.container import BaseContainer, OptionsMixin
+from protean.container import BaseContainer, IdentityMixin, OptionsMixin
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
-from protean.fields import Auto, Field, HasMany, Reference, ValueObject
+from protean.fields import Auto, HasMany, Reference, ValueObject
 from protean.fields.association import Association
 from protean.reflection import (
     _FIELDS,
@@ -81,7 +81,7 @@ class _EntityState:
     fields_cache = _FieldsCacheDescriptor()
 
 
-class BaseEntity(BaseContainer, OptionsMixin):
+class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
     """The Base class for Protean-Compliant Domain Entities.
 
     Provides helper methods to custom define entity attributes, and query attribute names
@@ -120,54 +120,7 @@ class BaseEntity(BaseContainer, OptionsMixin):
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()
 
-        subclass.__set_id_field()
         subclass.__set_up_reference_fields()
-
-    @classmethod
-    def __set_id_field(new_class):
-        """Lookup the id field for this entity and assign"""
-        # FIXME What does it mean when there are no declared fields?
-        #   Does it translate to an abstract entity?
-        try:
-            id_field = next(
-                field
-                for _, field in declared_fields(new_class).items()
-                if isinstance(field, (Field, Reference)) and field.identifier
-            )
-
-            setattr(new_class, _ID_FIELD_NAME, id_field.field_name)
-
-            # If the aggregate/entity has been marked abstract,
-            #   and contains an identifier field, raise exception
-            if new_class.meta_.abstract and id_field:
-                raise IncorrectUsageError(
-                    {
-                        "_entity": [
-                            f"Abstract Aggregate `{new_class.__name__}` marked as abstract cannot have"
-                            " identity fields"
-                        ]
-                    }
-                )
-        except StopIteration:
-            # If no id field is declared then create one
-            #   If the aggregate/entity is marked abstract,
-            #   avoid creating an identifier field.
-            if not new_class.meta_.abstract:
-                new_class.__create_id_field()
-
-    @classmethod
-    def __create_id_field(new_class):
-        """Create and return a default ID field that is Auto generated"""
-        id_field = Auto(identifier=True)
-
-        setattr(new_class, "id", id_field)
-        id_field.__set_name__(new_class, "id")
-
-        setattr(new_class, _ID_FIELD_NAME, id_field.field_name)
-
-        field_objects = getattr(new_class, _FIELDS)
-        field_objects["id"] = id_field
-        setattr(new_class, _FIELDS, field_objects)
 
     @classmethod
     def __set_up_reference_fields(subclass):

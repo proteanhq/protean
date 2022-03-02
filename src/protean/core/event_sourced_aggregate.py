@@ -5,7 +5,7 @@ import logging
 from collections import defaultdict
 from typing import Callable, Dict
 
-from protean.container import BaseContainer, EventedMixin, OptionsMixin
+from protean.container import BaseContainer, EventedMixin, IdentityMixin, OptionsMixin
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Field, Integer
@@ -20,8 +20,13 @@ from protean.utils import (
 logger = logging.getLogger(__name__)
 
 
-class BaseEventSourcedAggregate(EventedMixin, OptionsMixin, BaseContainer):
-    """Base Event Sourced Aggregate class that all EventSourced Aggregates should inherit from."""
+class BaseEventSourcedAggregate(
+    IdentityMixin, EventedMixin, OptionsMixin, BaseContainer
+):
+    """Base Event Sourced Aggregate class that all EventSourced Aggregates should inherit from.
+
+    The order of inheritance is important. We want BaseContainer to be initialised first followed by
+    OptionsMixin (so that `meta_` is in place) before inheriting other mixins."""
 
     element_type = DomainObjects.EVENT_SOURCED_AGGREGATE
 
