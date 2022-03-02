@@ -118,6 +118,7 @@ class Domain(_PackageBoundObject):
                     "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
                 },
             },
+            "SNAPSHOT_THRESHOLD": 10,
         },
     )
 

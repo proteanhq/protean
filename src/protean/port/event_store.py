@@ -15,9 +15,6 @@ class BaseEventStore(metaclass=ABCMeta):
     classes with the domain.
     """
 
-    # FIXME Move this to config file
-    SNAPSHOT_THRESHOLD = 10
-
     def __init__(
         self, name: str, domain: Any, conn_info: Dict[str, str]
     ) -> None:  # FIXME Any should be Domain
@@ -173,10 +170,11 @@ class BaseEventStore(metaclass=ABCMeta):
             snapshot
             and len(events) > 1
             and (
-                events[-1]["position"] - position_in_snapshot >= self.SNAPSHOT_THRESHOLD
+                events[-1]["position"] - position_in_snapshot
+                >= self.domain.config["SNAPSHOT_THRESHOLD"]
             )
         ) or (
-            not snapshot and len(events) + 1 >= self.SNAPSHOT_THRESHOLD
+            not snapshot and len(events) + 1 >= self.domain.config["SNAPSHOT_THRESHOLD"]
         ):  # Account for the first event that was popped
             self._write(
                 f"{aggregate_cls.meta_.stream_name}:snapshot-{identifier}",

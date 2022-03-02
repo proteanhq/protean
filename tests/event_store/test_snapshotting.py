@@ -5,7 +5,6 @@ import pytest
 
 from protean import BaseEvent, BaseEventSourcedAggregate, UnitOfWork, apply
 from protean.fields import Identifier, String
-from protean.port.event_store import BaseEventStore
 
 
 class UserStatus(Enum):
@@ -96,7 +95,7 @@ def test_that_snapshot_is_constructed_after_threshold(test_domain):
         repo.add(user)
 
     for i in range(
-        3, BaseEventStore.SNAPSHOT_THRESHOLD + 2
+        3, test_domain.config["SNAPSHOT_THRESHOLD"] + 2
     ):  # Start at 3 because we already have two events
         with UnitOfWork():
             user = repo.get(identifier)
@@ -125,7 +124,7 @@ def test_that_a_stream_can_have_multiple_snapshots_but_latest_is_considered(
         user.activate()
         repo.add(user)
 
-    for i in range(3, (2 * BaseEventStore.SNAPSHOT_THRESHOLD) + 2):
+    for i in range(3, (2 * test_domain.config["SNAPSHOT_THRESHOLD"]) + 2):
         with UnitOfWork():
             user = repo.get(identifier)
             user.change_name(f"John Doe {i}")
@@ -153,7 +152,7 @@ def test_that_a_stream_with_a_snapshop_and_no_further_events_is_reconstructed_co
         user.activate()
         repo.add(user)
 
-    for i in range(3, (2 * BaseEventStore.SNAPSHOT_THRESHOLD) + 2):
+    for i in range(3, (2 * test_domain.config["SNAPSHOT_THRESHOLD"]) + 2):
         with UnitOfWork():
             user = repo.get(identifier)
             user.change_name(f"John Doe {i}")
