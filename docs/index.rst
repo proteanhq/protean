@@ -74,6 +74,7 @@ User Guide
     user/persistence
     user/services
     user/eventing
+    user/event-sourcing
     user/config
     user/cli
 
