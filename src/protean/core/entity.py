@@ -185,7 +185,7 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
             except ValidationError as err:
                 for field_name in err.messages:
                     self.errors[field_name].extend(err.messages[field_name])
-            else:
+            finally:
                 loaded_fields.append(field_name)
 
                 # Also note reference field name if its attribute was loaded
@@ -204,7 +204,11 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
                 ]
                 values = {name: kwargs.get(attr) for name, attr in attrs}
                 try:
-                    value_object = field_obj.value_object_cls(**values)
+                    # Pass the `required` option value as defined at the parent
+                    value_object = field_obj.value_object_cls(
+                        **values, required=field_obj.required
+                    )
+
                     # Set VO value only if the value object is not None/Empty
                     if value_object:
                         setattr(self, field_name, value_object)
