@@ -1,0 +1,15 @@
+import logging
+import logging.config
+import os
+
+from protean.domain import Domain
+
+{{ package_name }} = Domain("{{ project_name }}")
+
+current_path = os.path.abspath(os.path.dirname(__file__))
+config_path = os.path.join(current_path, "../../config.py")
+{{ package_name }}.config.from_pyfile(config_path)
+
+logging.config.dictConfig({{ package_name }}.config["LOGGING_CONFIG"])
+
+{{ package_name }}.init()

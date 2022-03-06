@@ -226,11 +226,14 @@ def test(category):
 
 
 @main.command()
-def new():
-    from cookiecutter.main import cookiecutter
+@click.option("-o", "--output-folder")
+def new(output_folder):
+    from copier import run_auto
+
+    import protean
 
     # Create project from the cookiecutter-protean.git repo template
-    cookiecutter("gh:proteanhq/cookiecutter-protean")
+    run_auto(f"{protean.__path__[0]}/template", output_folder or ".")
 
 
 @main.command()

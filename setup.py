@@ -35,6 +35,7 @@ message_db_requires = ["message-db-py>=0.1.2"]
 install_requires = marshmallow_requires + [
     "click>=7.0",
     "cookiecutter>=1.7.0",
+    "copier @ git+https://github.com/copier-org/copier.git",
     "inflection>=0.5.1",
     "python-dateutil>=2.8.1",
     "werkzeug>=2.0.0",
