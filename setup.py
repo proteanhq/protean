@@ -33,6 +33,7 @@ marshmallow_requires = ["marshmallow>=3.5.1"]
 message_db_requires = ["message-db-py>=0.1.2"]
 
 install_requires = marshmallow_requires + [
+    "bleach>=4.1.0",
     "click>=7.0",
     "cookiecutter>=1.7.0",
     "copier @ git+https://github.com/copier-org/copier.git",

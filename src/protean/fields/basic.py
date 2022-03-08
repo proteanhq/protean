@@ -4,6 +4,8 @@ import datetime
 
 from uuid import UUID
 
+import bleach
+
 from dateutil.parser import parse as date_parser
 
 from protean.exceptions import InvalidOperationError, ValidationError
@@ -23,9 +25,10 @@ class String(Field):
         "invalid": '{value}" value must be a string.',
     }
 
-    def __init__(self, max_length=255, min_length=None, **kwargs):
+    def __init__(self, max_length=255, min_length=None, sanitize=True, **kwargs):
         self.min_length = min_length
         self.max_length = max_length
+        self.sanitize = sanitize
         self.default_validators = [
             validators.MinLengthValidator(self.min_length),
             validators.MaxLengthValidator(self.max_length),
@@ -34,9 +37,12 @@ class String(Field):
 
     def _cast_to_type(self, value):
         """Convert the value to its string representation"""
-        if isinstance(value, str) or value is None:
+        if value is None:
             return value
-        return str(value)
+
+        value = value if isinstance(value, str) else str(value)
+
+        return bleach.clean(value) if self.sanitize else value
 
     def as_dict(self, value):
         """Return JSON-compatible value of self"""
@@ -50,11 +56,18 @@ class Text(Field):
         "invalid": '{value}" value must be a string.',
     }
 
+    def __init__(self, sanitize=True, **kwargs):
+        self.sanitize = sanitize
+        super().__init__(**kwargs)
+
     def _cast_to_type(self, value):
         """Convert the value to its string representation"""
-        if isinstance(value, str) or value is None:
+        if value is None:
             return value
-        return str(value)
+
+        value = value if isinstance(value, str) else str(value)
+
+        return bleach.clean(value) if self.sanitize else value
 
     def as_dict(self, value):
         """Return JSON-compatible value of self"""

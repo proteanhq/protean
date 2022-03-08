@@ -216,10 +216,11 @@ String
 
 A string field, for small- to large-sized strings. For large amounts of text, use :ref:`field-type-text`.
 
-``String`` has two optional arguments:
+Optional arguments:
 
 - ``max_length``: The maximum length (in characters) of the field, enforced during validation using :ref:`MaxLengthValidator <max-value-validator>`. Defaults to 255.
 - ``min_length``: The minimum length (in characters) of the field, enforced during validation using :ref:`MinLengthValidator <min-value-validator>`.
+- ``sanitize``: Optionally turn off HTML sanitization. Default is True.
 
 .. _field-type-text:
 
@@ -227,6 +228,10 @@ Text
 ````
 
 A large text field, to hold large amounts of text. Text fields do not have size constraints.
+
+Optional arguments:
+
+- ``sanitize``: Optionally turn off HTML sanitization. Default is True.
 
 .. _field-type-integer:
 
