@@ -2,6 +2,7 @@ import os
 
 from protean.utils import (
     CommandProcessing,
+    Database,
     EventProcessing,
     IdentityStrategy,
     IdentityType,
@@ -26,9 +27,13 @@ class Config:
 
     # Database Configuration
     DATABASES = {
+        "memory": {
+            "PROVIDER": "protean.adapters.repository.memory.MemoryProvider"
+        },
         "default": {
             {% if database == "postgresql" -%}
             "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
+            "DATABASE": Database.POSTGRESQL.value,
             "DATABASE_URI": os.getenv(
                 "POSTGRES_DATABASE_URL",
                 "postgresql://postgres:postgres@localhost:5432/postgres",
@@ -45,6 +50,7 @@ class Config:
             "SETTINGS": {},
             {% elif database == "sqlite" -%}
             "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
+            "DATABASE": Database.SQLITE.value,
             "DATABASE_URI": os.getenv(
                 "POSTGRES_DATABASE_URL",
                 "sqlite:///test.db",
@@ -55,15 +61,13 @@ class Config:
         }
     }
 
-    EVENT_STORE = {
-        "PROVIDER": "protean.adapters.event_store.memory.MemoryEventStore",
-    }
+
 
     # MessageDB EventStore Configuration
-    # EVENT_STORE = {
-    #     "PROVIDER": "protean.adapters.event_store.message_db.MessageDBStore",
-    #     "DATABASE_URI": "postgresql://message_store@localhost:5433/message_store",
-    # }
+    EVENT_STORE = {
+        "PROVIDER": "protean.adapters.event_store.message_db.MessageDBStore",
+        "DATABASE_URI": "postgresql://message_store@localhost:5433/message_store",
+    }
 
     BROKERS = {
         "default": {
@@ -133,6 +137,29 @@ class Config:
 
 class TestingConfig(Config):
     TESTING = True
+
+    DATABASES = {
+        "default": {
+            "PROVIDER": "protean.adapters.repository.memory.MemoryProvider"
+        }
+    }
+
+    EVENT_STORE = {
+        "PROVIDER": "protean.adapters.event_store.memory.MemoryEventStore",
+    }
+
+    BROKERS = {
+        "default": {
+            "PROVIDER": "protean.adapters.broker.memory_broker.MemoryBroker"
+        }
+    }
+
+    CACHES = {
+        "default": {
+            "PROVIDER": "protean.adapters.cache.memory.MemoryCache",
+            "TTL": 300,
+        }
+    }
 
 
 class DevelopmentConfig(Config):

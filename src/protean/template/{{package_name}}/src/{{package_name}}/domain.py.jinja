@@ -1,15 +1,41 @@
+import importlib.util
 import logging
 import logging.config
 import os
 
 from protean.domain import Domain
 
+# Domain Composition Root
 {{ package_name }} = Domain("{{ project_name }}")
 
+# Config class names
+configs = {
+    "DEVELOPMENT": "DevelopmentConfig",
+    "TESTING": "TestingConfig",
+    "PRODUCTION": "ProductionConfig",
+}
+
+# Gather the environment under which the application should run from an env var named `{{ project_name|upper }}_ENV`. By default, the application will run under the `development` environment.
+env = os.environ.get("{{ project_name|upper }}_ENV", "DEVELOPMENT")
+
+###############
+# Load Config #
+###############
+
+# Construct config file path
 current_path = os.path.abspath(os.path.dirname(__file__))
 config_path = os.path.join(current_path, "../../config.py")
-{{ package_name }}.config.from_pyfile(config_path)
 
-logging.config.dictConfig({{ package_name }}.config["LOGGING_CONFIG"])
+# Load module from config path
+spec = importlib.util.spec_from_file_location("config", config_path)
+config_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(config_module)
 
+# Update the domain's config values
+{{ package_name }}.config.from_object(getattr(config_module, configs[env]))
+
+if "LOGGING_CONFIG" in identity.config:
+    logging.config.dictConfig(identity.config["LOGGING_CONFIG"])
+
+# Initialize and load all domain elements under the composition root
 {{ package_name }}.init()

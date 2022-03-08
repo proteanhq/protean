@@ -39,4 +39,4 @@ cache:
   default: memory
 
 _tasks:
-  - "cd {{ package_name }}; pip install -e ."
+  - "cd {{ package_name }}; pip install -e .[all]"
