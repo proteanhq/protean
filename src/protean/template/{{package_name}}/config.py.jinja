@@ -139,6 +139,9 @@ class TestingConfig(Config):
     TESTING = True
 
     DATABASES = {
+        "memory": {
+            "PROVIDER": "protean.adapters.repository.memory.MemoryProvider"
+        },
         "default": {
             "PROVIDER": "protean.adapters.repository.memory.MemoryProvider"
         }

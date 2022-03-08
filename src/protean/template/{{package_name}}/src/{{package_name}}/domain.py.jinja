@@ -34,8 +34,8 @@ spec.loader.exec_module(config_module)
 # Update the domain's config values
 {{ package_name }}.config.from_object(getattr(config_module, configs[env]))
 
-if "LOGGING_CONFIG" in identity.config:
-    logging.config.dictConfig(identity.config["LOGGING_CONFIG"])
+if "LOGGING_CONFIG" in {{ package_name }}.config:
+    logging.config.dictConfig({{ package_name }}.config["LOGGING_CONFIG"])
 
 # Initialize and load all domain elements under the composition root
 {{ package_name }}.init()
