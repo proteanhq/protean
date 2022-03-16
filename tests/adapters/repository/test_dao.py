@@ -1,17 +1,25 @@
 from datetime import datetime, timedelta
-from uuid import uuid4
 
 import pytest
 
-from sqlalchemy.orm.session import Session
-
-from protean import Q, QuerySet
+from protean import BaseAggregate, Q, QuerySet
 from protean.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
+from protean.fields import DateTime, Integer, String
 
-from .elements import Person, User
+
+class Person(BaseAggregate):
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50, required=True)
+    age = Integer(default=21)
+    created_at = DateTime(default=datetime.now())
 
 
-@pytest.mark.postgresql
+class User(BaseAggregate):
+    email = String(max_length=255, required=True, unique=True)
+    password = String(max_length=3026)
+
+
+@pytest.mark.database
 class TestDAO:
     """This class holds tests for DAO class"""
 
@@ -24,7 +32,6 @@ class TestDAO:
         provider = test_domain.providers["default"]
         conn = provider.get_connection()
         assert conn is not None
-        assert isinstance(conn, Session)
 
     def test_that_escaped_quotes_in_values_are_handled_properly(self, test_domain):
         test_domain.repository_for(Person)._dao.create(
@@ -55,7 +62,7 @@ class TestDAO:
         )
 
 
-@pytest.mark.postgresql
+@pytest.mark.database
 class TestDAODeleteFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
@@ -63,12 +70,11 @@ class TestDAODeleteFunctionality:
 
     def test_delete_an_object_in_repository_by_id(self, test_domain):
         """Delete an object in the repository by ID"""
-        identifier = uuid4()
         person = test_domain.repository_for(Person)._dao.create(
-            id=identifier, first_name="John", last_name="Doe", age=22
+            id="3", first_name="John", last_name="Doe", age=22
         )
 
-        persisted_person = test_domain.repository_for(Person)._dao.get(identifier)
+        persisted_person = test_domain.repository_for(Person)._dao.get("3")
         assert persisted_person is not None
 
         deleted_person = test_domain.repository_for(Person)._dao.delete(person)
@@ -76,21 +82,22 @@ class TestDAODeleteFunctionality:
         assert deleted_person.state_.is_destroyed is True
 
         with pytest.raises(ObjectNotFoundError):
-            test_domain.repository_for(Person)._dao.get(identifier)
+            test_domain.repository_for(Person)._dao.get("3")
 
     def test_delete_all_records_in_repository(self, test_domain):
         """Delete all objects in a repository"""
+
         test_domain.repository_for(Person)._dao.create(
-            first_name="Athos", last_name="Musketeer", age=2
+            id="1", first_name="Athos", last_name="Musketeer", age=2
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Porthos", last_name="Musketeer", age=3
+            id="2", first_name="Porthos", last_name="Musketeer", age=3
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Aramis", last_name="Musketeer", age=4
+            id="3", first_name="Aramis", last_name="Musketeer", age=4
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="dArtagnan", last_name="Musketeer", age=5
+            id="4", first_name="dArtagnan", last_name="Musketeer", age=5
         )
 
         person_records = test_domain.repository_for(Person)._dao.query.filter(Q())
@@ -103,16 +110,15 @@ class TestDAODeleteFunctionality:
 
     def test_deleting_a_persisted_entity(self, test_domain):
         """Delete an object in the repository by ID"""
-        identifier = uuid4()
         person = test_domain.repository_for(Person)._dao.create(
-            id=identifier, first_name="Jim", last_name="Carrey"
+            first_name="Jim", last_name="Carrey"
         )
         deleted_person = test_domain.repository_for(Person)._dao.delete(person)
         assert deleted_person is not None
         assert deleted_person.state_.is_destroyed is True
 
         with pytest.raises(ObjectNotFoundError):
-            test_domain.repository_for(Person)._dao.get(identifier)
+            test_domain.repository_for(Person)._dao.get(person.id)
 
     def test_deleting_all_entities_of_a_type(self, test_domain):
         test_domain.repository_for(Person)._dao.create(
@@ -137,21 +143,17 @@ class TestDAODeleteFunctionality:
         assert people.total == 0
 
     def test_deleting_all_records_of_a_type_satisfying_a_filter(self, test_domain):
-        identifier1 = uuid4()
-        identifier2 = uuid4()
-        identifier3 = uuid4()
-        identifier4 = uuid4()
-        test_domain.repository_for(Person)._dao.create(
-            id=identifier1, first_name="Athos", last_name="Musketeer", age=2
+        person1 = test_domain.repository_for(Person)._dao.create(
+            first_name="Athos", last_name="Musketeer", age=2
         )
-        test_domain.repository_for(Person)._dao.create(
-            id=identifier2, first_name="Porthos", last_name="Musketeer", age=3
+        person2 = test_domain.repository_for(Person)._dao.create(
+            first_name="Porthos", last_name="Musketeer", age=3
         )
-        test_domain.repository_for(Person)._dao.create(
-            id=identifier3, first_name="Aramis", last_name="Musketeer", age=4
+        person3 = test_domain.repository_for(Person)._dao.create(
+            first_name="Aramis", last_name="Musketeer", age=4
         )
-        test_domain.repository_for(Person)._dao.create(
-            id=identifier4, first_name="d'Artagnan", last_name="Musketeer", age=5
+        person4 = test_domain.repository_for(Person)._dao.create(
+            first_name="d'Artagnan", last_name="Musketeer", age=5
         )
 
         # Perform update
@@ -162,34 +164,30 @@ class TestDAODeleteFunctionality:
         # Query and check if only the relevant records have been deleted
         assert deleted_count == 2
 
-        person1 = test_domain.repository_for(Person)._dao.get(identifier1)
-        person2 = test_domain.repository_for(Person)._dao.get(identifier2)
+        refreshed_person1 = test_domain.repository_for(Person)._dao.get(person1.id)
+        refreshed_person2 = test_domain.repository_for(Person)._dao.get(person2.id)
 
-        assert person1 is not None
-        assert person2 is not None
-
-        with pytest.raises(ObjectNotFoundError):
-            test_domain.repository_for(Person)._dao.get(identifier3)
+        assert refreshed_person1 is not None
+        assert refreshed_person2 is not None
 
         with pytest.raises(ObjectNotFoundError):
-            test_domain.repository_for(Person)._dao.get(identifier4)
+            test_domain.repository_for(Person)._dao.get(person3.id)
+
+        with pytest.raises(ObjectNotFoundError):
+            test_domain.repository_for(Person)._dao.get(person4.id)
 
     def test_deleting_records_satisfying_a_filter(self, test_domain):
-        identifier1 = uuid4()
-        identifier2 = uuid4()
-        identifier3 = uuid4()
-        identifier4 = uuid4()
-        test_domain.repository_for(Person)._dao.create(
-            id=identifier1, first_name="Athos", last_name="Musketeer", age=2
+        person1 = test_domain.repository_for(Person)._dao.create(
+            id="1", first_name="Athos", last_name="Musketeer", age=2
         )
-        test_domain.repository_for(Person)._dao.create(
-            id=identifier2, first_name="Porthos", last_name="Musketeer", age=3
+        person2 = test_domain.repository_for(Person)._dao.create(
+            id="2", first_name="Porthos", last_name="Musketeer", age=3
         )
-        test_domain.repository_for(Person)._dao.create(
-            id=identifier3, first_name="Aramis", last_name="Musketeer", age=4
+        person3 = test_domain.repository_for(Person)._dao.create(
+            id="3", first_name="Aramis", last_name="Musketeer", age=4
         )
-        test_domain.repository_for(Person)._dao.create(
-            id=identifier4, first_name="d'Artagnan", last_name="Musketeer", age=5
+        person4 = test_domain.repository_for(Person)._dao.create(
+            id="4", first_name="d'Artagnan", last_name="Musketeer", age=5
         )
 
         # Perform update
@@ -201,29 +199,25 @@ class TestDAODeleteFunctionality:
         assert deleted_count == 2
         assert test_domain.repository_for(Person)._dao.query.all().total == 2
 
-        assert test_domain.repository_for(Person)._dao.get(identifier1) is not None
-        assert test_domain.repository_for(Person)._dao.get(identifier2) is not None
+        assert test_domain.repository_for(Person)._dao.get(person1.id) is not None
+        assert test_domain.repository_for(Person)._dao.get(person2.id) is not None
         with pytest.raises(ObjectNotFoundError):
-            test_domain.repository_for(Person)._dao.get(identifier3)
+            test_domain.repository_for(Person)._dao.get(person3.id)
 
         with pytest.raises(ObjectNotFoundError):
-            test_domain.repository_for(Person)._dao.get(identifier4)
+            test_domain.repository_for(Person)._dao.get(person4.id)
 
 
-@pytest.mark.postgresql
+@pytest.mark.database
 class TestDAORetrievalFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
 
     @pytest.fixture
-    def identifier(self):
-        return uuid4()
-
-    @pytest.fixture
-    def persisted_person(self, test_domain, identifier):
+    def persisted_person(self, db, test_domain):
         person = test_domain.repository_for(Person)._dao.create(
-            id=identifier, first_name="John", last_name="Doe"
+            first_name="John", last_name="Doe"
         )
         return person
 
@@ -253,26 +247,18 @@ class TestDAORetrievalFunctionality:
 
     def test_traversal_of_filter_results(self, test_domain):
         """Test the traversal of the filter results"""
-        identifiers = [uuid4() for i in range(1, 5)]
-        timestamp = datetime.now()
         for counter in range(1, 5):
             test_domain.repository_for(Person)._dao.create(
-                id=identifiers[counter - 1],
-                first_name=f"John{counter}",
-                last_name="Doe",
-                created_at=timestamp + timedelta(minutes=counter),
+                id=str(counter), first_name=f"John{counter}", last_name="Doe"
             )
 
         people = (
-            test_domain.repository_for(Person)
-            ._dao.query.limit(2)
-            .order_by("created_at")
-            .all()
+            test_domain.repository_for(Person)._dao.query.limit(2).order_by("id").all()
         )
         assert people is not None
         assert people.total == 4
         assert len(people.items) == 2
-        assert people.first.id == identifiers[0]
+        assert people.first.id == "1"
         assert people.has_next
         assert not people.has_prev
 
@@ -280,33 +266,31 @@ class TestDAORetrievalFunctionality:
             test_domain.repository_for(Person)
             ._dao.query.offset(2)
             .limit(2)
-            .order_by("created_at")
+            .order_by("id")
             .all()
         )
         assert len(people.items) == 2
-        assert people.first.id == identifiers[2]
+        assert people.first.id == "3"
         assert not people.has_next
         assert people.has_prev
 
-    def test_entity_retrieval_by_its_primary_key(
-        self, test_domain, identifier, persisted_person
-    ):
+    def test_entity_retrieval_by_its_primary_key(self, test_domain, persisted_person):
         """Test Entity Retrieval by its primary key"""
-        person = test_domain.repository_for(Person)._dao.get(persisted_person.id)
-        assert person is not None
-        assert person.id == identifier
+        dog = test_domain.repository_for(Person)._dao.get(persisted_person.id)
+        assert dog is not None
+        assert dog.id == persisted_person.id
 
     def test_failed_entity_retrieval_by_its_primary_key(self, test_domain):
         """Test failed Entity Retrieval by its primary key"""
         with pytest.raises(ObjectNotFoundError):
-            test_domain.repository_for(Person)._dao.get(uuid4())
+            test_domain.repository_for(Person)._dao.get("1235")
 
     def test_entity_retrieval_by_specific_column_value(
-        self, test_domain, identifier, persisted_person
+        self, test_domain, persisted_person
     ):
-        person = test_domain.repository_for(Person)._dao.find_by(first_name="John")
-        assert person is not None
-        assert person.id == identifier
+        dog = test_domain.repository_for(Person)._dao.find_by(first_name="John")
+        assert dog is not None
+        assert dog.id == persisted_person.id
 
     def test_failed_entity_retrieval_by_column_value(
         self, test_domain, persisted_person
@@ -315,27 +299,25 @@ class TestDAORetrievalFunctionality:
             test_domain.repository_for(Person)._dao.find_by(first_name="JohnnyChase")
 
     def test_entity_retrieval_by_multiple_column_values(self, test_domain):
-        identifier1 = uuid4()
-        identifier2 = uuid4()
         test_domain.repository_for(Person)._dao.create(
-            id=identifier1, first_name="Johnny1", last_name="Bravo", age=8
+            id="2346", first_name="Johnny1", last_name="Bravo", age=8
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier2, first_name="Johnny2", last_name="Bravo", age=6
+            id="2347", first_name="Johnny2", last_name="Bravo", age=6
         )
 
         dog = test_domain.repository_for(Person)._dao.find_by(
             first_name="Johnny1", age=8
         )
         assert dog is not None
-        assert dog.id == identifier1
+        assert dog.id == "2346"
 
     def test_failed_entity_retrieval_by_multiple_column_values(self, test_domain):
         test_domain.repository_for(Person)._dao.create(
-            first_name="Johnny1", last_name="Bravo", age=8
+            id="2346", first_name="Johnny1", last_name="Bravo", age=8
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Johnny2", last_name="Bravo", age=6
+            id="2347", first_name="Johnny2", last_name="Bravo", age=6
         )
 
         with pytest.raises(ObjectNotFoundError):
@@ -343,10 +325,10 @@ class TestDAORetrievalFunctionality:
 
     def test_error_on_finding_multiple_results(self, test_domain):
         test_domain.repository_for(Person)._dao.create(
-            first_name="Johnny1", last_name="Bravo", age=8
+            id="2346", first_name="Johnny1", last_name="Bravo", age=8
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Johnny1", last_name="Gravo", age=6
+            id="2347", first_name="Johnny1", last_name="Gravo", age=6
         )
 
         with pytest.raises(TooManyObjectsError):
@@ -398,17 +380,14 @@ class TestDAORetrievalFunctionality:
 
     def test_filter_by_chaining_example_1(self, test_domain):
         # Add multiple entries to the DB
-        identifier1 = uuid4()
-        identifier2 = uuid4()
-        identifier3 = uuid4()
         test_domain.repository_for(Person)._dao.create(
-            id=identifier1, first_name="Murdock", age=7, last_name="John"
+            id="2", first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier2, first_name="Jean", age=3, last_name="John"
+            id="3", first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier3, first_name="Bart", age=6, last_name="Carrie"
+            id="4", first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by Person attributes
@@ -425,21 +404,18 @@ class TestDAORetrievalFunctionality:
         assert len(people.items) == 1
 
         person = people.first
-        assert person.id == identifier2
+        assert person.id == "3"
 
     def test_filter_by_chaining_example_2(self, test_domain):
         # Add multiple entries to the DB
-        identifier1 = uuid4()
-        identifier2 = uuid4()
-        identifier3 = uuid4()
         test_domain.repository_for(Person)._dao.create(
-            id=identifier1, first_name="Murdock", age=7, last_name="John"
+            id="2", first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier2, first_name="Jean", age=3, last_name="John"
+            id="3", first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier3, first_name="Bart", age=6, last_name="Carrie"
+            id="4", first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by Person attributes
@@ -451,21 +427,18 @@ class TestDAORetrievalFunctionality:
         assert len(people.items) == 2
 
         person = people.first
-        assert person.id == identifier1
+        assert person.id == "2"
 
     def test_filter_by_chaining_example_3(self, test_domain):
         # Add multiple entries to the DB
-        identifier1 = uuid4()
-        identifier2 = uuid4()
-        identifier3 = uuid4()
         test_domain.repository_for(Person)._dao.create(
-            id=identifier1, first_name="Murdock", age=7, last_name="John"
+            id="2", first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier2, first_name="Jean", age=3, last_name="John"
+            id="3", first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier3, first_name="Bart", age=6, last_name="Carrie"
+            id="4", first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by Dog attributes
@@ -481,18 +454,18 @@ class TestDAORetrievalFunctionality:
         assert len(people.items) == 2
 
         person = people.first
-        assert person.id == identifier2
+        assert person.id == "3"
 
     def test_results_retrieved_with_filter(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            first_name="Murdock", age=7, last_name="John"
+            id="2", first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Jean", age=3, last_name="John"
+            id="3", first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Bart", age=6, last_name="Carrie"
+            id="4", first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by the LastName
@@ -514,13 +487,13 @@ class TestDAORetrievalFunctionality:
     def test_results_retrieved_after_exclusion(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            first_name="Murdock", age=7, last_name="John"
+            id="2", first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Jean", age=3, last_name="John"
+            id="3", first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Bart", age=6, last_name="Carrie"
+            id="4", first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by Exclusion
@@ -534,13 +507,13 @@ class TestDAORetrievalFunctionality:
     def test_results_retrieved_after_multiple_value_exclusion(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            first_name="Murdock", age=7, last_name="John"
+            id="2", first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Jean", age=3, last_name="John"
+            id="3", first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Bart", age=6, last_name="Carrie"
+            id="4", first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by the first_name
@@ -556,13 +529,13 @@ class TestDAORetrievalFunctionality:
     def test_comparisons_using_different_operators(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            first_name="Murdock", age=7, last_name="John"
+            id="2", first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Jean", age=3, last_name="john"
+            id="3", first_name="Jean", age=3, last_name="john"
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Bart", age=6, last_name="Carrie"
+            id="4", first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by the Owner
@@ -595,13 +568,13 @@ class TestDAORetrievalFunctionality:
     def test_filtering_using_contains(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            first_name="Murdock", age=7, last_name="John"
+            id="2", first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Jean", age=3, last_name="john"
+            id="3", first_name="Jean", age=3, last_name="john"
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Bart", age=6, last_name="Carrie"
+            id="4", first_name="Bart", age=6, last_name="Carrie"
         )
 
         people_contains = test_domain.repository_for(Person)._dao.query.filter(
@@ -617,13 +590,13 @@ class TestDAORetrievalFunctionality:
     def test_exception_on_usage_of_unsupported_comparison_operator(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            first_name="Murdock", age=7, last_name="John"
+            id="2", first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Jean", age=3, last_name="John"
+            id="3", first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            first_name="Bart", age=6, last_name="Carrie"
+            id="4", first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by the Owner
@@ -631,7 +604,7 @@ class TestDAORetrievalFunctionality:
             test_domain.repository_for(Person)._dao.query.filter(age__notexact=3).all()
 
 
-@pytest.mark.postgresql
+@pytest.mark.database
 class TestDAOSaveFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
@@ -645,16 +618,15 @@ class TestDAOSaveFunctionality:
         assert err.value.messages == {"first_name": ["is required"]}
 
     def test_entity_persistence_with_create_method_and_fetch(self, test_domain):
-        identifier = uuid4()
         person = test_domain.repository_for(Person)._dao.create(
-            id=identifier, first_name="John", last_name="Doe"
+            first_name="John", last_name="Doe"
         )
         assert person is not None
         assert person.first_name == "John"
         assert person.last_name == "Doe"
         assert person.age == 21
 
-        db_person = test_domain.repository_for(Person)._dao.get(identifier)
+        db_person = test_domain.repository_for(Person)._dao.get(person.id)
         assert db_person is not None
         assert db_person == person
 
@@ -670,20 +642,19 @@ class TestDAOSaveFunctionality:
         assert person.last_name == "Janey"
 
 
-@pytest.mark.postgresql
+@pytest.mark.database
 class TestDAOUpdateFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
 
     def test_update_an_existing_entity_in_the_repository(self, test_domain):
-        identifier = uuid4()
         person = test_domain.repository_for(Person)._dao.create(
-            id=identifier, first_name="John", last_name="Doe", age=22
+            id="11344234", first_name="John", last_name="Doe", age=22
         )
 
         test_domain.repository_for(Person)._dao.update(person, age=10)
-        updated_person = test_domain.repository_for(Person)._dao.get(identifier)
+        updated_person = test_domain.repository_for(Person)._dao.get("11344234")
         assert updated_person is not None
         assert updated_person.age == 10
 
@@ -693,7 +664,7 @@ class TestDAOUpdateFunctionality:
         """Try to update a non-existing entry"""
 
         person = test_domain.repository_for(Person)._dao.create(
-            first_name="Johnny", last_name="John"
+            id="11344234", first_name="Johnny", last_name="John"
         )
         test_domain.repository_for(Person)._dao.delete(person)
         with pytest.raises(ObjectNotFoundError):
@@ -701,60 +672,53 @@ class TestDAOUpdateFunctionality:
 
     def test_updating_record_with_dictionary_args(self, test_domain):
         """Update an existing entity in the repository"""
-        identifier = uuid4()
         person = test_domain.repository_for(Person)._dao.create(
-            id=identifier, first_name="Johnny", last_name="John", age=2
+            id="2", first_name="Johnny", last_name="John", age=2
         )
 
         test_domain.repository_for(Person)._dao.update(person, {"age": 10})
-        u_person = test_domain.repository_for(Person)._dao.get(identifier)
+        u_person = test_domain.repository_for(Person)._dao.get("2")
         assert u_person is not None
         assert u_person.age == 10
 
     def test_updating_record_with_kwargs(self, test_domain):
         """Update an existing entity in the repository"""
-        identifier = uuid4()
         person = test_domain.repository_for(Person)._dao.create(
-            id=identifier, first_name="Johnny", last_name="John", age=2
+            id="2", first_name="Johnny", last_name="John", age=2
         )
 
         test_domain.repository_for(Person)._dao.update(person, age=10)
-        u_person = test_domain.repository_for(Person)._dao.get(identifier)
+        u_person = test_domain.repository_for(Person)._dao.get("2")
         assert u_person is not None
         assert u_person.age == 10
 
     def test_updating_record_with_both_dictionary_args_and_kwargs(self, test_domain):
         """Update an existing entity in the repository"""
-        identifier = uuid4()
         person = test_domain.repository_for(Person)._dao.create(
-            id=identifier, first_name="Johnny", last_name="John", age=2
+            id="2", first_name="Johnny", last_name="John", age=2
         )
 
         test_domain.repository_for(Person)._dao.update(
             person, {"first_name": "Stephen"}, age=10
         )
-        u_person = test_domain.repository_for(Person)._dao.get(identifier)
+        u_person = test_domain.repository_for(Person)._dao.get("2")
         assert u_person is not None
         assert u_person.age == 10
         assert u_person.first_name == "Stephen"
 
     def test_updating_record_through_filter(self, test_domain):
         """Test that update by query updates only correct records"""
-        identifier1 = uuid4()
-        identifier2 = uuid4()
-        identifier3 = uuid4()
-        identifier4 = uuid4()
         test_domain.repository_for(Person)._dao.create(
-            id=identifier1, first_name="Athos", last_name="Musketeer", age=2
+            id="1", first_name="Athos", last_name="Musketeer", age=2
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier2, first_name="Porthos", last_name="Musketeer", age=3
+            id="2", first_name="Porthos", last_name="Musketeer", age=3
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier3, first_name="Aramis", last_name="Musketeer", age=4
+            id="3", first_name="Aramis", last_name="Musketeer", age=4
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier4, first_name="dArtagnan", last_name="Musketeer", age=5
+            id="4", first_name="dArtagnan", last_name="Musketeer", age=5
         )
 
         # Perform update
@@ -767,10 +731,10 @@ class TestDAOUpdateFunctionality:
         # Query and check if only the relevant records have been updated
         assert updated_count == 2
 
-        u_person1 = test_domain.repository_for(Person)._dao.get(identifier1)
-        u_person2 = test_domain.repository_for(Person)._dao.get(identifier2)
-        u_person3 = test_domain.repository_for(Person)._dao.get(identifier3)
-        u_person4 = test_domain.repository_for(Person)._dao.get(identifier4)
+        u_person1 = test_domain.repository_for(Person)._dao.get("1")
+        u_person2 = test_domain.repository_for(Person)._dao.get("2")
+        u_person3 = test_domain.repository_for(Person)._dao.get("3")
+        u_person4 = test_domain.repository_for(Person)._dao.get("4")
         assert u_person1.last_name == "Musketeer"
         assert u_person2.last_name == "Musketeer"
         assert u_person3.last_name == "Fraud"
@@ -778,21 +742,17 @@ class TestDAOUpdateFunctionality:
 
     def test_updating_multiple_records_through_filter_with_arg_value(self, test_domain):
         """Try updating all records satisfying filter in one step, passing a dict"""
-        identifier1 = uuid4()
-        identifier2 = uuid4()
-        identifier3 = uuid4()
-        identifier4 = uuid4()
         test_domain.repository_for(Person)._dao.create(
-            id=identifier1, first_name="Athos", last_name="Musketeer", age=2
+            id="1", first_name="Athos", last_name="Musketeer", age=2
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier2, first_name="Porthos", last_name="Musketeer", age=3
+            id="2", first_name="Porthos", last_name="Musketeer", age=3
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier3, first_name="Aramis", last_name="Musketeer", age=4
+            id="3", first_name="Aramis", last_name="Musketeer", age=4
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier4, first_name="dArtagnan", last_name="Musketeer", age=5
+            id="4", first_name="dArtagnan", last_name="Musketeer", age=5
         )
 
         # Perform update
@@ -805,10 +765,10 @@ class TestDAOUpdateFunctionality:
         # Query and check if only the relevant records have been updated
         assert updated_count == 2
 
-        u_person1 = test_domain.repository_for(Person)._dao.get(identifier1)
-        u_person2 = test_domain.repository_for(Person)._dao.get(identifier2)
-        u_person3 = test_domain.repository_for(Person)._dao.get(identifier3)
-        u_person4 = test_domain.repository_for(Person)._dao.get(identifier4)
+        u_person1 = test_domain.repository_for(Person)._dao.get("1")
+        u_person2 = test_domain.repository_for(Person)._dao.get("2")
+        u_person3 = test_domain.repository_for(Person)._dao.get("3")
+        u_person4 = test_domain.repository_for(Person)._dao.get("4")
         assert u_person1.last_name == "Musketeer"
         assert u_person2.last_name == "Musketeer"
         assert u_person3.last_name == "Fraud"
@@ -818,21 +778,17 @@ class TestDAOUpdateFunctionality:
         self, test_domain
     ):
         """Try updating all records satisfying filter in one step"""
-        identifier1 = uuid4()
-        identifier2 = uuid4()
-        identifier3 = uuid4()
-        identifier4 = uuid4()
         test_domain.repository_for(Person)._dao.create(
-            id=identifier1, first_name="Athos", last_name="Musketeer", age=2
+            id="1", first_name="Athos", last_name="Musketeer", age=2
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier2, first_name="Porthos", last_name="Musketeer", age=3
+            id="2", first_name="Porthos", last_name="Musketeer", age=3
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier3, first_name="Aramis", last_name="Musketeer", age=4
+            id="3", first_name="Aramis", last_name="Musketeer", age=4
         )
         test_domain.repository_for(Person)._dao.create(
-            id=identifier4, first_name="dArtagnan", last_name="Musketeer", age=5
+            id="4", first_name="dArtagnan", last_name="Musketeer", age=5
         )
 
         # Perform update
@@ -845,17 +801,17 @@ class TestDAOUpdateFunctionality:
         # Query and check if only the relevant records have been updated
         assert updated_count == 2
 
-        u_person1 = test_domain.repository_for(Person)._dao.get(identifier1)
-        u_person2 = test_domain.repository_for(Person)._dao.get(identifier2)
-        u_person3 = test_domain.repository_for(Person)._dao.get(identifier3)
-        u_person4 = test_domain.repository_for(Person)._dao.get(identifier4)
+        u_person1 = test_domain.repository_for(Person)._dao.get("1")
+        u_person2 = test_domain.repository_for(Person)._dao.get("2")
+        u_person3 = test_domain.repository_for(Person)._dao.get("3")
+        u_person4 = test_domain.repository_for(Person)._dao.get("4")
         assert u_person1.last_name == "Musketeer"
         assert u_person2.last_name == "Musketeer"
         assert u_person3.last_name == "Fraud"
         assert u_person4.last_name == "Fraud"
 
 
-@pytest.mark.postgresql
+@pytest.mark.database
 class TestDAOValidations:
     """This class holds tests for DAO class"""
 
@@ -912,7 +868,7 @@ class TestDAOValidations:
         assert error.value.messages == {"age": ['"x" value must be an integer.']}
 
 
-@pytest.mark.postgresql
+@pytest.mark.database
 class TestDAOLookup:
     """This class holds tests for Lookup Class"""
 

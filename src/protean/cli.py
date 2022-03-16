@@ -198,6 +198,10 @@ def test(category):
             for store in ["MEMORY", "MESSAGE_DB"]:
                 print(f"Running tests for EVENTSTORE: {store}...")
                 subprocess.call(["pytest", "-m", "eventstore", f"--store={store}"])
+        elif category == "DATABASE":
+            for db in ["POSTGRESQL", "SQLITE"]:
+                print(f"Running tests for DATABASE: {db}...")
+                subprocess.call(["pytest", "-m", "database", f"--db={db}"])
     else:
         # Run full suite
         subprocess.call(
