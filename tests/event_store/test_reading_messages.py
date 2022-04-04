@@ -7,6 +7,7 @@ import pytest
 from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.fields import String
 from protean.fields.basic import Identifier
+from protean.utils import fqn
 from protean.utils.mixins import Message
 
 
@@ -159,3 +160,23 @@ def test_reading_messages_by_category(test_domain):
     assert messages[0].metadata.kind == "EVENT"
     assert messages[0].data == event1.to_dict()
     assert messages[1].data == event2.to_dict()
+
+
+@pytest.mark.eventstore
+def test_reading_last_message(test_domain):
+    identifier = str(uuid4())
+    event1 = Registered(id=identifier, email="john.doe@example.com")
+    user = User(**event1.to_dict())
+    test_domain.event_store.store.append_aggregate_event(user, event1)
+
+    event2 = Activated(id=identifier)
+    test_domain.event_store.store.append_aggregate_event(user, event2)
+
+    for i in range(10):
+        event = Renamed(id=identifier, name=f"John Doe {i}")
+        test_domain.event_store.store.append_aggregate_event(user, event)
+
+    # Reading by stream
+    message = test_domain.event_store.store.read_last_message(f"user-{identifier}")
+    assert message.type == fqn(Renamed)
+    assert message.data["name"] == "John Doe 9"

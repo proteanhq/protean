@@ -219,7 +219,7 @@ def test(category):
         )
 
         # Test against each supported database
-        for db in ["POSTGRESQL", "ELASTICSEARCH", "SQLITE"]:
+        for db in ["POSTGRESQL", "SQLITE"]:
             print(f"Running tests for DB: {db}...")
 
             subprocess.call(["pytest", "-m", "database", f"--db={db}"])

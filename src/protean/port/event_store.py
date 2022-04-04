@@ -71,6 +71,11 @@ class BaseEventStore(metaclass=ABCMeta):
 
         return messages
 
+    def read_last_message(self, stream_name) -> Message:
+        # FIXME Rename to read_last_stream_message
+        raw_message = self._read_last_message(stream_name)
+        return Message.from_dict(raw_message)
+
     def append_aggregate_event(
         self, aggregate: BaseEventSourcedAggregate, event: BaseEvent
     ) -> int:

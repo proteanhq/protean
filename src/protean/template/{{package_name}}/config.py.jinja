@@ -52,7 +52,7 @@ class Config:
             "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
             "DATABASE": Database.SQLITE.value,
             "DATABASE_URI": os.getenv(
-                "POSTGRES_DATABASE_URL",
+                "SQLITE_DATABASE_URL",
                 "sqlite:///test.db",
             ),
             {% else -%}
@@ -60,8 +60,6 @@ class Config:
             {% endif -%}
         }
     }
-
-
 
     # MessageDB EventStore Configuration
     EVENT_STORE = {
@@ -82,7 +80,7 @@ class Config:
                 os.environ.get("BROKER_IS_ASYNC", "True") in ["True", "true"]
             ),  # True by default
             {% else -%}
-            "PROVIDER": "protean.adapters.broker.memory_broker.MemoryBroker"
+            "PROVIDER": "protean.adapters.InlineBroker"
             {% endif -%}
         }
     }
@@ -94,7 +92,7 @@ class Config:
             "URI": f'{os.getenv("CACHE_URL","redis://127.0.0.1:6379")}/2',
             "TTL": 300,
             {% else -%}
-            "PROVIDER": "protean.adapters.cache.memory.MemoryCache",
+            "PROVIDER": "protean.adapters.MemoryCache",
             "TTL": 300,
             {% endif -%}
         }

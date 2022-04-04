@@ -203,6 +203,13 @@ def test_domain(db_config, store_config):
 
 @pytest.fixture
 def db(test_domain):
+    """This fixture is automatically associated with all tests marked
+    `database`. The association is done in `pytest_collection_modifyitems`
+    method.
+
+    It helps create and drop db structures of registered
+    aggregates, entities, and views.
+    """
     # Call provider to create structures
     test_domain.providers["default"]._create_database_artifacts()
 

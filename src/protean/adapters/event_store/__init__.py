@@ -2,7 +2,7 @@ import importlib
 import logging
 
 from collections import defaultdict
-from typing import List, Optional
+from typing import List, Optional, Type
 
 from protean import BaseEvent, BaseEventHandler
 from protean.core.command import BaseCommand
@@ -13,6 +13,7 @@ from protean.core.event_sourced_repository import (
 )
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.utils import fqn
+from protean.utils.mixins import Message
 
 logger = logging.getLogger(__name__)
 
@@ -139,3 +140,15 @@ class EventStore:
             )
 
         return next(iter(handler_methods))[0] if handler_methods else None
+
+    def last_event_of_type(
+        self, event_cls: Type[BaseEvent], stream_name: str = None
+    ) -> BaseEvent:
+        stream_name = stream_name or "$all"
+        events = [
+            event
+            for event in self.domain.event_store.store._read(stream_name)
+            if event["type"] == fqn(event_cls)
+        ]
+
+        return Message.from_dict(events[-1]).to_object() if len(events) > 0 else None
