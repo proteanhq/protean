@@ -152,3 +152,27 @@ class EventStore:
         ]
 
         return Message.from_dict(events[-1]).to_object() if len(events) > 0 else None
+
+    def events_of_type(
+        self, event_cls: Type[BaseEvent], stream_name: str = None
+    ) -> List[BaseEvent]:
+        """Read events of a specific type in a given stream.
+
+        This is a utility method, especially useful for testing purposes, that retrives events of a
+        specific type from the event store.
+
+        If no stream is specified, events of the requested type will be retrieved from all streams.
+
+        :param event_cls: Class of the event type to be retrieved
+        :param stream_name: Stream from which events are to be retrieved
+        :type event_cls: BaseEvent Class
+        :type stream_name: String, optional, default is `None`
+        :return: A list of events of `event_cls` type
+        :rtype: list
+        """
+        stream_name = stream_name or "$all"
+        return [
+            Message.from_dict(event).to_object()
+            for event in self.domain.event_store.store._read(stream_name)
+            if event["type"] == fqn(event_cls)
+        ]
