@@ -14,6 +14,7 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.fields import Auto, Field, FieldBase, Reference, ValueObject
+from protean.utils import generate_identity
 
 from .reflection import _FIELDS, _ID_FIELD_NAME, attributes, declared_fields, fields
 
@@ -255,6 +256,13 @@ class BaseContainer(metaclass=ContainerMeta):
                         self.errors["{}_{}".format(field_name, sub_field_name)].extend(
                             err.messages[sub_field_name]
                         )
+
+        # Load Identities
+        for field_name, field_obj in declared_fields(self).items():
+            if type(field_obj) is Auto and not field_obj.increment:
+                if not getattr(self, field_obj.field_name, None):
+                    setattr(self, field_obj.field_name, generate_identity())
+                loaded_fields.append(field_obj.field_name)
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields
