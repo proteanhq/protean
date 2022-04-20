@@ -29,7 +29,7 @@ postgresql_requires = ["psycopg2>=2.8.4", "sqlalchemy>=1.4.1"]
 celery_requires = ["celery[redis]~=4.4.2"]
 sendgrid_requires = ["sendgrid>=6.1.3"]
 flask_requires = ["flask>=1.1.1"]
-marshmallow_requires = ["marshmallow>=3.5.1"]
+marshmallow_requires = ["marshmallow>=3.15.0"]
 message_db_requires = ["message-db-py>=0.1.2"]
 
 install_requires = marshmallow_requires + [

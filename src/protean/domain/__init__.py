@@ -668,6 +668,18 @@ class Domain(_PackageBoundObject):
 
         self.brokers.publish(event)
 
+        if current_domain.config["EVENT_PROCESSING"] == EventProcessing.SYNC.value:
+            # Consume events right-away
+            handler_classes = current_domain.handlers_for(event)
+            for handler_cls in handler_classes:
+                handler_methods = (
+                    handler_cls._handlers[fqn(event.__class__)]
+                    or handler_cls._handlers["$any"]
+                )
+
+                for handler_method in handler_methods:
+                    handler_method(handler_cls(), event)
+
     #####################
     # Handling Commands #
     #####################
