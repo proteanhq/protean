@@ -52,7 +52,7 @@ class User(BaseEventSourcedAggregate):
 
         return user
 
-    @apply(Registered)
+    @apply
     def registered(self, _: Registered) -> None:
         pass
 

@@ -30,15 +30,15 @@ class User(BaseEventSourcedAggregate):
     name = String()
     status = String(default="INACTIVE")
 
-    @apply(Registered)
+    @apply
     def registered(self, _: Registered) -> None:
         self.status = "INACTIVE"
 
-    @apply(Activated)
+    @apply
     def activated(self, _: Activated) -> None:
         self.status = "ACTIVE"
 
-    @apply(Renamed)
+    @apply
     def renamed(self, event: Renamed) -> None:
         self.name = event.name
 

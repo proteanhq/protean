@@ -1,9 +1,10 @@
 import functools
 import inspect
 import logging
+import typing
 
 from collections import defaultdict
-from typing import Callable, Dict
+from typing import Dict
 
 from protean.container import BaseContainer, EventedMixin, IdentityMixin, OptionsMixin
 from protean.core.event import BaseEvent
@@ -123,38 +124,44 @@ class BaseEventSourcedAggregate(
             fn(self, event)
 
 
-class apply:
-    """Class decorator to mark methods in EventHandler classes."""
+def apply(fn):
+    """Decorator to mark methods in EventHandler classes."""
 
-    def __init__(self, event_cls: "BaseEvent") -> None:
-        # Will throw error if the `apply` method is defined without event class
-        # E.g.
-        # @apply
-        # def mark_published(self, event: Published):
-        #     ...
-        if not inspect.isclass(event_cls):
-            raise IncorrectUsageError(
-                {"_entity": ["Apply method is missing Event class argument"]}
+    if len(typing.get_type_hints(fn)) > 2:
+        raise IncorrectUsageError(
+            {
+                "_entity": [
+                    f"Apply method {fn.__name__} has incorrect number of arguments"
+                ]
+            }
+        )
+
+    try:
+        _event_cls = next(
+            iter(
+                {
+                    value
+                    for value in typing.get_type_hints(fn).values()
+                    if inspect.isclass(value) and issubclass(value, BaseEvent)
+                }
             )
-        self._event_cls = event_cls
+        )
+    except StopIteration:
+        raise IncorrectUsageError(
+            {
+                "_entity": [
+                    f"Apply method `{fn.__name__}` should accept an argument annotated with the Event class"
+                ]
+            }
+        )
 
-    def __call__(self, fn: Callable) -> Callable:
-        """Marks the method with a special `_event_cls` attribute to be able to
-        construct a map of apply methods later.
+    @functools.wraps(fn)
+    def wrapper(*args):
+        fn(*args)
 
-        Args:
-            fn (Callable): Event application method
+    setattr(wrapper, "_event_cls", _event_cls)
 
-        Returns:
-            Callable: Handler method with `_event_cls` attribute
-        """
-
-        @functools.wraps(fn)
-        def wrapper(instance, event_obj):
-            fn(instance, event_obj)
-
-        setattr(wrapper, "_event_cls", self._event_cls)
-        return wrapper
+    return wrapper
 
 
 def event_sourced_aggregate_factory(element_cls, **opts):

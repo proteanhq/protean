@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate, apply
+from protean import BaseCommand, BaseEvent, BaseEventSourcedAggregate, apply
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
 from protean.utils.mixins import Message
@@ -48,15 +48,15 @@ class User(BaseEventSourcedAggregate):
     def change_name(self, name):
         self.raise_(UserRenamed(user_id=self.user_id, name=name))
 
-    @apply(UserRegistered)
+    @apply
     def registered(self, _: UserRegistered):
         self.status = UserStatus.INACTIVE.value
 
-    @apply(UserActivated)
+    @apply
     def activated(self, _: UserActivated):
         self.status = UserStatus.ACTIVE.value
 
-    @apply(UserRenamed)
+    @apply
     def renamed(self, event: UserRenamed):
         self.name = event.name
 
@@ -92,8 +92,25 @@ def test_applying_events():
 
 
 def test_that_apply_decorator_without_event_cls_raises_error():
-    class Sent(BaseEvent):
+    class Send(BaseCommand):
         email_id = Identifier()
+
+    # Argument should be an event class
+    with pytest.raises(IncorrectUsageError) as exc:
+
+        class _(BaseEventSourcedAggregate):
+            email_id = Identifier(identifier=True)
+
+            @apply
+            def sent(self, _: Send) -> None:
+                pass
+
+    # Argument should be annotated
+    assert exc.value.messages == {
+        "_entity": [
+            "Apply method `sent` should accept an argument annotated with the Event class"
+        ]
+    }
 
     with pytest.raises(IncorrectUsageError) as exc:
 
@@ -101,9 +118,27 @@ def test_that_apply_decorator_without_event_cls_raises_error():
             email_id = Identifier(identifier=True)
 
             @apply
-            def sent(self, _: Sent) -> None:
+            def sent(self, _) -> None:
                 pass
 
     assert exc.value.messages == {
-        "_entity": ["Apply method is missing Event class argument"]
+        "_entity": [
+            "Apply method `sent` should accept an argument annotated with the Event class"
+        ]
+    }
+
+    # Argument should be supplied
+    with pytest.raises(IncorrectUsageError) as exc:
+
+        class _(BaseEventSourcedAggregate):
+            email_id = Identifier(identifier=True)
+
+            @apply
+            def sent(self) -> None:
+                pass
+
+    assert exc.value.messages == {
+        "_entity": [
+            "Apply method `sent` should accept an argument annotated with the Event class"
+        ]
     }

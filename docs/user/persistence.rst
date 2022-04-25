@@ -7,7 +7,7 @@ Repositories represent domain concepts that are present in the database. For exa
 
 .. code-block:: python
 
-    @domain.repository(aggregate_cls='User')
+    @domain.repository(aggregate_cls=User)
     class UserRepository:
         @classmethod
         def get_adults(cls, age: int = 21) -> List:
@@ -76,7 +76,7 @@ All other querying capabilities are performed through the DAO `filter` method.
 
 .. code-block:: python
 
-    @domain.repository(aggregate_cls='User')
+    @domain.repository(aggregate_cls=User)
     class UserRepository:
         @classmethod
         def fetch_residents(cls, zipcode: str) -> List:
@@ -148,7 +148,7 @@ A repository's methods are typically used by :ref:`application-service` to perfo
 
 .. code-block:: python
 
-    @domain.application_service(aggregate_cls='User')
+    @domain.application_service(aggregate_cls=User)
     class SignupService:
         """ Application Service that contains methods to help users register and sign up"""
         @classmethod
@@ -171,7 +171,7 @@ When there is an active Unit of Work in progress, changes performed by repositor
 
     from protean.core.unit_of_work import UnitOfWork
 
-    @domain.application_service(aggregate_cls='User')
+    @domain.application_service(aggregate_cls=User)
     class SignupService:
 
         @classmethod

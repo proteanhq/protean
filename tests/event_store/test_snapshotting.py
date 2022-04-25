@@ -46,15 +46,15 @@ class User(BaseEventSourcedAggregate):
     def change_name(self, name):
         self.raise_(UserRenamed(user_id=self.user_id, name=name))
 
-    @apply(UserRegistered)
+    @apply
     def registered(self, event: UserRegistered):
         self.status = UserStatus.INACTIVE.value
 
-    @apply(UserActivated)
+    @apply
     def activated(self, event: UserActivated):
         self.status = UserStatus.ACTIVE.value
 
-    @apply(UserRenamed)
+    @apply
     def renamed(self, event: UserRenamed):
         self.name = event.name
 

@@ -75,11 +75,11 @@ class User(BaseEventSourcedAggregate):
             self.address = address
             self.raise_(AddressChanged(user_id=self.user_id, address=address))
 
-    @apply(Registered)
+    @apply
     def registered(self, event: Registered) -> None:
         self.is_registered = True
 
-    @apply(AddressChanged)
+    @apply
     def address_changed(self, event: AddressChanged) -> None:
         self.address = event.address
 

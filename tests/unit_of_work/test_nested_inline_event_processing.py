@@ -42,8 +42,8 @@ class Post(BaseEventSourcedAggregate):
         if not self.is_published:
             self.raise_(Published(id=self.id))
 
-    @apply(Published)
-    def mark_published(self, _: BaseEvent) -> None:
+    @apply
+    def mark_published(self, _: Published) -> None:
         self.is_published = True
 
 
