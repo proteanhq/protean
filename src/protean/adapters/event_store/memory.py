@@ -39,8 +39,6 @@ class MemoryMessageRepository(BaseRepository):
         metadata: Dict = None,
         expected_version: int = None,
     ) -> int:
-        pass
-
         # Fetch stream version
         _stream_version = self.stream_version(stream_name)
 

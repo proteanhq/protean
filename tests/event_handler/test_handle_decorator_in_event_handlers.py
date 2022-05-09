@@ -1,3 +1,5 @@
+import pytest
+
 from protean import BaseAggregate, BaseEvent, BaseEventHandler, handle
 from protean.fields import Identifier, String
 from protean.utils import fully_qualified_name
@@ -90,3 +92,11 @@ def test_that_multiple_handlers_can_be_recorded_against_the_same_event(test_doma
             UserEventHandlers.provision_user_accounts,
         ]
     )
+
+
+@pytest.mark.skip(reason="Yet to be implemented")
+def test_that_the_handle_method_param_is_an_event(test_domain):
+    class UserEventHandlers(BaseEventHandler):
+        @handle(Registered)
+        def send_email_notification(self, event: str) -> None:
+            pass

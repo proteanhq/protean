@@ -1,4 +1,4 @@
-from protean import BaseEventHandler, handle
+from protean import BaseEvent, BaseEventHandler, handle
 
 
 class AllEventHandler(BaseEventHandler):
@@ -12,11 +12,11 @@ class AllEventHandler(BaseEventHandler):
 
 class MultipleAnyEventHandler(BaseEventHandler):
     @handle("$any")
-    def handler1(self, event: BaseEventHandler) -> None:
+    def handler1(self, event: BaseEvent) -> None:
         pass
 
     @handle("$any")
-    def handler2(self, event: BaseEventHandler) -> None:
+    def handler2(self, event: BaseEvent) -> None:
         pass
 
     class Meta:

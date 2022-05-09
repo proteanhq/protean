@@ -27,10 +27,14 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         self._domain = domain
 
     def add(self, aggregate: BaseEventSourcedAggregate) -> None:
-        current_uow._seen.add(aggregate)
+        current_uow._add_to_identity_map(aggregate)
 
     def get(self, identifier: Identifier) -> BaseEventSourcedAggregate:
         """Retrieve a fully-formed Aggregate from a stream of Events.
+
+        If the aggregate was already loaded in the current UnitOfWork,
+        `get` will return the aggregate object instead of loading it again
+        from events.
 
         Args:
             identifier (Identifier): Aggregate identifier
@@ -41,6 +45,11 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         Returns:
             BaseEventSourcedAggregate: The fully-loaded aggregate object
         """
+        # Return aggregate if it was already loaded and is present in current
+        #   UnitOfWork's identity map.
+        if current_uow and identifier in current_uow._identity_map:
+            return current_uow._identity_map[identifier]
+
         aggregate = current_domain.event_store.store.load_aggregate(
             self.meta_.aggregate_cls, identifier
         )

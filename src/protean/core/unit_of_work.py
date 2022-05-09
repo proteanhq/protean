@@ -6,6 +6,7 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.globals import _uow_context_stack, current_domain
+from protean.reflection import id_field
 from protean.utils import DomainObjects, EventProcessing, fqn
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ class UnitOfWork:
 
         self._sessions = {}
         self._messages_to_dispatch = []
-        self._seen = set()
+        self._identity_map = {}
 
     @property
     def in_progress(self):
@@ -40,6 +41,10 @@ class UnitOfWork:
     def __exit__(self, *args):
         # Commit and destroy session
         self.commit()
+
+    def _add_to_identity_map(self, aggregate) -> None:
+        identifier = getattr(aggregate, id_field(aggregate).field_name)
+        self._identity_map[identifier] = aggregate
 
     def start(self):
         # Stand in method for `__enter__`
@@ -70,7 +75,7 @@ class UnitOfWork:
             self._messages_to_dispatch = []  # Empty after dispatch
 
             events = []
-            for item in self._seen:
+            for _, item in self._identity_map.items():
                 if item._events:
                     if item.element_type == DomainObjects.EVENT_SOURCED_AGGREGATE:
                         for event in item._events:
@@ -126,7 +131,7 @@ class UnitOfWork:
 
         self._sessions = {}
         self._messages_to_dispatch = []
-        self._seen = set()
+        self._identity_map = set()
         self._in_progress = False
 
     def rollback(self):

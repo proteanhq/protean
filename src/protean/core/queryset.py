@@ -171,7 +171,7 @@ class QuerySet:
             # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
             #   like persisting events raised by the aggregate.
             if current_uow and entity.element_type == DomainObjects.AGGREGATE:
-                current_uow._seen.add(entity)
+                current_uow._add_to_identity_map(entity)
         results.items = entity_items
 
         # Cache results
