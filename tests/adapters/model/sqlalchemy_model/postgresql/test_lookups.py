@@ -19,8 +19,14 @@ class TestLookups:
         lookup = Any("ids", identifier, model_cls)
         expr = lookup.as_expression()
 
-        assert str(expr.compile()) == ":param_1 = ANY (public.generic_postgres.ids)"
-        assert expr.compile().params == {"param_1": "foobar"}
+        assert str(expr.compile()) in [
+            ":param_1 = ANY (public.generic_postgres.ids)",
+            ":ids_1 = ANY (public.generic_postgres.ids)",
+        ]
+        assert expr.compile().params in [
+            {"param_1": "foobar"},
+            {"ids_1": "foobar"},
+        ]
 
     def test_contains_lookup_with_array(self, test_domain):
         model_cls = test_domain.repository_for(GenericPostgres)._model

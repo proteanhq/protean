@@ -186,9 +186,18 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                         type_kwargs["length"] = field_obj.max_length
 
                     # Update the attributes of the class
-                    dict_[attribute_name] = Column(
-                        sa_type_cls(*type_args, **type_kwargs), **col_args
-                    )
+                    # SQLAlchemy changed where `DeclarativeMeta.__init__` looks for class attributes
+                    #   between versions 1.3 and 1.4, and then fixated on `cls.__dict__` in 1.4.36.
+                    #   While the `setattr` below works with the latest SQLAlchemy version of 1.4.36,
+                    #   it's better to populate both `dict_` as well as `cls.__dict__` to be compatible
+                    #   with all 1.4.10+ versions of SQLAlchemy.
+                    # More info:
+                    #   * https://github.com/sqlalchemy/sqlalchemy/issues/6791
+                    #   * https://github.com/sqlalchemy/sqlalchemy/issues/7900
+                    column = Column(sa_type_cls(*type_args, **type_kwargs), **col_args)
+                    setattr(cls, attribute_name, column)  # Set class attribute
+                    dict_[attribute_name] = column  # Set in dict_
+
         super().__init__(classname, bases, dict_)
 
 
