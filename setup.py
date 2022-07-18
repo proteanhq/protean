@@ -36,7 +36,7 @@ install_requires = marshmallow_requires + [
     "bleach>=4.1.0",
     "click>=7.0",
     "cookiecutter>=1.7.0",
-    "copier @ git+https://github.com/copier-org/copier.git",
+    "copier>=6.1.0",
     "inflection>=0.5.1",
     "python-dateutil>=2.8.1",
     "werkzeug>=2.0.0",
