@@ -82,7 +82,7 @@ def test_construct_message_from_command(test_domain):
     identifier = str(uuid4())
     command = Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
 
-    message = Message.to_command_message(command)
+    message = Message.to_message(command)
 
     assert message is not None
     assert type(message) is Message
@@ -112,7 +112,7 @@ def test_construct_message_from_command_without_identifier():
     identifier = str(uuid4())
     command = SendEmailCommand(to="john.doe@gmail.com", subject="Foo", content="Bar")
 
-    message = Message.to_command_message(command)
+    message = Message.to_message(command)
 
     assert message is not None
     assert type(message) is Message

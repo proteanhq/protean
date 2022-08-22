@@ -20,7 +20,7 @@ class UserLoggedIn(BaseEvent):
 def test_appending_raw_events(test_domain):
     identifier = str(uuid4())
     event = UserLoggedIn(user_id=identifier)
-    test_domain.event_store.store.append_event(event)
+    test_domain.event_store.store.append(event)
 
     messages = test_domain.event_store.store.read("authentication")
 

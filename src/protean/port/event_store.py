@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from collections import deque
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type, Union
 
 from protean import BaseCommand, BaseEvent, BaseEventSourcedAggregate
 from protean.fields import Identifier
@@ -95,18 +95,8 @@ class BaseEventStore(metaclass=ABCMeta):
 
         return position
 
-    def append_event(self, event: BaseEvent) -> int:
-        message = Message.to_event_message(event)
-
-        return self._write(
-            message.stream_name,
-            message.type,
-            message.data,
-            metadata=message.metadata.to_dict(),
-        )
-
-    def append_command(self, command: BaseCommand) -> int:
-        message = Message.to_command_message(command)
+    def append(self, object: Union[BaseEvent, BaseCommand]) -> int:
+        message = Message.to_message(object)
 
         return self._write(
             message.stream_name,

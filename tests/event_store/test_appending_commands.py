@@ -33,9 +33,7 @@ def test_command_submission_without_aggregate(test_domain):
             )
         )
     assert exc.value.messages == {
-        "_entity": [
-            "Command `Register` needs to be associated with an aggregate or a stream"
-        ]
+        "_entity": ["`Register` needs to be associated with an aggregate or a stream"]
     }
 
 
@@ -45,7 +43,7 @@ def test_command_submission(test_domain):
     test_domain.register(Register, aggregate_cls=User)
 
     identifier = str(uuid4())
-    test_domain.event_store.store.append_command(
+    test_domain.event_store.store.append(
         Register(
             user_id=identifier,
             email="john.doe@gmail.com",

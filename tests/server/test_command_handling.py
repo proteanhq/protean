@@ -58,7 +58,7 @@ async def test_handler_invocation(test_domain):
         user_id=identifier,
         email="john.doe@example.com",
     )
-    message = Message.to_command_message(command)
+    message = Message.to_message(command)
 
     engine = Engine(domain=test_domain, test_mode=True)
     await engine.handle_message(UserCommandHandler, message)

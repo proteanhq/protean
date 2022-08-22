@@ -664,7 +664,7 @@ class Domain(_PackageBoundObject):
             event_or_command (BaseEvent): The Event object containing data to be pushed
         """
         # Persist event in Message Store
-        self.event_store.store.append_event(event)
+        self.event_store.store.append(event)
 
         self.brokers.publish(event)
 
@@ -698,7 +698,7 @@ class Domain(_PackageBoundObject):
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
         """
-        position = self.event_store.store.append_command(command)
+        position = self.event_store.store.append(command)
 
         if (
             not asynchronous
@@ -737,7 +737,7 @@ class Domain(_PackageBoundObject):
         Returns:
             None: Returns nothing.
         """
-        self.event_store.store.append_event(event)
+        self.event_store.store.append(event)
 
     def handlers_for(self, event: BaseEvent) -> List[BaseEventHandler]:
         """Return Event Handlers listening to a specific event

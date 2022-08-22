@@ -85,7 +85,7 @@ class UnitOfWork:
                             events.append((item, event))
                     else:
                         for event in item._events:
-                            current_domain.event_store.store.append_event(event)
+                            current_domain.event_store.store.append(event)
                             events.append((item, event))
                 item._events = []
 

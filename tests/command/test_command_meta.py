@@ -33,9 +33,7 @@ def test_command_definition_without_aggregate_or_stream(test_domain):
             )
         )
     assert exc.value.messages == {
-        "_entity": [
-            "Command `Register` needs to be associated with an aggregate or a stream"
-        ]
+        "_entity": ["`Register` needs to be associated with an aggregate or a stream"]
     }
 
 

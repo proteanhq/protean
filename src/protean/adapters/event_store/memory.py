@@ -5,10 +5,10 @@ from protean import BaseAggregate, BaseRepository
 from protean.globals import current_domain
 from protean.port import BaseEventStore
 from protean.utils import DomainObjects
-from protean.utils.mixins import CoreMessage, MessageMetadata
+from protean.utils.mixins import MessageMetadata, MessageRecord
 
 
-class MemoryMessage(BaseAggregate, CoreMessage):
+class MemoryMessage(BaseAggregate, MessageRecord):
     class Meta:
         provider = "memory"
 

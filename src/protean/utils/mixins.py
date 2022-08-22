@@ -32,28 +32,53 @@ class MessageMetadata(BaseValueObject):
     owner = fields.String(max_length=50)
     schema_version = fields.Integer()
 
+    # `origin_stream_name` helps keep track of the origin of a message.
+    #   A command created by an event is automatically associated with the original stream.
+    #   Events raised subsequently by the commands also carry forward the original stream name.
     origin_stream_name = fields.String()
 
 
-class CoreMessage(BaseContainer):
+class MessageRecord(BaseContainer):
+    """
+    Base Message Container that contains all fields embedded in each message.
+    """
+
+    # Primary key. The ordinal position of the message in the entire message store.
+    # Global position may have gaps.
     global_position = fields.Auto(increment=True, identifier=True)
+
+    # The ordinal position of the message in its stream.
+    # Position is gapless.
     position = fields.Integer()
+
+    # Message creation time
     time = fields.DateTime()
+
+    # UUID of the message
     id = fields.Auto()
+
+    # Name of stream to which the message is written
     stream_name = fields.String(max_length=255)
+
+    # The type of the message
     type = fields.String()
+
+    # JSON representation of the message body
     data = fields.Dict()
+
+    # JSON representation of the message metadata
     metadata = fields.ValueObject(MessageMetadata)
 
 
-class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
-    """Base class for Events and Commands.
+class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
+    """Generic message class
     It provides concrete implementations for:
     - ID generation
     - Payload construction
     - Serialization and De-serialization
     """
 
+    # Version that the stream is expected to be when the message is written
     expected_version = fields.Integer()
 
     @classmethod
@@ -132,81 +157,47 @@ class Message(CoreMessage, OptionsMixin):  # FIXME Remove OptionsMixin
         return element_record.cls(**self.data)
 
     @classmethod
-    def to_message(cls, object: Union[BaseEvent, BaseCommand]) -> Message:
-        if isinstance(object, BaseEvent):
-            return cls.to_event_message(object)
-        elif isinstance(object, BaseCommand):
-            return cls.to_command_message(object)
-        else:
-            return NotImplementedError()
-
-    @classmethod
-    def to_event_message(cls, event: BaseEvent) -> Message:
+    def to_message(cls, message_object: Union[BaseEvent, BaseCommand]) -> Message:
         # FIXME Should one of `aggregate_cls` or `stream_name` be mandatory?
-        if not (event.meta_.aggregate_cls or event.meta_.stream_name):
+        if not (message_object.meta_.aggregate_cls or message_object.meta_.stream_name):
             raise IncorrectUsageError(
                 {
                     "_entity": [
-                        f"Event `{event.__class__.__name__}` needs to be associated with an aggregate or a stream"
+                        f"`{message_object.__class__.__name__}` needs to be associated with an aggregate or a stream"
                     ]
                 }
             )
 
-        if has_id_field(event):
-            identifier = getattr(event, id_field(event).field_name)
+        if has_id_field(message_object):
+            identifier = getattr(message_object, id_field(message_object).field_name)
         else:
             identifier = str(uuid4())
 
         # Use explicit stream name if provided, or fallback on Aggregate's stream name
         stream_name = (
-            event.meta_.stream_name or event.meta_.aggregate_cls.meta_.stream_name
+            message_object.meta_.stream_name
+            or message_object.meta_.aggregate_cls.meta_.stream_name
         )
 
-        return cls(
-            stream_name=f"{stream_name}-{identifier}",
-            type=fully_qualified_name(event.__class__),
-            data=event.to_dict(),
-            metadata=MessageMetadata(
-                kind=MessageType.EVENT.value,
-                owner=current_domain.domain_name,
-                **cls.derived_metadata(MessageType.EVENT.value),
-            )
-            # schema_version=command.meta_.version,  # FIXME Maintain version for event
-        )
-
-    @classmethod
-    def to_command_message(cls, command: BaseCommand) -> Message:
-        # FIXME Should one of `aggregate_cls` or `stream_name` be mandatory?
-        if not (command.meta_.aggregate_cls or command.meta_.stream_name):
-            raise IncorrectUsageError(
-                {
-                    "_entity": [
-                        f"Command `{command.__class__.__name__}` needs to be associated with an aggregate or a stream"
-                    ]
-                }
-            )
-
-        # Use the value of an identifier field if specified, or generate a new uuid
-        if has_id_field(command):
-            identifier = getattr(command, id_field(command).field_name)
+        if isinstance(message_object, BaseEvent):
+            stream_name = f"{stream_name}-{identifier}"
+            kind = MessageType.EVENT.value
+        elif isinstance(message_object, BaseCommand):
+            stream_name = f"{stream_name}:command-{identifier}"
+            kind = MessageType.COMMAND.value
         else:
-            identifier = str(uuid4())
-
-        # Use explicit stream name if provided, or fallback on Aggregate's stream name
-        stream_name = (
-            command.meta_.stream_name or command.meta_.aggregate_cls.meta_.stream_name
-        )
+            raise NotImplementedError  # FIXME Handle unknown messages better
 
         return cls(
-            stream_name=f"{stream_name}:command-{identifier}",
-            type=fully_qualified_name(command.__class__),
-            data=command.to_dict(),
+            stream_name=stream_name,
+            type=fully_qualified_name(message_object.__class__),
+            data=message_object.to_dict(),
             metadata=MessageMetadata(
-                kind=MessageType.COMMAND.value,
+                kind=kind,
                 owner=current_domain.domain_name,
-                **cls.derived_metadata(MessageType.COMMAND.value),
+                **cls.derived_metadata(kind),
             )
-            # schema_version=command.meta_.version,  # FIXME Maintain version for command
+            # schema_version=command.meta_.version,  # FIXME Maintain version
         )
 
 

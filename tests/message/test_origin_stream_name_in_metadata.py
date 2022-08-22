@@ -40,7 +40,7 @@ def user_id():
 
 
 def register_command_message(user_id):
-    return Message.to_command_message(
+    return Message.to_message(
         Register(
             user_id=user_id,
             email="john.doe@gmail.com",
@@ -50,7 +50,7 @@ def register_command_message(user_id):
 
 
 def registered_event_message(user_id):
-    return Message.to_event_message(
+    return Message.to_message(
         Registered(
             user_id=user_id,
             email="john.doe@gmail.com",
@@ -62,7 +62,7 @@ def registered_event_message(user_id):
 def test_origin_stream_name_in_event_from_command_without_origin_stream_name(user_id):
     g.message_in_context = register_command_message(user_id)
 
-    event_message = Message.to_event_message(
+    event_message = Message.to_message(
         Registered(
             user_id=user_id,
             email="john.doe@gmail.com",
@@ -77,7 +77,7 @@ def test_origin_stream_name_in_event_from_command_with_origin_stream_name(user_i
     command_message.metadata.origin_stream_name = "foo"
     g.message_in_context = command_message
 
-    event_message = Message.to_event_message(
+    event_message = Message.to_message(
         Registered(
             user_id=user_id,
             email="john.doe@gmail.com",
@@ -135,7 +135,7 @@ def test_origin_stream_name_in_aggregate_event_from_command_with_origin_stream_n
 
 def test_origin_stream_name_in_command_from_event(user_id):
     g.message_in_context = registered_event_message(user_id)
-    command_message = Message.to_command_message(
+    command_message = Message.to_message(
         Register(
             user_id=user_id,
             email="john.doe@gmail.com",

@@ -68,7 +68,7 @@ def test_construct_event_from_message(test_domain):
 def test_construct_command_from_message(test_domain):
     identifier = str(uuid4())
     command = Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
-    message = Message.to_command_message(command)
+    message = Message.to_message(command)
 
     reconstructed_command = message.to_object()
     assert isinstance(reconstructed_command, Register)
