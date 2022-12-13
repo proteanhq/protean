@@ -4,7 +4,7 @@ Installation
 Install Python
 --------------
 
-We recommend using the latest version of Python. Protean supports Python 3.7 and newer.
+.. note:: Protean supports Python 3.7 and newer, but it is recommended that that you use the latest version of Python.
 
 Virtual environments allow you to install multiple Python versions side-by-side, without interfering with system-default Python installations. They also help you to work with different groups of Python libraries, one for each project, thereby preventing packages installed in one project from affecting other projects.
 
@@ -96,15 +96,16 @@ Use the ``protean`` command-line utility to verify the installation:
 .. code-block:: shell
 
     $ protean --version
-    0.6.0
+    0.9.1
 
-To verify that Protean can be seen by Python, type ``python`` from your shell. Then at the Python prompt, try to import Protean:
+To verify that Protean can be seen by Python, try importing Proteam from a ``python`` shell:
 
+.. code-block:: shell
+
+    $ python3
     >>> import protean
     >>> print(protean.get_version())
-    0.6.0
-
-*You may have another version of Protean installed.*
+    0.9.1
 
 -------------------
 
