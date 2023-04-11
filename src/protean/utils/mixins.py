@@ -26,10 +26,14 @@ class MessageType(Enum):
 
 
 class MessageMetadata(BaseValueObject):
-    kind = fields.String(
-        max_length=7, choices=MessageType
-    )  # FIXME Make this field mandatory?
+    # Marks message as a `COMMAND` or an `EVENT`
+    kind = fields.String(required=True, max_length=7, choices=MessageType)
+
+    # Name of service that owns the contract of the message
     owner = fields.String(max_length=50)
+
+    # Allows for parsing of different versions, in case of
+    #   breaking changes.
     schema_version = fields.Integer()
 
     # `origin_stream_name` helps keep track of the origin of a message.
@@ -40,7 +44,7 @@ class MessageMetadata(BaseValueObject):
 
 class MessageRecord(BaseContainer):
     """
-    Base Message Container that contains all fields embedded in each message.
+    Base Container holding all fields of a message.
     """
 
     # Primary key. The ordinal position of the message in the entire message store.
@@ -54,7 +58,7 @@ class MessageRecord(BaseContainer):
     # Message creation time
     time = fields.DateTime()
 
-    # UUID of the message
+    # Unique ID of the message
     id = fields.Auto()
 
     # Name of stream to which the message is written

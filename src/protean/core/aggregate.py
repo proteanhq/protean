@@ -10,10 +10,15 @@ logger = logging.getLogger(__name__)
 
 
 class BaseAggregate(EventedMixin, BaseEntity):
-    """The Base class for Protean-Compliant Domain Aggregates.
+    """This is the base class for Domain Aggregates.
 
-    Provides helper methods to custom define aggregate attributes, and query attribute names
-    during runtime.
+    Aggregates are fundamental, coarse-grained building blocks of a domain model. They are
+    conceptual wholes - they enclose all behaviors and data of a distinct domain concept.
+    Aggregates are often composed of one or more Aggregate Elements (Entities and Value Objests),
+    that work together to codify a concept.
+
+    This class provides helper methods to custom define aggregate attributes, and query attribute
+    names during runtime.
 
     Basic Usage::
 
@@ -24,18 +29,8 @@ class BaseAggregate(EventedMixin, BaseEntity):
             age = field.Integer(default=5)
             owner = field.String(required=True, max_length=15)
 
-    (or)
-
-        class Dog(BaseAggregate):
-            id = field.Integer(identifier=True)
-            name = field.String(required=True, max_length=50)
-            age = field.Integer(default=5)
-            owner = field.String(required=True, max_length=15)
-
-        domain.register_element(Dog)
-
     During persistence, the model associated with this entity is retrieved dynamically from
-            the repository factory. Model is usually initialized with a live DB connection.
+        the repository factory. A model object is usually pre-initialized with a live DB connection.
     """
 
     element_type = DomainObjects.AGGREGATE
