@@ -56,6 +56,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     def __init__(
         self,
         referenced_as: str = None,
+        description: str = None,
         identifier: bool = False,
         default: Any = None,
         required: bool = False,
@@ -66,7 +67,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     ):
 
         # Pass to FieldDescriptorMixin for initialization
-        super().__init__(referenced_as=referenced_as)
+        super().__init__(referenced_as=referenced_as, description=description)
 
         self.identifier = identifier
         self.default = default

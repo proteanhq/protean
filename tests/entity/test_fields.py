@@ -3,6 +3,7 @@ import pytest
 from protean import BaseEntity
 from protean.exceptions import ValidationError
 from protean.fields import Boolean, Dict, Integer, List
+from protean.reflection import fields
 
 
 class TestFields:
@@ -43,3 +44,15 @@ class TestFields:
             Lottery(jackpot=True)
 
         assert exc.value.messages == {"numbers": ["is required"]}
+
+    def test_field_description(self):
+        class Lottery(BaseEntity):
+            jackpot = Boolean(description="Jackpot won or not")
+
+        assert fields(Lottery)["jackpot"].description == "Jackpot won or not"
+
+    def test_field_default_description(self):
+        class Lottery(BaseEntity):
+            jackpot = Boolean()
+
+        assert fields(Lottery)["jackpot"].description == "Jackpot"
