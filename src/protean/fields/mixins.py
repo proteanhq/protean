@@ -1,5 +1,7 @@
 NOT_PROVIDED = object()
 
+import inflection
+
 
 class FieldCacheMixin:
     """Provide an API for working with the entity's fields value cache."""
@@ -35,11 +37,19 @@ class FieldDescriptorMixin:
         # These are set up when the owner (Entity class) adds the field to itself
         self.field_name = None
         self.attribute_name = None
+        self.description = kwargs.pop("description", None)
         self.referenced_as = kwargs.pop("referenced_as", None)
 
     def __set_name__(self, entity_cls, name):
         self.field_name = name
         self.attribute_name = self.get_attribute_name()
+
+        # Set the description for this field
+        self.description = (
+            self.description
+            if self.description
+            else inflection.titleize(self.attribute_name).strip()
+        )
 
         # Record Entity setting up the field
         self._entity_cls = entity_cls
