@@ -137,3 +137,17 @@ class TestDomainContext:
         test_domain.domain_context_globals_class = CustomRequestGlobals
         with test_domain.domain_context():
             assert g.spam == "eggs"
+
+    # Test passing kwargs to domain context during activation
+    def test_domain_context_kwargs(self, test_domain):
+        with test_domain.domain_context(foo="bar"):
+            assert g.foo == "bar"
+
+        assert "foo" not in g
+
+    # Test global attributes are not shared between domain contexts
+    def test_domain_context_globals_not_shared(self, test_domain):
+        with test_domain.domain_context(foo="bar"):
+            assert g.foo == "bar"
+        with test_domain.domain_context(foo="baz"):
+            assert g.foo == "baz"

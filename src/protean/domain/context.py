@@ -75,9 +75,13 @@ class DomainContext(object):
     to the current thread or greenlet.
     """
 
-    def __init__(self, domain):
+    def __init__(self, domain, **kwargs):
         self.domain = domain
         self.g = domain.domain_context_globals_class()
+
+        # Set any additional kwargs as attributes in globals
+        for kw in kwargs.items():
+            setattr(self.g, *kw)
 
         # Use a basic "refcount" to track number of domain contexts
         self._ref_count = 0
