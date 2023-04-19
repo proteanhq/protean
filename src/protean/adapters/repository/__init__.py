@@ -7,6 +7,7 @@ from collections import defaultdict
 
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
+from protean.globals import g
 from protean.utils import fully_qualified_name
 
 logger = logging.getLogger(__name__)
@@ -119,7 +120,9 @@ class Providers(collections.abc.MutableMapping):
 
     def get_connection(self, provider_name="default"):
         """Fetch connection from Provider"""
-        if self._providers is None:
+        if (
+            hasattr(g, "MULTITENANCY") and g.MULTITENANCY is True
+        ) or self._providers is None:
             self._initialize()
 
         try:
@@ -129,7 +132,9 @@ class Providers(collections.abc.MutableMapping):
 
     def repository_for(self, aggregate_cls):
         """Retrieve a Repository registered for the Aggregate"""
-        if self._providers is None:
+        if (
+            hasattr(g, "MULTITENANCY") and g.MULTITENANCY is True
+        ) or self._providers is None:
             self._initialize()
 
         provider_name = aggregate_cls.meta_.provider
