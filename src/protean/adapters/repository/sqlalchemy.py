@@ -104,7 +104,7 @@ def _get_identity_type():
 
 
 class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
-    """ Metaclass for the Sqlalchemy declarative schema """
+    """Metaclass for the Sqlalchemy declarative schema"""
 
     def __init__(cls, classname, bases, dict_):  # noqa: C901
         # Update the class attrs with the entity attributes
@@ -143,7 +143,8 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                     sa_type_cls = field_mapping.get(field_cls)
 
                     # Upgrade to Postgresql specific Data Types
-                    if cls.metadata.bind.dialect.name == "postgresql":
+                    # if cls.metadata.bind.dialect.name == "postgresql":
+                    if dict_["dialect"] == Database.POSTGRESQL.value:
 
                         if field_cls == Dict and not field_obj.pickled:
                             sa_type_cls = psql.JSON
@@ -190,7 +191,7 @@ def derive_schema_name(model_cls):
 
 @as_declarative(metaclass=DeclarativeMeta)
 class SqlalchemyModel(BaseModel):
-    """Model representation for the Sqlalchemy Database """
+    """Model representation for the Sqlalchemy Database"""
 
     @declared_attr
     def __tablename__(cls):
@@ -198,7 +199,7 @@ class SqlalchemyModel(BaseModel):
 
     @classmethod
     def from_entity(cls, entity):
-        """ Convert the entity to a model object """
+        """Convert the entity to a model object"""
         item_dict = {}
         for attribute_obj in attributes(cls.meta_.entity_cls).values():
             if isinstance(attribute_obj, Reference):
@@ -213,7 +214,7 @@ class SqlalchemyModel(BaseModel):
 
     @classmethod
     def to_entity(cls, model_obj: "SqlalchemyModel"):
-        """ Convert the model object to an entity """
+        """Convert the model object to an entity"""
         item_dict = {}
         for field_name in attributes(cls.meta_.entity_cls):
             item_dict[field_name] = getattr(model_obj, field_name, None)
@@ -245,7 +246,7 @@ class SADAO(BaseDAO):
             return new_connection
 
     def _build_filters(self, criteria: Q):
-        """ Recursively Build the filters from the criteria object"""
+        """Recursively Build the filters from the criteria object"""
         # Decide the function based on the connector type
         func = and_ if criteria.connector == criteria.AND else or_
         params = []
@@ -269,7 +270,7 @@ class SADAO(BaseDAO):
     def _filter(
         self, criteria: Q, offset: int = 0, limit: int = 10, order_by: list = ()
     ) -> ResultSet:
-        """ Filter objects from the sqlalchemy database """
+        """Filter objects from the sqlalchemy database"""
         conn = self._get_session()
         qs = conn.query(self.model_cls)
 
@@ -306,7 +307,7 @@ class SADAO(BaseDAO):
         return result
 
     def _create(self, model_obj):
-        """ Add a new record to the sqlalchemy database"""
+        """Add a new record to the sqlalchemy database"""
         conn = self._get_session()
 
         try:
@@ -322,7 +323,7 @@ class SADAO(BaseDAO):
         return model_obj
 
     def _update(self, model_obj):
-        """ Update a record in the sqlalchemy database"""
+        """Update a record in the sqlalchemy database"""
         conn = self._get_session()
         db_item = None
 
@@ -364,7 +365,7 @@ class SADAO(BaseDAO):
         return model_obj
 
     def _update_all(self, criteria: Q, *args, **kwargs):
-        """ Update all objects satisfying the criteria """
+        """Update all objects satisfying the criteria"""
         conn = self._get_session()
         qs = conn.query(self.model_cls).filter(self._build_filters(criteria))
         try:
@@ -386,7 +387,7 @@ class SADAO(BaseDAO):
         return updated_count
 
     def _delete(self, model_obj):
-        """ Delete the entity record in the dictionary """
+        """Delete the entity record in the dictionary"""
         conn = self._get_session()
         db_item = None
 
@@ -423,7 +424,7 @@ class SADAO(BaseDAO):
         return model_obj
 
     def _delete_all(self, criteria: Q = None):
-        """ Delete a record from the sqlalchemy database"""
+        """Delete a record from the sqlalchemy database"""
         conn = self._get_session()
 
         del_count = 0
@@ -493,26 +494,11 @@ class SAProvider(BaseProvider):
 
         self._engine = create_engine(make_url(self.conn_info["DATABASE_URI"]), **kwargs)
 
-        if self.conn_info["DATABASE"] == Database.POSTGRESQL.value:
-            # Nest database tables under a schema, so that we have complete control
-            #   on creating/dropping db structures. We cannot control structures in the
-            #   the default `public` schema.
-            #
-            # Use `SCHEMA` value if specified as part of the conn info. Otherwise, construct
-            #   and use default schema name as `DB`_schema.
-            schema = (
-                self.conn_info["SCHEMA"] if "SCHEMA" in self.conn_info else "public"
-            )
-
-            self._metadata = MetaData(bind=self._engine, schema=schema)
-        else:
-            self._metadata = MetaData(bind=self._engine)
-
         # A temporary cache of already constructed model classes
         self._model_classes = {}
 
     def _get_database_specific_engine_args(self):
-        """ Supplies additional database-specific arguments to SQLAlchemy Engine.
+        """Supplies additional database-specific arguments to SQLAlchemy Engine.
 
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
         """
@@ -522,7 +508,7 @@ class SAProvider(BaseProvider):
         return {}
 
     def _get_database_specific_session_args(self):
-        """ Set Database specific session parameters.
+        """Set Database specific session parameters.
 
         Depending on the database in use, this method supplies
         additional arguments while constructing sessions.
@@ -538,15 +524,24 @@ class SAProvider(BaseProvider):
         """Establish a session to the Database"""
         # Create the session
         kwargs = self._get_database_specific_session_args()
+
+        # Switch schema dynamically if provided in conn_info
+        engine = self._engine.connect().execution_options(
+            schema_translate_map={
+                None: self.conn_info["SCHEMA"]
+                if "SCHEMA" in self.conn_info
+                else "public"
+            }
+        )
         session_factory = orm.sessionmaker(
-            bind=self._engine, expire_on_commit=False, **kwargs
+            bind=engine, expire_on_commit=False, **kwargs
         )
         session_cls = orm.scoped_session(session_factory)
 
         return session_cls
 
     def _execute_database_specific_connection_statements(self, conn):
-        """ Execute connection statements depending on the database in use.
+        """Execute connection statements depending on the database in use.
 
         Each database has a unique set of commands and associated format to control
         connection-related parameters. Since we use SQLAlchemy, statements should
@@ -563,7 +558,7 @@ class SAProvider(BaseProvider):
         return conn
 
     def get_connection(self, session_cls=None):
-        """ Create the connection to the Database instance"""
+        """Create the connection to the Database instance"""
         # If this connection has to be created within an existing session,
         #   ``session_cls`` will be provided as an argument.
         #   Otherwise, fetch a new ``session_cls`` from ``get_session()``
@@ -627,7 +622,7 @@ class SAProvider(BaseProvider):
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls
 
-            custom_attrs.update({"meta_": meta_, "metadata": self._metadata})
+            custom_attrs.update({"meta_": meta_})
             # FIXME Ensure the custom model attributes are constructed properly
             decorated_model_cls = type(
                 model_cls.__name__, (SqlalchemyModel, model_cls), custom_attrs
@@ -653,7 +648,9 @@ class SAProvider(BaseProvider):
 
             attrs = {
                 "meta_": meta_,
-                "metadata": self._metadata,
+                "dialect": self.conn_info[
+                    "DATABASE"
+                ],  # Required for schema switch later
             }
             # FIXME Ensure the custom model attributes are constructed properly
             model_cls = type(entity_cls.__name__ + "Model", (SqlalchemyModel,), attrs)
@@ -665,7 +662,7 @@ class SAProvider(BaseProvider):
         return model_cls
 
     def get_dao(self, entity_cls, model_cls):
-        """ Return a DAO object configured with a live connection"""
+        """Return a DAO object configured with a live connection"""
         return SADAO(self.domain, self, entity_cls, model_cls)
 
     def raw(self, query: Any, data: Any = None):

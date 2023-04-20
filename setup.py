@@ -77,7 +77,7 @@ dev_requires = (
     + types_requires
     + testing_requires
     + [
-        "black==19.10b0",
+        "black==22.3.0",
         "check-manifest==0.42",
         "coverage==5.1",
         "docutils==0.16",
