@@ -493,9 +493,13 @@ class SAProvider(BaseProvider):
 
         self._engine = create_engine(make_url(self.conn_info["DATABASE_URI"]), **kwargs)
 
+        # FIXME Attach the schema to the engine in a better way, or don't use metadata.
         if self.conn_info["DATABASE"] == Database.POSTGRESQL.value:
-            self._engine = (
-                create_engine(make_url(self.conn_info["DATABASE_URI"]), **kwargs)
+            # We are creating a new engine here because we don't want to create a connection
+            #   on `self._engine`. When we create a connection on `self._engine`, it will
+            #   result in `too many clients` error.
+            self._metadata = MetaData(
+                bind=create_engine(make_url(self.conn_info["DATABASE_URI"]), **kwargs)
                 .connect()
                 .execution_options(
                     schema_translate_map={
@@ -505,8 +509,8 @@ class SAProvider(BaseProvider):
                     }
                 )
             )
-
-        self._metadata = MetaData(bind=self._engine)
+        else:
+            self._metadata = MetaData(bind=self._engine)
 
         # A temporary cache of already constructed model classes
         self._model_classes = {}
