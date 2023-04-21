@@ -19,7 +19,7 @@ class TestLookups:
         lookup = Any("ids", identifier, model_cls)
         expr = lookup.as_expression()
 
-        assert str(expr.compile()) == ":param_1 = ANY (public.generic_postgres.ids)"
+        assert str(expr.compile()) == ":param_1 = ANY (generic_postgres.ids)"
         assert expr.compile().params == {"param_1": "foobar"}
 
     def test_contains_lookup_with_array(self, test_domain):
@@ -29,7 +29,7 @@ class TestLookups:
         lookup = Contains("ids", identifier, model_cls)
         expr = lookup.as_expression()
 
-        assert str(expr.compile()) == "public.generic_postgres.ids @> :ids_1"
+        assert str(expr.compile()) == "generic_postgres.ids @> :ids_1"
         assert expr.compile().params == {"ids_1": ["foo", "bar"]}
 
     def test_overlap_lookup_with_array(self, test_domain):
@@ -39,7 +39,7 @@ class TestLookups:
         lookup = Overlap("ids", identifier, model_cls)
         expr = lookup.as_expression()
 
-        assert str(expr.compile()) == "public.generic_postgres.ids && :ids_1"
+        assert str(expr.compile()) == "generic_postgres.ids && :ids_1"
         assert expr.compile().params == {"ids_1": ["foo", "bar"]}
 
     def test_in_lookup(self, test_domain):
@@ -50,7 +50,6 @@ class TestLookups:
         expr = lookup.as_expression()
 
         assert (
-            str(expr.compile())
-            == "public.generic_postgres.role IN (__[POSTCOMPILE_role_1])"
+            str(expr.compile()) == "generic_postgres.role IN (__[POSTCOMPILE_role_1])"
         )
         assert expr.compile().params == {"role_1": ["foo", "bar", "baz"]}

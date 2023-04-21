@@ -491,17 +491,21 @@ class SAProvider(BaseProvider):
 
         kwargs = self._get_database_specific_engine_args()
 
-        self._engine = (
-            create_engine(make_url(self.conn_info["DATABASE_URI"]), **kwargs)
-            .connect()
-            .execution_options(
-                schema_translate_map={
-                    None: self.conn_info["SCHEMA"]
-                    if "SCHEMA" in self.conn_info
-                    else "public"
-                }
+        self._engine = create_engine(make_url(self.conn_info["DATABASE_URI"]), **kwargs)
+
+        if self.conn_info["DATABASE"] == Database.POSTGRESQL.value:
+            self._engine = (
+                create_engine(make_url(self.conn_info["DATABASE_URI"]), **kwargs)
+                .connect()
+                .execution_options(
+                    schema_translate_map={
+                        None: self.conn_info["SCHEMA"]
+                        if "SCHEMA" in self.conn_info
+                        else "public"
+                    }
+                )
             )
-        )
+
         self._metadata = MetaData(bind=self._engine)
 
         # A temporary cache of already constructed model classes
@@ -535,13 +539,17 @@ class SAProvider(BaseProvider):
         # Create the session
         kwargs = self._get_database_specific_session_args()
 
-        engine = self._engine.connect().execution_options(
-            schema_translate_map={
-                None: self.conn_info["SCHEMA"]
-                if "SCHEMA" in self.conn_info
-                else "public"
-            }
-        )
+        if self.conn_info["DATABASE"] == Database.POSTGRESQL.value:
+            engine = self._engine.connect().execution_options(
+                schema_translate_map={
+                    None: self.conn_info["SCHEMA"]
+                    if "SCHEMA" in self.conn_info
+                    else "public"
+                }
+            )
+        else:
+            engine = self._engine
+
         session_factory = orm.sessionmaker(
             bind=engine, expire_on_commit=False, **kwargs
         )
