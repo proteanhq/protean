@@ -143,8 +143,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
                     sa_type_cls = field_mapping.get(field_cls)
 
                     # Upgrade to Postgresql specific Data Types
-                    # if cls.metadata.bind.dialect.name == "postgresql":
-                    if dict_["dialect"] == Database.POSTGRESQL.value:
+                    if cls.metadata.bind.dialect.name == "postgresql":
 
                         if field_cls == Dict and not field_obj.pickled:
                             sa_type_cls = psql.JSON
@@ -492,7 +491,18 @@ class SAProvider(BaseProvider):
 
         kwargs = self._get_database_specific_engine_args()
 
-        self._engine = create_engine(make_url(self.conn_info["DATABASE_URI"]), **kwargs)
+        self._engine = (
+            create_engine(make_url(self.conn_info["DATABASE_URI"]), **kwargs)
+            .connect()
+            .execution_options(
+                schema_translate_map={
+                    None: self.conn_info["SCHEMA"]
+                    if "SCHEMA" in self.conn_info
+                    else "public"
+                }
+            )
+        )
+        self._metadata = MetaData(bind=self._engine)
 
         # A temporary cache of already constructed model classes
         self._model_classes = {}
@@ -525,7 +535,6 @@ class SAProvider(BaseProvider):
         # Create the session
         kwargs = self._get_database_specific_session_args()
 
-        # Switch schema dynamically if provided in conn_info
         engine = self._engine.connect().execution_options(
             schema_translate_map={
                 None: self.conn_info["SCHEMA"]
@@ -622,7 +631,7 @@ class SAProvider(BaseProvider):
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls
 
-            custom_attrs.update({"meta_": meta_})
+            custom_attrs.update({"meta_": meta_, "metadata": self._metadata})
             # FIXME Ensure the custom model attributes are constructed properly
             decorated_model_cls = type(
                 model_cls.__name__, (SqlalchemyModel, model_cls), custom_attrs
@@ -648,9 +657,7 @@ class SAProvider(BaseProvider):
 
             attrs = {
                 "meta_": meta_,
-                "dialect": self.conn_info[
-                    "DATABASE"
-                ],  # Required for schema switch later
+                "metadata": self._metadata,
             }
             # FIXME Ensure the custom model attributes are constructed properly
             model_cls = type(entity_cls.__name__ + "Model", (SqlalchemyModel,), attrs)
