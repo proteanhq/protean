@@ -23,5 +23,6 @@ DATABASES = {
         "PROVIDER": "protean.adapters.repository.elasticsearch.ESProvider",
         "DATABASE": Database.ELASTICSEARCH.value,
         "DATABASE_URI": {"hosts": ["localhost"]},
+        "NAMESPACE_PREFIX": "test"
     },
 }

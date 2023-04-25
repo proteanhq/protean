@@ -86,7 +86,7 @@ class TestModelOptions:
             model_cls = test_domain.get_model(Person)
 
             assert model_cls.__name__ == "PersonModel"
-            assert model_cls._index._name == "person"
+            assert model_cls._index._name == "test_person"
 
         def test_explicit_index_name(self, test_domain):
             class Person(BaseAggregate):
@@ -99,7 +99,7 @@ class TestModelOptions:
             test_domain.register(Person)
             model_cls = test_domain.get_model(Person)
 
-            assert model_cls._index._name == "people"
+            assert model_cls._index._name == "test_people"
 
         def test_explicit_index_name_in_custom_model(self, test_domain):
             class Person(BaseAggregate):

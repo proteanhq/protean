@@ -111,6 +111,7 @@ def db_config(request):
                 "PROVIDER": "protean.adapters.repository.elasticsearch.ESProvider",
                 "DATABASE": "ELASTICSEARCH",
                 "DATABASE_URI": {"hosts": ["localhost"]},
+                "NAMESPACE_PREFIX": "test"
             },
             "SQLITE": {
                 "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",

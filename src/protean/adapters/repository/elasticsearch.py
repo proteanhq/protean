@@ -171,7 +171,7 @@ class ElasticsearchDAO(BaseDAO):
         if criteria.children:
             q = self._build_filters(criteria)
 
-        s = Search(using=conn, index=self.model_cls._index._name).query(q)
+        s = Search(using=conn, index=self.provider.derive_schema_name(self.entity_cls)).query(q)
 
         if order_by:
             s = s.sort(*order_by)
@@ -199,7 +199,7 @@ class ElasticsearchDAO(BaseDAO):
 
         try:
             model_obj.save(
-                refresh=True, index=self.model_cls._index._name, using=conn,
+                refresh=True, index=self.provider.derive_schema_name(self.entity_cls), using=conn,
             )
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
@@ -217,7 +217,7 @@ class ElasticsearchDAO(BaseDAO):
         try:
             # Calling `get` will raise `NotFoundError` if record was not found
             self.model_cls.get(
-                id=identifier, using=conn, index=self.model_cls._index._name
+                id=identifier, using=conn, index=self.provider.derive_schema_name(self.entity_cls)
             )
         except NotFoundError as exc:
             logger.error(f"Database Record not found: {exc}")
@@ -230,7 +230,7 @@ class ElasticsearchDAO(BaseDAO):
 
         try:
             model_obj.save(
-                refresh=True, index=self.model_cls._index._name, using=conn,
+                refresh=True, index=self.provider.derive_schema_name(self.entity_cls), using=conn,
             )
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
@@ -248,7 +248,7 @@ class ElasticsearchDAO(BaseDAO):
 
         try:
             model_obj.delete(
-                index=self.model_cls._index._name, using=conn, refresh=True,
+                index=self.provider.derive_schema_name(self.entity_cls), using=conn, refresh=True,
             )
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
@@ -265,7 +265,7 @@ class ElasticsearchDAO(BaseDAO):
         if criteria and criteria.children:
             q = self._build_filters(criteria)
 
-        s = Search(using=conn, index=self.model_cls._index._name).query(q)
+        s = Search(using=conn, index=self.provider.derive_schema_name(self.entity_cls)).query(q)
 
         # Return the results
         try:
