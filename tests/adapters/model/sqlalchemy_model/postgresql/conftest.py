@@ -1,10 +1,6 @@
 import os
 
-from typing import List
-
 import pytest
-
-from protean.fields import Integer
 
 
 def initialize_domain():
