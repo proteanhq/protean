@@ -28,7 +28,7 @@ Aggregates are the basic building blocks of the domain. Use the :meth:`protean.D
 
 .. code-block:: python
 
-    from protean.core.field import String
+    from protean.field import String
 
     @domain.aggregate
     class User:
