@@ -4,6 +4,12 @@ Release History
 DEV
 ---
 
+0.10.0
+------
+
+* Enhance `domain.init` as the way to activate a domain
+* Introduce a new test category `WITH_COVERAGE` and use in Github Actions
+* Remove dynamic initializations in providers, brokers, caches, and event stores
 
 
 0.9.1

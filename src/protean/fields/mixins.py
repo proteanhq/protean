@@ -1,6 +1,6 @@
-NOT_PROVIDED = object()
-
 import inflection
+
+NOT_PROVIDED = object()
 
 
 class FieldCacheMixin:
