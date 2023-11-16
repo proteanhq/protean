@@ -10,7 +10,6 @@ from protean import (
     BaseCommandHandler,
     BaseEvent,
     BaseEventSourcedAggregate,
-    UnitOfWork,
     handle,
 )
 from protean.fields import Identifier, String

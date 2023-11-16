@@ -9,15 +9,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import (
-    BaseCommand,
-    BaseCommandHandler,
-    BaseEvent,
-    BaseEventHandler,
-    BaseEventSourcedAggregate,
-    apply,
-    handle,
-)
+from protean import BaseEvent, BaseEventHandler, handle
 from protean.fields import Identifier, String
 from protean.globals import current_domain
 

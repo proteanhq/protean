@@ -26,7 +26,7 @@ from protean.utils import DomainObjects, derive_element_class
 logger = logging.getLogger(__name__)
 
 
-def derive_marshmallow_field_from(field_obj: Field):
+def derive_marshmallow_field_from(field_obj: Field):  # noqa: C901
     if isinstance(field_obj, Boolean):
         return fields.Boolean()
     elif isinstance(field_obj, Date):
