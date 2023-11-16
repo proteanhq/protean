@@ -274,7 +274,7 @@ class Domain(_PackageBoundObject):
         defaults["DEBUG"] = get_debug_flag()
         return self.config_class(root_path, defaults)
 
-    def domain_context(self):
+    def domain_context(self, **kwargs):
         """Create an :class:`~protean.context.DomainContext`. Use as a ``with``
         block to push the context, which will make :data:`current_domain`
         point at this domain.
@@ -284,7 +284,7 @@ class Domain(_PackageBoundObject):
             with domain.domain_context():
                 init_db()
         """
-        return DomainContext(self)
+        return DomainContext(self, **kwargs)
 
     def teardown_domain_context(self, f):
         """Registers a function to be called when the domain context
@@ -767,7 +767,7 @@ class Domain(_PackageBoundObject):
     # Repository Functionality #
     ############################
 
-    @lru_cache(maxsize=None)
+    # FIXME Optimize calls to this method with cache, but also with support for Multitenancy
     def repository_for(self, aggregate_cls):
         if aggregate_cls.element_type == DomainObjects.EVENT_SOURCED_AGGREGATE:
             return self.event_store.repository_for(aggregate_cls)
