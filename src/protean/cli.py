@@ -202,6 +202,23 @@ def test(category):
             for db in ["POSTGRESQL", "SQLITE"]:
                 print(f"Running tests for DATABASE: {db}...")
                 subprocess.call(["pytest", "-m", "database", f"--db={db}"])
+        elif category == "WITH_COVERAGE":
+            subprocess.call(
+                [
+                    "pytest",
+                    "--cache-clear",
+                    "--slow",
+                    "--sqlite",
+                    "--postgresql",
+                    "--elasticsearch",
+                    "--redis",
+                    "--message_db",
+                    "--cov=protean",
+                    "--cov-config",
+                    ".coveragerc",
+                    "tests",
+                ]
+            )
     else:
         # Run full suite
         subprocess.call(

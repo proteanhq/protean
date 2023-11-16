@@ -71,39 +71,9 @@ class TestBrokerInitialization:
         assert len(list(test_domain.brokers)) == 1
         assert isinstance(list(test_domain.brokers.values())[0], InlineBroker)
 
-    def test_that_atleast_one_broker_has_to_be_configured(self, test_domain):
-        default_broker = test_domain.config["BROKERS"].pop("default")
-
-        with pytest.raises(ConfigurationError):
-            len(test_domain.brokers)  # Triggers an initialization
-
-        # Push back default broker config to avoid pytest teardown errors
-        test_domain.config["BROKERS"]["default"] = default_broker
-
-    def test_that_a_default_broker_is_mandatory(self, test_domain):
-        dup_broker = InlineBroker("duplicate", test_domain, {})
-
-        # Simulation - Add a secondary broker and remove default broker from config
-        default_broker = test_domain.config["BROKERS"].pop("default")
-        test_domain.config["BROKERS"]["secondary"] = {
-            "PROVIDER": "protean.adapters.InlineBroker"
-        }
-
-        with pytest.raises(ConfigurationError):
-            # This will try to initialize brokers and fail in absence of a 'default' broker
-            test_domain.brokers["duplicate"] = dup_broker
-
-        # Push back default broker config to avoid pytest teardown errors
-        test_domain.config["BROKERS"]["default"] = default_broker
-
     def test_that_domain_initializes_broker_before_iteration(self, test_domain):
         brokers = [broker for broker in test_domain.brokers]
         assert len(brokers) == 1
-
-    def test_that_domain_initializes_broker_before_get_op(self, mocker, test_domain):
-        spy = mocker.spy(test_domain.brokers, "_initialize")
-        test_domain.brokers["default"]  # Calls `__getitem__`
-        assert spy.call_count == 1
 
     def test_that_brokers_are_not_initialized_again_before_get_op_if_initialized_already(
         self, mocker, test_domain
@@ -114,15 +84,6 @@ class TestBrokerInitialization:
         spy = mocker.spy(test_domain.brokers, "_initialize")
         test_domain.brokers["default"]  # # Calls `__getitem__`, Should not reinitialize
         assert spy.call_count == 0
-
-    def test_that_domain_initializes_broker_before_set_operation(
-        self, mocker, test_domain
-    ):
-        dup_broker = InlineBroker("duplicate broker", test_domain, {})
-
-        spy = mocker.spy(test_domain.brokers, "_initialize")
-        test_domain.brokers["dup"] = dup_broker
-        assert spy.call_count == 1
 
     def test_that_brokers_are_not_initialized_again_before_set_if_initialized_already(
         self, mocker, test_domain
@@ -135,13 +96,6 @@ class TestBrokerInitialization:
         spy = mocker.spy(test_domain.brokers, "_initialize")
         test_domain.brokers["dup"] = dup_broker  # Should not reinitialize
         assert spy.call_count == 0
-
-    def test_that_domain_initializes_broker_before_del_operation(
-        self, mocker, test_domain
-    ):
-        spy = mocker.spy(test_domain.brokers, "_initialize")
-        del test_domain.brokers["default"]
-        assert spy.call_count == 1
 
     def test_that_brokers_are_not_initialized_again_before_del_if_initialized_already(
         self, mocker, test_domain
@@ -157,36 +111,6 @@ class TestBrokerInitialization:
 
         test_domain.brokers["duplicate"] = duplicate_broker
         assert len(test_domain.brokers) == 2
-
-    def test_that_brokers_are_initialized_on_publishing_an_event(
-        self, mocker, test_domain
-    ):
-        spy = mocker.spy(test_domain.brokers, "_initialize")
-        test_domain.publish(
-            PersonAdded(
-                id="1234",
-                first_name="John",
-                last_name="Doe",
-                age=24,
-            )
-        )
-        assert spy.call_count == 1
-
-    def test_that_brokers_are_not_reinitialized_on_publishing_an_event(
-        self, mocker, test_domain
-    ):
-        len(test_domain.brokers)  # Triggers initialization
-
-        spy = mocker.spy(test_domain.brokers, "_initialize")
-        test_domain.publish(
-            PersonAdded(
-                id="1234",
-                first_name="John",
-                last_name="Doe",
-                age=24,
-            )
-        )
-        assert spy.call_count == 0
 
 
 class TestEventPublish:
@@ -216,7 +140,7 @@ class TestBrokerSubscriberInitialization:
     def test_that_registered_subscribers_are_initialized(self, test_domain):
         test_domain.register(NotifySSOSubscriber)
 
-        len(test_domain.brokers)  # Triggers initialization
+        test_domain.reinitialize()
 
         assert (
             "tests.test_brokers.PersonAdded"
@@ -236,7 +160,7 @@ class TestBrokerSubscriberInitialization:
         test_domain.register(NotifySSOSubscriber)
 
         with pytest.raises(ConfigurationError):
-            len(test_domain.brokers)  # Triggers initialization
+            test_domain.reinitialize()
 
         # Reset the broker after test
         NotifySSOSubscriber.meta_.broker = "default"

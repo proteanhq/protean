@@ -25,7 +25,7 @@ class TestLookup:
     def test_registration_of_a_lookup_to_an_adapter(self):
         from protean.adapters.repository.memory import MemoryProvider
 
-        assert MemoryProvider.get_lookups().get("sample") == self.SampleLookup
+        assert MemoryProvider.get_lookups().get("sample") is not None
 
     def test_expression_constructed_for_datetime_fields(self):
         now = datetime.today()

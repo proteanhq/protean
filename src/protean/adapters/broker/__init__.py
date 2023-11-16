@@ -16,29 +16,20 @@ class Brokers(collections.abc.MutableMapping):
         self._brokers = None
 
     def __getitem__(self, key):
-        if self._brokers is None:
-            self._initialize()
-        return self._brokers[key]
+        return self._brokers[key] if self._brokers else None
 
     def __iter__(self):
-        if self._brokers is None:
-            self._initialize()
-        return iter(self._brokers)
+        return iter(self._brokers) if self._brokers else iter({})
 
     def __len__(self):
-        if self._brokers is None:
-            self._initialize()
-        return len(self._brokers)
+        return len(self._brokers) if self._brokers else 0
 
     def __setitem__(self, key, value):
-        if self._brokers is None:
-            self._initialize()
         self._brokers[key] = value
 
     def __delitem__(self, key):
-        if self._brokers is None:
-            self._initialize()
-        del self._brokers[key]
+        if key in self._brokers:
+            del self._brokers[key]
 
     def _initialize(self):
         """Read config file and initialize brokers"""
@@ -77,9 +68,6 @@ class Brokers(collections.abc.MutableMapping):
 
     def publish(self, object: BaseEvent) -> None:
         """Publish an object to all registered brokers"""
-        if self._brokers is None:
-            self._initialize()
-
         message = Message.to_message(object)
 
         # Follow a naive strategy and dispatch event directly to message broker

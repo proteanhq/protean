@@ -14,13 +14,11 @@ class TestProviders:
         test_domain.register(Person)
         test_domain.register(Alien)
 
-    def test_initialization_of_providers_on_first_call(self, test_domain):
+    def test_initialization_of_providers(self, test_domain):
         """Test that ``providers`` object is available"""
         assert isinstance(test_domain.providers, Providers)
-        assert test_domain.providers._providers is None
-
-        test_domain.providers["default"]
         assert test_domain.providers is not None
+        assert "default" in test_domain.providers._providers
 
     def test_provider_detail(self, test_domain):
         """Test provider info loaded for tests"""

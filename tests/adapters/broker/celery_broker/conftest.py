@@ -15,6 +15,7 @@ def initialize_domain():
     if os.path.exists(config_path):
         domain.config.from_pyfile(config_path)
 
+    domain.init()
     domain.domain_context().push()
     return domain
 

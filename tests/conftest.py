@@ -197,6 +197,8 @@ def test_domain(db_config, store_config):
     domain.config["DATABASES"]["default"] = db_config
     domain.config["EVENT_STORE"] = store_config
 
+    domain.init()
+
     with domain.domain_context():
         yield domain
 
@@ -229,13 +231,16 @@ def run_around_tests(test_domain):
     yield
 
     # FIXME Providers has to become a MutableMapping
-    for _, provider in test_domain.providers.items():
+    for provider_name in test_domain.providers:
+        provider = test_domain.providers[provider_name]
         provider._data_reset()
 
-    for _, broker in test_domain.brokers.items():
+    for broker_name in test_domain.brokers:
+        broker = test_domain.brokers[broker_name]
         broker._data_reset()
 
-    for _, cache in test_domain.caches.items():
+    for cache_name in test_domain.caches:
+        cache = test_domain.caches[cache_name]
         cache.flush_all()
 
     test_domain.event_store.store._data_reset()

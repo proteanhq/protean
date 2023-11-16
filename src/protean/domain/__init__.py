@@ -246,6 +246,19 @@ class Domain(_PackageBoundObject):
                         except ModuleNotFoundError as exc:
                             logger.error(f"Error while autoloading modules: {exc}")
 
+        # Initialize adapters after loading domain
+        self._initialize()
+
+    # Initialize domain adapters
+    def _initialize(self):
+        self.providers._initialize()
+        self.caches._initialize()
+        self.brokers._initialize()
+
+    # Reinitialize domain after config changes
+    def reinitialize(self):
+        self._initialize()
+
     def make_config(self, instance_relative=False):
         """Used to create the config attribute by the Domain constructor.
         The `instance_relative` parameter is passed in from the constructor
