@@ -1,4 +1,4 @@
-__version__ = "0.9.1"
+__version__ = "0.10.0"
 
 from .core.aggregate import BaseAggregate
 from .core.application_service import BaseApplicationService
