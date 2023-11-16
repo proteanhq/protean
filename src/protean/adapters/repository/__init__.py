@@ -15,11 +15,6 @@ logger = logging.getLogger(__name__)
 class Providers(collections.abc.MutableMapping):
     def __init__(self, domain):
         self.domain = domain
-
-        # Providers will be filled dynamically on first call to
-        # fetch a repository. This is designed so that the entire
-        # domain is loaded before we try to load providers.
-        # FIXME Should this be done during domain.init()
         self._providers = None
 
         # Recognized Repositories are memoized within providers
@@ -36,29 +31,23 @@ class Providers(collections.abc.MutableMapping):
         self._repositories = defaultdict(lambda: defaultdict(str))
 
     def __getitem__(self, key):
-        if self._providers is None:
-            self._initialize()
-        return self._providers[key]
+        return self._providers[key] if self._providers else None
 
     def __iter__(self):
-        if self._providers is None:
-            self._initialize()
-        return iter(self._providers)
+        return iter(self._providers) if self._providers else iter({})
 
     def __len__(self):
-        if self._providers is None:
-            self._initialize()
-        return len(self._providers)
+        return len(self._providers) if self._providers else 0
 
     def __setitem__(self, key, value):
         if self._providers is None:
-            self._initialize()
+            self._providers = {}
+
         self._providers[key] = value
 
     def __delitem__(self, key):
-        if self._providers is None:
-            self._initialize()
-        del self._providers[key]
+        if key in self._providers:
+            del self._providers[key]
 
     def _construct_repository(self, aggregate_cls):
         repository_cls = type(

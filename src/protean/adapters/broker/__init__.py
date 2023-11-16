@@ -25,6 +25,9 @@ class Brokers(collections.abc.MutableMapping):
         return len(self._brokers) if self._brokers else 0
 
     def __setitem__(self, key, value):
+        if self._brokers is None:
+            self._brokers = {}
+
         self._brokers[key] = value
 
     def __delitem__(self, key):

@@ -18,10 +18,10 @@ def initialize_domain():
     return domain
 
 
-domain = initialize_domain()
-
-
 @pytest.fixture(autouse=True)
 def test_domain():
+    domain = initialize_domain()
+    domain.init()
+
     with domain.domain_context():
         yield domain

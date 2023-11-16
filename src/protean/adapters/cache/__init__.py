@@ -12,37 +12,26 @@ logger = logging.getLogger(__name__)
 class Caches(collections.abc.MutableMapping):
     def __init__(self, domain):
         self.domain = domain
-
-        # Caches will be filled dynamically on first call to
-        # fetch a repository. This is designed so that the entire
-        # domain is loaded before we try to load providers.
-        # FIXME Should this be done during domain.init()
         self._caches = None
 
     def __getitem__(self, key):
-        if self._caches is None:
-            self._initialize()
-        return self._caches[key]
+        return self._caches[key] if self._caches else None
 
     def __iter__(self):
-        if self._caches is None:
-            self._initialize()
-        return iter(self._caches)
+        return iter(self._caches) if self._caches else iter({})
 
     def __len__(self):
-        if self._caches is None:
-            self._initialize()
-        return len(self._caches)
+        return len(self._caches) if self._caches else 0
 
     def __setitem__(self, key, value):
         if self._caches is None:
-            self._initialize()
+            self.caches = {}
+
         self._caches[key] = value
 
     def __delitem__(self, key):
-        if self._caches is None:
-            self._initialize()
-        del self._caches[key]
+        if key in self._caches:
+            del self._caches[key]
 
     def _initialize(self):
         """Read config file and initialize providers"""
