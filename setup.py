@@ -22,7 +22,10 @@ def read(*names, **kwargs):
     ).read()
 
 
-elasticsearch_requires = ["elasticsearch>=7.13.1", "elasticsearch-dsl>=7.3.0"]
+# Elasticsearch is tied to version 7.x because while 8.x supports sync and async workflows
+#   in the same client, it introduces breaking changes in the API.
+elasticsearch_requires = ["elasticsearch~=7.17.9", "elasticsearch-dsl~=7.4.1"]
+
 redis_requires = ["redis==3.5.2"]
 sqlite_requires = ["sqlalchemy==1.4.47"]
 postgresql_requires = ["psycopg2>=2.8.4", "sqlalchemy==1.4.47"]
@@ -54,7 +57,7 @@ all_external_requires = [
 ]
 
 testing_requires = all_external_requires + [
-    "autoflake>=1.4",
+    "autoflake>=2.2.1",
     "isort>=5.10.1",
     "mock==4.0.2",
     "pluggy==0.13.1",
@@ -120,8 +123,11 @@ setup(
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
         "Programming Language :: Python",
+        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3 :: Only",
         "Topic :: Software Development :: Libraries",
         "Topic :: Software Development :: Libraries :: Application Frameworks",
