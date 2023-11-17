@@ -5,7 +5,7 @@ from protean.globals import current_domain
 from .elements import Person
 
 
-# @pytest.mark.postgresql
+@pytest.mark.postgresql
 class TestSchemaSwitch:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):

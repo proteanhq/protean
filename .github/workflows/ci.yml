@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
     name: Python ${{ matrix.python-version }} Tests
 
     services:
@@ -74,11 +74,12 @@ jobs:
 
       - name: Install dependencies
         run: |
+          pip install setuptools
           pip install .[test]
         if: steps.cache.outputs.cache-hit != 'true'
 
       - name: Tests
-        run: protean test -c WITH_COVERAGE
+        run: pytest --slow --sqlite --postgresql --elasticsearch --redis --cov=protean --cov-config .coveragerc tests
         env:
           TEST_CMD: pre-commit run --all-files
           POSTGRES_PASSWORD: postgres
