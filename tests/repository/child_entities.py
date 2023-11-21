@@ -8,7 +8,7 @@ class Post(BaseAggregate):
     title = String(required=True, max_length=1000)
     slug = String(required=True, max_length=1024)
     content = Text(required=True)
-    posted_at = DateTime(required=True, default=datetime.now())
+    posted_at = DateTime(required=True, default=datetime.now)
 
     post_meta = HasOne("tests.repository.child_entities.PostMeta")
     comments = HasMany("tests.repository.child_entities.Comment")

@@ -99,7 +99,10 @@ class Domain(_PackageBoundObject):
             "AUTOLOAD_DOMAIN": True,
             "IDENTITY_STRATEGY": IdentityStrategy.UUID.value,
             "IDENTITY_TYPE": IdentityType.STRING.value,
-            "DATABASES": {"default": {"PROVIDER": "protean.adapters.MemoryProvider"}},
+            "DATABASES": {
+                "default": {"PROVIDER": "protean.adapters.MemoryProvider"},
+                "memory": {"PROVIDER": "protean.adapters.MemoryProvider"},
+            },
             "EVENT_PROCESSING": EventProcessing.ASYNC.value,
             "COMMAND_PROCESSING": CommandProcessing.ASYNC.value,
             "EVENT_STORE": {
