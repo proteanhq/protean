@@ -93,3 +93,6 @@ class TestOptions:
             "age",
             "id",
         ]  # `relative_of` is ignored
+
+    def test_meta_equality(self):
+        assert Person.meta_ != PersonAutoSSN.meta_
