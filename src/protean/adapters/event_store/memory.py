@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, List
 
 from protean import BaseAggregate, BaseRepository
@@ -57,7 +57,7 @@ class MemoryMessageRepository(BaseRepository):
                 type=message_type,
                 data=data,
                 metadata=MessageMetadata(**metadata) if metadata else None,
-                time=datetime.utcnow(),
+                time=datetime.now(UTC),
             )
         )
 

@@ -10,7 +10,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ConfigurationError
 from protean.globals import g
-from protean.utils.importlib import import_from_full_path
+from protean.utils import import_from_full_path
 from protean.utils.mixins import Message
 
 from .subscription import Subscription

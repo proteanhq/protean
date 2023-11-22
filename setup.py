@@ -27,8 +27,8 @@ def read(*names, **kwargs):
 elasticsearch_requires = ["elasticsearch~=7.17.9", "elasticsearch-dsl~=7.4.1"]
 
 redis_requires = ["redis==3.5.2"]
-sqlite_requires = ["sqlalchemy==1.4.47"]
-postgresql_requires = ["psycopg2>=2.8.4", "sqlalchemy==1.4.47"]
+sqlite_requires = ["sqlalchemy~=1.4.50"]
+postgresql_requires = ["psycopg2>=2.9.9", "sqlalchemy~=1.4.50"]
 celery_requires = ["celery[redis]~=5.2.7"]
 sendgrid_requires = ["sendgrid>=6.1.3"]
 flask_requires = ["flask>=1.1.1"]
@@ -41,7 +41,7 @@ install_requires = marshmallow_requires + [
     "cookiecutter>=1.7.0",
     "copier>=6.1.0",
     "inflection>=0.5.1",
-    "python-dateutil>=2.8.1",
+    "python-dateutil>=2.8.2",
     "werkzeug>=2.0.0",
 ]
 
@@ -58,20 +58,20 @@ all_external_requires = [
 
 testing_requires = all_external_requires + [
     "autoflake>=2.2.1",
-    "isort>=5.10.1",
-    "mock==4.0.2",
-    "pluggy==0.13.1",
-    "pytest-asyncio>=0.15.1",
-    "pytest-cov==2.8.1",
-    "pytest-flake8>=1.0.7",
-    "pytest-mock==3.1.0",
-    "pytest>=5.4.2",
+    "isort>=5.12.0",
+    "mock==5.1.0",
+    "pluggy==1.3.0",
+    "pytest-asyncio>=0.21.1",
+    "pytest-cov>=4.1.0",
+    "pytest-flake8>=1.1.1",
+    "pytest-mock==3.12.0",
+    "pytest>=7.4.3",
 ]
 
 docs_requires = [
     "livereload>=2.6.3",
-    "sphinx>=4.1.2",
-    "sphinx-tabs>=3.2.0",
+    "sphinx>=7.2.6",
+    "sphinx-tabs>=3.4.4",
 ]
 
 types_requires = [
@@ -86,13 +86,13 @@ dev_requires = (
     + types_requires
     + testing_requires
     + [
-        "black==21.11b1",
-        "check-manifest==0.42",
-        "coverage==5.1",
-        "docutils==0.16",
+        "black>=23.11.0",
+        "check-manifest>=0.49",
+        "coverage>=7.3.2",
+        "docutils>=0.18.0",
         "pre-commit>=2.16.0",
-        "tox==3.15.0",
-        "twine==3.1.1",
+        "tox>=4.11.3",
+        "twine>=4.0.2",
     ]
 )
 
@@ -123,9 +123,6 @@ setup(
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
         "Programming Language :: Python",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3 :: Only",

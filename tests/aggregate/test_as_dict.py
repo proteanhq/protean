@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from protean import BaseAggregate, BaseEntity, BaseValueObject
 from protean.fields import (
@@ -11,6 +11,7 @@ from protean.fields import (
     Text,
     ValueObject,
 )
+from protean.utils import utcnow_func
 
 
 class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
@@ -34,9 +35,9 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             title = String(required=True, max_length=1000)
             slug = String(required=True, max_length=1024)
             content = Text(required=True)
-            posted_at = DateTime(required=True, default=datetime.utcnow)
+            posted_at = DateTime(required=True, default=utcnow_func)
 
-        current_time = datetime.utcnow()
+        current_time = datetime.now(UTC)
         post = Post(
             title="Test Post",
             slug="test-post",

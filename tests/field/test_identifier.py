@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -38,7 +38,7 @@ def test_string_identifiers_are_preserved_as_strings_in_as_dict():
 def test_that_only_ints_or_strings_are_allowed_in_identifiers():
     identifier = Identifier()
 
-    invalid_values = [42.0, {"a": 1}, ["a", "b"], True, datetime.utcnow()]
+    invalid_values = [42.0, {"a": 1}, ["a", "b"], True, datetime.now(UTC)]
     for value in invalid_values:
         with pytest.raises(ValidationError):
             identifier._load(value)

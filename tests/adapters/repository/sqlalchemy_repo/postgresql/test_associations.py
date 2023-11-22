@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
@@ -36,7 +36,7 @@ def test_updating_a_has_many_association(test_domain):
 
     post_repo = test_domain.repository_for(Post)
     post = Post(content="bar")
-    post.add_comments(Comment(content="foo", added_on=datetime.utcnow()))
+    post.add_comments(Comment(content="foo", added_on=datetime.now(UTC)))
     post_repo.add(post)
 
     with UnitOfWork():

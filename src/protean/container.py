@@ -164,13 +164,6 @@ class ContainerMeta(type):
             if attr_name not in fields_dict
         }
 
-        # Propagate `__classcell__` if present to the `type.__new__` call.
-        # Failing to do so will result in a RuntimeError in Python 3.8.
-        # https://docs.python.org/3/reference/datamodel.html#creating-the-class-object
-        classcell = attrs.pop("__classcell__", None)
-        if classcell is not None:
-            dup_attrs["__classcell__"] = classcell
-
         # Insert fields in the order in which they were specified
         #   When field names overlap, the last specified field wins
         dup_attrs.update(fields_dict)

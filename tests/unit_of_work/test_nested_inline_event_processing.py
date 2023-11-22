@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from uuid import uuid4
 
 import pytest
@@ -17,13 +16,14 @@ from protean import (
 from protean.fields import DateTime, Identifier, String, Text
 from protean.fields.basic import Boolean
 from protean.globals import current_domain
+from protean.utils import utcnow_func
 
 published_count = 0
 
 
 class Published(BaseEvent):
     id = Identifier(required=True)
-    published_time = DateTime(default=datetime.utcnow)
+    published_time = DateTime(default=utcnow_func)
 
 
 class Post(BaseEventSourcedAggregate):

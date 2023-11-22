@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
@@ -110,7 +110,7 @@ def test_array_content_type_validation(test_domain):
         {"email": "john.doe@gmail.com", "roles": [1, 2]},
         {"email": "john.doe@gmail.com", "roles": ["1", 2]},
         {"email": "john.doe@gmail.com", "roles": [1.0, 2.0]},
-        {"email": "john.doe@gmail.com", "roles": [datetime.utcnow()]},
+        {"email": "john.doe@gmail.com", "roles": [datetime.now(UTC)]},
     ]:
         with pytest.raises(ValidationError) as exception:
             ArrayUser(**kwargs)
@@ -127,7 +127,7 @@ def test_array_content_type_validation(test_domain):
     for kwargs in [
         {"email": "john.doe@gmail.com", "roles": ["ADMIN", "USER"]},
         {"email": "john.doe@gmail.com", "roles": ["1", "2"]},
-        {"email": "john.doe@gmail.com", "roles": [datetime.utcnow()]},
+        {"email": "john.doe@gmail.com", "roles": [datetime.now(UTC)]},
     ]:
         with pytest.raises(ValidationError) as exception:
             IntegerArrayUser(**kwargs)

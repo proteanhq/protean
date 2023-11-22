@@ -4,13 +4,13 @@ Definitions/declaractions in this module should be independent of other modules,
 to the maximum extent possible.
 """
 import functools
+import importlib
 import logging
 
+from datetime import UTC, datetime
 from enum import Enum, auto
 from typing import Any, Tuple, Union
 from uuid import uuid4
-
-import pkg_resources
 
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.globals import current_domain
@@ -64,8 +64,21 @@ class TypeMatcher:
         return isinstance(other, self.expected_type)
 
 
+def utcnow_func():
+    """Return the current time in UTC with timezone information"""
+    return datetime.now(UTC)
+
+
 def get_version():
-    return pkg_resources.require("protean")[0].version
+    return importlib.metadata.version("protean")
+
+
+def import_from_full_path(domain, path):
+    spec = importlib.util.spec_from_file_location(domain, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    return getattr(mod, domain)
 
 
 def fully_qualified_name(cls):

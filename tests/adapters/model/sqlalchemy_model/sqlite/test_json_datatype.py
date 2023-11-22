@@ -1,16 +1,15 @@
-from datetime import datetime
-
 import pytest
 
 from sqlalchemy import types as sa_types
 
 from protean import BaseAggregate
 from protean.fields import DateTime, Dict, String
+from protean.utils import utcnow_func
 
 
 class Event(BaseAggregate):
     name = String(max_length=255)
-    created_at = DateTime(default=datetime.utcnow())
+    created_at = DateTime(default=utcnow_func)
     payload = Dict()
 
 

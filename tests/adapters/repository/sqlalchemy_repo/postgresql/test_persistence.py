@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
@@ -8,7 +8,7 @@ from protean.fields import DateTime, Dict, String
 
 class Event(BaseAggregate):
     name = String(max_length=255)
-    created_at = DateTime(default=datetime.utcnow())
+    created_at = DateTime(default=datetime.now(UTC))
     payload = Dict()
 
 

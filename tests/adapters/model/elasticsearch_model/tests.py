@@ -346,7 +346,7 @@ class TestCustomModel:
         model_cls = test_domain.repository_for(Receiver)._model
         conn = test_domain.providers["default"].get_connection()
         if model_cls._index.exists(using=conn):
-            conn.indices.delete(model_cls._index._name)
+            conn.indices.delete(index=model_cls._index._name)
         model_cls.init(using=conn)
 
         receiver_dao = test_domain.repository_for(Receiver)._dao
@@ -356,4 +356,4 @@ class TestCustomModel:
         assert receiver is not None
         assert receiver.name == "John"
 
-        conn.indices.delete(model_cls._index._name)
+        conn.indices.delete(index=model_cls._index._name)

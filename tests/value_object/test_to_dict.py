@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from protean import BaseAggregate
 from protean.core.value_object import BaseValueObject
@@ -39,12 +39,12 @@ class TestAsDict:
         assert simple.to_dict() == {"id": 12, "vo": {"foo": "foo", "bar": "bar"}}
 
     def test_datetime_vo_dict(self):
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         vo = VOWithDateTime(foo="foo", now=now)
         assert vo.to_dict() == {"foo": "foo", "now": str(now)}
 
     def test_embedded_datetime_vo(self):
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         vo = VOWithDateTime(foo="foo", now=now)
         simple = EntityWithDateTimeVO(id=12, vo=vo)
         assert simple.to_dict() == {"id": 12, "vo": {"foo": "foo", "now": str(now)}}
