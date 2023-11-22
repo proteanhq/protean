@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
 from uuid import uuid4
 
 import pytest
 
 from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.fields import DateTime, Identifier, String, Text
+from protean.utils import utcnow_func
 
 
 class User(BaseEventSourcedAggregate):
@@ -53,7 +53,7 @@ class Created(BaseEvent):
 
 class Published(BaseEvent):
     id = Identifier(required=True)
-    published_time = DateTime(default=datetime.utcnow)
+    published_time = DateTime(default=utcnow_func)
 
     class Meta:
         aggregate_cls = Post

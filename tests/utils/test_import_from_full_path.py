@@ -1,6 +1,6 @@
 import pytest
 
-from protean.utils.importlib import import_from_full_path
+from protean.utils import import_from_full_path
 
 
 def test_that_a_domain_can_be_imported_from_a_full_path():

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date
 
 import pytest
 
@@ -6,7 +6,7 @@ from protean import BaseAggregate
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import Date, DateTime, HasMany, Reference, String
 from protean.reflection import declared_fields
-from protean.utils import fully_qualified_name
+from protean.utils import fully_qualified_name, utcnow_func
 
 
 class TestAggregateRegistration:
@@ -59,8 +59,8 @@ class TestAggregateIdentity:
     def test_that_abstract_aggregates_do_not_have_id_field(self, test_domain):
         @test_domain.aggregate
         class TimeStamped:
-            created_at = DateTime(default=datetime.utcnow)
-            updated_at = DateTime(default=datetime.utcnow)
+            created_at = DateTime(default=utcnow_func)
+            updated_at = DateTime(default=utcnow_func)
 
             class Meta:
                 abstract = True

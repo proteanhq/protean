@@ -27,8 +27,8 @@ def read(*names, **kwargs):
 elasticsearch_requires = ["elasticsearch~=7.17.9", "elasticsearch-dsl~=7.4.1"]
 
 redis_requires = ["redis==3.5.2"]
-sqlite_requires = ["sqlalchemy==1.4.47"]
-postgresql_requires = ["psycopg2>=2.8.4", "sqlalchemy==1.4.47"]
+sqlite_requires = ["sqlalchemy~=1.4.50"]
+postgresql_requires = ["psycopg2>=2.9.9", "sqlalchemy~=1.4.50"]
 celery_requires = ["celery[redis]~=5.2.7"]
 sendgrid_requires = ["sendgrid>=6.1.3"]
 flask_requires = ["flask>=1.1.1"]
@@ -41,7 +41,7 @@ install_requires = marshmallow_requires + [
     "cookiecutter>=1.7.0",
     "copier>=6.1.0",
     "inflection>=0.5.1",
-    "python-dateutil>=2.8.1",
+    "python-dateutil>=2.8.2",
     "werkzeug>=2.0.0",
 ]
 
@@ -123,9 +123,6 @@ setup(
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
         "Programming Language :: Python",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3 :: Only",

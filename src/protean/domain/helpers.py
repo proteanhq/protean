@@ -1,6 +1,6 @@
+import importlib.util
 import logging
 import os
-import pkgutil
 import sys
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ def get_root_path(import_name):
         return os.path.dirname(os.path.abspath(mod.__file__))
 
     # Next attempt: check the loader.
-    loader = pkgutil.get_loader(import_name)
+    loader = importlib.util.find_spec(import_name)
 
     # Loader does not exist or we're referring to an unloaded main module
     # or a main module without path (interactive sessions), go with the

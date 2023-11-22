@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import mock
@@ -85,10 +85,10 @@ async def test_no_filtering_for_event_handlers_without_defined_origin_stream(
             user, Registered(id=identifier, email="john.doe@gmail.com", name="John Doe")
         ),
         Message.to_aggregate_event_message(
-            user, Activated(id=identifier, activated_at=datetime.utcnow())
+            user, Activated(id=identifier, activated_at=datetime.now(UTC))
         ),
         Message.to_aggregate_event_message(
-            email, Sent(email="john.doe@gmail.com", sent_at=datetime.utcnow())
+            email, Sent(email="john.doe@gmail.com", sent_at=datetime.now(UTC))
         ),
     ]
     messages[2].metadata.origin_stream_name = f"user-{identifier}"
