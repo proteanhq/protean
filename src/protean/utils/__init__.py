@@ -7,6 +7,7 @@ import functools
 import importlib
 import logging
 
+from datetime import UTC, datetime
 from enum import Enum, auto
 from typing import Any, Tuple, Union
 from uuid import uuid4
@@ -65,10 +66,7 @@ class TypeMatcher:
 
 def utcnow_func():
     """Return the current time in UTC with timezone information"""
-    from datetime import UTC, datetime
-    from functools import partial
-
-    return partial(datetime.now, UTC)
+    return datetime.now(UTC)
 
 
 def get_version():
