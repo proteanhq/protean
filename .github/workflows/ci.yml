@@ -74,8 +74,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install setuptools
-          pip install .[test]
+          poetry install --with dev,test,docs,types --all-extras
         if: steps.cache.outputs.cache-hit != 'true'
 
       - name: Tests
