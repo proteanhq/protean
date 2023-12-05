@@ -19,7 +19,7 @@ def test_json_data_type_association(test_domain):
     test_domain.register(Event)
 
     model_cls = test_domain.repository_for(Event)._model
-    type(model_cls.payload.property.columns[0].type) == sa_types.JSON
+    type(model_cls.payload.property.columns[0].type) is sa_types.JSON
 
 
 @pytest.mark.postgresql

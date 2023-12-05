@@ -35,4 +35,4 @@ class TestEventProcessing:
     def test_that_an_event_is_published_to_the_broker(self, mock):
         Person.add_newcomer({"first_name": "John", "last_name": "Doe", "age": 21})
         mock.assert_called_once()
-        assert type(mock.call_args.args[0]) == dict
+        assert type(mock.call_args.args[0]) is dict
