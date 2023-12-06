@@ -48,6 +48,9 @@ inject dependencies into the domain elements.
 
 By default, a protean domain is configured to use an in-memory repository. This is useful for testing and prototyping.
 
+If you do not want Protean to traverse the directory structure to discover domain elements, you can pass the
+``traverse`` flag as ``False`` to the ``init`` method.
+
 You can optionally pass a config file to the domain before initializing it. Refer to :doc:`config` to understand the different ways to configure the domain.
 
 Activating a Domain
