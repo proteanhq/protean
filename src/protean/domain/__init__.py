@@ -96,7 +96,6 @@ class Domain(_PackageBoundObject):
             "ENV": None,
             "DEBUG": None,
             "SECRET_KEY": None,
-            "AUTOLOAD_DOMAIN": True,
             "IDENTITY_STRATEGY": IdentityStrategy.UUID.value,
             "IDENTITY_TYPE": IdentityType.STRING.value,
             "DATABASES": {
@@ -171,15 +170,14 @@ class Domain(_PackageBoundObject):
         # FIXME Should all protean elements be subclassed from a base element?
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
 
-    def init(self):  # noqa: C901
+    def init(self, traverse=True):  # noqa: C901
         """Parse the domain folder, and attach elements dynamically to the domain.
 
         Protean parses all files in the domain file's folder, as well as under it,
         to load elements. So, all domain files are to be nested under the file contain
         the domain definition.
 
-        One can use the `AUTOLOAD_DOMAIN` flag in Protean config, `True` by default,
-        to control this functionality.
+        One can use the `traverse` flag to control this functionality, `True` by default.
 
         When enabled, Protean is responsible for loading domain elements and ensuring
         all functionality is activated.
@@ -194,7 +192,7 @@ class Domain(_PackageBoundObject):
 
         This method bubbles up circular import issues, if present, in the domain code.
         """
-        if self.config["AUTOLOAD_DOMAIN"] is True:
+        if traverse is True:
             # Standard Library Imports
             import importlib.util
             import inspect

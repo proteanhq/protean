@@ -68,6 +68,17 @@ Note that Protean uses SQLAlchemy to access the SQLITE database internally.
 
 A database file ``quickstart.db`` will be created in the location you will be running your application from.
 
+Initialize the domain
+---------------------
+
+Before you can use the domain, you need to initialize it. Initialize the domain by calling :meth:`protean.Domain.init` on the domain instance.
+
+.. code-block:: python
+
+    domain.init(traverse=False)
+
+Since all our code is in the same module, we can use ``traverse=False``. If you have your code spread across multiple modules, you can set ``traverse=True`` to traverse the entire module tree and load all the elements.
+
 Configure Flask
 ---------------
 
@@ -81,19 +92,23 @@ We also register a function to run before Flask processes the very first request
 
     app = Flask(__name__)
 
-    @app.before_first_request
-    def set_context():
-        with domain.domain_context():
-            for provider in domain.providers_list():
-                for _, aggregate in domain.registry.aggregates.items():
-                    domain.get_dao(aggregate.cls)
-
-                provider._metadata.create_all()
-
     @app.before_request
     def set_context():
         context = domain.domain_context()
         context.push()
+
+If you want to create the database tables automatically from the structure defined in the domain, you can:
+
+.. code-block:: python
+
+    @app.before_first_request
+    def setup_db():
+        with domain.domain_context():
+            for provider in domain.providers_list():
+                for _, aggregate in domain.registry.aggregates.items():
+                    domain.repository_for(aggregate.cls)._dao
+
+                provider._metadata.create_all()
 
 .. |flask| raw:: html
 
