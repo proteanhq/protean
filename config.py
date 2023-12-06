@@ -11,9 +11,6 @@ from protean.utils import (
 class Config:
     DEBUG = True
 
-    # Parse domain directory and autoload domain modules
-    AUTOLOAD_DOMAIN = True
-
     # A secret key for this particular Protean installation. Used in secret-key
     # hashing algorithms.
     SECRET_KEY = os.environ.get(
