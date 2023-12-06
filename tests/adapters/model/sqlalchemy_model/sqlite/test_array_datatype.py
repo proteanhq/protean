@@ -34,7 +34,7 @@ def test_array_data_type_association(test_domain):
     test_domain.register(ArrayUser)
 
     model_cls = test_domain.repository_for(ArrayUser)._model
-    type(model_cls.roles.property.columns[0].type) == sa_types.ARRAY
+    type(model_cls.roles.property.columns[0].type) is sa_types.ARRAY
 
 
 @pytest.mark.sqlite

@@ -10,4 +10,4 @@ def test_utcnow_func():
 
     result = func()
     assert result is not None
-    assert type(result) == datetime.datetime
+    assert type(result) is datetime.datetime
