@@ -2,6 +2,7 @@
 
     isort:skip_file
 """
+
 import os
 
 import pytest
@@ -70,13 +71,9 @@ def pytest_addoption(parser):
 
 def pytest_collection_modifyitems(config, items):
     """Configure special markers on tests, so as to control execution"""
-    run_slow = (
-        run_pending
-    ) = (
-        run_sqlite
-    ) = (
-        run_postgresql
-    ) = run_elasticsearch = run_redis = run_message_db = run_sendgrid = False
+    run_slow = run_pending = run_sqlite = run_postgresql = run_elasticsearch = (
+        run_redis
+    ) = run_message_db = run_sendgrid = False
 
     if config.getoption("--slow"):
         # --slow given in cli: do not skip slow tests
@@ -182,25 +179,28 @@ def db_config(request):
 
 
 @pytest.fixture(autouse=True)
-def test_domain(db_config, store_config):
-    from protean.domain import Domain
+def test_domain(db_config, store_config, request):
+    if "no_test_domain" in request.keywords:
+        yield
+    else:
+        from protean.domain import Domain
 
-    domain = Domain("Test")
+        domain = Domain("Test")
 
-    # Construct relative path to config file
-    current_path = os.path.abspath(os.path.dirname(__file__))
-    config_path = os.path.join(current_path, "./config.py")
+        # Construct relative path to config file
+        current_path = os.path.abspath(os.path.dirname(__file__))
+        config_path = os.path.join(current_path, "./config.py")
 
-    if os.path.exists(config_path):
-        domain.config.from_pyfile(config_path)
+        if os.path.exists(config_path):
+            domain.config.from_pyfile(config_path)
 
-    domain.config["DATABASES"]["default"] = db_config
-    domain.config["EVENT_STORE"] = store_config
+        domain.config["DATABASES"]["default"] = db_config
+        domain.config["EVENT_STORE"] = store_config
 
-    domain.init()
+        domain.init()
 
-    with domain.domain_context():
-        yield domain
+        with domain.domain_context():
+            yield domain
 
 
 @pytest.fixture
@@ -230,20 +230,21 @@ def run_around_tests(test_domain):
 
     yield
 
-    # FIXME Providers has to become a MutableMapping
-    for provider_name in test_domain.providers:
-        provider = test_domain.providers[provider_name]
-        provider._data_reset()
+    if test_domain:
+        # FIXME Providers has to become a MutableMapping
+        for provider_name in test_domain.providers:
+            provider = test_domain.providers[provider_name]
+            provider._data_reset()
 
-    for broker_name in test_domain.brokers:
-        broker = test_domain.brokers[broker_name]
-        broker._data_reset()
+        for broker_name in test_domain.brokers:
+            broker = test_domain.brokers[broker_name]
+            broker._data_reset()
 
-    for cache_name in test_domain.caches:
-        cache = test_domain.caches[cache_name]
-        cache.flush_all()
+        for cache_name in test_domain.caches:
+            cache = test_domain.caches[cache_name]
+            cache.flush_all()
 
-    test_domain.event_store.store._data_reset()
+        test_domain.event_store.store._data_reset()
 
 
 def assert_str_is_uuid(value: str) -> None:
