@@ -1,3 +1,3 @@
 from protean import Domain
 
-domain = Domain("FOLDER")
+domain = Domain(__file__, "FOLDER")

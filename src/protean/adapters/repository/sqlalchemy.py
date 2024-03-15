@@ -1,4 +1,5 @@
 """Module with repository implementation for SQLAlchemy"""
+
 import logging
 import uuid
 
@@ -222,9 +223,9 @@ class SqlalchemyModel(BaseModel):
         item_dict = {}
         for attribute_obj in attributes(cls.meta_.entity_cls).values():
             if isinstance(attribute_obj, Reference):
-                item_dict[
-                    attribute_obj.relation.attribute_name
-                ] = attribute_obj.relation.value
+                item_dict[attribute_obj.relation.attribute_name] = (
+                    attribute_obj.relation.value
+                )
             else:
                 item_dict[attribute_obj.attribute_name] = getattr(
                     entity, attribute_obj.attribute_name
@@ -645,7 +646,7 @@ class SAProvider(BaseProvider):
 
             from protean.core.model import ModelMeta
 
-            meta_ = ModelMeta()
+            meta_ = ModelMeta(model_cls.meta_)
             meta_.entity_cls = entity_cls
 
             custom_attrs.update({"meta_": meta_, "metadata": self._metadata})

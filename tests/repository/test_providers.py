@@ -1,5 +1,7 @@
 from typing import List
 
+import pytest
+
 from protean import BaseAggregate, BaseRepository
 from protean.fields import Integer, String
 from protean.globals import current_domain
@@ -54,70 +56,82 @@ class PersonSQLiteCustomRepository(BaseRepository):
 
 
 class TestRepositoryConstructionAndRegistration:
-    def test_default_repository_construction_and_registration(self, test_domain):
-        test_domain.register(PersonGeneric)
-        test_domain.repository_for(PersonGeneric)
+    @pytest.fixture
+    def custom_test_domain(self, test_domain):
+        test_domain.config["DATABASES"]["sqlite"] = {
+            "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
+            "DATABASE": "SQLITE",
+            "DATABASE_URI": "sqlite:///test.db",
+        }
+        test_domain.reinitialize()
+        yield test_domain
 
-        repo_cls_constructed = test_domain.providers._repositories[
+    def test_default_repository_construction_and_registration(self, custom_test_domain):
+        custom_test_domain.register(PersonGeneric)
+        custom_test_domain.repository_for(PersonGeneric)
+
+        repo_cls_constructed = custom_test_domain.providers._repositories[
             fully_qualified_name(PersonGeneric)
         ]["ALL"]
-        repo_retrieved_from_domain = test_domain.repository_for(PersonGeneric)
+        repo_retrieved_from_domain = custom_test_domain.repository_for(PersonGeneric)
 
         assert repo_cls_constructed.__name__ == "PersonGenericRepository"
         assert isinstance(repo_retrieved_from_domain, repo_cls_constructed)
 
-    def test_custom_generic_repository_registration(self, test_domain):
-        test_domain.register(PersonGeneric)
-        test_domain.register(PersonCustomRepository)
-        test_domain.repository_for(PersonGeneric)
+    def test_custom_generic_repository_registration(self, custom_test_domain):
+        custom_test_domain.register(PersonGeneric)
+        custom_test_domain.register(PersonCustomRepository)
+        custom_test_domain.repository_for(PersonGeneric)
 
-        repo_cls_constructed = test_domain.providers._repositories[
+        repo_cls_constructed = custom_test_domain.providers._repositories[
             fully_qualified_name(PersonGeneric)
         ]["ALL"]
-        repo_retrieved_from_domain = test_domain.repository_for(PersonGeneric)
+        repo_retrieved_from_domain = custom_test_domain.repository_for(PersonGeneric)
 
         assert repo_cls_constructed.__name__ == "PersonCustomRepository"
         assert isinstance(repo_retrieved_from_domain, repo_cls_constructed)
 
     def test_default_repository_construction_and_registration_for_non_memory_database(
-        self, test_domain
+        self, custom_test_domain
     ):
-        test_domain.register(PersonSQLite)
-        test_domain.repository_for(PersonSQLite)
+        custom_test_domain.register(PersonSQLite)
+        custom_test_domain.repository_for(PersonSQLite)
 
-        repo_cls_constructed = test_domain.providers._repositories[
+        repo_cls_constructed = custom_test_domain.providers._repositories[
             fully_qualified_name(PersonSQLite)
         ]["ALL"]
-        repo_retrieved_from_domain = test_domain.repository_for(PersonSQLite)
+        repo_retrieved_from_domain = custom_test_domain.repository_for(PersonSQLite)
 
         assert repo_cls_constructed.__name__ == "PersonSQLiteRepository"
         assert isinstance(repo_retrieved_from_domain, repo_cls_constructed)
 
     def test_custom_repository_construction_and_registration_for_non_memory_database(
-        self, test_domain
+        self, custom_test_domain
     ):
-        test_domain.register(PersonSQLite)
-        test_domain.register(PersonSQLiteCustomRepository)
-        test_domain.repository_for(PersonSQLite)
+        custom_test_domain.register(PersonSQLite)
+        custom_test_domain.register(PersonSQLiteCustomRepository)
+        custom_test_domain.repository_for(PersonSQLite)
 
-        repo_cls_constructed = test_domain.providers._repositories[
+        repo_cls_constructed = custom_test_domain.providers._repositories[
             fully_qualified_name(PersonSQLite)
         ]["SQLITE"]
-        repo_retrieved_from_domain = test_domain.repository_for(PersonSQLite)
+        repo_retrieved_from_domain = custom_test_domain.repository_for(PersonSQLite)
 
         assert repo_cls_constructed.__name__ == "PersonSQLiteCustomRepository"
         assert isinstance(repo_retrieved_from_domain, repo_cls_constructed)
 
-    def test_that_sqlite_repository_is_chosen_over_generic_provider(self, test_domain):
-        test_domain.register(PersonSQLite)
-        test_domain.register(PersonSQLiteGenericRepository)
-        test_domain.register(PersonSQLiteCustomRepository)
-        test_domain.repository_for(PersonSQLite)
+    def test_that_sqlite_repository_is_chosen_over_generic_provider(
+        self, custom_test_domain
+    ):
+        custom_test_domain.register(PersonSQLite)
+        custom_test_domain.register(PersonSQLiteGenericRepository)
+        custom_test_domain.register(PersonSQLiteCustomRepository)
+        custom_test_domain.repository_for(PersonSQLite)
 
-        repo_cls_constructed = test_domain.providers._repositories[
+        repo_cls_constructed = custom_test_domain.providers._repositories[
             fully_qualified_name(PersonSQLite)
         ]["SQLITE"]
-        repo_retrieved_from_domain = test_domain.repository_for(PersonSQLite)
+        repo_retrieved_from_domain = custom_test_domain.repository_for(PersonSQLite)
 
         assert repo_cls_constructed.__name__ == "PersonSQLiteCustomRepository"
         assert isinstance(repo_retrieved_from_domain, repo_cls_constructed)

@@ -6,7 +6,7 @@ import pytest
 def initialize_domain():
     from protean.domain import Domain
 
-    domain = Domain("SQLAlchemy Test - SQLite")
+    domain = Domain(__file__, "SQLAlchemy Test - SQLite")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -15,20 +15,21 @@ def initialize_domain():
     if os.path.exists(config_path):
         domain.config.from_pyfile(config_path)
 
+    domain.reinitialize()
     return domain
-
-
-domain = initialize_domain()
 
 
 @pytest.fixture(autouse=True)
 def test_domain():
+    domain = initialize_domain()
+
     with domain.domain_context():
         yield domain
 
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_db():
+    domain = initialize_domain()
     with domain.domain_context():
         # Create all associated tables
         from .elements import (

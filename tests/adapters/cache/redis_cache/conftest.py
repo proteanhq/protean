@@ -6,7 +6,7 @@ import pytest
 def initialize_domain():
     from protean.domain import Domain
 
-    domain = Domain("Redis Cache Tests")
+    domain = Domain(__file__, "Redis Cache Tests")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -21,7 +21,7 @@ def initialize_domain():
 @pytest.fixture(autouse=True)
 def test_domain():
     domain = initialize_domain()
-    domain.init()
+    domain.reinitialize()
 
     with domain.domain_context():
         yield domain

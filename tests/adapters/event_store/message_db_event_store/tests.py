@@ -13,7 +13,7 @@ class TestMessageDBEventStore:
         assert isinstance(test_domain.event_store.store, MessageDBStore)
 
     def test_error_on_message_db_initialization(self):
-        domain = Domain()
+        domain = Domain(__file__)
         domain.config["EVENT_STORE"][
             "PROVIDER"
         ] = "protean.adapters.event_store.message_db.MessageDBStore"

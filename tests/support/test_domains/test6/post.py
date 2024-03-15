@@ -1,8 +1,7 @@
 from datetime import datetime
 
 from protean.fields import DateTime, HasMany, Reference, String
-
-from .publishing import domain
+from tests.support.test_domains.test6.publishing import domain
 
 
 @domain.aggregate

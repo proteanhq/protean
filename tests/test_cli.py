@@ -18,17 +18,17 @@ def runner():
 
 def test_find_best_domain():
     class Module:
-        domain = Domain("name")
+        domain = Domain(__file__, "name")
 
     assert find_best_domain(Module) == Module.domain
 
     class Module:
-        subdomain = Domain("name")
+        subdomain = Domain(__file__, "name")
 
     assert find_best_domain(Module) == Module.subdomain
 
     class Module:
-        my_domain = Domain("name")
+        my_domain = Domain(__file__, "name")
 
     assert find_best_domain(Module) == Module.my_domain
 
@@ -38,8 +38,8 @@ def test_find_best_domain():
     pytest.raises(NoDomainException, find_best_domain, Module)
 
     class Module:
-        my_domain1 = Domain("name1")
-        my_domain2 = Domain("name2")
+        my_domain1 = Domain(__file__, "name1")
+        my_domain2 = Domain(__file__, "name2")
 
     pytest.raises(NoDomainException, find_best_domain, Module)
 

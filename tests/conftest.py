@@ -185,7 +185,7 @@ def test_domain(db_config, store_config, request):
     else:
         from protean.domain import Domain
 
-        domain = Domain("Test")
+        domain = Domain(__file__, "Test")
 
         # Construct relative path to config file
         current_path = os.path.abspath(os.path.dirname(__file__))
@@ -197,8 +197,7 @@ def test_domain(db_config, store_config, request):
         domain.config["DATABASES"]["default"] = db_config
         domain.config["EVENT_STORE"] = store_config
 
-        domain.init()
-
+        domain.reinitialize()
         with domain.domain_context():
             yield domain
 

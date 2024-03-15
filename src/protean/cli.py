@@ -14,6 +14,7 @@ Why does this file exist, and why not put this in __main__?
 
   Also see (1) from http://click.pocoo.org/5/setuptools/#setuptools-integration
 """
+
 import ast
 import os
 import re
@@ -193,20 +194,24 @@ def derive_domain(domain_path):
 def test(category):
     import subprocess
 
+    commands = ["pytest", "--cache-clear", "--ignore=tests/support/"]
+
     if category:
+        if category == "BASIC":
+            print(f"Running core tests...")
+            subprocess.call(commands)
         if category == "EVENTSTORE":
             for store in ["MEMORY", "MESSAGE_DB"]:
                 print(f"Running tests for EVENTSTORE: {store}...")
-                subprocess.call(["pytest", "-m", "eventstore", f"--store={store}"])
+                subprocess.call(commands + ["-m", "eventstore", f"--store={store}"])
         elif category == "DATABASE":
             for db in ["POSTGRESQL", "SQLITE"]:
                 print(f"Running tests for DATABASE: {db}...")
-                subprocess.call(["pytest", "-m", "database", f"--db={db}"])
+                subprocess.call(commands + ["-m", "database", f"--db={db}"])
         elif category == "WITH_COVERAGE":
             subprocess.call(
-                [
-                    "pytest",
-                    "--cache-clear",
+                commands
+                + [
                     "--slow",
                     "--sqlite",
                     "--postgresql",
@@ -222,9 +227,8 @@ def test(category):
     else:
         # Run full suite
         subprocess.call(
-            [
-                "pytest",
-                "--cache-clear",
+            commands
+            + [
                 "--slow",
                 "--sqlite",
                 "--postgresql",
@@ -239,11 +243,11 @@ def test(category):
         for db in ["POSTGRESQL", "SQLITE"]:
             print(f"Running tests for DB: {db}...")
 
-            subprocess.call(["pytest", "-m", "database", f"--db={db}"])
+            subprocess.call(commands + ["-m", "database", f"--db={db}"])
 
         for store in ["MESSAGE_DB"]:
             print(f"Running tests for EVENTSTORE: {store}...")
-            subprocess.call(["pytest", "-m", "eventstore", f"--store={store}"])
+            subprocess.call(commands + ["-m", "eventstore", f"--store={store}"])
 
 
 @main.command()

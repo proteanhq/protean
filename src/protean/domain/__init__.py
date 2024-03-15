@@ -173,6 +173,9 @@ class Domain(_PackageBoundObject):
         # FIXME Should all protean elements be subclassed from a base element?
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
 
+        # Initialize domain with default adapters
+        self._initialize()
+
     def init(self, traverse=True):  # noqa: C901
         """Parse the domain folder, and attach elements dynamically to the domain.
 

@@ -8,7 +8,7 @@ from protean import (
 from protean.fields import Identifier, String
 from tests.server.test_command_handling import UserCommandHandler
 
-baz = Domain(domain_name="FooBar")
+baz = Domain(__file__, "FooBar")
 
 
 class Registered(BaseEvent):

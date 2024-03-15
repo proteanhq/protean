@@ -1,3 +1,3 @@
 from protean import Domain
 
-dom2 = Domain("INSTANCE")
+dom2 = Domain(__file__, "INSTANCE")

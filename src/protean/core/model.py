@@ -15,11 +15,11 @@ class ModelMeta:
     def __init__(self, meta=None):
         if meta:
             self.entity_cls = getattr(meta, "entity_cls", None)
-            self.schema = getattr(meta, "schema", None)
+            self.schema_name = getattr(meta, "schema_name", None)
             self.database = getattr(meta, "database", None)
         else:
             self.entity_cls = None
-            self.schema = None
+            self.schema_name = None
             self.database = None
 
 
@@ -57,8 +57,10 @@ def model_factory(element_cls, **kwargs):
     if not (hasattr(element_cls.meta_, "entity_cls") and element_cls.meta_.entity_cls):
         element_cls.meta_.entity_cls = kwargs.pop("entity_cls", None)
 
-    if not (hasattr(element_cls.meta_, "schema") and element_cls.meta_.schema):
-        element_cls.meta_.schema = kwargs.pop("schema", None)
+    if not (
+        hasattr(element_cls.meta_, "schema_name") and element_cls.meta_.schema_name
+    ):
+        element_cls.meta_.schema_name = kwargs.pop("schema_name", None)
 
     if not (hasattr(element_cls.meta_, "database") and element_cls.meta_.database):
         element_cls.meta_.database = kwargs.pop("database", None)

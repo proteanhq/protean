@@ -6,7 +6,7 @@ import pytest
 def initialize_domain():
     from protean.domain import Domain
 
-    domain = Domain("Celery Tests")
+    domain = Domain(__file__, "Celery Tests")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -15,8 +15,6 @@ def initialize_domain():
     if os.path.exists(config_path):
         domain.config.from_pyfile(config_path)
 
-    domain.init()
-    domain.domain_context().push()
     return domain
 
 
@@ -24,7 +22,9 @@ def initialize_domain():
 def test_domain():
     domain = initialize_domain()
 
-    yield domain
+    domain.reinitialize()
+    with domain.domain_context():
+        yield domain
 
 
 @pytest.fixture(scope="module")

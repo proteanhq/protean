@@ -6,7 +6,7 @@ import os
 from protean.domain import Domain
 
 # Domain Composition Root
-{{ package_name }} = Domain("{{ project_name }}")
+{{ package_name }} = Domain(__file__, "{{ project_name }}")
 
 # Config class names
 configs = {
