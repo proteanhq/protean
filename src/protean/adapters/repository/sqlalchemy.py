@@ -1,5 +1,6 @@
 """Module with repository implementation for SQLAlchemy"""
 
+import copy
 import logging
 import uuid
 
@@ -203,7 +204,11 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
 
 
 def derive_schema_name(model_cls):
-    if hasattr(model_cls.meta_, "schema_name"):
+    # Retain schema name if already present, otherwise derive from entity class
+    if (
+        hasattr(model_cls.meta_, "schema_name")
+        and model_cls.meta_.schema_name is not None
+    ):
         return model_cls.meta_.schema_name
     else:
         return model_cls.meta_.entity_cls.meta_.schema_name
@@ -638,16 +643,34 @@ class SAProvider(BaseProvider):
         if issubclass(model_cls, SqlalchemyModel):
             return model_cls
         else:
+            # Strip out `Column` attributes from the model class
+            # Create a deep copy to make this work
+            # https://stackoverflow.com/a/62528033/1858466
+            columns = copy.deepcopy(
+                {
+                    key: value
+                    for key, value in vars(model_cls).items()
+                    if isinstance(value, Column)
+                }
+            )
+
             custom_attrs = {
                 key: value
                 for (key, value) in vars(model_cls).items()
                 if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
+                and not isinstance(value, Column)
             }
+
+            # Add the earlier copied columns to the custom attributes
+            custom_attrs = {**custom_attrs, **columns}
 
             from protean.core.model import ModelMeta
 
             meta_ = ModelMeta(model_cls.meta_)
             meta_.entity_cls = entity_cls
+            meta_.schema_name = (
+                schema_name if meta_.schema_name is None else meta_.schema_name
+            )
 
             custom_attrs.update({"meta_": meta_, "metadata": self._metadata})
             # FIXME Ensure the custom model attributes are constructed properly
@@ -670,8 +693,14 @@ class SAProvider(BaseProvider):
         else:
             from protean.core.model import ModelMeta
 
+            # Construct a new Meta object with existing values
             meta_ = ModelMeta()
             meta_.entity_cls = entity_cls
+            # If schema_name is not provided, sqlalchemy can throw
+            #   sqlalchemy.exc.InvalidRequestError: Class does not
+            #   have a __table__ or __tablename__ specified and
+            #   does not inherit from an existing table-mapped class
+            meta_.schema_name = entity_cls.meta_.schema_name
 
             attrs = {
                 "meta_": meta_,
