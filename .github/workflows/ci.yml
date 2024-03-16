@@ -80,7 +80,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
 
       - name: Tests
-        run: pytest --slow --sqlite --postgresql --elasticsearch --redis --cov=protean --cov-config .coveragerc tests
+        run: pytest --ignore=tests/support/ --slow --sqlite --postgresql --elasticsearch --redis --cov=protean --cov-config .coveragerc tests
         env:
           TEST_CMD: pre-commit run --all-files
           POSTGRES_PASSWORD: postgres
