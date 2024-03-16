@@ -198,7 +198,7 @@ def test(category):
 
     if category:
         if category == "BASIC":
-            print(f"Running core tests...")
+            print("Running core tests...")
             subprocess.call(commands)
         if category == "EVENTSTORE":
             for store in ["MEMORY", "MESSAGE_DB"]:
