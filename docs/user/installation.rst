@@ -96,7 +96,7 @@ Use the ``protean`` command-line utility to verify the installation:
 .. code-block:: shell
 
     $ protean --version
-    0.10.0
+    0.11.0
 
 To verify that Protean can be seen by Python, try importing Proteam from a ``python`` shell:
 
@@ -105,7 +105,7 @@ To verify that Protean can be seen by Python, try importing Proteam from a ``pyt
     $ python3
     >>> import protean
     >>> print(protean.get_version())
-    0.10.0
+    0.11.0
 
 -------------------
 
