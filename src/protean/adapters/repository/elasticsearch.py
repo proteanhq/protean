@@ -1,4 +1,5 @@
 """Module containing repository implementation for Elasticsearch"""
+
 import logging
 
 from typing import Any
@@ -47,9 +48,9 @@ class ElasticsearchModel(Document):
         item_dict = {}
         for attribute_obj in attributes(cls.meta_.entity_cls).values():
             if isinstance(attribute_obj, Reference):
-                item_dict[
-                    attribute_obj.relation.attribute_name
-                ] = attribute_obj.relation.value
+                item_dict[attribute_obj.relation.attribute_name] = (
+                    attribute_obj.relation.value
+                )
             else:
                 item_dict[attribute_obj.attribute_name] = getattr(
                     entity, attribute_obj.attribute_name
@@ -396,7 +397,7 @@ class ESProvider(BaseProvider):
 
             # Construct Inner Index class with options
             options = {}
-            options["name"] = model_cls.meta_.schema or schema_name
+            options["name"] = model_cls.meta_.schema_name or schema_name
             if "SETTINGS" in self.conn_info and self.conn_info["SETTINGS"]:
                 options["settings"] = self.conn_info["SETTINGS"]
             index_cls = type("Index", (object,), options)

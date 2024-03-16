@@ -1,7 +1,6 @@
-import pytest
-
 from protean import BaseAggregate, BaseView
 from protean.fields import Auto
+from tests.shared import assert_str_is_uuid
 
 
 def test_automatic_uuid_generation_of_identifier_field(test_domain):
@@ -13,7 +12,7 @@ def test_automatic_uuid_generation_of_identifier_field(test_domain):
     auto = AutoTest()
 
     assert isinstance(auto.auto_field, str)
-    pytest.assert_str_is_uuid(str(auto.auto_field))
+    assert_str_is_uuid(str(auto.auto_field))
     assert auto.to_dict() == {"auto_field": str(auto.auto_field)}
 
 
@@ -26,8 +25,8 @@ def test_automatic_uuid_generation_of_non_identifier_fields(test_domain):
 
     auto = AutoTest()
 
-    pytest.assert_str_is_uuid(str(auto.auto_field1))
-    pytest.assert_str_is_uuid(str(auto.auto_field2))
+    assert_str_is_uuid(str(auto.auto_field1))
+    assert_str_is_uuid(str(auto.auto_field2))
 
     assert auto.to_dict() == {
         "id": str(auto.id),
@@ -82,7 +81,7 @@ def test_automatic_uuid_generation_of_identifier_fields_in_views(test_domain):
 
     auto = AutoTest()
 
-    pytest.assert_str_is_uuid(str(auto.auto_field1))
+    assert_str_is_uuid(str(auto.auto_field1))
 
     assert auto.to_dict() == {
         "auto_field1": str(auto.auto_field1),
@@ -98,7 +97,7 @@ def test_automatic_uuid_generation_of_non_identifier_fields_in_views(test_domain
 
     auto = AutoTest()
 
-    pytest.assert_str_is_uuid(str(auto.auto_field1))
+    assert_str_is_uuid(str(auto.auto_field1))
 
     assert auto.to_dict() == {
         "identifier": str(auto.identifier),

@@ -285,7 +285,7 @@ class TestCustomModel:
 
         # FIXME Should schema name be equated to the overridden name in the model?
         assert Provider.meta_.schema_name == "provider"
-        assert ProviderCustomModel.meta_.schema == "providers"
+        assert ProviderCustomModel.meta_.schema_name == "providers"
 
         model = test_domain.repository_for(Provider)._model
         assert model._index._name == "providers"
