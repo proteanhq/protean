@@ -7,7 +7,7 @@ import pytest
 def test_domain_with_string_identity():
     from protean.domain import Domain
 
-    domain = Domain("Test")
+    domain = Domain(__file__, "Test")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -24,7 +24,7 @@ def test_domain_with_string_identity():
 def test_domain_with_int_identity():
     from protean.domain import Domain
 
-    domain = Domain("Test")
+    domain = Domain(__file__, "Test")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))
@@ -41,7 +41,7 @@ def test_domain_with_int_identity():
 def test_domain_with_uuid_identity():
     from protean.domain import Domain
 
-    domain = Domain("Test")
+    domain = Domain(__file__, "Test")
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(__file__))

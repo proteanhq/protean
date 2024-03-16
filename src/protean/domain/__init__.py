@@ -1,6 +1,7 @@
 """This module implements the central domain object, along with decorators
 to register Domain Elements.
 """
+
 import logging
 import sys
 
@@ -126,6 +127,7 @@ class Domain(_PackageBoundObject):
 
     def __init__(
         self,
+        file_path: str,
         domain_name: str = __name__,
         root_path: str = None,
         instance_relative_config: bool = False,
@@ -137,6 +139,7 @@ class Domain(_PackageBoundObject):
             root_path=root_path,
         )
 
+        self.file_path = file_path
         self.domain_name = domain_name
 
         # FIXME Additional domain attributes: (Think if this is needed)
@@ -170,6 +173,9 @@ class Domain(_PackageBoundObject):
         # FIXME Should all protean elements be subclassed from a base element?
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
 
+        # Initialize domain with default adapters
+        self._initialize()
+
     def init(self, traverse=True):  # noqa: C901
         """Parse the domain folder, and attach elements dynamically to the domain.
 
@@ -199,11 +205,7 @@ class Domain(_PackageBoundObject):
             import os
             import pathlib
 
-            # Fetch the domain file and derive the system path
-            domain_path = inspect.stack()[1][
-                1
-            ]  # Find the file in which the domain is defined
-            dir_name = pathlib.PurePath(pathlib.Path(domain_path).resolve()).parent
+            dir_name = pathlib.PurePath(pathlib.Path(self.file_path).resolve()).parent
             path = pathlib.Path(dir_name)  # Resolve the domain file's directory
             system_folder_path = (
                 path.parent
@@ -233,7 +235,7 @@ class Domain(_PackageBoundObject):
 
                         try:
                             if (
-                                full_file_path != domain_path
+                                full_file_path != self.file_path
                             ):  # Don't load the domain file itself again
                                 spec = importlib.util.spec_from_file_location(
                                     file_module_name, full_file_path
@@ -244,8 +246,6 @@ class Domain(_PackageBoundObject):
                                 logger.debug(f"Loaded {file_module_name}")
                         except ModuleNotFoundError as exc:
                             logger.error(f"Error while loading a module: {exc}")
-                        except ModuleNotFoundError as exc:
-                            logger.error(f"Error while autoloading modules: {exc}")
 
         # Initialize adapters after loading domain
         self._initialize()

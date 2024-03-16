@@ -62,7 +62,7 @@ class ProviderCustomModel(BaseModel):
     about = Text()
 
     class Meta:
-        schema = "providers"
+        schema_name = "providers"
 
 
 class Receiver(BaseAggregate):

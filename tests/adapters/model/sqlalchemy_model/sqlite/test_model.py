@@ -2,7 +2,14 @@ import pytest
 
 from protean.adapters.repository.sqlalchemy import SqlalchemyModel
 
-from .elements import ComplexUser, Email, Person, Provider, Receiver
+from .elements import (
+    ComplexUser,
+    Email,
+    Person,
+    Provider,
+    ProviderCustomModel,
+    Receiver,
+)
 
 
 @pytest.mark.sqlite
@@ -92,6 +99,7 @@ class TestModelWithVO:
 @pytest.mark.sqlite
 class TestCustomModel:
     def test_that_custom_model_can_be_associated_with_entity(self, test_domain):
+        test_domain.register(ProviderCustomModel)
         model_cls = test_domain.repository_for(Provider)._model
         assert model_cls.__name__ == "ProviderCustomModel"
 
