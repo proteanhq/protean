@@ -14,7 +14,7 @@ down:
 	docker-compose down --remove-orphans
 
 html:
-	@cd docs; $(MAKE) html
+	@cd docs-sphinx; $(MAKE) html
 
 test-full: up
 	protean test

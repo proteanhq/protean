@@ -18,5 +18,5 @@ end_of_line = crlf
 [*.py]
 max_line_length = 119
 
-[docs/**.rst]
+[docs-sphinx/**.rst]
 max_line_length = 119

@@ -267,7 +267,7 @@ def livereload_docs():
     from livereload import Server, shell
 
     server = Server()
-    server.watch("docs/**/*.rst", shell("make html"))
+    server.watch("docs-sphinx/**/*.rst", shell("make html"))
     server.watch("./*.rst", shell("make html"))
     server.serve(root="build/html", debug=True)
 

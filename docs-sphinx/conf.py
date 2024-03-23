@@ -3,6 +3,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import datetime
 import os
 
 extensions = [
@@ -25,7 +26,7 @@ if os.getenv("SPELLCHECK"):
 source_suffix = ".rst"
 master_doc = "index"
 project = "Protean"
-year = "2021"
+year = datetime.date.today().strftime("%Y")
 author = "Subhash Bhushan C"
 copyright = "{0}, {1}".format(year, author)
 version = release = "0.11.0"

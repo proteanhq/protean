@@ -7,7 +7,7 @@ exclude =
     .tox,
     .git,
     __pycache__,
-    docs/source/conf.py,
+    docs-sphinx/source/conf.py,
     build,
     dist,
     conftest.py,

@@ -207,7 +207,7 @@ Read more about `coverage <https://coverage.readthedocs.io>`__.
 Building the docs
 `````````````````
 
-Build the docs in the ``docs`` directory using Sphinx.
+Build the docs in the ``docs-sphinx`` directory using Sphinx.
 
 .. code-block:: text
 
