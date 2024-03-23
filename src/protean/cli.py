@@ -18,23 +18,30 @@ Why does this file exist, and why not put this in __main__?
 import ast
 import os
 import re
+import shutil
 import sys
 import traceback
 
-import click
+from typing import Optional, Tuple
+
+import typer
+
+from copier import run_copy
+from rich import print
+from typing_extensions import Annotated
+
+import protean
+
+from protean.exceptions import ProteanException
 
 
-class NoDomainException(click.UsageError):
+class NoDomainException(ProteanException):
     """Raised if a domain cannot be found or loaded."""
 
 
-@click.group(invoke_without_command=True)
-@click.version_option()
-@click.pass_context
-def main(ctx):
-    """CLI utilities for Protean"""
-    if ctx.invoked_subcommand is None:
-        click.echo(ctx.get_help())
+# Create the Typer app
+#   `no_args_is_help=True` will show the help message when no arguments are passed
+app = typer.Typer(no_args_is_help=True)
 
 
 def find_best_domain(module):
@@ -178,7 +185,7 @@ def derive_domain(domain_path):
     domain_import_path = os.environ.get("PROTEAN_DOMAIN") or domain_path
 
     if domain_import_path:
-        click.secho(f"Loading domain from {domain_import_path}...")
+        print(f"Loading domain from {domain_import_path}...")
         path, name = (re.split(r":(?![\\/])", domain_import_path, 1) + [None])[:2]
         import_name = prepare_import(path)
         domain = locate_domain(import_name, name)
@@ -189,9 +196,28 @@ def derive_domain(domain_path):
     return domain
 
 
-@main.command()
-@click.option("-c", "--category")
-def test(category):
+def version_callback(value: bool):
+    if value:
+        from protean import __version__
+
+        typer.echo(f"Protean {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    ctx: typer.Context,
+    version: Annotated[
+        bool, typer.Option(help="Show version information", callback=version_callback)
+    ] = False,
+):
+    """
+    Protean CLI
+    """
+
+
+@app.command()
+def test(category: Annotated[str, typer.Option()] = ""):
     import subprocess
 
     commands = ["pytest", "--cache-clear", "--ignore=tests/support/"]
@@ -250,18 +276,85 @@ def test(category):
             subprocess.call(commands + ["-m", "eventstore", f"--store={store}"])
 
 
-@main.command()
-@click.option("-o", "--output-folder")
-def new(output_folder):
-    from copier import run_auto
+@app.command()
+def new(
+    project_name: Annotated[str, typer.Argument()],
+    output_folder: Annotated[
+        str, typer.Option("--output-dir", "-o", show_default=False)
+    ] = ".",
+    data: Annotated[
+        Tuple[str, str], typer.Option("--data", "-d", show_default=False)
+    ] = (None, None),
+    pretend: Annotated[Optional[bool], typer.Option("--pretend", "-p")] = False,
+    force: Annotated[Optional[bool], typer.Option("--force", "-f")] = False,
+):
+    def is_valid_project_name(project_name):
+        """
+        Validates the project name against criteria that ensure compatibility across
+        Mac, Linux, and Windows systems, and also disallows spaces.
+        """
+        # Define a regex pattern that disallows the specified special characters
+        # and spaces. This pattern also disallows leading and trailing spaces.
+        forbidden_characters = re.compile(r'[<>:"/\\|?*\s]')
 
-    import protean
+        if forbidden_characters.search(project_name) or not project_name:
+            return False
+
+        return True
+
+    def clear_directory_contents(dir_path):
+        """
+        Removes all contents of a specified directory without deleting the directory itself.
+
+        Parameters:
+            dir_path (str): The path to the directory whose contents are to be cleared.
+        """
+        for item in os.listdir(dir_path):
+            item_path = os.path.join(dir_path, item)
+            if os.path.isfile(item_path) or os.path.islink(item_path):
+                os.unlink(item_path)  # Remove files and links
+            elif os.path.isdir(item_path):
+                shutil.rmtree(item_path)  # Remove subdirectories and their contents
+
+    if not is_valid_project_name(project_name):
+        raise ValueError("Invalid project name")
+
+    # Ensure the output folder exists
+    if not os.path.isdir(output_folder):
+        raise FileNotFoundError(f'Output folder "{output_folder}" does not exist')
+
+    # The output folder is named after the project, and placed in the target folder
+    project_directory = os.path.join(output_folder, project_name)
+
+    # If the project folder already exists, and --force is not set, raise an error
+    if os.path.isdir(project_directory) and os.listdir(project_directory):
+        if not force:
+            raise FileExistsError(
+                f'Folder "{project_name}" is not empty. Use --force to overwrite.'
+            )
+        # Clear the directory contents if --force is set
+        clear_directory_contents(project_directory)
+
+    # Convert data tuples to a dictionary, if provided
+    data = (
+        {value[0]: value[1] for value in data} if len(data) != data.count(None) else {}
+    )
+
+    # Add the project name to answers
+    data["project_name"] = project_name
 
     # Create project from the cookiecutter-protean.git repo template
-    run_auto(f"{protean.__path__[0]}/template", output_folder or ".")
+    run_copy(
+        f"{protean.__path__[0]}/template",
+        project_directory or ".",
+        data=data,
+        unsafe=True,  # Trust our own template implicitly
+        defaults=True,  # Use default values for all prompts
+        pretend=pretend,
+    )
 
 
-@main.command()
+@app.command()
 def livereload_docs():
     """Run in shell as `protean livereload-docs`"""
     from livereload import Server, shell
@@ -272,10 +365,11 @@ def livereload_docs():
     server.serve(root="build/html", debug=True)
 
 
-@main.command()
-@click.option("-d", "--domain-path")
-@click.option("-t", "--test-mode", is_flag=True)
-def server(domain_path, test_mode):
+@app.command()
+def server(
+    domain_path: Annotated[str, typer.Argument()] = "",
+    test_mode: Annotated[Optional[bool], typer.Option()] = False,
+):
     """Run Async Background Server"""
     # FIXME Accept MAX_WORKERS as command-line input as well
     from protean.server import Engine

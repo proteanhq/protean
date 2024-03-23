@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from click.testing import CliRunner
+from typer.testing import CliRunner
 
 from protean import Domain
 from protean.cli import NoDomainException, derive_domain, find_best_domain
@@ -63,7 +63,7 @@ class TestDomainLoading:
 
     def change_working_directory_to(self, path):
         test_path = (
-            Path(__file__) / ".." / "support" / "test_domains" / path
+            Path(__file__) / ".." / ".." / "support" / "test_domains" / path
         ).resolve()
 
         os.chdir(test_path)

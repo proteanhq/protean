@@ -1,10 +1,12 @@
 _templates_suffix: .jinja
+_subdirectory: 'domain_template'
 
 project_name:
   type: str
 
 short_description:
   type: str
+  default: "{{ project_name }} - A Protean Application"
 
 package_name:
   type: str
@@ -37,6 +39,3 @@ cache:
     Memory: memory
     Redis: redis
   default: memory
-
-_tasks:
-  - "cd {{ package_name }}; pip install -e .[all]"
