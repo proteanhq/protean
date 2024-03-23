@@ -3,7 +3,23 @@ Quickstart
 
 Eager to get started? This page gives a good introduction to Protean. Follow :doc:`installation` to set up a project and install Protean first.
 
-In this quickstart, we will write a simple Protean application with SQLITE as the database and Flask as the API framework.
+In this quickstart, we will create a simple Protean application with SQLITE as the database and Flask as the API framework.
+
+Initialize a Project
+--------------------
+
+Let us initialize a new directory for your project. We will call it ``authentication``.
+
+From the command line, cd into a directory where you’d like to store your code, then run the following command:
+
+.. code-block:: shell
+
+    $ protean new authentication
+
+This will create a ``authentication`` directory in your current directory.
+
+Here is a quicklook at the directory structure:
+
 
 A Simple Domain
 ---------------
