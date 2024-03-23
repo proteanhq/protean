@@ -4,6 +4,18 @@ Release History
 DEV
 ---
 
+* Switch from Copier to Typer and add comprehensive tests for project generation
+
+0.11.0
+------
+
+* Add support for Python 3.12.0
+* Move to poetry
+* Control domain directory traversal explicitly in init()
+* Domain Traversal Refactoring
+* ReadTheDocs config enhancements
+
+
 0.10.0
 ------
 
