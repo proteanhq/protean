@@ -1,6 +1,7 @@
 """
 Custom Protean exception classes
 """
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,10 @@ class ProteanException(Exception):
 
     def __reduce__(self):
         return (ProteanException, (self.messages,))
+
+
+class NoDomainException(ProteanException):
+    """Raised if a domain cannot be found or loaded in a module"""
 
 
 class ConfigurationError(Exception):

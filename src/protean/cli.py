@@ -19,9 +19,12 @@ import ast
 import os
 import re
 import shutil
+import subprocess
 import sys
 import traceback
 
+from enum import Enum
+from types import ModuleType
 from typing import Optional, Tuple
 
 import typer
@@ -32,21 +35,31 @@ from typing_extensions import Annotated
 
 import protean
 
-from protean.exceptions import ProteanException
-
-
-class NoDomainException(ProteanException):
-    """Raised if a domain cannot be found or loaded."""
-
+from protean.exceptions import NoDomainException
 
 # Create the Typer app
 #   `no_args_is_help=True` will show the help message when no arguments are passed
 app = typer.Typer(no_args_is_help=True)
 
 
-def find_best_domain(module):
-    """Given a module instance this tries to find the best possible
-    application in the module or raises an exception.
+class Category(str, Enum):
+    CORE = "CORE"
+    EVENTSTORE = "EVENTSTORE"
+    DATABASE = "DATABASE"
+    FULL = "FULL"
+
+
+def find_domain_in_module(module: ModuleType) -> protean.Domain:
+    """Given a module instance, find an instance of Protean `Domain` class.
+
+    This method tries to find a protean domain in a given module,
+    or raises `NoDomainException` if no domain was detected.
+
+    Process to identify the domain:
+    - If `domain` or `subdomain` is present, return that
+    - If only one instance of `Domain` is present, return that
+    - If multiple instances of `Domain` are present, raise an exception
+    - If no instances of `Domain` are present, raise an exception
     """
     from . import Domain
 
@@ -57,7 +70,7 @@ def find_best_domain(module):
         if isinstance(domain, Domain):
             return domain
 
-    # Otherwise find the only object that is a Flask instance.
+    # Otherwise find the only object that is a Domain instance.
     matches = [v for v in module.__dict__.values() if isinstance(v, Domain)]
 
     if len(matches) == 1:
@@ -88,30 +101,64 @@ def find_domain_by_string(module, domain_name):
         expr = ast.parse(domain_name.strip(), mode="eval").body
     except SyntaxError:
         raise NoDomainException(
-            f"Failed to parse {domain_name!r} as an attribute name or function call."
+            {
+                "invalid": f"Failed to parse {domain_name!r} as an attribute name or function call."
+            }
         )
 
     if isinstance(expr, ast.Name):
+        # Handle attribute name
         name = expr.id
+        try:
+            domain = getattr(module, name)
+        except AttributeError:
+            raise NoDomainException(
+                {
+                    "invalid": f"Failed to find attribute {name!r} in {module.__name__!r}."
+                }
+            )
+    elif isinstance(expr, ast.Call) and isinstance(expr.func, ast.Name):
+        # Handle function call, ensuring it's a simple function call without arguments
+        function_name = expr.func.id
+        if (
+            not expr.args
+        ):  # Checking for simplicity; no arguments allowed for this example
+            try:
+                domain_function = getattr(module, function_name)
+                if callable(domain_function):
+                    domain = domain_function()  # Call the function to get the domain
+                else:
+                    raise NoDomainException(
+                        {
+                            "invalid": f"{function_name!r} is not callable in {module.__name__!r}."
+                        }
+                    )
+            except AttributeError:
+                raise NoDomainException(
+                    {
+                        "invalid": f"Failed to find function {function_name!r} in {module.__name__!r}."
+                    }
+                )
+        else:
+            raise NoDomainException(
+                {
+                    "invalid": f"Function calls with arguments are not supported: {domain_name!r}."
+                }
+            )
     else:
         raise NoDomainException(
-            f"Failed to parse {domain_name!r} as an attribute name."
+            {"invalid": f"Failed to parse {domain_name!r} as an attribute name."}
         )
 
-    try:
-        domain = getattr(module, name)
-    except AttributeError:
+    if not isinstance(domain, Domain):
         raise NoDomainException(
-            f"Failed to find attribute {name!r} in {module.__name__!r}."
+            {
+                "invalid": f"A valid Protean domain was not obtained from"
+                f" '{module.__name__}:{domain_name}'."
+            }
         )
 
-    if isinstance(domain, Domain):
-        return domain
-
-    raise NoDomainException(
-        "A valid Protean domain was not obtained from"
-        f" '{module.__name__}:{domain_name}'."
-    )
+    return domain
 
 
 def prepare_import(path):
@@ -164,7 +211,7 @@ def locate_domain(module_name, domain_name, raise_if_not_found=True):
     module = sys.modules[module_name]
 
     if domain_name is None:
-        return find_best_domain(module)
+        return find_domain_in_module(module)
     else:
         return find_domain_by_string(module, domain_name)
 
@@ -217,24 +264,29 @@ def main(
 
 
 @app.command()
-def test(category: Annotated[str, typer.Option()] = ""):
-    import subprocess
-
+def test(
+    category: Annotated[
+        Category, typer.Option("-c", "--category", case_sensitive=False)
+    ] = Category.CORE
+):
     commands = ["pytest", "--cache-clear", "--ignore=tests/support/"]
 
-    if category:
-        if category == "BASIC":
-            print("Running core tests...")
-            subprocess.call(commands)
-        if category == "EVENTSTORE":
+    match category.value:
+        case "EVENTSTORE":
+            # Run tests for EventStore adapters
+            # FIXME: Add support for auto-fetching supported event stores
             for store in ["MEMORY", "MESSAGE_DB"]:
                 print(f"Running tests for EVENTSTORE: {store}...")
                 subprocess.call(commands + ["-m", "eventstore", f"--store={store}"])
-        elif category == "DATABASE":
+        case "DATABASE":
+            # Run tests for database adapters
+            # FIXME: Add support for auto-fetching supported databases
             for db in ["POSTGRESQL", "SQLITE"]:
                 print(f"Running tests for DATABASE: {db}...")
                 subprocess.call(commands + ["-m", "database", f"--db={db}"])
-        elif category == "WITH_COVERAGE":
+        case "FULL":
+            # Run full suite of tests with coverage
+            # FIXME: Add support for auto-fetching supported adapters
             subprocess.call(
                 commands
                 + [
@@ -250,30 +302,19 @@ def test(category: Annotated[str, typer.Option()] = ""):
                     "tests",
                 ]
             )
-    else:
-        # Run full suite
-        subprocess.call(
-            commands
-            + [
-                "--slow",
-                "--sqlite",
-                "--postgresql",
-                "--elasticsearch",
-                "--redis",
-                "--message_db",
-                "tests",
-            ]
-        )
 
-        # Test against each supported database
-        for db in ["POSTGRESQL", "SQLITE"]:
-            print(f"Running tests for DB: {db}...")
+            # Test against each supported database
+            for db in ["POSTGRESQL", "SQLITE"]:
+                print(f"Running tests for DB: {db}...")
 
-            subprocess.call(commands + ["-m", "database", f"--db={db}"])
+                subprocess.call(commands + ["-m", "database", f"--db={db}"])
 
-        for store in ["MESSAGE_DB"]:
-            print(f"Running tests for EVENTSTORE: {store}...")
-            subprocess.call(commands + ["-m", "eventstore", f"--store={store}"])
+            for store in ["MESSAGE_DB"]:
+                print(f"Running tests for EVENTSTORE: {store}...")
+                subprocess.call(commands + ["-m", "eventstore", f"--store={store}"])
+        case _:
+            print("Running core tests...")
+            subprocess.call(commands)
 
 
 @app.command()
