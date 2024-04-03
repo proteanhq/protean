@@ -425,3 +425,14 @@ def server(
 
     engine = Engine(domain, test_mode=test_mode)
     engine.run()
+
+
+@app.command()
+def generate_docker_compose(
+    domain_path: Annotated[str, typer.Argument()] = "",
+):
+    """Generate a `docker-compose.yml` from Domain config"""
+    domain = derive_domain(domain_path)
+    domain.init()
+
+    # FIXME Generate docker-compose.yml from domain config
