@@ -2,6 +2,9 @@
 
 *Framework for Event-driven Applications - build to last, batteries included*
 
+<!-- TODO Add Badges -->
+<!-- TODO Link Github Directory -->
+
 ---
 
 **Documentation**: <a href="https://docs.proteanhq.com" target="_blank">https://docs.proteanhq.com</a>
