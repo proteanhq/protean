@@ -194,10 +194,10 @@ def test_domain(db_config, store_config, request):
         domain.config["DATABASES"]["default"] = db_config
         domain.config["EVENT_STORE"] = store_config
 
-        # Always reinitialize the domain after config changes
-        domain.reinitialize()
-
         with domain.domain_context():
+            # Always reinitialize the domain after config changes
+            domain.reinitialize()
+
             yield domain
 
 

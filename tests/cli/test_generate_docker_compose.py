@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from protean.cli import derive_domain, generate_docker_compose
+from typer.testing import CliRunner
+
+from protean.cli import derive_domain
+from protean.cli.generate import app, docker_compose
+
+runner = CliRunner()
 
 
 def change_working_directory_to(path):
@@ -34,6 +39,19 @@ class TestGenerateDockerCompose:
         sys.path[:] = original_path
         os.chdir(cwd)
 
+    def test_cli_command(self):
+        """Test the CLI command to generate a docker compose file"""
+        change_working_directory_to("test8")
+
+        args = ["docker-compose", "sqlite_domain.py"]
+        result = runner.invoke(app, args)
+
+        print(result.output)
+        assert result.exit_code == 0
+
+        # FIXME - This test is failing because the docker-compose.yml file is not being generated
+        # assert Path("docker-compose.yml").exists()
+
     class TestGenerateSqliteService:
         @pytest.mark.sqlite
         def test_correct_config_is_loaded(self):
@@ -57,7 +75,7 @@ class TestGenerateDockerCompose:
             """Test that the docker-compose.yml file is generated for SQLite database"""
             change_working_directory_to("test8")
 
-            generate_docker_compose("sqlite_domain")
+            docker_compose("sqlite_domain")
 
             # FIXME - This test is failing because the docker-compose.yml file is not being generated
             #   A few example tests have been provided as illustration.

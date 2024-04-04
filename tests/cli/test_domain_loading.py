@@ -8,7 +8,8 @@ import pytest
 from typer.testing import CliRunner
 
 from protean import Domain
-from protean.cli import NoDomainException, derive_domain, find_domain_in_module
+from protean.cli import NoDomainException
+from protean.utils.domain import derive_domain, find_domain_in_module
 
 
 @pytest.fixture
