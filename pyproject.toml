@@ -101,7 +101,6 @@ pytest = ">=7.4.3"
 optional = true
 
 [tool.poetry.group.docs.dependencies]
-livereload = ">=2.6.3"
 sphinx = ">=7.2.6"
 sphinx-tabs = ">=3.4.4"
 mkdocs-material = "^9.5.15"

@@ -25,6 +25,7 @@ import typer
 from rich import print
 from typing_extensions import Annotated
 
+from protean.cli.docs import app as docs_app
 from protean.cli.generate import app as generate_app
 from protean.cli.new import new
 from protean.exceptions import NoDomainException
@@ -36,6 +37,7 @@ app = typer.Typer(no_args_is_help=True)
 
 app.command()(new)
 app.add_typer(generate_app, name="generate")
+app.add_typer(docs_app, name="docs")
 
 
 class Category(str, Enum):
@@ -117,17 +119,6 @@ def test(
         case _:
             print("Running core tests...")
             subprocess.call(commands)
-
-
-@app.command()
-def livereload_docs():
-    """Run in shell as `protean livereload-docs`"""
-    from livereload import Server, shell
-
-    server = Server()
-    server.watch("docs-sphinx/**/*.rst", shell("make html"))
-    server.watch("./*.rst", shell("make html"))
-    server.serve(root="build/html", debug=True)
 
 
 @app.command()
