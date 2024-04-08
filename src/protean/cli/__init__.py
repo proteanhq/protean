@@ -16,15 +16,19 @@ Why does this file exist, and why not put this in __main__?
 """
 
 import subprocess
+import sys
+import typing
 
 from enum import Enum
 from typing import Optional
 
 import typer
 
+from IPython.terminal.embed import InteractiveShellEmbed
 from rich import print
 from typing_extensions import Annotated
 
+from protean.cli.docs import app as docs_app
 from protean.cli.generate import app as generate_app
 from protean.cli.new import new
 from protean.exceptions import NoDomainException
@@ -36,6 +40,7 @@ app = typer.Typer(no_args_is_help=True)
 
 app.command()(new)
 app.add_typer(generate_app, name="generate")
+app.add_typer(docs_app, name="docs")
 
 
 class Category(str, Enum):
@@ -120,17 +125,6 @@ def test(
 
 
 @app.command()
-def livereload_docs():
-    """Run in shell as `protean livereload-docs`"""
-    from livereload import Server, shell
-
-    server = Server()
-    server.watch("docs-sphinx/**/*.rst", shell("make html"))
-    server.watch("./*.rst", shell("make html"))
-    server.serve(root="build/html", debug=True)
-
-
-@app.command()
 def server(
     domain_path: Annotated[str, typer.Argument()] = "",
     test_mode: Annotated[Optional[bool], typer.Option()] = False,
@@ -149,3 +143,40 @@ def server(
 
     engine = Engine(domain, test_mode=test_mode)
     engine.run()
+
+
+@app.command()
+def shell(domain_path: Annotated[str, typer.Argument()] = ""):
+    """Run an interactive Python shell in the context of a given
+    Protean domain.  The domain will populate the default
+    namespace of this shell according to its configuration.
+
+    This is useful for executing small snippets of code
+    without having to manually configure the application.
+
+    FIXME: Populate context in a decorator like Flask does:
+        https://github.com/pallets/flask/blob/b90a4f1f4a370e92054b9cc9db0efcb864f87ebe/src/flask/cli.py#L368
+        https://github.com/pallets/flask/blob/b90a4f1f4a370e92054b9cc9db0efcb864f87ebe/src/flask/cli.py#L984
+    """
+    domain = derive_domain(domain_path)
+    if not domain:
+        raise NoDomainException(
+            "Could not locate a Protean domain. You should provide a domain in"
+            '"PROTEAN_DOMAIN" environment variable or pass a domain file in options '
+            'and a "domain.py" module was not found in the current directory.'
+        )
+
+    with domain.domain_context():
+        domain.init()
+
+        ctx: dict[str, typing.Any] = {}
+        ctx.update(domain.make_shell_context())
+
+        banner = (
+            f"Python {sys.version} on {sys.platform}\n"
+            f"    location: {sys.executable}\n"
+            f"Domain: {domain.domain_name}\n"
+        )
+        ipshell = InteractiveShellEmbed(banner1=banner, user_ns=ctx)
+
+        ipshell()

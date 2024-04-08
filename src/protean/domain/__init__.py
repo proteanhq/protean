@@ -791,3 +791,22 @@ class Domain(_PackageBoundObject):
 
     def send_email(self, email):
         return self.email_providers.send_email(email)
+
+    def make_shell_context(self):
+        """Return a dictionary of context variables for a shell session."""
+        values = {"domain": self}
+
+        # For each domain element type in Domain Objects,
+        #   Cycle through all values in self.registry._elements[element_type]
+        #   and add each class to the shell context by the key
+        for element_type in DomainObjects:
+            values.update(
+                {
+                    v.name: v.cls
+                    for _, v in self._domain_registry._elements[
+                        element_type.value
+                    ].items()
+                }
+            )
+
+        return values

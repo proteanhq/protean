@@ -82,6 +82,7 @@ docutils = ">=0.20.1"
 pre-commit = ">=2.16.0"
 tox = ">=4.14.1"
 twine = ">=4.0.2"
+ipython = "^8.23.0"
 
 [tool.poetry.group.test]
 optional = true
@@ -101,7 +102,6 @@ pytest = ">=7.4.3"
 optional = true
 
 [tool.poetry.group.docs.dependencies]
-livereload = ">=2.6.3"
 sphinx = ">=7.2.6"
 sphinx-tabs = ">=3.4.4"
 mkdocs-material = "^9.5.15"
