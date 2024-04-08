@@ -82,6 +82,7 @@ docutils = ">=0.20.1"
 pre-commit = ">=2.16.0"
 tox = ">=4.14.1"
 twine = ">=4.0.2"
+ipython = "^8.23.0"
 
 [tool.poetry.group.test]
 optional = true

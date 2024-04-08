@@ -1,4 +1,5 @@
 import ast
+import logging
 import os
 import re
 import sys
@@ -8,6 +9,8 @@ from types import ModuleType
 
 from protean import Domain
 from protean.exceptions import NoDomainException
+
+logger = logging.getLogger(__name__)
 
 
 def find_domain_in_module(module: ModuleType) -> Domain:
@@ -152,16 +155,16 @@ def locate_domain(module_name, domain_name, raise_if_not_found=True):
 
     try:
         __import__(module_name)
-    except ImportError:
+    except ImportError as exc:
         # Reraise the ImportError if it occurred within the imported module.
         # Determine this by checking whether the trace has a depth > 1.
         if sys.exc_info()[2].tb_next:
             raise NoDomainException(
                 f"While importing {module_name!r}, an ImportError was"
                 f" raised:\n\n{traceback.format_exc()}"
-            )
+            ) from exc
         elif raise_if_not_found:
-            raise NoDomainException(f"Could not import {module_name!r}.")
+            raise NoDomainException(f"Could not import {module_name!r}.") from exc
         else:
             return
 
@@ -189,7 +192,7 @@ def derive_domain(domain_path):
     domain_import_path = os.environ.get("PROTEAN_DOMAIN") or domain_path
 
     if domain_import_path:
-        print(f"Deriving domain from {domain_import_path}...")
+        logger.debug("Deriving domain from %s...", domain_import_path)
         path, name = (re.split(r":(?![\\/])", domain_import_path, 1) + [None])[:2]
         import_name = prepare_import(path)
         domain = locate_domain(import_name, name)

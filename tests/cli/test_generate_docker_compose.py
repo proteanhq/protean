@@ -9,27 +9,14 @@ from typer.testing import CliRunner
 
 from protean.cli import derive_domain
 from protean.cli.generate import app, docker_compose
+from tests.shared import change_working_directory_to
 
 runner = CliRunner()
 
 
-def change_working_directory_to(path):
-    """Change working directory to a specific test directory
-    and add it to the Python path so that the test can import.
-
-    The test directory is expected to be in `support/test_domains`.
-    """
-    test_path = (
-        Path(__file__) / ".." / ".." / "support" / "test_domains" / path
-    ).resolve()
-
-    os.chdir(test_path)
-    sys.path.insert(0, test_path)
-
-
 class TestGenerateDockerCompose:
     @pytest.fixture(autouse=True)
-    def reset_path(self, request):
+    def reset_path(self):
         """Reset sys.path after every test run"""
         original_path = sys.path[:]
         cwd = Path.cwd()
