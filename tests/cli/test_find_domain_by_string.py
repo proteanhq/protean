@@ -4,7 +4,7 @@ import pytest
 
 from protean import Domain
 from protean.cli import NoDomainException
-from protean.utils.domain import find_domain_by_string
+from protean.utils.domain_discovery import find_domain_by_string
 
 
 class MagicMockWithName(MagicMock):

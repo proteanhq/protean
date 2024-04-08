@@ -29,7 +29,55 @@ class TestShellCommand:
     def test_shell_command_success(self):
         change_working_directory_to("test7")
 
-        args = ["shell", "publishing.py"]
+        args = ["shell", "--domain", "publishing7.py"]
+
+        # Run the shell command
+        result = runner.invoke(app, args)
+
+        # Assertions
+        print(result.output)
+        assert result.exit_code == 0
+
+    def test_shell_command_with_no_explicit_domain_and_domain_py_file(self):
+        change_working_directory_to("test10")
+
+        args = ["shell"]
+
+        # Run the shell command
+        result = runner.invoke(app, args)
+
+        # Assertions
+        print(result.output)
+        assert result.exit_code == 0
+
+    def test_shell_command_with_no_explicit_domain_and_subdomain_py_file(self):
+        change_working_directory_to("test11")
+
+        args = ["shell"]
+
+        # Run the shell command
+        result = runner.invoke(app, args)
+
+        # Assertions
+        print(result.output)
+        assert result.exit_code == 0
+
+    def test_shell_command_with_domain_attribute_name_as_domain(self):
+        change_working_directory_to("test1")
+
+        args = ["shell", "--domain", "basic"]
+
+        # Run the shell command
+        result = runner.invoke(app, args)
+
+        # Assertions
+        print(result.output)
+        assert result.exit_code == 0
+
+    def test_shell_command_with_domain_attribute_name_as_subdomain(self):
+        change_working_directory_to("test12")
+
+        args = ["shell", "--domain", "foo12"]
 
         # Run the shell command
         result = runner.invoke(app, args)
@@ -41,7 +89,7 @@ class TestShellCommand:
     def test_shell_command_raises_no_domain_exception_when_no_domain_is_found(self):
         change_working_directory_to("test7")
 
-        args = ["shell", "foobar"]
+        args = ["shell", "--domain", "foobar"]
 
         # Run the shell command and expect it to raise an exception
         with pytest.raises(NoDomainException):
