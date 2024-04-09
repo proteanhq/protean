@@ -27,7 +27,7 @@ class Subscription:
         handler: Union[BaseEventHandler, BaseCommandHandler],
         messages_per_tick: int = 10,
         position_update_interval: int = 10,
-        origin_stream_name: str = None,
+        origin_stream_name: str | None = None,
         tick_interval: int = 1,
     ) -> None:
         self.engine = engine

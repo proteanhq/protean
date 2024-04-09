@@ -1452,17 +1452,17 @@ files = [
 
 [[package]]
 name = "message-db-py"
-version = "0.1.2"
+version = "0.2.0"
 description = "The Python interface to the MessageDB Event Store and Message Store"
 optional = true
-python-versions = ">=3.7,<4.0"
+python-versions = "<4.0,>=3.9"
 files = [
-    {file = "message-db-py-0.1.2.tar.gz", hash = "sha256:bb2aaa9d09be3a0f105b091e36ff0e70a1ede9a240ec46e775b3c93af2684388"},
-    {file = "message_db_py-0.1.2-py3-none-any.whl", hash = "sha256:e30d5c8d751de14bac83b71010285b30a4c97df81b7a52f039b9d848d745600c"},
+    {file = "message_db_py-0.2.0-py3-none-any.whl", hash = "sha256:8caa5e5c3a4083e7d2a5b9b0bd98074e1e86a5f82a49641376b06f18453e9912"},
+    {file = "message_db_py-0.2.0.tar.gz", hash = "sha256:fbeb24c8eb28c55cf080865e8e21478e1e64292aa87491ce4026fd2f71d7b1bc"},
 ]
 
 [package.dependencies]
-psycopg2 = ">=2.9.2,<3.0.0"
+psycopg2 = ">=2.9.9,<3.0.0"
 
 [[package]]
 name = "mkdocs"
@@ -3164,4 +3164,4 @@ sqlite = ["sqlalchemy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "29f75fb447a491bd9fb7e09d3c88fa338614023bfb7aa9b712b73127a6d82345"
+content-hash = "cd4c3b51606b8c1a81e1ac0863f9cb8b96f6e90d972232d33ccab8721fa8b03d"

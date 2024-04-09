@@ -1,0 +1,5 @@
+# Glossary
+
+## Bounded Context
+
+## Domain

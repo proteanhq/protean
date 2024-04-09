@@ -17,6 +17,7 @@ class MessageDBStore(BaseEventStore):
 
     @property
     def client(self):
+        """Return the MessageDB client instance."""
         if self._client is None:
             try:
                 self._client = MessageDB.from_url(self.conn_info["DATABASE_URI"])
@@ -32,9 +33,10 @@ class MessageDBStore(BaseEventStore):
         stream_name: str,
         message_type: str,
         data: Dict,
-        metadata: Dict = None,
-        expected_version: int = None,
+        metadata: Dict | None = None,
+        expected_version: int | None = None,
     ) -> int:
+        """Write a message to the event store."""
         return self.client.write(
             stream_name, message_type, data, metadata, expected_version
         )
@@ -42,15 +44,17 @@ class MessageDBStore(BaseEventStore):
     def _read(
         self,
         stream_name: str,
-        sql: str = None,
+        sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
     ) -> List[Dict[str, Any]]:
+        """Read messages from the event store."""
         return self.client.read(
             stream_name, position=position, no_of_messages=no_of_messages
         )
 
     def _read_last_message(self, stream_name) -> Dict[str, Any]:
+        """Read the last message from the event store."""
         return self.client.read_last_message(stream_name)
 
     def _data_reset(self):

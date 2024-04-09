@@ -28,24 +28,33 @@ class BaseEventStore(metaclass=ABCMeta):
         stream_name: str,
         message_type: str,
         data: Dict,
-        metadata: Dict = None,
-        expected_version: int = None,
+        metadata: Dict | None = None,
+        expected_version: int | None = None,
     ) -> int:
-        pass
+        """Write a message to the event store.
+
+        Implemented by the concrete event store adapter.
+        """
 
     @abstractmethod
     def _read(
         self,
         stream_name: str,
-        sql: str = None,
+        sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
     ) -> List[Dict[str, Any]]:
-        pass
+        """Read messages from the event store.
+
+        Implemented by the concrete event store adapter.
+        """
 
     @abstractmethod
     def _read_last_message(self, stream_name) -> Dict[str, Any]:
-        pass
+        """Read the last message from the event store.
+
+        Implemented by the concrete event store adapter.
+        """
 
     def category(self, stream_name: str) -> str:
         if not stream_name:
@@ -57,7 +66,7 @@ class BaseEventStore(metaclass=ABCMeta):
     def read(
         self,
         stream_name: str,
-        sql: str = None,
+        sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
     ):

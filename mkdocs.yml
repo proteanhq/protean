@@ -40,9 +40,105 @@ markdown_extensions:
   - pymdownx.details
   - pymdownx.superfences
 nav:
-  - Protean: index.md
+  - Protean:
+    - index.md
+    # - intro/philosophy.md
+    # - intro/features.md
+    # - intro/installation.md
+    # - intro/quickstart.md
+  - Core Concepts:
+    # - core-concepts/index.md
+    - core-concepts/analysis-model.md
+    # - core-concepts/identity.md
+    # - Domain-Driven Design:
+    #   - core-concepts/domain-driven-design/index.md
+    #   - core-concepts/domain-driven-design/ubiquitous-language.md
+    #   - core-concepts/domain-driven-design/bounded-contexts.md
+    #   - core-concepts/domain-driven-design/contexts-and-subdomains.md
+    #   - core-concepts/domain-driven-design/strategic-design.md
+    #   - core-concepts/domain-driven-design/tactical-design.md
+    - Building Blocks:
+      - core-concepts/building-blocks/index.md
+    #   - core-concepts/building-blocks/aggregates.md
+    #   - core-concepts/building-blocks/entities.md
+    #   - core-concepts/building-blocks/value-objects.md
+    #   - core-concepts/building-blocks/domain-services.md
+    #   - core-concepts/building-blocks/commands.md
+    #   - core-concepts/building-blocks/command-handlers.md
+    #   - core-concepts/building-blocks/events.md
+    #   - core-concepts/building-blocks/event-handlers.md
+    #   - core-concepts/building-blocks/repositories.md
+    #   - core-concepts/building-blocks/models.md
+    #   - core-concepts/building-blocks/view-models.md
+    # - Command-Query Responsibility Segregation:
+    #   - core-concepts/command-query-responsibility-segregation/index.md
+    #   - core-concepts/command-query-responsibility-segregation/commands.md
+    #   - core-concepts/command-query-responsibility-segregation/queries.md
+    #   - core-concepts/command-query-responsibility-segregation/events.md
+    # - Event Sourcing:
+    #   - core-concepts/event-sourcing/index.md
+    #   - core-concepts/event-sourcing/events.md
+    #   - core-concepts/event-sourcing/snapshots.md
+    #   - core-concepts/event-sourcing/projections.md
   - Guides:
     - guides/index.md
+    # - Getting Started:
+    #   - guides/getting-started/index.md
+    #   - guides/getting-started/installation.md
+    #   - guides/getting-started/quickstart.md
+    # - Composing a Domain:
+    #   - guides/composing-a-domain/index.md
+    #   - guides/composing-a-domain/configuration.md
+    - Defining Domain Concepts:
+      - guides/domain-definition/index.md
+      - guides/domain-definition/fields.md
+    #   - guides/domain-definition/aggregates.md
+    #   - guides/domain-definition/entities.md
+    #   - guides/domain-definition/value-objects.md
+    #   - guides/domain-definition/domain-services.md
+    # - Command Handling:
+    #   - guides/command-handling/index.md
+    #   - guides/command-handling/commands.md
+    #   - guides/command-handling/command-handlers.md
+    # - Processing Events:
+    #   - guides/event-handling/index.md
+    #   - guides/event-handling/events.md
+    #   - guides/event-handling/event-handlers.md
+    # - Persisting Data:
+    #   - guides/persisting-data/index.md
+    #   - guides/persisting-data/repositories.md
+    #   - guides/persisting-data/unit-of-work.md
+    # - Adapters:
+    #   - guides/adapters/index.md
+    #   - guides/adapters/database.md
+    #   - guides/adapters/message-brokers.md
+    #   - guides/adapters/caches.md
+    #   - guides/adapters/event-stores.md
+    # - Command-Query Responsibility Segregation:
+    #   - guides/cqrs/index.md
+    #   - guides/cqrs/flow.md
+    # - Event Sourcing:
+    #   - guides/event-sourcing/index.md
+    #   - guides/event-sourcing/event-sourced-aggregates.md
+    #   - guides/event-sourcing/snapshots.md
+    #   - guides/event-sourcing/projections.md
+    #   - guides/event-sourcing/flow.md
+    # - Application Layer:
+    #   - guides/app-layer/index.md
+    #   - guides/app-layer/application-services.md
+    #   - guides/app-layer/adapters.md
+    #   - guides/app-layer/repositories.md
+    #   - guides/app-layer/brokers.md
+    #   - guides/app-layer/caches.md
+    #   - guides/app-layer/event-stores.md
+    # - Escape Hatches:
+    #   - guides/persisting-data/models.md
+    # - Testing:
+    #   - guides/testing/index.md
+    #   - guides/testing/unit-testing.md
+    #   - guides/testing/integration-testing.md
+    #   - guides/testing/functional-testing.md
+    #   - guides/testing/acceptance-testing.md
     - Command Line Interface:
       - guides/cli/index.md
       - guides/cli/discovery.md
@@ -50,6 +146,22 @@ nav:
       - guides/cli/shell.md
       - guides/cli/docs.md
       - guides/cli/test.md
+  # - Advanced:
+  #   - advanced/index.md
+  #   - advanced/multi-domain.md
+  #   - advanced/security.md
+  #   - advanced/performance.md
+  #   - advanced/monitoring.md
+  #   - advanced/integration.md
+  #   - advanced/troubleshooting.md
+  # - API:
+  #   - api/index.md
+  # - Examples:
+  #   - examples/index.md
+  #   - examples/quickstart.md
+  # - faq.md
+  - glossary.md
+  # - changelog.md
   - Community: 
     - community/index.md
     - community/contributing.md

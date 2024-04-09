@@ -57,6 +57,7 @@ class Engine:
         return cls(domain=domain, **kwargs)
 
     def handle_results(self, results, message):
+        # FIXME Implement handling of results
         pass
 
     async def handle_message(
@@ -75,12 +76,12 @@ class Engine:
                 )
             except ConfigurationError as exc:
                 logger.error(
-                    f"Error while handling message {message.stream_name} in {handler_cls.__name__} - {str(exc)}"
+                    f"Error while handling message {message.stream_name}-{message.id} in {handler_cls.__name__} - {str(exc)}"
                 )
                 raise
             except Exception as exc:
                 logger.error(
-                    f"Error while handling message {message.stream_name} in {handler_cls.__name__} - {str(exc)}"
+                    f"Error while handling message {message.stream_name}-{message.id} in {handler_cls.__name__} - {str(exc)}"
                 )
                 # FIXME Implement mechanisms to track errors
 
