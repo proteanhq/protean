@@ -30,7 +30,7 @@ class TestGenerateDockerCompose:
         """Test the CLI command to generate a docker compose file"""
         change_working_directory_to("test8")
 
-        args = ["docker-compose", "sqlite_domain.py"]
+        args = ["docker-compose", "--domain", "sqlite_domain.py"]
         result = runner.invoke(app, args)
 
         print(result.output)

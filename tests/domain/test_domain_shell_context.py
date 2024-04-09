@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from protean.utils.domain import derive_domain
+from protean.utils.domain_discovery import derive_domain
 from tests.shared import change_working_directory_to
 
 
@@ -24,7 +24,7 @@ class TestDomainShellContext:
     def test_return_type(self):
         change_working_directory_to("test9")
 
-        domain = derive_domain("publishing:domain")
+        domain = derive_domain("publishing9:domain")
 
         assert domain is not None
         domain.init()
@@ -40,9 +40,10 @@ class TestDomainShellContext:
         # Test for elements in the context
         assert (
             "Post" in context
-            and context["Post"] is domain.registry.aggregates["publishing.Post"].cls
+            and context["Post"] is domain.registry.aggregates["publishing9.Post"].cls
         ), "`Post` class should be in the context"
         assert (
             "Comment" in context
-            and context["Comment"] is domain.registry.entities["publishing.Comment"].cls
+            and context["Comment"]
+            is domain.registry.entities["publishing9.Comment"].cls
         ), "`Comment` class should be in the context"

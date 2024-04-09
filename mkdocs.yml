@@ -22,14 +22,34 @@ theme:
     - navigation.tracking
     - navigation.tabs
     - navigation.tabs.sticky
-    - navigation.sections
+    - navigation.expand
     - navigation.path
     - navigation.prune
     - navigation.indexes
     - toc.follow
     - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.tooltips
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
 nav:
   - Protean: index.md
+  - Guides:
+    - guides/index.md
+    - Command Line Interface:
+      - guides/cli/index.md
+      - guides/cli/discovery.md
+      - guides/cli/new.md
+      - guides/cli/shell.md
+      - guides/cli/docs.md
+      - guides/cli/test.md
   - Community: 
-      - community/index.md
-      - community/contributing.md
+    - community/index.md
+    - community/contributing.md

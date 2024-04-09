@@ -9,7 +9,7 @@ import pytest
 
 from protean import Domain
 from protean.cli import NoDomainException
-from protean.utils.domain import derive_domain, find_domain_in_module
+from protean.utils.domain_discovery import derive_domain, find_domain_in_module
 from tests.shared import change_working_directory_to
 
 
@@ -48,7 +48,7 @@ def test_find_domain_in_module():
 
 class TestDomainLoading:
     @pytest.fixture(autouse=True)
-    def reset_path(self, request):
+    def reset_path(self):
         """Reset sys.path after every test run"""
         original_path = sys.path[:]
         cwd = Path.cwd()
@@ -91,3 +91,17 @@ class TestDomainLoading:
 
         with pytest.raises(NoDomainException):
             derive_domain("dummy")
+
+    def test_loading_domain_with_attribute_name_as_domain(self):
+        change_working_directory_to("test1")
+
+        domain = derive_domain("basic")
+        assert domain is not None
+        assert domain.domain_name == "BASIC"
+
+    def test_loading_domain_with_attribute_name_as_subdomain(self):
+        change_working_directory_to("test12")
+
+        domain = derive_domain("foo12")
+        assert domain is not None
+        assert domain.domain_name == "TEST12"

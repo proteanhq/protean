@@ -5,6 +5,7 @@ DEV
 ---
 
 * Switch from Copier to Typer and add comprehensive tests for project generation
+* Switch docs to Material for MkDocs and host on https://docs.proteanhq.com
 
 0.11.0
 ------

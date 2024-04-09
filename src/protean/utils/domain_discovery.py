@@ -127,6 +127,13 @@ def prepare_import(path):
     """
     path = os.path.realpath(path)
 
+    # If the path is ".", look for domain.py or subdomain.py in the current directory
+    if path == os.path.realpath("."):
+        if os.path.exists(os.path.join(path, "domain.py")):
+            path = os.path.join(path, "domain.py")
+        elif os.path.exists(os.path.join(path, "subdomain.py")):
+            path = os.path.join(path, "subdomain.py")
+
     filename, ext = os.path.splitext(path)
     if ext == ".py":
         path = filename
@@ -176,7 +183,7 @@ def locate_domain(module_name, domain_name, raise_if_not_found=True):
         return find_domain_by_string(module, domain_name)
 
 
-def derive_domain(domain_path):
+def derive_domain(domain_path: str = None):
     """Derive domain from supplied domain path.
 
     Domain is derived from sources in this order:

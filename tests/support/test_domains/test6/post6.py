@@ -1,11 +1,7 @@
-"""A simple domain module with domain elements in the same file"""
-
 from datetime import datetime
 
-from protean.domain import Domain
 from protean.fields import DateTime, HasMany, Reference, String
-
-domain = Domain(__file__, "TEST9")
+from tests.support.test_domains.test6.publishing6 import domain
 
 
 @domain.aggregate
