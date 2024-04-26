@@ -2,6 +2,7 @@
 to register Domain Elements.
 """
 
+import inspect
 import logging
 import sys
 
@@ -33,7 +34,7 @@ from protean.utils import (
 
 from .config import Config, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals, has_domain_context
-from .helpers import _PackageBoundObject, get_debug_flag, get_env
+from .helpers import get_debug_flag, get_env
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ logger = logging.getLogger(__name__)
 _sentinel = object()
 
 
-class Domain(_PackageBoundObject):
+class Domain:
     """The domain object is a one-stop gateway to:
 
     * Registering Domain Objects/Concepts
@@ -125,18 +126,16 @@ class Domain(_PackageBoundObject):
 
     def __init__(
         self,
-        file_path: str,
-        domain_name: str = __name__,
+        root_path: str,
+        name: str = "",
     ):
-        # FIXME Investigate relevance of _PackageBoundObject
-        _PackageBoundObject.__init__(
-            self,
-            domain_name,
-            root_path=file_path,
-        )
+        self.root_path = root_path
 
-        self.file_path = file_path
-        self.domain_name = domain_name
+        # Initialize the domain with the name of the module if not provided
+        # Get the stack frame of the caller of the __init__ method
+        caller_frame = inspect.stack()[1]
+        # Get the module name from the globals of the frame where the object was instantiated
+        self.name = name if name else caller_frame.frame.f_globals["__name__"]
 
         # FIXME Additional domain attributes: (Think if this is needed)
         #   - Type of Domain: Core, Supporting, Third-party(?)
@@ -201,7 +200,7 @@ class Domain(_PackageBoundObject):
             import os
             import pathlib
 
-            dir_name = pathlib.PurePath(pathlib.Path(self.file_path).resolve()).parent
+            dir_name = pathlib.PurePath(pathlib.Path(self.root_path).resolve()).parent
             path = pathlib.Path(dir_name)  # Resolve the domain file's directory
             system_folder_path = (
                 path.parent
@@ -231,7 +230,7 @@ class Domain(_PackageBoundObject):
 
                         try:
                             if (
-                                full_file_path != self.file_path
+                                full_file_path != self.root_path
                             ):  # Don't load the domain file itself again
                                 spec = importlib.util.spec_from_file_location(
                                     file_module_name, full_file_path
@@ -261,7 +260,7 @@ class Domain(_PackageBoundObject):
         defaults = dict(self.default_config)
         defaults["ENV"] = get_env()
         defaults["DEBUG"] = get_debug_flag()
-        return self.config_class(self.file_path, defaults)
+        return self.config_class(self.root_path, defaults)
 
     def domain_context(self, **kwargs):
         """Create an :class:`~protean.context.DomainContext`. Use as a ``with``
@@ -316,7 +315,7 @@ class Domain(_PackageBoundObject):
             func(exc)
 
     def __str__(self) -> str:
-        return f"Domain: {self.domain_name}"
+        return f"Domain: {self.name}"
 
     @property
     @lru_cache()
@@ -524,13 +523,13 @@ class Domain(_PackageBoundObject):
                 else:
                     raise ConfigurationError(
                         {
-                            "element": f"Element {element_name} not registered in domain {self.domain_name}"
+                            "element": f"Element {element_name} not registered in domain {self.name}"
                         }
                     )
         except KeyError:
             raise ConfigurationError(
                 {
-                    "element": f"Element {element_name} not registered in domain {self.domain_name}"
+                    "element": f"Element {element_name} not registered in domain {self.name}"
                 }
             )
 
@@ -544,7 +543,7 @@ class Domain(_PackageBoundObject):
         else:
             raise ConfigurationError(
                 {
-                    "element": f"Element {element_fq_name} not registered in domain {self.domain_name}"
+                    "element": f"Element {element_fq_name} not registered in domain {self.name}"
                 }
             )
 

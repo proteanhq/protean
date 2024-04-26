@@ -39,7 +39,7 @@ def shell(domain: Annotated[str, typer.Option()] = "."):
         banner = (
             f"Python {sys.version} on {sys.platform}\n"
             f"    location: {sys.executable}\n"
-            f"Domain: {domain_instance.domain_name}\n"
+            f"Domain: {domain_instance.name}\n"
         )
         ipshell = InteractiveShellEmbed(banner1=banner, user_ns=ctx)
 

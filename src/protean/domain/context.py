@@ -1,4 +1,5 @@
 """Context Management Framework"""
+
 import logging
 import sys
 
@@ -58,7 +59,7 @@ class _DomainContextGlobals(object):
     def __repr__(self):
         top = _domain_context_stack.top
         if top is not None:
-            return "<protean.g of %r>" % top.domain.domain_name
+            return "<protean.g of %r>" % top.domain.name
         return object.__repr__(self)
 
 
@@ -87,7 +88,7 @@ class DomainContext(object):
         self._ref_count = 0
 
     def __repr__(self) -> str:
-        return f"Domain Context (domain={self.domain.domain_name})"
+        return f"Domain Context (domain={self.domain.name})"
 
     def push(self):
         """Binds the domain context to the current context."""

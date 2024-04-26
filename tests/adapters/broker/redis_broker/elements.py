@@ -52,4 +52,4 @@ class NotifySSOSubscriber(BaseSubscriber):
         print("Received Event: ", domain_event_dict)
         print("Event class: ", self.meta_.event)
 
-        print("Current domain: ", current_domain.domain_name)
+        print("Current domain: ", current_domain.name)

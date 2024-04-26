@@ -94,18 +94,18 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 new_message_type == "COMMAND"
                 and g.message_in_context.metadata.kind == "EVENT"
             ):
-                additional_metadata[
-                    "origin_stream_name"
-                ] = g.message_in_context.stream_name
+                additional_metadata["origin_stream_name"] = (
+                    g.message_in_context.stream_name
+                )
 
             if (
                 new_message_type == "EVENT"
                 and g.message_in_context.metadata.kind == "COMMAND"
                 and g.message_in_context.metadata.origin_stream_name is not None
             ):
-                additional_metadata[
-                    "origin_stream_name"
-                ] = g.message_in_context.metadata.origin_stream_name
+                additional_metadata["origin_stream_name"] = (
+                    g.message_in_context.metadata.origin_stream_name
+                )
         return additional_metadata
 
     @classmethod
@@ -138,8 +138,8 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
             data=event.to_dict(),
             metadata=MessageMetadata(
                 kind=MessageType.EVENT.value,
-                owner=current_domain.domain_name,
-                **cls.derived_metadata(MessageType.EVENT.value)
+                owner=current_domain.name,
+                **cls.derived_metadata(MessageType.EVENT.value),
                 # schema_version=event.meta_.version,  # FIXME Maintain version for event
             ),
             expected_version=aggregate._version,  # FIXME Maintain version for Aggregates
@@ -198,9 +198,9 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
             data=message_object.to_dict(),
             metadata=MessageMetadata(
                 kind=kind,
-                owner=current_domain.domain_name,
+                owner=current_domain.name,
                 **cls.derived_metadata(kind),
-            )
+            ),
             # schema_version=command.meta_.version,  # FIXME Maintain version
         )
 

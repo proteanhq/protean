@@ -63,28 +63,28 @@ class TestDomainLoading:
 
         domain = derive_domain("basic")
         assert domain is not None
-        assert domain.domain_name == "BASIC"
+        assert domain.name == "BASIC"
 
     def test_loading_domain_under_directory(self):
         change_working_directory_to("test2")
 
         domain = derive_domain("src/folder")
         assert domain is not None
-        assert domain.domain_name == "FOLDER"
+        assert domain.name == "FOLDER"
 
     def test_loading_domain_from_module(self):
         change_working_directory_to("test3")
 
         domain = derive_domain("nested.web")
         assert domain is not None
-        assert domain.domain_name == "WEB"
+        assert domain.name == "WEB"
 
     def test_loading_domain_from_instance(self):
         change_working_directory_to("test4")
 
         domain = derive_domain("instance:dom2")
         assert domain is not None
-        assert domain.domain_name == "INSTANCE"
+        assert domain.name == "INSTANCE"
 
     def test_loading_domain_from_invalid_module(self):
         change_working_directory_to("test5")
@@ -97,11 +97,11 @@ class TestDomainLoading:
 
         domain = derive_domain("basic")
         assert domain is not None
-        assert domain.domain_name == "BASIC"
+        assert domain.name == "BASIC"
 
     def test_loading_domain_with_attribute_name_as_subdomain(self):
         change_working_directory_to("test12")
 
         domain = derive_domain("foo12")
         assert domain is not None
-        assert domain.domain_name == "TEST12"
+        assert domain.name == "TEST12"

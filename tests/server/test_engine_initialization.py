@@ -8,7 +8,7 @@ def test_that_domain_is_loaded_from_domain_file():
         domain="baz", domain_file="tests/server/dummy_domain.py"
     )
     assert engine.domain is not None
-    assert engine.domain.domain_name == "FooBar"
+    assert engine.domain.name == "FooBar"
 
 
 def test_that_engine_can_be_initialized_from_a_domain_object(test_domain):

@@ -48,7 +48,7 @@ class TestGenerateDockerCompose:
             domain = derive_domain("sqlite_domain")
             domain.init()
             assert domain is not None
-            assert domain.domain_name == "SQLite-Domain"
+            assert domain.name == "SQLite-Domain"
             assert (
                 domain.providers["default"].conn_info["PROVIDER"]
                 == "protean.adapters.repository.sqlalchemy.SAProvider"

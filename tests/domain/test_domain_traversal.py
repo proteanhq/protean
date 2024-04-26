@@ -16,3 +16,11 @@ class TestDomainTraversal:
         assert publishing7.domain is not None
         publishing7.domain.init()
         assert len(publishing7.domain.registry.aggregates) == 1
+
+    @pytest.mark.no_test_domain
+    def test_loading_nested_domain_with_init(self):
+        from tests.support.test_domains.test13 import publishing13
+
+        assert publishing13.domain is not None
+        publishing13.domain.init()
+        assert len(publishing13.domain.registry.aggregates) == 2
