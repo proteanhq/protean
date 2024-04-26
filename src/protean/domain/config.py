@@ -60,7 +60,7 @@ class Config(dict):
 
     :param root_path: path to which files are read relative from.  When the
                       config object is created by the application, this is
-                      the application's :attr:`~flask.Flask.root_path`.
+                      the application's :attr:`~protean.Domain.file_path`.
     :param defaults: an optional dictionary of default values
     """
 
@@ -234,7 +234,7 @@ class Config(dict):
             )
         mappings.append(kwargs.items())
         for mapping in mappings:
-            for (key, value) in mapping:
+            for key, value in mapping:
                 if key.isupper():
                     self[key] = value
         return True

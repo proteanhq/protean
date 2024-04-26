@@ -90,8 +90,6 @@ class Domain(_PackageBoundObject):
     #: :data:`SECRET_KEY` configuration key. Defaults to ``None``.
     secret_key = ConfigAttribute("SECRET_KEY")
 
-    root_path = None
-
     default_config = ImmutableDict(
         {
             "ENV": None,
@@ -129,14 +127,12 @@ class Domain(_PackageBoundObject):
         self,
         file_path: str,
         domain_name: str = __name__,
-        root_path: str = None,
-        instance_relative_config: bool = False,
     ):
-
+        # FIXME Investigate relevance of _PackageBoundObject
         _PackageBoundObject.__init__(
             self,
             domain_name,
-            root_path=root_path,
+            root_path=file_path,
         )
 
         self.file_path = file_path
@@ -152,7 +148,7 @@ class Domain(_PackageBoundObject):
         #: The configuration dictionary as :class:`Config`.  This behaves
         #: exactly like a regular dictionary but supports additional methods
         #: to load a config from files.
-        self.config = self.make_config(instance_relative_config)
+        self.config = self.make_config()
 
         self.providers = Providers(self)
         self.event_store = EventStore(self)
@@ -260,20 +256,12 @@ class Domain(_PackageBoundObject):
     def reinitialize(self):
         self._initialize()
 
-    def make_config(self, instance_relative=False):
-        """Used to create the config attribute by the Domain constructor.
-        The `instance_relative` parameter is passed in from the constructor
-        of Domain (there named `instance_relative_config`) and indicates if
-        the config should be relative to the instance path or the root path
-        of the application.
-        """
-        root_path = self.root_path
-        if instance_relative:
-            root_path = self.instance_path
+    def make_config(self):
+        """Used to construct the config; invoked by the Domain constructor."""
         defaults = dict(self.default_config)
         defaults["ENV"] = get_env()
         defaults["DEBUG"] = get_debug_flag()
-        return self.config_class(root_path, defaults)
+        return self.config_class(self.file_path, defaults)
 
     def domain_context(self, **kwargs):
         """Create an :class:`~protean.context.DomainContext`. Use as a ``with``
