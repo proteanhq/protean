@@ -11,6 +11,35 @@ from protean.utils import DomainObjects, fully_qualified_name
 logger = logging.getLogger(__name__)
 
 
+# Define property names for each element type
+def properties() -> Dict[str, str]:
+    """Properties are named after of each element type and pluralized to
+    indicate that all elements of the type will be returned.
+
+    E.g.
+    AGGREGATE: registry.aggregates
+    VALUE_OBJECT: registry.value_objects
+
+    Returns:
+        Dict[str, str]: Dict[pluralized_name, element_type], a dictionary of element type names and their values.
+        E.g.
+            {
+                'aggregates': 'AGGREGATE',
+                'entities': 'ENTITY',
+                ...
+            }
+    """
+    props = {}
+    for element_type in DomainObjects:
+        # Lowercase element type, add underscores and pluralize
+        prop_name = inflection.pluralize(
+            inflection.underscore(element_type.value.lower())
+        )
+        props[prop_name] = element_type.value
+
+    return props
+
+
 class _DomainRegistry:
     class DomainRecord:
         def __init__(self, name: str, qualname: str, class_type: str, cls: Any):
@@ -18,6 +47,9 @@ class _DomainRegistry:
             self.qualname = qualname
             self.class_type = class_type
             self.cls = cls
+
+        def __repr__(self):
+            return f"<class {self.name}: {self.qualname} ({self.class_type})>"
 
     def __init__(self):
         self._elements: Dict[str, dict] = {}
@@ -85,34 +117,38 @@ class _DomainRegistry:
 
         self._elements[element_cls.element_type.value].pop(element_name, None)
 
-    def get(self, element_type):
-        return self._elements[element_type.value]
+    @property
+    def elements(self):
+        elems = {}
+        for name, element_type in properties().items():
+            items = []
+            for item in self._elements[element_type]:
+                # Add only the class of the element
+                items.append(self._elements[element_type][item].cls)
+
+            if items:  # Only add element type if there are elements of that type
+                elems[name] = items
+
+        return elems
+
+    def __repr__(self):
+        return f"<DomainRegistry: {self._elements}>"
 
 
 # Set up access to all elements as properties
-for element_type in DomainObjects:
-    """Set up `properties` on Registry
+for name, element_type in properties().items():
+    """Set up element types as properties on Registry for easy access.
 
-    Since all elements are stored within a Dict in the registry, accessing
+    Why? Since all elements are stored within a Dict in the registry, accessing
     them will mean knowing the storage structure. It is instead preferable to
     expose the elements by their element types as properties.
-
-    Registry object will contain properties named after of each element type
-    and pluralized to indicate that all elements of the type will be returned.
-
-    E.g.
-    AGGREGATE: registry.aggregates
-    VALUE_OBJECT: registry.value_objects
     """
-
-    # Lowercase element type, add underscores and pluralize
-    prop_name = inflection.pluralize(inflection.underscore(element_type.value.lower()))
 
     # This weird syntax is because when using lambdas in a for loop, we need to supply
     #   element_type as an argument with a default value of element_type
     prop = property(
-        lambda self, element_type=element_type: self.get(element_type)
+        lambda self, element_type=element_type: self._elements[element_type]
     )  # pragma: no cover  # FIXME Is it possible to cover this line in tests
 
     # Set the property on the class
-    setattr(_DomainRegistry, prop_name, prop)
+    setattr(_DomainRegistry, name, prop)
