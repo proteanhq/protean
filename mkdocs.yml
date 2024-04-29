@@ -37,15 +37,15 @@ theme:
     - content.code.select
 markdown_extensions:
   - admonition
+  - mdx_include
   - pymdownx.details
   - pymdownx.superfences
 nav:
   - Protean:
     - index.md
-    # - intro/philosophy.md
-    # - intro/features.md
-    # - intro/installation.md
-    # - intro/quickstart.md
+    - intro/philosophy.md
+    - intro/whitepaper.md
+    - intro/features.md
   - Core Concepts:
     # - core-concepts/index.md
     - core-concepts/analysis-model.md
@@ -82,13 +82,19 @@ nav:
     #   - core-concepts/event-sourcing/projections.md
   - Guides:
     - guides/index.md
-    # - Getting Started:
+    - Getting Started:
     #   - guides/getting-started/index.md
-    #   - guides/getting-started/installation.md
-    #   - guides/getting-started/quickstart.md
-    # - Composing a Domain:
-    #   - guides/composing-a-domain/index.md
-    #   - guides/composing-a-domain/configuration.md
+      - guides/getting-started/installation.md
+    #  - guides/getting-started/quickstart.md
+    - Compose a Domain:
+      - guides/compose-a-domain/index.md
+      - guides/compose-a-domain/register-elements.md
+      - guides/compose-a-domain/initialize-domain.md
+      - guides/compose-a-domain/activate-domain.md
+      - guides/compose-a-domain/when-to-compose.md
+      - guides/compose-a-domain/element-decorators.md
+      - guides/compose-a-domain/object-model.md
+    #  - guides/compose-a-domain/configuration.md
     - Defining Domain Concepts:
       - guides/domain-definition/index.md
       - guides/domain-definition/fields.md

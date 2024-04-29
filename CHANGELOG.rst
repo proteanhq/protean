@@ -6,6 +6,7 @@ DEV
 
 * Switch from Copier to Typer and add comprehensive tests for project generation
 * Switch docs to Material for MkDocs and host on https://docs.proteanhq.com
+* Initialize domain name to domain's module name when not provided
 
 0.11.0
 ------
