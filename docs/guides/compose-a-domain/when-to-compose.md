@@ -16,6 +16,6 @@ You would compose the domain along with the app object, and activate it (push
 up the context) before processing a request.
 
 
-```Python hl_lines="29 33 35 38"
+```python hl_lines="29 33 35 38"
 {! docs_src/guides/composing-a-domain/019.py !}
 ```

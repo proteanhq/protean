@@ -17,7 +17,7 @@ Additional options can be passed to a domain element in two ways:
 
 You can specify options within a nested inner class called `Meta`:
 
-```Python hl_lines="13-14"
+```python hl_lines="13-14"
 {! docs_src/guides/composing-a-domain/020.py !}
 ```
 
@@ -25,6 +25,6 @@ You can specify options within a nested inner class called `Meta`:
 
 You can also pass options as parameters to the decorator:
 
-```Python hl_lines="7"
+```python hl_lines="7"
 {! docs_src/guides/composing-a-domain/021.py !}
 ```

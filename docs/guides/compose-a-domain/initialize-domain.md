@@ -27,7 +27,7 @@ with Protean explicitly.
 Protean constructs a graph of all elements registered with a domain and
 exposes them in a registry.
 
-```Python hl_lines="28-35"
+```python hl_lines="28-35"
 {! docs_src/guides/composing-a-domain/016.py !}
 ```
 
@@ -41,7 +41,7 @@ a database that actually persists data.
 Calling `domain.init()` establishes connectivity with the underlying infra,
 testing access, and making them available for use by the rest of the system. 
 
-```Python hl_lines="5-11"
+```python hl_lines="5-11"
 {! docs_src/guides/composing-a-domain/017.py !}
 ```
 

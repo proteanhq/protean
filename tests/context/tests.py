@@ -130,11 +130,11 @@ class TestDomainContext:
         assert repr(g) == "<protean.g of 'Test'>"
 
     def test_custom_domain_ctx_globals_class(self, test_domain):
-        class CustomRequestGlobals:
+        class CustomGlobals:
             def __init__(self):
                 self.spam = "eggs"
 
-        test_domain.domain_context_globals_class = CustomRequestGlobals
+        test_domain.domain_context_globals_class = CustomGlobals
         with test_domain.domain_context():
             assert g.spam == "eggs"
 
@@ -149,5 +149,6 @@ class TestDomainContext:
     def test_domain_context_globals_not_shared(self, test_domain):
         with test_domain.domain_context(foo="bar"):
             assert g.foo == "bar"
-        with test_domain.domain_context(foo="baz"):
-            assert g.foo == "baz"
+
+            with test_domain.domain_context(foo="baz"):
+                assert g.foo == "baz"

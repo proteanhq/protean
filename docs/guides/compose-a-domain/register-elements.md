@@ -5,7 +5,7 @@ the domain.
 
 ## With decorators
 
-```Python hl_lines="7-11"
+```python hl_lines="7-11"
 {! docs_src/guides/composing-a-domain/002.py !}
 ```
 
@@ -16,7 +16,7 @@ A full list of domain decorators along with examples are available in the
 
 You can also choose to register elements manually.
 
-```Python hl_lines="7-13"
+```python hl_lines="7-13"
 {! docs_src/guides/composing-a-domain/014.py !}
 ```
 
@@ -31,7 +31,7 @@ of element in Protean has a distinct base class of its own.
 There might be additional options you will pass in a `Meta` inner class,
 depending upon the element being registered.
 
-```Python hl_lines="12-13"
+```python hl_lines="12-13"
 {! docs_src/guides/composing-a-domain/015.py !}
 ```
 
