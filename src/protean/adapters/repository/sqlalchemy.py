@@ -18,7 +18,11 @@ from sqlalchemy.ext.declarative import as_declarative, declared_attr
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from protean.core.model import BaseModel
-from protean.exceptions import ConfigurationError, ObjectNotFoundError
+from protean.exceptions import (
+    ConfigurationError,
+    ObjectNotFoundError,
+    OutOfContextError,
+)
 from protean.fields import (
     Auto,
     Boolean,
@@ -101,8 +105,9 @@ def _get_identity_type():
             raise ConfigurationError(
                 f'Unknown Identity Type {current_domain.config["IDENTITY_TYPE"]}'
             )
-    except RuntimeError as exc:
-        logger.error(f"RuntimeError while identifying data type for identities: {exc}")
+    except OutOfContextError:
+        # This happens only when the module is being imported the first time.
+        #   All further calls will have `current_domain` available.
         return sa_types.String
 
 

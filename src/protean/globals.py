@@ -9,6 +9,8 @@ from functools import partial
 
 from werkzeug.local import LocalProxy, LocalStack
 
+from protean.exceptions import OutOfContextError
+
 _domain_ctx_err_msg = """\
 Working outside of domain context.
 This typically means that you attempted to use functionality that needed
@@ -21,14 +23,14 @@ documentation for more information.\
 def _lookup_domain_object(name) -> Any:
     top = _domain_context_stack.top
     if top is None:
-        raise RuntimeError(_domain_ctx_err_msg)
+        raise OutOfContextError(_domain_ctx_err_msg)
     return getattr(top, name)
 
 
 def _find_domain() -> Domain:
     top = _domain_context_stack.top
     if top is None:
-        raise RuntimeError(_domain_ctx_err_msg)
+        raise OutOfContextError(_domain_ctx_err_msg)
     return top.domain
 
 
