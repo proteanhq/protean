@@ -63,7 +63,7 @@ class TestRepositoryConstructionAndRegistration:
             "DATABASE": "SQLITE",
             "DATABASE_URI": "sqlite:///test.db",
         }
-        test_domain.reinitialize()
+        test_domain._initialize()
         yield test_domain
 
     def test_default_repository_construction_and_registration(self, custom_test_domain):

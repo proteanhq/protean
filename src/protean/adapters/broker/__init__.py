@@ -64,7 +64,7 @@ class Brokers(collections.abc.MutableMapping):
 
             if broker_name not in self._brokers:
                 raise ConfigurationError(
-                    f"Broker {broker_name} has not been configured."
+                    f"Broker `{broker_name}` has not been configured."
                 )
 
             self._brokers[broker_name].register(subscriber.meta_.event, subscriber)

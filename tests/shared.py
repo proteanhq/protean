@@ -22,8 +22,8 @@ def initialize_domain(file_path):
     if os.path.exists(config_path):
         domain.config.from_pyfile(config_path)
 
-    # Always reinitialize the domain after config changes
-    domain.reinitialize()
+    # Reinitialize the domain after config changes
+    domain._initialize()
 
     return domain
 

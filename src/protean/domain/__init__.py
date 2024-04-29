@@ -193,10 +193,12 @@ class Domain:
 
         This method bubbles up circular import issues, if present, in the domain code.
         """
+        # Initialize domain dependencies and adapters
+        self._initialize()
+
         if traverse is True:
             # Standard Library Imports
             import importlib.util
-            import inspect
             import os
             import pathlib
 
@@ -208,7 +210,7 @@ class Domain:
 
             logger.debug(f"Loading domain from {dir_name}...")
 
-            for root, dirs, files in os.walk(dir_name):
+            for root, _, files in os.walk(dir_name):
                 if pathlib.PurePath(root).name not in ["__pycache__"]:
                     package_path = root[len(str(system_folder_path)) + 1 :]
                     module_name = package_path.replace(os.sep, ".")
@@ -245,15 +247,11 @@ class Domain:
         # Initialize adapters after loading domain
         self._initialize()
 
-    # Initialize domain adapters
     def _initialize(self):
+        """Initialize domain dependencies and adapters."""
         self.providers._initialize()
         self.caches._initialize()
         self.brokers._initialize()
-
-    # Reinitialize domain after config changes
-    def reinitialize(self):
-        self._initialize()
 
     def make_config(self):
         """Used to construct the config; invoked by the Domain constructor."""

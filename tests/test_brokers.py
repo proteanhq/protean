@@ -140,7 +140,7 @@ class TestBrokerSubscriberInitialization:
     def test_that_registered_subscribers_are_initialized(self, test_domain):
         test_domain.register(NotifySSOSubscriber)
 
-        test_domain.reinitialize()
+        test_domain._initialize()
 
         assert (
             "tests.test_brokers.PersonAdded"
@@ -159,8 +159,10 @@ class TestBrokerSubscriberInitialization:
         NotifySSOSubscriber.meta_.broker = "unknown"
         test_domain.register(NotifySSOSubscriber)
 
-        with pytest.raises(ConfigurationError):
-            test_domain.reinitialize()
+        with pytest.raises(ConfigurationError) as exc:
+            test_domain._initialize()
+
+        assert "Broker `unknown` has not been configured." in str(exc.value)
 
         # Reset the broker after test
         NotifySSOSubscriber.meta_.broker = "default"

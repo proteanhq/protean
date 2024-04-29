@@ -122,7 +122,7 @@ class TestRepositoryRegistration:
             "DATABASE": Database.ELASTICSEARCH.value,
             "DATABASE_URI": {"hosts": ["localhost"]},
         }
-        test_domain.reinitialize()
+        test_domain._initialize()
 
         @test_domain.aggregate
         class User:
