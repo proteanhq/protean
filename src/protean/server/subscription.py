@@ -5,7 +5,7 @@ from typing import List, Union
 
 from protean import BaseCommandHandler, BaseEventHandler
 from protean.port import BaseEventStore
-from protean.utils.mixins import Message
+from protean.utils.mixins import Message, MessageType
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,37 +43,75 @@ class Subscription:
         self.origin_stream_name = origin_stream_name
         self.tick_interval = tick_interval
 
-        self.subscriber_stream_name = f"subscriber_position-${subscriber_id}"
+        self.subscriber_stream_name = f"position-${subscriber_id}"
 
         self.current_position: int = -1
         self.messages_since_last_position_write: int = 0
 
         self.keep_going: bool = not engine.test_mode
 
-    async def load_position(self):
+    async def fetch_last_position(self):
+        """Fetch the last read position from the store."""
         message = self.store._read_last_message(self.subscriber_stream_name)
         if message:
-            self.current_position = message["data"]["position"]
+            return message["data"]["position"]
+
+        return -1
+
+    async def load_position_on_start(self):
+        """Load the last position from the store when starting."""
+        last_position = await self.fetch_last_position()
+        if last_position > -1:
+            self.current_position = last_position
             logger.debug(f"Loaded position {self.current_position} from last message")
         else:
-            self.current_position = 0
-            logger.debug("No previous messages - Starting at position 0")
+            logger.debug(
+                "No previous messages - Starting at the beginning of the stream"
+            )
 
-    async def update_read_position(self, position):
+    async def update_current_position_to_store(self) -> int:
+        """Update the current position to the store, only if out of sync.
+
+        Returns the last written position.
+        """
+        last_written_position = await self.fetch_last_position()
+        if last_written_position < self.current_position:
+            self.write_position(self.current_position)
+
+        return last_written_position
+
+    async def update_read_position(self, position) -> int:
+        """Update the current read position.
+
+        If at or beyond the configured interval, write position to the store.
+
+        Returns the position updated.
+        """
         self.current_position = position
         self.messages_since_last_position_write += 1
 
-        if self.messages_since_last_position_write == self.position_update_interval:
-            return self.write_position(position)
+        if self.messages_since_last_position_write >= self.position_update_interval:
+            self.write_position(position)
 
-        return
+        return self.current_position
 
-    def write_position(self, position):
+    def write_position(self, position: int) -> int:
+        """Write the position to the store.
+
+        Returns the position written.
+        """
         logger.debug(f"Updating Read Position of {self.subscriber_id} to {position}")
 
-        self.messages_since_last_position_write = 0
+        self.messages_since_last_position_write = 0  # Reset counter
+
         return self.store._write(
-            self.subscriber_stream_name, "Read", {"position": position}
+            self.subscriber_stream_name,
+            "Read",
+            {"position": position},
+            metadata={
+                "kind": MessageType.READ_POSITION.value,
+                "origin_stream_name": self.stream_name,
+            },
         )
 
     def filter_on_origin(self, messages: List[Message]) -> List[Message]:
@@ -122,7 +160,7 @@ class Subscription:
         logger.debug(f"Starting {self.subscriber_id}")
 
         # Load own position from Event store
-        await self.load_position()
+        await self.load_position_on_start()
         self.loop.create_task(self.poll())
 
     async def poll(self):

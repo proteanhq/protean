@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import logging
 
 from collections import defaultdict
 from enum import Enum
@@ -19,15 +20,18 @@ from protean.globals import current_domain, g
 from protean.reflection import has_id_field, id_field
 from protean.utils import fully_qualified_name
 
+logger = logging.getLogger(__name__)
+
 
 class MessageType(Enum):
     EVENT = "EVENT"
     COMMAND = "COMMAND"
+    READ_POSITION = "READ_POSITION"
 
 
 class MessageMetadata(BaseValueObject):
     # Marks message as a `COMMAND` or an `EVENT`
-    kind = fields.String(required=True, max_length=7, choices=MessageType)
+    kind = fields.String(required=True, max_length=15, choices=MessageType)
 
     # Name of service that owns the contract of the message
     owner = fields.String(max_length=50)
@@ -252,3 +256,10 @@ class HandlerMixin:
 
         for handler_method in handlers:
             handler_method(cls(), message.to_object())
+
+    @classmethod
+    def handle_error(cls, exc: Exception, message: Message) -> None:
+        """Default error handler for messages. Can be overridden in subclasses.
+
+        By default, this method logs the error and raises it.
+        """

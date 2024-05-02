@@ -125,7 +125,7 @@ def test(
 
 @app.command()
 def server(
-    domain: Annotated[str, typer.Option("--domain")] = ".",
+    domain: Annotated[str, typer.Option()] = ".",
     test_mode: Annotated[Optional[bool], typer.Option()] = False,
 ):
     """Run Async Background Server"""
