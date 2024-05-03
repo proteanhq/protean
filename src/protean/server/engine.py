@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import traceback
 
 from typing import Type, Union
 
@@ -23,16 +24,29 @@ logger = logging.getLogger(__name__)
 
 
 class Engine:
+    """
+    The Engine class represents the Protean Engine that handles message processing and subscription management.
+    """
+
     def __init__(self, domain, test_mode: bool = False) -> None:
+        """
+        Initialize the Engine.
+
+        Args:
+            domain (Domain): The domain object associated with the engine.
+            test_mode (bool, optional): Flag to indicate if the engine is running in test mode. Defaults to False.
+        """
         self.domain = domain
         self.test_mode = test_mode
         self.exit_code = 0
+        self.shutting_down = False  # Flag to indicate the engine is shutting down
 
         self.loop = asyncio.get_event_loop()
 
         # FIXME Gather all handlers
         self._subscriptions = {}
         for handler_name, record in self.domain.registry.event_handlers.items():
+            # Create a subscription for each event handler
             self._subscriptions[handler_name] = Subscription(
                 self,
                 handler_name,
@@ -43,6 +57,7 @@ class Engine:
             )
 
         for handler_name, record in self.domain.registry.command_handlers.items():
+            # Create a subscription for each command handler
             self._subscriptions[handler_name] = Subscription(
                 self,
                 handler_name,
@@ -55,6 +70,23 @@ class Engine:
         handler_cls: Type[Union[BaseCommandHandler, BaseEventHandler]],
         message: Message,
     ) -> None:
+        """
+        Handle a message by invoking the appropriate handler class.
+
+        Args:
+            handler_cls (Type[Union[BaseCommandHandler, BaseEventHandler]]): The handler class to invoke.
+            message (Message): The message to be handled.
+
+        Returns:
+            None
+
+        Raises:
+            Exception: If an error occurs while handling the message.
+
+        """
+        if self.shutting_down:
+            return  # Skip handling if shutdown is in progress
+
         with self.domain.domain_context():
             # Set context from current message, so that further processes
             #   carry the metadata forward.
@@ -81,7 +113,15 @@ class Engine:
             g.pop("message_in_context")
 
     async def shutdown(self, signal=None, exit_code=0):
-        """Cleanup tasks tied to the service's shutdown."""
+        """
+        Cleanup tasks tied to the service's shutdown.
+
+        Args:
+            signal (Optional[signal]): The exit signal received. Defaults to None.
+            exit_code (int): The exit code to be stored. Defaults to 0.
+        """
+        self.shutting_down = True  # Set shutdown flag
+
         try:
             if signal:
                 logger.info(f"Received exit signal {signal.name}...")
@@ -90,30 +130,30 @@ class Engine:
             self.exit_code = exit_code
 
             tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-            # Update read positions for each subscription
-            update_tasks = []
-            for _, subscription in self._subscriptions.items():
-                update_tasks.append(
-                    self.loop.create_task(
-                        subscription.update_current_position_to_store()
-                    )
-                )
 
+            # Shutdown subscriptions
+            subscription_shutdown_tasks = [
+                subscription.shutdown()
+                for _, subscription in self._subscriptions.items()
+            ]
+
+            # Cancel outstanding tasks
             [task.cancel() for task in tasks]
-
             logger.info(f"Cancelling {len(tasks)} outstanding tasks")
             await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Wait for all update tasks to complete
-            logger.info(
-                f"Updating read positions for {len(update_tasks)} subscriptions"
-            )
-            await asyncio.gather(*update_tasks, return_exceptions=True)
+            # Wait for subscriptions to shut down
+            await asyncio.gather(*subscription_shutdown_tasks, return_exceptions=True)
+            logger.info("All subscriptions have been shut down.")
         finally:
             if self.loop.is_running():
                 self.loop.stop()
 
     def run(self):
+        """
+        Start the Protean Engine and run the subscriptions.
+        """
+        logger.info("Starting Protean Engine...")
         # Handle Signals
         signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
         for s in signals:
@@ -126,8 +166,7 @@ class Engine:
             # context["message"] will always be there; but context["exception"] may not
             msg = context.get("exception", context["message"])
 
-            import traceback
-
+            # Print the stack trace
             traceback.print_stack(context.get("exception"))
 
             logger.error(f"Caught exception: {msg}")
