@@ -74,7 +74,7 @@ class Engine:
                 logger.error(f"{str(exc)}")
                 handler_cls.handle_error(exc, message)
 
-                asyncio.create_task(self.shutdown(exit_code=1))
+                await self.shutdown(exit_code=1)
                 return
 
             # Reset message context
@@ -82,30 +82,36 @@ class Engine:
 
     async def shutdown(self, signal=None, exit_code=0):
         """Cleanup tasks tied to the service's shutdown."""
-        if signal:
-            logger.info(f"Received exit signal {signal.name}...")
+        try:
+            if signal:
+                logger.info(f"Received exit signal {signal.name}...")
 
-        # Store the exit code
-        self.exit_code = exit_code
+            # Store the exit code
+            self.exit_code = exit_code
 
-        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-        # Update read positions for each subscription
-        update_tasks = []
-        for _, subscription in self._subscriptions.items():
-            update_tasks.append(
-                self.loop.create_task(subscription.update_current_position_to_store())
+            tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+            # Update read positions for each subscription
+            update_tasks = []
+            for _, subscription in self._subscriptions.items():
+                update_tasks.append(
+                    self.loop.create_task(
+                        subscription.update_current_position_to_store()
+                    )
+                )
+
+            [task.cancel() for task in tasks]
+
+            logger.info(f"Cancelling {len(tasks)} outstanding tasks")
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Wait for all update tasks to complete
+            logger.info(
+                f"Updating read positions for {len(update_tasks)} subscriptions"
             )
-
-        [task.cancel() for task in tasks]
-
-        logger.info(f"Cancelling {len(tasks)} outstanding tasks")
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Wait for all update tasks to complete
-        logger.info(f"Updating read positions for {len(update_tasks)} subscriptions")
-        await asyncio.gather(*update_tasks, return_exceptions=True)
-
-        self.loop.stop()
+            await asyncio.gather(*update_tasks, return_exceptions=True)
+        finally:
+            if self.loop.is_running():
+                self.loop.stop()
 
     def run(self):
         # Handle Signals
@@ -126,7 +132,8 @@ class Engine:
 
             logger.error(f"Caught exception: {msg}")
             logger.info("Shutting down...")
-            asyncio.create_task(self.shutdown(exit_code=1))
+            if loop.is_running():
+                asyncio.create_task(self.shutdown(exit_code=1))
 
         self.loop.set_exception_handler(handle_exception)
 
@@ -135,9 +142,10 @@ class Engine:
 
         # Start consumption, one per subscription
         try:
-            tasks = []
-            for _, subscription in self._subscriptions.items():
-                tasks.append(self.loop.create_task(subscription.start()))
+            tasks = [
+                self.loop.create_task(subscription.start())
+                for _, subscription in self._subscriptions.items()
+            ]
 
             if self.test_mode:
                 # If in test mode, run until all tasks complete

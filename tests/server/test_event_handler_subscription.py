@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
@@ -55,7 +57,20 @@ class EmailEventHandler(BaseEventHandler):
         pass
 
 
-@pytest.mark.asyncio
+@pytest.fixture(autouse=True)
+def setup_event_loop():
+    """Ensure an Event Loop Exists in Tests.
+
+    Otherwise tests are attempting to access the asyncio event loop from a non-async context
+    where no event loop is running or set as the current event loop.
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    yield
+    loop.close()
+    asyncio.set_event_loop(None)
+
+
 def test_event_subscriptions(test_domain):
     test_domain.register(UserEventHandler, aggregate_cls=User)
     engine = Engine(test_domain, test_mode=True)
@@ -65,7 +80,6 @@ def test_event_subscriptions(test_domain):
     assert engine._subscriptions[fqn(UserEventHandler)].stream_name == "user"
 
 
-@pytest.mark.asyncio
 def test_origin_stream_name_in_subscription(test_domain):
     test_domain.register(EmailEventHandler, aggregate_cls=User, source_stream="email")
 
@@ -76,7 +90,6 @@ def test_origin_stream_name_in_subscription(test_domain):
     assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream_name == "email"
 
 
-@pytest.mark.asyncio
 def test_that_stream_name_overrides_the_derived_stream_name_from_aggregate_cls(
     test_domain,
 ):
