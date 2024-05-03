@@ -10,6 +10,7 @@
         https://github.com/pallets/flask/blob/b90a4f1f4a370e92054b9cc9db0efcb864f87ebe/src/flask/cli.py#L984
     """
 
+import logging
 import sys
 import typing
 
@@ -21,17 +22,27 @@ from typing_extensions import Annotated
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 
+logger = logging.getLogger(__name__)
 
-def shell(domain: Annotated[str, typer.Option()] = "."):
-    domain_instance = derive_domain(domain)
-    if not domain_instance:
-        raise NoDomainException(
+
+def shell(
+    domain: Annotated[str, typer.Option()] = ".",
+    traverse: Annotated[bool, typer.Option()] = False,
+):
+    try:
+        domain_instance = derive_domain(domain)
+    except NoDomainException:
+        logger.error(
             "Could not locate a Protean domain. You should provide a domain in"
             '"PROTEAN_DOMAIN" environment variable or pass a domain file in options'
         )
+        raise typer.Abort()
+
+    if traverse:
+        print("Traversing directory to load all modules...")
 
     with domain_instance.domain_context():
-        domain_instance.init()
+        domain_instance.init(traverse=traverse)
 
         ctx: dict[str, typing.Any] = {}
         ctx.update(domain_instance.make_shell_context())

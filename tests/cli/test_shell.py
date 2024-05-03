@@ -8,7 +8,6 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
-from protean.exceptions import NoDomainException
 from tests.shared import change_working_directory_to
 
 runner = CliRunner()
@@ -92,5 +91,17 @@ class TestShellCommand:
         args = ["shell", "--domain", "foobar"]
 
         # Run the shell command and expect it to raise an exception
-        with pytest.raises(NoDomainException):
-            runner.invoke(app, args, catch_exceptions=False)
+        result = runner.invoke(app, args, catch_exceptions=False)
+        assert result.exit_code == 1
+        assert isinstance(result.exception, SystemExit)
+        assert result.output == "Aborted.\n"
+
+    def test_shell_command_with_traverse_option(self):
+        change_working_directory_to("test7")
+
+        args = ["shell", "--domain", "publishing7.py", "--traverse"]
+
+        # Run the shell command
+        result = runner.invoke(app, args)
+
+        assert "Traversing directory to load all modules..." in result.stdout
