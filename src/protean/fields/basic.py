@@ -48,6 +48,18 @@ class String(Field):
         """Return JSON-compatible value of self"""
         return value
 
+    def __repr__(self):
+        # Generate repr values specific to this field
+        values = self._generic_param_values_for_repr()
+        if self.max_length != 255:
+            values.append(f"max_length={self.max_length}")
+        if self.min_length:
+            values.append(f"min_length={self.min_length}")
+        if not self.sanitize:
+            values.append("sanitize=False")
+
+        return f"{self.__class__.__name__}(" + ", ".join(values) + ")"
+
 
 class Text(Field):
     """Concrete field implementation for the text type."""
@@ -72,6 +84,14 @@ class Text(Field):
     def as_dict(self, value):
         """Return JSON-compatible value of self"""
         return value
+
+    def __repr__(self):
+        # Generate repr values specific to this field
+        values = self._generic_param_values_for_repr()
+        if not self.sanitize:
+            values.append("sanitize=False")
+
+        return f"{self.__class__.__name__}(" + ", ".join(values) + ")"
 
 
 class Integer(Field):
@@ -109,6 +129,16 @@ class Integer(Field):
         """Return JSON-compatible value of self"""
         return value
 
+    def __repr__(self):
+        # Generate repr values specific to this field
+        values = self._generic_param_values_for_repr()
+        if self.max_value:
+            values.append(f"max_value={self.max_length}")
+        if self.min_value:
+            values.append(f"min_value={self.min_value}")
+
+        return f"{self.__class__.__name__}(" + ", ".join(values) + ")"
+
 
 class Float(Field):
     """Concrete field implementation for the Floating type.
@@ -141,6 +171,16 @@ class Float(Field):
     def as_dict(self, value):
         """Return JSON-compatible value of self"""
         return value
+
+    def __repr__(self):
+        # Generate repr values specific to this field
+        values = self._generic_param_values_for_repr()
+        if self.max_value:
+            values.append(f"max_value={self.max_length}")
+        if self.min_value:
+            values.append(f"min_value={self.min_value}")
+
+        return f"{self.__class__.__name__}(" + ", ".join(values) + ")"
 
 
 class Boolean(Field):
@@ -288,6 +328,14 @@ class Auto(Field):
             return None
 
         return value if isinstance(value, int) else str(value)
+
+    def __repr__(self):
+        # Generate repr values specific to this field
+        values = self._generic_param_values_for_repr()
+        if self.increment:
+            values.append("increment=True")
+
+        return f"{self.__class__.__name__}(" + ", ".join(values) + ")"
 
 
 class Identifier(Field):

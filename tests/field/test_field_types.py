@@ -162,15 +162,6 @@ class TestFloatField:
             score = Float(max_value=5.5)
             score._load(5.6)
 
-    @pytest.mark.xfail
-    def test_none_value(self):
-        """Test None value treatment for the float field"""
-
-        score = Float(max_value=5.5)
-        score._load(None)
-
-        assert score.value == 0.0
-
 
 class TestBooleanField:
     """Test the Boolean Field Implementation"""
