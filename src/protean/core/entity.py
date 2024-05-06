@@ -1,4 +1,5 @@
 """Entity Functionality and Classes"""
+
 import copy
 import logging
 
@@ -202,22 +203,27 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
                     (embedded_field.field_name, embedded_field.attribute_name)
                     for embedded_field in field_obj.embedded_fields.values()
                 ]
-                values = {name: kwargs.get(attr) for name, attr in attrs}
-                try:
-                    # Pass the `required` option value as defined at the parent
-                    value_object = field_obj.value_object_cls(
-                        **values, required=field_obj.required
-                    )
+                kwargs_values = {name: kwargs.get(attr) for name, attr in attrs}
 
-                    # Set VO value only if the value object is not None/Empty
-                    if value_object:
-                        setattr(self, field_name, value_object)
-                        loaded_fields.append(field_name)
-                except ValidationError as err:
-                    for sub_field_name in err.messages:
-                        self.errors["{}_{}".format(field_name, sub_field_name)].extend(
-                            err.messages[sub_field_name]
-                        )
+                # Check if any of the values in `values` are not None
+                #   If all values are None, it means that the value object is not being set
+                #   and we should set it to None
+                #
+                #   If any of the values are not None, we should set the value object and its attributes
+                #   to the values provided and let it trigger validations
+                if any(kwargs_values.values()):
+                    try:
+                        value_object = field_obj.value_object_cls(**kwargs_values)
+
+                        # Set VO value only if the value object is not None/Empty
+                        if value_object:
+                            setattr(self, field_name, value_object)
+                            loaded_fields.append(field_name)
+                    except ValidationError as err:
+                        for sub_field_name in err.messages:
+                            self.errors[
+                                "{}_{}".format(field_name, sub_field_name)
+                            ].extend(err.messages[sub_field_name])
 
         # Load Identities
         for field_name, field_obj in declared_fields(self).items():

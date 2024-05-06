@@ -192,14 +192,12 @@ class TestEmailVOEmbedding:
         with pytest.raises(ValidationError) as multi_exceptions:
             User()
 
-        assert "email_address" in multi_exceptions.value.messages
-        assert multi_exceptions.value.messages["email_address"] == ["is required"]
+        assert multi_exceptions.value.messages["email"] == ["is required"]
 
         with pytest.raises(ValidationError) as email_exception:
             User(name="John Doe")
 
-        assert "email_address" in email_exception.value.messages
-        assert email_exception.value.messages["email_address"] == ["is required"]
+        assert email_exception.value.messages["email"] == ["is required"]
 
 
 class TestBalanceVOEmbedding:

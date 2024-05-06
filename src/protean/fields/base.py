@@ -7,8 +7,7 @@ from collections import defaultdict
 from typing import Any, Callable, Iterable, List
 
 from protean import exceptions
-
-from .mixins import FieldDescriptorMixin
+from protean.fields.mixins import FieldDescriptorMixin
 
 MISSING_ERROR_MESSAGE = (
     "ValidationError raised by `{class_name}`, but error key `{key}` does "
