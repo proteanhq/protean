@@ -45,6 +45,9 @@ class MessageMetadata(BaseValueObject):
     #   Events raised subsequently by the commands also carry forward the original stream name.
     origin_stream_name = fields.String()
 
+    # FIXME Provide mechanism to add custom metadata fields/structure
+    #   Can come handy in case of multi-tenancy, etc.
+
 
 class MessageRecord(BaseContainer):
     """

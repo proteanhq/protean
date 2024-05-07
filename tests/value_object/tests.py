@@ -1,6 +1,6 @@
 import pytest
 
-from protean.exceptions import InvalidOperationError, ValidationError
+from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.reflection import attributes, declared_fields
 
 from .elements import (
@@ -66,10 +66,9 @@ class TestEmailVOProperties:
         email = Email.from_address("john.doe@gmail.com")
         assert str(email) == "Email object ({'address': 'john.doe@gmail.com'})"
 
-    @pytest.mark.xfail
     def test_that_value_objects_are_immutable(self):
         email = Email.from_address(address="john.doe@gmail.com")
-        with pytest.raises(InvalidOperationError):
+        with pytest.raises(IncorrectUsageError):
             email.address = "jane.doe@gmail.com"
 
 

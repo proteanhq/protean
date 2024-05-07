@@ -90,9 +90,6 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
 
         self._validators = validators
 
-        # Hold a reference to Entity registering the field
-        self._entity_cls = None
-
         # Collect default error message from self and parent classes
         messages = {}
         for cls in reversed(self.__class__.__mro__):

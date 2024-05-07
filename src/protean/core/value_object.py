@@ -83,6 +83,9 @@ class BaseValueObject(BaseContainer, OptionsMixin):
 
         self.errors = defaultdict(list)
 
+        # Set the flag to prevent any further modifications
+        self._initialized = False
+
         # Load the attributes based on the template
         loaded_fields = []
         for dictionary in template:
@@ -127,6 +130,22 @@ class BaseValueObject(BaseContainer, OptionsMixin):
         if self.errors:
             logger.error(self.errors)
             raise ValidationError(self.errors)
+
+        # If we made it this far, the Value Object is initialized
+        #   and should be marked as such
+        self._initialized = True
+
+    def __setattr__(self, name, value):
+        if not hasattr(self, "_initialized") or not self._initialized:
+            return super().__setattr__(name, value)
+        else:
+            raise IncorrectUsageError(
+                {
+                    "_value_object": [
+                        "Value Objects are immutable and cannot be modified once created"
+                    ]
+                }
+            )
 
     def _run_validators(self, value):
         """Collect validators from enclosed fields and run them.
