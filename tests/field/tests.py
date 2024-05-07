@@ -116,3 +116,18 @@ class TestField:
         with pytest.raises(ValidationError):
             name = DummyStringField()
             name._load("Dummy Dummy Dummy")
+
+    def test_repr(self):
+        """Test that Field repr is generated correctly"""
+
+        name = DummyStringField()
+        assert repr(name) == "DummyStringField()"
+
+        name = DummyStringField(required=True)
+        assert repr(name) == "DummyStringField(required=True)"
+
+        name = DummyStringField(default="dummy")
+        assert repr(name) == "DummyStringField(default='dummy')"
+
+        name = DummyStringField(required=True, default="dummy")
+        assert repr(name) == "DummyStringField(required=True, default='dummy')"

@@ -33,6 +33,8 @@ class BaseEventStore(metaclass=ABCMeta):
     ) -> int:
         """Write a message to the event store.
 
+        Returns the position of the message in the stream.
+
         Implemented by the concrete event store adapter.
         """
 

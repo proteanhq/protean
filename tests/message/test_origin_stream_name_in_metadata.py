@@ -6,7 +6,7 @@ from protean import BaseCommand, BaseEvent, BaseEventSourcedAggregate
 from protean.fields import String
 from protean.fields.basic import Identifier
 from protean.globals import g
-from protean.utils.mixins import Message
+from protean.utils.mixins import Message, MessageMetadata
 
 
 class User(BaseEventSourcedAggregate):
@@ -74,7 +74,10 @@ def test_origin_stream_name_in_event_from_command_without_origin_stream_name(use
 
 def test_origin_stream_name_in_event_from_command_with_origin_stream_name(user_id):
     command_message = register_command_message(user_id)
-    command_message.metadata.origin_stream_name = "foo"
+
+    command_message.metadata = MessageMetadata(
+        command_message.metadata.to_dict(), origin_stream_name="foo"
+    )  # MessageMetadata is a VO and immutable, so creating a copy with updated value
     g.message_in_context = command_message
 
     event_message = Message.to_message(
@@ -113,7 +116,10 @@ def test_origin_stream_name_in_aggregate_event_from_command_with_origin_stream_n
     user_id,
 ):
     command_message = register_command_message(user_id)
-    command_message.metadata.origin_stream_name = "foo"
+
+    command_message.metadata = MessageMetadata(
+        command_message.metadata.to_dict(), origin_stream_name="foo"
+    )  # MessageMetadata is a VO and immutable, so creating a copy with updated value
     g.message_in_context = command_message
 
     user = User(

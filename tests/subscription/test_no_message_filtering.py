@@ -10,7 +10,7 @@ from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, hand
 from protean.fields import DateTime, Identifier, String
 from protean.server import Engine
 from protean.utils import fqn
-from protean.utils.mixins import Message
+from protean.utils.mixins import Message, MessageMetadata
 
 
 class User(BaseEventSourcedAggregate):
@@ -91,7 +91,10 @@ async def test_no_filtering_for_event_handlers_without_defined_origin_stream(
             email, Sent(email="john.doe@gmail.com", sent_at=datetime.now(UTC))
         ),
     ]
-    messages[2].metadata.origin_stream_name = f"user-{identifier}"
+
+    messages[2].metadata = MessageMetadata(
+        messages[2].metadata.to_dict(), origin_stream_name=f"user-{identifier}"
+    )  # MessageMetadata is a VO and immutable, so creating a copy with updated value
 
     # Mock `read` method and have it return the 3 messages
     mock_store_read = mock.Mock()
