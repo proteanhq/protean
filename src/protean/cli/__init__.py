@@ -15,6 +15,7 @@ Why does this file exist, and why not put this in __main__?
   Also see (1) from http://click.pocoo.org/5/setuptools/#setuptools-integration
 """
 
+import logging
 import subprocess
 
 from enum import Enum
@@ -31,6 +32,8 @@ from protean.cli.new import new
 from protean.cli.shell import shell
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
+
+logger = logging.getLogger(__name__)
 
 # Create the Typer app
 #   `no_args_is_help=True` will show the help message when no arguments are passed
@@ -127,18 +130,24 @@ def test(
 def server(
     domain: Annotated[str, typer.Option()] = ".",
     test_mode: Annotated[Optional[bool], typer.Option()] = False,
+    debug: Annotated[Optional[bool], typer.Option()] = False,
 ):
     """Run Async Background Server"""
     # FIXME Accept MAX_WORKERS as command-line input as well
-    from protean.server import Engine
-
-    domain = derive_domain(domain)
-    if not domain:
-        raise NoDomainException(
+    try:
+        domain = derive_domain(domain)
+    except NoDomainException:
+        logger.error(
             "Could not locate a Protean domain. You should provide a domain in"
             '"PROTEAN_DOMAIN" environment variable or pass a domain file in options '
             'and a "domain.py" module was not found in the current directory.'
         )
+        raise typer.Abort()
 
-    engine = Engine(domain, test_mode=test_mode)
+    from protean.server import Engine
+
+    engine = Engine(domain, test_mode=test_mode, debug=debug)
     engine.run()
+
+    if engine.exit_code != 0:
+        raise typer.Exit(code=engine.exit_code)

@@ -34,7 +34,6 @@ class TestShellCommand:
         result = runner.invoke(app, args)
 
         # Assertions
-        print(result.output)
         assert result.exit_code == 0
 
     def test_shell_command_with_no_explicit_domain_and_domain_py_file(self):
@@ -46,7 +45,6 @@ class TestShellCommand:
         result = runner.invoke(app, args)
 
         # Assertions
-        print(result.output)
         assert result.exit_code == 0
 
     def test_shell_command_with_no_explicit_domain_and_subdomain_py_file(self):
@@ -58,7 +56,6 @@ class TestShellCommand:
         result = runner.invoke(app, args)
 
         # Assertions
-        print(result.output)
         assert result.exit_code == 0
 
     def test_shell_command_with_domain_attribute_name_as_domain(self):
@@ -70,7 +67,6 @@ class TestShellCommand:
         result = runner.invoke(app, args)
 
         # Assertions
-        print(result.output)
         assert result.exit_code == 0
 
     def test_shell_command_with_domain_attribute_name_as_subdomain(self):
@@ -82,12 +78,9 @@ class TestShellCommand:
         result = runner.invoke(app, args)
 
         # Assertions
-        print(result.output)
         assert result.exit_code == 0
 
     def test_shell_command_raises_no_domain_exception_when_no_domain_is_found(self):
-        change_working_directory_to("test7")
-
         args = ["shell", "--domain", "foobar"]
 
         # Run the shell command and expect it to raise an exception

@@ -28,16 +28,24 @@ class Engine:
     The Engine class represents the Protean Engine that handles message processing and subscription management.
     """
 
-    def __init__(self, domain, test_mode: bool = False) -> None:
+    def __init__(self, domain, test_mode: bool = False, debug: bool = False) -> None:
         """
         Initialize the Engine.
+
+        Modes:
+        - Test Mode: If set to True, the engine will run in test mode and will exit after all tasks are completed.
+        - Debug Mode: If set to True, the engine will run in debug mode and will log additional information.
 
         Args:
             domain (Domain): The domain object associated with the engine.
             test_mode (bool, optional): Flag to indicate if the engine is running in test mode. Defaults to False.
+            debug (bool, optional): Flag to indicate if debug mode is enabled. Defaults to False.
         """
         self.domain = domain
-        self.test_mode = test_mode
+        self.test_mode = (
+            test_mode  # Flag to indicate if the engine is running in test mode
+        )
+        self.debug = debug  # Flag to indicate if debug mode is enabled
         self.exit_code = 0
         self.shutting_down = False  # Flag to indicate the engine is shutting down
 
