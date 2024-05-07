@@ -48,7 +48,7 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
@@ -64,11 +64,11 @@ jobs:
         with:
           stack-version: 7.12.0
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - uses: actions/cache@v1
+      - uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
@@ -96,7 +96,7 @@ jobs:
           REDIS_PORT: ${{ job.services.redis.ports[6379] }}
 
       - name: CodeCOV
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
