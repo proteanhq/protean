@@ -23,6 +23,8 @@ class BaseValueObject(BaseContainer, OptionsMixin):
         super().__init_subclass__()
 
         subclass.__validate_for_basic_field_types()
+        subclass.__validate_for_non_identifier_fields()
+        subclass.__validate_for_non_unique_fields()
 
     @classmethod
     def __validate_for_basic_field_types(subclass):
@@ -30,9 +32,33 @@ class BaseValueObject(BaseContainer, OptionsMixin):
             if isinstance(field_obj, (Reference, Association, ValueObject)):
                 raise IncorrectUsageError(
                     {
-                        "_entity": [
-                            f"Views can only contain basic field types. "
+                        "_value_object": [
+                            f"Value Objects can only contain basic field types. "
                             f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
+                        ]
+                    }
+                )
+
+    @classmethod
+    def __validate_for_non_identifier_fields(subclass):
+        for field_name, field_obj in fields(subclass).items():
+            if field_obj.identifier:
+                raise IncorrectUsageError(
+                    {
+                        "_value_object": [
+                            f"Value Objects cannot contain fields marked 'identifier' (field '{field_name}')"
+                        ]
+                    }
+                )
+
+    @classmethod
+    def __validate_for_non_unique_fields(subclass):
+        for field_name, field_obj in fields(subclass).items():
+            if field_obj.unique:
+                raise IncorrectUsageError(
+                    {
+                        "_value_object": [
+                            f"Value Objects cannot contain fields marked 'unique' (field '{field_name}')"
                         ]
                     }
                 )
