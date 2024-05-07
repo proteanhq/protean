@@ -98,7 +98,8 @@ nav:
     - Defining Domain Concepts:
       - guides/domain-definition/index.md
       - guides/domain-definition/fields.md
-      - guides/domain-definition/aggregates-and-entities.md
+      - guides/domain-definition/aggregates.md
+      - guides/domain-definition/entities.md
       - guides/domain-definition/value-objects.md
       - guides/domain-definition/domain-services.md
       - guides/domain-definition/events.md
