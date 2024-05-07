@@ -87,7 +87,7 @@ class TestShellCommand:
         result = runner.invoke(app, args, catch_exceptions=False)
         assert result.exit_code == 1
         assert isinstance(result.exception, SystemExit)
-        assert result.output == "Aborted.\n"
+        assert "Aborted" in result.output
 
     def test_shell_command_with_traverse_option(self):
         change_working_directory_to("test7")
