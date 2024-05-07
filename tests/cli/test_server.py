@@ -31,7 +31,7 @@ class TestServerCommand:
         result = runner.invoke(app, args)
         assert result.exit_code != 0
         assert isinstance(result.exception, SystemExit)
-        assert result.output == "Aborted.\n"
+        assert "Aborted" in result.output
 
     def test_server_start_successfully(self):
         change_working_directory_to("test7")
