@@ -1,6 +1,7 @@
 import logging
 
 from protean.container import BaseContainer, OptionsMixin
+from protean.exceptions import IncorrectUsageError
 from protean.fields import Field
 from protean.reflection import _ID_FIELD_NAME, declared_fields
 from protean.utils import DomainObjects, derive_element_class
@@ -25,6 +26,28 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 
         if not subclass.meta_.abstract:
             subclass.__track_id_field()
+
+    def __init__(self, *args, **kwargs):
+        # Set the flag to prevent any further modifications
+        self._initialized = False
+
+        super().__init__(*args, **kwargs)
+
+        # If we made it this far, the Value Object is initialized
+        #   and should be marked as such
+        self._initialized = True
+
+    def __setattr__(self, name, value):
+        if not hasattr(self, "_initialized") or not self._initialized:
+            return super().__setattr__(name, value)
+        else:
+            raise IncorrectUsageError(
+                {
+                    "_value_object": [
+                        "Value Objects are immutable and cannot be modified once created"
+                    ]
+                }
+            )
 
     @classmethod
     def _default_options(cls):

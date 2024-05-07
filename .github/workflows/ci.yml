@@ -96,7 +96,7 @@ jobs:
           REDIS_PORT: ${{ job.services.redis.ports[6379] }}
 
       - name: CodeCOV
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v3
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres

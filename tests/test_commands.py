@@ -1,11 +1,7 @@
 import pytest
 
 from protean import BaseCommand
-from protean.exceptions import (
-    InvalidDataError,
-    InvalidOperationError,
-    NotSupportedError,
-)
+from protean.exceptions import IncorrectUsageError, InvalidDataError, NotSupportedError
 from protean.fields import Integer, String
 from protean.reflection import fields
 from protean.utils import fully_qualified_name
@@ -82,12 +78,11 @@ class TestCommandProperties:
 
         assert command1 == command2
 
-    @pytest.mark.xfail
     def test_that_commands_are_immutable(self):
         command = UserRegistrationCommand(
             email="john.doe@gmail.com", username="john.doe", password="secret1!"
         )
-        with pytest.raises(InvalidOperationError):
+        with pytest.raises(IncorrectUsageError):
             command.username = "jane.doe"
 
     def test_output_to_dict(self):
