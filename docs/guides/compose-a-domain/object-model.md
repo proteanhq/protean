@@ -9,7 +9,29 @@ document outlines generic aspects that apply to every domain element.
 `Element` is a base class inherited by all domain elements. Currently, it does
 not have any data structures or behavior associated with it.
 
-## Configuration Options
+## Data Containers
+
+Protean provides data container elements, aligned with DDD principles to model
+a domain. These containers hold the data that represents the core concepts
+of the domain.
+
+There are three primary data container elements in Protean:
+
+- Aggregates: The root element that represents a consistent and cohesive
+collection of related entities and value objects. Aggregates manage their
+own data consistency and lifecycle.
+- Entities: Unique and identifiable objects within your domain that have
+a distinct lifecycle and behavior. Entities can exist independently but
+are often part of an Aggregate.
+- Value Objects: Immutable objects that encapsulate a specific value or
+concept. They have no identity and provide a way to group related data
+without independent behavior.
+
+### Reflection
+
+
+
+## Metadata / Configuration Options
 
 Additional options can be passed to a domain element in two ways:
 

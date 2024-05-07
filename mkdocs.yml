@@ -98,49 +98,43 @@ nav:
     - Defining Domain Concepts:
       - guides/domain-definition/index.md
       - guides/domain-definition/fields.md
-    #   - guides/domain-definition/aggregates.md
-    #   - guides/domain-definition/entities.md
-    #   - guides/domain-definition/value-objects.md
-    #   - guides/domain-definition/domain-services.md
-    # - Command Handling:
-    #   - guides/command-handling/index.md
-    #   - guides/command-handling/commands.md
-    #   - guides/command-handling/command-handlers.md
-    # - Processing Events:
-    #   - guides/event-handling/index.md
-    #   - guides/event-handling/events.md
-    #   - guides/event-handling/event-handlers.md
-    # - Persisting Data:
-    #   - guides/persisting-data/index.md
-    #   - guides/persisting-data/repositories.md
-    #   - guides/persisting-data/unit-of-work.md
-    # - Adapters:
+      - guides/domain-definition/aggregates-and-entities.md
+      - guides/domain-definition/value-objects.md
+      - guides/domain-definition/domain-services.md
+      - guides/domain-definition/events.md
+      - guides/domain-definition/repositories.md
+    # - Application Layer:
+    #   - guides/app-layer/index.md
+    #   - guides/app-layer/application-services.md
+    #   - guides/domain-definition/subscribers.md
+    # - Infrastructure:
+    #   - guides/app-layer/index.md (ports-and-adapters)
+    #   - guides/app-layer/persisting-data.md (unit-of-work)
+    #   - guides/app-layer/views.md
+    #   - guides/app-layer/providers.md
+    #   - guides/app-layer/models.md
+    #   - guides/app-layer/brokers.md
+    #   - guides/app-layer/caches.md
+    #   - guides/app-layer/event-stores.md
+    # - Adapters (Port Definition):
     #   - guides/adapters/index.md
     #   - guides/adapters/database.md
     #   - guides/adapters/message-brokers.md
     #   - guides/adapters/caches.md
     #   - guides/adapters/event-stores.md
-    # - Command-Query Responsibility Segregation:
-    #   - guides/cqrs/index.md
-    #   - guides/cqrs/flow.md
+    # - CQRS:
+    #   - guides/command-handling/index.md (flow)
+    #   - guides/command-handling/commands.md
+    #   - guides/command-handling/command-handlers.md
+    #   - guides/event-handling/event-handlers.md
     # - Event Sourcing:
     #   - guides/event-sourcing/index.md
     #   - guides/event-sourcing/event-sourced-aggregates.md
     #   - guides/event-sourcing/snapshots.md
     #   - guides/event-sourcing/projections.md
     #   - guides/event-sourcing/flow.md
-    # - Application Layer:
-    #   - guides/app-layer/index.md
-    #   - guides/app-layer/application-services.md
-    #   - guides/app-layer/adapters.md
-    #   - guides/app-layer/repositories.md
-    #   - guides/app-layer/brokers.md
-    #   - guides/app-layer/caches.md
-    #   - guides/app-layer/event-stores.md
-    # - Escape Hatches:
-    #   - guides/persisting-data/models.md
     # - Testing:
-    #   - guides/testing/index.md
+    #   - guides/testing/index.md (100% testability)
     #   - guides/testing/unit-testing.md
     #   - guides/testing/integration-testing.md
     #   - guides/testing/functional-testing.md
@@ -155,6 +149,7 @@ nav:
   # - Advanced:
   #   - advanced/index.md
   #   - advanced/multi-domain.md
+  #   - advanced/escape-hatches.md
   #   - advanced/security.md
   #   - advanced/performance.md
   #   - advanced/monitoring.md

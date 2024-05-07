@@ -87,7 +87,7 @@ Read more at Event Handlers.
 
 ## `Domain.model`
 
-```python hl_lines="18-25"
+```python hl_lines="20-27"
 {! docs_src/guides/composing-a-domain/011.py !}
 ```
 

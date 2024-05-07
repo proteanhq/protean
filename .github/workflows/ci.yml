@@ -107,7 +107,7 @@ jobs:
           REDIS_HOST: localhost
           # The default Redis port
           REDIS_PORT: ${{ job.services.redis.ports[6379] }}
-  deploy:
+  docs-deploy:
     runs-on: ubuntu-latest
     needs: test
     if: github.ref == 'refs/heads/main'

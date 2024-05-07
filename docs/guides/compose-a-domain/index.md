@@ -1,8 +1,11 @@
 # Compose a Domain
 
-The `protean.Domain` class acts as the **Composition Root** of a domain and 
-composes all domain elements together. It is responsible for creating and
-maintaining the object graph of all the domain elements in the Bounded Context.
+A [`Domain`](../../glossary.md#domain) in Protean represents a 
+[Bounded Context](../../glossary.md#bounded-context) of the application. 
+Because it is aware of all domain elements, the `protean.Domain` class acts as
+the **Composition Root** of a domain and composes all domain elements together.
+It is responsible for creating and maintaining the object graph of all the
+domain elements in the Bounded Context.
 
 `Domain` class is the one-stop gateway to:
 - Register domain elements
@@ -14,9 +17,9 @@ maintaining the object graph of all the domain elements in the Bounded Context.
     because it is an implementation of the domain model.
 
 !!! info
-    A **Composition Root** is a unique location in the application where modules
-    are composed together. It's the place where we instantiate objects and
-    their dependencies before the actual application starts running.
+    A **Composition Root** is a unique location in the application where 
+    modules are composed together. It's the place where we instantiate objects
+    and their dependencies before the actual application starts running.
 
 ## Define domain object
 
@@ -59,5 +62,9 @@ Review the guide on structuring your domain for more information.
 ### **`name`**
 
 The constructor also accepts an optional domain name to uniquely identify the
-domain in the application ecosystem. When not provided, the name is initialized
-to the name of the module defining the domain.
+domain in the application ecosystem.
+
+!!!note
+    When not specified, the name is initialized to the name of the module
+    defining the domain. Typically, this is the name of the file in which
+    the domain is defined, without the `.py` extension.

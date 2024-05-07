@@ -1,33 +1,53 @@
-# Defining a Domain (draft)
+# Define Domain Concepts
 
-A [`Domain`](../../glossary.md#domain) in Protean represents a 
-[Bounded Context](../../glossary.md#bounded-context) of the application. 
-Because it is aware of all domain elements, a `Domain` in Protean acts as a 
-Composition Root, with which all modules are composed together. It is 
-responsible for creating and maintaining a graph of all the domain elements 
-in the Bounded Context.
+Domain-driven Design (DDD) is all about identifying and naming domain concepts
+and translating them as closely as possible - terminology, structure, and
+behavior - in code. Protean supports the tactical patterns outlined by DDD
+to mirror the domain model in [code model](../../glossary.md#code-model).
 
-The Domain is the one-stop gateway to:
+## Domain Layer
 
-- Register domain elements
-- Retrieve dynamically-constructed artifacts like repositories and models
-- Access injected technology components at runtime
+One of the most important building block of a domain model is the Aggregate.
+Aggregates are fundamental, coarse-grained building blocks of a domain model.
+They are conceptual wholes - they enclose all behaviors and data of a distinct
+domain concept. Aggregates are often composed of one or more Aggregate
+Elements, that work together to codify the concept.
+<!-- FIXME Fix link to Aggregate elements in above paragraph -->
 
-## Data Containers
+In a sense, Aggregates act as **Root Entities** - they manage the lifecycle
+of all [Entities](../../glossary.md#entity) and 
+[Value Objects](../../glossary.md#value-object) enclosed within them.
+All elements enclosed within an Aggregate are only accessible through the
+Aggregate itself - it acts as a consistency boundary and protects data
+sanctity within the cluster.
 
-Protean provides data container elements, aligned with DDD principles to model
-a domain. These containers hold the data that represents the core concepts
-of the domain.
+Read more about Aggregates in Building Blocks.
+<!-- FIXME Fix link to Aggregate Building block page -->
 
-There are three primary data container elements in Protean:
+Entities
+Value Objects
+Domain Services
+Events
 
-- Aggregates: The root element that represents a consistent and cohesive
-collection of related entities and value objects. Aggregates manage their
-own data consistency and lifecycle.
-- Entities: Unique and identifiable objects within your domain that have
-a distinct lifecycle and behavior. Entities can exist independently but
-are often part of an Aggregate.
-- Value Objects: Immutable objects that encapsulate a specific value or
-concept. They have no identity and provide a way to group related data
-without independent behavior.
+## Application Layer
 
+Application Services
+Subscribers
+
+## Infrastructure
+
+### Persistence
+
+Repositories
+Models
+Read Models
+Caches
+
+### Communication
+
+Brokers
+
+## Architecture Patterns
+
+CQRS
+Event Sourcing

@@ -27,7 +27,7 @@ with Protean explicitly.
 Protean constructs a graph of all elements registered with a domain and
 exposes them in a registry.
 
-```python hl_lines="28-35"
+```python hl_lines="27-35"
 {! docs_src/guides/composing-a-domain/016.py !}
 ```
 
