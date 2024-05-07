@@ -1,5 +1,7 @@
 from typing import Any
 
+from protean.exceptions import IncorrectUsageError
+
 _FIELDS = "__container_fields__"
 _ID_FIELD_NAME = "__container_id_field_name__"
 
@@ -15,7 +17,9 @@ def fields(class_or_instance):
     try:
         fields_dict = getattr(class_or_instance, _FIELDS)
     except AttributeError:
-        raise TypeError("must be called with a dataclass type or instance")
+        raise IncorrectUsageError(
+            {"field": [f"{class_or_instance} does not have fields"]}
+        )
 
     return fields_dict
 
@@ -24,7 +28,9 @@ def id_field(class_or_instance):
     try:
         field_name = getattr(class_or_instance, _ID_FIELD_NAME)
     except AttributeError:
-        raise TypeError("must be called with a dataclass type or instance")
+        raise IncorrectUsageError(
+            {"identity": [f"{class_or_instance} does not have identity fields"]}
+        )
 
     return fields(class_or_instance)[field_name]
 
@@ -93,6 +99,8 @@ def declared_fields(class_or_instance):
         fields_dict = dict(getattr(class_or_instance, _FIELDS))
         fields_dict.pop("_version", None)
     except AttributeError:
-        raise TypeError("must be called with a dataclass type or instance")
+        raise IncorrectUsageError(
+            {"field": [f"{class_or_instance} does not have fields"]}
+        )
 
     return fields_dict

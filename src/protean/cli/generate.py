@@ -1,9 +1,13 @@
+import logging
+
 import typer
 
 from typing_extensions import Annotated
 
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -28,13 +32,16 @@ def docker_compose(
     domain: Annotated[str, typer.Option()] = ".",
 ):
     """Generate a `docker-compose.yml` from Domain config"""
-    print(f"Generating docker-compose.yml for domain at {domain}")
-    domain_instance = derive_domain(domain)
-    if not domain_instance:
-        raise NoDomainException(
+    try:
+        domain_instance = derive_domain(domain)
+    except NoDomainException:
+        logger.error(
             "Could not locate a Protean domain. You should provide a domain in"
             '"PROTEAN_DOMAIN" environment variable or pass a domain file in options'
         )
+        raise typer.Abort()
+
+    print(f"Generating docker-compose.yml for domain at {domain}")
 
     with domain_instance.domain_context():
         domain_instance.init()

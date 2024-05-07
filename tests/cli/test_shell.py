@@ -8,7 +8,6 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
-from protean.exceptions import NoDomainException
 from tests.shared import change_working_directory_to
 
 runner = CliRunner()
@@ -35,7 +34,6 @@ class TestShellCommand:
         result = runner.invoke(app, args)
 
         # Assertions
-        print(result.output)
         assert result.exit_code == 0
 
     def test_shell_command_with_no_explicit_domain_and_domain_py_file(self):
@@ -47,7 +45,6 @@ class TestShellCommand:
         result = runner.invoke(app, args)
 
         # Assertions
-        print(result.output)
         assert result.exit_code == 0
 
     def test_shell_command_with_no_explicit_domain_and_subdomain_py_file(self):
@@ -59,7 +56,6 @@ class TestShellCommand:
         result = runner.invoke(app, args)
 
         # Assertions
-        print(result.output)
         assert result.exit_code == 0
 
     def test_shell_command_with_domain_attribute_name_as_domain(self):
@@ -71,7 +67,6 @@ class TestShellCommand:
         result = runner.invoke(app, args)
 
         # Assertions
-        print(result.output)
         assert result.exit_code == 0
 
     def test_shell_command_with_domain_attribute_name_as_subdomain(self):
@@ -83,14 +78,23 @@ class TestShellCommand:
         result = runner.invoke(app, args)
 
         # Assertions
-        print(result.output)
         assert result.exit_code == 0
 
     def test_shell_command_raises_no_domain_exception_when_no_domain_is_found(self):
-        change_working_directory_to("test7")
-
         args = ["shell", "--domain", "foobar"]
 
         # Run the shell command and expect it to raise an exception
-        with pytest.raises(NoDomainException):
-            runner.invoke(app, args, catch_exceptions=False)
+        result = runner.invoke(app, args, catch_exceptions=False)
+        assert result.exit_code == 1
+        assert isinstance(result.exception, SystemExit)
+        assert "Aborted" in result.output
+
+    def test_shell_command_with_traverse_option(self):
+        change_working_directory_to("test7")
+
+        args = ["shell", "--domain", "publishing7.py", "--traverse"]
+
+        # Run the shell command
+        result = runner.invoke(app, args)
+
+        assert "Traversing directory to load all modules..." in result.stdout

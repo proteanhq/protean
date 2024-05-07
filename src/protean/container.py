@@ -320,7 +320,7 @@ class BaseContainer(metaclass=ContainerMeta):
         if (
             name in attributes(self)
             or name in fields(self)
-            or name in ["errors", "state_", "_temp_cache", "_events"]
+            or name in ["errors", "state_", "_temp_cache", "_events", "_initialized"]
             or name.startswith(("add_", "remove_", "_mark_changed_"))
         ):
             super().__setattr__(name, value)

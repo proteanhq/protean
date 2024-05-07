@@ -6,7 +6,7 @@ Each element is explored in detail in its own section.
 
 ## `Domain.aggregate`
 
-```Python hl_lines="7-11"
+```python hl_lines="7-11"
 {! docs_src/guides/composing-a-domain/002.py !}
 ```
 
@@ -15,7 +15,7 @@ Read more at Aggregates.
 
 ## `Domain.entity`
 
-```Python hl_lines="14-17"
+```python hl_lines="14-17"
 {! docs_src/guides/composing-a-domain/003.py !}
 ```
 
@@ -24,7 +24,7 @@ Read more at Entities.
 
 ## `Domain.value_object`
 
-```Python hl_lines="7-15 23"
+```python hl_lines="7-15 23"
 {! docs_src/guides/composing-a-domain/004.py !}
 ```
 
@@ -33,7 +33,7 @@ Read more at Value Objects.
 
 ## `Domain.domain_service`
 
-```Python hl_lines="33-37"
+```python hl_lines="33-37"
 {! docs_src/guides/composing-a-domain/005.py !}
 ```
 
@@ -42,7 +42,7 @@ Read more at Domain Services.
 
 ## `Domain.event_sourced_aggregate`
 
-```Python hl_lines="7-10"
+```python hl_lines="7-10"
 {! docs_src/guides/composing-a-domain/006.py !}
 ```
 
@@ -51,7 +51,7 @@ Read more at Event Sourced Aggregates.
 
 ## `Domain.command`
 
-```Python hl_lines="18-23"
+```python hl_lines="18-23"
 {! docs_src/guides/composing-a-domain/007.py !}
 ```
 
@@ -60,7 +60,7 @@ Read more at Commands.
 
 ## `Domain.command_handler`
 
-```Python hl_lines="26-34"
+```python hl_lines="26-34"
 {! docs_src/guides/composing-a-domain/008.py !}
 ```
 
@@ -69,7 +69,7 @@ Read more at Command Handlers.
 
 ## `Domain.event`
 
-```Python hl_lines="18-23"
+```python hl_lines="18-23"
 {! docs_src/guides/composing-a-domain/009.py !}
 ```
 
@@ -78,7 +78,7 @@ Read more at Events.
 
 ## `Domain.event_handler`
 
-```Python hl_lines="28-32"
+```python hl_lines="28-32"
 {! docs_src/guides/composing-a-domain/010.py !}
 ```
 
@@ -87,7 +87,7 @@ Read more at Event Handlers.
 
 ## `Domain.model`
 
-```Python hl_lines="18-25"
+```python hl_lines="18-25"
 {! docs_src/guides/composing-a-domain/011.py !}
 ```
 
@@ -96,7 +96,7 @@ Read more at Models.
 
 ## `Domain.repository`
 
-```Python hl_lines="17-22"
+```python hl_lines="17-22"
 {! docs_src/guides/composing-a-domain/012.py !}
 ```
 
@@ -105,7 +105,7 @@ Read more at Repositories.
 
 ## `Domain.view`
 
-```Python hl_lines="20-24"
+```python hl_lines="20-24"
 {! docs_src/guides/composing-a-domain/013.py !}
 ```
 

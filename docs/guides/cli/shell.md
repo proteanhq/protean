@@ -13,10 +13,11 @@ protean shell [OPTIONS]
 
 ## Options
 
-| Option      | Description                               | Default |
-|-------------|-------------------------------------------|---------|
-| `--domain`  | Sets the domain context for the shell.    | `.`     |
-| `--help`    | Shows the help message and exits.         |         |
+| Option        | Description                               | Default |
+|---------------|-------------------------------------------|---------|
+| `--domain`    | Sets the domain context for the shell.    | `.`     |
+| `--traverse`  | Auto-traverse domain elements             | `False` |
+| `--help`      | Shows the help message and exits.         |         |
 
 ## Launching the Shell
 
@@ -38,3 +39,13 @@ protean shell --domain auth
 This command will initiate the shell in the context of `auth` domain, allowing
 you to perform domain-specific operations more conveniently. Read [Domain 
 Discovery](discovery.md) for options to specify the domain.
+
+### Traversing subdirectories
+
+By default, only the domain and elments in the specified module will be loaded
+into the shell context. If you want traverse files in the folder and its
+subdirectories, you can specify the `--traverse` option.
+
+```shell
+protean shell --domain auth --traverse
+```

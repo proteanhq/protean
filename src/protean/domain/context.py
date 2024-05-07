@@ -11,7 +11,7 @@ _sentinel = object()
 logger = logging.getLogger(__name__)
 
 
-class _DomainContextGlobals(object):
+class _DomainContextGlobals:
     """A plain object. Used as a namespace for storing data for the duration of a
     domain context.
 
@@ -78,7 +78,7 @@ class DomainContext(object):
 
     def __init__(self, domain, **kwargs):
         self.domain = domain
-        self.g = domain.domain_context_globals_class()
+        self.g: _DomainContextGlobals = domain.domain_context_globals_class()
 
         # Set any additional kwargs as attributes in globals
         for kw in kwargs.items():

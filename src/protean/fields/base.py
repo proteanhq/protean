@@ -7,8 +7,7 @@ from collections import defaultdict
 from typing import Any, Callable, Iterable, List
 
 from protean import exceptions
-
-from .mixins import FieldDescriptorMixin
+from protean.fields.mixins import FieldDescriptorMixin
 
 MISSING_ERROR_MESSAGE = (
     "ValidationError raised by `{class_name}`, but error key `{key}` does "
@@ -91,15 +90,32 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
 
         self._validators = validators
 
-        # Hold a reference to Entity registering the field
-        self._entity_cls = None
-
         # Collect default error message from self and parent classes
         messages = {}
         for cls in reversed(self.__class__.__mro__):
             messages.update(getattr(cls, "default_error_messages", {}))
         messages.update(error_messages or {})
         self.error_messages = messages
+
+    def _generic_param_values_for_repr(self):
+        """Return the generic parameter values for the Field's repr"""
+        values = []
+        if self.required:
+            values.append("required=True")
+        if self.default is not None:
+            # If default is a callable, use its name
+            if callable(self.default):
+                values.append(f"default={self.default.__name__}")
+            else:
+                values.append(f"default='{self.default}'")
+        return values
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}("
+            + ", ".join(self._generic_param_values_for_repr())
+            + ")"
+        )
 
     def __get__(self, instance, owner):
         if hasattr(instance, "__dict__"):

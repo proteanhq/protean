@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+
+import pytest
+
 from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
 from protean.fields import DateTime, Identifier, String
 from protean.server import Engine
@@ -51,6 +55,20 @@ class EmailEventHandler(BaseEventHandler):
     @handle(Sent)
     def record_sent_email(self, event: Sent) -> None:
         pass
+
+
+@pytest.fixture(autouse=True)
+def setup_event_loop():
+    """Ensure an Event Loop Exists in Tests.
+
+    Otherwise tests are attempting to access the asyncio event loop from a non-async context
+    where no event loop is running or set as the current event loop.
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    yield
+    loop.close()
+    asyncio.set_event_loop(None)
 
 
 def test_event_subscriptions(test_domain):

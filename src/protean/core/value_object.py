@@ -1,4 +1,5 @@
 """Value Object Functionality and Classes"""
+
 import logging
 
 from collections import defaultdict
@@ -22,6 +23,8 @@ class BaseValueObject(BaseContainer, OptionsMixin):
         super().__init_subclass__()
 
         subclass.__validate_for_basic_field_types()
+        subclass.__validate_for_non_identifier_fields()
+        subclass.__validate_for_non_unique_fields()
 
     @classmethod
     def __validate_for_basic_field_types(subclass):
@@ -29,9 +32,33 @@ class BaseValueObject(BaseContainer, OptionsMixin):
             if isinstance(field_obj, (Reference, Association, ValueObject)):
                 raise IncorrectUsageError(
                     {
-                        "_entity": [
-                            f"Views can only contain basic field types. "
+                        "_value_object": [
+                            f"Value Objects can only contain basic field types. "
                             f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
+                        ]
+                    }
+                )
+
+    @classmethod
+    def __validate_for_non_identifier_fields(subclass):
+        for field_name, field_obj in fields(subclass).items():
+            if field_obj.identifier:
+                raise IncorrectUsageError(
+                    {
+                        "_value_object": [
+                            f"Value Objects cannot contain fields marked 'identifier' (field '{field_name}')"
+                        ]
+                    }
+                )
+
+    @classmethod
+    def __validate_for_non_unique_fields(subclass):
+        for field_name, field_obj in fields(subclass).items():
+            if field_obj.unique:
+                raise IncorrectUsageError(
+                    {
+                        "_value_object": [
+                            f"Value Objects cannot contain fields marked 'unique' (field '{field_name}')"
                         ]
                     }
                 )
@@ -56,7 +83,8 @@ class BaseValueObject(BaseContainer, OptionsMixin):
 
         self.errors = defaultdict(list)
 
-        required = kwargs.pop("required", False)
+        # Set the flag to prevent any further modifications
+        self._initialized = False
 
         # Load the attributes based on the template
         loaded_fields = []
@@ -73,17 +101,17 @@ class BaseValueObject(BaseContainer, OptionsMixin):
 
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
+            # Record that a field was encountered by appending to `loaded_fields`
+            #   When it fails validations, we want it's errors to be recorded
+            #
+            #   Not remembering the field was recorded will result in it being set to `None`
+            #   which will raise a ValidationError of its own for the wrong reasons (required field not set)
+            loaded_fields.append(field_name)
             try:
                 setattr(self, field_name, val)
             except ValidationError as err:
-                # Ignore mandatory errors if VO is marked optional at the parent level
-                if "is required" in err.messages[field_name] and not required:
-                    loaded_fields.append(field_name)
-                else:
-                    for field_name in err.messages:
-                        self.errors[field_name].extend(err.messages[field_name])
-            else:
-                loaded_fields.append(field_name)
+                for field_name in err.messages:
+                    self.errors[field_name].extend(err.messages[field_name])
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields
@@ -102,6 +130,38 @@ class BaseValueObject(BaseContainer, OptionsMixin):
         if self.errors:
             logger.error(self.errors)
             raise ValidationError(self.errors)
+
+        # If we made it this far, the Value Object is initialized
+        #   and should be marked as such
+        self._initialized = True
+
+    def __setattr__(self, name, value):
+        if not hasattr(self, "_initialized") or not self._initialized:
+            return super().__setattr__(name, value)
+        else:
+            raise IncorrectUsageError(
+                {
+                    "_value_object": [
+                        "Value Objects are immutable and cannot be modified once created"
+                    ]
+                }
+            )
+
+    def _run_validators(self, value):
+        """Collect validators from enclosed fields and run them.
+
+        This method is called during initialization of the Value Object
+        at the Entity level.
+        """
+        errors = defaultdict(list)
+        for field_name, field_obj in fields(self).items():
+            try:
+                field_obj._run_validators(getattr(self, field_name), value)
+            except ValidationError as err:
+                errors[field_name].extend(err.messages)
+
+        if errors:
+            raise ValidationError(errors)
 
 
 def value_object_factory(element_cls, **kwargs):
