@@ -1,4 +1,5 @@
 """View Functionality and Classes"""
+
 import logging
 
 from protean.container import BaseContainer, OptionsMixin

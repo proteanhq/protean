@@ -1,6 +1,6 @@
 """Module to setup Factories and other required artifacts for tests
 
-    isort:skip_file
+isort:skip_file
 """
 
 import os
@@ -224,7 +224,6 @@ def db(test_domain):
 
 @pytest.fixture(autouse=True)
 def run_around_tests(test_domain):
-
     yield
 
     if test_domain:

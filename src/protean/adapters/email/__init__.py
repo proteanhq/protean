@@ -2,7 +2,6 @@ import importlib
 import logging
 
 from protean.exceptions import ConfigurationError
-from protean.globals import current_uow
 
 logger = logging.getLogger(__name__)
 

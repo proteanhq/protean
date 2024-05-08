@@ -8,7 +8,7 @@ from protean.fields import String, ValueObject
 
 class EmailValidator:
     def __init__(self):
-        self.error = f"Invalid email address"
+        self.error = "Invalid email address"
 
     def __call__(self, value):
         """Business rules of Email address"""

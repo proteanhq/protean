@@ -176,9 +176,9 @@ def event_sourced_aggregate_factory(element_cls, **opts):
             element_cls._projections[fully_qualified_name(method._event_cls)].add(
                 method
             )
-            element_cls._events_cls_map[
-                fully_qualified_name(method._event_cls)
-            ] = method._event_cls
+            element_cls._events_cls_map[fully_qualified_name(method._event_cls)] = (
+                method._event_cls
+            )
 
             # Associate Event with the aggregate class
             if inspect.isclass(method._event_cls) and issubclass(

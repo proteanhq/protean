@@ -95,9 +95,9 @@ class _DomainRegistry:
                 cls=element_cls,
             )
 
-            self._elements[element_cls.element_type.value][
-                element_name
-            ] = element_record
+            self._elements[element_cls.element_type.value][element_name] = (
+                element_record
+            )
 
             # Create an array to hold multiple elements of same name
             if element_cls.__name__ in self._elements_by_name:

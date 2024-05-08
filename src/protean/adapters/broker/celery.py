@@ -90,9 +90,9 @@ class CeleryBroker(BaseBroker):
                     "{self.celery_app.tasks} as Celery Task"
                 )
             else:
-                self._command_handlers[
-                    fully_qualified_name(initiator)
-                ] = decorated_cls_instance
+                self._command_handlers[fully_qualified_name(initiator)] = (
+                    decorated_cls_instance
+                )
 
     def publish(self, message: Message) -> None:
         event_cls = fetch_element_cls_from_registry(

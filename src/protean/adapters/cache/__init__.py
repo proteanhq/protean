@@ -1,4 +1,5 @@
-""" Package for  Concrete Implementations of Protean repositories """
+"""Package for  Concrete Implementations of Protean repositories"""
+
 import collections
 import importlib
 import logging

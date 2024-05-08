@@ -1,4 +1,5 @@
 """Aggregate Functionality and Classes"""
+
 import logging
 
 from protean.container import EventedMixin

@@ -30,7 +30,7 @@ class Email(BaseValueObject):
     def validate(cls, address):
         """Business rules of Email address"""
         if (
-            type(address) is not str
+            not isinstance(address, str)
             or "@" not in address
             or address.count("@") > 1
             or len(address) > 255

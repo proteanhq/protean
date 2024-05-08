@@ -1,4 +1,4 @@
-""" Test cases for all available field type implementations"""
+"""Test cases for all available field type implementations"""
 
 import enum
 

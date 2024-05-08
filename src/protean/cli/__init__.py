@@ -76,7 +76,7 @@ def main(
 def test(
     category: Annotated[
         Category, typer.Option("-c", "--category", case_sensitive=False)
-    ] = Category.CORE
+    ] = Category.CORE,
 ):
     commands = ["pytest", "--cache-clear", "--ignore=tests/support/"]
 

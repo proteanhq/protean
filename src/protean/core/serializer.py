@@ -1,4 +1,5 @@
 """Serializer Object Functionality and Classes"""
+
 import logging
 
 from marshmallow import Schema, fields

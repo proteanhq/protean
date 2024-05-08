@@ -1,4 +1,5 @@
 """A Dummy Email Provider class"""
+
 import logging
 
 from protean.core.email import BaseEmailProvider

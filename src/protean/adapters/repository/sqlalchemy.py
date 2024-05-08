@@ -162,7 +162,6 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
 
                     # Upgrade to Postgresql specific Data Types
                     if cls.metadata.bind.dialect.name == "postgresql":
-
                         if field_cls == Dict and not field_obj.pickled:
                             sa_type_cls = psql.JSON
 

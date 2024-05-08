@@ -8,7 +8,7 @@ import sys
 
 from collections import defaultdict
 from functools import lru_cache
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 
 from werkzeug.datastructures import ImmutableDict
 
