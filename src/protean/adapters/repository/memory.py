@@ -1,4 +1,4 @@
-"""Implementation of a dictionary based repository """
+"""Implementation of a dictionary based repository"""
 
 import copy
 import json

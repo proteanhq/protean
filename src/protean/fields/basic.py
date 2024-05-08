@@ -1,4 +1,4 @@
-""" Module for defining basic Field types of Entity """
+"""Module for defining basic Field types of Entity"""
 
 import datetime
 

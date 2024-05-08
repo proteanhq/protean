@@ -1,4 +1,5 @@
 """Utility classes and methods for DB Adapters, Repositories and Query Constructors"""
+
 import copy
 import functools
 import inspect

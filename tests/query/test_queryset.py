@@ -1,4 +1,5 @@
-""" Test the Q object used for managing filter criteria """
+"""Test the Q object used for managing filter criteria"""
+
 import pytest
 
 from protean import QuerySet

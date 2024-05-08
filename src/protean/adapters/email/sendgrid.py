@@ -1,4 +1,5 @@
-""" Define the send-grid email provider """
+"""Define the send-grid email provider"""
+
 import logging
 
 from python_http_client.exceptions import HTTPError

@@ -1,4 +1,5 @@
-""" Test cases for validators"""
+"""Test cases for validators"""
+
 import re
 
 import pytest

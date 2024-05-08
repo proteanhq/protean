@@ -1,4 +1,4 @@
-""" Utilities for converting names between different cases"""
+"""Utilities for converting names between different cases"""
 
 import re
 

@@ -7,7 +7,7 @@ domain = Domain(__name__)
 
 class EmailValidator:
     def __init__(self):
-        self.error = f"Invalid email address"
+        self.error = "Invalid email address"
 
     def __call__(self, value):
         """Business rules of Email address"""

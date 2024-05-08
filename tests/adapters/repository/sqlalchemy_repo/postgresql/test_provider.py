@@ -1,4 +1,5 @@
 """Module to test SQLAlchemy Provider Class"""
+
 import pytest
 
 from sqlalchemy.engine.result import Result

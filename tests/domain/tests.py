@@ -19,7 +19,6 @@ class TestDomainInitialization:
 
 class TestDomainRegistration:
     def test_that_only_recognized_element_types_can_be_registered(self, test_domain):
-
         with pytest.raises(NotImplementedError):
             test_domain.registry.register_element(UserFoo)
 

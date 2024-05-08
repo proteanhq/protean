@@ -1,4 +1,5 @@
 """Module for defining different validators used by Field Types"""
+
 import re
 
 from protean.exceptions import ValidationError

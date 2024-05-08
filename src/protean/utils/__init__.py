@@ -3,6 +3,7 @@
 Definitions/declaractions in this module should be independent of other modules,
 to the maximum extent possible.
 """
+
 import functools
 import importlib
 import logging
@@ -12,7 +13,7 @@ from enum import Enum, auto
 from typing import Any, Tuple, Union
 from uuid import uuid4
 
-from protean.exceptions import ConfigurationError, IncorrectUsageError
+from protean.exceptions import ConfigurationError
 from protean.globals import current_domain
 
 logger = logging.getLogger(__name__)

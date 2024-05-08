@@ -15,7 +15,7 @@ class DummyStringField(Field):
 
     def _cast_to_type(self, value: str):
         """Value must me a string type"""
-        if type(value) is not str:
+        if not isinstance(value, str):
             self.fail("invalid_type")
         return value
 
