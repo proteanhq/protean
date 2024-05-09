@@ -99,7 +99,9 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     def _generic_param_values_for_repr(self):
         """Return the generic parameter values for the Field's repr"""
         values = []
-        if self.required:
+        if self.identifier:
+            values.append("identifier=True")
+        if not self.identifier and self.required:
             values.append("required=True")
         if self.default is not None:
             # If default is a callable, use its name
