@@ -8,8 +8,10 @@ import bleach
 
 from dateutil.parser import parse as date_parser
 
-from protean.exceptions import InvalidOperationError, ValidationError
+from protean.exceptions import InvalidOperationError, OutOfContextError, ValidationError
 from protean.fields import Field, validators
+from protean.globals import current_domain
+from protean.utils import IdentityType
 
 
 class String(Field):
@@ -346,11 +348,48 @@ class Identifier(Field):
     Values can be UUIDs, Integers or Strings.
     """
 
+    def __init__(self, identity_type=None, **kwargs):
+        # Validate the identity type
+        if identity_type and identity_type not in [
+            id_type.value for id_type in IdentityType
+        ]:
+            raise ValidationError({"identity_type": ["Identity type not supported"]})
+
+        # Pick identity type from domain configuration if not provided
+        try:
+            if not identity_type:
+                identity_type = current_domain.config["IDENTITY_TYPE"]
+        except OutOfContextError:  # Domain not active
+            identity_type = IdentityType.STRING.value
+
+        self.identity_type = identity_type
+        super().__init__(**kwargs)
+
     def _cast_to_type(self, value):
         """Verify that value is either a UUID, a String or an Integer"""
         # A Boolean value is tested for specifically because `isinstance(value, int)` is `True` for Boolean values
         if not (isinstance(value, (UUID, str, int))) or isinstance(value, bool):
             self.fail("invalid", value=value)
+
+        # Ensure that the value is of the right type
+        if self.identity_type == IdentityType.UUID.value:
+            if not isinstance(value, UUID):
+                try:
+                    value = UUID(value)
+                except (ValueError, AttributeError):
+                    self.fail("invalid", value=value)
+        elif self.identity_type == IdentityType.INTEGER.value:
+            if not isinstance(value, int):
+                try:
+                    value = int(value)
+                except ValueError:
+                    self.fail("invalid", value=value)
+        elif self.identity_type == IdentityType.STRING.value:
+            if not isinstance(value, str):
+                value = str(value)
+        else:
+            raise ValidationError({"identity_type": ["Identity type not supported"]})
+
         return value
 
     def __set__(self, instance, value):

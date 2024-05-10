@@ -17,6 +17,30 @@ def test_required_in_repr():
     assert repr(email) == str(email) == "String(required=True, default='John Doe')"
 
 
+def test_referenced_as_in_repr():
+    name = String(referenced_as="fullname")
+    email = String(required=True, referenced_as="email_address")
+
+    assert repr(name) == str(name) == "String(referenced_as='fullname')"
+    assert (
+        repr(email)
+        == str(email)
+        == "String(required=True, referenced_as='email_address')"
+    )
+
+
+def test_description_in_repr():
+    permit = String(description="Licences and Approvals", required=True)
+    name = String(description="Full Name", required=True)
+
+    assert (
+        repr(permit)
+        == str(permit)
+        == "String(description='Licences and Approvals', required=True)"
+    )
+    assert repr(name) == str(name) == "String(description='Full Name', required=True)"
+
+
 def test_string_repr_and_str():
     str_obj1 = String(max_length=50)
     str_obj2 = String(min_length=50)
