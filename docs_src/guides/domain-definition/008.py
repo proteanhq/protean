@@ -13,7 +13,7 @@ def utc_now():
 @publishing.aggregate
 class Post:
     title = String(max_length=50)
-    created_on = DateTime(default=utc_now)
+    created_at = DateTime(default=utc_now)
 
     stats = HasOne("Statistic")
     comments = HasMany("Comment")

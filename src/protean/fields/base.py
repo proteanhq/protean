@@ -23,21 +23,32 @@ class FieldBase:
 
 
 class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
-    """Abstract field from which other fields should extend.
+    """
+    Base class for all fields in the Protean framework.
 
-    :param default: If set, this value will be used during entity loading
-    if the field value is missing.
-    :param required: if `True`, Raise a :exc:`ValidationError` if the field
-    value is `None`.
-    :param unique: Indicate if this field needs to be checked for uniqueness.
-    :param choices: Valid choices for this field, if value is not one of the
-    choices a `ValidationError` is raised.
-    :param validators: Optional list of validators to be applied for this field.
-    :param error_messages: Optional list of validators to be applied for
-    this field.
+    Fields are used to define the structure and behavior of attributes in an entity or aggregate.
+    They handle the validation, conversion, and storage of attribute values.
+
+    :param referenced_as: The name of the field as referenced in the database or external systems.
+    :type referenced_as: str, optional
+    :param description: A description of the field.
+    :type description: str, optional
+    :param identifier: Indicates if the field is an identifier for the entity or aggregate.
+    :type identifier: bool, optional
+    :param default: The default value for the field if no value is provided.
+    :type default: Any, optional
+    :param required: Indicates if the field is required (must have a value).
+    :type required: bool, optional
+    :param unique: Indicates if the field values must be unique within the repository.
+    :type unique: bool, optional
+    :param choices: A set of allowed choices for the field value.
+    :type choices: enum.Enum, optional
+    :param validators: Additional validators to apply to the field value.
+    :type validators: Iterable, optional
+    :param error_messages: Custom error messages for different kinds of errors.
+    :type error_messages: dict, optional
     """
 
-    # Default error messages for various kinds of errors.
     default_error_messages = {
         "invalid": "Value is not a valid type for this field.",
         "unique": "{entity_name} with {field_name} '{value}' is already present.",
@@ -99,8 +110,14 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     def _generic_param_values_for_repr(self):
         """Return the generic parameter values for the Field's repr"""
         values = []
-        if self.required:
+        if self.description:
+            values.append(f"description='{self.description}'")
+        if self.identifier:
+            values.append("identifier=True")
+        if not self.identifier and self.required:
             values.append("required=True")
+        if self.referenced_as:
+            values.append(f"referenced_as='{self.referenced_as}'")
         if self.default is not None:
             # If default is a callable, use its name
             if callable(self.default):

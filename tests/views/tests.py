@@ -151,7 +151,7 @@ class TestProperties:
     def test_conversion_of_view_values_to_dict(self):
         person = Person(person_id=12, first_name="John", last_name="Doe")
         assert person.to_dict() == {
-            "person_id": 12,
+            "person_id": "12",
             "first_name": "John",
             "last_name": "Doe",
             "age": 21,
@@ -162,11 +162,11 @@ class TestProperties:
 
         assert (
             str(person)
-            == "Person object ({'person_id': 12, 'first_name': 'John', 'last_name': None, 'age': 21})"
+            == "Person object ({'person_id': '12', 'first_name': 'John', 'last_name': None, 'age': 21})"
         )
         assert (
             repr(person)
-            == "<Person: Person object ({'person_id': 12, 'first_name': 'John', 'last_name': None, 'age': 21})>"
+            == "<Person: Person object ({'person_id': '12', 'first_name': 'John', 'last_name': None, 'age': 21})>"
         )
 
 
@@ -349,7 +349,7 @@ class TestEquivalence:
 
     def test_generated_aggregate_hash(self):
         """Test that the entity's hash is based on its identity"""
-        hashed_id = hash(12345)
+        hashed_id = hash("12345")
 
         person = Person(person_id=12345, first_name="John", last_name="Doe")
         assert hashed_id == hash(

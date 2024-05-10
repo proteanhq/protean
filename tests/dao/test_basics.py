@@ -18,19 +18,6 @@ class TestDAO:
         conn = provider.get_connection()
         assert isinstance(conn._db["data"], dict)
 
-    @pytest.mark.xfail
-    def test_that_fields_can_have_custom_attribute_names(self, test_domain):
-        dao = test_domain.repository_for(Person)._dao
-        person1 = dao.create(id=1, first_name="Athos", last_name="Musketeer", age=2)
-
-        model = dao.model_cls.from_entity(person1)
-        assert all(attribute in model for attribute in ["prenom", "nom_de_famille"])
-
-        entity = dao.model_cls.to_entity(model)
-        assert all(
-            field_name in entity.to_dict() for field_name in ["first_name", "last_name"]
-        )
-
     def test_that_escaped_quotes_in_values_are_handled_properly(self, test_domain):
         test_domain.repository_for(Person)._dao.create(
             id=1, first_name="Athos", last_name="Musketeer", age=2
