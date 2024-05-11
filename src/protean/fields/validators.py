@@ -77,7 +77,7 @@ class RegexValidator:
             self.flags = flags
         if self.flags and not isinstance(self.regex, str):
             raise TypeError(
-                "If the flags are set, regex must be a regular expression string."
+                "If flags are set, regex must be a regular expression string."
             )
 
         self.regex = re.compile(self.regex, self.flags)
