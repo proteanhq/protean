@@ -40,7 +40,19 @@ class _ShadowField(Field):
 
 
 class ValueObject(Field):
-    """Field implementation for Value Objects"""
+    """
+    Represents a field that holds a value object.
+
+    This field is used to embed a value object within an entity. It provides
+    functionality to handle the value object's fields and their values.
+
+    Args:
+        value_object_cls (class): The class of the value object to be embedded.
+
+    Attributes:
+        embedded_fields (dict): A dictionary that holds the embedded fields of the value object.
+
+    """
 
     def __init__(self, value_object_cls, *args, **kwargs):
         super().__init__(*args, **kwargs)

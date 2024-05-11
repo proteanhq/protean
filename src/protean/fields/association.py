@@ -9,16 +9,26 @@ from .mixins import FieldCacheMixin, FieldDescriptorMixin
 
 
 class _ReferenceField(Field):
-    """Shadow Attribute Field to back References"""
+    """
+    Represents a reference field that can be used to establish associations between entities.
+
+    Args:
+        reference (str): The reference field as an attribute.
+        **kwargs: Additional keyword arguments to be passed to the base `Field` class.
+    """
 
     def __init__(self, reference, **kwargs):
-        """Accept reference field as a an attribute, otherwise is a straightforward field"""
+        """Accept reference field as an attribute, otherwise is a straightforward field"""
         self.reference = reference
         super().__init__(**kwargs)
 
     def __set__(self, instance, value):
         """Override `__set__` to update relation field and keep it in sync with the shadow
         attribute's value
+
+        Args:
+            instance: The instance of the class.
+            value: The value to be set.
         """
         value = self._load(value)
 
@@ -29,20 +39,43 @@ class _ReferenceField(Field):
             self._reset_values(instance)
 
     def __delete__(self, instance):
-        """Nullify values and linkages"""
+        """Nullify values and linkages
+
+        Args:
+            instance: The instance of the class.
+        """
         self._reset_values(instance)
 
     def _cast_to_type(self, value):
-        """Verify type of value assigned to the shadow field"""
+        """Verify the type of value assigned to the shadow field
+
+        Args:
+            value: The value to be assigned.
+
+        Returns:
+            The casted value.
+        """
         # FIXME Verify that the value being assigned is compatible with the remote field
         return value
 
     def as_dict(self, value):
-        """Return JSON-compatible value of self"""
+        """Return JSON-compatible value of self
+
+        Args:
+            value: The value to be converted to JSON.
+
+        Raises:
+            NotImplementedError: This method needs to be implemented in the derived class.
+
+        """
         raise NotImplementedError
 
     def _reset_values(self, instance):
-        """Reset all associated values and clean up dictionary items"""
+        """Reset all associated values and clean up dictionary items
+
+        Args:
+            instance: The instance of the class.
+        """
         self.value = None
         self.reference.value = None
         instance.__dict__.pop(self.field_name, None)
@@ -52,11 +85,14 @@ class _ReferenceField(Field):
 
 class Reference(FieldCacheMixin, Field):
     """
-    Provide a many-to-one relation by adding an attribute to the local entity
-    to hold the remote value.
+    A field representing a reference to another entity. This field is used to establish
+    the reverse relationship to the remote entity.
 
-    By default ForeignKey will target the `id` column of the remote model but this
-    behavior can be changed by using the ``via`` argument.
+    Args:
+        to_cls (str or Entity): The target entity class or its name.
+        via (str, optional): The linkage attribute between `via` and the designated
+            `id_field` of the target class.
+        **kwargs: Additional keyword arguments to be passed to the base `Field` class.
     """
 
     def __init__(self, to_cls, via=None, **kwargs):
@@ -207,7 +243,17 @@ class Reference(FieldCacheMixin, Field):
 
 
 class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
-    """Base class for all association classes"""
+    """
+    Represents an association between entities in a domain model.
+
+    An association field allows one entity to reference another entity in the domain model.
+    It provides methods to retrieve associated objects and handle changes in the association.
+
+    Args:
+        to_cls (class): The class of the target entity that this association references.
+        via (str, optional): The name of the linkage attribute between the associated entities.
+            If not provided, a default linkage attribute is generated based on the entity names.
+    """
 
     def __init__(self, to_cls, via=None, **kwargs):
         super().__init__(**kwargs)
@@ -308,10 +354,10 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
 
 class HasOne(Association):
     """
-    Provide a HasOne relation to a remote entity.
+    Represents a one-to-one association between two entities.
 
-    By default, the query will lookup an attribute of the form `<current_entity>_id`
-    to fetch and populate. This behavior can be changed by using the `via` argument.
+    This class is used to define a relationship where an instance of one entity
+    is associated with at most one instance of another entity.
     """
 
     def __set__(self, instance, value):

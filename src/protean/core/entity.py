@@ -166,8 +166,28 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
             if isinstance(field_obj, Reference)
         }
 
-        # Load the attributes based on the template
+        # Track fields that have been loaded
         loaded_fields = []
+
+        # Pick identifier if provided in template or kwargs
+        #   Generate if not provided
+        id_field_obj = id_field(self)
+        id_field_name = id_field_obj.field_name
+        if kwargs and id_field_name in kwargs:
+            setattr(self, id_field_name, kwargs.pop(id_field_name))
+            loaded_fields.append(id_field_name)
+        elif template:
+            for dictionary in template:
+                if id_field_name in dictionary:
+                    setattr(self, id_field_name, dictionary[id_field_name])
+                    loaded_fields.append(id_field_name)
+                    break
+        else:
+            if type(id_field_obj) is Auto and not id_field_obj.increment:
+                setattr(self, id_field_name, generate_identity())
+                loaded_fields.append(id_field_name)
+
+        # Load the attributes based on the template
         for dictionary in template:
             if not isinstance(dictionary, dict):
                 raise AssertionError(
@@ -176,22 +196,23 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
                     f"values.",
                 )
             for field_name, val in dictionary.items():
-                if field_name not in kwargs:
+                if field_name not in kwargs and field_name not in loaded_fields:
                     kwargs[field_name] = val
 
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
-            try:
-                setattr(self, field_name, val)
-            except ValidationError as err:
-                for field_name in err.messages:
-                    self.errors[field_name].extend(err.messages[field_name])
-            finally:
-                loaded_fields.append(field_name)
+            if field_name not in loaded_fields:
+                try:
+                    setattr(self, field_name, val)
+                except ValidationError as err:
+                    for field_name in err.messages:
+                        self.errors[field_name].extend(err.messages[field_name])
+                finally:
+                    loaded_fields.append(field_name)
 
-                # Also note reference field name if its attribute was loaded
-                if field_name in reference_attributes:
-                    loaded_fields.append(reference_attributes[field_name])
+                    # Also note reference field name if its attribute was loaded
+                    if field_name in reference_attributes:
+                        loaded_fields.append(reference_attributes[field_name])
 
         # Load Value Objects from associated fields
         #   This block will dynamically construct value objects from field values
@@ -225,9 +246,13 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
                                 "{}_{}".format(field_name, sub_field_name)
                             ].extend(err.messages[sub_field_name])
 
-        # Load Identities
+        # Load other identities
         for field_name, field_obj in declared_fields(self).items():
-            if type(field_obj) is Auto and not field_obj.increment:
+            if (
+                field_name not in loaded_fields
+                and type(field_obj) is Auto
+                and not field_obj.increment
+            ):
                 if not getattr(self, field_obj.field_name, None):
                     setattr(self, field_obj.field_name, generate_identity())
                 loaded_fields.append(field_obj.field_name)
