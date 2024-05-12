@@ -1,8 +1,12 @@
 from collections import defaultdict
 from enum import Enum
 
-from protean import BaseEntity
+from protean import BaseAggregate, BaseEntity
 from protean.fields import Auto, HasOne, Integer, String
+
+
+class Account(BaseAggregate):
+    account_number = String(max_length=50, required=True)
 
 
 class AbstractPerson(BaseEntity):
@@ -16,11 +20,17 @@ class ConcretePerson(BaseEntity):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
 
+    class Meta:
+        aggregate_cls = "Account"
+
 
 class Person(BaseEntity):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
     age = Integer(default=21)
+
+    class Meta:
+        aggregate_cls = "Account"
 
 
 class PersonAutoSSN(BaseEntity):
@@ -29,12 +39,18 @@ class PersonAutoSSN(BaseEntity):
     last_name = String(max_length=50)
     age = Integer(default=21)
 
+    class Meta:
+        aggregate_cls = "Account"
+
 
 class PersonExplicitID(BaseEntity):
     ssn = String(max_length=36, identifier=True)
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
     age = Integer(default=21)
+
+    class Meta:
+        aggregate_cls = "Account"
 
 
 class Relative(BaseEntity):
@@ -43,18 +59,25 @@ class Relative(BaseEntity):
     age = Integer(default=21)
     relative_of = HasOne(Person)
 
+    class Meta:
+        aggregate_cls = "Account"
+
 
 class Adult(Person):
     pass
 
     class Meta:
         schema_name = "adults"
+        aggregate_cls = "Account"
 
 
 class NotAPerson(BaseEntity):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
     age = Integer(default=21)
+
+    class Meta:
+        aggregate_cls = "Account"
 
 
 # Entities to test Meta Info overriding # START #
@@ -65,21 +88,25 @@ class DbPerson(BaseEntity):
 
     class Meta:
         schema_name = "pepes"
+        aggregate_cls = "Account"
 
 
 class SqlPerson(Person):
     class Meta:
         schema_name = "people"
+        aggregate_cls = "Account"
 
 
 class DifferentDbPerson(Person):
     class Meta:
         provider = "non-default"
+        aggregate_cls = "Account"
 
 
 class SqlDifferentDbPerson(Person):
     class Meta:
         provider = "non-default-sql"
+        aggregate_cls = "Account"
 
 
 class OrderedPerson(BaseEntity):
@@ -89,11 +116,13 @@ class OrderedPerson(BaseEntity):
 
     class Meta:
         order_by = "first_name"
+        aggregate_cls = "Account"
 
 
 class OrderedPersonSubclass(Person):
     class Meta:
         order_by = "last_name"
+        aggregate_cls = "Account"
 
 
 class BuildingStatus(Enum):
@@ -101,10 +130,17 @@ class BuildingStatus(Enum):
     DONE = "DONE"
 
 
+class Area(BaseAggregate):
+    name = String(max_length=50)
+
+
 class Building(BaseEntity):
     name = String(max_length=50)
     floors = Integer()
     status = String(choices=BuildingStatus)
+
+    class Meta:
+        aggregate_cls = "Area"
 
     def defaults(self):
         if not self.status:

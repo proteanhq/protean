@@ -10,7 +10,7 @@ from protean.container import BaseContainer, IdentityMixin, OptionsMixin
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Auto, HasMany, Reference, ValueObject
 from protean.fields.association import Association
-from protean.reflection import attributes, declared_fields, fields, id_field
+from protean.reflection import attributes, declared_fields, fields, id_field, _FIELDS
 from protean.utils import (
     DomainObjects,
     derive_element_class,
@@ -110,19 +110,6 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
 
     class Meta:
         abstract = True
-
-    def __init_subclass__(subclass) -> None:
-        super().__init_subclass__()
-
-        subclass.__set_up_reference_fields()
-
-    @classmethod
-    def __set_up_reference_fields(subclass):
-        """Walk through relation fields and setup shadow attributes"""
-        for _, field in declared_fields(subclass).items():
-            if isinstance(field, Reference):
-                shadow_field_name, shadow_field = field.get_shadow_field()
-                shadow_field.__set_name__(subclass, shadow_field_name)
 
     def __init__(self, *template, **kwargs):  # noqa: C901
         """
@@ -461,5 +448,43 @@ def entity_factory(element_cls, **kwargs):
                 ]
             }
         )
+
+    # Set up reference fields
+    if not element_cls.meta_.abstract:
+        reference_field = None
+        for field_obj in declared_fields(element_cls).values():
+            if isinstance(field_obj, Reference):
+                # An explicit `Reference` field is already present
+                reference_field = field_obj
+                break
+
+        if reference_field is None:
+            # If no explicit Reference field is present, create one
+            reference_field = Reference(element_cls.meta_.aggregate_cls)
+
+            # If aggregate_cls is a string, set field name to inflection.underscore(aggregate_cls)
+            #   Else, if it is a class, extract class name and set field name to inflection.underscore(class_name)
+            if isinstance(element_cls.meta_.aggregate_cls, str):
+                field_name = inflection.underscore(element_cls.meta_.aggregate_cls)
+            else:
+                field_name = inflection.underscore(
+                    element_cls.meta_.aggregate_cls.__name__
+                )
+
+            setattr(element_cls, field_name, reference_field)
+
+            # Set the name of the field on itself
+            reference_field.__set_name__(element_cls, field_name)
+
+            # FIXME Centralize this logic to add fields dynamically to _FIELDS
+            field_objects = getattr(element_cls, _FIELDS)
+            field_objects[field_name] = reference_field
+            setattr(element_cls, _FIELDS, field_objects)
+
+        # Set up shadow fields for Reference fields
+        for _, field in fields(element_cls).items():
+            if isinstance(field, Reference):
+                shadow_field_name, shadow_field = field.get_shadow_field()
+                shadow_field.__set_name__(element_cls, shadow_field_name)
 
     return element_cls
