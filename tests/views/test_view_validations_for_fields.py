@@ -1,16 +1,26 @@
 import pytest
 
-from protean import BaseEntity, BaseValueObject, BaseView
+from protean import BaseAggregate, BaseEntity, BaseValueObject, BaseView
 from protean.exceptions import IncorrectUsageError
 from protean.fields import HasOne, Identifier, Reference, String, ValueObject
+
+
+class User(BaseAggregate):
+    name = String()
 
 
 class Email(BaseValueObject):
     address = String()
 
+    class Meta:
+        aggregate_cls = "User"
+
 
 class Role(BaseEntity):
     name = String(max_length=50)
+
+    class Meta:
+        aggregate_cls = "User"
 
 
 def test_that_views_should_have_at_least_one_identifier_field():

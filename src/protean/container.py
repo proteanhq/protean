@@ -399,10 +399,14 @@ class IdentityMixin:
         id_field = Auto(identifier=True)
 
         setattr(new_class, "id", id_field)
+
+        # Set the name of the field on itself
         id_field.__set_name__(new_class, "id")
 
+        # Set the name of the attribute on the class
         setattr(new_class, _ID_FIELD_NAME, id_field.field_name)
 
+        # Add the attribute to _FIELDS for introspection
         field_objects = getattr(new_class, _FIELDS)
         field_objects["id"] = id_field
         setattr(new_class, _FIELDS, field_objects)

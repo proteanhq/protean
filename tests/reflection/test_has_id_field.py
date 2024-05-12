@@ -7,6 +7,9 @@ from protean.reflection import has_id_field
 class Entity1(BaseEntity):
     foo = String()
 
+    class Meta:
+        aggregate_cls = "Aggregate1"
+
 
 class Aggregate1(BaseAggregate):
     foo = String()

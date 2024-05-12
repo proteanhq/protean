@@ -19,6 +19,9 @@ class PostMeta(BaseEntity):
 
     post = Reference(Post)
 
+    class Meta:
+        aggregate_cls = Post
+
 
 class Comment(BaseEntity):
     content = Text(required=True)
