@@ -1,3 +1,8 @@
+"""This test file is a mirror image of `test_aggregate_association.py` but testing with DAOs.
+
+Accessing DAOs and persisting via them is not ideal. This test file is here only to highlight
+breakages at the DAO level."""
+
 import mock
 import pytest
 

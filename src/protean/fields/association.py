@@ -420,6 +420,10 @@ class HasMany(Association):
     def __init__(self, to_cls, via=None, **kwargs):
         super().__init__(to_cls, via=via, **kwargs)
 
+    def __set__(self, instance, value):
+        if value is not None:
+            self.add(instance, value)
+
     def add(self, instance, items):
         data = getattr(instance, self.field_name)
 
