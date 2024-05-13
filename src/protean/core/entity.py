@@ -258,11 +258,6 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
                     setattr(
                         self, f"remove_{field_name}", partial(field_obj.remove, self)
                     )
-                    setattr(
-                        self,
-                        f"_mark_changed_{field_name}",
-                        partial(field_obj._mark_changed, self),
-                    )
 
         # Now load the remaining fields with a None value, which will fail
         # for required fields

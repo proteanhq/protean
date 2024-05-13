@@ -1,5 +1,7 @@
 # Activate the domain
 
+Once a domain object is defined, the next step is to activate it.
+
 A `Domain` in protean is always associated with a domain context, which can be
 used to bind an domain object implicitly to the current thread or greenlet. We
 refer to the act of binding the domain object as **activating the domain**.

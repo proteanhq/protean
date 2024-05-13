@@ -354,10 +354,10 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
 
 class HasOne(Association):
     """
-    Represents a one-to-one association between two entities.
+    Represents an one-to-one association between an aggregate and its entities.
 
-    This class is used to define a relationship where an instance of one entity
-    is associated with at most one instance of another entity.
+    This field is used to define a relationship where an aggregate is associated
+    with at most one instance of a child entity.
     """
 
     def __set__(self, instance, value):
@@ -374,14 +374,18 @@ class HasOne(Association):
 
         current_value = getattr(instance, self.field_name)
         if current_value is None:
+            # Entity was not associated earlier
             self.change = "ADDED"
         elif value is None:
+            # Entity was associated earlier, but now being removed
             self.change = "DELETED"
             self.change_old_value = self.value
         elif current_value.id != value.id:
+            # A New Entity is being associated replacing the old one
             self.change = "UPDATED"
             self.change_old_value = self.value
         elif current_value.id == value.id and value.state_.is_changed:
+            # Entity was associated earlier, but now being updated
             self.change = "UPDATED"
         else:
             self.change = None  # The same object has been assigned, No-Op
@@ -411,10 +415,13 @@ class HasOne(Association):
 
 class HasMany(Association):
     """
-    Provide a HasMany relation to a remote entity.
+    Represents a one-to-many association between two entities. This field is used to define a relationship where an
+    aggregate has multiple instances of a chil entity.
 
-    By default, the query will lookup an attribute of the form `<current_entity>_id`
-    to fetch and populate. This behavior can be changed by using the `via` argument.
+    Args:
+        to_cls (class): The class of the target entity.
+        via (str, optional): The name of the attribute on the target entity that links back to the source entity.
+        **kwargs: Additional keyword arguments to be passed to the base field class.
     """
 
     def __init__(self, to_cls, via=None, **kwargs):
@@ -424,7 +431,14 @@ class HasMany(Association):
         if value is not None:
             self.add(instance, value)
 
-    def add(self, instance, items):
+    def add(self, instance, items) -> None:
+        """
+        Add one or more linked entities to the source entity.
+
+        Args:
+            instance: The source entity instance.
+            items: The linked entity or entities to be added.
+        """
         data = getattr(instance, self.field_name)
 
         # Convert a single item into a list of items, if necessary
@@ -463,7 +477,15 @@ class HasMany(Association):
                 # Reset Cache
                 self.delete_cached_value(instance)
 
-    def remove(self, instance, items):
+    def remove(self, instance, items) -> None:
+        """
+        Remove one or more linked entities from the source entity.
+
+        Args:
+            instance: The source entity instance.
+            items: The linked entity or entities to be removed.
+
+        """
         data = getattr(instance, self.field_name)
 
         # Convert a single item into a list of items, if necessary
@@ -479,47 +501,54 @@ class HasMany(Association):
                     # Reset Cache
                     self.delete_cached_value(instance)
 
-    def _fetch_objects(self, instance, key, value):
-        """Fetch linked entities.
+    def _fetch_objects(self, instance, key, value) -> list:
+        """
+        Fetch linked entities.
 
-        This method returns a well-formed query, containing the foreign-key constraint.
+        Args:
+            instance: The source entity instance.
+            key (str): The name of the attribute on the target entity that links back to the source entity.
+            value: The value of the foreign key.
+
+        Returns:
+            list: A list of linked entity instances.
         """
         children_repo = current_domain.repository_for(self.to_cls)
-        temp_data = children_repo._dao.query.filter(**{key: value}).all().items
+        data = children_repo._dao.query.filter(**{key: value}).all().items
 
         # Set up linkage with owner element
-        for item in temp_data:
+        for item in data:
             setattr(item, key, value)
 
         # Add objects in temporary cache
         for _, item in instance._temp_cache[self.field_name]["added"].items():
-            temp_data.append(item)
+            data.append(item)
 
-        # Update objects in temporary cache
-        new_temp_data = []
-        for value in temp_data:
+        # Update objects from temporary cache if present
+        updated_objects = []
+        for value in data:
             if value.id in instance._temp_cache[self.field_name]["updated"]:
-                new_temp_data.append(
+                updated_objects.append(
                     instance._temp_cache[self.field_name]["updated"][value.id]
                 )
             else:
-                new_temp_data.append(value)
-        temp_data = new_temp_data
+                updated_objects.append(value)
+        data = updated_objects
 
-        # Remove objects in temporary cache
+        # Remove objects marked as removed in temporary cache
         for _, item in instance._temp_cache[self.field_name]["removed"].items():
-            temp_data[:] = [value for value in temp_data if value.id != item.id]
+            data[:] = [value for value in data if value.id != item.id]
 
-        return temp_data
+        return data
 
-    def as_dict(self, value):
-        """Return JSON-compatible value of self"""
+    def as_dict(self, value) -> list:
+        """
+        Return JSON-compatible value of self.
+
+        Args:
+            value: The value to be converted to a JSON-compatible format.
+
+        Returns:
+            list: A list of dictionaries representing the linked entities.
+        """
         return [item.to_dict() for item in value]
-
-    # FIXME This has been added for applications to explicit mark a `HasMany`
-    #   as changed. Should be removed with better design.
-    def _mark_changed(self, instance, item):
-        instance._temp_cache[self.field_name]["updated"][item.id] = item
-
-        # Reset Cache
-        self.delete_cached_value(instance)
