@@ -1,5 +1,15 @@
 # Association Fields
 
+Association fields in Protean are designed to represent and manage
+relationships between different domain models. They facilitate the modeling of
+complex relationships, while encapsulating the technical aspects of persisting
+data.
+
+Note that while Aggregates and Entities can manage associations, they can
+never link to another Aggregate directly. Aggregates are transaction boundaries
+and no transaction should span across aggregates. Read more in
+[Aggregate concepts](../../../core-concepts/building-blocks/aggregates.md).
+
 ## `HasOne`
 
 Represents an one-to-one association between an aggregate and its entities.

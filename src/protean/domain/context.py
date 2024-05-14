@@ -101,6 +101,9 @@ class DomainContext(object):
         #   This call raises an exception if all references are not resolved
         self.domain._resolve_references()
 
+        # Run Validations
+        self.domain._validate_domain()
+
     def pop(self, exc=_sentinel):
         """Pops the domain context."""
         try:

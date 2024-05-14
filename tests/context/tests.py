@@ -1,3 +1,4 @@
+import mock
 import pytest
 
 from protean.globals import current_domain, g
@@ -152,3 +153,9 @@ class TestDomainContext:
 
             with test_domain.domain_context(foo="baz"):
                 assert g.foo == "baz"
+
+    def test_domain_context_activation_calls_validate_domain(self, test_domain):
+        mock_validate_domain = mock.Mock()
+        test_domain._validate_domain = mock_validate_domain
+        with test_domain.domain_context():
+            mock_validate_domain.assert_called_once()
