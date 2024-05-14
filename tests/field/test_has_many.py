@@ -1,6 +1,7 @@
 import pytest
 
 from protean import BaseAggregate, BaseEntity
+from protean.exceptions import IncorrectUsageError
 from protean.fields import HasMany, String
 from protean.reflection import attributes, declared_fields
 
@@ -23,7 +24,7 @@ def register_elements(test_domain):
     test_domain.register(Comment)
 
 
-class TestHasManyFields:
+class TestHasManyFieldInProperties:
     def test_that_has_many_field_appears_in_fields(self):
         assert "comments" in declared_fields(Post)
 
@@ -35,6 +36,17 @@ class TestHasManyFields:
 
     def test_that_reference_field_does_not_appear_in_attributes(self):
         assert "post" not in attributes(Comment)
+
+
+class TestHasManyField:
+    def test_that_has_many_field_cannot_be_linked_to_aggregates(self, test_domain):
+        class InvalidAggregate(BaseAggregate):
+            post = HasMany(Post)
+
+        test_domain.register(InvalidAggregate)
+        with pytest.raises(IncorrectUsageError):
+            # The `post` field is invalid because it is linked to another Aggregate
+            test_domain._validate_domain()
 
 
 class TestHasManyPersistence:

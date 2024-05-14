@@ -561,6 +561,40 @@ class Domain:
             aggregate_record.qualname
         ].cls = new_element_cls
 
+    def _validate_domain(self):
+        """A method to validate the domain for correctness, called just before the domain is activated."""
+        # Check if all references are resolved
+        if self._pending_class_resolutions:
+            raise ConfigurationError(
+                {
+                    "element": f"Unresolved references in domain {self.name}",
+                    "unresolved": self._pending_class_resolutions,
+                }
+            )
+
+        # Check if `HasOne` and `HasMany` fields are linked to entities and not aggregates
+        for _, aggregate in self.registry.aggregates.items():
+            for _, field_obj in declared_fields(aggregate.cls).items():
+                if isinstance(field_obj, (HasOne, HasMany)):
+                    if isinstance(field_obj.to_cls, str):
+                        raise IncorrectUsageError(
+                            {
+                                "element": (
+                                    f"Unresolved target `{field_obj.to_cls}` for field "
+                                    f"`{aggregate.__name__}:{field_obj.name}`"
+                                )
+                            }
+                        )
+                    if field_obj.to_cls.element_type != DomainObjects.ENTITY:
+                        raise IncorrectUsageError(
+                            {
+                                "element": (
+                                    f"Field `{field_obj.field_name}` in `{aggregate.cls.__name__}` "
+                                    "is not linked to an Entity class"
+                                )
+                            }
+                        )
+
     ######################
     # Element Decorators #
     ######################

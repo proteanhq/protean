@@ -1,6 +1,7 @@
 import pytest
 
 from protean import BaseAggregate, BaseEntity
+from protean.exceptions import IncorrectUsageError
 from protean.fields import HasOne, Reference, String
 from protean.reflection import attributes, declared_fields
 
@@ -24,7 +25,7 @@ def register(test_domain):
     test_domain.register(Author)
 
 
-class TestHasOneFields:
+class TestHasOneFieldsInProperties:
     def test_that_has_one_field_appears_in_fields(self):
         assert "author" in declared_fields(Book)
 
@@ -36,6 +37,17 @@ class TestHasOneFields:
 
     def test_that_reference_field_does_not_appear_in_attributes(self):
         assert "book" not in attributes(Author)
+
+
+class TestHasOneField:
+    def test_that_has_one_field_cannot_be_linked_to_aggregates(self, test_domain):
+        class InvalidAggregate(BaseAggregate):
+            author = HasOne("Book")
+
+        test_domain.register(InvalidAggregate)
+        with pytest.raises(IncorrectUsageError):
+            # The `author` HasOne field is invalid because it is linked to an Aggregate
+            test_domain._validate_domain()
 
 
 class TestHasOnePersistence:
