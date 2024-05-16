@@ -9,6 +9,7 @@ class TestAggregatesWithEntities:
         test_domain.register(Post)
         test_domain.register(PostMeta)
         test_domain.register(Comment)
+        test_domain.init(traverse=False)
 
     @pytest.fixture
     def persisted_post(self, test_domain):

@@ -32,7 +32,7 @@ from protean.utils import (
 )
 
 from .config import Config, ConfigAttribute
-from .context import DomainContext, _DomainContextGlobals, has_domain_context
+from .context import DomainContext, _DomainContextGlobals
 from .helpers import get_debug_flag, get_env
 
 logger = logging.getLogger(__name__)
@@ -393,69 +393,38 @@ class Domain:
         self._domain_registry.register_element(new_cls)
 
         # Resolve or record elements to be resolved
+
+        # 1. Associations
         if has_fields(new_cls):
             for _, field_obj in declared_fields(new_cls).items():
                 if isinstance(field_obj, (HasOne, HasMany, Reference)) and isinstance(
                     field_obj.to_cls, str
                 ):
-                    try:
-                        # Attempt to resolve the destination class by querying the active domain
-                        #   if a domain is active. Otherwise, track it as part of `_pending_class_resolutions`
-                        #   for later resolution.
-                        if has_domain_context() and current_domain == self:
-                            to_cls = self.fetch_element_cls_from_registry(
-                                field_obj.to_cls,
-                                (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
-                            )
-                            field_obj._resolve_to_cls(self, to_cls, new_cls)
-                        else:
-                            self._pending_class_resolutions[field_obj.to_cls].append(
-                                (field_obj, new_cls)
-                            )
-                    except ConfigurationError:
-                        # Class was not found yet, so we track it for future resolution
-                        self._pending_class_resolutions[field_obj.to_cls].append(
-                            (field_obj, new_cls)
-                        )
+                    self._pending_class_resolutions[field_obj.to_cls].append(
+                        ("Association", (field_obj, new_cls))
+                    )
 
                 if isinstance(field_obj, ValueObject) and isinstance(
                     field_obj.value_object_cls, str
                 ):
-                    try:
-                        # Attempt to resolve the destination class by querying the active domain
-                        #   if a domain is active. Otherwise, track it as part of `_pending_class_resolutions`
-                        #   for later resolution.
-                        if has_domain_context() and current_domain == self:
-                            to_cls = self.fetch_element_cls_from_registry(
-                                field_obj.value_object_cls,
-                                (DomainObjects.VALUE_OBJECT,),
-                            )
-                            field_obj._resolve_to_cls(self, to_cls, new_cls)
-                        else:
-                            self._pending_class_resolutions[
-                                field_obj.value_object_cls
-                            ].append((field_obj, new_cls))
-                    except ConfigurationError:
-                        # Class was not found yet, so we track it for future resolution
-                        self._pending_class_resolutions[
-                            field_obj.value_object_cls
-                        ].append((field_obj, new_cls))
+                    self._pending_class_resolutions[field_obj.value_object_cls].append(
+                        ("ValueObject", (field_obj, new_cls))
+                    )
 
-        # Resolve known pending references by full name or class name immediately.
-        #   Otherwise, references will be resolved automatically on domain activation.
-        #
-        # This comes handy when we are manually registering classes one after the other.
-        # Since the domain is already active, the classes become usable as soon as all
-        # referenced classes are registered.
-        if has_domain_context() and current_domain == self:
-            # Check by both the class name as well as the class' fully qualified name
-            for name in [fqn(new_cls), new_cls.__name__]:
-                if name in self._pending_class_resolutions:
-                    for field_obj, owner_cls in self._pending_class_resolutions[name]:
-                        field_obj._resolve_to_cls(self, new_cls, owner_cls)
-
-                    # Remove from pending list now that the class has been resolved
-                    del self._pending_class_resolutions[name]
+        # 2. Meta Linkages
+        if element_type in [
+            DomainObjects.ENTITY,
+            DomainObjects.EVENT,
+            DomainObjects.EVENT_HANDLER,
+            DomainObjects.COMMAND,
+            DomainObjects.COMMAND_HANDLER,
+            DomainObjects.REPOSITORY,
+            DomainObjects.EVENT_SOURCED_REPOSITORY,
+        ]:
+            if isinstance(new_cls.meta_.aggregate_cls, str):
+                self._pending_class_resolutions[new_cls.meta_.aggregate_cls].append(
+                    ("AggregateCls", (new_cls))
+                )
 
         return new_cls
 
@@ -465,13 +434,35 @@ class Domain:
         Called by the domain context when domain is activated.
         """
         for name in list(self._pending_class_resolutions.keys()):
-            for field_obj, owner_cls in self._pending_class_resolutions[name]:
-                if isinstance(field_obj.to_cls, str):
+            for resolution_type, params in self._pending_class_resolutions[name]:
+                if resolution_type == "Association":
+                    field_obj, owner_cls = params
                     to_cls = self.fetch_element_cls_from_registry(
                         field_obj.to_cls,
-                        (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
+                        (
+                            DomainObjects.AGGREGATE,
+                            DomainObjects.EVENT_SOURCED_AGGREGATE,
+                            DomainObjects.ENTITY,
+                        ),
                     )
                     field_obj._resolve_to_cls(self, to_cls, owner_cls)
+                elif resolution_type == "ValueObject":
+                    field_obj, owner_cls = params
+                    to_cls = self.fetch_element_cls_from_registry(
+                        field_obj.value_object_cls,
+                        (DomainObjects.VALUE_OBJECT,),
+                    )
+                    field_obj._resolve_to_cls(self, to_cls, owner_cls)
+                elif resolution_type == "AggregateCls":
+                    cls = params
+                    to_cls = self.fetch_element_cls_from_registry(
+                        cls.meta_.aggregate_cls,
+                        (
+                            DomainObjects.AGGREGATE,
+                            DomainObjects.EVENT_SOURCED_AGGREGATE,
+                        ),
+                    )
+                    cls.meta_.aggregate_cls = to_cls
 
             # Remove from pending list now that the class has been resolved
             del self._pending_class_resolutions[name]

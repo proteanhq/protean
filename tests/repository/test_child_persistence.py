@@ -11,6 +11,7 @@ class TestHasOnePersistence:
         test_domain.register(Post)
         test_domain.register(PostMeta)
         test_domain.register(Comment)
+        test_domain.init(traverse=False)
 
     @pytest.fixture(autouse=True)
     def persist_post(self, test_domain, register_elements):

@@ -85,11 +85,12 @@ class TestDomainLevelClassResolution:
             test_domain.register(Post)
 
             assert "Comment" in test_domain._pending_class_resolutions
-            # The content in _pending_class_resolutions is dict -> tuple array
+            # The content in _pending_class_resolutions is dict -> tuple (str, tuple) array
             # key: field name
-            # value: tuple of (Field Object, Owning Domain Element)
+            # value: tuple of (Resolution Type, (Field Object, Owning Domain Element)) for Associations
+            # value: tuple of (Resolution Type, (Domain Element)) for Meta links
             assert (
-                test_domain._pending_class_resolutions["Comment"][0][0]
+                test_domain._pending_class_resolutions["Comment"][0][1][0]
                 == declared_fields(Post)["comments"]
             )
 
@@ -123,6 +124,7 @@ class TestDomainLevelClassResolution:
 
             # Registering `Comment` resolves references in both `Comment` and `Post` classes
             test_domain.register(Comment)
+            test_domain._resolve_references()
 
             assert declared_fields(Post)["comments"].to_cls == Comment
             assert declared_fields(Comment)["post"].to_cls == Post
@@ -257,6 +259,7 @@ class TestDomainLevelClassResolution:
 
             test_domain.register(Post)
             test_domain.register(Comment)
+            test_domain._resolve_references()
 
             assert declared_fields(Post)["comments"].to_cls == Comment
             assert declared_fields(Comment)["post"].to_cls == Post
@@ -280,6 +283,7 @@ class TestDomainLevelClassResolution:
 
             test_domain.register(Account)
             test_domain.register(Author)
+            test_domain._resolve_references()
 
             assert declared_fields(Account)["author"].to_cls == Author
             assert declared_fields(Author)["account"].to_cls == Account

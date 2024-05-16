@@ -107,6 +107,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
 
         test_domain.register(Post)
         test_domain.register(Comment)
+        test_domain.init(traverse=False)
 
         post = Post(title="Test Post", slug="test-post", content="Do Re Mi Fa")
         comment1 = Comment(content="first comment", post=post)
@@ -140,6 +141,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
 
         test_domain.register(Post)
         test_domain.register(PostMeta)
+        test_domain.init(traverse=False)
 
         meta = PostMeta(likes=27)
         post = Post(

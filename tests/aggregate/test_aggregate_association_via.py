@@ -21,6 +21,7 @@ class Profile(BaseEntity):
 def register_elements(test_domain):
     test_domain.register(Account)
     test_domain.register(Profile)
+    test_domain.init(traverse=False)
 
 
 def test_successful_has_one_initialization_with_a_class_containing_via(test_domain):

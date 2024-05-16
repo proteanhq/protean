@@ -14,6 +14,8 @@ class TestUnitOfWorkRegistration:
 
         test_domain.register(PostRepository, aggregate_cls=Post)
 
+        test_domain.init(traverse=False)
+
         yield
 
     @pytest.fixture
