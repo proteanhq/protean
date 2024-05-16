@@ -135,7 +135,7 @@ class Reference(FieldCacheMixin, Field):
         else:
             return self.via or id_field(self.to_cls).attribute_name
 
-    def _resolve_to_cls(self, to_cls, owner_cls):
+    def _resolve_to_cls(self, domain, to_cls, owner_cls):
         assert isinstance(self.to_cls, str)
 
         self._to_cls = to_cls
@@ -155,7 +155,7 @@ class Reference(FieldCacheMixin, Field):
             delattr(owner_cls, old_attribute_name)
 
         # Update domain records because we enriched the class structure
-        current_domain._replace_element_by_class(owner_cls)
+        domain._replace_element_by_class(owner_cls)
 
     def __get__(self, instance, owner):
         """Retrieve associated objects"""
@@ -258,7 +258,7 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
     def __init__(self, to_cls, via=None, **kwargs):
         super().__init__(**kwargs)
 
-        self.to_cls = to_cls
+        self._to_cls = to_cls
         self.via = via
 
         # FIXME Find an elegant way to avoid these declarations in associations
@@ -270,13 +270,17 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         self.change = None  # Used to store type of change in the association
         self.change_old_value = None  # Used to preserve the old value that was removed
 
-    def _resolve_to_cls(self, to_cls, owner_cls):
+    @property
+    def to_cls(self):
+        return self._to_cls
+
+    def _resolve_to_cls(self, domain, to_cls, owner_cls):
         """Resolves class references to actual class object.
 
         Called by the domain when a new element is registered,
         and its name matches `to_cls`
         """
-        self.to_cls = to_cls
+        self._to_cls = to_cls
 
     def _cast_to_type(self, value):
         """Verify type of value assigned to the association field"""

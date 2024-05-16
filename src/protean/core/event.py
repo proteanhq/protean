@@ -43,15 +43,15 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         else:
             raise IncorrectUsageError(
                 {
-                    "_value_object": [
-                        "Value Objects are immutable and cannot be modified once created"
+                    "_event": [
+                        "Event Objects are immutable and cannot be modified once created"
                     ]
                 }
             )
 
     @classmethod
     def _default_options(cls):
-        return [("aggregate_cls", None), ("stream_name", None)]
+        return [("abstract", False), ("aggregate_cls", None), ("stream_name", None)]
 
     @classmethod
     def __track_id_field(subclass):
@@ -75,4 +75,18 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 
 
 def domain_event_factory(element_cls, **kwargs):
-    return derive_element_class(element_cls, BaseEvent, **kwargs)
+    element_cls = derive_element_class(element_cls, BaseEvent, **kwargs)
+
+    if (
+        not (element_cls.meta_.aggregate_cls or element_cls.meta_.stream_name)
+        and not element_cls.meta_.abstract
+    ):
+        raise IncorrectUsageError(
+            {
+                "_event": [
+                    f"Event `{element_cls.__name__}` needs to be associated with an aggregate or a stream"
+                ]
+            }
+        )
+
+    return element_cls

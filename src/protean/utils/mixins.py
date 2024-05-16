@@ -15,7 +15,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 from protean.core.unit_of_work import UnitOfWork
 from protean.core.value_object import BaseValueObject
-from protean.exceptions import ConfigurationError, IncorrectUsageError
+from protean.exceptions import ConfigurationError
 from protean.globals import current_domain, g
 from protean.reflection import has_id_field, id_field
 from protean.utils import fully_qualified_name
@@ -169,16 +169,6 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
 
     @classmethod
     def to_message(cls, message_object: Union[BaseEvent, BaseCommand]) -> Message:
-        # FIXME Should one of `aggregate_cls` or `stream_name` be mandatory?
-        if not (message_object.meta_.aggregate_cls or message_object.meta_.stream_name):
-            raise IncorrectUsageError(
-                {
-                    "_entity": [
-                        f"`{message_object.__class__.__name__}` needs to be associated with an aggregate or a stream"
-                    ]
-                }
-            )
-
         if has_id_field(message_object):
             identifier = getattr(message_object, id_field(message_object).field_name)
         else:

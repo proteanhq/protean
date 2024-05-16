@@ -8,7 +8,7 @@ import sys
 
 from collections import defaultdict
 from functools import lru_cache
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from werkzeug.datastructures import ImmutableDict
 
@@ -21,14 +21,13 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.model import BaseModel
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import ConfigurationError, IncorrectUsageError
-from protean.fields import HasMany, HasOne, Reference
+from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.globals import current_domain
 from protean.reflection import declared_fields, has_fields
 from protean.utils import (
     CommandProcessing,
     DomainObjects,
     EventProcessing,
-    fetch_element_cls_from_registry,
     fqn,
 )
 
@@ -193,59 +192,65 @@ class Domain:
 
         This method bubbles up circular import issues, if present, in the domain code.
         """
-        # Initialize domain dependencies and adapters
-        self._initialize()
-
         if traverse is True:
-            # Standard Library Imports
-            import importlib.util
-            import os
-            import pathlib
+            self._traverse()
 
-            dir_name = pathlib.PurePath(pathlib.Path(self.root_path).resolve()).parent
-            path = pathlib.Path(dir_name)  # Resolve the domain file's directory
-            system_folder_path = (
-                path.parent
-            )  # Get the directory of the domain file to traverse from
+        # Resolve all pending references
+        self._resolve_references()
 
-            logger.debug(f"Loading domain from {dir_name}...")
-
-            for root, _, files in os.walk(dir_name):
-                if pathlib.PurePath(root).name not in ["__pycache__"]:
-                    package_path = root[len(str(system_folder_path)) + 1 :]
-                    module_name = package_path.replace(os.sep, ".")
-
-                    for file in files:
-                        file_base_name = os.path.basename(file)
-
-                        # Ignore if the file is not a python file
-                        if os.path.splitext(file_base_name)[1] != ".py":
-                            continue
-
-                        # Construct the module path to import from
-                        if file_base_name != "__init__":
-                            sub_module_name = os.path.splitext(file_base_name)[0]
-                            file_module_name = module_name + "." + sub_module_name
-                        else:
-                            file_module_name = module_name
-                        full_file_path = os.path.join(root, file)
-
-                        try:
-                            if (
-                                full_file_path != self.root_path
-                            ):  # Don't load the domain file itself again
-                                spec = importlib.util.spec_from_file_location(
-                                    file_module_name, full_file_path
-                                )
-                                module = importlib.util.module_from_spec(spec)
-                                spec.loader.exec_module(module)
-
-                                logger.debug(f"Loaded {file_module_name}")
-                        except ModuleNotFoundError as exc:
-                            logger.error(f"Error while loading a module: {exc}")
+        # Run Validations
+        self._validate_domain()
 
         # Initialize adapters after loading domain
         self._initialize()
+
+    def _traverse(self):
+        # Standard Library Imports
+        import importlib.util
+        import os
+        import pathlib
+
+        dir_name = pathlib.PurePath(pathlib.Path(self.root_path).resolve()).parent
+        path = pathlib.Path(dir_name)  # Resolve the domain file's directory
+        system_folder_path = (
+            path.parent
+        )  # Get the directory of the domain file to traverse from
+
+        logger.debug(f"Loading domain from {dir_name}...")
+
+        for root, _, files in os.walk(dir_name):
+            if pathlib.PurePath(root).name not in ["__pycache__"]:
+                package_path = root[len(str(system_folder_path)) + 1 :]
+                module_name = package_path.replace(os.sep, ".")
+
+                for file in files:
+                    file_base_name = os.path.basename(file)
+
+                    # Ignore if the file is not a python file
+                    if os.path.splitext(file_base_name)[1] != ".py":
+                        continue
+
+                    # Construct the module path to import from
+                    if file_base_name != "__init__":
+                        sub_module_name = os.path.splitext(file_base_name)[0]
+                        file_module_name = module_name + "." + sub_module_name
+                    else:
+                        file_module_name = module_name
+                    full_file_path = os.path.join(root, file)
+
+                    try:
+                        if (
+                            full_file_path != self.root_path
+                        ):  # Don't load the domain file itself again
+                            spec = importlib.util.spec_from_file_location(
+                                file_module_name, full_file_path
+                            )
+                            module = importlib.util.module_from_spec(spec)
+                            spec.loader.exec_module(module)
+
+                            logger.debug(f"Loaded {file_module_name}")
+                    except ModuleNotFoundError as exc:
+                        logger.error(f"Error while loading a module: {exc}")
 
     def _initialize(self):
         """Initialize domain dependencies and adapters."""
@@ -398,11 +403,11 @@ class Domain:
                         #   if a domain is active. Otherwise, track it as part of `_pending_class_resolutions`
                         #   for later resolution.
                         if has_domain_context() and current_domain == self:
-                            to_cls = fetch_element_cls_from_registry(
+                            to_cls = self.fetch_element_cls_from_registry(
                                 field_obj.to_cls,
                                 (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
                             )
-                            field_obj._resolve_to_cls(to_cls, new_cls)
+                            field_obj._resolve_to_cls(self, to_cls, new_cls)
                         else:
                             self._pending_class_resolutions[field_obj.to_cls].append(
                                 (field_obj, new_cls)
@@ -412,6 +417,29 @@ class Domain:
                         self._pending_class_resolutions[field_obj.to_cls].append(
                             (field_obj, new_cls)
                         )
+
+                if isinstance(field_obj, ValueObject) and isinstance(
+                    field_obj.value_object_cls, str
+                ):
+                    try:
+                        # Attempt to resolve the destination class by querying the active domain
+                        #   if a domain is active. Otherwise, track it as part of `_pending_class_resolutions`
+                        #   for later resolution.
+                        if has_domain_context() and current_domain == self:
+                            to_cls = self.fetch_element_cls_from_registry(
+                                field_obj.value_object_cls,
+                                (DomainObjects.VALUE_OBJECT,),
+                            )
+                            field_obj._resolve_to_cls(self, to_cls, new_cls)
+                        else:
+                            self._pending_class_resolutions[
+                                field_obj.value_object_cls
+                            ].append((field_obj, new_cls))
+                    except ConfigurationError:
+                        # Class was not found yet, so we track it for future resolution
+                        self._pending_class_resolutions[
+                            field_obj.value_object_cls
+                        ].append((field_obj, new_cls))
 
         # Resolve known pending references by full name or class name immediately.
         #   Otherwise, references will be resolved automatically on domain activation.
@@ -424,7 +452,7 @@ class Domain:
             for name in [fqn(new_cls), new_cls.__name__]:
                 if name in self._pending_class_resolutions:
                     for field_obj, owner_cls in self._pending_class_resolutions[name]:
-                        field_obj._resolve_to_cls(new_cls, owner_cls)
+                        field_obj._resolve_to_cls(self, new_cls, owner_cls)
 
                     # Remove from pending list now that the class has been resolved
                     del self._pending_class_resolutions[name]
@@ -439,11 +467,11 @@ class Domain:
         for name in list(self._pending_class_resolutions.keys()):
             for field_obj, owner_cls in self._pending_class_resolutions[name]:
                 if isinstance(field_obj.to_cls, str):
-                    to_cls = fetch_element_cls_from_registry(
+                    to_cls = self.fetch_element_cls_from_registry(
                         field_obj.to_cls,
                         (DomainObjects.AGGREGATE, DomainObjects.ENTITY),
                     )
-                    field_obj._resolve_to_cls(to_cls, owner_cls)
+                    field_obj._resolve_to_cls(self, to_cls, owner_cls)
 
             # Remove from pending list now that the class has been resolved
             del self._pending_class_resolutions[name]
@@ -501,6 +529,28 @@ class Domain:
             raise NotImplementedError
 
         self._domain_registry.dei_element(element_cls.element_type, element_cls)
+
+    def fetch_element_cls_from_registry(
+        self, element: Union[str, Any], element_types: Tuple[DomainObjects, ...]
+    ) -> Any:
+        """Util Method to fetch an Element's class from its name"""
+        if isinstance(element, str):
+            try:
+                # Try fetching by class name
+                return self._get_element_by_name(element_types, element).cls
+            except ConfigurationError:
+                try:
+                    # Try fetching by fully qualified class name
+                    return self._get_element_by_fully_qualified_name(
+                        element_types, element
+                    ).cls
+                except ConfigurationError:
+                    # Element has not been registered
+                    # FIXME print a helpful debug message
+                    raise
+        else:
+            # FIXME Check if entity is subclassed from BaseEntity
+            return element
 
     def _get_element_by_name(self, element_types, element_name):
         """Fetch Domain record with the provided Element name"""
@@ -594,6 +644,33 @@ class Domain:
                                 )
                             }
                         )
+
+        # Check that no two event sourced aggregates have the same event class in their
+        #   `_events_cls_map`.
+        event_sourced_aggregates = self.registry._elements[
+            DomainObjects.EVENT_SOURCED_AGGREGATE.value
+        ]
+        # Collect all event class names from `_events_cls_map` of all event sourced aggregates
+        event_class_names = list()
+        for event_sourced_aggregate in event_sourced_aggregates.values():
+            event_class_names.extend(event_sourced_aggregate.cls._events_cls_map.keys())
+        # Check for duplicates
+        duplicate_event_class_names = set(
+            [
+                event_class_name
+                for event_class_name in event_class_names
+                if event_class_names.count(event_class_name) > 1
+            ]
+        )
+        if len(duplicate_event_class_names) != 0:
+            raise IncorrectUsageError(
+                {
+                    "_event": [
+                        f"Events are associated with multiple event sourced aggregates: "
+                        f"{', '.join(duplicate_event_class_names)}"
+                    ]
+                }
+            )
 
     ######################
     # Element Decorators #

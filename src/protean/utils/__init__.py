@@ -10,7 +10,6 @@ import logging
 
 from datetime import UTC, datetime
 from enum import Enum, auto
-from typing import Any, Tuple, Union
 from uuid import uuid4
 
 from protean.exceptions import ConfigurationError
@@ -168,26 +167,3 @@ def generate_identity():
             )
 
     return None  # Database will generate the identity
-
-
-def fetch_element_cls_from_registry(
-    element: Union[str, Any], element_types: Tuple[DomainObjects, ...]
-) -> Any:
-    """Util Method to fetch an Element's class from its name"""
-    if isinstance(element, str):
-        try:
-            # Try fetching by class name
-            return current_domain._get_element_by_name(element_types, element).cls
-        except ConfigurationError:
-            try:
-                # Try fetching by fully qualified class name
-                return current_domain._get_element_by_fully_qualified_name(
-                    element_types, element
-                ).cls
-            except ConfigurationError:
-                # Element has not been registered
-                # FIXME print a helpful debug message
-                raise
-    else:
-        # FIXME Check if entity is subclassed from BaseEntity
-        return element

@@ -519,7 +519,7 @@ class ESProvider(BaseProvider):
         }
         for _, element_record in elements.items():
             model_cls = self.domain.repository_for(element_record.cls)._model
-            provider = current_domain.providers[element_record.cls.meta_.provider]
+            provider = self.domain.providers[element_record.cls.meta_.provider]
             if provider.conn_info[
                 "DATABASE"
             ] == Database.ELASTICSEARCH.value and model_cls._index.exists(using=conn):

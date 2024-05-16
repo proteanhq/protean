@@ -1,8 +1,9 @@
 """Module for defining embedded fields"""
 
+from functools import lru_cache
+
 from protean.fields import Field
 from protean.reflection import declared_fields
-from protean.utils import DomainObjects, fetch_element_cls_from_registry
 
 
 class _ShadowField(Field):
@@ -58,12 +59,38 @@ class ValueObject(Field):
         super().__init__(*args, **kwargs)
         self._value_object_cls = value_object_cls
 
-        self.embedded_fields = {}
+        self._embedded_fields = {}
+
+    @property
+    def value_object_cls(self):
+        return self._value_object_cls
+
+    def _resolve_to_cls(self, domain, value_object_cls, owner_cls):
+        assert isinstance(self.value_object_cls, str)
+
+        self._value_object_cls = value_object_cls
+
+        self._construct_embedded_fields()
+
+        # Refresh attribute name, now that we know `value_object_cls` class
+        self.attribute_name = self.get_attribute_name()
+
+    @property
+    @lru_cache()
+    def embedded_fields(self):
+        """Property to retrieve embedded fields"""
+        if len(self._embedded_fields) == 0:
+            self._construct_embedded_fields()
+
+        return self._embedded_fields
+
+    def _construct_embedded_fields(self):
+        """Construct embedded fields"""
         for (
             field_name,
             field_obj,
         ) in declared_fields(self._value_object_cls).items():
-            self.embedded_fields[field_name] = _ShadowField(
+            self._embedded_fields[field_name] = _ShadowField(
                 self,
                 field_name,
                 field_obj,
@@ -73,25 +100,6 @@ class ValueObject(Field):
                 referenced_as=field_obj.referenced_as,
             )
 
-    @property
-    def value_object_cls(self):
-        """Property to retrieve value_object_cls as a Value Object when possible"""
-        # Checks if ``value_object_cls`` is a string
-        #   If it is, checks if the Value Object is imported and available
-        #   If it is, register the class
-        try:
-            if isinstance(self._value_object_cls, str):
-                self._value_object_cls = fetch_element_cls_from_registry(
-                    self._value_object_cls, (DomainObjects.VALUE_OBJECT,)
-                )
-        except AssertionError:
-            # Preserve ``value_object_cls`` as a string and we will hook up the entity later
-            pass
-
-        return self._value_object_cls
-
-    def __set_name__(self, entity_cls, name):
-        super().__set_name__(entity_cls, name)
         # Refresh underlying embedded field names
         for embedded_field in self.embedded_fields.values():
             if embedded_field.referenced_as:
@@ -100,6 +108,9 @@ class ValueObject(Field):
                 embedded_field.attribute_name = (
                     self.field_name + "_" + embedded_field.field_name
                 )
+
+    def __set_name__(self, entity_cls, name):
+        super().__set_name__(entity_cls, name)
 
     def get_shadow_fields(self):
         """Return shadow field
@@ -133,14 +144,6 @@ class ValueObject(Field):
 
     def __set__(self, instance, value):
         """Override `__set__` to coordinate between value object and its embedded fields"""
-        if isinstance(self.value_object_cls, str):
-            self.value_object_cls = fetch_element_cls_from_registry(
-                self.value_object_cls, (DomainObjects.VALUE_OBJECT,)
-            )
-
-            # Refresh attribute name, now that we know `value_object_cls` class
-            self.attribute_name = self.get_attribute_name()
-
         value = self._load(value)
 
         if value:

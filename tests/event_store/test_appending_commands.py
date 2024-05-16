@@ -22,18 +22,14 @@ class Register(BaseCommand):
 
 def test_command_submission_without_aggregate(test_domain):
     test_domain.register(User)
-    test_domain.register(Register)
 
     with pytest.raises(IncorrectUsageError) as exc:
-        test_domain.process(
-            Register(
-                user_id=str(uuid4()),
-                email="john.doe@gmail.com",
-                name="John Doe",
-            )
-        )
+        test_domain.register(Register)
+
     assert exc.value.messages == {
-        "_entity": ["`Register` needs to be associated with an aggregate or a stream"]
+        "_command": [
+            "Command `Register` needs to be associated with an aggregate or a stream"
+        ]
     }
 
 

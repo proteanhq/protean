@@ -83,12 +83,13 @@ def test_that_event_is_associated_with_aggregate_by_apply_methods():
 def test_that_trying_to_associate_an_event_with_multiple_aggregates_throws_an_error(
     test_domain,
 ):
+    test_domain.register(Email)
     with pytest.raises(IncorrectUsageError) as exc:
-        test_domain.register(Email)
+        test_domain.init(traverse=False)
 
     assert exc.value.messages == {
-        "_entity": [
-            "UserRegistered Event cannot be associated with Email"
-            " because it is already associated with User"
+        "_event": [
+            "Events are associated with multiple event sourced aggregates: "
+            "tests.event_sourced_aggregates.test_event_association_with_aggregate.UserRegistered"
         ]
     }

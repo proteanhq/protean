@@ -169,7 +169,7 @@ class TestDomainLevelClassResolution:
                 for field_name in ["Comment", "Post"]
             )
 
-        def test_that_class_reference_is_resolved_on_domain_activation(self):
+        def test_that_class_reference_is_resolved_on_domain_initialization(self):
             domain = Domain(__file__, "Inline Domain")
 
             class Post(BaseAggregate):
@@ -192,12 +192,14 @@ class TestDomainLevelClassResolution:
 
             domain.register(Comment)
 
-            with domain.domain_context():
-                # Resolved references
-                assert declared_fields(Post)["comments"].to_cls == Comment
-                assert declared_fields(Comment)["post"].to_cls == Post
+            # `init` resolves references
+            domain.init(traverse=False)
 
-                assert len(domain._pending_class_resolutions) == 0
+            # Check for resolved references
+            assert declared_fields(Post)["comments"].to_cls == Comment
+            assert declared_fields(Comment)["post"].to_cls == Post
+
+            assert len(domain._pending_class_resolutions) == 0
 
         def test_that_domain_throws_exception_on_unknown_class_references_during_activation(
             self,
@@ -226,8 +228,7 @@ class TestDomainLevelClassResolution:
             domain.register(Comment)
 
             with pytest.raises(ConfigurationError) as exc:
-                with domain.domain_context():
-                    pass
+                domain.init()
 
             assert (
                 exc.value.args[0]["element"]

@@ -12,17 +12,20 @@ from protean.utils.mixins import Message
 counter = 0
 
 
+class User(BaseEventSourcedAggregate):
+    email = String()
+    name = String()
+    password_hash = String()
+
+
 class Registered(BaseEvent):
     id = Identifier()
     email = String()
     name = String()
     password_hash = String()
 
-
-class User(BaseEventSourcedAggregate):
-    email = String()
-    name = String()
-    password_hash = String()
+    class Meta:
+        aggregate_cls = User
 
 
 def count_up():
