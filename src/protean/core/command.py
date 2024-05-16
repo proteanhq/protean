@@ -42,15 +42,15 @@ class BaseCommand(BaseContainer, OptionsMixin):
         else:
             raise IncorrectUsageError(
                 {
-                    "_value_object": [
-                        "Value Objects are immutable and cannot be modified once created"
+                    "_command": [
+                        "Command Objects are immutable and cannot be modified once created"
                     ]
                 }
             )
 
     @classmethod
     def _default_options(cls):
-        return [("aggregate_cls", None), ("stream_name", None)]
+        return [("abstract", False), ("aggregate_cls", None), ("stream_name", None)]
 
     @classmethod
     def __track_id_field(subclass):
@@ -75,5 +75,17 @@ class BaseCommand(BaseContainer, OptionsMixin):
 
 def command_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseCommand, **kwargs)
+
+    if (
+        not (element_cls.meta_.aggregate_cls or element_cls.meta_.stream_name)
+        and not element_cls.meta_.abstract
+    ):
+        raise IncorrectUsageError(
+            {
+                "_command": [
+                    f"Command `{element_cls.__name__}` needs to be associated with an aggregate or a stream"
+                ]
+            }
+        )
 
     return element_cls

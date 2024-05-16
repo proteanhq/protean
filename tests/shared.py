@@ -11,9 +11,9 @@ import pytest
 from protean.domain import Domain
 
 
-def initialize_domain(file_path):
+def initialize_domain(file_path, name="Tests"):
     """Initialize a Protean Domain with configuration from a file"""
-    domain = Domain(__file__, "Tests")
+    domain = Domain(__file__, name=name)
 
     # Construct relative path to config file
     current_path = os.path.abspath(os.path.dirname(file_path))

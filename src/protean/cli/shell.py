@@ -31,19 +31,15 @@ def shell(
 ):
     try:
         domain_instance = derive_domain(domain)
-    except NoDomainException:
-        logger.error(
-            "Could not locate a Protean domain. You should provide a domain in"
-            '"PROTEAN_DOMAIN" environment variable or pass a domain file in options'
-        )
+    except NoDomainException as exc:
+        logger.error(f"Error loading Protean domain: {exc.messages}")
         raise typer.Abort()
 
     if traverse:
         print("Traversing directory to load all modules...")
+    domain_instance.init(traverse=traverse)
 
     with domain_instance.domain_context():
-        domain_instance.init(traverse=traverse)
-
         ctx: dict[str, typing.Any] = {}
         ctx.update(domain_instance.make_shell_context())
 

@@ -19,6 +19,9 @@ class TestDomainEventDefinition:
             email = ValueObject(Email, required=True)
             name = String(max_length=50)
 
+            class Meta:
+                stream_name = "user"
+
         test_domain.register(UserAdded)
         event = UserAdded(email_address="john.doe@gmail.com", name="John Doe")
 
@@ -40,6 +43,9 @@ class TestDomainEventDefinition:
         class UserAdded(BaseEvent):
             email = ValueObject(Email, required=True)
             name = String(max_length=50)
+
+            class Meta:
+                stream_name = "user"
 
         assert UserAdded(
             {

@@ -32,15 +32,24 @@ class Registered(BaseEvent):
     name = String()
     password_hash = String()
 
+    class Meta:
+        aggregate_cls = User
+
 
 class Activated(BaseEvent):
     id = Identifier()
     activated_at = DateTime()
 
+    class Meta:
+        aggregate_cls = User
+
 
 class Sent(BaseEvent):
     email = String()
     sent_at = DateTime()
+
+    class Meta:
+        stream_name = "email"
 
 
 class UserEventHandler(BaseEventHandler):

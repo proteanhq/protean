@@ -27,6 +27,7 @@ class Author(BaseEntity):
 def register(test_domain):
     test_domain.register(Book)
     test_domain.register(Author)
+    test_domain.init(traverse=False)
 
 
 class TestHasOneFields:

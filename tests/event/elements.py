@@ -41,6 +41,9 @@ class PersonAdded(BaseEvent):
     last_name = String(max_length=50, required=True)
     age = Integer(default=21)
 
+    class Meta:
+        aggregate_cls = Person
+
 
 class PersonService(BaseApplicationService):
     @classmethod

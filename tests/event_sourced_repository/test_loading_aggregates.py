@@ -24,10 +24,16 @@ class Register(BaseCommand):
     name = String()
     password_hash = String()
 
+    class Meta:
+        aggregate_cls = "User"
+
 
 class ChangeAddress(BaseCommand):
     user_id = Identifier()
     address = String()
+
+    class Meta:
+        aggregate_cls = "User"
 
 
 class Registered(BaseEvent):
@@ -36,10 +42,16 @@ class Registered(BaseEvent):
     name = String()
     password_hash = String()
 
+    class Meta:
+        aggregate_cls = "User"
+
 
 class AddressChanged(BaseEvent):
     user_id = Identifier()
     address = String()
+
+    class Meta:
+        aggregate_cls = "User"
 
 
 class User(BaseEventSourcedAggregate):

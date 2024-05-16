@@ -112,6 +112,8 @@ class TestAggregateAssociations:
             class Meta:
                 aggregate_cls = Post
 
+        test_domain.init(traverse=False)
+
         post = Post(name="The World")
         test_domain.repository_for(Post).add(post)
 

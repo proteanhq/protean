@@ -5,15 +5,15 @@ from tests.shared import initialize_domain
 
 @pytest.fixture(autouse=True)
 def test_domain():
-    domain = initialize_domain(__file__)
+    domain = initialize_domain(__file__, "SQLAlchemy Model Tests")
 
     with domain.domain_context():
         yield domain
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def setup_db():
-    domain = initialize_domain(__file__)
+    domain = initialize_domain(__file__, "SQLAlchemy Model DB Setup")
     with domain.domain_context():
         # Create all associated tables
         from .elements import ComplexUser, Person, Provider, ProviderCustomModel, User

@@ -24,6 +24,7 @@ class TestHasOne:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Account)
+        test_domain.register(Comment)
         test_domain.register(Author)
         test_domain.register(AccountVia)
         test_domain.register(AccountViaWithReference)
@@ -31,6 +32,7 @@ class TestHasOne:
         test_domain.register(Profile)
         test_domain.register(ProfileVia)
         test_domain.register(ProfileViaWithReference)
+        test_domain.init(traverse=False)
 
     def test_successful_initialization_of_entity_with_has_one_association(
         self, test_domain
@@ -98,12 +100,15 @@ class TestHasOne:
 class TestHasMany:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
+        test_domain.register(Account)
+        test_domain.register(Author)
         test_domain.register(Post)
         test_domain.register(PostVia)
         test_domain.register(PostViaWithReference)
         test_domain.register(Comment)
         test_domain.register(CommentVia)
         test_domain.register(CommentViaWithReference)
+        test_domain.init(traverse=False)
 
     @pytest.fixture
     def persisted_post(self, test_domain):

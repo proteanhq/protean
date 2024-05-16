@@ -193,25 +193,37 @@ class AccountViaWithReference(BaseAggregate):
     profile = HasOne("tests.aggregate.elements.ProfileViaWithReference", via="ac_email")
 
 
-class Profile(BaseAggregate):
+class Profile(BaseEntity):
     about_me = Text()
     account = Reference("tests.aggregate.elements.Account", via="username")
 
+    class Meta:
+        aggregate_cls = Account
 
-class ProfileWithAccountId(BaseAggregate):
+
+class ProfileWithAccountId(BaseEntity):
     about_me = Text()
     account = Reference("tests.aggregate.elements.AccountWithId")
 
+    class Meta:
+        aggregate_cls = AccountWithId
 
-class ProfileVia(BaseAggregate):
+
+class ProfileVia(BaseEntity):
     profile_id = String(identifier=True)
     about_me = Text()
     account_email = String(max_length=255)
 
+    class Meta:
+        aggregate_cls = AccountVia
 
-class ProfileViaWithReference(BaseAggregate):
+
+class ProfileViaWithReference(BaseEntity):
     about_me = Text()
     ac = Reference("tests.aggregate.elements.AccountViaWithReference")
+
+    class Meta:
+        aggregate_cls = AccountViaWithReference
 
 
 # Aggregates to test associations # END #

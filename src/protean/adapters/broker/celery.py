@@ -10,7 +10,6 @@ from kombu import Queue
 from protean.port.broker import BaseBroker
 from protean.utils import (
     DomainObjects,
-    fetch_element_cls_from_registry,
     fully_qualified_name,
 )
 from protean.utils.inflection import underscore
@@ -95,7 +94,7 @@ class CeleryBroker(BaseBroker):
                 )
 
     def publish(self, message: Message) -> None:
-        event_cls = fetch_element_cls_from_registry(
+        event_cls = self.domain.fetch_element_cls_from_registry(
             message.type, (DomainObjects.EVENT,)
         )
         for subscriber in self._subscribers[fully_qualified_name(event_cls)]:

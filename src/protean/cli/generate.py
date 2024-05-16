@@ -34,11 +34,8 @@ def docker_compose(
     """Generate a `docker-compose.yml` from Domain config"""
     try:
         domain_instance = derive_domain(domain)
-    except NoDomainException:
-        logger.error(
-            "Could not locate a Protean domain. You should provide a domain in"
-            '"PROTEAN_DOMAIN" environment variable or pass a domain file in options'
-        )
+    except NoDomainException as exc:
+        logger.error(f"Error loading Protean domain: {exc.messages}")
         raise typer.Abort()
 
     print(f"Generating docker-compose.yml for domain at {domain}")

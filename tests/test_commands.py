@@ -1,10 +1,17 @@
 import pytest
 
-from protean import BaseCommand
+from protean import BaseAggregate, BaseCommand
 from protean.exceptions import IncorrectUsageError, InvalidDataError, NotSupportedError
 from protean.fields import Integer, String
 from protean.reflection import fields
 from protean.utils import fully_qualified_name
+
+
+class User(BaseAggregate):
+    email = String()
+    name = String()
+    password_hash = String()
+    address = String()
 
 
 class UserRegistrationCommand(BaseCommand):
@@ -12,6 +19,9 @@ class UserRegistrationCommand(BaseCommand):
     username = String(required=True, max_length=50)
     password = String(required=True, max_length=255)
     age = Integer(default=21)
+
+    class Meta:
+        aggregate_cls = User
 
 
 class TestCommandInitialization:
@@ -57,7 +67,7 @@ class TestCommandRegistration:
         )
 
     def test_that_command_can_be_registered_via_annotations(self, test_domain):
-        @test_domain.command
+        @test_domain.command(aggregate_cls=User)
         class ChangePasswordCommand:
             old_password = String(required=True, max_length=255)
             new_password = String(required=True, max_length=255)
@@ -131,7 +141,7 @@ class TestCommandInheritance:
             class Meta:
                 abstract = True
 
-        @test_domain.command
+        @test_domain.command(aggregate_cls=User)
         class ConcreteCommand2(AbstractCommand2):
             bar = String()
 
@@ -142,7 +152,7 @@ class TestCommandInheritance:
     def test_inheritance_of_parent_fields_with_child_annotation_alone(
         self, test_domain
     ):
-        @test_domain.command
+        @test_domain.command(aggregate_cls=User)
         class ConcreteCommand3(TestCommandInheritance.AbstractCommand):
             bar = String()
 

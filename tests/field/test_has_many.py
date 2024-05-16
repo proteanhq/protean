@@ -22,6 +22,7 @@ class Comment(BaseEntity):
 def register_elements(test_domain):
     test_domain.register(Post)
     test_domain.register(Comment)
+    test_domain.init(traverse=False)
 
 
 class TestHasManyFieldInProperties:
