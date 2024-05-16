@@ -82,9 +82,8 @@ nav:
     #   - core-concepts/event-sourcing/projections.md
   - Guides:
     - guides/index.md
-    - Getting Started:
-    #   - guides/getting-started/index.md
-      - guides/getting-started/installation.md
+    - guides/getting-started/start-here.md
+    - guides/getting-started/installation.md
     #  - guides/getting-started/quickstart.md
     - Compose a Domain:
       - guides/compose-a-domain/index.md
@@ -95,7 +94,7 @@ nav:
       - guides/compose-a-domain/element-decorators.md
       - guides/compose-a-domain/object-model.md
     #  - guides/compose-a-domain/configuration.md
-    - Defining Domain Concepts:
+    - Defining Concepts:
       - guides/domain-definition/index.md
       - Fields:
         - guides/domain-definition/fields/index.md
@@ -106,9 +105,11 @@ nav:
       - guides/domain-definition/aggregates.md
       - guides/domain-definition/entities.md
       - guides/domain-definition/value-objects.md
-      - guides/domain-definition/domain-services.md
       - guides/domain-definition/events.md
       - guides/domain-definition/repositories.md
+    - Adding Behavior:
+      - guides/domain-behavior/index.md
+      - guides/domain-behavior/domain-services.md
     # - Application Layer:
     #   - guides/app-layer/index.md
     #   - guides/app-layer/application-services.md

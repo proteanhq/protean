@@ -5,6 +5,10 @@ and translating them as closely as possible - terminology, structure, and
 behavior - in code. Protean supports the tactical patterns outlined by DDD
 to mirror the domain model in [code model](../../glossary.md#code-model).
 
+In this section, we will talk about the foundational structures that make up
+the domain model. In the next, we will explore how to define behavior and
+set up invariants (business rules) that bring the Domain model to life.
+
 ## Domain Layer
 
 One of the most important building block of a domain model is the Aggregate.

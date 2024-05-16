@@ -136,12 +136,8 @@ def server(
     # FIXME Accept MAX_WORKERS as command-line input as well
     try:
         domain = derive_domain(domain)
-    except NoDomainException:
-        logger.error(
-            "Could not locate a Protean domain. You should provide a domain in"
-            '"PROTEAN_DOMAIN" environment variable or pass a domain file in options '
-            'and a "domain.py" module was not found in the current directory.'
-        )
+    except NoDomainException as exc:
+        logger.error(f"Error loading Protean domain: {exc.messages}")
         raise typer.Abort()
 
     from protean.server import Engine

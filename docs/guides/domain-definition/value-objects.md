@@ -63,6 +63,19 @@ Value Objects can be embedded into Aggregates and Entities with the
 {! docs_src/guides/domain-definition/009.py !}
 ```
 
+!!!note
+    You can also specify a Value Object's class name as input to the
+    `ValueObject` field, which will be resolved when the domain is initialized.
+    This can help avoid the problem of circular references.
+
+    ```python
+    @domain.aggregate
+    class User:
+       email = ValueObject("Email")
+       name = String(max_length=30)
+       timezone = String(max_length=30)
+    ```
+
 An email address can be supplied during user object creation, and the
 value object takes care of its own validations.
 
