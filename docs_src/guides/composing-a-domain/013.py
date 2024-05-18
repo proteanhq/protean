@@ -11,13 +11,13 @@ class User:
     age = Integer()
 
 
-@domain.entity(aggregate_cls=User)
+@domain.entity(part_of=User)
 class Credentials:
     email = String(max_length=254)
     password_hash = String(max_length=128)
 
 
-@domain.view(aggregate_cls=User)
+@domain.view(part_of=User)
 class Token:
     key = Identifier(identifier=True)
     id = Identifier(required=True)

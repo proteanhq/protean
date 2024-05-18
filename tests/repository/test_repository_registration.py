@@ -33,7 +33,7 @@ class TestRepositoryRegistration:
                 pass
 
             class Meta:
-                aggregate_cls = Person
+                part_of = Person
 
         assert (
             fully_qualified_name(AnnotatedRepository)
@@ -43,7 +43,7 @@ class TestRepositoryRegistration:
     def test_that_repository_can_be_registered_via_annotations_with_aggregate_cls_parameter(
         self, test_domain
     ):
-        @test_domain.repository(aggregate_cls=Person)
+        @test_domain.repository(part_of=Person)
         class AnnotatedRepository:
             def special_method(self):
                 pass
@@ -82,7 +82,7 @@ class TestRepositoryRegistration:
     # ):
     #     with pytest.raises(IncorrectUsageError) as exc:
 
-    #         @test_domain.repository(aggregate_cls=Comment)
+    #         @test_domain.repository(part_of=Comment)
     #         class CommentRepository:
     #             def special_method(self):
     #                 pass
@@ -96,7 +96,7 @@ class TestRepositoryRegistration:
         class GenericUser:
             name = String()
 
-        @test_domain.repository(aggregate_cls=GenericUser)
+        @test_domain.repository(part_of=GenericUser)
         class GenericUserRepository:
             def special_method(self):
                 pass
@@ -128,7 +128,7 @@ class TestRepositoryRegistration:
         class User:
             name = String()
 
-        @test_domain.repository(aggregate_cls=User)
+        @test_domain.repository(part_of=User)
         class UserMemoryRepository:
             def special_method(self):
                 pass
@@ -136,7 +136,7 @@ class TestRepositoryRegistration:
             class Meta:
                 database = Database.MEMORY.value
 
-        @test_domain.repository(aggregate_cls=User)
+        @test_domain.repository(part_of=User)
         class UserElasticRepository:
             def special_method(self):
                 pass
@@ -169,7 +169,7 @@ class TestRepositoryRegistration:
 
         with pytest.raises(IncorrectUsageError) as exc:
 
-            @test_domain.repository(aggregate_cls=User)
+            @test_domain.repository(part_of=User)
             class CustomUserRepository:
                 def special_method(self):
                     pass

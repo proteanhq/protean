@@ -34,7 +34,7 @@ class Login(BaseCommand):
     activated_at = DateTime()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class Subscribe(BaseCommand):
@@ -58,7 +58,7 @@ class Recall(BaseCommand):
     sent_at = DateTime()
 
     class Meta:
-        aggregate_cls = Email
+        part_of = Email
         stream_name = "recalls"
 
 
@@ -94,22 +94,22 @@ class EmailCommandHandler(BaseCommandHandler):
 def register(test_domain):
     test_domain.register(User)
     test_domain.register(Email)
-    test_domain.register(UserCommandHandler, aggregate_cls=User)
-    test_domain.register(EmailCommandHandler, aggregate_cls=Email)
+    test_domain.register(UserCommandHandler, part_of=User)
+    test_domain.register(EmailCommandHandler, part_of=Email)
 
 
 def test_automatic_association_of_events_with_aggregate_and_stream():
-    assert Register.meta_.aggregate_cls is None
+    assert Register.meta_.part_of is None
     assert Register.meta_.stream_name == "user"
 
-    assert Activate.meta_.aggregate_cls is None
+    assert Activate.meta_.part_of is None
     assert Activate.meta_.stream_name == "user"
 
-    assert Subscribe.meta_.aggregate_cls is None
+    assert Subscribe.meta_.part_of is None
     assert Subscribe.meta_.stream_name == "subscriptions"
 
-    assert Send.meta_.aggregate_cls is None
+    assert Send.meta_.part_of is None
     assert Send.meta_.stream_name == "email"
 
-    assert Recall.meta_.aggregate_cls is Email
+    assert Recall.meta_.part_of is Email
     assert Recall.meta_.stream_name == "recalls"

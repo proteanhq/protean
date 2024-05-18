@@ -23,7 +23,7 @@ class Registered(BaseEvent):
     password_hash = String()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 def some_function():
@@ -54,7 +54,7 @@ def auto_set_and_close_loop():
 async def test_that_exception_is_raised(test_domain):
     test_domain.register(User)
     test_domain.register(Registered)
-    test_domain.register(UserEventHandler, aggregate_cls=User)
+    test_domain.register(UserEventHandler, part_of=User)
 
     identifier = str(uuid4())
     user = User(
@@ -81,7 +81,7 @@ async def test_that_exception_is_raised(test_domain):
 def test_exceptions_stop_processing(test_domain):
     test_domain.register(User)
     test_domain.register(Registered)
-    test_domain.register(UserEventHandler, aggregate_cls=User)
+    test_domain.register(UserEventHandler, part_of=User)
 
     identifier = str(uuid4())
     user = User(

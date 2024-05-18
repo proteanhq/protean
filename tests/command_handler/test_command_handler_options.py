@@ -16,24 +16,24 @@ def test_aggregate_cls_specified_during_registration(test_domain):
     class UserCommandHandlers(BaseCommandHandler):
         pass
 
-    test_domain.register(UserCommandHandlers, aggregate_cls=User)
-    assert UserCommandHandlers.meta_.aggregate_cls == User
+    test_domain.register(UserCommandHandlers, part_of=User)
+    assert UserCommandHandlers.meta_.part_of == User
 
 
 def test_aggregate_cls_specified_as_a_meta_attribute(test_domain):
     class UserCommandHandlers(BaseCommandHandler):
         class Meta:
-            aggregate_cls = User
+            part_of = User
 
     test_domain.register(UserCommandHandlers)
-    assert UserCommandHandlers.meta_.aggregate_cls == User
+    assert UserCommandHandlers.meta_.part_of == User
 
 
 def test_aggregate_cls_defined_via_annotation(
     test_domain,
 ):
-    @test_domain.command_handler(aggregate_cls=User)
+    @test_domain.command_handler(part_of=User)
     class UserCommandHandlers(BaseCommandHandler):
         pass
 
-    assert UserCommandHandlers.meta_.aggregate_cls == User
+    assert UserCommandHandlers.meta_.part_of == User

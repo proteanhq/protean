@@ -28,7 +28,7 @@ def test_that_a_custom_repository_cannot_be_associated_with_event_sourced_aggreg
 ):
     class CustomUserRepository(BaseEventSourcedRepository):
         class Meta:
-            aggregate_cls = User
+            part_of = User
 
     with pytest.raises(IncorrectUsageError):
         test_domain.register(CustomUserRepository)

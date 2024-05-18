@@ -16,7 +16,7 @@ class Person(BaseAggregate):
 
 class PersonRepository(BaseRepository):
     class Meta:
-        aggregate_cls = Person
+        part_of = Person
 
 
 class Alien(BaseAggregate):

@@ -58,8 +58,8 @@ class EmailEventHandler(BaseEventHandler):
 def register(test_domain):
     test_domain.register(User)
     test_domain.register(Email)
-    test_domain.register(UserEventHandler, aggregate_cls=User)
-    test_domain.register(EmailEventHandler, aggregate_cls=Email)
+    test_domain.register(UserEventHandler, part_of=User)
+    test_domain.register(EmailEventHandler, part_of=Email)
 
 
 def test_streams_initialization(test_domain):

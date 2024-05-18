@@ -117,7 +117,7 @@ class BaseEventStore(metaclass=ABCMeta):
         )
 
     def load_aggregate(
-        self, aggregate_cls: Type[BaseEventSourcedAggregate], identifier: Identifier
+        self, part_of: Type[BaseEventSourcedAggregate], identifier: Identifier
     ) -> Optional[BaseEventSourcedAggregate]:
         """Load an aggregate from underlying events.
 
@@ -129,7 +129,7 @@ class BaseEventStore(metaclass=ABCMeta):
         a new snapshot is written to the store.
 
         Args:
-            aggregate_cls (Type[BaseEventSourcedAggregate]): The EventSourced Aggregate's class
+            part_of (Type[BaseEventSourcedAggregate]): The EventSourced Aggregate's class
             identifier (Identifier): Unique aggregate identifier
 
         Returns:
@@ -137,30 +137,28 @@ class BaseEventStore(metaclass=ABCMeta):
                 or None.
         """
         snapshot = self._read_last_message(
-            f"{aggregate_cls.meta_.stream_name}:snapshot-{identifier}"
+            f"{part_of.meta_.stream_name}:snapshot-{identifier}"
         )
 
         if snapshot:
-            aggregate = aggregate_cls(**snapshot["data"])
+            aggregate = part_of(**snapshot["data"])
             position_in_snapshot = snapshot["data"]["_version"]
 
             events = deque(
                 self._read(
-                    f"{aggregate_cls.meta_.stream_name}-{identifier}",
+                    f"{part_of.meta_.stream_name}-{identifier}",
                     position=position_in_snapshot + 1,
                 )
             )
         else:
-            events = deque(
-                self._read(f"{aggregate_cls.meta_.stream_name}-{identifier}")
-            )
+            events = deque(self._read(f"{part_of.meta_.stream_name}-{identifier}"))
 
             if not events:
                 return None
 
             # Handle first event separately to initialize the aggregate
             first_event = events.popleft()
-            aggregate = aggregate_cls(**first_event["data"])
+            aggregate = part_of(**first_event["data"])
 
             # Also apply the first event in case a method has been specified
             aggregate._apply(first_event)
@@ -183,7 +181,7 @@ class BaseEventStore(metaclass=ABCMeta):
             not snapshot and len(events) + 1 >= self.domain.config["SNAPSHOT_THRESHOLD"]
         ):  # Account for the first event that was popped
             self._write(
-                f"{aggregate_cls.meta_.stream_name}:snapshot-{identifier}",
+                f"{part_of.meta_.stream_name}:snapshot-{identifier}",
                 "SNAPSHOT",
                 aggregate.to_dict(),
             )

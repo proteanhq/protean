@@ -10,7 +10,7 @@ class TestDAODeleteFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
-        test_domain.register(PersonRepository, aggregate_cls=Person)
+        test_domain.register(PersonRepository, part_of=Person)
         test_domain.register(User)
 
     def test_delete_an_object_in_repository_by_id(self, test_domain):

@@ -33,7 +33,7 @@ class Registered(BaseEvent):
     password_hash = String()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class Activated(BaseEvent):
@@ -41,7 +41,7 @@ class Activated(BaseEvent):
     activated_at = DateTime()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class Sent(BaseEvent):
@@ -79,7 +79,7 @@ def register_elements(test_domain):
     test_domain.register(Registered)
     test_domain.register(Activated)
     test_domain.register(Sent)
-    test_domain.register(UserEventHandler, aggregate_cls=User)
+    test_domain.register(UserEventHandler, part_of=User)
     test_domain.register(EmailEventHandler, stream_name="email")
 
 

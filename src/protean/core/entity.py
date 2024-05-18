@@ -402,7 +402,7 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
         return [
             ("provider", "default"),
             ("model", None),
-            ("aggregate_cls", None),
+            ("part_of", None),
             ("schema_name", inflection.underscore(cls.__name__)),
         ]
 
@@ -435,7 +435,7 @@ def entity_factory(element_cls, **kwargs):
             }
         )
 
-    if not element_cls.meta_.aggregate_cls:
+    if not element_cls.meta_.part_of:
         raise IncorrectUsageError(
             {
                 "_entity": [
@@ -455,16 +455,14 @@ def entity_factory(element_cls, **kwargs):
 
         if reference_field is None:
             # If no explicit Reference field is present, create one
-            reference_field = Reference(element_cls.meta_.aggregate_cls)
+            reference_field = Reference(element_cls.meta_.part_of)
 
-            # If aggregate_cls is a string, set field name to inflection.underscore(aggregate_cls)
+            # If part_of is a string, set field name to inflection.underscore(part_of)
             #   Else, if it is a class, extract class name and set field name to inflection.underscore(class_name)
-            if isinstance(element_cls.meta_.aggregate_cls, str):
-                field_name = inflection.underscore(element_cls.meta_.aggregate_cls)
+            if isinstance(element_cls.meta_.part_of, str):
+                field_name = inflection.underscore(element_cls.meta_.part_of)
             else:
-                field_name = inflection.underscore(
-                    element_cls.meta_.aggregate_cls.__name__
-                )
+                field_name = inflection.underscore(element_cls.meta_.part_of.__name__)
 
             setattr(element_cls, field_name, reference_field)
 

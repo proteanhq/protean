@@ -42,7 +42,7 @@ class PersonAdded(BaseEvent):
     age = Integer(default=21)
 
     class Meta:
-        aggregate_cls = Person
+        part_of = Person
 
 
 class PersonService(BaseApplicationService):

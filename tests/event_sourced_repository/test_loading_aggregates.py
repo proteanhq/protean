@@ -25,7 +25,7 @@ class Register(BaseCommand):
     password_hash = String()
 
     class Meta:
-        aggregate_cls = "User"
+        part_of = "User"
 
 
 class ChangeAddress(BaseCommand):
@@ -33,7 +33,7 @@ class ChangeAddress(BaseCommand):
     address = String()
 
     class Meta:
-        aggregate_cls = "User"
+        part_of = "User"
 
 
 class Registered(BaseEvent):
@@ -43,7 +43,7 @@ class Registered(BaseEvent):
     password_hash = String()
 
     class Meta:
-        aggregate_cls = "User"
+        part_of = "User"
 
 
 class AddressChanged(BaseEvent):
@@ -51,7 +51,7 @@ class AddressChanged(BaseEvent):
     address = String()
 
     class Meta:
-        aggregate_cls = "User"
+        part_of = "User"
 
 
 class User(BaseEventSourcedAggregate):
@@ -112,7 +112,7 @@ class UserCommandHandler(BaseCommandHandler):
         user_repo.add(user)
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 @pytest.fixture(autouse=True)

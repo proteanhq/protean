@@ -66,7 +66,7 @@ class EventStore:
         for _, record in self.domain.registry.event_handlers.items():
             stream_name = (
                 record.cls.meta_.stream_name
-                or record.cls.meta_.aggregate_cls.meta_.stream_name
+                or record.cls.meta_.part_of.meta_.stream_name
             )
             self._event_streams[stream_name].add(record.cls)
 
@@ -74,19 +74,19 @@ class EventStore:
         self._command_streams = defaultdict(set)
 
         for _, record in self.domain.registry.command_handlers.items():
-            self._command_streams[record.cls.meta_.aggregate_cls.meta_.stream_name].add(
+            self._command_streams[record.cls.meta_.part_of.meta_.stream_name].add(
                 record.cls
             )
 
-    def repository_for(self, aggregate_cls):
+    def repository_for(self, part_of):
         if self._event_store is None:
             self._initialize()
 
         repository_cls = type(
-            aggregate_cls.__name__ + "Repository", (BaseEventSourcedRepository,), {}
+            part_of.__name__ + "Repository", (BaseEventSourcedRepository,), {}
         )
         repository_cls = event_sourced_repository_factory(
-            repository_cls, aggregate_cls=aggregate_cls
+            repository_cls, part_of=part_of
         )
         return repository_cls(self.domain)
 
@@ -96,9 +96,7 @@ class EventStore:
 
         all_stream_handlers = self._event_streams.get("$all", set())
 
-        stream_name = (
-            event.meta_.stream_name or event.meta_.aggregate_cls.meta_.stream_name
-        )
+        stream_name = event.meta_.stream_name or event.meta_.part_of.meta_.stream_name
         stream_handlers = self._event_streams.get(stream_name, set())
 
         return set.union(stream_handlers, all_stream_handlers)
@@ -108,9 +106,7 @@ class EventStore:
             self._initialize_command_streams()
 
         stream_name = command.meta_.stream_name or (
-            command.meta_.aggregate_cls.meta_.stream_name
-            if command.meta_.aggregate_cls
-            else None
+            command.meta_.part_of.meta_.stream_name if command.meta_.part_of else None
         )
 
         if not stream_name:

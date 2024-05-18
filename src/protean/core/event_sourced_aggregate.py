@@ -192,6 +192,6 @@ def event_sourced_aggregate_factory(element_cls, **opts):
             if inspect.isclass(method._event_cls) and issubclass(
                 method._event_cls, BaseEvent
             ):
-                method._event_cls.meta_.aggregate_cls = element_cls
+                method._event_cls.meta_.part_of = element_cls
 
     return element_cls

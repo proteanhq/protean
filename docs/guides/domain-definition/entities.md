@@ -25,7 +25,7 @@ An Entity is defined with the `Domain.entity` decorator:
 {! docs_src/guides/domain-definition/007.py !}
 ```
 
-An Entity has to be associated with an Aggregate. If `aggregate_cls` is not
+An Entity has to be associated with an Aggregate. If `part_of` is not
 specified while defining the identity, you will see an `IncorrectUsageError`:
 
 ```shell

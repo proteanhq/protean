@@ -10,6 +10,6 @@ class Book:
     author = HasOne("Author")
 
 
-@domain.entity(aggregate_cls="Book")
+@domain.entity(part_of="Book")
 class Author:
     name = String(required=True, max_length=50)

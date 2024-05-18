@@ -28,7 +28,7 @@ class TestOptions:
         assert hasattr(Person.meta_, "provider")
 
         # Domain attributes
-        assert hasattr(Person.meta_, "aggregate_cls")
+        assert hasattr(Person.meta_, "part_of")
 
     def test_entity_meta_has_declared_fields_on_construction(self):
         assert declared_fields(Person) is not None

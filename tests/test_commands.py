@@ -21,7 +21,7 @@ class UserRegistrationCommand(BaseCommand):
     age = Integer(default=21)
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class TestCommandInitialization:
@@ -67,7 +67,7 @@ class TestCommandRegistration:
         )
 
     def test_that_command_can_be_registered_via_annotations(self, test_domain):
-        @test_domain.command(aggregate_cls=User)
+        @test_domain.command(part_of=User)
         class ChangePasswordCommand:
             old_password = String(required=True, max_length=255)
             new_password = String(required=True, max_length=255)
@@ -141,7 +141,7 @@ class TestCommandInheritance:
             class Meta:
                 abstract = True
 
-        @test_domain.command(aggregate_cls=User)
+        @test_domain.command(part_of=User)
         class ConcreteCommand2(AbstractCommand2):
             bar = String()
 
@@ -152,7 +152,7 @@ class TestCommandInheritance:
     def test_inheritance_of_parent_fields_with_child_annotation_alone(
         self, test_domain
     ):
-        @test_domain.command(aggregate_cls=User)
+        @test_domain.command(part_of=User)
         class ConcreteCommand3(TestCommandInheritance.AbstractCommand):
             bar = String()
 

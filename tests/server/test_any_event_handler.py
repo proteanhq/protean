@@ -28,7 +28,7 @@ class Registered(BaseEvent):
     password_hash = String()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class UserEventHandler(BaseEventHandler):
@@ -41,7 +41,7 @@ class UserEventHandler(BaseEventHandler):
 async def test_that_an_event_handler_can_be_associated_with_an_all_stream(test_domain):
     test_domain.register(User)
     test_domain.register(Registered)
-    test_domain.register(UserEventHandler, aggregate_cls=User)
+    test_domain.register(UserEventHandler, part_of=User)
 
     identifier = str(uuid4())
     user = User(

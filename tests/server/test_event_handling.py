@@ -25,7 +25,7 @@ class Registered(BaseEvent):
     password_hash = String()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 def count_up():
@@ -43,7 +43,7 @@ class UserEventHandler(BaseEventHandler):
 async def test_handler_invocation(test_domain):
     test_domain.register(User)
     test_domain.register(Registered)
-    test_domain.register(UserEventHandler, aggregate_cls=User)
+    test_domain.register(UserEventHandler, part_of=User)
 
     identifier = str(uuid4())
     user = User(

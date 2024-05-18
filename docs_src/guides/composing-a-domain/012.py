@@ -14,7 +14,7 @@ class Person:
     age = Integer(default=21)
 
 
-@domain.repository(aggregate_cls=Person)
+@domain.repository(part_of=Person)
 class PersonCustomRepository:
     def adults(self, minimum_age: int = 21) -> List[Person]:
         return current_domain.repository_for(Person)._dao.filter(age__gte=minimum_age)

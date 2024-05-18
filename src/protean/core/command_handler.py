@@ -18,7 +18,7 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return [("aggregate_cls", None)]
+        return [("part_of", None)]
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseCommandHandler:
@@ -29,7 +29,7 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
 def command_handler_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseCommandHandler, **kwargs)
 
-    if not element_cls.meta_.aggregate_cls:
+    if not element_cls.meta_.part_of:
         raise IncorrectUsageError(
             {
                 "_entity": [
@@ -71,7 +71,7 @@ def command_handler_factory(element_cls, **kwargs):
                     #   2. Stream name derived from aggregate associated with command handler
                     method._target_cls.meta_.stream_name = (
                         method._target_cls.meta_.stream_name
-                        or element_cls.meta_.aggregate_cls.meta_.stream_name
+                        or element_cls.meta_.part_of.meta_.stream_name
                     )
 
     return element_cls

@@ -69,7 +69,7 @@ class EmailEventHandler(BaseEventHandler):
 async def test_message_filtering_for_event_handlers_with_defined_origin_stream(
     test_domain,
 ):
-    test_domain.register(UserEventHandler, aggregate_cls=User)
+    test_domain.register(UserEventHandler, part_of=User)
     test_domain.register(EmailEventHandler, stream_name="email", source_stream="user")
 
     engine = Engine(test_domain, test_mode=True)

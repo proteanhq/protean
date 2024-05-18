@@ -53,7 +53,7 @@ class Create(BaseCommand):
     content = Text()
 
     class Meta:
-        aggregate_cls = Post
+        part_of = Post
 
 
 class Created(BaseEvent):
@@ -95,7 +95,7 @@ class Metrics(BaseEventHandler):
 @pytest.mark.eventstore
 def test_nested_uow_processing(test_domain):
     test_domain.register(Post)
-    test_domain.register(PostEventHandler, aggregate_cls=Post)
+    test_domain.register(PostEventHandler, part_of=Post)
     test_domain.register(Metrics)
 
     identifier = str(uuid4())

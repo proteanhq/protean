@@ -15,7 +15,7 @@ class MemoryMessage(BaseAggregate, MessageRecord):
 
 class MemoryMessageRepository(BaseRepository):
     class Meta:
-        aggregate_cls = MemoryMessage
+        part_of = MemoryMessage
 
     def is_category(self, stream_name: str) -> bool:
         if not stream_name:

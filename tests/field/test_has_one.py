@@ -16,7 +16,7 @@ class Author(BaseEntity):
     book = Reference("Book")
 
     class Meta:
-        aggregate_cls = "Book"
+        part_of = "Book"
 
 
 @pytest.fixture(autouse=True)

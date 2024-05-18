@@ -19,14 +19,14 @@ class Post:
     comments = HasMany("Comment")
 
 
-@publishing.entity(aggregate_cls=Post)
+@publishing.entity(part_of=Post)
 class Statistic:
     likes = Integer()
     dislikes = Integer()
     post = Reference(Post)
 
 
-@publishing.entity(aggregate_cls=Post)
+@publishing.entity(part_of=Post)
 class Comment:
     content = String(max_length=500)
     post = Reference(Post)

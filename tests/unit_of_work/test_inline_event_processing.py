@@ -90,14 +90,14 @@ class UserMetrics(BaseEventHandler):
         count_up()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 @pytest.mark.eventstore
 def test_inline_event_processing_in_sync_mode(test_domain):
     test_domain.register(User)
     test_domain.register(Registered)
-    test_domain.register(UserEventHandler, aggregate_cls=User)
+    test_domain.register(UserEventHandler, part_of=User)
     test_domain.register(UserMetrics)
 
     identifier = str(uuid4())

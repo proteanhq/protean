@@ -11,13 +11,13 @@ class User:
     name = String()
 
 
-@domain.command(aggregate_cls=User)
+@domain.command(part_of=User)
 class Register:
     user_id = Identifier()
     email = String()
 
 
-@domain.command(aggregate_cls=User)
+@domain.command(part_of=User)
 class ChangePassword:
     old_password_hash = String()
     new_password_hash = String()

@@ -26,7 +26,7 @@ class ChangeAddress(BaseCommand):
     full_address = String()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class UserCommandHandlers(BaseCommandHandler):
@@ -60,9 +60,9 @@ class PostCommandHandler(BaseCommandHandler):
 
 def test_retrieving_handler_by_command(test_domain):
     test_domain.register(User)
-    test_domain.register(UserCommandHandlers, aggregate_cls=User)
+    test_domain.register(UserCommandHandlers, part_of=User)
     test_domain.register(Post)
-    test_domain.register(PostCommandHandler, aggregate_cls=Post)
+    test_domain.register(PostCommandHandler, part_of=Post)
 
     assert test_domain.command_handler_for(Register()) == UserCommandHandlers
     assert test_domain.command_handler_for(Create()) == PostCommandHandler
@@ -80,8 +80,8 @@ def test_retrieving_handlers_for_unknown_command(test_domain):
 
 def test_error_on_defining_multiple_handlers_for_a_command(test_domain):
     test_domain.register(User)
-    test_domain.register(UserCommandHandlers, aggregate_cls=User)
-    test_domain.register(AdminUserCommandHandlers, aggregate_cls=User)
+    test_domain.register(UserCommandHandlers, part_of=User)
+    test_domain.register(AdminUserCommandHandlers, part_of=User)
 
     with pytest.raises(NotSupportedError) as exc:
         test_domain.command_handler_for(Register())

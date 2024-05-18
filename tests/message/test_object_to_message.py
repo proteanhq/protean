@@ -19,7 +19,7 @@ class Register(BaseCommand):
     name = String()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class Registered(BaseEvent):
@@ -28,7 +28,7 @@ class Registered(BaseEvent):
     name = String()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class SendEmail(BaseEventSourcedAggregate):
@@ -43,7 +43,7 @@ class SendEmailCommand(BaseCommand):
     content = String()
 
     class Meta:
-        aggregate_cls = SendEmail
+        part_of = SendEmail
 
 
 def test_construct_message_from_event(test_domain):

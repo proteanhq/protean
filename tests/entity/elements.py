@@ -21,7 +21,7 @@ class ConcretePerson(BaseEntity):
     last_name = String(max_length=50)
 
     class Meta:
-        aggregate_cls = "Account"
+        part_of = "Account"
 
 
 class Person(BaseEntity):
@@ -30,7 +30,7 @@ class Person(BaseEntity):
     age = Integer(default=21)
 
     class Meta:
-        aggregate_cls = "Account"
+        part_of = "Account"
 
 
 class PersonAutoSSN(BaseEntity):
@@ -40,7 +40,7 @@ class PersonAutoSSN(BaseEntity):
     age = Integer(default=21)
 
     class Meta:
-        aggregate_cls = "Account"
+        part_of = "Account"
 
 
 class PersonExplicitID(BaseEntity):
@@ -50,7 +50,7 @@ class PersonExplicitID(BaseEntity):
     age = Integer(default=21)
 
     class Meta:
-        aggregate_cls = "Account"
+        part_of = "Account"
 
 
 class Relative(BaseEntity):
@@ -60,7 +60,7 @@ class Relative(BaseEntity):
     relative_of = HasOne(Person)
 
     class Meta:
-        aggregate_cls = "Account"
+        part_of = "Account"
 
 
 class Adult(Person):
@@ -68,7 +68,7 @@ class Adult(Person):
 
     class Meta:
         schema_name = "adults"
-        aggregate_cls = "Account"
+        part_of = "Account"
 
 
 class NotAPerson(BaseEntity):
@@ -77,7 +77,7 @@ class NotAPerson(BaseEntity):
     age = Integer(default=21)
 
     class Meta:
-        aggregate_cls = "Account"
+        part_of = "Account"
 
 
 # Entities to test Meta Info overriding # START #
@@ -88,25 +88,25 @@ class DbPerson(BaseEntity):
 
     class Meta:
         schema_name = "pepes"
-        aggregate_cls = "Account"
+        part_of = "Account"
 
 
 class SqlPerson(Person):
     class Meta:
         schema_name = "people"
-        aggregate_cls = "Account"
+        part_of = "Account"
 
 
 class DifferentDbPerson(Person):
     class Meta:
         provider = "non-default"
-        aggregate_cls = "Account"
+        part_of = "Account"
 
 
 class SqlDifferentDbPerson(Person):
     class Meta:
         provider = "non-default-sql"
-        aggregate_cls = "Account"
+        part_of = "Account"
 
 
 class OrderedPerson(BaseEntity):
@@ -116,13 +116,13 @@ class OrderedPerson(BaseEntity):
 
     class Meta:
         order_by = "first_name"
-        aggregate_cls = "Account"
+        part_of = "Account"
 
 
 class OrderedPersonSubclass(Person):
     class Meta:
         order_by = "last_name"
-        aggregate_cls = "Account"
+        part_of = "Account"
 
 
 class BuildingStatus(Enum):
@@ -140,7 +140,7 @@ class Building(BaseEntity):
     status = String(choices=BuildingStatus)
 
     class Meta:
-        aggregate_cls = "Area"
+        part_of = "Area"
 
     def defaults(self):
         if not self.status:

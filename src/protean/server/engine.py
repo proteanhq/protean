@@ -59,7 +59,7 @@ class Engine:
                 self,
                 handler_name,
                 record.cls.meta_.stream_name
-                or record.cls.meta_.aggregate_cls.meta_.stream_name,
+                or record.cls.meta_.part_of.meta_.stream_name,
                 record.cls,
                 origin_stream_name=record.cls.meta_.source_stream,
             )
@@ -69,7 +69,7 @@ class Engine:
             self._subscriptions[handler_name] = Subscription(
                 self,
                 handler_name,
-                f"{record.cls.meta_.aggregate_cls.meta_.stream_name}:command",
+                f"{record.cls.meta_.part_of.meta_.stream_name}:command",
                 record.cls,
             )
 

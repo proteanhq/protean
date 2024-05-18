@@ -44,5 +44,5 @@ class UserEventHandler(BaseEventHandler):
 
 
 baz.register(User)
-baz.register(UserCommandHandler, aggregate_cls=User)
-baz.register(UserEventHandler, aggregate_cls=User)
+baz.register(UserCommandHandler, part_of=User)
+baz.register(UserEventHandler, part_of=User)

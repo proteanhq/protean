@@ -22,7 +22,7 @@ class Role(BaseEntity):
     created_on = DateTime(default=datetime.today())
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 def test_element_registration():

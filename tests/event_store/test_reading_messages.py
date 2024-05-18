@@ -21,14 +21,14 @@ class Registered(BaseEvent):
     email = String()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class Activated(BaseEvent):
     id = Identifier(required=True)
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class Renamed(BaseEvent):
@@ -36,7 +36,7 @@ class Renamed(BaseEvent):
     name = String(required=True, max_length=50)
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 @pytest.mark.eventstore

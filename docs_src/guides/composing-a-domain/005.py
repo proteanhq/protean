@@ -11,7 +11,7 @@ class User:
     age = Integer()
 
 
-@domain.value_object(aggregate_cls="Subscription")
+@domain.value_object(part_of="Subscription")
 class Subscriber:
     id = Identifier()
     full_name = String(max_length=102)

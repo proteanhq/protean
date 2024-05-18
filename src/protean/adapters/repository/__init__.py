@@ -50,14 +50,12 @@ class Providers(collections.abc.MutableMapping):
         if key in self._providers:
             del self._providers[key]
 
-    def _construct_repository(self, aggregate_cls):
-        repository_cls = type(
-            aggregate_cls.__name__ + "Repository", (BaseRepository,), {}
-        )
-        repository_cls = repository_factory(repository_cls, aggregate_cls=aggregate_cls)
+    def _construct_repository(self, part_of):
+        repository_cls = type(part_of.__name__ + "Repository", (BaseRepository,), {})
+        repository_cls = repository_factory(repository_cls, part_of=part_of)
         return repository_cls
 
-    def _register_repository(self, aggregate_cls, repository_cls):
+    def _register_repository(self, part_of, repository_cls):
         # When explicitly provided, the value of `database` will be the actual database in use
         # and will lock the repository to that type of database.
         # For example, with the following PostgreSQL configuration:
@@ -79,7 +77,7 @@ class Providers(collections.abc.MutableMapping):
         # and is used for all databases.
         database = repository_cls.meta_.database
 
-        aggregate_name = fully_qualified_name(aggregate_cls)
+        aggregate_name = fully_qualified_name(part_of)
 
         self._repositories[aggregate_name][database] = repository_cls
 
@@ -117,16 +115,16 @@ class Providers(collections.abc.MutableMapping):
         except KeyError:
             raise AssertionError(f"No Provider registered with name {provider_name}")
 
-    def repository_for(self, aggregate_cls):
+    def repository_for(self, part_of):
         """Retrieve a Repository registered for the Aggregate"""
         if self._providers is None:
             self._initialize()
 
-        provider_name = aggregate_cls.meta_.provider
+        provider_name = part_of.meta_.provider
         provider = self._providers[provider_name]
         database = provider.conn_info["DATABASE"]
 
-        aggregate_name = fully_qualified_name(aggregate_cls)
+        aggregate_name = fully_qualified_name(part_of)
 
         # One-time repository registration process for Aggregates
         #
@@ -138,17 +136,12 @@ class Providers(collections.abc.MutableMapping):
         if aggregate_name not in self._repositories:
             # First, register all explicitly-defined repositories
             for _, repository in self.domain.registry.repositories.items():
-                if (
-                    repository.cls.meta_.aggregate_cls.__name__
-                    == aggregate_cls.__name__
-                ):
-                    self._register_repository(aggregate_cls, repository.cls)
+                if repository.cls.meta_.part_of.__name__ == part_of.__name__:
+                    self._register_repository(part_of, repository.cls)
 
             # Next, check if a generic repository has been registered, otherwise construct
             if "ALL" not in self._repositories[aggregate_name]:
-                self._register_repository(
-                    aggregate_cls, self._construct_repository(aggregate_cls)
-                )
+                self._register_repository(part_of, self._construct_repository(part_of))
 
         # If the aggregate is tied to a database, return the database-specific repository
         if database in self._repositories[aggregate_name]:

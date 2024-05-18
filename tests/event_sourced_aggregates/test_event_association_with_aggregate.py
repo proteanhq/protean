@@ -74,9 +74,9 @@ def register_elements(test_domain):
 
 @pytest.mark.eventstore
 def test_that_event_is_associated_with_aggregate_by_apply_methods():
-    assert UserRegistered.meta_.aggregate_cls == User
-    assert UserActivated.meta_.aggregate_cls == User
-    assert UserRenamed.meta_.aggregate_cls == User
+    assert UserRegistered.meta_.part_of == User
+    assert UserActivated.meta_.part_of == User
+    assert UserRenamed.meta_.part_of == User
 
 
 @pytest.mark.eventstore

@@ -11,7 +11,7 @@ class TestState:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
-        test_domain.register(PersonRepository, aggregate_cls=Person)
+        test_domain.register(PersonRepository, part_of=Person)
 
     def test_that_a_default_state_is_available_when_the_entity_instantiated(self):
         person = Person(first_name="John", last_name="Doe")

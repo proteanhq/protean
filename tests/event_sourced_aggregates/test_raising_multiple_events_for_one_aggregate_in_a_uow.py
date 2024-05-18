@@ -68,9 +68,9 @@ class UserCommandHandler(BaseCommandHandler):
 
 def test_that_multiple_events_are_raised_per_aggregate_in_the_same_uow(test_domain):
     test_domain.register(User)
-    test_domain.register(UserCommandHandler, aggregate_cls=User)
-    test_domain.register(Registered, aggregate_cls=User)
-    test_domain.register(Renamed, aggregate_cls=User)
+    test_domain.register(UserCommandHandler, part_of=User)
+    test_domain.register(Registered, part_of=User)
+    test_domain.register(Renamed, part_of=User)
 
     identifier = str(uuid4())
     UserCommandHandler().register_user(

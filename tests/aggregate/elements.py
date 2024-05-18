@@ -134,7 +134,7 @@ class Comment(BaseEntity):
     post = Reference("tests.aggregate.elements.Post")
 
     class Meta:
-        aggregate_cls = Post
+        part_of = Post
 
 
 class CommentVia(BaseEntity):
@@ -143,7 +143,7 @@ class CommentVia(BaseEntity):
     posting_id = String()
 
     class Meta:
-        aggregate_cls = PostVia
+        part_of = PostVia
 
 
 class CommentViaWithReference(BaseEntity):
@@ -152,7 +152,7 @@ class CommentViaWithReference(BaseEntity):
     posting = Reference("tests.aggregate.elements.PostVia")
 
     class Meta:
-        aggregate_cls = PostViaWithReference
+        part_of = PostViaWithReference
 
 
 class Account(BaseAggregate):
@@ -169,7 +169,7 @@ class Author(BaseEntity):
     account = Reference("tests.aggregate.elements.Account")
 
     class Meta:
-        aggregate_cls = Account
+        part_of = Account
 
 
 class AccountWithId(BaseAggregate):
@@ -198,7 +198,7 @@ class Profile(BaseEntity):
     account = Reference("tests.aggregate.elements.Account", via="username")
 
     class Meta:
-        aggregate_cls = Account
+        part_of = Account
 
 
 class ProfileWithAccountId(BaseEntity):
@@ -206,7 +206,7 @@ class ProfileWithAccountId(BaseEntity):
     account = Reference("tests.aggregate.elements.AccountWithId")
 
     class Meta:
-        aggregate_cls = AccountWithId
+        part_of = AccountWithId
 
 
 class ProfileVia(BaseEntity):
@@ -215,7 +215,7 @@ class ProfileVia(BaseEntity):
     account_email = String(max_length=255)
 
     class Meta:
-        aggregate_cls = AccountVia
+        part_of = AccountVia
 
 
 class ProfileViaWithReference(BaseEntity):
@@ -223,7 +223,7 @@ class ProfileViaWithReference(BaseEntity):
     ac = Reference("tests.aggregate.elements.AccountViaWithReference")
 
     class Meta:
-        aggregate_cls = AccountViaWithReference
+        part_of = AccountViaWithReference
 
 
 # Aggregates to test associations # END #

@@ -9,7 +9,7 @@ class TestDAO:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
-        test_domain.register(PersonRepository, aggregate_cls=Person)
+        test_domain.register(PersonRepository, part_of=Person)
         test_domain.register(User)
 
     def test_successful_initialization_of_dao(self, test_domain):

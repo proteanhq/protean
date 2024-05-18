@@ -11,13 +11,13 @@ class User:
     name = String()
 
 
-@domain.command(aggregate_cls=User)
+@domain.command(part_of=User)
 class Register:
     id = Identifier()
     email = String()
 
 
-@domain.event(aggregate_cls=User)
+@domain.event(part_of=User)
 class Registered:
     id = Identifier()
     email = String()

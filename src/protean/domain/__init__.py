@@ -421,8 +421,8 @@ class Domain:
             DomainObjects.REPOSITORY,
             DomainObjects.EVENT_SOURCED_REPOSITORY,
         ]:
-            if isinstance(new_cls.meta_.aggregate_cls, str):
-                self._pending_class_resolutions[new_cls.meta_.aggregate_cls].append(
+            if isinstance(new_cls.meta_.part_of, str):
+                self._pending_class_resolutions[new_cls.meta_.part_of].append(
                     ("AggregateCls", (new_cls))
                 )
 
@@ -456,13 +456,13 @@ class Domain:
                 elif resolution_type == "AggregateCls":
                     cls = params
                     to_cls = self.fetch_element_cls_from_registry(
-                        cls.meta_.aggregate_cls,
+                        cls.meta_.part_of,
                         (
                             DomainObjects.AGGREGATE,
                             DomainObjects.EVENT_SOURCED_AGGREGATE,
                         ),
                     )
-                    cls.meta_.aggregate_cls = to_cls
+                    cls.meta_.part_of = to_cls
 
             # Remove from pending list now that the class has been resolved
             del self._pending_class_resolutions[name]
@@ -856,11 +856,11 @@ class Domain:
     ############################
 
     # FIXME Optimize calls to this method with cache, but also with support for Multitenancy
-    def repository_for(self, aggregate_cls):
-        if aggregate_cls.element_type == DomainObjects.EVENT_SOURCED_AGGREGATE:
-            return self.event_store.repository_for(aggregate_cls)
+    def repository_for(self, part_of):
+        if part_of.element_type == DomainObjects.EVENT_SOURCED_AGGREGATE:
+            return self.event_store.repository_for(part_of)
         else:
-            return self.providers.repository_for(aggregate_cls)
+            return self.providers.repository_for(part_of)
 
     #######################
     # Cache Functionality #

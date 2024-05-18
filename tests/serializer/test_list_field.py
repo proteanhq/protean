@@ -15,7 +15,7 @@ class FooRepresentation(BaseSerializer):
     bars = List(content_type=Dict)
 
     class Meta:
-        aggregate_cls = Qux
+        part_of = Qux
 
 
 def test_that_list_of_dicts_are_serialized_correctly():

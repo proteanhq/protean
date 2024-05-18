@@ -12,7 +12,7 @@ class TestUnitOfWorkRegistration:
         test_domain.register(PostMeta)
         test_domain.register(Comment)
 
-        test_domain.register(PostRepository, aggregate_cls=Post)
+        test_domain.register(PostRepository, part_of=Post)
 
         test_domain.init(traverse=False)
 

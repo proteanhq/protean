@@ -13,14 +13,14 @@ class Email(BaseValueObject):
     address = String()
 
     class Meta:
-        aggregate_cls = "User"
+        part_of = "User"
 
 
 class Role(BaseEntity):
     name = String(max_length=50)
 
     class Meta:
-        aggregate_cls = "User"
+        part_of = "User"
 
 
 def test_that_views_should_have_at_least_one_identifier_field():
