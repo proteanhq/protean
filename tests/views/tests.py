@@ -186,7 +186,7 @@ class TestViewMeta:
         assert id_field(Person) == declared_fields(Person)["person_id"]
 
     def test_absence_of_entity_specific_attributes(self):
-        assert hasattr(Person.meta_, "aggregate_cls") is False
+        assert hasattr(Person.meta_, "part_of") is False
 
     def test_view_meta_has_declared_fields_on_construction(self):
         assert declared_fields(Person) is not None

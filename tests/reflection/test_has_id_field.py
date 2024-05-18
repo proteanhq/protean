@@ -8,7 +8,7 @@ class Entity1(BaseEntity):
     foo = String()
 
     class Meta:
-        aggregate_cls = "Aggregate1"
+        part_of = "Aggregate1"
 
 
 class Aggregate1(BaseAggregate):

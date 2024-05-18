@@ -17,7 +17,7 @@ class User:
     name = String()
 
 
-@domain.model(aggregate_cls=User)
+@domain.model(part_of=User)
 class UserCustomModel:
     id = sa.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = sa.Column(sa.String(50))

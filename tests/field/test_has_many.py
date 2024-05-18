@@ -15,7 +15,7 @@ class Comment(BaseEntity):
     content = String()
 
     class Meta:
-        aggregate_cls = Post
+        part_of = Post
 
 
 @pytest.fixture(autouse=True)

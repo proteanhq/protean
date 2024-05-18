@@ -19,27 +19,27 @@ def test_aggregate_cls_specified_during_registration(test_domain):
     class UserEventHandlers(BaseEventHandler):
         pass
 
-    test_domain.register(UserEventHandlers, aggregate_cls=User)
-    assert UserEventHandlers.meta_.aggregate_cls == User
+    test_domain.register(UserEventHandlers, part_of=User)
+    assert UserEventHandlers.meta_.part_of == User
 
 
 def test_aggregate_cls_specified_as_a_meta_attribute(test_domain):
     class UserEventHandlers(BaseEventHandler):
         class Meta:
-            aggregate_cls = User
+            part_of = User
 
     test_domain.register(UserEventHandlers)
-    assert UserEventHandlers.meta_.aggregate_cls == User
+    assert UserEventHandlers.meta_.part_of == User
 
 
 def test_aggregate_cls_defined_via_annotation(
     test_domain,
 ):
-    @test_domain.event_handler(aggregate_cls=User)
+    @test_domain.event_handler(part_of=User)
     class UserEventHandlers(BaseEventHandler):
         pass
 
-    assert UserEventHandlers.meta_.aggregate_cls == User
+    assert UserEventHandlers.meta_.part_of == User
 
 
 def test_stream_name_option(test_domain):
@@ -55,8 +55,8 @@ def test_options_defined_at_different_levels(test_domain):
         class Meta:
             stream_name = "person"
 
-    test_domain.register(UserEventHandlers, aggregate_cls=User)
-    assert UserEventHandlers.meta_.aggregate_cls == User
+    test_domain.register(UserEventHandlers, part_of=User)
+    assert UserEventHandlers.meta_.part_of == User
     assert UserEventHandlers.meta_.stream_name == "person"
 
 
@@ -64,7 +64,7 @@ def test_that_a_default_stream_name_is_derived_from_aggregate_cls(test_domain):
     class UserEventHandlers(BaseEventHandler):
         pass
 
-    test_domain.register(UserEventHandlers, aggregate_cls=User)
+    test_domain.register(UserEventHandlers, part_of=User)
     assert UserEventHandlers.meta_.stream_name == "user"
 
 
@@ -72,7 +72,7 @@ def test_source_stream_option(test_domain):
     class UserEventHandlers(BaseEventHandler):
         pass
 
-    test_domain.register(UserEventHandlers, aggregate_cls=User, source_stream="email")
+    test_domain.register(UserEventHandlers, part_of=User, source_stream="email")
     assert UserEventHandlers.meta_.source_stream == "email"
 
 

@@ -20,7 +20,7 @@ def test_registering_an_event_handler_manually(test_domain):
         pass
 
     try:
-        test_domain.register(UserEventHandlers, aggregate_cls=User)
+        test_domain.register(UserEventHandlers, part_of=User)
     except Exception:
         pytest.fail("Failed to register an Event Handler manually")
 
@@ -32,7 +32,7 @@ def test_registering_an_event_handler_manually(test_domain):
 def test_registering_an_event_handler_via_annotation(test_domain):
     try:
 
-        @test_domain.event_handler(aggregate_cls=User)
+        @test_domain.event_handler(part_of=User)
         class UserEventHandlers(BaseEventHandler):
             pass
 

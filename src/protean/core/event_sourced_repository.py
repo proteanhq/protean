@@ -15,7 +15,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return [("aggregate_cls", None)]
+        return [("part_of", None)]
 
     def __new__(cls, *args, **kwargs):
         # Prevent instantiation of `BaseEventSourcedRepository itself`
@@ -51,13 +51,13 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             return current_uow._identity_map[identifier]
 
         aggregate = current_domain.event_store.store.load_aggregate(
-            self.meta_.aggregate_cls, identifier
+            self.meta_.part_of, identifier
         )
 
         if not aggregate:
             raise ObjectNotFoundError(
                 {
-                    "_entity": f"`{self.meta_.aggregate_cls.__name__}` object with identifier {identifier} "
+                    "_entity": f"`{self.meta_.part_of.__name__}` object with identifier {identifier} "
                     f"does not exist."
                 }
             )
@@ -68,7 +68,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 def event_sourced_repository_factory(element_cls, **opts):
     element_cls = derive_element_class(element_cls, BaseEventSourcedRepository, **opts)
 
-    if not element_cls.meta_.aggregate_cls:
+    if not element_cls.meta_.part_of:
         raise IncorrectUsageError(
             {
                 "_entity": [
@@ -77,7 +77,7 @@ def event_sourced_repository_factory(element_cls, **opts):
             }
         )
 
-    if not issubclass(element_cls.meta_.aggregate_cls, BaseEventSourcedAggregate):
+    if not issubclass(element_cls.meta_.part_of, BaseEventSourcedAggregate):
         raise IncorrectUsageError(
             {
                 "_entity": [

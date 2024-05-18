@@ -36,7 +36,7 @@ def test_command_submission_without_aggregate(test_domain):
 @pytest.mark.eventstore
 def test_command_submission(test_domain):
     test_domain.register(User)
-    test_domain.register(Register, aggregate_cls=User)
+    test_domain.register(Register, part_of=User)
 
     identifier = str(uuid4())
     test_domain.event_store.store.append(

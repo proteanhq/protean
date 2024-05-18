@@ -51,7 +51,7 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 
     @classmethod
     def _default_options(cls):
-        return [("abstract", False), ("aggregate_cls", None), ("stream_name", None)]
+        return [("abstract", False), ("part_of", None), ("stream_name", None)]
 
     @classmethod
     def __track_id_field(subclass):
@@ -78,7 +78,7 @@ def domain_event_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseEvent, **kwargs)
 
     if (
-        not (element_cls.meta_.aggregate_cls or element_cls.meta_.stream_name)
+        not (element_cls.meta_.part_of or element_cls.meta_.stream_name)
         and not element_cls.meta_.abstract
     ):
         raise IncorrectUsageError(

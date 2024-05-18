@@ -33,7 +33,7 @@ def test_event_definition_without_aggregate_or_stream(test_domain):
 
 def test_event_definition_with_just_aggregate_cls(test_domain):
     test_domain.register(User)
-    test_domain.register(UserLoggedIn, aggregate_cls=User)
+    test_domain.register(UserLoggedIn, part_of=User)
     test_domain.init(traverse=False)
 
     try:
@@ -71,7 +71,7 @@ def test_that_abstract_events_can_be_defined_without_aggregate_or_stream(test_do
 
 def test_that_aggregate_cls_is_resolved_correctly(test_domain):
     test_domain.register(User)
-    test_domain.register(UserLoggedIn, aggregate_cls="User")
+    test_domain.register(UserLoggedIn, part_of="User")
 
     test_domain.init(traverse=False)
-    assert UserLoggedIn.meta_.aggregate_cls == User
+    assert UserLoggedIn.meta_.part_of == User

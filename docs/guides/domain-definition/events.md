@@ -51,7 +51,7 @@ You can define an event with the `Domain.event` decorator:
 ```
 
 Events are always connected to an Aggregate class, specified with the
-`aggregate_cls` param in the decorator. An exception to this rule is when the
+`part_of` param in the decorator. An exception to this rule is when the
 Event class has been marked _Abstract_.
 
 ## Event Facts
@@ -60,7 +60,7 @@ Event class has been marked _Abstract_.
 the fact_. `StockDepleted` is a better choice than the imperative
 `DepleteStock` as an event name.
 - An event is associated with an aggregate or a stream, specified with
-`aggregate_cls` or `stream` parameters to the decorator, as above. We will
+`part_of` or `stream` parameters to the decorator, as above. We will
 dive deeper into these parameters in the Processing Events section.
 <!-- FIXME Add link to events processing section -->
 - Events are essentially Data Transfer Objects (DTO)- they can only hold

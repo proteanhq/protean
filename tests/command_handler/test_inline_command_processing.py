@@ -19,7 +19,7 @@ class Register(BaseCommand):
     email = String()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class UserCommandHandlers(BaseCommandHandler):
@@ -31,7 +31,7 @@ class UserCommandHandlers(BaseCommandHandler):
 
 def test_that_command_can_be_processed_inline(test_domain):
     test_domain.register(User)
-    test_domain.register(UserCommandHandlers, aggregate_cls=User)
+    test_domain.register(UserCommandHandlers, part_of=User)
 
     assert test_domain.config["COMMAND_PROCESSING"] == CommandProcessing.SYNC.value
 
@@ -41,7 +41,7 @@ def test_that_command_can_be_processed_inline(test_domain):
 
 def test_that_command_is_persisted_in_message_store(test_domain):
     test_domain.register(User)
-    test_domain.register(UserCommandHandlers, aggregate_cls=User)
+    test_domain.register(UserCommandHandlers, part_of=User)
 
     identifier = str(uuid4())
     test_domain.process(Register(user_id=identifier, email="john.doe@gmail.com"))

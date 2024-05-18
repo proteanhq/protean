@@ -9,7 +9,7 @@ class Address(BaseEntity):
     postal_code = String(max_length=6)
 
     class Meta:
-        aggregate_cls = "User"
+        part_of = "User"
 
 
 class User(BaseAggregate):

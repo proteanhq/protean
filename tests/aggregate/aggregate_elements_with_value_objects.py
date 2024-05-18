@@ -14,7 +14,7 @@ class File(BaseValueObject):
     type = String(max_length=15, choices=FileType)
 
     class Meta:
-        aggregate_cls = "Resource"
+        part_of = "Resource"
 
 
 class Resource(BaseAggregate):

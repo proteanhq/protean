@@ -60,7 +60,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             post = Reference("Post")
 
             class Meta:
-                aggregate_cls = "Post"
+                part_of = "Post"
 
         class Post(BaseAggregate):
             title = String(required=True, max_length=1000)
@@ -96,7 +96,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             post = Reference("Post")
 
             class Meta:
-                aggregate_cls = "Post"
+                part_of = "Post"
 
         class Post(BaseAggregate):
             title = String(required=True, max_length=1000)
@@ -137,7 +137,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             likes = Integer(default=0)
 
             class Meta:
-                aggregate_cls = Post
+                part_of = Post
 
         test_domain.register(Post)
         test_domain.register(PostMeta)

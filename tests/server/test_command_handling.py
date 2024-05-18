@@ -21,14 +21,14 @@ class Register(BaseCommand):
     email = String()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class Activate(BaseCommand):
     user_id = Identifier()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 def dummy(*args):
@@ -51,7 +51,7 @@ async def test_handler_invocation(test_domain):
     test_domain.register(User)
     test_domain.register(Register)
     test_domain.register(Activate)
-    test_domain.register(UserCommandHandler, aggregate_cls=User)
+    test_domain.register(UserCommandHandler, part_of=User)
 
     identifier = str(uuid4())
     command = Register(

@@ -20,7 +20,7 @@ class PostMeta(BaseEntity):
     post = Reference(Post)
 
     class Meta:
-        aggregate_cls = Post
+        part_of = Post
 
 
 class Comment(BaseEntity):
@@ -30,4 +30,4 @@ class Comment(BaseEntity):
     post = Reference(Post)
 
     class Meta:
-        aggregate_cls = Post
+        part_of = Post

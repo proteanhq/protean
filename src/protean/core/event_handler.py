@@ -20,15 +20,13 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        aggregate_cls = (
-            getattr(cls.meta_, "aggregate_cls")
-            if hasattr(cls.meta_, "aggregate_cls")
-            else None
+        part_of = (
+            getattr(cls.meta_, "part_of") if hasattr(cls.meta_, "part_of") else None
         )
 
         return [
-            ("aggregate_cls", None),
-            ("stream_name", aggregate_cls.meta_.stream_name if aggregate_cls else None),
+            ("part_of", None),
+            ("stream_name", part_of.meta_.stream_name if part_of else None),
             ("source_stream", None),
         ]
 
@@ -41,7 +39,7 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
 def event_handler_factory(element_cls, **opts):
     element_cls = derive_element_class(element_cls, BaseEventHandler, **opts)
 
-    if not (element_cls.meta_.aggregate_cls or element_cls.meta_.stream_name):
+    if not (element_cls.meta_.part_of or element_cls.meta_.stream_name):
         raise IncorrectUsageError(
             {
                 "_entity": [
@@ -78,8 +76,8 @@ def event_handler_factory(element_cls, **opts):
                 #   2. Stream name defined for the event handler
                 #   3. Stream name derived from aggregate
                 stream_name = element_cls.meta_.stream_name or (
-                    element_cls.meta_.aggregate_cls.meta_.stream_name
-                    if element_cls.meta_.aggregate_cls
+                    element_cls.meta_.part_of.meta_.stream_name
+                    if element_cls.meta_.part_of
                     else None
                 )
                 method._target_cls.meta_.stream_name = (

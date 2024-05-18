@@ -18,8 +18,8 @@ class TestSerializerInitialization:
         assert schema is not None
 
     def test_that_meta_is_loaded_with_attributes(self):
-        assert UserSchema.meta_.aggregate_cls is not None
-        assert UserSchema.meta_.aggregate_cls == User
+        assert UserSchema.meta_.part_of is not None
+        assert UserSchema.meta_.part_of == User
 
         assert declared_fields(UserSchema) is not None
         assert all(key in declared_fields(UserSchema) for key in ["name", "age"])
@@ -38,7 +38,7 @@ class TestSerializerRegistration:
             age = Integer(required=True)
 
             class Meta:
-                aggregate_cls = User
+                part_of = User
 
         assert fully_qualified_name(PersonSchema) in test_domain.registry.serializers
 

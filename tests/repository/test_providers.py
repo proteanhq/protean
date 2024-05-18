@@ -21,7 +21,7 @@ class PersonCustomRepository(BaseRepository):
         )
 
     class Meta:
-        aggregate_cls = PersonGeneric
+        part_of = PersonGeneric
 
 
 class PersonSQLite(BaseAggregate):
@@ -40,7 +40,7 @@ class PersonSQLiteGenericRepository(BaseRepository):
         )
 
     class Meta:
-        aggregate_cls = PersonSQLite
+        part_of = PersonSQLite
 
 
 class PersonSQLiteCustomRepository(BaseRepository):
@@ -51,7 +51,7 @@ class PersonSQLiteCustomRepository(BaseRepository):
         return result
 
     class Meta:
-        aggregate_cls = PersonSQLite
+        part_of = PersonSQLite
         database = Database.SQLITE.value
 
 

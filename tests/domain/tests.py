@@ -70,7 +70,7 @@ class TestDomainAnnotations:
             foo = String(max_length=50)
 
         with pytest.raises(IncorrectUsageError):
-            test_domain._register_element(DummyElement.FOO, FooBar, aggregate_cls="foo")
+            test_domain._register_element(DummyElement.FOO, FooBar, part_of="foo")
 
 
 class TestDomainLevelClassResolution:
@@ -113,7 +113,7 @@ class TestDomainLevelClassResolution:
                 post = Reference("Post")
 
                 class Meta:
-                    aggregate_cls = Post
+                    part_of = Post
 
             # Still a string reference
             assert isinstance(declared_fields(Comment)["post"].to_cls, str)
@@ -161,7 +161,7 @@ class TestDomainLevelClassResolution:
                 post = Reference("Post")
 
                 class Meta:
-                    aggregate_cls = Post
+                    part_of = Post
 
             domain.register(Comment)
 
@@ -190,7 +190,7 @@ class TestDomainLevelClassResolution:
                 post = Reference("Post")
 
                 class Meta:
-                    aggregate_cls = Post
+                    part_of = Post
 
             domain.register(Comment)
 
@@ -225,7 +225,7 @@ class TestDomainLevelClassResolution:
                 foo = Reference("Foo")
 
                 class Meta:
-                    aggregate_cls = Post
+                    part_of = Post
 
             domain.register(Comment)
 
@@ -255,7 +255,7 @@ class TestDomainLevelClassResolution:
                 post = Reference("Post")
 
                 class Meta:
-                    aggregate_cls = Post
+                    part_of = Post
 
             test_domain.register(Post)
             test_domain.register(Comment)
@@ -279,7 +279,7 @@ class TestDomainLevelClassResolution:
                 account = Reference("Account")
 
                 class Meta:
-                    aggregate_cls = Account
+                    part_of = Account
 
             test_domain.register(Account)
             test_domain.register(Author)

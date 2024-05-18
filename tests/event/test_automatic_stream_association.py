@@ -34,7 +34,7 @@ class LoggedIn(BaseEvent):
     activated_at = DateTime()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class Subscribed(BaseEvent):
@@ -58,7 +58,7 @@ class Recalled(BaseEvent):
     sent_at = DateTime()
 
     class Meta:
-        aggregate_cls = Email
+        part_of = Email
         stream_name = "recalls"
 
 
@@ -98,22 +98,22 @@ class EmailEventHandler(BaseEventHandler):
 def register(test_domain):
     test_domain.register(User)
     test_domain.register(Email)
-    test_domain.register(UserEventHandler, aggregate_cls=User)
-    test_domain.register(EmailEventHandler, aggregate_cls=Email)
+    test_domain.register(UserEventHandler, part_of=User)
+    test_domain.register(EmailEventHandler, part_of=Email)
 
 
 def test_automatic_association_of_events_with_aggregate_and_stream():
-    assert Registered.meta_.aggregate_cls is None
+    assert Registered.meta_.part_of is None
     assert Registered.meta_.stream_name == "user"
 
-    assert Activated.meta_.aggregate_cls is None
+    assert Activated.meta_.part_of is None
     assert Activated.meta_.stream_name == "user"
 
-    assert Subscribed.meta_.aggregate_cls is None
+    assert Subscribed.meta_.part_of is None
     assert Subscribed.meta_.stream_name == "subscriptions"
 
-    assert Sent.meta_.aggregate_cls is None
+    assert Sent.meta_.part_of is None
     assert Sent.meta_.stream_name == "email"
 
-    assert Recalled.meta_.aggregate_cls is Email
+    assert Recalled.meta_.part_of is Email
     assert Recalled.meta_.stream_name == "recalls"

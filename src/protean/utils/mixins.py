@@ -135,9 +135,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
         identifier = getattr(aggregate, id_field(aggregate).field_name)
 
         # Use explicit stream name if provided, or fallback on Aggregate's stream name
-        stream_name = (
-            event.meta_.stream_name or event.meta_.aggregate_cls.meta_.stream_name
-        )
+        stream_name = event.meta_.stream_name or event.meta_.part_of.meta_.stream_name
 
         return cls(
             stream_name=f"{stream_name}-{identifier}",
@@ -177,7 +175,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
         # Use explicit stream name if provided, or fallback on Aggregate's stream name
         stream_name = (
             message_object.meta_.stream_name
-            or message_object.meta_.aggregate_cls.meta_.stream_name
+            or message_object.meta_.part_of.meta_.stream_name
         )
 
         if isinstance(message_object, BaseEvent):

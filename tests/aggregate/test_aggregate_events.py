@@ -29,7 +29,7 @@ class UserActivated(BaseEvent):
     user_id = Identifier(required=True)
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class UserRenamed(BaseEvent):
@@ -37,7 +37,7 @@ class UserRenamed(BaseEvent):
     name = String(required=True, max_length=50)
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 @pytest.fixture(autouse=True)

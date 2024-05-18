@@ -34,7 +34,7 @@ class BaseRepository(Element, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return [("aggregate_cls", None), ("database", "ALL")]
+        return [("part_of", None), ("database", "ALL")]
 
     def __new__(cls, *args, **kwargs):
         # Prevent instantiation of `BaseRepository itself`
@@ -53,9 +53,9 @@ class BaseRepository(Element, OptionsMixin):
         # If a model was associated with the aggregate record, give it a higher priority
         #   and do not bake a new model class from aggregate/entity attributes
         custom_model_cls = None
-        if fully_qualified_name(self.meta_.aggregate_cls) in self._domain._models:
+        if fully_qualified_name(self.meta_.part_of) in self._domain._models:
             custom_model_cls = self._domain._models[
-                fully_qualified_name(self.meta_.aggregate_cls)
+                fully_qualified_name(self.meta_.part_of)
             ]
 
         # FIXME This is the provide support for activating database specific models
@@ -70,13 +70,13 @@ class BaseRepository(Element, OptionsMixin):
             # Get the decorated model class.
             #   This is a no-op if the provider decides that the model is fully-baked
             model_cls = self._provider.decorate_model_class(
-                self.meta_.aggregate_cls, custom_model_cls
+                self.meta_.part_of, custom_model_cls
             )
         else:
             # No model was associated with the aggregate/entity explicitly.
             #   So ask the Provider to bake a new model, initialized properly for this aggregate
             #   and return it
-            model_cls = self._provider.construct_model_class(self.meta_.aggregate_cls)
+            model_cls = self._provider.construct_model_class(self.meta_.part_of)
 
         return model_cls
 
@@ -85,7 +85,7 @@ class BaseRepository(Element, OptionsMixin):
     def _dao(self):
         """Retrieve a DAO registered for the Aggregate with a live connection"""
         # Fixate on Model class at the domain level because an explicit model may have been registered
-        return self._provider.get_dao(self.meta_.aggregate_cls, self._model)
+        return self._provider.get_dao(self.meta_.part_of, self._model)
 
     def add(self, aggregate):  # noqa: C901
         """This method helps persist or update aggregates into the persistence store.
@@ -196,7 +196,7 @@ class BaseRepository(Element, OptionsMixin):
 def repository_factory(element_cls, **opts):
     element_cls = derive_element_class(element_cls, BaseRepository, **opts)
 
-    if not element_cls.meta_.aggregate_cls:
+    if not element_cls.meta_.part_of:
         raise IncorrectUsageError(
             {
                 "_entity": [
@@ -206,7 +206,7 @@ def repository_factory(element_cls, **opts):
         )
 
     # FIXME Uncomment
-    # if not issubclass(element_cls.meta_.aggregate_cls, BaseAggregate):
+    # if not issubclass(element_cls.meta_.part_of, BaseAggregate):
     #     raise IncorrectUsageError(
     #         {"_entity": [f"Repository `{element_cls.__name__}` can only be associated with an Aggregate"]}
     #     )

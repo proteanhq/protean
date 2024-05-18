@@ -23,7 +23,7 @@ class PersonRepository(BaseRepository):
         return current_domain.repository_for(Person)._dao.filter(age__gte=minimum_age)
 
     class Meta:
-        aggregate_cls = Person
+        part_of = Person
 
 
 class Email(BaseValueObject):

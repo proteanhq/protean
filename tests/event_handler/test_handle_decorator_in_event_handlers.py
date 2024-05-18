@@ -27,7 +27,7 @@ def test_that_a_handler_is_recorded_against_event_handler(test_domain):
             pass
 
     test_domain.register(User)
-    test_domain.register(UserEventHandlers, aggregate_cls=User)
+    test_domain.register(UserEventHandlers, part_of=User)
 
     assert fully_qualified_name(Registered) in UserEventHandlers._handlers
 
@@ -43,7 +43,7 @@ def test_that_multiple_handlers_can_be_recorded_against_event_handler(test_domai
             pass
 
     test_domain.register(User)
-    test_domain.register(UserEventHandlers, aggregate_cls=User)
+    test_domain.register(UserEventHandlers, part_of=User)
 
     assert len(UserEventHandlers._handlers) == 2
     assert all(
@@ -77,7 +77,7 @@ def test_that_multiple_handlers_can_be_recorded_against_the_same_event(test_doma
             pass
 
     test_domain.register(User)
-    test_domain.register(UserEventHandlers, aggregate_cls=User)
+    test_domain.register(UserEventHandlers, part_of=User)
 
     assert len(UserEventHandlers._handlers) == 1  # Against Registered Event
 

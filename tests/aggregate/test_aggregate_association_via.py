@@ -14,7 +14,7 @@ class Profile(BaseEntity):
     parent_email = Identifier()
 
     class Meta:
-        aggregate_cls = Account
+        part_of = Account
 
 
 @pytest.fixture(autouse=True)

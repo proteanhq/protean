@@ -9,13 +9,13 @@ class User:
     name = String(max_length=50)
 
 
-@domain.entity(aggregate_cls=User)
+@domain.entity(part_of=User)
 class Credentials:
     email = String(max_length=254)
     password_hash = String(max_length=128)
 
 
-@domain.command(aggregate_cls=User)
+@domain.command(part_of=User)
 class Register:
     id = Identifier()
     email = String()

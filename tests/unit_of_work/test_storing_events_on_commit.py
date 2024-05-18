@@ -52,7 +52,7 @@ class Registered(BaseEvent):
     password_hash = String()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class UserCommandHandler(BaseCommandHandler):

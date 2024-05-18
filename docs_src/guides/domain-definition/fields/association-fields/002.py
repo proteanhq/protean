@@ -11,6 +11,6 @@ class Post:
     comments = HasMany("Comment")
 
 
-@domain.entity(aggregate_cls=Post)
+@domain.entity(part_of=Post)
 class Comment:
     content = String(required=True, max_length=50)

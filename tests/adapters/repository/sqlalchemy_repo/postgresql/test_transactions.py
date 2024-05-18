@@ -13,7 +13,7 @@ class TestTransactions:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
-        test_domain.register(PersonRepository, aggregate_cls=Person)
+        test_domain.register(PersonRepository, part_of=Person)
 
     def random_name(self):
         return "".join(random.choices(string.ascii_uppercase + string.digits, k=15))

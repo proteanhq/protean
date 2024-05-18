@@ -10,6 +10,6 @@ class Post:
     created_on = Date()
 
 
-@publishing.entity(aggregate_cls=Post)
+@publishing.entity(part_of=Post)
 class Comment:
     content = String(max_length=500)

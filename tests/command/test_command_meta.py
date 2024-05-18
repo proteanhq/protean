@@ -51,7 +51,7 @@ def test_that_abstract_commands_can_be_defined_without_aggregate_or_stream(test_
 @pytest.mark.eventstore
 def test_command_associated_with_aggregate(test_domain):
     test_domain.register(User)
-    test_domain.register(Register, aggregate_cls=User)
+    test_domain.register(Register, part_of=User)
 
     identifier = str(uuid4())
     test_domain.process(

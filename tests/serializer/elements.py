@@ -12,4 +12,4 @@ class UserSchema(BaseSerializer):
     age = Integer(required=True)
 
     class Meta:
-        aggregate_cls = User
+        part_of = User

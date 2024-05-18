@@ -28,7 +28,7 @@ class Registered(BaseEvent):
     password_hash = String()
 
     class Meta:
-        aggregate_cls = User
+        part_of = User
 
 
 class Post(BaseEventSourcedAggregate):
@@ -42,7 +42,7 @@ class Created(BaseEvent):
     content = Text()
 
     class Meta:
-        aggregate_cls = Post
+        part_of = Post
 
 
 class SystemMetrics(BaseEventHandler):

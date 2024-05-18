@@ -72,7 +72,7 @@ def setup_event_loop():
 
 
 def test_event_subscriptions(test_domain):
-    test_domain.register(UserEventHandler, aggregate_cls=User)
+    test_domain.register(UserEventHandler, part_of=User)
     engine = Engine(test_domain, test_mode=True)
 
     assert len(engine._subscriptions) == 1
@@ -81,7 +81,7 @@ def test_event_subscriptions(test_domain):
 
 
 def test_origin_stream_name_in_subscription(test_domain):
-    test_domain.register(EmailEventHandler, aggregate_cls=User, source_stream="email")
+    test_domain.register(EmailEventHandler, part_of=User, source_stream="email")
 
     engine = Engine(test_domain, test_mode=True)
 
@@ -95,7 +95,7 @@ def test_that_stream_name_overrides_the_derived_stream_name_from_aggregate_cls(
 ):
     test_domain.register(
         EmailEventHandler,
-        aggregate_cls=User,
+        part_of=User,
         stream_name="identity",
         source_stream="email",
     )

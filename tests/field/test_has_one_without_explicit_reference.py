@@ -20,7 +20,7 @@ class Author(BaseEntity):
     name = String(required=True, max_length=50)
 
     class Meta:
-        aggregate_cls = "Book"
+        part_of = "Book"
 
 
 @pytest.fixture(autouse=True)

@@ -11,12 +11,12 @@ class UserStatus(Enum):
     ARCHIVED = "ARCHIVED"
 
 
-@domain.event(aggregate_cls="User")
+@domain.event(part_of="User")
 class UserActivated:
     user_id = Identifier(required=True)
 
 
-@domain.event(aggregate_cls="User")
+@domain.event(part_of="User")
 class UserRenamed:
     user_id = Identifier(required=True)
     name = String(required=True, max_length=50)

@@ -20,7 +20,7 @@ def test_registering_an_command_handler_manually(test_domain):
         pass
 
     try:
-        test_domain.register(UserCommandHandler, aggregate_cls=User)
+        test_domain.register(UserCommandHandler, part_of=User)
     except Exception:
         pytest.fail("Failed to register an Command Handler manually")
 
@@ -33,7 +33,7 @@ def test_registering_an_command_handler_manually(test_domain):
 def test_registering_an_command_handler_via_annotation(test_domain):
     try:
 
-        @test_domain.command_handler(aggregate_cls=User)
+        @test_domain.command_handler(part_of=User)
         class UserCommandHandler(BaseCommandHandler):
             pass
 
