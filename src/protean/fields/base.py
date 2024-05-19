@@ -29,24 +29,25 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     Fields are used to define the structure and behavior of attributes in an entity or aggregate.
     They handle the validation, conversion, and storage of attribute values.
 
-    :param referenced_as: The name of the field as referenced in the database or external systems.
-    :type referenced_as: str, optional
-    :param description: A description of the field.
-    :type description: str, optional
-    :param identifier: Indicates if the field is an identifier for the entity or aggregate.
-    :type identifier: bool, optional
-    :param default: The default value for the field if no value is provided.
-    :type default: Any, optional
-    :param required: Indicates if the field is required (must have a value).
-    :type required: bool, optional
-    :param unique: Indicates if the field values must be unique within the repository.
-    :type unique: bool, optional
-    :param choices: A set of allowed choices for the field value.
-    :type choices: enum.Enum, optional
-    :param validators: Additional validators to apply to the field value.
-    :type validators: Iterable, optional
-    :param error_messages: Custom error messages for different kinds of errors.
-    :type error_messages: dict, optional
+    Fields are descriptors, which means they are assigned to a class attribute and are used to
+    manage the attribute's value. When a field is assigned to a class, it is given a name on the
+    class. This name is used to access the field value from the instance.
+
+    The values are validated and converted to the appropriate type when they are set on the
+    instance. This is done by the `_load` method, which is called by the `__set__` method.
+    The values are set up on the `__dict__` of the instance, so they are NEVER stored on the field
+    itself.
+
+    Parameters:
+    - `referenced_as`: The name of the attribute in the underlying data store.
+    - `description`: A human-readable description of the field.
+    - `identifier`: A boolean indicating if this field is the identifier for the entity.
+    - `default`: The default value for the field.
+    - `required`: A boolean indicating if this field is required.
+    - `unique`: A boolean indicating if this field must be unique.
+    - `choices`: An Enum class that defines the valid choices for this field.
+    - `validators`: A list of callables that validate the field value.
+    - `error_messages`: A dictionary of error messages for validation errors.
     """
 
     default_error_messages = {
@@ -155,11 +156,10 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         except KeyError:
             class_name = self.__class__.__name__
             msg = MISSING_ERROR_MESSAGE.format(class_name=class_name, key=key)
-            raise AssertionError(msg)
+            raise exceptions.ValidationError({key: [msg]})
 
         # Format message with supplied arguments
-        if isinstance(msg, str):
-            msg = msg.format(**kwargs)
+        msg = msg.format(**kwargs)
 
         # If a field is being used by itself (not owned by an entity/aggregate),
         #   it's field_name will be blank.
@@ -248,6 +248,3 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         self._run_validators(value)
 
         return value
-
-    def get_cache_name(self):
-        return self.field_name

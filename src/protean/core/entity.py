@@ -142,7 +142,7 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
         # Set up the storage for instance state
         self.state_ = _EntityState()
 
-        # Placeholder for temporary association values
+        # Placeholder for HasMany change tracking
         self._temp_cache = defaultdict(lambda: defaultdict(dict))
 
         # Collect Reference field attribute names to prevent accidental overwriting

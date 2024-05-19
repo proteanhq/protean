@@ -2,7 +2,7 @@ from abc import abstractmethod
 
 from protean import exceptions, utils
 from protean.globals import current_domain
-from protean.reflection import id_field
+from protean.reflection import id_field, has_association_fields, association_fields
 
 from .base import Field, FieldBase
 from .mixins import FieldCacheMixin, FieldDescriptorMixin
@@ -76,7 +76,6 @@ class _ReferenceField(Field):
         Args:
             instance: The instance of the class.
         """
-        self.value = None
         self.reference.value = None
         instance.__dict__.pop(self.field_name, None)
         instance.__dict__.pop(self.reference.field_name, None)
@@ -266,10 +265,6 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         self.required = False
         self.unique = False
 
-        # FIXME Refactor for general use across all types of associations. Currently used only with `HasOne`
-        self.change = None  # Used to store type of change in the association
-        self.change_old_value = None  # Used to preserve the old value that was removed
-
     @property
     def to_cls(self):
         return self._to_cls
@@ -316,7 +311,6 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         return reference_obj
 
     def _set_own_value(self, instance, value):
-        self.value = value
         instance.__dict__[self.field_name] = value
         self.set_cached_value(instance, value)
 
@@ -365,7 +359,25 @@ class HasOne(Association):
     """
 
     def __set__(self, instance, value):
-        """Setup relationship to be persisted/updated"""
+        """Setup relationship to be persisted/updated
+
+        We track the change in the instance's `_temp_cache` to determine if the relationship
+        has been added, updated, or deleted. We track two aspects: state and old value.
+
+        For `HasOne`, there are three possible states:
+        - ADDED: The relationship is being added for the first time
+        - UPDATED: The relationship is being updated
+        - DELETED: The relationship is being removed
+
+        Of these, the old value is applicable for `UPDATED` and `DELETED` states.
+
+        Also, we recursively remove child entities if they are associated with the old value.
+
+        The `temp_cache` we set up here is eventually used by the `Repository` to determine
+        the changes to be persisted.
+        """
+
+        # 1. Preserve parent linkage in child entity
         if value is not None:
             # This updates the parent's unique identifier in the child
             #   so that the foreign key relationship is preserved
@@ -376,25 +388,38 @@ class HasOne(Association):
                     value, linked_attribute, id_value
                 )  # This overwrites any existing linkage, which is correct
 
+        # 2. Determine and store the change in the relationship
         current_value = getattr(instance, self.field_name)
         if current_value is None:
             # Entity was not associated earlier
-            self.change = "ADDED"
+            instance._temp_cache[self.field_name]["change"] = "ADDED"
         elif value is None:
             # Entity was associated earlier, but now being removed
-            self.change = "DELETED"
-            self.change_old_value = self.value
+            instance._temp_cache[self.field_name]["change"] = "DELETED"
+            instance._temp_cache[self.field_name]["old_value"] = current_value
         elif current_value.id != value.id:
             # A New Entity is being associated replacing the old one
-            self.change = "UPDATED"
-            self.change_old_value = self.value
+            instance._temp_cache[self.field_name]["change"] = "UPDATED"
+            instance._temp_cache[self.field_name]["old_value"] = current_value
         elif current_value.id == value.id and value.state_.is_changed:
             # Entity was associated earlier, but now being updated
-            self.change = "UPDATED"
+            instance._temp_cache[self.field_name]["change"] = "UPDATED"
         else:
-            self.change = None  # The same object has been assigned, No-Op
+            instance._temp_cache[self.field_name]["change"] = (
+                None  # The same object has been assigned, No-Op
+            )
 
         self._set_own_value(instance, value)
+
+        # 3. Go Recursive and remove child entities if they are associated with the old value
+        if instance._temp_cache[self.field_name]["change"] == "DELETED":
+            old_value = instance._temp_cache[self.field_name]["old_value"]
+            if has_association_fields(old_value):
+                for field_name, field_obj in association_fields(old_value).items():
+                    if isinstance(field_obj, HasMany):
+                        field_obj.remove(old_value, getattr(old_value, field_name))
+                    elif isinstance(field_obj, HasOne):
+                        setattr(old_value, field_name, None)
 
     def _fetch_objects(self, instance, key, identifier):
         """Fetch single linked object"""
@@ -429,12 +454,36 @@ class HasMany(Association):
     """
 
     def __set__(self, instance, value):
+        """This supports direct assignment of values to HasMany fields, like:
+        `order.items = [item1, item2, item3]`
+        """
         if value is not None:
             self.add(instance, value)
 
     def add(self, instance, items) -> None:
         """
-        Add one or more linked entities to the source entity.
+        Available as `add_<HasMany Field Name>` method on the entity instance.
+
+        This method adds one or more linked entities to the source entity. It also diffs the current value with the
+        new value to determine the changes that need to be persisted.
+
+        The method also takes care of the attributes of the linked entities, preparing them for persistence.
+
+        Each linkage takes care of its own attributes, preparing them for persistence.
+        One exception is deletion of an entity - all child entities have to be marked as removed.
+
+        We track the change in the instance's `_temp_cache` to determine if the relationship
+        has been added, updated, or deleted. We track each item's state and group the changes
+        into three buckets:
+        - ADDED: The relationship is being added for the first time
+        - UPDATED: The relationship is being updated
+        - DELETED: The relationship is being removed
+
+        The `DELETED` objects are detected from the pool of new objects, but it is also possible to remove them
+        directly with the `remove` method.
+
+        The `temp_cache` we set up here is eventually used by the `Repository` to determine
+        the changes to be persisted.
 
         Args:
             instance: The source entity instance.
@@ -480,12 +529,15 @@ class HasMany(Association):
 
     def remove(self, instance, items) -> None:
         """
+        Available as `add_<HasMany Field Name>` method on the entity instance.
+
         Remove one or more linked entities from the source entity.
+
+        We also recursively remove child entities if they are associated with the removed value.
 
         Args:
             instance: The source entity instance.
             items: The linked entity or entities to be removed.
-
         """
         data = getattr(instance, self.field_name)
 
@@ -501,6 +553,14 @@ class HasMany(Association):
 
                     # Reset Cache
                     self.delete_cached_value(instance)
+
+            # Remove child entities
+            if has_association_fields(item):
+                for field_name, field_obj in association_fields(item).items():
+                    if isinstance(field_obj, HasMany):
+                        field_obj.remove(item, getattr(item, field_name))
+                    elif isinstance(field_obj, HasOne):
+                        setattr(item, field_name, None)
 
     def _fetch_objects(self, instance, key, value) -> list:
         """

@@ -11,6 +11,11 @@ ensuring data integrity and aligning with the business domain's rules and logic.
 They play a critical role in defining the schema of data containers and are
 pivotal in enforcing validation, defaults, associations, and more.
 
+Internally, fields are python descriptors that manage the attributes of
+elements. They help Protean fine-tune and customize attribute access, making
+it possible to define properties, manage attributes, and control data
+validation.
+
 ## Field Options
 
 Protean fields come with various options that enhance their functionality and

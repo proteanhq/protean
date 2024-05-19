@@ -76,7 +76,7 @@ def attributes(class_or_instance):
 
 
 def unique_fields(class_or_instance):
-    """Return the unique fields for this class or instance"""
+    """Return fields marked as unique for this class or instance"""
     return {
         field_name: field_obj
         for field_name, field_obj in attributes(class_or_instance).items()
@@ -104,3 +104,22 @@ def declared_fields(class_or_instance):
         )
 
     return fields_dict
+
+
+def association_fields(class_or_instance):
+    """Return a tuple describing the association fields of this dataclass.
+
+    Accepts an Entity. Tuple elements are of type Field.
+    """
+    from protean.fields.association import Association
+
+    return {
+        field_name: field_obj
+        for field_name, field_obj in declared_fields(class_or_instance).items()
+        if isinstance(field_obj, Association)
+    }
+
+
+def has_association_fields(class_or_instance):
+    """Check if Protean element encloses association fields"""
+    return bool(association_fields(class_or_instance))
