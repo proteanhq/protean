@@ -11,6 +11,7 @@ class DummyStringField(Field):
 
     default_error_messages = {
         "invalid_type": "Field value must be of str type.",
+        "invalid_type_formatted": "Field value must be of {type} type.",
     }
 
     def _cast_to_type(self, value: str):
@@ -131,3 +132,28 @@ class TestField:
 
         name = DummyStringField(required=True, default="dummy")
         assert repr(name) == "DummyStringField(required=True, default='dummy')"
+
+    def test_fail_method(self):
+        """Test that Field fail method raises a ValidationError"""
+
+        name = DummyStringField()
+        with pytest.raises(ValidationError) as exc:
+            name.fail("invalid_type")
+
+        assert exc.value.messages == {"unlinked": ["Field value must be of str type."]}
+
+        with pytest.raises(ValidationError) as exc:
+            name.fail("unlinked")
+
+        assert exc.value.messages == {
+            "unlinked": [
+                "ValidationError raised by `DummyStringField`, but error key "
+                "`unlinked` does not exist in the `error_messages` dictionary."
+            ]
+        }
+
+        # Test that error message is formatted correctly
+        with pytest.raises(ValidationError) as exc:
+            name.fail("invalid_type_formatted", type="int")
+
+        assert exc.value.messages == {"unlinked": ["Field value must be of int type."]}

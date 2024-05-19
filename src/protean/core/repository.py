@@ -6,7 +6,7 @@ from protean.container import Element, OptionsMixin
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import HasMany, HasOne
 from protean.globals import current_domain
-from protean.reflection import declared_fields
+from protean.reflection import association_fields, has_association_fields
 from protean.utils import (
     Database,
     DomainObjects,
@@ -115,53 +115,9 @@ class BaseRepository(Element, OptionsMixin):
             logger.error(errors)
             raise ValidationError(errors)
 
-        # If there are HasMany fields in the aggregate, sync child objects added/removed,
-        #   but not yet persisted to the database.
-        #
-        # The details of in-transit child objects are maintained as part of the `has_many_field` itself
-        #   in a variable called `_temp_cache`
-        for field_name, field in declared_fields(aggregate).items():
-            if isinstance(field, HasMany):
-                for _, item in aggregate._temp_cache[field_name]["removed"].items():
-                    current_domain.repository_for(field.to_cls)._dao.delete(item)
-                aggregate._temp_cache[field_name][
-                    "removed"
-                ] = {}  # Empty contents of `removed` cache
-
-                for _, item in aggregate._temp_cache[field_name]["updated"].items():
-                    current_domain.repository_for(field.to_cls)._dao.save(item)
-                aggregate._temp_cache[field_name][
-                    "updated"
-                ] = {}  # Empty contents of `added` cache
-
-                for _, item in aggregate._temp_cache[field_name]["added"].items():
-                    item.state_.mark_new()
-                    current_domain.repository_for(field.to_cls)._dao.save(item)
-                aggregate._temp_cache[field_name][
-                    "added"
-                ] = {}  # Empty contents of `added` cache
-
-            if isinstance(field, HasOne):
-                if field.has_changed:
-                    to_cls_repo = current_domain.repository_for(field.to_cls)
-                    if field.change == "ADDED":
-                        to_cls_repo._dao.save(field.value)
-                    elif field.change == "UPDATED":
-                        if field.change_old_value is not None:
-                            # The object was replaced, so delete the old record
-                            to_cls_repo._dao.delete(field.change_old_value)
-                        else:
-                            # The same object was updated
-                            # FIXME This should have been automatic with `is_changed` flag in `state_`
-                            field.value.state_.mark_changed()
-
-                        to_cls_repo._dao.save(field.value)
-                    else:
-                        to_cls_repo._dao.delete(field.change_old_value)
-
-                    # Reset temporary fields after processing
-                    field.change = None
-                    field.change_old_value = None
+        # If there are HasMany/HasOne fields in the aggregate, sync child objects added/removed,
+        if has_association_fields(aggregate):
+            self._sync_children(aggregate)
 
         # Persist only if the aggregate object is new, or it has changed since last persistence
         if (not aggregate.state_.is_persisted) or (
@@ -170,6 +126,88 @@ class BaseRepository(Element, OptionsMixin):
             self._dao.save(aggregate)
 
         return aggregate
+
+    def _sync_children(self, entity):
+        """Recursively sync child entities to the persistence store"""
+        # If there are HasMany fields in the aggregate, sync child objects added/removed,
+        #   but not yet persisted to the database.
+        #
+        # The details of in-transit child objects are maintained as part of the `has_many_field` itself
+        #   in a variable called `_temp_cache`
+        for field_name, field in association_fields(entity).items():
+            ### RECURSIVE SYNC ###
+            # Start at the innermost child and work our way up
+            if has_association_fields(field.to_cls):
+                if isinstance(field, HasMany):
+                    for item in getattr(entity, field_name):
+                        self._sync_children(item)
+                elif isinstance(field, HasOne):
+                    if getattr(entity, field_name):
+                        self._sync_children(getattr(entity, field_name))
+            ### RECURSIVE SYNC ###
+
+            if isinstance(field, HasMany):
+                # First, handle direct updates to underlying child objects
+                #   These are ones whose attributes have been changed directly
+                #   instead of being routed via `add`/`remove`
+                for item in getattr(entity, field_name):
+                    if item.state_.is_changed:
+                        # If the item was changed directly AND added via `add`, then
+                        #   we give preference to the object in the cache
+                        if item not in entity._temp_cache[field_name]["updated"]:
+                            current_domain.repository_for(field.to_cls)._dao.save(item)
+
+                for _, item in entity._temp_cache[field_name]["removed"].items():
+                    current_domain.repository_for(field.to_cls)._dao.delete(item)
+                entity._temp_cache[field_name][
+                    "removed"
+                ] = {}  # Empty contents of `removed` cache
+
+                for _, item in entity._temp_cache[field_name]["updated"].items():
+                    current_domain.repository_for(field.to_cls)._dao.save(item)
+                entity._temp_cache[field_name][
+                    "updated"
+                ] = {}  # Empty contents of `updated` cache
+
+                for _, item in entity._temp_cache[field_name]["added"].items():
+                    item.state_.mark_new()
+                    current_domain.repository_for(field.to_cls)._dao.save(item)
+                entity._temp_cache[field_name][
+                    "added"
+                ] = {}  # Empty contents of `added` cache
+
+            if isinstance(field, HasOne):
+                # First, handle direct updates to underlying child objects
+                #   These are ones whose attributes have been changed directly
+                #   instead of being routed via `add`/`remove`
+                item = getattr(entity, field_name)
+                to_cls_repo = current_domain.repository_for(field.to_cls)
+                if item is not None and item.state_.is_changed:
+                    to_cls_repo._dao.save(item)
+                # Or a new instance has been assigned
+                elif entity._temp_cache[field_name]["change"]:
+                    if entity._temp_cache[field_name]["change"] == "ADDED":
+                        to_cls_repo._dao.save(item)
+                    elif entity._temp_cache[field_name]["change"] == "UPDATED":
+                        if entity._temp_cache[field_name]["old_value"] is not None:
+                            # The object was replaced, so delete the old record
+                            to_cls_repo._dao.delete(
+                                entity._temp_cache[field_name]["old_value"]
+                            )
+                        else:
+                            # The same object was updated
+                            # FIXME This should have been automatic with `is_changed` flag in `state_`
+                            item.state_.mark_changed()
+
+                        to_cls_repo._dao.save(item)
+                    elif entity._temp_cache[field_name]["change"] == "DELETED":
+                        to_cls_repo._dao.delete(
+                            entity._temp_cache[field_name]["old_value"]
+                        )
+
+                    # Reset temporary fields after processing
+                    entity._temp_cache[field_name]["change"] = None
+                    entity._temp_cache[field_name]["old_value"] = None
 
     def get(self, identifier):
         """This is a utility method to fetch data from the persistence store by its key identifier. All child objects,
