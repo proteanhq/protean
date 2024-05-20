@@ -1,8 +1,8 @@
 import pytest
 
-from protean import BaseValueObject
+from protean import BaseEntity, BaseValueObject
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Float, String
+from protean.fields import Float, HasMany, String
 
 
 def test_vo_cannot_contain_fields_marked_unique():
@@ -32,6 +32,24 @@ def test_vo_cannot_contain_fields_marked_as_identifiers():
         {
             "_value_object": [
                 "Value Objects cannot contain fields marked 'identifier' (field 'currency')"
+            ]
+        }
+    )
+
+
+def test_vo_cannot_have_association_fields():
+    with pytest.raises(IncorrectUsageError) as exception:
+
+        class Address(BaseEntity):
+            street_address = String()
+
+        class Office(BaseValueObject):
+            addresses = HasMany(Address)
+
+    assert str(exception.value) == str(
+        {
+            "_value_object": [
+                "Value Objects can only contain basic field types. Remove addresses (HasMany) from class Office"
             ]
         }
     )
