@@ -1,6 +1,7 @@
 from abc import abstractmethod
 
 from protean import exceptions, utils
+from protean.exceptions import ValidationError
 from protean.globals import current_domain
 from protean.reflection import id_field, has_association_fields, association_fields
 
@@ -377,6 +378,15 @@ class HasOne(Association):
         the changes to be persisted.
         """
 
+        if value is not None and not isinstance(value, self.to_cls):
+            raise ValidationError(
+                {
+                    "_entity": [
+                        f"Value assigned to '{self.field_name}' is not of type '{self.to_cls.__name__}'"
+                    ]
+                }
+            )
+
         # 1. Preserve parent linkage in child entity
         if value is not None:
             # This updates the parent's unique identifier in the child
@@ -494,6 +504,17 @@ class HasMany(Association):
         # Convert a single item into a list of items, if necessary
         items = [items] if not isinstance(items, list) else items
 
+        # Validate that all items are of the same type, and the correct type
+        for item in items:
+            if not isinstance(item, self.to_cls):
+                raise ValidationError(
+                    {
+                        "_entity": [
+                            f"Value assigned to '{self.field_name}' is not of type '{self.to_cls.__name__}'"
+                        ]
+                    }
+                )
+
         current_value_ids = [value.id for value in data]
 
         for item in items:
@@ -543,6 +564,17 @@ class HasMany(Association):
 
         # Convert a single item into a list of items, if necessary
         items = [items] if not isinstance(items, list) else items
+
+        # Validate that all items are of the same type, and the correct type
+        for item in items:
+            if not isinstance(item, self.to_cls):
+                raise ValidationError(
+                    {
+                        "_entity": [
+                            f"Value assigned to '{self.field_name}' is not of type '{self.to_cls.__name__}'"
+                        ]
+                    }
+                )
 
         current_value_ids = [value.id for value in data]
 
