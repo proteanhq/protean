@@ -1,5 +1,6 @@
 """Aggregate Functionality and Classes"""
 
+import inspect
 import logging
 
 from protean.container import EventedMixin
@@ -65,4 +66,14 @@ class BaseAggregate(EventedMixin, BaseEntity):
 
 
 def aggregate_factory(element_cls, **kwargs):
-    return derive_element_class(element_cls, BaseAggregate, **kwargs)
+    element_cls = derive_element_class(element_cls, BaseAggregate, **kwargs)
+
+    # Iterate through methods marked as `@invariant` and record them for later use
+    methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
+    for method_name, method in methods:
+        if not (
+            method_name.startswith("__") and method_name.endswith("__")
+        ) and hasattr(method, "_invariant"):
+            element_cls._invariants.append(method)
+
+    return element_cls
