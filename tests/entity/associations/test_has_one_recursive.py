@@ -50,6 +50,7 @@ def test_university_basic_structure():
     assert dean.university_id == university.id
     assert university.dean.office == office
     assert university.dean.office.dean_id == dean.id
+    assert university.dean.office.dean == dean
 
 
 @pytest.fixture

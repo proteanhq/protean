@@ -57,11 +57,11 @@ def test_customers_basic_structure():
     len(customer.orders) == 1
     customer.orders[0] == order
     customer.orders[0].customer_id == customer.id
-    # customer.orders[0].customer == customer  # FIXME
+    customer.orders[0].customer == customer
     len(customer.orders[0].items) == 2
     customer.orders[0].items[0] == items[0]
     customer.orders[0].items[0].order_id == order.id
-    # customer.orders[0].items[0].order == order  # FIXME
+    customer.orders[0].items[0].order == order
 
 
 @pytest.fixture
@@ -89,12 +89,12 @@ class TestEntityAssociationsAdd:
         assert len(customer.orders) == 1
         assert customer.orders[0].ordered_on == datetime.today().date()
         customer.orders[0].customer_id == customer.id
-        # customer.orders[0].customer == customer  # FIXME
+        customer.orders[0].customer == customer
 
         assert len(customer.orders[0].items) == 2
         assert customer.orders[0].items[0].product_id == "1"
         customer.orders[0].items[0].order_id == customer.orders[0].id
-        # customer.orders[0].items[0].order == order  # FIXME
+        customer.orders[0].items[0].order == customer.orders[0]
 
     def test_all_associations_are_persisted_on_1st_level_nested_entity_addition(
         self, test_domain, customer

@@ -288,6 +288,9 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
             + id_field(owner).attribute_name
         )
 
+    def _linked_reference(self, owner):
+        return utils.inflection.underscore(owner.__name__)
+
     def __get__(self, instance, owner):
         """Retrieve associated objects"""
 
@@ -390,6 +393,10 @@ class HasOne(Association):
                 setattr(
                     value, linked_attribute, id_value
                 )  # This overwrites any existing linkage, which is correct
+
+            # Add the parent to the child entity cache
+            # Temporarily set linkage to parent in child entity
+            setattr(value, self._linked_reference(type(instance)), instance)
 
         # 2. Determine and store the change in the relationship
         current_value = getattr(instance, self.field_name)
@@ -521,6 +528,9 @@ class HasMany(Association):
                     getattr(instance, id_field(instance).field_name),
                 )
 
+                # Temporarily set linkage to parent in child entity
+                setattr(item, self._linked_reference(type(instance)), instance)
+
                 # Reset Cache
                 self.delete_cached_value(instance)
             # Items to update
@@ -534,6 +544,9 @@ class HasMany(Association):
                     self._linked_attribute(type(instance)),
                     getattr(instance, id_field(instance).field_name),
                 )
+
+                # Temporarily set linkage to parent in child entity
+                setattr(item, self._linked_reference(type(instance)), instance)
 
                 instance._temp_cache[self.field_name]["updated"][item.id] = item
 
