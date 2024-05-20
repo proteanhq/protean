@@ -320,7 +320,16 @@ class BaseContainer(metaclass=ContainerMeta):
         if (
             name in attributes(self)
             or name in fields(self)
-            or name in ["errors", "state_", "_temp_cache", "_events", "_initialized"]
+            or name
+            in [
+                "errors",  # Errors in state transition
+                "state_",  # Tracking dirty state of the entity
+                "_temp_cache",  # Temporary cache (Assocations) for storing data befor persisting
+                "_events",  # Temp placeholder for events raised by the entity
+                "_initialized",  # Flag to indicate if the entity has been initialized
+                "_root",  # Root entity in the hierarchy
+                "_owner",  # Owner entity in the hierarchy
+            ]
             or name.startswith(("add_", "remove_"))
         ):
             super().__setattr__(name, value)

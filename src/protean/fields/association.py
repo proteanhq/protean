@@ -326,11 +326,15 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         raise NotImplementedError
 
     def __set__(self, instance, value):
-        """Cannot set values through an association"""
-        raise exceptions.NotSupportedError(
-            "Object does not support the operation being performed",
-            self.field_name,
-        )
+        """Set the value of the association field"""
+        # Preserve heirarchy of entities.
+        #
+        #   Owner: is the entity that owns the association field
+        #   Root: is the entity that is at the top of the hierarchy, an Aggregate Root
+        if value is not None:
+            items = value if isinstance(value, list) else [value]
+            for item in items:
+                item._set_root_and_owner(instance._root, instance)
 
     def __delete__(self, instance):
         """Cannot pop values for an association"""
@@ -373,6 +377,8 @@ class HasOne(Association):
         The `temp_cache` we set up here is eventually used by the `Repository` to determine
         the changes to be persisted.
         """
+
+        super().__set__(instance, value)
 
         if value is not None and not isinstance(value, self.to_cls):
             raise ValidationError(
@@ -466,6 +472,8 @@ class HasMany(Association):
         """This supports direct assignment of values to HasMany fields, like:
         `order.items = [item1, item2, item3]`
         """
+        super().__set__(instance, value)
+
         if value is not None:
             self.add(instance, value)
 
@@ -498,6 +506,8 @@ class HasMany(Association):
             instance: The source entity instance.
             items: The linked entity or entities to be added.
         """
+        super().__set__(instance, items)
+
         data = getattr(instance, self.field_name)
 
         # Convert a single item into a list of items, if necessary

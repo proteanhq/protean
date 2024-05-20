@@ -50,6 +50,10 @@ class BaseAggregate(EventedMixin, BaseEntity):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        # Set root in all child elements
+        #   This is where we kick-off the process of setting the owner and root
+        self._set_root_and_owner(self, self)
+
     @classmethod
     def _default_options(cls):
         return [

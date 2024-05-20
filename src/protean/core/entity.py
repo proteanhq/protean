@@ -145,6 +145,10 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
         # Placeholder for HasMany change tracking
         self._temp_cache = defaultdict(lambda: defaultdict(dict))
 
+        # Attributes to preserve heirarchy of element instances
+        self._owner = None
+        self._root = None
+
         # Collect Reference field attribute names to prevent accidental overwriting
         # of shadow fields.
         reference_attributes = {
@@ -420,6 +424,27 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
                 or default
             )
             setattr(cls.meta_, key, value)
+
+    def _set_root_and_owner(self, root, owner):
+        """Set the root and owner entities on all child entities
+
+        This is a recursive process set in motion by the aggregate's `__init__` method.
+        """
+        self._root = root
+        self._owner = owner
+
+        # Set `_root` on all child entities
+        for field_name, field_obj in declared_fields(self).items():
+            # We care only about enclosed fields (associations)
+            if isinstance(field_obj, Association):
+                # Get current assigned value
+                value = getattr(self, field_name)
+                if value is not None:
+                    # Link child entities to own root
+                    items = value if isinstance(value, list) else [value]
+                    for item in items:
+                        if not item._root:
+                            item._set_root_and_owner(self._root, self)
 
 
 def entity_factory(element_cls, **kwargs):
