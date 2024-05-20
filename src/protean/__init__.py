@@ -6,7 +6,7 @@ from .core.command import BaseCommand
 from .core.command_handler import BaseCommandHandler
 from .core.domain_service import BaseDomainService
 from .core.email import BaseEmail
-from .core.entity import BaseEntity
+from .core.entity import BaseEntity, invariant
 from .core.event import BaseEvent
 from .core.event_handler import BaseEventHandler
 from .core.event_sourced_aggregate import BaseEventSourcedAggregate, apply
@@ -53,4 +53,5 @@ __all__ = [
     "current_uow",
     "get_version",
     "handle",
+    "invariant",
 ]

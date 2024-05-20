@@ -1,6 +1,8 @@
 """Entity Functionality and Classes"""
 
 import copy
+import functools
+import inspect
 import logging
 
 from collections import defaultdict
@@ -446,6 +448,12 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
                         if not item._root:
                             item._set_root_and_owner(self._root, self)
 
+    def __init_subclass__(subclass) -> None:
+        super().__init_subclass__()
+
+        # Record invariant methods
+        setattr(subclass, "_invariants", [])
+
 
 def entity_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseEntity, **kwargs)
@@ -505,4 +513,24 @@ def entity_factory(element_cls, **kwargs):
                 shadow_field_name, shadow_field = field.get_shadow_field()
                 shadow_field.__set_name__(element_cls, shadow_field_name)
 
+    # Iterate through methods marked as `@invariant` and record them for later use
+    methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
+    for method_name, method in methods:
+        if not (
+            method_name.startswith("__") and method_name.endswith("__")
+        ) and hasattr(method, "_invariant"):
+            element_cls._invariants.append(method)
+
     return element_cls
+
+
+def invariant(fn):
+    """Decorator to mark invariant methods in an Entity"""
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        return fn(*args, **kwargs)
+
+    setattr(wrapper, "_invariant", True)
+
+    return wrapper
