@@ -204,33 +204,6 @@ class TestReferenceFieldAssociation:
         assert author.account_email is None
         assert "account_email" not in author.__dict__
 
-    def test_successful_save_with_an_entity_linked_by_via(self, test_domain):
-        account = Account(
-            email="john.doe@gmail.com", password="a1b2c3", username="johndoe"
-        )
-        test_domain.repository_for(Account)._dao.save(account)
-        profile = Profile(about_me="Lorem Ipsum", account=account)
-        test_domain.repository_for(Profile)._dao.save(profile)
-
-        assert all(key in profile.__dict__ for key in ["account", "account_username"])
-        assert hasattr(profile, "account_username")
-        assert profile.account_username == account.username
-
-    def test_successful_save_with_an_entity_linked_by_via_and_assigned_by_shadow_attribute(
-        self, test_domain
-    ):
-        account = Account(
-            email="john.doe@gmail.com", password="a1b2c3", username="johndoe"
-        )
-        test_domain.repository_for(Account)._dao.save(account)
-        profile = Profile(about_me="Lorem Ipsum")
-        profile.account_username = account.username
-        test_domain.repository_for(Profile)._dao.save(profile)
-
-        assert hasattr(profile, "account_username")
-        assert profile.account.email == account.email
-        assert profile.account_username == account.username
-
     def test_that_subsequent_accesses_after_first_retrieval_do_not_fetch_record_again(
         self, test_domain
     ):

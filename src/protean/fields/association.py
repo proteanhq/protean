@@ -90,16 +90,12 @@ class Reference(FieldCacheMixin, Field):
 
     Args:
         to_cls (str or Entity): The target entity class or its name.
-        via (str, optional): The linkage attribute between `via` and the designated
-            `id_field` of the target class.
         **kwargs: Additional keyword arguments to be passed to the base `Field` class.
     """
 
-    def __init__(self, to_cls, via=None, **kwargs):
-        # FIXME ensure `via` argument is of type `str`
+    def __init__(self, to_cls, **kwargs):
         super().__init__(**kwargs)
         self._to_cls = to_cls
-        self.via = via
 
         self.relation = _ReferenceField(self)
 
@@ -108,7 +104,7 @@ class Reference(FieldCacheMixin, Field):
         return self._to_cls
 
     def get_attribute_name(self):
-        """Return attribute name suffixed with via if defined, or `_id`"""
+        """Return formatted attribute name for the shadow field"""
         return "{}_{}".format(self.field_name, self.linked_attribute)
 
     def get_shadow_field(self):
@@ -121,7 +117,7 @@ class Reference(FieldCacheMixin, Field):
 
     @property
     def linked_attribute(self):
-        """Choose the Linkage attribute between `via` and designated `id_field` of the target class
+        """Return linkage attribute to the target class
 
         This method is initially called from `__set_name__()` -> `get_attribute_name()`
         at which point, the `to_cls` has not been initialized properly. We simply default
@@ -133,7 +129,7 @@ class Reference(FieldCacheMixin, Field):
         if isinstance(self.to_cls, str):
             return "id"
         else:
-            return self.via or id_field(self.to_cls).attribute_name
+            return id_field(self.to_cls).attribute_name
 
     def _resolve_to_cls(self, domain, to_cls, owner_cls):
         assert isinstance(self.to_cls, str)
@@ -251,15 +247,12 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
 
     Args:
         to_cls (class): The class of the target entity that this association references.
-        via (str, optional): The name of the linkage attribute between the associated entities.
-            If not provided, a default linkage attribute is generated based on the entity names.
     """
 
-    def __init__(self, to_cls, via=None, **kwargs):
+    def __init__(self, to_cls, **kwargs):
         super().__init__(**kwargs)
 
         self._to_cls = to_cls
-        self.via = via
 
         # FIXME Find an elegant way to avoid these declarations in associations
         # Associations cannot be marked `required` or `unique`
@@ -284,12 +277,12 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         return value
 
     def _linked_attribute(self, owner):
-        """Choose the Linkage attribute between `via` and own entity's `id_field`
+        """Return linkage attribute to own entity's `id_field`
 
         FIXME Explore converting this method into an attribute, and treating it
         uniformly at `association` level.
         """
-        return self.via or (
+        return (
             utils.inflection.underscore(owner.__name__)
             + "_"
             + id_field(owner).attribute_name
@@ -459,7 +452,6 @@ class HasMany(Association):
 
     Args:
         to_cls (class): The class of the target entity.
-        via (str, optional): The name of the attribute on the target entity that links back to the source entity.
         **kwargs: Additional keyword arguments to be passed to the base field class.
     """
 
