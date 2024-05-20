@@ -113,20 +113,6 @@ class Post(BaseAggregate):
     author = Reference("tests.aggregate.elements.Author")
 
 
-class PostVia(BaseAggregate):
-    content = Text(required=True)
-    comments = HasMany("CommentVia", via="posting_id")
-    author = Reference("tests.aggregate.elements.Author")
-
-
-class PostViaWithReference(BaseAggregate):
-    content = Text(required=True)
-    comments = HasMany(
-        "tests.aggregate.elements.CommentViaWithReference", via="posting_id"
-    )
-    author = Reference("tests.aggregate.elements.Author")
-
-
 class Comment(BaseEntity):
     content = Text()
     added_on = DateTime()
@@ -135,24 +121,6 @@ class Comment(BaseEntity):
 
     class Meta:
         part_of = Post
-
-
-class CommentVia(BaseEntity):
-    content = Text()
-    added_on = DateTime()
-    posting_id = String()
-
-    class Meta:
-        part_of = PostVia
-
-
-class CommentViaWithReference(BaseEntity):
-    content = Text()
-    added_on = DateTime()
-    posting = Reference("tests.aggregate.elements.PostVia")
-
-    class Meta:
-        part_of = PostViaWithReference
 
 
 class Account(BaseAggregate):
@@ -179,23 +147,9 @@ class AccountWithId(BaseAggregate):
     author = HasOne("tests.aggregate.elements.Author")
 
 
-class AccountVia(BaseAggregate):
-    email = String(required=True, max_length=255, unique=True, identifier=True)
-    password = String(required=True, max_length=255)
-    username = String(max_length=255, unique=True)
-    profile = HasOne("tests.aggregate.elements.ProfileVia", via="account_email")
-
-
-class AccountViaWithReference(BaseAggregate):
-    email = String(required=True, max_length=255, unique=True, identifier=True)
-    password = String(required=True, max_length=255)
-    username = String(max_length=255, unique=True)
-    profile = HasOne("tests.aggregate.elements.ProfileViaWithReference", via="ac_email")
-
-
 class Profile(BaseEntity):
     about_me = Text()
-    account = Reference("tests.aggregate.elements.Account", via="username")
+    account = Reference("tests.aggregate.elements.Account")
 
     class Meta:
         part_of = Account
@@ -207,23 +161,6 @@ class ProfileWithAccountId(BaseEntity):
 
     class Meta:
         part_of = AccountWithId
-
-
-class ProfileVia(BaseEntity):
-    profile_id = String(identifier=True)
-    about_me = Text()
-    account_email = String(max_length=255)
-
-    class Meta:
-        part_of = AccountVia
-
-
-class ProfileViaWithReference(BaseEntity):
-    about_me = Text()
-    ac = Reference("tests.aggregate.elements.AccountViaWithReference")
-
-    class Meta:
-        part_of = AccountViaWithReference
 
 
 # Aggregates to test associations # END #
