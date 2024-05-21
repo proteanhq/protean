@@ -74,6 +74,26 @@ Out[2]:
  'id': '88a21815-7d9b-4138-9cac-5a06889d4318'}
 ```
 
+Protean will intelligently convert a valid date string into a date object, with
+the help of the venerable
+[`dateutil`](https://dateutil.readthedocs.io/en/stable/) module.
+
+```shell
+In [1]: post = Post(title='Foo', published_on="2020-01-01")
+
+In [2]: post.to_dict()
+Out[2]: 
+{'title': 'Foo',
+ 'published_on': '2020-01-01',
+ 'id': 'ffcb3b26-71f0-45d0-8ca0-b71a9603f792'}
+
+In [3]: Post(title='Foo', published_on="2019-02-29")
+ERROR: Error during initialization: {'published_on': ['"2019-02-29" has an invalid date format.']}
+...
+ValidationError: {'published_on': ['"2019-02-29" has an invalid date format.']}
+```
+
+
 ## DateTime
 
 A date and time, represented in Python by a `datetime.datetime` instance.

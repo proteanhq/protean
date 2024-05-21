@@ -69,11 +69,27 @@ def aggregate_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseAggregate, **kwargs)
 
     # Iterate through methods marked as `@invariant` and record them for later use
+    #   `_invariants` is a dictionary initialized in BaseEntity.__init_subclass__
     methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
     for method_name, method in methods:
         if not (
             method_name.startswith("__") and method_name.endswith("__")
         ) and hasattr(method, "_invariant"):
-            element_cls._invariants.append(method)
+            element_cls._invariants[method_name] = method
 
     return element_cls
+
+
+# Context manager to temporarily disable invariant checks on aggregate
+class atomic_change:
+    def __init__(self, aggregate):
+        self.aggregate = aggregate
+
+    def __enter__(self):
+        # Temporary disable invariant checks
+        self.aggregate._disable_invariant_checks = True
+
+    def __exit__(self, *args):
+        # Run clean() on exit to trigger invariant checks
+        self.aggregate._disable_invariant_checks = False
+        self.aggregate.clean()

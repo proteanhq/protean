@@ -47,9 +47,9 @@ def test_that_entity_has_recorded_invariants(test_domain):
 
     assert len(Order._invariants) == 3
     # Methods are presented in ascending order (alphabetical order) of member names.
-    assert Order._invariants[0].__name__ == "item_quantities_should_be_positive"
-    assert Order._invariants[1].__name__ == "must_have_at_least_one_item"
-    assert Order._invariants[2].__name__ == "total_should_be_sum_of_item_prices"
+    assert "item_quantities_should_be_positive" in Order._invariants
+    assert "must_have_at_least_one_item" in Order._invariants
+    assert "total_should_be_sum_of_item_prices" in Order._invariants
 
     assert len(OrderItem._invariants) == 1
-    assert OrderItem._invariants[0].__name__ == "price_should_be_non_negative"
+    assert "price_should_be_non_negative" in OrderItem._invariants

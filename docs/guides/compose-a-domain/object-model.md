@@ -9,6 +9,10 @@ document outlines generic aspects that apply to every domain element.
 `Element` is a base class inherited by all domain elements. Currently, it does
 not have any data structures or behavior associated with it.
 
+## Element Type
+
+<Element>.element_type
+
 ## Data Containers
 
 Protean provides data container elements, aligned with DDD principles to model

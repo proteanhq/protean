@@ -437,6 +437,9 @@ class HasOne(Association):
                     elif isinstance(field_obj, HasOne):
                         setattr(old_value, field_name, None)
 
+        if instance._initialized and instance._root is not None:
+            instance._root.clean()  # Trigger validations from the top
+
     def _fetch_objects(self, instance, key, identifier):
         """Fetch single linked object"""
         try:
@@ -526,6 +529,10 @@ class HasMany(Association):
 
         current_value_ids = [value.id for value in data]
 
+        # Remove items when set to empty
+        if len(items) == 0 and len(current_value_ids) > 0:
+            self.remove(instance, data)
+
         for item in items:
             # Items to add
             if item.id not in current_value_ids:
@@ -562,6 +569,9 @@ class HasMany(Association):
 
                 # Reset Cache
                 self.delete_cached_value(instance)
+
+        if instance._initialized and instance._root is not None:
+            instance._root.clean()  # Trigger validations from the top
 
     def remove(self, instance, items) -> None:
         """
@@ -608,6 +618,9 @@ class HasMany(Association):
                         field_obj.remove(item, getattr(item, field_name))
                     elif isinstance(field_obj, HasOne):
                         setattr(item, field_name, None)
+
+        if instance._initialized and instance._root is not None:
+            instance._root.clean()  # Trigger validations from the top
 
     def _fetch_objects(self, instance, key, value) -> list:
         """

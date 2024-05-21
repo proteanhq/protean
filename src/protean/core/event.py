@@ -27,16 +27,6 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         if not subclass.meta_.abstract:
             subclass.__track_id_field()
 
-    def __init__(self, *args, **kwargs):
-        # Set the flag to prevent any further modifications
-        self._initialized = False
-
-        super().__init__(*args, **kwargs)
-
-        # If we made it this far, the Value Object is initialized
-        #   and should be marked as such
-        self._initialized = True
-
     def __setattr__(self, name, value):
         if not hasattr(self, "_initialized") or not self._initialized:
             return super().__setattr__(name, value)

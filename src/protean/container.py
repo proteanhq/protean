@@ -195,6 +195,7 @@ class BaseContainer(metaclass=ContainerMeta):
         This initialization technique supports keyword arguments as well as dictionaries. You
             can even use a template for initial data.
         """
+        self._initialized = False
 
         if self.meta_.abstract is True:
             raise NotSupportedError(
@@ -265,6 +266,8 @@ class BaseContainer(metaclass=ContainerMeta):
 
         self.defaults()
 
+        self._initialized = True
+
         # `clean()` will return a `defaultdict(list)` if errors are to be raised
         custom_errors = self.clean() or {}
         for field in custom_errors:
@@ -329,6 +332,7 @@ class BaseContainer(metaclass=ContainerMeta):
                 "_initialized",  # Flag to indicate if the entity has been initialized
                 "_root",  # Root entity in the hierarchy
                 "_owner",  # Owner entity in the hierarchy
+                "_disable_invariant_checks",  # Flag to disable invariant checks
             ]
             or name.startswith(("add_", "remove_"))
         ):
