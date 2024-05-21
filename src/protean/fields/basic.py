@@ -421,12 +421,7 @@ class Identifier(Field):
             if existing_value is not None and value != existing_value:
                 raise InvalidOperationError("Identifiers cannot be changed once set")
 
-        value = self._load(value)
-        instance.__dict__[self.field_name] = value
-
-        if hasattr(instance, "state_"):
-            # Mark Entity as Dirty
-            instance.state_.mark_changed()
+        super().__set__(instance, value)
 
     def as_dict(self, value):
         """Return JSON-compatible value of self"""

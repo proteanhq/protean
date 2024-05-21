@@ -133,6 +133,8 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
             user = User(base_user.to_dict(), first_name='John', last_name='Doe')
         """
 
+        self._initialized = False
+
         if self.meta_.abstract is True:
             raise NotSupportedError(
                 f"{self.__class__.__name__} class has been marked abstract"
@@ -150,6 +152,9 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
         # Attributes to preserve heirarchy of element instances
         self._owner = None
         self._root = None
+
+        # To control invariant checks
+        self._disable_invariant_checks = False
 
         # Collect Reference field attribute names to prevent accidental overwriting
         # of shadow fields.
@@ -287,8 +292,10 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
 
         self.defaults()
 
+        self._initialized = True
+
         # `clean()` will return a `defaultdict(list)` if errors are to be raised
-        custom_errors = self.clean() or {}
+        custom_errors = self.clean(return_errors=True) or {}
         for field in custom_errors:
             self.errors[field].extend(custom_errors[field])
 
@@ -302,11 +309,36 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
         To be overridden in concrete Containers, when an attribute's default depends on other attribute values.
         """
 
-    def clean(self):
-        """Placeholder method for validations.
-        To be overridden in concrete Containers, when complex validations spanning multiple fields are required.
-        """
-        return defaultdict(list)
+    def clean(self, return_errors=False):
+        """Invoked after initialization to perform additional validations."""
+        # Call all methods marked as invariants
+        if self._initialized and not self._disable_invariant_checks:
+            errors = defaultdict(list)
+
+            for invariant_method in self._invariants.values():
+                try:
+                    invariant_method(self)
+                except ValidationError as err:
+                    for field_name in err.messages:
+                        errors[field_name].extend(err.messages[field_name])
+
+            # Run through all associations and trigger their clean method
+            for field_name, field_obj in declared_fields(self).items():
+                if isinstance(field_obj, Association):
+                    value = getattr(self, field_name)
+                    if value is not None:
+                        items = value if isinstance(value, list) else [value]
+                        for item in items:
+                            item_errors = item.clean(return_errors=True)
+                            if item_errors:
+                                for sub_field_name, error_list in item_errors.items():
+                                    errors[sub_field_name].extend(error_list)
+
+            if return_errors:
+                return errors
+
+            if errors:
+                raise ValidationError(errors)
 
     def __eq__(self, other):
         """Equivalence check to be based only on Identity"""
@@ -452,7 +484,7 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
         super().__init_subclass__()
 
         # Record invariant methods
-        setattr(subclass, "_invariants", [])
+        setattr(subclass, "_invariants", {})
 
 
 def entity_factory(element_cls, **kwargs):
@@ -519,7 +551,7 @@ def entity_factory(element_cls, **kwargs):
         if not (
             method_name.startswith("__") and method_name.endswith("__")
         ) and hasattr(method, "_invariant"):
-            element_cls._invariants.append(method)
+            element_cls._invariants[method_name] = method
 
     return element_cls
 

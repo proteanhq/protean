@@ -1,6 +1,6 @@
 __version__ = "0.11.0"
 
-from .core.aggregate import BaseAggregate
+from .core.aggregate import BaseAggregate, atomic_change
 from .core.application_service import BaseApplicationService
 from .core.command import BaseCommand
 from .core.command_handler import BaseCommandHandler
@@ -54,4 +54,5 @@ __all__ = [
     "get_version",
     "handle",
     "invariant",
+    "atomic_change",
 ]
