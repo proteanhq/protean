@@ -1,1 +1,132 @@
 # Invariants
+
+Invariants are business rules or constraints that always need to be true within
+a specific domain concept. They define the fundamental and consistent state of
+the concept, ensuring it remains unchanged even as other aspects evolve play a
+crucial role in ensuring business validations within a domain.
+
+Protean treats invariants as first-class citizens, to make them explicit and
+visible, making it easier to maintain the integrity of the domain model.
+
+## Key Facts
+
+- **Always Valid:** Invariants are conditions that must hold true at all times.
+- **Declared on Concepts:** Invariants are registered along with domain
+concepts, typically in aggregates as they encapsulate the concept.
+- **Immediate:** Invariants are validated immediately after a domain
+concept is initialized as well as on changes to any attribute in the
+aggregate cluster.
+- **Domain-Driven:** Invariants stem from the business rules and policies
+specific to a domain.
+- **Enforced by the Domain Model:** Protean takes on the responsibility of
+enforcing invariants. 
+
+## `@invariant` decorator
+
+Invariants are defined using the `@invariant` decorator in Aggregates and
+Entities:
+
+```python hl_lines="9-10 14-15"
+--8<-- "guides/domain-behavior/invariants/001.py:17:41"
+```
+
+In the above example, `Order` aggregate has two invariants (business
+conditions), one that the total amount of the order must always equal the sum
+of individual item subtotals, and the other that the order date must be within
+30 days if status is `PENDING`.
+
+All methods marked `@invariant` are associated with the domain element when
+the element is registered with the domain.
+
+## Validation
+
+Invariant validations are triggered throughout the lifecycle of domain objects,
+to ensure all invariants remain satisfied. Aggregates are the root of the
+triggering mechanism, though. The validations are conducted recursively,
+starting with the aggregate and trickling down into entities.
+
+### Post-Initialization
+
+Immediately after an object (aggregate or entity) is initialized, all
+invariant checks are triggered to ensure the aggregate remains in a valid state.
+
+```shell hl_lines="11 13"
+In [1]: Order(
+   ...:    customer_id="1",
+   ...:    order_date="2020-01-01",
+   ...:    total_amount=100.0,
+   ...:    status="PENDING",
+   ...:    items=[
+   ...:        OrderItem(product_id="1", quantity=2, price=10.0, subtotal=20.0),
+   ...:        OrderItem(product_id="2", quantity=3, price=20.0, subtotal=60.0),
+   ...:    ],
+   ...:)
+ERROR: Error during initialization: {'_entity': ['Total should be sum of item prices']}
+...
+ValidationError: {'_entity': ['Total should be sum of item prices']}
+```
+
+### Attribute Changes
+
+Every attribute change in an aggregate or its enclosing entities triggers
+invariant validation throughout the aggregate cluster. This ensures that any
+modification maintains the consistency of the domain model.
+
+```shell hl_lines="13 15"
+In [1]: order = Order(
+   ...:     customer_id="1",
+   ...:     order_date="2020-01-01",
+   ...:     total_amount=100.0,
+   ...:     status="PENDING",
+   ...:     items=[
+   ...:         OrderItem(product_id="1", quantity=4, price=10.0, subtotal=40.0),
+   ...:         OrderItem(product_id="2", quantity=3, price=20.0, subtotal=60.0),
+   ...:     ],
+   ...: )
+   ...: 
+
+In [2]: order.total_amount = 140.0
+...
+ValidationError: {'_entity': ['Total should be sum of item prices']}
+```
+
+
+## Atomic Changes
+
+There may be times when multiple attributes need to be changed together, and
+validations should not trigger until the entire operation is complete.
+The `atomic_change` context manager can be used to achieve this.
+
+Within the `atomic_change` context manager, validations are temporarily
+disabled. Invariant validations are triggered upon exiting the context manager.
+
+```shell hl_lines="14"
+In [1]: from protean import atomic_change
+
+In [2]: order = Order(
+   ...:     customer_id="1",
+   ...:     order_date="2020-01-01",
+   ...:     total_amount=100.0,
+   ...:     status="PENDING",
+   ...:     items=[
+   ...:         OrderItem(product_id="1", quantity=4, price=10.0, subtotal=40.0),
+   ...:         OrderItem(product_id="2", quantity=3, price=20.0, subtotal=60.0),
+   ...:     ],
+   ...: )
+
+In [3]: with atomic_change(order):
+   ...:     order.total_amount = 120.0
+   ...:     order.add_items(
+   ...:         OrderItem(product_id="3", quantity=2, price=10.0, subtotal=20.0)
+   ...:     )
+   ...: 
+```
+
+Trying to perform the attribute updates one after another would have resulted
+in a `ValidationError` exception:
+
+```shell hl_lines="3"
+In [4]: order.total_amount = 120.0
+...
+ValidationError: {'_entity': ['Total should be sum of item prices']}
+```
