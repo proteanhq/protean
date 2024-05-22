@@ -1,5 +1,7 @@
 import pytest
 
+from protean.exceptions import IncorrectUsageError
+
 from .elements import Person
 
 
@@ -27,3 +29,14 @@ def test_that_all_aggregates_can_be_retrieved_with_repository(test_domain):
     test_domain.repository_for(Person).add(person)
 
     assert test_domain.repository_for(Person).all() == [person]
+
+
+def test_that_incorrectusageerror_is_raised_when_retrieving_nonexistent_aggregate(
+    test_domain,
+):
+    with pytest.raises(IncorrectUsageError) as exc:
+        test_domain.repository_for("Invalid")
+
+    assert exc.value.messages == {
+        "element": ["Element Invalid is not registered in domain Test"]
+    }
