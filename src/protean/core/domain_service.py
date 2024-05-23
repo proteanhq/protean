@@ -1,6 +1,7 @@
 import logging
 
 from protean.container import Element, OptionsMixin
+from protean.exceptions import IncorrectUsageError
 from protean.utils import DomainObjects, derive_element_class
 
 logger = logging.getLogger(__name__)
@@ -25,8 +26,21 @@ class BaseDomainService(Element, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return []
+        return [
+            ("part_of", None),
+        ]
 
 
 def domain_service_factory(element_cls, **kwargs):
-    return derive_element_class(element_cls, BaseDomainService, **kwargs)
+    element_cls = derive_element_class(element_cls, BaseDomainService, **kwargs)
+
+    if not element_cls.meta_.part_of or len(element_cls.meta_.part_of) < 2:
+        raise IncorrectUsageError(
+            {
+                "_entity": [
+                    f"Domain Service `{element_cls.__name__}` needs to be associated with two or more Aggregates"
+                ]
+            }
+        )
+
+    return element_cls

@@ -27,7 +27,7 @@ Invariants are defined using the `@invariant` decorator in Aggregates and
 Entities:
 
 ```python hl_lines="9-10 14-15"
---8<-- "guides/domain-behavior/invariants/001.py:17:41"
+--8<-- "guides/domain-behavior/001.py:17:41"
 ```
 
 In the above example, `Order` aggregate has two invariants (business
