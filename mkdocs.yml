@@ -26,6 +26,7 @@ theme:
     - navigation.path
     - navigation.prune
     - navigation.indexes
+    - navigation.footer
     - toc.follow
     - navigation.top
     - search.suggest
@@ -39,7 +40,14 @@ markdown_extensions:
   - admonition
   - mdx_include
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.snippets:
+      check_paths: true
+      base_path: docs_src
 nav:
   - Protean:
     - index.md
@@ -109,6 +117,9 @@ nav:
       - guides/domain-definition/repositories.md
     - Adding Behavior:
       - guides/domain-behavior/index.md
+      - guides/domain-behavior/validations.md
+      - guides/domain-behavior/invariants.md
+      - guides/domain-behavior/aggregate-mutation.md
       - guides/domain-behavior/domain-services.md
     # - Application Layer:
     #   - guides/app-layer/index.md

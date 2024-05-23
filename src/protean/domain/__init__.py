@@ -857,6 +857,15 @@ class Domain:
 
     # FIXME Optimize calls to this method with cache, but also with support for Multitenancy
     def repository_for(self, part_of):
+        if isinstance(part_of, str):
+            raise IncorrectUsageError(
+                {
+                    "element": [
+                        f"Element {part_of} is not registered in domain {self.name}"
+                    ]
+                }
+            )
+
         if part_of.element_type == DomainObjects.EVENT_SOURCED_AGGREGATE:
             return self.event_store.repository_for(part_of)
         else:

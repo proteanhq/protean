@@ -18,9 +18,5 @@ def test_value_objects_do_not_have_id_fields():
         id_field(Balance)
 
     assert str(exception.value) == str(
-        {
-            "identity": [
-                "<class 'tests.reflection.test_id_field.Balance'> does not have identity fields"
-            ]
-        }
+        {"identity": ["<class 'test_id_field.Balance'> does not have identity fields"]}
     )
