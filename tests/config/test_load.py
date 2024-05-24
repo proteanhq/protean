@@ -3,10 +3,13 @@
 import os
 import sys
 
+from mock import patch
 from pathlib import Path
 
 import pytest
 
+from protean.domain.config import Config2
+from protean.exceptions import ConfigurationError
 from protean.utils.domain_discovery import derive_domain
 from tests.shared import change_working_directory_to
 
@@ -21,6 +24,33 @@ class TestLoadingTOML:
 
         sys.path[:] = original_path
         os.chdir(cwd)
+
+    def test_loading_domain_config(self, test_domain):
+        assert test_domain is not None
+        assert (
+            test_domain.config["DATABASES"]["default"]["PROVIDER"]
+            == "protean.adapters.MemoryProvider"
+        )
+        assert all(
+            key in test_domain.config["DATABASES"] for key in ["memory", "sqlite"]
+        )
+        assert all(
+            key in test_domain.config
+            for key in ["DATABASES", "CACHES", "BROKERS", "EVENT_STORE"]
+        )
+
+    def test_domain_config_defaults(self):
+        change_working_directory_to("test14")
+
+        defaults = {
+            "CUSTOM": {
+                "qux": "quux",
+            }
+        }
+
+        config = Config2.load("test14", defaults)
+        assert config["CUSTOM"]["FOO"] == "bar"
+        assert config["CUSTOM"]["qux"] == "quux"
 
     @pytest.mark.no_test_domain
     def test_domain_detects_config_file(self):
@@ -89,9 +119,31 @@ class TestLoadingTOML:
             domain.config["CUSTOM"]["FOO"] = "baz"
 
     @pytest.mark.no_test_domain
-    def test_domain_loads_config_successfully(self):
-        pass
-
-    @pytest.mark.no_test_domain
     def test_domain_throws_error_if_config_file_not_found(self):
-        pass
+        change_working_directory_to("test19")
+
+        with pytest.raises(ConfigurationError) as exc:
+            derive_domain("domain19")
+
+        assert "No configuration file found in" in str(exc.value)
+
+
+class TestLoadingEnvironmentVars:
+    @patch.dict(
+        os.environ,
+        {
+            "DB_USER": "test_user",
+            "DB_PASSWORD": "test_pass",
+            "SQLITE_DB_LOCATION": "sqlite:///test.db",
+        },
+    )
+    def test_load_env_vars(temp_toml_file):
+        change_working_directory_to("test18")
+
+        domain = derive_domain("domain18")
+        assert domain.config["CUSTOM"]["FOO_USER"] == "test_user"
+        assert domain.config["CUSTOM"]["FOO_PASSWORD"] == "test_pass"
+        assert (
+            domain.config["DATABASES"]["secondary"]["DATABASE_URI"]
+            == "sqlite:///test.db"
+        )
