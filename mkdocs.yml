@@ -101,7 +101,7 @@ nav:
       - guides/compose-a-domain/when-to-compose.md
       - guides/compose-a-domain/element-decorators.md
       - guides/compose-a-domain/object-model.md
-    #  - guides/compose-a-domain/configuration.md
+      - guides/compose-a-domain/configuration.md
     - Defining Concepts:
       - guides/domain-definition/index.md
       - Fields:

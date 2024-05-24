@@ -1,0 +1,6 @@
+IDENTITY_TYPE = "UUID"
+
+[DATABASES.default]
+PROVIDER = "protean.adapters.repository.elasticsearch.ESProvider"
+DATABASE = "ELASTICSEARCH"
+DATABASE_URI = '{"hosts": ["localhost"]}'

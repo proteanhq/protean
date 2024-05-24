@@ -31,7 +31,7 @@ from protean.utils import (
     fqn,
 )
 
-from .config import Config, ConfigAttribute
+from .config import Config2, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals
 from .helpers import get_debug_flag, get_env
 
@@ -59,7 +59,7 @@ class Domain:
 
     from protean.utils import IdentityStrategy, IdentityType
 
-    config_class = Config
+    config_class = Config2
     domain_context_globals_class = _DomainContextGlobals
 
     #: What environment the app is running in Protean and extensions may
@@ -146,7 +146,7 @@ class Domain:
         #: The configuration dictionary as :class:`Config`.  This behaves
         #: exactly like a regular dictionary but supports additional methods
         #: to load a config from files.
-        self.config = self.make_config()
+        self.config = self.load_config()
 
         self.providers = Providers(self)
         self.event_store = EventStore(self)
@@ -264,6 +264,10 @@ class Domain:
         defaults["ENV"] = get_env()
         defaults["DEBUG"] = get_debug_flag()
         return self.config_class(self.root_path, defaults)
+
+    def load_config(self):
+        """Load configuration from a .toml file."""
+        return Config2.load(self.root_path, dict(self.default_config))
 
     def domain_context(self, **kwargs):
         """Create an :class:`~protean.context.DomainContext`. Use as a ``with``

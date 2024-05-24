@@ -3,7 +3,6 @@
 isort:skip_file
 """
 
-import os
 import pytest
 
 
@@ -183,13 +182,6 @@ def test_domain(db_config, store_config, request):
         from protean.domain import Domain
 
         domain = Domain(__file__, "Test")
-
-        # Construct relative path to config file
-        current_path = os.path.abspath(os.path.dirname(__file__))
-        config_path = os.path.join(current_path, "./config.py")
-
-        if os.path.exists(config_path):
-            domain.config.from_pyfile(config_path)
 
         domain.config["DATABASES"]["default"] = db_config
         domain.config["EVENT_STORE"] = store_config

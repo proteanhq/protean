@@ -15,6 +15,7 @@ class RedisCache(BaseCache):
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Cache with Connection/Adapter details"""
 
+        # FIXME Update cache value to REDIS
         # In case of `MemoryCache`, the `CACHE` value will always be `MEMORY`.
         conn_info["CACHE"] = Cache.MEMORY.value
         super().__init__(name, domain, conn_info)

@@ -1,5 +1,6 @@
 """Module containing repository implementation for Elasticsearch"""
 
+import json
 import logging
 
 from typing import Any
@@ -311,6 +312,7 @@ class ESProvider(BaseProvider):
 
         # In case of `ESProvider`, the `DATABASE` value will always be `ELASTICSEARCH`.
         conn_info["DATABASE"] = Database.ELASTICSEARCH.value
+        conn_info["DATABASE_URI"] = json.loads(conn_info["DATABASE_URI"])
         super().__init__(name, domain, conn_info)
 
         # A temporary cache of already constructed model classes

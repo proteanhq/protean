@@ -19,7 +19,6 @@ from .core.unit_of_work import UnitOfWork
 from .core.value_object import BaseValueObject
 from .core.view import BaseView
 from .domain import Domain
-from .domain.config import Config
 from .globals import current_domain, current_uow
 from .server import Engine
 from .utils import get_version
@@ -42,7 +41,6 @@ __all__ = [
     "BaseSubscriber",
     "BaseValueObject",
     "BaseView",
-    "Config",
     "Domain",
     "Engine",
     "Q",
