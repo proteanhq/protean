@@ -120,7 +120,7 @@ class TestRepositoryRegistration:
         test_domain.config["DATABASES"]["secondary"] = {
             "PROVIDER": "protean.adapters.repository.elasticsearch.ESProvider",
             "DATABASE": Database.ELASTICSEARCH.value,
-            "DATABASE_URI": {"hosts": ["localhost"]},
+            "DATABASE_URI": '{"hosts": ["localhost"]}',
         }
         test_domain._initialize()
 

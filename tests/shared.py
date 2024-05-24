@@ -13,17 +13,7 @@ from protean.domain import Domain
 
 def initialize_domain(file_path, name="Tests"):
     """Initialize a Protean Domain with configuration from a file"""
-    domain = Domain(__file__, name=name)
-
-    # Construct relative path to config file
-    current_path = os.path.abspath(os.path.dirname(file_path))
-    config_path = os.path.join(current_path, "./config.py")
-
-    if os.path.exists(config_path):
-        domain.config.from_pyfile(config_path)
-
-    # Reinitialize the domain after config changes
-    domain._initialize()
+    domain = Domain(file_path, name=name)
 
     return domain
 
@@ -45,4 +35,4 @@ def change_working_directory_to(path):
     test_path = (Path(__file__) / ".." / "support" / "test_domains" / path).resolve()
 
     os.chdir(test_path)
-    sys.path.insert(0, test_path)
+    sys.path.insert(0, str(test_path))

@@ -9,7 +9,7 @@ import importlib
 import logging
 
 from datetime import UTC, datetime
-from enum import Enum, auto
+from enum import Enum
 from uuid import uuid4
 
 from protean.exceptions import ConfigurationError
@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 class IdentityStrategy(Enum):
-    UUID = auto()
-    DATABASE = auto()
-    FUNCTION = auto()
+    UUID = "UUID"
+    DATABASE = "DATABASE"
+    FUNCTION = "FUNCTION"
 
 
 class IdentityType(Enum):
@@ -167,3 +167,34 @@ def generate_identity():
             )
 
     return None  # Database will generate the identity
+
+
+def deep_merge(dict1: dict, dict2: dict):
+    result = dict1.copy()
+    for key, value in dict2.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+__all__ = [
+    "Cache",
+    "CommandProcessing",
+    "Database",
+    "DomainObjects",
+    "EventProcessing",
+    "IdentityStrategy",
+    "IdentityType",
+    "TypeMatcher",
+    "convert_str_values_to_list",
+    "derive_element_class",
+    "fetch_element_cls_from_registry",
+    "fully_qualified_name",
+    "generate_identity",
+    "get_version",
+    "import_from_full_path",
+    "singleton",
+    "utcnow_func",
+]

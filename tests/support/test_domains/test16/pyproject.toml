@@ -1,0 +1,6 @@
+DEBUG = true
+AUTOLOAD_DOMAIN = true
+TESTING = true
+
+[CUSTOM]
+FOO = "quux"

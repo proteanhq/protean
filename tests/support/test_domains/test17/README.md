@@ -1,0 +1,1 @@
+This folder tests that `.domain.toml` file receives precedence over `domain.toml`.

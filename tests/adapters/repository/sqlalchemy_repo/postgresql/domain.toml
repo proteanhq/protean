@@ -1,0 +1,6 @@
+IDENTITY_TYPE = "UUID"
+
+[DATABASES.default]
+PROVIDER = "protean.adapters.repository.sqlalchemy.SAProvider"
+DATABASE = "POSTGRESQL"
+DATABASE_URI = "postgresql://postgres:postgres@localhost:5432/postgres"

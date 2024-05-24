@@ -1,0 +1,25 @@
+DEBUG = true
+AUTOLOAD_DOMAIN = true
+TESTING = true
+SECRET_KEY = "tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA"
+IDENTITY_STRATEGY = "UUID"
+IDENTITY_TYPE = "STRING"
+EVENT_PROCESSING = "SYNC"
+COMMAND_PROCESSING = "SYNC"
+
+[DATABASES.default]
+PROVIDER = "protean.adapters.MemoryProvider"
+
+[DATABASES.memory]
+PROVIDER = "protean.adapters.MemoryProvider"
+
+[DATABASES.sqlite]
+PROVIDER = "protean.adapters.repository.sqlalchemy.SAProvider"
+DATABASE = "SQLITE"
+DATABASE_URI = "sqlite:///test.db"
+
+[BROKERS.default]
+PROVIDER = "protean.adapters.InlineBroker"
+
+[CACHES.default]
+PROVIDER = "protean.adapters.cache.memory.MemoryCache"
