@@ -9,14 +9,6 @@ from protean.utils import fully_qualified_name
 from .elements import UserAggregate, UserEntity, UserFoo, UserVO
 
 
-class TestDomainInitialization:
-    def test_that_a_domain_can_be_initialized_successfully(self):
-        domain = Domain(__name__)
-        assert domain is not None
-        assert domain.registry is not None
-        assert domain.registry.aggregates == {}
-
-
 class TestDomainRegistration:
     def test_that_only_recognized_element_types_can_be_registered(self, test_domain):
         with pytest.raises(NotImplementedError):

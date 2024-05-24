@@ -1,9 +1,10 @@
 import logging
 import os
+import re
 import tomllib
 
+from protean.exceptions import ConfigurationError
 
-from protean.utils import deep_merge
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,8 @@ class ConfigAttribute:
 
 
 class Config2(dict):
+    ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
+
     @classmethod
     def load(cls, path: str, defaults: dict = None):
         # Derive the path of parent directory
@@ -37,14 +40,63 @@ class Config2(dict):
             if not os.path.exists(config_file_name):
                 config_file_name = os.path.join(dir_path, "pyproject.toml")
                 if not os.path.exists(config_file_name):
-                    print("No config file found, using defaults")
-                    config_file_name = None
+                    raise ConfigurationError(
+                        f"No configuration file found in {dir_path}"
+                    )
 
         config = {}
         if config_file_name:
             with open(config_file_name, "rb") as f:
                 config = tomllib.load(f)
 
-        config = deep_merge(defaults, config)
+        # Merge with defaults
+        config = cls._deep_merge(defaults, config)
+
+        # Load environment variables
+        config = cls._load_env_vars(config)
 
         return cls(**config)
+
+    @classmethod
+    def _deep_merge(cls, dict1: dict, dict2: dict):
+        result = dict1.copy()
+        for key, value in dict2.items():
+            if (
+                key in result
+                and isinstance(result[key], dict)
+                and isinstance(value, dict)
+            ):
+                result[key] = cls._deep_merge(result[key], value)
+            else:
+                result[key] = value
+        return result
+
+    @classmethod
+    def _load_env_vars(cls, config):
+        if isinstance(config, dict):
+            for key, value in config.items():
+                if isinstance(value, str):
+                    config[key] = cls._replace_env_var(value)
+                elif isinstance(value, dict):
+                    config[key] = cls._load_env_vars(value)
+                elif isinstance(value, list):
+                    config[key] = [
+                        cls._replace_env_var(item) if isinstance(item, str) else item
+                        for item in value
+                    ]
+        return config
+
+    @classmethod
+    def _replace_env_var(cls, value):
+        match = cls.ENV_VAR_PATTERN.search(value)
+        while match:
+            env_var = match.group(1)
+            env_value = os.getenv(env_var)
+
+            if env_value is None:
+                raise ConfigurationError(f"Environment variable {env_var} is not set")
+
+            value = value.replace(f"${{{env_var}}}", env_value)
+            match = cls.ENV_VAR_PATTERN.search(value)
+
+        return value
