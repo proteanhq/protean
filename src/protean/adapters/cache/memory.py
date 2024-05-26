@@ -8,7 +8,6 @@ from typing import Optional, Union
 from protean.core.view import BaseView
 from protean.port.cache import BaseCache
 from protean.reflection import id_field
-from protean.utils import Cache
 from protean.utils.inflection import underscore
 
 
@@ -95,8 +94,8 @@ class MemoryCache(BaseCache):
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Cache with Connection/Adapter details"""
 
-        # In case of `MemoryCache`, the `CACHE` value will always be `MEMORY`.
-        conn_info["CACHE"] = Cache.MEMORY.value
+        # In case of `MemoryCache`, the `cache` value will always be `memory`.
+        conn_info["cache"] = "memory"
         super().__init__(name, domain, conn_info)
 
         # The Data Cache

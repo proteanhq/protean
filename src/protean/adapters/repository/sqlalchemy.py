@@ -5,6 +5,7 @@ import logging
 import uuid
 
 from abc import ABCMeta
+from enum import Enum
 from typing import Any
 
 import sqlalchemy.dialects.postgresql as psql
@@ -43,7 +44,7 @@ from protean.globals import current_domain, current_uow
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
 from protean.reflection import attributes, id_field
-from protean.utils import Database, IdentityType
+from protean.utils import IdentityType
 from protean.utils.query import Q
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
@@ -95,15 +96,15 @@ def _get_identity_type():
     Default to `Identity.STRING`
     """
     try:
-        if current_domain.config["IDENTITY_TYPE"] == IdentityType.INTEGER.value:
+        if current_domain.config["identity_type"] == IdentityType.INTEGER.value:
             return sa_types.Integer
-        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.STRING.value:
+        elif current_domain.config["identity_type"] == IdentityType.STRING.value:
             return sa_types.String
-        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID.value:
+        elif current_domain.config["identity_type"] == IdentityType.UUID.value:
             return GUID
         else:
             raise ConfigurationError(
-                f'Unknown Identity Type {current_domain.config["IDENTITY_TYPE"]}'
+                f'Unknown Identity Type {current_domain.config["identity_type"]}'
             )
     except OutOfContextError:
         # This happens only when the module is being imported the first time.
@@ -508,22 +509,26 @@ class SADAO(BaseDAO):
 class SAProvider(BaseProvider):
     """Provider Implementation class for SQLAlchemy"""
 
+    class databases(Enum):
+        postgresql = "postgresql"
+        sqlite = "sqlite"
+
     def __init__(self, *args, **kwargs):
         """Initialize and maintain Engine"""
         # Since SQLAlchemyProvider can cater to multiple databases, it is important
         #   that we know which database we are dealing with, to run database-specific
         #   statements like `PRAGMA` for SQLite.
-        if "DATABASE" not in args[2]:
-            logger.error(f"Missing `DATABASE` information in conn_info: {args[2]}")
-            raise ConfigurationError("Missing `DATABASE` attribute in Connection info")
+        if "database" not in args[2]:
+            logger.error(f"Missing `database` information in conn_info: {args[2]}")
+            raise ConfigurationError("Missing `database` attribute in Connection info")
 
         super().__init__(*args, **kwargs)
 
         kwargs = self._get_database_specific_engine_args()
 
-        self._engine = create_engine(make_url(self.conn_info["DATABASE_URI"]), **kwargs)
+        self._engine = create_engine(make_url(self.conn_info["database_uri"]), **kwargs)
 
-        if self.conn_info["DATABASE"] == Database.POSTGRESQL.value:
+        if self.conn_info["database"] == self.databases.postgresql.value:
             # Nest database tables under a schema, so that we have complete control
             #   on creating/dropping db structures. We cannot control structures in the
             #   the default `public` schema.
@@ -546,7 +551,7 @@ class SAProvider(BaseProvider):
 
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
         """
-        if self.conn_info["DATABASE"] == Database.POSTGRESQL.value:
+        if self.conn_info["database"] == self.databases.postgresql.value:
             return {"isolation_level": "AUTOCOMMIT"}
 
         return {}
@@ -559,7 +564,7 @@ class SAProvider(BaseProvider):
 
         Return: a dictionary with additional arguments and values.
         """
-        if self.conn_info["DATABASE"] == Database.POSTGRESQL.value:
+        if self.conn_info["database"] == self.databases.postgresql.value:
             return {"autocommit": True, "autoflush": False}
 
         return {}
@@ -587,7 +592,7 @@ class SAProvider(BaseProvider):
 
         Return: None
         """
-        if self.conn_info["DATABASE"] == Database.SQLITE.value:
+        if self.conn_info["database"] == self.databases.sqlite.value:
             conn.execute("PRAGMA case_sensitive_like = ON;")
 
         return conn
@@ -610,13 +615,13 @@ class SAProvider(BaseProvider):
 
         transaction = conn.begin()
 
-        if self.conn_info["DATABASE"] == Database.SQLITE.value:
+        if self.conn_info["database"] == self.databases.sqlite.value:
             conn.execute("PRAGMA foreign_keys = OFF;")
 
         for table in self._metadata.sorted_tables:
             conn.execute(table.delete())
 
-        if self.conn_info["DATABASE"] == Database.SQLITE.value:
+        if self.conn_info["database"] == self.databases.sqlite.value:
             conn.execute("PRAGMA foreign_keys = ON;")
 
         transaction.commit()

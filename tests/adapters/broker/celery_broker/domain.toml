@@ -1,4 +1,4 @@
-[BROKERS.default]
-PROVIDER = "celery"
+[brokers.default]
+provider = "celery"
 URI = "redis://127.0.0.1:6379/2"
 IS_ASYNC = true

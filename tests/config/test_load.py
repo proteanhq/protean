@@ -27,27 +27,27 @@ class TestLoadingTOML:
 
     def test_loading_domain_config(self, test_domain):
         assert test_domain is not None
-        assert test_domain.config["DATABASES"]["default"]["PROVIDER"] == "memory"
+        assert test_domain.config["databases"]["default"]["provider"] == "memory"
         assert all(
-            key in test_domain.config["DATABASES"] for key in ["memory", "sqlite"]
+            key in test_domain.config["databases"] for key in ["memory", "sqlite"]
         )
         assert all(
             key in test_domain.config
-            for key in ["DATABASES", "CACHES", "BROKERS", "EVENT_STORE"]
+            for key in ["databases", "caches", "brokers", "event_store"]
         )
 
     def test_domain_config_defaults(self):
         change_working_directory_to("test14")
 
         defaults = {
-            "CUSTOM": {
+            "custom": {
                 "qux": "quux",
             }
         }
 
         config = Config2.load_from_path("test14", defaults)
-        assert config["CUSTOM"]["FOO"] == "bar"
-        assert config["CUSTOM"]["qux"] == "quux"
+        assert config["custom"]["FOO"] == "bar"
+        assert config["custom"]["qux"] == "quux"
 
     @pytest.mark.no_test_domain
     def test_domain_detects_config_file(self):
@@ -55,7 +55,7 @@ class TestLoadingTOML:
 
         domain = derive_domain("domain14")
         assert domain is not None
-        domain.config["CUSTOM"]["FOO"] == "bar"
+        domain.config["custom"]["FOO"] == "bar"
 
     @pytest.mark.skip(reason="No Immutability Functionality yet")
     def test_domain_config_is_immutable(self):
@@ -63,7 +63,7 @@ class TestLoadingTOML:
 
         domain = derive_domain("domain14")
         with pytest.raises(TypeError):
-            domain.config["CUSTOM"]["FOO"] = "baz"
+            domain.config["custom"]["FOO"] = "baz"
 
     @pytest.mark.no_test_domain
     def test_domain_prioritizes_dot_domain_toml_over_domain_toml(self):
@@ -77,7 +77,7 @@ class TestLoadingTOML:
 
         domain = derive_domain("domain15")
         assert domain is not None
-        assert domain.config["CUSTOM"]["FOO"] == "baz"
+        assert domain.config["custom"]["FOO"] == "baz"
 
     @pytest.mark.no_test_domain
     def test_domain_prioritizes_domain_toml_over_pyproject(self):
@@ -91,7 +91,7 @@ class TestLoadingTOML:
 
         domain = derive_domain("domain16")
         assert domain is not None
-        assert domain.config["CUSTOM"]["FOO"] == "qux"
+        assert domain.config["custom"]["FOO"] == "qux"
 
     @pytest.mark.no_test_domain
     def test_domain_picks_pyproject_toml_in_the_absence_of_other_config_files(self):
@@ -105,7 +105,7 @@ class TestLoadingTOML:
 
         domain = derive_domain("domain17")
         assert domain is not None
-        assert domain.config["CUSTOM"]["FOO"] == "quux"
+        assert domain.config["custom"]["FOO"] == "quux"
 
     @pytest.mark.skip(reason="No Immutability Functionality yet")
     def test_custom_is_immutable(self):
@@ -113,7 +113,7 @@ class TestLoadingTOML:
 
         domain = derive_domain("domain14")
         with pytest.raises(TypeError):
-            domain.config["CUSTOM"]["FOO"] = "baz"
+            domain.config["custom"]["FOO"] = "baz"
 
     @pytest.mark.no_test_domain
     def test_domain_throws_error_if_config_file_not_found(self):
@@ -128,7 +128,8 @@ class TestLoadingTOML:
 class TestLoadingDefaults:
     def test_that_config_is_loaded_from_dict(self):
         config_dict = dict(Domain.default_config)
-        config_dict["CUSTOM"] = {"FOO": "bar", "qux": "quux"}
+        config_dict["custom"] = {"FOO": "bar", "qux": "quux"}
         config = Config2.load_from_dict(config_dict)
-        assert config["CUSTOM"]["FOO"] == "bar"
-        assert config["CUSTOM"]["qux"] == "quux"
+        assert config["databases"]["default"]["provider"] == "memory"
+        assert config["custom"]["FOO"] == "bar"
+        assert config["custom"]["qux"] == "quux"

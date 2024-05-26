@@ -18,7 +18,7 @@ from protean.globals import current_domain
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
 from protean.reflection import attributes, id_field
-from protean.utils import Database, IdentityStrategy, IdentityType
+from protean.utils import IdentityStrategy, IdentityType
 from protean.utils.query import Q
 
 logger = logging.getLogger(__name__)
@@ -80,8 +80,8 @@ class ElasticsearchModel(Document):
 
         identifier = None
         if (
-            current_domain.config["IDENTITY_STRATEGY"] == IdentityStrategy.UUID.value
-            and current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID.value
+            current_domain.config["identity_strategy"] == IdentityStrategy.UUID.value
+            and current_domain.config["identity_type"] == IdentityType.UUID.value
             and isinstance(item.meta.id, str)
         ):
             identifier = UUID(item.meta.id)
@@ -310,9 +310,9 @@ class ESProvider(BaseProvider):
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Provider with Connection/Adapter details"""
 
-        # In case of `ESProvider`, the `DATABASE` value will always be `ELASTICSEARCH`.
-        conn_info["DATABASE"] = Database.ELASTICSEARCH.value
-        conn_info["DATABASE_URI"] = json.loads(conn_info["DATABASE_URI"])
+        # In case of `ESProvider`, the `database` value will always be `ELASTICSEARCH`.
+        conn_info["database"] = "elasticsearch"
+        conn_info["database_uri"] = json.loads(conn_info["database_uri"])
         super().__init__(name, domain, conn_info)
 
         # A temporary cache of already constructed model classes
@@ -370,7 +370,7 @@ class ESProvider(BaseProvider):
         """Get the connection object for the repository"""
 
         return Elasticsearch(
-            self.conn_info["DATABASE_URI"]["hosts"],
+            self.conn_info["database_uri"]["hosts"],
             use_ssl=self.conn_info.get("USE_SSL", False),
             verify_certs=self.conn_info.get("VERIFY_CERTS", False),
         )
@@ -482,10 +482,8 @@ class ESProvider(BaseProvider):
 
             model_cls = repo._model
             if provider.conn_info[
-                "DATABASE"
-            ] == Database.ELASTICSEARCH.value and conn.indices.exists(
-                index=model_cls._index._name
-            ):
+                "database"
+            ] == "elasticsearch" and conn.indices.exists(index=model_cls._index._name):
                 conn.delete_by_query(
                     refresh=True,
                     index=model_cls._index._name,
@@ -504,10 +502,8 @@ class ESProvider(BaseProvider):
             provider = current_domain.providers[element_record.cls.meta_.provider]
             model_cls = current_domain.repository_for(element_record.cls)._model
             if provider.conn_info[
-                "DATABASE"
-            ] == Database.ELASTICSEARCH.value and not model_cls._index.exists(
-                using=conn
-            ):
+                "database"
+            ] == "elasticsearch" and not model_cls._index.exists(using=conn):
                 # We use model_cls here to ensure the index is created along with mappings
                 model_cls.init(using=conn)
 
@@ -523,8 +519,8 @@ class ESProvider(BaseProvider):
             model_cls = self.domain.repository_for(element_record.cls)._model
             provider = self.domain.providers[element_record.cls.meta_.provider]
             if provider.conn_info[
-                "DATABASE"
-            ] == Database.ELASTICSEARCH.value and model_cls._index.exists(using=conn):
+                "database"
+            ] == "elasticsearch" and model_cls._index.exists(using=conn):
                 conn.indices.delete(index=model_cls._index._name)
 
 

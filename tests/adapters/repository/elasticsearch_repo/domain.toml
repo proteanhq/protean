@@ -1,6 +1,6 @@
-IDENTITY_TYPE = "UUID"
+identity_type = "uuid"
 
-[DATABASES.default]
-PROVIDER = "elasticsearch"
-DATABASE = "ELASTICSEARCH"
-DATABASE_URI = '{"hosts": ["localhost"]}'
+[databases.default]
+provider = "elasticsearch"
+database = "elasticsearch"
+database_uri = '{"hosts": ["localhost"]}'

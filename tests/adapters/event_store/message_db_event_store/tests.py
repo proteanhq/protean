@@ -14,8 +14,8 @@ class TestMessageDBEventStore:
 
     def test_error_on_message_db_initialization(self):
         domain = Domain(__file__)
-        domain.config["EVENT_STORE"]["PROVIDER"] = "message_db"
-        domain.config["EVENT_STORE"]["DATABASE_URI"] = (
+        domain.config["event_store"]["provider"] = "message_db"
+        domain.config["event_store"]["database_uri"] = (
             "postgresql://message_store@localhost:5433/dummy"
         )
 
@@ -27,8 +27,8 @@ class TestMessageDBEventStore:
         assert 'FATAL:  database "dummy" does not exist' in str(exc.value)
 
         # Reset config value. # FIXME Config should be an argument to the domain
-        domain.config["EVENT_STORE"]["PROVIDER"] = "memory"
-        domain.config["EVENT_STORE"].pop("DATABASE_URI")
+        domain.config["event_store"]["provider"] = "memory"
+        domain.config["event_store"].pop("database_uri")
 
     def test_write_to_event_store(self, test_domain):
         position = test_domain.event_store.store._write(

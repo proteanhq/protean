@@ -49,8 +49,8 @@ class TestGenerateDockerCompose:
             domain.init()
             assert domain is not None
             assert domain.name == "SQLite-Domain"
-            assert domain.providers["default"].conn_info["PROVIDER"] == "sqlalchemy"
-            assert domain.providers["default"].conn_info["DATABASE"] == "sqlite"
+            assert domain.providers["default"].conn_info["provider"] == "sqlalchemy"
+            assert domain.providers["default"].conn_info["database"] == "sqlite"
             assert domain.providers["default"]._engine.url.database == ":memory:"
             assert domain.providers["default"]._engine.url.drivername == "sqlite"
 

@@ -41,10 +41,10 @@ class EventStore:
         if not self._event_store:
             logger.debug("Initializing Event Store...")
 
-            configured_event_store = self.domain.config["EVENT_STORE"]
+            configured_event_store = self.domain.config["event_store"]
             if configured_event_store and isinstance(configured_event_store, dict):
                 event_store_full_path = EVENT_STORE_PROVIDERS[
-                    configured_event_store["PROVIDER"]
+                    configured_event_store["provider"]
                 ]
                 event_store_module, event_store_class = event_store_full_path.rsplit(
                     ".", maxsplit=1

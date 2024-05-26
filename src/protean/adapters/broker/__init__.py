@@ -43,7 +43,7 @@ class Brokers(collections.abc.MutableMapping):
 
     def _initialize(self):
         """Read config file and initialize brokers"""
-        configured_brokers = self.domain.config["BROKERS"]
+        configured_brokers = self.domain.config["brokers"]
         broker_objects = {}
 
         logger.debug("Initializing brokers...")
@@ -52,7 +52,7 @@ class Brokers(collections.abc.MutableMapping):
                 raise ConfigurationError("You must define a 'default' broker")
 
             for broker_name, conn_info in configured_brokers.items():
-                broker_full_path = BROKER_PROVIDERS[conn_info["PROVIDER"]]
+                broker_full_path = BROKER_PROVIDERS[conn_info["provider"]]
                 broker_module, broker_class = broker_full_path.rsplit(".", maxsplit=1)
 
                 broker_cls = getattr(

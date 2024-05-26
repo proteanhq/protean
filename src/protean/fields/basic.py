@@ -376,7 +376,7 @@ class Identifier(Field):
         # Pick identity type from domain configuration if not provided
         try:
             if not identity_type:
-                identity_type = current_domain.config["IDENTITY_TYPE"]
+                identity_type = current_domain.config["identity_type"]
         except OutOfContextError:  # Domain not active
             identity_type = IdentityType.STRING.value
 

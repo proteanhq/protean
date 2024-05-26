@@ -131,7 +131,7 @@ NotSupportedError: TimeStamped class has been marked abstract and cannot be inst
 Specifies the database that the aggregate is persisted in.
 
 Aggregates are connected to underlying data stores via providers. The
-definitions of these providers are supplied within the `DATABASES` key in the
+definitions of these providers are supplied within the `databases` key in the
 Domain’s configuration. Protean identifies the correct data store, establishes
 the connection and takes responsibility of persisting the data.
 

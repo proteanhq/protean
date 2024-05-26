@@ -122,14 +122,14 @@ class TestIdentityType:
             assert identifier._load("42") == "42"
             assert identifier.as_dict("42") == "42"
 
-        domain.config["IDENTITY_TYPE"] = IdentityType.INTEGER.value
+        domain.config["identity_type"] = IdentityType.INTEGER.value
         with domain.domain_context():
             identifier = Identifier()
             assert identifier.identity_type == IdentityType.INTEGER.value
             assert identifier._load(42) == 42
             assert identifier.as_dict(42) == 42
 
-        domain.config["IDENTITY_TYPE"] = IdentityType.UUID.value
+        domain.config["identity_type"] = IdentityType.UUID.value
         with domain.domain_context():
             uuid_val = uuid4()
             identifier = Identifier()
