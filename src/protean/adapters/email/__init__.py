@@ -21,7 +21,7 @@ class EmailProviders:
                 raise ConfigurationError("You must define a 'default' email provider")
 
             for provider_name, conn_info in configured_email_providers.items():
-                provider_full_path = conn_info["PROVIDER"]
+                provider_full_path = conn_info["provider"]
                 provider_module, provider_class = provider_full_path.rsplit(
                     ".", maxsplit=1
                 )

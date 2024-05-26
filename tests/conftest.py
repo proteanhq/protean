@@ -134,11 +134,11 @@ def store_config(request):
     try:
         return {
             "MEMORY": {
-                "PROVIDER": "memory",
+                "provider": "memory",
             },
             "MESSAGE_DB": {
-                "PROVIDER": "message_db",
-                "DATABASE_URI": "postgresql://message_store@localhost:5433/message_store",
+                "provider": "message_db",
+                "database_uri": "postgresql://message_store@localhost:5433/message_store",
             },
         }[request.config.getoption("--store", "MEMORY")]
     except KeyError as e:
@@ -151,21 +151,21 @@ def store_config(request):
 def db_config(request):
     try:
         return {
-            "MEMORY": {"PROVIDER": "memory"},
+            "MEMORY": {"provider": "memory"},
             "POSTGRESQL": {
-                "PROVIDER": "sqlalchemy",
-                "DATABASE": "POSTGRESQL",
-                "DATABASE_URI": "postgresql://postgres:postgres@localhost:5432/postgres",
+                "provider": "sqlalchemy",
+                "database": "postgresql",
+                "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
             },
             "ELASTICSEARCH": {
-                "PROVIDER": "elasticsearch",
-                "DATABASE": "ELASTICSEARCH",
-                "DATABASE_URI": {"hosts": ["localhost"]},
+                "provider": "elasticsearch",
+                "database": "elasticsearch",
+                "database_uri": {"hosts": ["localhost"]},
             },
             "SQLITE": {
-                "PROVIDER": "sqlalchemy",
-                "DATABASE": "SQLITE",
-                "DATABASE_URI": "sqlite:///test.db",
+                "provider": "sqlalchemy",
+                "database": "sqlite",
+                "database_uri": "sqlite:///test.db",
             },
         }[request.config.getoption("--db", "MEMORY")]
     except KeyError as e:
@@ -183,8 +183,8 @@ def test_domain(db_config, store_config, request):
 
         domain = Domain(__file__, "Test")
 
-        domain.config["DATABASES"]["default"] = db_config
-        domain.config["EVENT_STORE"] = store_config
+        domain.config["databases"]["default"] = db_config
+        domain.config["event_store"] = store_config
 
         domain._initialize()
 

@@ -18,7 +18,6 @@ from protean.globals import current_uow
 from protean.port.dao import BaseDAO, BaseLookup, ResultSet
 from protean.port.provider import BaseProvider
 from protean.reflection import attributes, fields, id_field
-from protean.utils import Database
 from protean.utils.query import Q
 
 # Global in-memory store of dict data. Keyed by name, to provide
@@ -100,8 +99,8 @@ class MemoryProvider(BaseProvider):
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Provider with Connection/Adapter details"""
 
-        # In case of `MemoryProvider`, the `DATABASE` value will always be `MEMORY`.
-        conn_info["DATABASE"] = Database.MEMORY.value
+        # In case of `MemoryProvider`, the `database` value will always be `memory`.
+        conn_info["database"] = "memory"
         super().__init__(name, domain, conn_info)
 
         # A temporary cache of already constructed model classes

@@ -33,7 +33,7 @@ def test_that_command_can_be_processed_inline(test_domain):
     test_domain.register(User)
     test_domain.register(UserCommandHandlers, part_of=User)
 
-    assert test_domain.config["COMMAND_PROCESSING"] == CommandProcessing.SYNC.value
+    assert test_domain.config["command_processing"] == CommandProcessing.SYNC.value
 
     test_domain.process(Register(user_id=str(uuid4()), email="john.doe@gmail.com"))
     assert counter == 1

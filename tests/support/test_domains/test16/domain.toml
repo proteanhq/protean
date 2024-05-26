@@ -1,6 +1,5 @@
-DEBUG = true
-AUTOLOAD_DOMAIN = true
-TESTING = true
+debug = true
+testing = true
 
-[CUSTOM]
+[custom]
 FOO = "qux"

@@ -41,7 +41,7 @@ class Caches(collections.abc.MutableMapping):
 
     def _initialize(self):
         """Read config file and initialize providers"""
-        configured_caches = self.domain.config["CACHES"]
+        configured_caches = self.domain.config["caches"]
         cache_objects = {}
 
         if configured_caches and isinstance(configured_caches, dict):
@@ -49,7 +49,7 @@ class Caches(collections.abc.MutableMapping):
                 raise ConfigurationError("You must define a 'default' provider")
 
             for cache_name, conn_info in configured_caches.items():
-                provider_full_path = CACHE_PROVIDERS[conn_info["PROVIDER"]]
+                provider_full_path = CACHE_PROVIDERS[conn_info["provider"]]
                 provider_module, provider_class = provider_full_path.rsplit(
                     ".", maxsplit=1
                 )

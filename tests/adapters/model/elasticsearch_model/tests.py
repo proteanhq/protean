@@ -123,7 +123,7 @@ class TestModelOptions:
     class TestModelNamespacePrefix:
         @pytest.fixture(autouse=True)
         def prefix_namespace(self, test_domain):
-            test_domain.config["DATABASES"]["default"]["NAMESPACE_PREFIX"] = "foo"
+            test_domain.config["databases"]["default"]["NAMESPACE_PREFIX"] = "foo"
 
         def test_generated_index_name_with_namespace_prefix(self, test_domain):
             class Person(BaseAggregate):
@@ -137,7 +137,7 @@ class TestModelOptions:
             assert model_cls._index._name == "foo_person"
 
         def test_generated_index_name_with_namespace_separator(self, test_domain):
-            test_domain.config["DATABASES"]["default"]["NAMESPACE_SEPARATOR"] = "#"
+            test_domain.config["databases"]["default"]["NAMESPACE_SEPARATOR"] = "#"
 
             class Person(BaseAggregate):
                 name = String(max_length=50, required=True)
@@ -186,7 +186,7 @@ class TestModelOptions:
     class TestModelSettings:
         @pytest.fixture(autouse=True)
         def attach_settings(self, test_domain):
-            test_domain.config["DATABASES"]["default"]["SETTINGS"] = {
+            test_domain.config["databases"]["default"]["SETTINGS"] = {
                 "number_of_shards": 2
             }
 

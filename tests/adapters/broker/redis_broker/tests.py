@@ -34,7 +34,7 @@ class TestPublishingToRedis:
         test_domain.publish(event)
 
         # Retrieve with an independent Redis instance
-        r = redis.Redis.from_url(test_domain.config["BROKERS"]["default"]["URI"])
+        r = redis.Redis.from_url(test_domain.config["brokers"]["default"]["URI"])
         message = r.lpop("messages")
         assert message is not None
 

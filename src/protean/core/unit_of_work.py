@@ -90,7 +90,7 @@ class UnitOfWork:
                 item._events = []
 
             # Iteratively consume all events produced in this session
-            if current_domain.config["EVENT_PROCESSING"] == EventProcessing.SYNC.value:
+            if current_domain.config["event_processing"] == EventProcessing.SYNC.value:
                 # Handover events to process instantly
                 for _, event in events:
                     handler_classes = current_domain.handlers_for(event)

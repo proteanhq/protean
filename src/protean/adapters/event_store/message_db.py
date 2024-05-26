@@ -20,7 +20,7 @@ class MessageDBStore(BaseEventStore):
         """Return the MessageDB client instance."""
         if self._client is None:
             try:
-                self._client = MessageDB.from_url(self.conn_info["DATABASE_URI"])
+                self._client = MessageDB.from_url(self.conn_info["database_uri"])
             except psycopg2.OperationalError as exc:
                 raise ConfigurationError(
                     f"Unable to connect to Event Store - {str(exc)}"
@@ -66,7 +66,7 @@ class MessageDBStore(BaseEventStore):
 
         Any changes to configuration will need to updated here.
         """
-        parsed = urlparse(self.domain.config["EVENT_STORE"]["DATABASE_URI"])
+        parsed = urlparse(self.domain.config["event_store"]["database_uri"])
         conn = psycopg2.connect(
             dbname=parsed.path[1:],
             user="postgres",

@@ -71,7 +71,7 @@ class Domain:
     #: **Do not enable development when deploying in production.**
     #:
     #: Default: ``'production'``
-    env = ConfigAttribute("ENV")
+    env = ConfigAttribute("env")
 
     #: The testing flag.  Set this to ``True`` to enable the test mode of
     #: Protean extensions (and in the future probably also Protean itself).
@@ -79,43 +79,43 @@ class Domain:
     #: additional runtime cost which should not be enabled by default.
     #:
     #: This attribute can also be configured from the config with the
-    #: ``TESTING`` configuration key.  Defaults to ``False``.
-    testing = ConfigAttribute("TESTING")
+    #: ``testing`` configuration key.  Defaults to ``False``.
+    testing = ConfigAttribute("testing")
 
     #: If a secret key is set, cryptographic components can use this to
     #: sign cookies and other things. Set this to a complex random value
     #: when you want to use the secure cookie for instance.
     #:
     #: This attribute can also be configured from the config with the
-    #: :data:`SECRET_KEY` configuration key. Defaults to ``None``.
-    secret_key = ConfigAttribute("SECRET_KEY")
+    #: :data:`secret_key` configuration key. Defaults to ``None``.
+    secret_key = ConfigAttribute("secret_key")
 
     default_config = ImmutableDict(
         {
-            "ENV": None,
-            "DEBUG": None,
-            "SECRET_KEY": None,
-            "IDENTITY_STRATEGY": IdentityStrategy.UUID.value,
-            "IDENTITY_TYPE": IdentityType.STRING.value,
-            "DATABASES": {
-                "default": {"PROVIDER": "memory"},
-                "memory": {"PROVIDER": "memory"},
+            "env": None,
+            "debug": None,
+            "secret_key": None,
+            "identity_strategy": IdentityStrategy.UUID.value,
+            "identity_type": IdentityType.STRING.value,
+            "databases": {
+                "default": {"provider": "memory"},
+                "memory": {"provider": "memory"},
             },
-            "EVENT_PROCESSING": EventProcessing.ASYNC.value,
-            "COMMAND_PROCESSING": CommandProcessing.ASYNC.value,
-            "EVENT_STORE": {
-                "PROVIDER": "memory",
+            "event_processing": EventProcessing.ASYNC.value,
+            "command_processing": CommandProcessing.ASYNC.value,
+            "event_store": {
+                "provider": "memory",
             },
-            "CACHES": {
+            "caches": {
                 "default": {
-                    "PROVIDER": "memory",
+                    "provider": "memory",
                     "TTL": 300,
                 }
             },
-            "BROKERS": {"default": {"PROVIDER": "inline"}},
+            "brokers": {"default": {"provider": "inline"}},
             "EMAIL_PROVIDERS": {
                 "default": {
-                    "PROVIDER": "protean.adapters.DummyEmailProvider",
+                    "provider": "protean.adapters.DummyEmailProvider",
                     "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
                 },
             },
@@ -262,8 +262,8 @@ class Domain:
     def make_config(self):
         """Used to construct the config; invoked by the Domain constructor."""
         defaults = dict(self.default_config)
-        defaults["ENV"] = get_env()
-        defaults["DEBUG"] = get_debug_flag()
+        defaults["env"] = get_env()
+        defaults["debug"] = get_debug_flag()
         return self.config_class(self.root_path, defaults)
 
     def load_config(self, load_toml=True):
@@ -777,7 +777,7 @@ class Domain:
 
         self.brokers.publish(event)
 
-        if current_domain.config["EVENT_PROCESSING"] == EventProcessing.SYNC.value:
+        if current_domain.config["event_processing"] == EventProcessing.SYNC.value:
             # Consume events right-away
             handler_classes = current_domain.handlers_for(event)
             for handler_cls in handler_classes:
@@ -796,7 +796,7 @@ class Domain:
         """Process command and return results based on specified preference.
 
         By default, Protean does not return values after processing commands. This behavior
-        can be overridden either by setting COMMAND_PROCESSING in config to "SYNC" or by specifying
+        can be overridden either by setting command_processing in config to "sync" or by specifying
         ``asynchronous=False`` when calling the domain's ``handle`` method.
 
         Args:
@@ -811,7 +811,7 @@ class Domain:
 
         if (
             not asynchronous
-            or self.config["COMMAND_PROCESSING"] == CommandProcessing.SYNC.value
+            or self.config["command_processing"] == CommandProcessing.SYNC.value
         ):
             handler_class = self.command_handler_for(command)
             if handler_class:

@@ -1,4 +1,4 @@
 [EMAIL_PROVIDERS.default]
-PROVIDER = "protean.SendgridEmailProvider"
+provider = "protean.SendgridEmailProvider"
 DEFAULT_FROM_EMAIL = "admin@team8solutions.com"
 API_KEY = "this-is-a-fake-key"

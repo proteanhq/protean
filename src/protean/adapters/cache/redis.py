@@ -7,7 +7,6 @@ import redis
 from protean.core.view import BaseView
 from protean.port.cache import BaseCache
 from protean.reflection import id_field
-from protean.utils import Cache
 from protean.utils.inflection import underscore
 
 
@@ -16,8 +15,8 @@ class RedisCache(BaseCache):
         """Initialize Cache with Connection/Adapter details"""
 
         # FIXME Update cache value to REDIS
-        # In case of `MemoryCache`, the `CACHE` value will always be `MEMORY`.
-        conn_info["CACHE"] = Cache.MEMORY.value
+        # In case of `RedisCache`, the `cache` value will always be `redis`.
+        conn_info["cache"] = "redis"
         super().__init__(name, domain, conn_info)
 
         self.r = redis.Redis.from_url(conn_info["URI"])

@@ -32,8 +32,8 @@ class Providers(collections.abc.MutableMapping):
         # {
         #    'app.User': {
         #        'ALL': UserRepository,
-        #        'SQLITE': UserSQLiteRepository,
-        #        'POSTGRESQL': UserPostgresRepository,
+        #        'sqlite': UserSQLiteRepository,
+        #        'postgresql': UserPostgresRepository,
         #    }
         # }
         self._repositories = defaultdict(lambda: defaultdict(str))
@@ -66,19 +66,19 @@ class Providers(collections.abc.MutableMapping):
         # When explicitly provided, the value of `database` will be the actual database in use
         # and will lock the repository to that type of database.
         # For example, with the following PostgreSQL configuration:
-        #   DATABASES = {
+        #   databases = {
         #       "default": {
-        #           "PROVIDER": "sqlalchemy",
-        #           "DATABASE": Database.POSTGRESQL.value,
-        #           "DATABASE_URI": "postgresql://postgres:postgres@localhost:5432/postgres",
+        #           "provider": "sqlalchemy",
+        #           "database": "postgresql",
+        #           "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
         #       },
         #   }
         #
         # And repository as:
         #   class CustomPostRepository:
         #       class Meta:
-        #           database = Database.POSTGRESQL.value
-        # The value of `database` would be `POSTGRESQL`.
+        #           database = "postgresql"
+        # The value of `database` would be `postgresql`.
         #
         # In the absence of an explicit database value, the repository is associated with "ALL"
         # and is used for all databases.
@@ -90,7 +90,7 @@ class Providers(collections.abc.MutableMapping):
 
     def _initialize(self):
         """Read config file and initialize providers"""
-        configured_providers = self.domain.config["DATABASES"]
+        configured_providers = self.domain.config["databases"]
         provider_objects = {}
 
         if configured_providers and isinstance(configured_providers, dict):
@@ -98,7 +98,7 @@ class Providers(collections.abc.MutableMapping):
                 raise ConfigurationError("You must define a 'default' provider")
 
             for provider_name, conn_info in configured_providers.items():
-                provider_full_path = DATABASE_PROVIDERS[conn_info["PROVIDER"]]
+                provider_full_path = DATABASE_PROVIDERS[conn_info["provider"]]
                 provider_module, provider_class = provider_full_path.rsplit(
                     ".", maxsplit=1
                 )
@@ -129,7 +129,7 @@ class Providers(collections.abc.MutableMapping):
 
         provider_name = part_of.meta_.provider
         provider = self._providers[provider_name]
-        database = provider.conn_info["DATABASE"]
+        database = provider.conn_info["database"]
 
         aggregate_name = fully_qualified_name(part_of)
 

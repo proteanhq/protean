@@ -19,36 +19,37 @@ logger = logging.getLogger(__name__)
 
 
 class IdentityStrategy(Enum):
-    UUID = "UUID"
-    DATABASE = "DATABASE"
-    FUNCTION = "FUNCTION"
+    UUID = "uuid"
+    DATABASE = "database"
+    FUNCTION = "function"
 
 
 class IdentityType(Enum):
-    INTEGER = "INTEGER"
-    STRING = "STRING"
-    UUID = "UUID"
+    INTEGER = "integer"
+    STRING = "string"
+    UUID = "uuid"
 
 
 class EventProcessing(Enum):
-    SYNC = "SYNC"
-    ASYNC = "ASYNC"
+    SYNC = "sync"
+    ASYNC = "async"
 
 
 class CommandProcessing(Enum):
-    SYNC = "SYNC"
-    ASYNC = "ASYNC"
+    SYNC = "sync"
+    ASYNC = "async"
 
 
 class Database(Enum):
-    ELASTICSEARCH = "ELASTICSEARCH"
-    MEMORY = "MEMORY"
-    POSTGRESQL = "POSTGRESQL"
-    SQLITE = "SQLITE"
+    elasticsearch = "elasticsearch"
+    memory = "memory"
+    postgresql = "postgresql"
+    sqlite = "sqlite"
 
 
 class Cache(Enum):
-    MEMORY = "MEMORY"
+    memory = "memory"
+    redis = "redis"
 
 
 class TypeMatcher:
@@ -154,16 +155,16 @@ def derive_element_class(element_cls, base_cls, **opts):
 
 def generate_identity():
     """Generate Unique Identifier, based on configured strategy"""
-    if current_domain.config["IDENTITY_STRATEGY"] == IdentityStrategy.UUID.value:
-        if current_domain.config["IDENTITY_TYPE"] == IdentityType.INTEGER.value:
+    if current_domain.config["identity_strategy"] == IdentityStrategy.UUID.value:
+        if current_domain.config["identity_type"] == IdentityType.INTEGER.value:
             return uuid4().int
-        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.STRING.value:
+        elif current_domain.config["identity_type"] == IdentityType.STRING.value:
             return str(uuid4())
-        elif current_domain.config["IDENTITY_TYPE"] == IdentityType.UUID.value:
+        elif current_domain.config["identity_type"] == IdentityType.UUID.value:
             return uuid4()
         else:
             raise ConfigurationError(
-                f'Unknown Identity Type {current_domain.config["IDENTITY_TYPE"]}'
+                f'Unknown Identity Type {current_domain.config["identity_type"]}'
             )
 
     return None  # Database will generate the identity

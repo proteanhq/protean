@@ -1,8 +1,8 @@
-[DATABASES.secondary]
-PROVIDER = "sqlalchemy"
-DATABASE = "SQLITE"
-DATABASE_URI = "${SQLITE_DB_LOCATION}"
+[databases.secondary]
+provider = "sqlalchemy"
+database = "sqlite"
+database_uri = "${SQLITE_DB_LOCATION}"
 
-[CUSTOM]
+[custom]
 FOO_USER = "${DB_USER}"
 FOO_PASSWORD = "${DB_PASSWORD}"

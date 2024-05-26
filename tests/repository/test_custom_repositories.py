@@ -5,7 +5,7 @@ import pytest
 from protean import BaseAggregate, BaseRepository
 from protean.fields import Integer, String
 from protean.globals import current_domain
-from protean.utils import Database, fully_qualified_name
+from protean.utils import fully_qualified_name
 
 
 class PersonGeneric(BaseAggregate):
@@ -52,16 +52,16 @@ class PersonSQLiteCustomRepository(BaseRepository):
 
     class Meta:
         part_of = PersonSQLite
-        database = Database.SQLITE.value
+        database = "sqlite"
 
 
 class TestRepositoryConstructionAndRegistration:
     @pytest.fixture
     def custom_test_domain(self, test_domain):
-        test_domain.config["DATABASES"]["sqlite"] = {
-            "PROVIDER": "sqlalchemy",
-            "DATABASE": "SQLITE",
-            "DATABASE_URI": "sqlite:///test.db",
+        test_domain.config["databases"]["sqlite"] = {
+            "provider": "sqlalchemy",
+            "database": "sqlite",
+            "database_uri": "sqlite:///test.db",
         }
         test_domain._initialize()
         yield test_domain
@@ -114,7 +114,7 @@ class TestRepositoryConstructionAndRegistration:
 
         repo_cls_constructed = custom_test_domain.providers._repositories[
             fully_qualified_name(PersonSQLite)
-        ]["SQLITE"]
+        ]["sqlite"]
         repo_retrieved_from_domain = custom_test_domain.repository_for(PersonSQLite)
 
         assert repo_cls_constructed.__name__ == "PersonSQLiteCustomRepository"
@@ -130,7 +130,7 @@ class TestRepositoryConstructionAndRegistration:
 
         repo_cls_constructed = custom_test_domain.providers._repositories[
             fully_qualified_name(PersonSQLite)
-        ]["SQLITE"]
+        ]["sqlite"]
         repo_retrieved_from_domain = custom_test_domain.repository_for(PersonSQLite)
 
         assert repo_cls_constructed.__name__ == "PersonSQLiteCustomRepository"

@@ -74,8 +74,8 @@ def test_load_env_vars():
     change_working_directory_to("test18")
 
     domain = derive_domain("domain18")
-    assert domain.config["CUSTOM"]["FOO_USER"] == "test_user"
-    assert domain.config["CUSTOM"]["FOO_PASSWORD"] == "test_pass"
+    assert domain.config["custom"]["FOO_USER"] == "test_user"
+    assert domain.config["custom"]["FOO_PASSWORD"] == "test_pass"
     assert (
-        domain.config["DATABASES"]["secondary"]["DATABASE_URI"] == "sqlite:///test.db"
+        domain.config["databases"]["secondary"]["database_uri"] == "sqlite:///test.db"
     )

@@ -7,10 +7,10 @@ from protean.domain import Domain
 domain = Domain(__file__, "SQLite-Domain", load_toml=False)
 
 
-domain.config["DATABASES"] = {
+domain.config["databases"] = {
     "default": {
-        "PROVIDER": "sqlalchemy",
-        "DATABASE": "sqlite",
-        "DATABASE_URI": "sqlite:///:memory:",
+        "provider": "sqlalchemy",
+        "database": "sqlite",
+        "database_uri": "sqlite:///:memory:",
     }
 }

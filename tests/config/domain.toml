@@ -1,23 +1,22 @@
-DEBUG = true
-AUTOLOAD_DOMAIN = true
-TESTING = true
-SECRET_KEY = "tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA"
-IDENTITY_STRATEGY = "UUID"
-IDENTITY_TYPE = "STRING"
+debug = true
+testing = true
+secret_key = "tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA"
+identity_strategy = "uuid"
+identity_type = "string"
 
-[DATABASES.default]
-PROVIDER = "memory"
+[databases.default]
+provider = "memory"
 
-[DATABASES.memory]
-PROVIDER = "memory"
+[databases.memory]
+provider = "memory"
 
-[DATABASES.sqlite]
-PROVIDER = "sqlalchemy"
-DATABASE = "SQLITE"
-DATABASE_URI = "sqlite:///test.db"
+[databases.sqlite]
+provider = "sqlalchemy"
+database = "sqlite"
+database_uri = "sqlite:///test.db"
 
-[BROKERS.default]
-PROVIDER = "inline"
+[brokers.default]
+provider = "inline"
 
-[CACHES.default]
-PROVIDER = "memory"
+[caches.default]
+provider = "memory"

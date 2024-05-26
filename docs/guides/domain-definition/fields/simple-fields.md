@@ -139,7 +139,7 @@ identifier.
 **Optional Arguments**
 
 - **`increment`**: Auto-increment field value. Defaults to `False`. Only valid
-when `IDENTITY_TYPE` is `INTEGER` and `IDENTITY_STRATEGY` is set to `DATABASE`.
+when `identity_type` is `INTEGER` and `identity_strategy` is set to `DATABASE`.
 
 !!!note
     Not all databases support this `increment` feature. Cross-verify with the
@@ -154,7 +154,7 @@ If you want to supply values, use [`Identifier`](#identifier) fields.
 ```
 
 By default, Protean depends on UUIDs as identifier values. You can use the
-`IDENTITY_TYPE` config attributes to customize this behavior and choose
+`identity_type` config attributes to customize this behavior and choose
 another type (like integer values). 
 
 ```shell hl_lines="6"
@@ -172,7 +172,7 @@ in Protean.
 ## Identifier
 
 An Identifier. The identity type is String type by default, but can be changed
-with `IDENTITY_TYPE` configuration attribute for all entities, or can be set
+with `identity_type` configuration attribute for all entities, or can be set
 per entity with the `identity_type` parameter.
 
 **Optional Arguments**

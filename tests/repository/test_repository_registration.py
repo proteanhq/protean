@@ -3,7 +3,7 @@ import pytest
 from protean import BaseRepository
 from protean.exceptions import IncorrectUsageError
 from protean.fields import String
-from protean.utils import Database, fully_qualified_name
+from protean.utils import fully_qualified_name
 
 from .elements import Person, PersonRepository
 
@@ -117,10 +117,9 @@ class TestRepositoryRegistration:
 
     @pytest.mark.elasticsearch
     def test_retrieving_the_database_specific_repository(self, test_domain):
-        test_domain.config["DATABASES"]["secondary"] = {
-            "PROVIDER": "elasticsearch",
-            "DATABASE": Database.ELASTICSEARCH.value,
-            "DATABASE_URI": '{"hosts": ["localhost"]}',
+        test_domain.config["databases"]["secondary"] = {
+            "provider": "elasticsearch",
+            "database_uri": '{"hosts": ["localhost"]}',
         }
         test_domain._initialize()
 
@@ -134,7 +133,7 @@ class TestRepositoryRegistration:
                 pass
 
             class Meta:
-                database = Database.MEMORY.value
+                database = "memory"
 
         @test_domain.repository(part_of=User)
         class UserElasticRepository:
@@ -142,7 +141,7 @@ class TestRepositoryRegistration:
                 pass
 
             class Meta:
-                database = Database.ELASTICSEARCH.value
+                database = "elasticsearch"
 
         assert isinstance(test_domain.repository_for(User), UserMemoryRepository)
 

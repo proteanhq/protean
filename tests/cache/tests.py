@@ -6,7 +6,6 @@ from protean import BaseView
 from protean.adapters.cache.memory import MemoryCache
 from protean.fields import Identifier, String
 from protean.port.cache import BaseCache
-from protean.utils import Cache
 
 
 class Token(BaseView):
@@ -43,7 +42,7 @@ class TestCacheProvider:
 
     def test_conn_info(self, test_domain):
         provider = test_domain.caches.get("default")
-        assert provider.conn_info["CACHE"] == Cache.MEMORY.value
+        assert provider.conn_info["cache"] == "memory"
 
     def test_connection_via_provider(self, test_domain):
         provider = test_domain.caches.get("default")

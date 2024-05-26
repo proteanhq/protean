@@ -1,4 +1,4 @@
-[DATABASES.default]
-PROVIDER = "sqlalchemy"
-DATABASE = "SQLITE"
-DATABASE_URI = "sqlite:///test.db"
+[databases.default]
+provider = "sqlalchemy"
+database = "sqlite"
+database_uri = "sqlite:///test.db"
