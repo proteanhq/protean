@@ -13,6 +13,13 @@ from protean.utils import fully_qualified_name
 logger = logging.getLogger(__name__)
 
 
+DATABASE_PROVIDERS = {
+    "memory": "protean.adapters.MemoryProvider",
+    "sqlalchemy": "protean.adapters.repository.sqlalchemy.SAProvider",
+    "elasticsearch": "protean.adapters.repository.elasticsearch.ESProvider",
+}
+
+
 class Providers(collections.abc.MutableMapping):
     def __init__(self, domain):
         self.domain = domain
@@ -61,7 +68,7 @@ class Providers(collections.abc.MutableMapping):
         # For example, with the following PostgreSQL configuration:
         #   DATABASES = {
         #       "default": {
-        #           "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
+        #           "PROVIDER": "sqlalchemy",
         #           "DATABASE": Database.POSTGRESQL.value,
         #           "DATABASE_URI": "postgresql://postgres:postgres@localhost:5432/postgres",
         #       },
@@ -91,7 +98,7 @@ class Providers(collections.abc.MutableMapping):
                 raise ConfigurationError("You must define a 'default' provider")
 
             for provider_name, conn_info in configured_providers.items():
-                provider_full_path = conn_info["PROVIDER"]
+                provider_full_path = DATABASE_PROVIDERS[conn_info["PROVIDER"]]
                 provider_module, provider_class = provider_full_path.rsplit(
                     ".", maxsplit=1
                 )

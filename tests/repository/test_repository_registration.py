@@ -118,7 +118,7 @@ class TestRepositoryRegistration:
     @pytest.mark.elasticsearch
     def test_retrieving_the_database_specific_repository(self, test_domain):
         test_domain.config["DATABASES"]["secondary"] = {
-            "PROVIDER": "protean.adapters.repository.elasticsearch.ESProvider",
+            "PROVIDER": "elasticsearch",
             "DATABASE": Database.ELASTICSEARCH.value,
             "DATABASE_URI": '{"hosts": ["localhost"]}',
         }

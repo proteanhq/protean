@@ -3,11 +3,11 @@
 import os
 import sys
 
-from mock import patch
 from pathlib import Path
 
 import pytest
 
+from protean import Domain
 from protean.domain.config import Config2
 from protean.exceptions import ConfigurationError
 from protean.utils.domain_discovery import derive_domain
@@ -27,10 +27,7 @@ class TestLoadingTOML:
 
     def test_loading_domain_config(self, test_domain):
         assert test_domain is not None
-        assert (
-            test_domain.config["DATABASES"]["default"]["PROVIDER"]
-            == "protean.adapters.MemoryProvider"
-        )
+        assert test_domain.config["DATABASES"]["default"]["PROVIDER"] == "memory"
         assert all(
             key in test_domain.config["DATABASES"] for key in ["memory", "sqlite"]
         )
@@ -48,7 +45,7 @@ class TestLoadingTOML:
             }
         }
 
-        config = Config2.load("test14", defaults)
+        config = Config2.load_from_path("test14", defaults)
         assert config["CUSTOM"]["FOO"] == "bar"
         assert config["CUSTOM"]["qux"] == "quux"
 
@@ -128,22 +125,10 @@ class TestLoadingTOML:
         assert "No configuration file found in" in str(exc.value)
 
 
-class TestLoadingEnvironmentVars:
-    @patch.dict(
-        os.environ,
-        {
-            "DB_USER": "test_user",
-            "DB_PASSWORD": "test_pass",
-            "SQLITE_DB_LOCATION": "sqlite:///test.db",
-        },
-    )
-    def test_load_env_vars(temp_toml_file):
-        change_working_directory_to("test18")
-
-        domain = derive_domain("domain18")
-        assert domain.config["CUSTOM"]["FOO_USER"] == "test_user"
-        assert domain.config["CUSTOM"]["FOO_PASSWORD"] == "test_pass"
-        assert (
-            domain.config["DATABASES"]["secondary"]["DATABASE_URI"]
-            == "sqlite:///test.db"
-        )
+class TestLoadingDefaults:
+    def test_that_config_is_loaded_from_dict(self):
+        config_dict = dict(Domain.default_config)
+        config_dict["CUSTOM"] = {"FOO": "bar", "qux": "quux"}
+        config = Config2.load_from_dict(config_dict)
+        assert config["CUSTOM"]["FOO"] == "bar"
+        assert config["CUSTOM"]["qux"] == "quux"

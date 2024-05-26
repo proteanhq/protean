@@ -98,21 +98,21 @@ class Domain:
             "IDENTITY_STRATEGY": IdentityStrategy.UUID.value,
             "IDENTITY_TYPE": IdentityType.STRING.value,
             "DATABASES": {
-                "default": {"PROVIDER": "protean.adapters.MemoryProvider"},
-                "memory": {"PROVIDER": "protean.adapters.MemoryProvider"},
+                "default": {"PROVIDER": "memory"},
+                "memory": {"PROVIDER": "memory"},
             },
             "EVENT_PROCESSING": EventProcessing.ASYNC.value,
             "COMMAND_PROCESSING": CommandProcessing.ASYNC.value,
             "EVENT_STORE": {
-                "PROVIDER": "protean.adapters.event_store.memory.MemoryEventStore",
+                "PROVIDER": "memory",
             },
             "CACHES": {
                 "default": {
-                    "PROVIDER": "protean.adapters.cache.memory.MemoryCache",
+                    "PROVIDER": "memory",
                     "TTL": 300,
                 }
             },
-            "BROKERS": {"default": {"PROVIDER": "protean.adapters.InlineBroker"}},
+            "BROKERS": {"default": {"PROVIDER": "inline"}},
             "EMAIL_PROVIDERS": {
                 "default": {
                     "PROVIDER": "protean.adapters.DummyEmailProvider",
@@ -127,6 +127,7 @@ class Domain:
         self,
         root_path: str,
         name: str = "",
+        load_toml: bool = True,
     ):
         self.root_path = root_path
 
@@ -146,7 +147,7 @@ class Domain:
         #: The configuration dictionary as :class:`Config`.  This behaves
         #: exactly like a regular dictionary but supports additional methods
         #: to load a config from files.
-        self.config = self.load_config()
+        self.config = self.load_config(load_toml)
 
         self.providers = Providers(self)
         self.event_store = EventStore(self)
@@ -265,9 +266,12 @@ class Domain:
         defaults["DEBUG"] = get_debug_flag()
         return self.config_class(self.root_path, defaults)
 
-    def load_config(self):
-        """Load configuration from a .toml file."""
-        return Config2.load(self.root_path, dict(self.default_config))
+    def load_config(self, load_toml=True):
+        """Load configuration from dist or a .toml file."""
+        if load_toml:
+            return Config2.load_from_path(self.root_path, dict(self.default_config))
+        else:
+            return Config2.load_from_dict(dict(self.default_config))
 
     def domain_context(self, **kwargs):
         """Create an :class:`~protean.context.DomainContext`. Use as a ``with``

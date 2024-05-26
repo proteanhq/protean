@@ -4,12 +4,12 @@ for further testing, like docker file generation
 
 from protean.domain import Domain
 
-domain = Domain(__file__, "SQLite-Domain")
+domain = Domain(__file__, "SQLite-Domain", load_toml=False)
 
 
 domain.config["DATABASES"] = {
     "default": {
-        "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
+        "PROVIDER": "sqlalchemy",
         "DATABASE": "sqlite",
         "DATABASE_URI": "sqlite:///:memory:",
     }

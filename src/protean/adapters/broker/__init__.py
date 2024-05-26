@@ -10,6 +10,13 @@ from protean.utils.mixins import Message
 logger = logging.getLogger(__name__)
 
 
+BROKER_PROVIDERS = {
+    "inline": "protean.adapters.InlineBroker",
+    "redis": "protean.adapters.broker.redis.RedisBroker",
+    "celery": "protean.adapters.broker.celery.CeleryBroker",
+}
+
+
 class Brokers(collections.abc.MutableMapping):
     def __init__(self, domain):
         self.domain = domain
@@ -45,7 +52,7 @@ class Brokers(collections.abc.MutableMapping):
                 raise ConfigurationError("You must define a 'default' broker")
 
             for broker_name, conn_info in configured_brokers.items():
-                broker_full_path = conn_info["PROVIDER"]
+                broker_full_path = BROKER_PROVIDERS[conn_info["PROVIDER"]]
                 broker_module, broker_class = broker_full_path.rsplit(".", maxsplit=1)
 
                 broker_cls = getattr(

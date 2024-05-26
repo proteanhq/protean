@@ -1,4 +1,4 @@
 [DATABASES.default]
-PROVIDER = "protean.adapters.repository.sqlalchemy.SAProvider"
+PROVIDER = "sqlalchemy"
 DATABASE = "POSTGRESQL"
 DATABASE_URI = "postgresql://postgres:postgres@localhost:5432/postgres"

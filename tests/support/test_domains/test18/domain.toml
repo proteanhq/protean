@@ -1,5 +1,5 @@
 [DATABASES.secondary]
-PROVIDER = "protean.adapters.repository.sqlalchemy.SAProvider"
+PROVIDER = "sqlalchemy"
 DATABASE = "SQLITE"
 DATABASE_URI = "${SQLITE_DB_LOCATION}"
 

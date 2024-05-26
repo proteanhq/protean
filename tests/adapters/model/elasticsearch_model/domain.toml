@@ -1,4 +1,4 @@
 [DATABASES.default]
-PROVIDER = "protean.adapters.repository.elasticsearch.ESProvider"
+PROVIDER = "elasticsearch"
 DATABASE = "ELASTICSEARCH"
 DATABASE_URI = '{"hosts": ["localhost"]}'
