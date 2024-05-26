@@ -8,18 +8,18 @@ EVENT_PROCESSING = "SYNC"
 COMMAND_PROCESSING = "SYNC"
 
 [DATABASES.default]
-PROVIDER = "protean.adapters.MemoryProvider"
+PROVIDER = "memory"
 
 [DATABASES.memory]
-PROVIDER = "protean.adapters.MemoryProvider"
+PROVIDER = "memory"
 
 [DATABASES.sqlite]
-PROVIDER = "protean.adapters.repository.sqlalchemy.SAProvider"
+PROVIDER = "sqlalchemy"
 DATABASE = "SQLITE"
 DATABASE_URI = "sqlite:///test.db"
 
 [BROKERS.default]
-PROVIDER = "protean.adapters.InlineBroker"
+PROVIDER = "inline"
 
 [CACHES.default]
-PROVIDER = "protean.adapters.cache.memory.MemoryCache"
+PROVIDER = "memory"

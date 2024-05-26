@@ -128,14 +128,12 @@ class TestDomainLevelClassResolution:
         def test_domain(self):
             from protean.domain import Domain
 
-            domain = Domain(__file__, "Test")
-            domain.config["DATABASES"]["memory"] = {
-                "PROVIDER": "protean.adapters.MemoryProvider"
-            }
+            domain = Domain(__file__, "Test", load_toml=False)
+            domain.config["DATABASES"]["memory"] = {"PROVIDER": "memory"}
             yield domain
 
         def test_that_class_reference_is_tracked_at_the_domain_level(self):
-            domain = Domain(__file__)
+            domain = Domain(__file__, load_toml=False)
 
             class Post(BaseAggregate):
                 content = Text(required=True)
@@ -164,7 +162,7 @@ class TestDomainLevelClassResolution:
             )
 
         def test_that_class_reference_is_resolved_on_domain_initialization(self):
-            domain = Domain(__file__, "Inline Domain")
+            domain = Domain(__file__, "Inline Domain", load_toml=False)
 
             class Post(BaseAggregate):
                 content = Text(required=True)
@@ -198,7 +196,7 @@ class TestDomainLevelClassResolution:
         def test_that_domain_throws_exception_on_unknown_class_references_during_activation(
             self,
         ):
-            domain = Domain(__file__, "Inline Domain")
+            domain = Domain(__file__, "Inline Domain", load_toml=False)
 
             class Post(BaseAggregate):
                 content = Text(required=True)

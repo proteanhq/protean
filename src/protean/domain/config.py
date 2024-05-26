@@ -26,7 +26,12 @@ class Config2(dict):
     ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
     @classmethod
-    def load(cls, path: str, defaults: dict = None):
+    def load_from_dict(cls, config: dict):
+        """Load configuration from a dictionary."""
+        return cls(**config)
+
+    @classmethod
+    def load_from_path(cls, path: str, defaults: dict = None):
         # Derive the path of parent directory
         dir_path = os.path.abspath(os.path.dirname(path))
 

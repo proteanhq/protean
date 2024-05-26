@@ -134,10 +134,10 @@ def store_config(request):
     try:
         return {
             "MEMORY": {
-                "PROVIDER": "protean.adapters.event_store.memory.MemoryEventStore",
+                "PROVIDER": "memory",
             },
             "MESSAGE_DB": {
-                "PROVIDER": "protean.adapters.event_store.message_db.MessageDBStore",
+                "PROVIDER": "message_db",
                 "DATABASE_URI": "postgresql://message_store@localhost:5433/message_store",
             },
         }[request.config.getoption("--store", "MEMORY")]
@@ -151,19 +151,19 @@ def store_config(request):
 def db_config(request):
     try:
         return {
-            "MEMORY": {"PROVIDER": "protean.adapters.MemoryProvider"},
+            "MEMORY": {"PROVIDER": "memory"},
             "POSTGRESQL": {
-                "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
+                "PROVIDER": "sqlalchemy",
                 "DATABASE": "POSTGRESQL",
                 "DATABASE_URI": "postgresql://postgres:postgres@localhost:5432/postgres",
             },
             "ELASTICSEARCH": {
-                "PROVIDER": "protean.adapters.repository.elasticsearch.ESProvider",
+                "PROVIDER": "elasticsearch",
                 "DATABASE": "ELASTICSEARCH",
                 "DATABASE_URI": {"hosts": ["localhost"]},
             },
             "SQLITE": {
-                "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
+                "PROVIDER": "sqlalchemy",
                 "DATABASE": "SQLITE",
                 "DATABASE_URI": "sqlite:///test.db",
             },

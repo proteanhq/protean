@@ -9,6 +9,11 @@ from protean.utils.inflection import underscore
 
 logger = logging.getLogger(__name__)
 
+CACHE_PROVIDERS = {
+    "memory": "protean.adapters.cache.memory.MemoryCache",
+    "redis": "protean.adapters.cache.redis.RedisCache",
+}
+
 
 class Caches(collections.abc.MutableMapping):
     def __init__(self, domain):
@@ -44,7 +49,7 @@ class Caches(collections.abc.MutableMapping):
                 raise ConfigurationError("You must define a 'default' provider")
 
             for cache_name, conn_info in configured_caches.items():
-                provider_full_path = conn_info["PROVIDER"]
+                provider_full_path = CACHE_PROVIDERS[conn_info["PROVIDER"]]
                 provider_module, provider_class = provider_full_path.rsplit(
                     ".", maxsplit=1
                 )

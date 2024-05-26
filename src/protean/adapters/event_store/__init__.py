@@ -17,6 +17,11 @@ from protean.utils.mixins import Message
 
 logger = logging.getLogger(__name__)
 
+EVENT_STORE_PROVIDERS = {
+    "memory": "protean.adapters.event_store.memory.MemoryEventStore",
+    "message_db": "protean.adapters.event_store.message_db.MessageDBStore",
+}
+
 
 class EventStore:
     def __init__(self, domain):
@@ -38,7 +43,9 @@ class EventStore:
 
             configured_event_store = self.domain.config["EVENT_STORE"]
             if configured_event_store and isinstance(configured_event_store, dict):
-                event_store_full_path = configured_event_store["PROVIDER"]
+                event_store_full_path = EVENT_STORE_PROVIDERS[
+                    configured_event_store["PROVIDER"]
+                ]
                 event_store_module, event_store_class = event_store_full_path.rsplit(
                     ".", maxsplit=1
                 )

@@ -107,7 +107,7 @@ class TestIdentityType:
         identifier._load(42) == "42"
 
     def test_that_default_is_picked_from_domain_config(self):
-        domain = Domain(__file__)
+        domain = Domain(__file__, load_toml=False)
 
         # By default, IdentityType is UUID
         with domain.domain_context():

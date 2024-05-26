@@ -5,6 +5,9 @@ from protean.domain.config import Config2
 from protean.exceptions import ConfigurationError
 from mock import patch
 
+from protean.utils.domain_discovery import derive_domain
+from tests.shared import change_working_directory_to
+
 
 @pytest.fixture
 def env_vars():
@@ -57,3 +60,22 @@ def test_load_env_vars_no_env_var():
         Config2._load_env_vars(config)
 
     assert exc.value.args[0] == "Environment variable UNDEFINED_ENV_VAR is not set"
+
+
+@patch.dict(
+    os.environ,
+    {
+        "DB_USER": "test_user",
+        "DB_PASSWORD": "test_pass",
+        "SQLITE_DB_LOCATION": "sqlite:///test.db",
+    },
+)
+def test_load_env_vars():
+    change_working_directory_to("test18")
+
+    domain = derive_domain("domain18")
+    assert domain.config["CUSTOM"]["FOO_USER"] == "test_user"
+    assert domain.config["CUSTOM"]["FOO_PASSWORD"] == "test_pass"
+    assert (
+        domain.config["DATABASES"]["secondary"]["DATABASE_URI"] == "sqlite:///test.db"
+    )

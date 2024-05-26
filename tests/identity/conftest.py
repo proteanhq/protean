@@ -1,13 +1,16 @@
 import pytest
 
+from protean.domain import Domain
 from protean.utils import IdentityType
 
 
 @pytest.fixture
-def test_domain_with_string_identity():
-    from protean.domain import Domain
+def domain():
+    return Domain(__file__, "Test", load_toml=False)
 
-    domain = Domain(__file__, "Test")
+
+@pytest.fixture
+def test_domain_with_string_identity(domain):
     domain.config["IDENTITY_TYPE"] = IdentityType.STRING.value
 
     with domain.domain_context():
@@ -15,10 +18,7 @@ def test_domain_with_string_identity():
 
 
 @pytest.fixture
-def test_domain_with_int_identity():
-    from protean.domain import Domain
-
-    domain = Domain(__file__, "Test")
+def test_domain_with_int_identity(domain):
     domain.config["IDENTITY_TYPE"] = IdentityType.INTEGER.value
 
     with domain.domain_context():
@@ -26,10 +26,7 @@ def test_domain_with_int_identity():
 
 
 @pytest.fixture
-def test_domain_with_uuid_identity():
-    from protean.domain import Domain
-
-    domain = Domain(__file__, "Test")
+def test_domain_with_uuid_identity(domain):
     domain.config["IDENTITY_TYPE"] = IdentityType.UUID.value
 
     with domain.domain_context():

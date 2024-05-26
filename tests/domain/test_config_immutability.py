@@ -10,10 +10,10 @@ def test_that_default_config_is_immutable():
 
 
 def test_that_config_is_unique_to_each_domain():
-    domain1 = Domain(__file__)
+    domain1 = Domain(__file__, load_toml=False)
     assert domain1.config["IDENTITY_STRATEGY"] == IdentityStrategy.UUID.value
 
     domain1.config["IDENTITY_STRATEGY"] = "FOO"
 
-    domain2 = Domain(__file__)
+    domain2 = Domain(__file__, load_toml=False)
     assert domain2.config["IDENTITY_STRATEGY"] == IdentityStrategy.UUID.value

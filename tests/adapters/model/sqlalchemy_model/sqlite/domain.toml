@@ -1,4 +1,4 @@
 [DATABASES.default]
-PROVIDER = "protean.adapters.repository.sqlalchemy.SAProvider"
+PROVIDER = "sqlalchemy"
 DATABASE = "SQLITE"
 DATABASE_URI = "sqlite:///test.db"

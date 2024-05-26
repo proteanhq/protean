@@ -4,4 +4,4 @@ when no file/package and attribute name were provided
 
 from protean.domain import Domain
 
-domain = Domain(__file__, "TEST11")
+domain = Domain(__file__, "TEST11", load_toml=False)

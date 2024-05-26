@@ -1,4 +1,4 @@
 [CACHES.default]
-PROVIDER = "protean.adapters.cache.redis.RedisCache"
+PROVIDER = "redis"
 URI = "redis://127.0.0.1:6379/2"
 TTL = 300

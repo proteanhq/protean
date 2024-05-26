@@ -59,7 +59,7 @@ class TestRepositoryConstructionAndRegistration:
     @pytest.fixture
     def custom_test_domain(self, test_domain):
         test_domain.config["DATABASES"]["sqlite"] = {
-            "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
+            "PROVIDER": "sqlalchemy",
             "DATABASE": "SQLITE",
             "DATABASE_URI": "sqlite:///test.db",
         }
