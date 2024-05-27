@@ -211,47 +211,85 @@ class Domain:
         import os
         import pathlib
 
-        dir_name = pathlib.PurePath(pathlib.Path(self.root_path).resolve()).parent
-        path = pathlib.Path(dir_name)  # Resolve the domain file's directory
+        root_dir = pathlib.PurePath(pathlib.Path(self.root_path).resolve()).parent
+        path = pathlib.Path(root_dir)  # Resolve the domain file's directory
         system_folder_path = (
             path.parent
         )  # Get the directory of the domain file to traverse from
 
-        logger.debug(f"Loading domain from {dir_name}...")
+        logger.debug(f"Loading domain from {root_dir}...")
 
-        for root, _, files in os.walk(dir_name):
-            if pathlib.PurePath(root).name not in ["__pycache__"]:
-                package_path = root[len(str(system_folder_path)) + 1 :]
-                module_name = package_path.replace(os.sep, ".")
+        # Identify subdirectories
+        subdirectories = [
+            name
+            for name in os.listdir(root_dir)
+            if os.path.isdir(os.path.join(root_dir, name))
+            and name not in ["__pycache__"]
+        ]
 
-                for file in files:
-                    file_base_name = os.path.basename(file)
+        # Identify subdirectories that have a toml file
+        subdirectories_to_traverse = []
+        files_to_check = ["domain.toml", ".domain.toml", "pyproject.toml"]
+        for subdirectory in subdirectories:
+            subdirectory_path = os.path.join(root_dir, subdirectory)
+            if not any(
+                file
+                for file in files_to_check
+                if os.path.isfile(os.path.join(subdirectory_path, file))
+            ):
+                subdirectories_to_traverse.append(subdirectory_path)
 
-                    # Ignore if the file is not a python file
-                    if os.path.splitext(file_base_name)[1] != ".py":
-                        continue
+        # Traverse root directory
+        for filename in os.listdir(root_dir):
+            full_file_path = os.path.join(root_dir, filename)
+            if (
+                os.path.isfile(full_file_path)
+                and os.path.splitext(filename)[1] == ".py"
+                and full_file_path != self.root_path
+            ):
+                spec = importlib.util.spec_from_file_location(
+                    filename, os.path.join(root_dir, filename)
+                )
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
 
-                    # Construct the module path to import from
-                    if file_base_name != "__init__":
-                        sub_module_name = os.path.splitext(file_base_name)[0]
-                        file_module_name = module_name + "." + sub_module_name
-                    else:
-                        file_module_name = module_name
-                    full_file_path = os.path.join(root, file)
+                logger.debug(f"Loaded {filename}")
 
-                    try:
-                        if (
-                            full_file_path != self.root_path
-                        ):  # Don't load the domain file itself again
-                            spec = importlib.util.spec_from_file_location(
-                                file_module_name, full_file_path
-                            )
-                            module = importlib.util.module_from_spec(spec)
-                            spec.loader.exec_module(module)
+        # Traverse subdirectories recursively
+        for directory in subdirectories_to_traverse:
+            for root, _, files in os.walk(directory):
+                if pathlib.PurePath(root).name not in ["__pycache__"]:
+                    package_path = root[len(str(system_folder_path)) + 1 :]
+                    module_name = package_path.replace(os.sep, ".")
 
-                            logger.debug(f"Loaded {file_module_name}")
-                    except ModuleNotFoundError as exc:
-                        logger.error(f"Error while loading a module: {exc}")
+                    for file in files:
+                        file_base_name = os.path.basename(file)
+
+                        # Ignore if the file is not a python file
+                        if os.path.splitext(file_base_name)[1] != ".py":
+                            continue
+
+                        # Construct the module path to import from
+                        if file_base_name != "__init__":
+                            sub_module_name = os.path.splitext(file_base_name)[0]
+                            file_module_name = module_name + "." + sub_module_name
+                        else:
+                            file_module_name = module_name
+                        full_file_path = os.path.join(root, file)
+
+                        try:
+                            if (
+                                full_file_path != self.root_path
+                            ):  # Don't load the domain file itself again
+                                spec = importlib.util.spec_from_file_location(
+                                    file_module_name, full_file_path
+                                )
+                                module = importlib.util.module_from_spec(spec)
+                                spec.loader.exec_module(module)
+
+                                logger.debug(f"Loaded {file_module_name}")
+                        except ModuleNotFoundError as exc:
+                            logger.error(f"Error while loading a module: {exc}")
 
     def _initialize(self):
         """Initialize domain dependencies and adapters."""
