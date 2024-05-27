@@ -93,15 +93,37 @@ class Config2(dict):
 
     @classmethod
     def _replace_env_var(cls, value):
+        """Replace environment variables in a string.
+
+        Cases:
+        1. String does not have an environment variable. E.g. "attr-value" - Use as is
+        2. String has an environment variable. E.g. "${ENV_VAR}" - Replace with value
+        3. String has an environment variable with a default value. E.g. "${ENV_VAR|default-value}"
+            - Replace with value or default value
+        4. String has multiple environment variables. E.g. "${ENV_VAR1|default-value1} ${ENV_VAR2|default-value2}"
+            - Replace all environment variables
+        5. String has a mix of environment variables and static values. E.g. "attr-${ENV_VAR1|default-value1}"
+            - Replace all environment variables
+        """
+
         match = cls.ENV_VAR_PATTERN.search(value)
         while match:
-            env_var = match.group(1)
-            env_value = os.getenv(env_var)
+            matched_string = match.group(1)
+
+            if "|" in matched_string:
+                # Default value provided
+                env_var, default_value = matched_string.split("|", 1)
+                env_value = os.getenv(env_var, default_value)
+            else:
+                # No default value provided
+                env_value = os.getenv(matched_string)
 
             if env_value is None:
-                raise ConfigurationError(f"Environment variable {env_var} is not set")
+                raise ConfigurationError(
+                    f"Environment variable {matched_string} is not set"
+                )
 
-            value = value.replace(f"${{{env_var}}}", env_value)
+            value = value.replace(f"${{{matched_string}}}", env_value)
             match = cls.ENV_VAR_PATTERN.search(value)
 
         return value

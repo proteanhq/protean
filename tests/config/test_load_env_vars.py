@@ -79,3 +79,9 @@ def test_load_env_vars():
     assert (
         domain.config["databases"]["secondary"]["database_uri"] == "sqlite:///test.db"
     )
+
+
+def test_default_fallback():
+    config = {"secret_key": "${SECRET_KEY|this-is-a-secret-key}"}
+    result = Config2._load_env_vars(config)
+    assert result["secret_key"] == "this-is-a-secret-key"
