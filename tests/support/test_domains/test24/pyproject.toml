@@ -1,0 +1,28 @@
+[tool.protean]
+debug = true
+testing = true
+secret_key = "tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA"
+identity_strategy = "uuid"
+identity_type = "string"
+event_processing = "sync"
+command_processing = "sync"
+
+[tool.protean.databases.default]
+provider = "memory"
+
+[tool.protean.databases.memory]
+provider = "memory"
+
+[tool.protean.databases.sqlite]
+provider = "sqlalchemy"
+database = "sqlite"
+database_uri = "sqlite:///test.db"
+
+[tool.protean.brokers.default]
+provider = "inline"
+
+[tool.protean.caches.default]
+provider = "memory"
+
+[tool.protean.custom]
+foo = "garply"

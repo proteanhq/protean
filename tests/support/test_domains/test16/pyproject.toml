@@ -1,5 +1,6 @@
+[tool.protean]
 debug = true
 testing = true
 
-[custom]
+[tool.protean.custom]
 FOO = "quux"
