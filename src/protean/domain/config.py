@@ -61,6 +61,11 @@ class Config2(dict):
             with open(config_file_name, "rb") as f:
                 config = tomllib.load(f)
 
+                # If pyproject.toml, extract protean configuration
+                #   from the 'tool.protean' section
+                if config_file_name.endswith("pyproject.toml"):
+                    config = config.get("tool", {}).get("protean", {})
+
         # Merge with defaults
         config = cls._deep_merge(defaults, config)
 

@@ -147,3 +147,10 @@ def test_that_config_is_loaded_from_2nd_parent_folder_of_path():
 
     domain = derive_domain("src/publishing/domain23")
     assert domain.config["custom"]["foo"] == "grault"
+
+
+def test_that_config_is_loaded_from_a_sub_context_in_pyproject_toml():
+    change_working_directory_to("test24")
+
+    domain = derive_domain("src/publishing/domain24")
+    assert domain.config["custom"]["foo"] == "garply"
