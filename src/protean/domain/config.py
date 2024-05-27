@@ -32,22 +32,29 @@ class Config2(dict):
 
     @classmethod
     def load_from_path(cls, path: str, defaults: dict = None):
-        # Derive the path of parent directory
-        dir_path = os.path.abspath(os.path.dirname(path))
+        def find_config_file(directory: str):
+            config_files = [".domain.toml", "domain.toml", "pyproject.toml"]
+            for config_file in config_files:
+                config_file_path = os.path.join(directory, config_file)
+                if os.path.exists(config_file_path):
+                    return config_file_path
+            return None
 
-        # Find config files in the directory in the following order:
-        # 1. .domain.toml
-        # 2. domain.toml
-        # 3. pyproject.toml
-        config_file_name = os.path.join(dir_path, ".domain.toml")
-        if not os.path.exists(config_file_name):
-            config_file_name = os.path.join(dir_path, "domain.toml")
-            if not os.path.exists(config_file_name):
-                config_file_name = os.path.join(dir_path, "pyproject.toml")
-                if not os.path.exists(config_file_name):
-                    raise ConfigurationError(
-                        f"No configuration file found in {dir_path}"
-                    )
+        # Start checking from the provided path up to 2 parent directories
+        current_dir = os.path.abspath(os.path.dirname(path))
+        config_file_name = None
+
+        for _ in range(3):  # Check the current directory and up to 2 parent directories
+            config_file_name = find_config_file(current_dir)
+            if config_file_name:
+                break
+
+            current_dir = os.path.dirname(current_dir)  # Move to the parent directory
+
+        if not config_file_name:
+            raise ConfigurationError(
+                f"No configuration file found in {os.path.dirname(path)}"
+            )
 
         config = {}
         if config_file_name:
