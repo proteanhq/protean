@@ -133,3 +133,17 @@ class TestLoadingDefaults:
         assert config["databases"]["default"]["provider"] == "memory"
         assert config["custom"]["FOO"] == "bar"
         assert config["custom"]["qux"] == "quux"
+
+
+def test_that_config_is_loaded_from_1st_parent_folder_of_path():
+    change_working_directory_to("test22")
+
+    domain = derive_domain("src/publishing/domain22")
+    assert domain.config["custom"]["foo"] == "corge"
+
+
+def test_that_config_is_loaded_from_2nd_parent_folder_of_path():
+    change_working_directory_to("test23")
+
+    domain = derive_domain("src/publishing/domain23")
+    assert domain.config["custom"]["foo"] == "grault"
