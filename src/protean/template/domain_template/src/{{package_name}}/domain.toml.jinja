@@ -1,0 +1,24 @@
+debug = true
+testing = true
+secret_key = ${SECRET_KEY|{{ 999999999999999999999999999999999|ans_random|hash('sha256') }}}
+identity_strategy = "uuid"
+identity_type = "string"
+event_processing = "sync"
+command_processing = "sync"
+
+[databases.default]
+provider = "memory"
+
+[databases.memory]
+provider = "memory"
+
+[databases.sqlite]
+provider = "sqlalchemy"
+database = "sqlite"
+database_uri = "sqlite:///test.db"
+
+[brokers.default]
+provider = "inline"
+
+[caches.default]
+provider = "memory"

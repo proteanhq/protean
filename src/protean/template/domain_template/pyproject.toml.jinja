@@ -1,0 +1,46 @@
+[tool.poetry]
+name = "{{ package_name|replace('_','-') }}"
+version = "0.1.0"
+description = "{{ short_description }}"
+authors = ["{{ author_name }} <{{ author_email }}>"]
+readme = "README.md"
+packages = [{include = "{{ package_name|replace('_','-') }}"}]
+classifiers=[
+    # complete classifier list: http://pypi.python.org/pypi?%3Aaction=list_classifiers
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+{%- set extras = [] -%}
+{%- if database != "memory" -%}
+  {%- if database == "postgresql" -%}
+    {%- set _ = extras.append("postgresql") -%}
+  {%- elif database == "sqlite" -%}
+    {%- set _ = extras.append("sqlite") -%}
+  {%- elif database == "elasticsearch" -%}
+    {%- set _ = extras.append("elasticsearch") -%}
+  {%- endif -%}
+{%- endif -%}
+{%- if broker != "memory" -%}
+  {%- if broker == "redis" -%}
+    {%- set _ = extras.append("redis") -%}
+  {%- elif broker == "celery" -%}
+    {%- set _ = extras.append("celery") -%}
+  {%- endif -%}
+{%- endif -%}
+{%- if cache != "memory" -%}
+  {# Don't add redis is already present #}
+  {%- if cache == "redis" and "redis" not in extras -%}
+    {%- set _ = extras.append("redis") -%}
+  {%- endif -%}
+{%- endif %}
+protean = {version = "0.11.0", extras={{ extras }} }
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
