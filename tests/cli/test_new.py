@@ -13,12 +13,21 @@ runner = CliRunner()
 PROJECT_NAME = "foobar"
 
 
-@pytest.mark.slow
 class TestGenerator:
     def test_successful_project_generation(self):
         with runner.isolated_filesystem() as current_dir:
             with runner.isolated_filesystem() as project_dir:
-                args = ["new", PROJECT_NAME, "-o", project_dir]
+                args = [
+                    "new",
+                    PROJECT_NAME,
+                    "-o",
+                    project_dir,
+                    "--defaults",
+                    "-d",
+                    "author_name=John Doe",
+                    "-d",
+                    "author_email=john@doe.com",
+                ]
 
                 # Switch to the target directory
                 os.chdir(current_dir)
@@ -29,15 +38,23 @@ class TestGenerator:
 
                 # Output folder should be the specified target directory
                 assert len(os.listdir(project_dir)) > 0
-                assert os.path.isfile(f"{project_dir}/{PROJECT_NAME}/README.rst")
-                with open(f"{project_dir}/{PROJECT_NAME}/README.rst") as f:
-                    assert f.readline() == "========\n"
+                assert os.path.isfile(f"{project_dir}/{PROJECT_NAME}/README.md")
+                with open(f"{project_dir}/{PROJECT_NAME}/README.md") as f:
+                    assert f.readline() == "# foobar\n"
 
     def test_output_directory_is_current_directory_if_not_specified(self):
         # Create a temporary directory
         with runner.isolated_filesystem() as current_dir:
             with runner.isolated_filesystem():
-                args = ["new", "foobar"]
+                args = [
+                    "new",
+                    "foobar",
+                    "--defaults",
+                    "-d",
+                    "author_name=John Doe",
+                    "-d",
+                    "author_email=john@doe.com",
+                ]
 
                 # Switch to the target directory
                 os.chdir(current_dir)
@@ -48,12 +65,21 @@ class TestGenerator:
 
                 # Output folder should be the current working directory
                 assert len(os.listdir(current_dir)) > 0
-                assert os.path.isfile(f"{current_dir}/{PROJECT_NAME}/README.rst")
+                assert os.path.isfile(f"{current_dir}/{PROJECT_NAME}/README.md")
 
     def test_pretend_project_generation(self):
         # Create a temporary directory
         with runner.isolated_filesystem() as project_dir:
-            args = ["new", "foobar", "--pretend"]
+            args = [
+                "new",
+                "foobar",
+                "--pretend",
+                "--defaults",
+                "-d",
+                "author_name=John Doe",
+                "-d",
+                "author_email=john@doe.com",
+            ]
             result = runner.invoke(app, args)
 
             assert result.exit_code == 0
@@ -96,12 +122,23 @@ class TestGenerator:
             Path(temp_file).touch()
 
             # Pass --force to generate output into the non-empty directory
-            args = ["new", "foobar", "-o", project_dir, "--force"]
+            args = [
+                "new",
+                "foobar",
+                "-o",
+                project_dir,
+                "--force",
+                "--defaults",
+                "-d",
+                "author_name=John Doe",
+                "-d",
+                "author_email=john@doe.com",
+            ]
             result = runner.invoke(app, args)
 
             assert result.exit_code == 0
             assert result.exception is None
-            assert os.path.isfile(f"{project_dir}/{PROJECT_NAME}/README.rst")
+            assert os.path.isfile(f"{project_dir}/{PROJECT_NAME}/README.md")
             assert not os.path.exists(temp_file), "File should not exist"
 
     def test_project_generation_in_unwritable_directory(self):
@@ -142,3 +179,18 @@ class TestGenerator:
             result = runner.invoke(app, args)
             assert result.exit_code != 0
             assert result.exception.args[0] == "Invalid project name"
+
+    def test_supplying_data(self):
+        with runner.isolated_filesystem() as project_dir:
+            args = [
+                "new",
+                PROJECT_NAME,
+                "-o",
+                project_dir,
+                "--data",
+                "author_name=John Doe",
+                "--data",
+                "author_email=john@doe.com",
+            ]
+            result = runner.invoke(app, args)
+            assert result.exit_code != 0

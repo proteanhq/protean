@@ -8,6 +8,12 @@ short_description:
   type: str
   default: "{{ project_name }} - A Protean Application"
 
+author_name:
+  type: str
+
+author_email:
+  type: str
+
 package_name:
   type: str
   default: "{{ project_name|lower|replace(' ','_')|replace('-','_') }}"

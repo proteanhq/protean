@@ -2,7 +2,7 @@ import os
 import re
 import shutil
 
-from typing import Optional, Tuple
+from typing import List, Optional
 
 import typer
 
@@ -17,11 +17,10 @@ def new(
     output_folder: Annotated[
         str, typer.Option("--output-dir", "-o", show_default=False)
     ] = ".",
-    data: Annotated[
-        Tuple[str, str], typer.Option("--data", "-d", show_default=False)
-    ] = (None, None),
+    data: Annotated[List[str], typer.Option("--data", "-d", show_default=False)] = None,
     pretend: Annotated[Optional[bool], typer.Option("--pretend", "-p")] = False,
     force: Annotated[Optional[bool], typer.Option("--force", "-f")] = False,
+    defaults: Annotated[Optional[bool], typer.Option("--defaults")] = False,
 ):
     def is_valid_project_name(project_name):
         """
@@ -71,19 +70,20 @@ def new(
         clear_directory_contents(project_directory)
 
     # Convert data tuples to a dictionary, if provided
-    data = (
-        {value[0]: value[1] for value in data} if len(data) != data.count(None) else {}
-    )
+    data_dict = {}
+    for value in data:
+        k, v = value.split("=", 1)
+        data_dict[k] = v
 
     # Add the project name to answers
-    data["project_name"] = project_name
+    data_dict["project_name"] = project_name
 
     # Create project from the cookiecutter-protean.git repo template
     run_copy(
         f"{protean.__path__[0]}/template",
         project_directory or ".",
-        data=data,
-        unsafe=True,  # Trust our own template implicitly
-        defaults=True,  # Use default values for all prompts
+        data=data_dict,
+        unsafe=True,  # Trust our own template implicitly,
+        defaults=defaults,
         pretend=pretend,
     )
