@@ -46,7 +46,7 @@ that an event has already occurred, such as `OrderPlaced` or `PaymentProcessed`.
 
 You can define an event with the `Domain.event` decorator:
 
-```python hl_lines="22 26 29-31 34-37"
+```python hl_lines="14-16 19-22 31-33 35-38"
 {! docs_src/guides/domain-definition/events/001.py !}
 ```
 
@@ -54,7 +54,7 @@ Events are always connected to an Aggregate class, specified with the
 `part_of` param in the decorator. An exception to this rule is when the
 Event class has been marked _Abstract_.
 
-## Event Facts
+## Key Facts
 
 - Events should be named in past tense, because we observe domain events _after
 the fact_. `StockDepleted` is a better choice than the imperative
@@ -73,3 +73,20 @@ sender's state could have already mutated.
 
 ## Immutability
 
+Event objects are immutable - they cannot be changed once created. This is
+important because events are meant to be used as a snapshot of the domain
+state at a specific point in time.
+
+```shell hl_lines="5 7-11"
+In [1]: user = User(name='John Doe', email='john@doe.com', status='ACTIVE')
+
+In [2]: renamed = UserRenamed(user_id=user.id, name="John Doe Jr.")
+
+In [3]: renamed.name = "John Doe Sr."
+...
+IncorrectUsageError: {
+    '_event': [
+        'Event Objects are immutable and cannot be modified once created'
+    ]
+}
+```

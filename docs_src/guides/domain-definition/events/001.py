@@ -3,7 +3,7 @@ from enum import Enum
 from protean import Domain
 from protean.fields import String, Identifier
 
-domain = Domain(__file__)
+domain = Domain(__file__, load_toml=False)
 
 
 class UserStatus(Enum):

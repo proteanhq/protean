@@ -808,7 +808,7 @@ class Domain:
     def publish(self, event: BaseEvent) -> None:
         """Publish Events to all configured brokers.
         Args:
-            event_or_command (BaseEvent): The Event object containing data to be pushed
+            event (BaseEvent): The Event object containing data to be pushed
         """
         # Persist event in Message Store
         self.event_store.store.append(event)

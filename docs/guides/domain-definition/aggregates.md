@@ -11,6 +11,10 @@ They are conceptual wholes - they enclose all behaviors and data of a distinct
 domain concept. Aggregates are often composed of one or more Aggregate
 Elements, that work together to codify the concept.
 
+Traditional DDD refers to such entities as **Aggregate Roots** because they
+compose and manage a cluster of objects. In Protean, the term ***Aggregate***
+and ***Aggregate Root*** are synonymous.
+
 Aggregates are defined with the `Domain.aggregate` decorator:
 
 ```python hl_lines="8"
