@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "{{ short_description }}"
 authors = ["{{ author_name }} <{{ author_email }}>"]
 readme = "README.md"
-packages = [{include = "{{ package_name|replace('_','-') }}"}]
 classifiers=[
     # complete classifier list: http://pypi.python.org/pypi?%3Aaction=list_classifiers
     "Programming Language :: Python",
@@ -40,6 +39,13 @@ python = "^3.11"
   {%- endif -%}
 {%- endif %}
 protean = {version = "0.11.0", extras={{ extras }} }
+
+[tool.poetry.group.test]
+optional = true
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.2.1"
+pytest-bdd = "^7.1.2"
 
 [build-system]
 requires = ["poetry-core"]

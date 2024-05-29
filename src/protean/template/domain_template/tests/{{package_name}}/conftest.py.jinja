@@ -16,7 +16,7 @@ def pytest_sessionstart(session):
 
     Fetch and activate the domain by pushing the associated domain_context. The activated domain can then be referred to elsewhere as `current_domain`
     """
-    os.environ["{{ package_name|upper }}_ENV"] = session.config.option.env
+    os.environ["PROTEAN_ENV"] = session.config.option.env
 
     from {{ package_name }}.domain import {{ package_name }}
     {{ package_name }}.domain_context().push()
@@ -27,7 +27,7 @@ def run_around_tests():
     """Fixture to automatically cleanup infrastructure after every test"""
     yield
 
-    from protean.globals import current_domain, g
+    from protean.globals import current_domain
 
     # Clear all databases
     for _, provider in current_domain.providers.items():
