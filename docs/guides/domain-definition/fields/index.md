@@ -51,5 +51,5 @@ manage related objects efficiently, preserving data integrity across the domain.
 
 
 <!-- Be careful not to choose field names that conflict with the
-[Data Container API](../../api/data-containers) like `clean`, `clone`, or
+[Data Container API](../../api/data-containers) like `clone`, or
 `to_dict`. -->

@@ -1,6 +1,6 @@
 import pytest
 
-from datetime import date
+from datetime import date, datetime
 from enum import Enum
 
 from protean import BaseAggregate, BaseEntity, invariant, atomic_change
@@ -21,12 +21,26 @@ class Order(BaseAggregate):
     status = String(max_length=50, choices=OrderStatus)
     items = HasMany("OrderItem")
 
-    @invariant
+    @invariant.pre
+    def order_date_must_be_in_the_past_and_status_pending_to_update_order(self):
+        if (
+            self.status != OrderStatus.PENDING.value
+            or self.order_date >= datetime.today().date()
+        ):
+            raise ValidationError(
+                {
+                    "_entity": [
+                        "Order date must be in the past and status PENDING to update order"
+                    ]
+                }
+            )
+
+    @invariant.post
     def total_amount_of_order_must_equal_sum_of_subtotal_of_all_items(self):
         if self.total_amount != sum(item.subtotal for item in self.items):
             raise ValidationError({"_entity": ["Total should be sum of item prices"]})
 
-    @invariant
+    @invariant.post
     def order_date_must_be_within_the_last_30_days_if_status_is_pending(self):
         if self.status == OrderStatus.PENDING.value and self.order_date < date(
             2020, 1, 1
@@ -39,7 +53,7 @@ class Order(BaseAggregate):
                 }
             )
 
-    @invariant
+    @invariant.post
     def customer_id_must_be_non_null_and_the_order_must_contain_at_least_one_item(self):
         if not self.customer_id or not self.items:
             raise ValidationError(
@@ -49,6 +63,9 @@ class Order(BaseAggregate):
                     ]
                 }
             )
+
+    def mark_shipped(self):
+        self.status = OrderStatus.SHIPPED.value
 
 
 class OrderItem(BaseEntity):
@@ -60,7 +77,7 @@ class OrderItem(BaseEntity):
     class Meta:
         part_of = Order
 
-    @invariant
+    @invariant.post
     def the_quantity_must_be_a_positive_integer_and_the_subtotal_must_be_correctly_calculated(
         self,
     ):
@@ -284,4 +301,33 @@ class TestEntityInvariantsOnAttributeChanges:
 
         assert exc.value.messages["_entity"] == [
             "Quantity must be a positive integer and the subtotal must be correctly calculated"
+        ]
+
+
+class TestEntityPreInvariantsChecks:
+    def test_order_date_must_be_in_the_past_and_status_pending_to_update_order(
+        self, order
+    ):
+        # This check is enclosed within atomic_change()
+        order.mark_shipped()
+        with pytest.raises(ValidationError) as exc:
+            with atomic_change(order):
+                order.add_items(
+                    OrderItem(product_id="3", quantity=2, price=10.0, subtotal=20.0)
+                )
+                order.total_amount = 120.0
+
+        assert exc.value.messages["_entity"] == [
+            "Order date must be in the past and status PENDING to update order"
+        ]
+
+    def test_triggering_pre_validation_with_attribute_change(self, order):
+        # This is the same check as above, but we're triggering the pre-validation
+        #   with an attribute change.
+        order.mark_shipped()
+        with pytest.raises(ValidationError) as exc:
+            order.customer_id = "2"
+
+        assert exc.value.messages["_entity"] == [
+            "Order date must be in the past and status PENDING to update order"
         ]

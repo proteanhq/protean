@@ -268,11 +268,6 @@ class BaseContainer(metaclass=ContainerMeta):
 
         self._initialized = True
 
-        # `clean()` will return a `defaultdict(list)` if errors are to be raised
-        custom_errors = self.clean() or {}
-        for field in custom_errors:
-            self.errors[field].extend(custom_errors[field])
-
         # Raise any errors found during load
         if self.errors:
             logger.error(self.errors)
@@ -282,12 +277,6 @@ class BaseContainer(metaclass=ContainerMeta):
         """Placeholder method for defaults.
         To be overridden in concrete Containers, when an attribute's default depends on other attribute values.
         """
-
-    def clean(self):
-        """Placeholder method for validations.
-        To be overridden in concrete Containers, when complex validations spanning multiple fields are required.
-        """
-        return defaultdict(list)
 
     def __eq__(self, other):
         """Equivalence check for containers is based only on data.

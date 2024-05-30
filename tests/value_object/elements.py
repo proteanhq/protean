@@ -1,7 +1,8 @@
 from collections import defaultdict
 from enum import Enum
 
-from protean import BaseAggregate, BaseValueObject
+from protean import BaseAggregate, BaseValueObject, invariant
+from protean.exceptions import ValidationError
 from protean.fields import Float, Identifier, Integer, String, ValueObject
 
 
@@ -66,11 +67,11 @@ class Balance(BaseValueObject):
     currency = String(max_length=3, choices=Currency)
     amount = Float()
 
-    def clean(self):
-        errors = defaultdict(list)
+    @invariant.post
+    def validate_balance_cannot_be_less_than_1_trillion(self):
+        """Business rules of Balance"""
         if self.amount and self.amount < -1000000000000.0:
-            errors["amount"].append("cannot be less than 1 Trillion")
-        return errors
+            raise ValidationError({"amount": ["cannot be less than 1 Trillion"]})
 
     def replace(self, **kwargs):
         # FIXME Find a way to do this generically and move method to `BaseValueObject`
@@ -101,7 +102,7 @@ class Building(BaseValueObject):
             else:
                 self.status = BuildingStatus.WIP.value
 
-    def clean(self):
+    def _postcheck(self):
         errors = defaultdict(list)
         if self.floors >= 4 and self.status != BuildingStatus.DONE.value:
             errors["status"].append("should be DONE")

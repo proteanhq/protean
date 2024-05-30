@@ -141,15 +141,23 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     def __set__(self, instance, value):
         value = self._load(value)
 
-        instance.__dict__[self.field_name] = value
-
-        # The hasattr check is necessary to avoid running clean on unrelated elements
+        # The hasattr check is necessary to avoid running invariant checks on unrelated elements
         if (
             instance._initialized
             and hasattr(instance, "_root")
             and instance._root is not None
         ):
-            instance._root.clean()  # Trigger validations from the top
+            instance._root._precheck()  # Trigger validations from the top
+
+        instance.__dict__[self.field_name] = value
+
+        # The hasattr check is necessary to avoid running invariant checks on unrelated elements
+        if (
+            instance._initialized
+            and hasattr(instance, "_root")
+            and instance._root is not None
+        ):
+            instance._root._postcheck()  # Trigger validations from the top
 
         # Mark Entity as Dirty
         if hasattr(instance, "state_"):

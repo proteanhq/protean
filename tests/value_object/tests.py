@@ -1,6 +1,7 @@
 import pytest
 
-from protean.exceptions import IncorrectUsageError, ValidationError
+from protean.exceptions import IncorrectUsageError, ValidationError, NotSupportedError
+from protean.fields import Float
 from protean.reflection import attributes, declared_fields
 
 from .elements import (
@@ -13,6 +14,32 @@ from .elements import (
     PolymorphicOwner,
     User,
 )
+
+
+def test_vo_marked_abstract_cannot_be_instantiated():
+    class AbstractBalance(Balance):
+        amount = Float()
+
+        class Meta:
+            abstract = True
+
+    with pytest.raises(NotSupportedError) as exc:
+        AbstractBalance(amount=100.0)
+
+    assert (
+        str(exc.value)
+        == "AbstractBalance class has been marked abstract and cannot be instantiated"
+    )
+
+
+def test_template_param_is_a_dict():
+    with pytest.raises(AssertionError) as exc:
+        Balance([Currency.CAD.value, 0.0])
+
+    assert str(exc.value) == (
+        "Positional argument ['CAD', 0.0] passed must be a dict. "
+        "This argument serves as a template for loading common values."
+    )
 
 
 class TestEquivalence:

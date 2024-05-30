@@ -19,12 +19,12 @@ class TestAtomicChange:
 
         assert aggregate._disable_invariant_checks is False
 
-    def test_clean_is_not_triggered_within_context_manager(self, test_domain):
+    def test_validation_is_not_triggered_within_context_manager(self, test_domain):
         class TestAggregate(BaseAggregate):
             value1 = Integer()
             value2 = Integer()
 
-            @invariant
+            @invariant.post
             def raise_error(self):
                 if self.value2 != self.value1 + 1:
                     raise ValidationError({"_entity": ["Invariant error"]})

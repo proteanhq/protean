@@ -22,12 +22,12 @@ class Order:
     status = String(max_length=50, choices=OrderStatus)
     items = HasMany("OrderItem")
 
-    @invariant
+    @invariant.post
     def total_amount_of_order_must_equal_sum_of_subtotal_of_all_items(self):
         if self.total_amount != sum(item.subtotal for item in self.items):
             raise ValidationError({"_entity": ["Total should be sum of item prices"]})
 
-    @invariant
+    @invariant.post
     def order_date_must_be_within_the_last_30_days_if_status_is_pending(self):
         if self.status == OrderStatus.PENDING.value and self.order_date < date(
             2020, 1, 1
@@ -40,7 +40,7 @@ class Order:
                 }
             )
 
-    @invariant
+    @invariant.post
     def customer_id_must_be_non_null_and_the_order_must_contain_at_least_one_item(self):
         if not self.customer_id or not self.items:
             raise ValidationError(
@@ -62,7 +62,7 @@ class OrderItem:
     class Meta:
         part_of = Order
 
-    @invariant
+    @invariant.post
     def the_quantity_must_be_a_positive_integer_and_the_subtotal_must_be_correctly_calculated(
         self,
     ):

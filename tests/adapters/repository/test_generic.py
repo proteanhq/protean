@@ -1,13 +1,18 @@
 import re
 
-from collections import defaultdict
 from typing import List
 from uuid import uuid4
 
 import pytest
 
-from protean import BaseAggregate, BaseRepository, BaseValueObject, UnitOfWork
-from protean.exceptions import ExpectedVersionError
+from protean import (
+    BaseAggregate,
+    BaseRepository,
+    BaseValueObject,
+    UnitOfWork,
+    invariant,
+)
+from protean.exceptions import ExpectedVersionError, ValidationError
 from protean.fields import Integer, String, ValueObject
 from protean.globals import current_domain
 
@@ -32,14 +37,11 @@ class Email(BaseValueObject):
     # This is the external facing data attribute
     address = String(max_length=254, required=True)
 
-    def clean(self):
+    @invariant.post
+    def validate_email_address(self):
         """Business rules of Email address"""
-        errors = defaultdict(list)
-
         if not bool(re.match(Email.REGEXP, self.address)):
-            errors["address"].append("is invalid")
-
-        return errors
+            raise ValidationError({"address": ["email address"]})
 
 
 class User(BaseAggregate):

@@ -75,7 +75,7 @@ def aggregate_factory(element_cls, **kwargs):
         if not (
             method_name.startswith("__") and method_name.endswith("__")
         ) and hasattr(method, "_invariant"):
-            element_cls._invariants[method_name] = method
+            element_cls._invariants[method._invariant][method_name] = method
 
     return element_cls
 
@@ -87,9 +87,10 @@ class atomic_change:
 
     def __enter__(self):
         # Temporary disable invariant checks
+        self.aggregate._precheck()
         self.aggregate._disable_invariant_checks = True
 
     def __exit__(self, *args):
-        # Run clean() on exit to trigger invariant checks
+        # Validate on exit to trigger invariant checks
         self.aggregate._disable_invariant_checks = False
-        self.aggregate.clean()
+        self.aggregate._postcheck()

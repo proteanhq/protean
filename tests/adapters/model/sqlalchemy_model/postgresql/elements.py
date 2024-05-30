@@ -1,11 +1,11 @@
 import re
 
-from collections import defaultdict
 from datetime import datetime
 
 from sqlalchemy import Column, Text
 
-from protean import BaseAggregate, BaseModel, BaseValueObject
+from protean import BaseAggregate, BaseModel, BaseValueObject, invariant
+from protean.exceptions import ValidationError
 from protean.fields import DateTime, Integer, List, String, ValueObject
 
 
@@ -27,14 +27,11 @@ class Email(BaseValueObject):
     # This is the external facing data attribute
     address = String(max_length=254, required=True)
 
-    def clean(self):
+    @invariant.post
+    def validate_email_address(self):
         """Business rules of Email address"""
-        errors = defaultdict(list)
-
         if not bool(re.match(Email.REGEXP, self.address)):
-            errors["address"].append("is invalid")
-
-        return errors
+            raise ValidationError({"address": ["email address"]})
 
 
 class ComplexUser(BaseAggregate):
