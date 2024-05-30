@@ -10,6 +10,7 @@ from dateutil.parser import parse as date_parser
 
 from protean.exceptions import InvalidOperationError, OutOfContextError, ValidationError
 from protean.fields import Field, validators
+from protean.fields.embedded import ValueObject
 from protean.globals import current_domain
 from protean.utils import IdentityType
 
@@ -233,7 +234,7 @@ class List(Field):
             String,
             Text,
             Dict,
-        ]:
+        ] and not isinstance(content_type, ValueObject):
             raise ValidationError({"content_type": ["Content type not supported"]})
         self.content_type = content_type
         self.pickled = pickled
@@ -252,18 +253,24 @@ class List(Field):
         new_value = []
         try:
             for item in value:
-                new_value.append(self.content_type()._load(item))
+                if isinstance(self.content_type, ValueObject):
+                    new_value.append(self.content_type._load(item))
+                else:
+                    new_value.append(self.content_type()._load(item))
         except ValidationError:
             self.fail("invalid_content", value=value)
 
-        if new_value != value:
-            self.fail("invalid_content", value=value)
-
-        return value
+        return new_value
 
     def as_dict(self, value):
         """Return JSON-compatible value of self"""
-        return value
+        new_value = []
+        for item in value:
+            if isinstance(self.content_type, ValueObject):
+                new_value.append(self.content_type.as_dict(item))
+            else:
+                new_value.append(self.content_type().as_dict(item))
+        return new_value
 
 
 class Dict(Field):
