@@ -19,6 +19,7 @@ def setup_db():
         from .elements import Alien, ComplexUser, Person, User
         from .test_associations import Audit, Comment, Post
         from .test_persistence import Event
+        from .test_persisting_list_of_value_objects import Customer, Order
 
         domain.register(Alien)
         domain.register(ComplexUser)
@@ -28,6 +29,8 @@ def setup_db():
         domain.register(Post)
         domain.register(Comment)
         domain.register(Audit)
+        domain.register(Customer)
+        domain.register(Order)
 
         domain.repository_for(Alien)._dao
         domain.repository_for(ComplexUser)._dao
@@ -37,6 +40,8 @@ def setup_db():
         domain.repository_for(Post)._dao
         domain.repository_for(Comment)._dao
         domain.repository_for(Audit)._dao
+        domain.repository_for(Customer)._dao
+        domain.repository_for(Order)._dao
 
         domain.providers["default"]._metadata.create_all()
 

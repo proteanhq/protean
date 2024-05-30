@@ -1,6 +1,7 @@
 """Module with repository implementation for SQLAlchemy"""
 
 import copy
+import json
 import logging
 import uuid
 
@@ -18,6 +19,7 @@ from sqlalchemy.ext import declarative as sa_dec
 from sqlalchemy.ext.declarative import as_declarative, declared_attr
 from sqlalchemy.types import CHAR, TypeDecorator
 
+from protean.core.value_object import BaseValueObject
 from protean.core.model import BaseModel
 from protean.exceptions import (
     ConfigurationError,
@@ -37,6 +39,7 @@ from protean.fields import (
     List,
     String,
     Text,
+    ValueObject,
 )
 from protean.fields.association import Reference, _ReferenceField
 from protean.fields.embedded import _ShadowField
@@ -112,6 +115,25 @@ def _get_identity_type():
         return sa_types.String
 
 
+def _default(value):
+    """A function that gets called for objects that can’t otherwise be serialized.
+    We handle the special case of Value Objects here.
+
+    `TypeError` is raised for unknown types.
+    """
+    if isinstance(value, BaseValueObject):
+        return value.to_dict()
+    raise TypeError()
+
+
+def _custom_json_dumps(value):
+    """Custom JSON Serializer method to handle the special case of ValueObject deserialization.
+
+    This method is passed into sqlalchemy as a value for param `json_serializer` in the call to `create_engine`.
+    """
+    return json.dumps(value, default=_default)
+
+
 class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
     """Metaclass for the Sqlalchemy declarative schema"""
 
@@ -128,6 +150,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
             String: sa_types.String,
             Text: sa_types.Text,
             _ReferenceField: _get_identity_type(),
+            ValueObject: sa_types.PickleType,
         }
 
         def field_mapping_for(field_obj: Field):
@@ -171,9 +194,21 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
 
                             # Associate Content Type
                             if field_obj.content_type:
-                                type_args.append(
-                                    field_mapping.get(field_obj.content_type)
-                                )
+                                # Treat `ValueObject` differently because it is a field object instance,
+                                #   not a field type class
+                                #
+                                # `ValueObject` instances are essentially treated as `Dict`. If not pickled,
+                                #   they are persisted as JSON.
+                                if isinstance(field_obj.content_type, ValueObject):
+                                    if not field_obj.pickled:
+                                        field_mapping_type = psql.JSON
+                                    else:
+                                        field_mapping_type = sa_types.PickleType
+                                else:
+                                    field_mapping_type = field_mapping.get(
+                                        field_obj.content_type
+                                    )
+                                type_args.append(field_mapping_type)
                             else:
                                 type_args.append(sa_types.Text)
 
@@ -526,7 +561,11 @@ class SAProvider(BaseProvider):
 
         kwargs = self._get_database_specific_engine_args()
 
-        self._engine = create_engine(make_url(self.conn_info["database_uri"]), **kwargs)
+        self._engine = create_engine(
+            make_url(self.conn_info["database_uri"]),
+            json_serializer=_custom_json_dumps,
+            **kwargs,
+        )
 
         if self.conn_info["database"] == self.databases.postgresql.value:
             # Nest database tables under a schema, so that we have complete control

@@ -1,6 +1,6 @@
 import pytest
 
-from protean import BaseAggregate
+from protean import BaseEntity
 from protean.exceptions import ValidationError
 from protean.fields import Boolean, Dict, Integer, List
 from protean.reflection import fields
@@ -8,7 +8,7 @@ from protean.reflection import fields
 
 class TestFields:
     def test_lists_can_be_mandatory(self):
-        class Lottery(BaseAggregate):
+        class Lottery(BaseEntity):
             jackpot = Boolean()
             numbers = List(content_type=Integer, required=True)
 
@@ -18,7 +18,7 @@ class TestFields:
         assert exc.value.messages == {"numbers": ["is required"]}
 
     def test_dicts_can_be_mandatory(self):
-        class Lottery(BaseAggregate):
+        class Lottery(BaseEntity):
             jackpot = Boolean()
             numbers = Dict(required=True)
 
@@ -28,13 +28,13 @@ class TestFields:
         assert exc.value.messages == {"numbers": ["is required"]}
 
     def test_field_description(self):
-        class Lottery(BaseAggregate):
+        class Lottery(BaseEntity):
             jackpot = Boolean(description="Jackpot won or not")
 
         assert fields(Lottery)["jackpot"].description == "Jackpot won or not"
 
     def test_field_default_description(self):
-        class Lottery(BaseAggregate):
+        class Lottery(BaseEntity):
             jackpot = Boolean()
 
         # By default, description is not auto-set.

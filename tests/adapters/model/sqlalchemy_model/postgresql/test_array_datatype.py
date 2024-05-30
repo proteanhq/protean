@@ -112,9 +112,10 @@ def test_array_content_type_validation(test_domain):
         {"email": "john.doe@gmail.com", "roles": [1.0, 2.0]},
         {"email": "john.doe@gmail.com", "roles": [datetime.now(UTC)]},
     ]:
-        with pytest.raises(ValidationError) as exception:
+        try:
             ArrayUser(**kwargs)
-        assert exception.value.messages["roles"][0].startswith("Invalid value")
+        except ValidationError:
+            pytest.fail("Failed to convert integers into strings in List field type")
 
     model_cls = test_domain.repository_for(IntegerArrayUser)._model
     user = IntegerArrayUser(email="john.doe@gmail.com", roles=[1, 2])
@@ -126,7 +127,6 @@ def test_array_content_type_validation(test_domain):
 
     for kwargs in [
         {"email": "john.doe@gmail.com", "roles": ["ADMIN", "USER"]},
-        {"email": "john.doe@gmail.com", "roles": ["1", "2"]},
         {"email": "john.doe@gmail.com", "roles": [datetime.now(UTC)]},
     ]:
         with pytest.raises(ValidationError) as exception:

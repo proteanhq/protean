@@ -100,14 +100,19 @@ class ValueObject(Field):
                 referenced_as=field_obj.referenced_as,
             )
 
-        # Refresh underlying embedded field names
         for embedded_field in self.embedded_fields.values():
             if embedded_field.referenced_as:
                 embedded_field.attribute_name = embedded_field.referenced_as
             else:
-                embedded_field.attribute_name = (
-                    self.field_name + "_" + embedded_field.field_name
-                )
+                # VO is associated with an aggregate/entity
+                if self.field_name is not None:
+                    # Refresh underlying embedded field names
+                    embedded_field.attribute_name = (
+                        self.field_name + "_" + embedded_field.field_name
+                    )
+                else:
+                    # VO is being used standalone
+                    embedded_field.attribute_name = embedded_field.field_name
 
     def __set_name__(self, entity_cls, name):
         super().__set_name__(entity_cls, name)
