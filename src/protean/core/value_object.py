@@ -1,5 +1,6 @@
 """Value Object Functionality and Classes"""
 
+import inspect
 import logging
 
 from collections import defaultdict
@@ -21,6 +22,9 @@ class BaseValueObject(BaseContainer, OptionsMixin):
 
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()
+
+        # Record invariant methods
+        setattr(subclass, "_invariants", defaultdict(dict))
 
         subclass.__validate_for_basic_field_types()
         subclass.__validate_for_non_identifier_fields()
@@ -91,7 +95,7 @@ class BaseValueObject(BaseContainer, OptionsMixin):
         for dictionary in template:
             if not isinstance(dictionary, dict):
                 raise AssertionError(
-                    f'Positional argument "{dictionary}" passed must be a dict.'
+                    f"Positional argument {dictionary} passed must be a dict. "
                     f"This argument serves as a template for loading common "
                     f"values.",
                 )
@@ -121,8 +125,8 @@ class BaseValueObject(BaseContainer, OptionsMixin):
 
         self.defaults()
 
-        # `clean()` will return a `defaultdict(list)` if errors are to be raised
-        custom_errors = self.clean() or {}
+        # `_postcheck()` will return a `defaultdict(list)` if errors are to be raised
+        custom_errors = self._postcheck() or {}
         for field in custom_errors:
             self.errors[field].extend(custom_errors[field])
 
@@ -147,18 +151,19 @@ class BaseValueObject(BaseContainer, OptionsMixin):
                 }
             )
 
-    def _run_validators(self, value):
-        """Collect validators from enclosed fields and run them.
-
-        This method is called during initialization of the Value Object
-        at the Entity level.
-        """
+    def _postcheck(self, return_errors=False):
+        """Invariant checks performed after initialization"""
         errors = defaultdict(list)
-        for field_name, field_obj in fields(self).items():
+
+        for invariant_method in self._invariants["post"].values():
             try:
-                field_obj._run_validators(getattr(self, field_name), value)
+                invariant_method(self)
             except ValidationError as err:
-                errors[field_name].extend(err.messages)
+                for field_name in err.messages:
+                    errors[field_name].extend(err.messages[field_name])
+
+        if return_errors:
+            return errors
 
         if errors:
             raise ValidationError(errors)
@@ -166,5 +171,13 @@ class BaseValueObject(BaseContainer, OptionsMixin):
 
 def value_object_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseValueObject, **kwargs)
+
+    # Iterate through methods marked as `@invariant` and record them for later use
+    methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
+    for method_name, method in methods:
+        if not (
+            method_name.startswith("__") and method_name.endswith("__")
+        ) and hasattr(method, "_invariant"):
+            element_cls._invariants[method._invariant][method_name] = method
 
     return element_cls

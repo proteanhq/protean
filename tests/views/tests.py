@@ -119,7 +119,7 @@ class Building(BaseView):
             else:
                 self.status = BuildingStatus.WIP.value
 
-    def clean(self):
+    def _postcheck(self):
         errors = defaultdict(list)
 
         if self.floors >= 4 and self.status != BuildingStatus.DONE.value:

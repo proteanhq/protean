@@ -6,7 +6,8 @@ the concept, ensuring it remains unchanged even as other aspects evolve play a
 crucial role in ensuring business validations within a domain.
 
 Protean treats invariants as first-class citizens, to make them explicit and
-visible, making it easier to maintain the integrity of the domain model.
+visible, making it easier to maintain the integrity of the domain model. You
+can define invariants on Aggregates, Entities, and Value Objects.
 
 ## Key Facts
 
@@ -19,12 +20,12 @@ aggregate cluster.
 - **Domain-Driven:** Invariants stem from the business rules and policies
 specific to a domain.
 - **Enforced by the Domain Model:** Protean takes on the responsibility of
-enforcing invariants. 
+enforcing invariants.
 
 ## `@invariant` decorator
 
-Invariants are defined using the `@invariant` decorator in Aggregates and
-Entities:
+Invariants are defined using the `@invariant` decorator in Aggregates,
+Entities, and Value Objects (plus in Domain Services, as we will soon see):
 
 ```python hl_lines="9-10 14-15"
 --8<-- "guides/domain-behavior/001.py:17:41"
@@ -37,6 +38,34 @@ of individual item subtotals, and the other that the order date must be within
 
 All methods marked `@invariant` are associated with the domain element when
 the element is registered with the domain.
+
+## `pre` and `post` Invariants
+
+The `@invariant` decorator has two flavors - **`pre`** and **`post`**.
+
+`pre` invariants are triggered before elements are updated, while `post`
+invariants are triggered after the update. `pre` invariants are used to prevent
+invalid state from being introduced, while `post` invariants ensure that the
+aggregate remains in a valid state after the update.
+
+In Protean, we will mostly be using `post` invariants because the domain model
+is expected to remain valid after any operation. You would typically start
+with the domain in a good state, mutate the elements, and check if all
+invariants are satisfied.
+
+`pre` invariants are useful in certain situations where you want to check state
+before the elements are mutated. For instance, you might want to check if a
+user has enough balance before deducting it. Also, some invariant checks may
+be easier to add *before* changing an element.
+
+!!!note
+    `pre` invariants are not applicable when aggregates and entities are being
+    initialized. Their validations only kick in when an element is being
+    changed or updated from an existing state.
+
+!!!note
+    `pre` invariant checks are not applicable to `ValueObject` elements because
+    they are immutable - they cannot be changed once initialized.
 
 ## Validation
 
@@ -130,3 +159,7 @@ In [4]: order.total_amount = 120.0
 ...
 ValidationError: {'_entity': ['Total should be sum of item prices']}
 ```
+
+!!!note
+    Atomic Changes context manager can only be applied when updating or
+    changing an already initialized element.

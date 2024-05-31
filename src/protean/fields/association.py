@@ -438,7 +438,7 @@ class HasOne(Association):
                         setattr(old_value, field_name, None)
 
         if instance._initialized and instance._root is not None:
-            instance._root.clean()  # Trigger validations from the top
+            instance._root._postcheck()  # Trigger validations from the top
 
     def _fetch_objects(self, instance, key, identifier):
         """Fetch single linked object"""
@@ -571,7 +571,7 @@ class HasMany(Association):
                 self.delete_cached_value(instance)
 
         if instance._initialized and instance._root is not None:
-            instance._root.clean()  # Trigger validations from the top
+            instance._root._postcheck()  # Trigger validations from the top
 
     def remove(self, instance, items) -> None:
         """
@@ -620,7 +620,7 @@ class HasMany(Association):
                         setattr(item, field_name, None)
 
         if instance._initialized and instance._root is not None:
-            instance._root.clean()  # Trigger validations from the top
+            instance._root._postcheck()  # Trigger validations from the top
 
     def _fetch_objects(self, instance, key, value) -> list:
         """

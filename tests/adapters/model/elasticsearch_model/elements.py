@@ -1,12 +1,12 @@
 import re
 
-from collections import defaultdict
 from datetime import datetime
 
 from elasticsearch_dsl import Keyword, Text
 
-from protean import BaseAggregate, BaseValueObject
+from protean import BaseAggregate, BaseValueObject, invariant
 from protean.core.model import BaseModel
+from protean.exceptions import ValidationError
 from protean.fields import DateTime, Integer, String
 from protean.fields import Text as ProteanText
 from protean.fields import ValueObject
@@ -36,14 +36,11 @@ class Email(BaseValueObject):
     # This is the external facing data attribute
     address = String(max_length=254, required=True)
 
-    def clean(self):
+    @invariant.post
+    def validate_email_address(self):
         """Business rules of Email address"""
-        errors = defaultdict(list)
-
         if not bool(re.match(Email.REGEXP, self.address)):
-            errors["address"].append("is invalid")
-
-        return errors
+            raise ValidationError({"address": ["email address"]})
 
 
 class ComplexUser(BaseAggregate):

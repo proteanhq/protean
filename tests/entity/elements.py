@@ -149,7 +149,7 @@ class Building(BaseEntity):
             else:
                 self.status = BuildingStatus.WIP.value
 
-    @invariant
+    @invariant.post
     def test_building_status_to_be_done_if_floors_above_4(self):
         if self.floors >= 4 and self.status != BuildingStatus.DONE.value:
             raise ValidationError(

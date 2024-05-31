@@ -17,7 +17,7 @@ class TestDefaults:
         assert building.status == BuildingStatus.WIP.value
 
 
-class TestClean:
+class TestInvariantValidation:
     def test_that_building_cannot_be_WIP_if_above_4_floors(self, test_domain):
         test_domain.register(Building)
         test_domain.register(Area)

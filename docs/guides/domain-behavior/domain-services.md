@@ -65,11 +65,20 @@ and invokes the service method to place order. The service method executes
 the business logic, mutates the aggregates, and returns them to the application
 service, which then persists them again with the help of repositories.
 
+## Invariants
+
+Just like Aggregates and Entities, Domain Services can also have invariants.
+These invariants are used to validate the state of the aggregates passed to
+the service method. Unlike in Aggregates though, invariants in Domain Services
+typically deal with validations that span across multiple aggregates.
+
+`pre` invariants check the state of the aggregates before they are mutated,
+while `post` invariants check the state after the mutation. 
 
 ## A full-blown example
 
-```python hl_lines="67-82"
---8<-- "guides/domain-behavior/006.py:16:98"
+```python hl_lines="142-149"
+{! docs_src/guides/domain-behavior/006.py !}
 ```
 
 When an order is placed, `Order` status has to be `CONFIRMED` _and_ the stock
@@ -83,3 +92,8 @@ orders are placed at the same time.
 So a Domain Service works best here because it updates the states of both
 the `Order` aggregate as well as the `Inventory` aggregate in a single
 transaction.
+
+**IMPORTANT**: Even though the inventory aggregate is mutated here to ensure
+all invariants are satisified, the Command Handler method invoking the Domain
+Service should only persist the `Order` aggregate. The `Inventory` aggregate
+will eventually be updated through the domain event `OrderConfirmed`.

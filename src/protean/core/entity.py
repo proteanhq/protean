@@ -113,6 +113,36 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
     class Meta:
         abstract = True
 
+    def __init_subclass__(subclass) -> None:
+        super().__init_subclass__()
+
+        # Record invariant methods
+        setattr(subclass, "_invariants", defaultdict(dict))
+
+    @classmethod
+    def _default_options(cls):
+        return [
+            ("provider", "default"),
+            ("model", None),
+            ("part_of", None),
+            ("schema_name", inflection.underscore(cls.__name__)),
+        ]
+
+    @classmethod
+    def _extract_options(cls, **opts):
+        """A stand-in method for setting customized options on the Domain Element
+
+        Empty by default. To be overridden in each Element that expects or needs
+        specific options.
+        """
+        for key, default in cls._default_options():
+            value = (
+                opts.pop(key, None)
+                or (hasattr(cls.meta_, key) and getattr(cls.meta_, key))
+                or default
+            )
+            setattr(cls.meta_, key, value)
+
     def __init__(self, *template, **kwargs):  # noqa: C901
         """
         Initialise the entity object.
@@ -294,8 +324,8 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
 
         self._initialized = True
 
-        # `clean()` will return a `defaultdict(list)` if errors are to be raised
-        custom_errors = self.clean(return_errors=True) or {}
+        # `_postcheck()` will return a `defaultdict(list)` if errors are to be raised
+        custom_errors = self._postcheck(return_errors=True) or {}
         for field in custom_errors:
             self.errors[field].extend(custom_errors[field])
 
@@ -309,27 +339,33 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
         To be overridden in concrete Containers, when an attribute's default depends on other attribute values.
         """
 
-    def clean(self, return_errors=False):
-        """Invoked after initialization to perform additional validations."""
-        # Call all methods marked as invariants
+    def _run_invariants(self, stage, return_errors=False):
+        """Run invariants for a given stage."""
         if self._initialized and not self._disable_invariant_checks:
             errors = defaultdict(list)
 
-            for invariant_method in self._invariants.values():
+            for invariant_method in self._invariants[stage].values():
                 try:
                     invariant_method(self)
                 except ValidationError as err:
                     for field_name in err.messages:
                         errors[field_name].extend(err.messages[field_name])
 
-            # Run through all associations and trigger their clean method
+            # Run through all associations and trigger their invariants
             for field_name, field_obj in declared_fields(self).items():
-                if isinstance(field_obj, Association):
+                if isinstance(field_obj, (Association, ValueObject)):
                     value = getattr(self, field_name)
                     if value is not None:
                         items = value if isinstance(value, list) else [value]
                         for item in items:
-                            item_errors = item.clean(return_errors=True)
+                            # Pre-checks don't apply to ValueObjects, because VOs are immutable
+                            #   and therefore cannot be changed once initialized.
+                            if stage == "pre" and not isinstance(
+                                field_obj, ValueObject
+                            ):
+                                item_errors = item._precheck(return_errors=True)
+                            else:
+                                item_errors = item._postcheck(return_errors=True)
                             if item_errors:
                                 for sub_field_name, error_list in item_errors.items():
                                     errors[sub_field_name].extend(error_list)
@@ -339,6 +375,14 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
 
             if errors:
                 raise ValidationError(errors)
+
+    def _precheck(self, return_errors=False):
+        """Invariant checks performed before entity changes"""
+        return self._run_invariants("pre", return_errors=return_errors)
+
+    def _postcheck(self, return_errors=False):
+        """Invariant checks performed after initialization and attribute changes"""
+        return self._run_invariants("post", return_errors=return_errors)
 
     def __eq__(self, other):
         """Equivalence check to be based only on Identity"""
@@ -435,30 +479,6 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
 
         return clone_copy
 
-    @classmethod
-    def _default_options(cls):
-        return [
-            ("provider", "default"),
-            ("model", None),
-            ("part_of", None),
-            ("schema_name", inflection.underscore(cls.__name__)),
-        ]
-
-    @classmethod
-    def _extract_options(cls, **opts):
-        """A stand-in method for setting customized options on the Domain Element
-
-        Empty by default. To be overridden in each Element that expects or needs
-        specific options.
-        """
-        for key, default in cls._default_options():
-            value = (
-                opts.pop(key, None)
-                or (hasattr(cls.meta_, key) and getattr(cls.meta_, key))
-                or default
-            )
-            setattr(cls.meta_, key, value)
-
     def _set_root_and_owner(self, root, owner):
         """Set the root and owner entities on all child entities
 
@@ -479,12 +499,6 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
                     for item in items:
                         if not item._root:
                             item._set_root_and_owner(self._root, self)
-
-    def __init_subclass__(subclass) -> None:
-        super().__init_subclass__()
-
-        # Record invariant methods
-        setattr(subclass, "_invariants", {})
 
 
 def entity_factory(element_cls, **kwargs):
@@ -551,18 +565,26 @@ def entity_factory(element_cls, **kwargs):
         if not (
             method_name.startswith("__") and method_name.endswith("__")
         ) and hasattr(method, "_invariant"):
-            element_cls._invariants[method_name] = method
+            element_cls._invariants[method._invariant][method_name] = method
 
     return element_cls
 
 
-def invariant(fn):
-    """Decorator to mark invariant methods in an Entity"""
+class invariant:
+    @staticmethod
+    def pre(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
 
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        return fn(*args, **kwargs)
+        setattr(wrapper, "_invariant", "pre")
+        return wrapper
 
-    setattr(wrapper, "_invariant", True)
+    @staticmethod
+    def post(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
 
-    return wrapper
+        setattr(wrapper, "_invariant", "post")
+        return wrapper

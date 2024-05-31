@@ -20,7 +20,7 @@ class Account:
     balance = Float()
     overdraft_limit = Float(default=0.0)
 
-    @invariant
+    @invariant.post
     def balance_must_be_greater_than_or_equal_to_overdraft_limit(self):
         if self.balance < -self.overdraft_limit:
             raise InsufficientFundsException("Balance cannot be below overdraft limit")

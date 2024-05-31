@@ -165,6 +165,25 @@ satisfied at all times.
     It is recommended that you always deal with Value Objects by their class.
     Attributes are generally used by Protean during persistence and retrieval.
 
+## Invariants
+
+When a validation spans across multiple fields, you can specify it in an
+`invariant` method. These methods are executed every time the value object is
+initialized.
+
+```python hl_lines="13-16"
+{! docs_src/guides/domain-definition/012.py !}
+```
+
+```shell hl_lines="3"
+In [1]: Balance(currency="USD", amount=-100)
+...
+ValidationError: {'balance': ['Balance cannot be negative for USD']}
+```
+
+Refer to [`invariants`](../domain-behavior/invariants.md) section for a
+deeper explanation of invariants.
+
 ## Equality
 
 Two value objects are considered to be equal if their values are equal.

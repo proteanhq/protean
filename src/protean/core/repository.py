@@ -3,7 +3,7 @@ import logging
 from functools import lru_cache
 
 from protean.container import Element, OptionsMixin
-from protean.exceptions import IncorrectUsageError, ValidationError
+from protean.exceptions import IncorrectUsageError
 from protean.fields import HasMany, HasOne
 from protean.globals import current_domain
 from protean.reflection import association_fields, has_association_fields
@@ -106,14 +106,6 @@ class BaseRepository(Element, OptionsMixin):
         transaction in progress, changes are committed immediately to the persistence store. This mechanism
         is part of the DAO's design, and is automatically used wherever one tries to persist data.
         """
-
-        # Ensure that aggregate is clean and good to save
-        # FIXME Let `clean()` raise validation errors
-        errors = aggregate.clean() or {}
-        # Raise any errors found during load
-        if errors:
-            logger.error(errors)
-            raise ValidationError(errors)
 
         # If there are HasMany/HasOne fields in the aggregate, sync child objects added/removed,
         if has_association_fields(aggregate):
