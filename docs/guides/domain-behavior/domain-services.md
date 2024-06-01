@@ -31,17 +31,61 @@ or command/event handlers.
 
 ## Defining a Domain Service
 
-A Domain Service is defined with the `Domain.domain_service` decorator:
+A Domain Service is defined with the `Domain.domain_service` decorator, and
+associated with at least two aggregates with the `part_of` option.
 
-```python hl_lines="1 5-6"
---8<-- "guides/domain-behavior/006.py:83:100"
+The service methods in a Domain Service can be structured in three flavors:
+
+### Class methods
+
+If you don't have any invariants to be managed by the Domain Service, each
+method in the Domain Service can simply be a class method, that receives all
+the input necessary for performing the business function.
+
+```python hl_lines="1-2"
+--8<-- "guides/domain-behavior/008.py:88:98"
 ```
 
-The domain service has to be associated with at least two aggregates with the
-`part_of` option, as seen in the example above.
+Invoking it is straight forward:
 
-Each method in the Domain Service element is a class method, that receives two
-or more aggregates or list of aggregates.
+```shell
+OrderPlacementService.place_order(order, inventories)
+```
+
+### Instance methods
+
+In this flavor, the Domain Service is instantiated with the aggregates and each
+method performs a distinct business function.
+
+```python hl_lines="1-2 9"
+--8<-- "guides/domain-behavior/007.py:88:112"
+```
+
+You would then instantiate the Domain Service, passing the relevant aggregates
+and invoke the methods on the instance.
+
+```shell
+service = OrderPlacementService(order, inventories)
+service.place_order()
+```
+
+### Callable class
+
+If you have a single business function, you can simply model it as a callable
+class:
+
+```python hl_lines="1-2 9"
+--8<-- "guides/domain-behavior/006.py:88:112"
+```
+
+```shell
+service = OrderPlacementService(order, inventories)
+service()
+```
+
+!!!note
+    You can include private methods in a Domain Service class by prefixing the
+    method name with an underscore.
 
 ## Typical Workflow
 

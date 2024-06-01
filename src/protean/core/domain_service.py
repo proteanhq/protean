@@ -53,56 +53,63 @@ class BaseDomainService(Element, OptionsMixin):
         self._aggregates = aggregates
 
 
-def wrap_call_method_with_invariants(cls):
+def wrap_methods_with_invariant_calls(cls):
     """
-    Wraps the __call__ method of a class with a function that executes the original __call__ method and then runs
-    any defined invariant methods on the object. If any of the invariant methods raise a `ValidationError`,
-    the wrapped `__call__` method will raise a ValidationError with the collected error messages.
+    Case: When Domain Service is defined as a regular instantiable class.
+
+    This method wraps every defined domain service method with a function that checks invariants around the original
+    method. If any of the invariant methods raise a `ValidationError`, the wrapped `__call__` method will raise a
+    ValidationError with the collected error messages.
     """
+    for method_name, method in inspect.getmembers(cls, predicate=inspect.isroutine):
+        if (
+            not (method_name.startswith("__") and method_name.endswith("__"))
+            and not method_name.startswith("_")
+        ) or method_name == "__call__":
+            # Protect against re-wrapping
+            #   by checking whether __call__ has `__wrapped__` attribute
+            #   which it would if it has been wrapped already
+            #
+            # FIXME Is there a better way to prevent re-wrapping the same class?
+            if not hasattr(method, "__wrapped__"):
+                original_method = method
 
-    # Protect against re-wrapping
-    #   by checking whether __call__ has `__wrapped__` attribute
-    #   which it would if it has been wrapped already
-    #
-    # FIXME Is there a better way to prevent re-wrapping the same class?
-    if not hasattr(cls.__call__, "__wrapped__"):
-        original_call = cls.__call__
+                @wraps(original_method)
+                def wrapped_call(self, *args, **kwargs):
+                    # Run the invariant methods marked `pre` before the original __call__ method
+                    errors = {}
+                    for invariant_method in self._invariants["pre"].values():
+                        try:
+                            invariant_method(self)
+                        except ValidationError as err:
+                            for field_name in err.messages:
+                                if field_name not in errors:
+                                    errors[field_name] = []
+                                errors[field_name].extend(err.messages[field_name])
 
-        @wraps(original_call)
-        def wrapped_call(self, *args, **kwargs):
-            # Run the invariant methods marked `pre` before the original __call__ method
-            errors = {}
-            for invariant_method in self._invariants["pre"].values():
-                try:
-                    invariant_method(self)
-                except ValidationError as err:
-                    for field_name in err.messages:
-                        if field_name not in errors:
-                            errors[field_name] = []
-                        errors[field_name].extend(err.messages[field_name])
+                    if errors:
+                        raise ValidationError(errors)
 
-            if errors:
-                raise ValidationError(errors)
+                    # Execute the original __call__ method
+                    result = original_method(self, *args, **kwargs)
 
-            # Execute the original __call__ method
-            result = original_call(self, *args, **kwargs)
+                    # Run the invariant methods marked `post` after the original __call__ method
+                    for invariant_method in self._invariants["post"].values():
+                        try:
+                            invariant_method(self)
+                        except ValidationError as err:
+                            for field_name in err.messages:
+                                if field_name not in errors:
+                                    errors[field_name] = []
+                                errors[field_name].extend(err.messages[field_name])
 
-            # Run the invariant methods marked `post` after the original __call__ method
-            for invariant_method in self._invariants["post"].values():
-                try:
-                    invariant_method(self)
-                except ValidationError as err:
-                    for field_name in err.messages:
-                        if field_name not in errors:
-                            errors[field_name] = []
-                        errors[field_name].extend(err.messages[field_name])
+                    if errors:
+                        raise ValidationError(errors)
 
-            if errors:
-                raise ValidationError(errors)
+                    return result
 
-            return result
+                setattr(cls, method_name, wrapped_call)
 
-        cls.__call__ = wrapped_call
     return cls
 
 
@@ -126,7 +133,6 @@ def domain_service_factory(element_cls, **kwargs):
         ) and hasattr(method, "_invariant"):
             element_cls._invariants[method._invariant][method_name] = method
 
-    # Wrap the __call__ method with invariant checks
-    element_cls = wrap_call_method_with_invariants(element_cls)
+    element_cls = wrap_methods_with_invariant_calls(element_cls)
 
     return element_cls

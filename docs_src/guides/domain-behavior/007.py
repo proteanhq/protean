@@ -86,14 +86,14 @@ class Inventory:
 
 
 @domain.domain_service(part_of=[Order, Inventory])
-class place_order:
+class OrderPlacementService:
     def __init__(self, order, inventories):
         super().__init__(*(order, inventories))
 
         self.order = order
         self.inventories = inventories
 
-    def __call__(self):
+    def place_order(self):
         for item in self.order.items:
             inventory = next(
                 (i for i in self.inventories if i.product_id == item.product_id), None
