@@ -40,9 +40,6 @@ class String(Field):
 
     def _cast_to_type(self, value):
         """Convert the value to its string representation"""
-        if value is None:
-            return value
-
         value = value if isinstance(value, str) else str(value)
 
         return bleach.clean(value) if self.sanitize else value
@@ -77,9 +74,6 @@ class Text(Field):
 
     def _cast_to_type(self, value):
         """Convert the value to its string representation"""
-        if value is None:
-            return value
-
         value = value if isinstance(value, str) else str(value)
 
         return bleach.clean(value) if self.sanitize else value

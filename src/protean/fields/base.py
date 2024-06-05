@@ -91,13 +91,6 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
 
         # Set the choices for this field
         self.choices = choices
-        if self.choices:
-            self.choice_dict = {}
-            for _, member in self.choices.__members__.items():
-                if isinstance(member.value, (tuple, list)):
-                    self.choice_dict[member.value[0]] = member.value[1]
-                else:
-                    self.choice_dict[member.value] = member.value
 
         self._validators = validators
 
@@ -251,12 +244,23 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
 
         # If choices exist then validate that value is be one of the choices
         if self.choices:
-            value_list = value
-            if not isinstance(value, (list, tuple)):
-                value_list = [value]
+            # Check if self.choices is an Enum
+            if type(self.choices) not in [list, tuple] and issubclass(
+                self.choices, enum.Enum
+            ):
+                choices = [item.value for item in self.choices]
+
+                # Check if value is an Enum instance
+                if isinstance(value, self.choices):
+                    value = value.value
+            else:
+                choices = self.choices
+
+            value_list = [value] if not isinstance(value, (list, tuple)) else value
+
             for v in value_list:
-                if v not in self.choice_dict:
-                    self.fail("invalid_choice", value=v, choices=list(self.choice_dict))
+                if v not in choices:
+                    self.fail("invalid_choice", value=v, choices=choices)
 
         # Cast and Validate the value for this Field
         value = self._cast_to_type(value)

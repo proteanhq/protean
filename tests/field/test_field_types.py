@@ -31,6 +31,10 @@ class TestStringField:
         name = String(max_length=10)
         assert name is not None
 
+    def test_returns_none_as_it_is(self):
+        name = String(max_length=10)
+        assert name._load(None) is None
+
     def test_type_validation(self):
         """Test type checking validation for the Field"""
         name = String(max_length=10)
@@ -117,9 +121,9 @@ class TestIntegerField:
         class StatusChoices(enum.Enum):
             """Set of choices for the status"""
 
-            PENDING = (0, "Pending")
-            SUCCESS = (1, "Success")
-            ERROR = (2, "Error")
+            PENDING = 0
+            SUCCESS = 1
+            ERROR = 2
 
         status = Integer(choices=StatusChoices)
         assert status is not None
