@@ -1,7 +1,7 @@
 from protean import Domain
 from protean.fields import Integer, String
 
-domain = Domain(__file__)
+domain = Domain(__file__, load_toml=False)
 
 
 @domain.aggregate(stream_name="account")

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from protean import Domain
 from protean.fields import DateTime, String
 
-domain = Domain(__file__)
+domain = Domain(__file__, load_toml=False)
 
 
 @domain.aggregate

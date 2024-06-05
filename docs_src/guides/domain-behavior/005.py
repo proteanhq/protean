@@ -4,7 +4,7 @@ from protean import Domain
 from protean.fields import String
 
 
-domain = Domain(__file__)
+domain = Domain(__file__, load_toml=False)
 
 
 class EmailValidator:

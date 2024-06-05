@@ -5,7 +5,7 @@ from protean import Domain, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Date, Float, Identifier, Integer, String, HasMany
 
-domain = Domain(__file__)
+domain = Domain(__file__, load_toml=False)
 
 
 class OrderStatus(Enum):
