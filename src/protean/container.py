@@ -323,7 +323,7 @@ class BaseContainer(metaclass=ContainerMeta):
                 "_owner",  # Owner entity in the hierarchy
                 "_disable_invariant_checks",  # Flag to disable invariant checks
             ]
-            or name.startswith(("add_", "remove_"))
+            or name.startswith(("add_", "remove_", "get_one_from_", "filter_"))
         ):
             super().__setattr__(name, value)
         else:

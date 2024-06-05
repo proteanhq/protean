@@ -673,3 +673,44 @@ class HasMany(Association):
             list: A list of dictionaries representing the linked entities.
         """
         return [item.to_dict() for item in value]
+
+    def get(self, instance, **kwargs):
+        """Fetch a single linked entity based on the provided criteria.
+
+        Available as `get_one_from_<HasMany Field Name>` method on the entity instance.
+
+        Args:
+            **kwargs: The filtering criteria.
+        """
+        data = self.filter(instance, **kwargs)
+
+        if len(data) == 0:
+            raise exceptions.ObjectNotFoundError(
+                {"self.field_name": ["No linked entities matching criteria found"]}
+            )
+
+        if len(data) > 1:
+            raise exceptions.TooManyObjectsError(
+                {
+                    "self.field_name": [
+                        "Multiple linked entities matching criteria found"
+                    ]
+                }
+            )
+
+        return data[0]
+
+    def filter(self, instance, **kwargs):
+        """Filter the linked entities based on the provided criteria.
+
+        Available as `filter_<HasMany Field Name>` method on the entity instance.
+
+        Args:
+            **kwargs: The filtering criteria.
+        """
+        data = getattr(instance, self.field_name)
+        return [
+            item
+            for item in data
+            if all(getattr(item, key) == value for key, value in kwargs.items())
+        ]

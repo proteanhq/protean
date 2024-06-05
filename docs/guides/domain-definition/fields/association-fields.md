@@ -109,3 +109,30 @@ Out[4]:
   {'content': 'Qux', 'id': 'b1a7aeda-81ca-4d0b-9d7e-6fe0c000b8af'}],
  'id': '29943ac9-a9eb-497b-b6d2-466b30ecd5f5'}
 ```
+
+You can also use helper methods that begin with `get_one_from_` and `filter_` to filter
+for specific entities within the instances.
+
+`get_one_from_` returns a single entity. It raises `ObjectNotFoundError` if no matching
+entity for the criteria is found and `TooManyObjectsError` if more than
+one entity is found.
+
+`filter` returns a `list` of zero or more matching entities.
+
+```shell hl_lines="9 12"
+In [1]: post = Post(
+   ...:     title="Foo",
+   ...:     comments=[
+   ...:         Comment(content="Bar", rating=2.5),
+   ...:         Comment(content="Baz", rating=5)
+   ...:     ]
+   ...: )
+
+In [2]: post.filter_comments(content="Bar", rating=2.5)
+Out[2]: [<Comment: Comment object (id: 3b7fd92e-be11-4b3b-96e9-1caf02779f14)>]
+
+In [3]: comments = post.filter_comments(content="Bar", rating=2.5)
+
+In [4]: comments[0].to_dict()
+Out[4]: {'content': 'Bar', 'rating': 2.5, 'id': '3b7fd92e-be11-4b3b-96e9-1caf02779f14'}
+```

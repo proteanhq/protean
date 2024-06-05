@@ -1,7 +1,7 @@
 from protean import Domain
-from protean.fields import HasMany, String, Text
+from protean.fields import HasMany, Float, String, Text
 
-domain = Domain(__file__)
+domain = Domain(__file__, load_toml=False)
 
 
 @domain.aggregate
@@ -14,3 +14,4 @@ class Post:
 @domain.entity(part_of=Post)
 class Comment:
     content = String(required=True, max_length=50)
+    rating = Float(max_value=5)

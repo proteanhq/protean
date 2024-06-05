@@ -290,14 +290,20 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
             if isinstance(field_obj, Association):
                 getattr(self, field_name)  # This refreshes the values in associations
 
-                # Set up add and remove methods. These are pseudo methods, `add_*` and
-                #   `remove_*` that point to the HasMany field's `add` and `remove`
-                #   methods. They are wrapped to ensure we pass the object that holds
-                #   the values and temp_cache.
+                # Set up add and remove methods. These are pseudo methods: `add_*`,
+                #   `remove_*` and `filter_*` that point to the HasMany field's `add`,
+                #   `remove` and `filter` methods. They are wrapped to ensure we pass
+                #   the object that holds the values and temp_cache.
                 if isinstance(field_obj, HasMany):
                     setattr(self, f"add_{field_name}", partial(field_obj.add, self))
                     setattr(
                         self, f"remove_{field_name}", partial(field_obj.remove, self)
+                    )
+                    setattr(
+                        self, f"get_one_from_{field_name}", partial(field_obj.get, self)
+                    )
+                    setattr(
+                        self, f"filter_{field_name}", partial(field_obj.filter, self)
                     )
 
         # Now load the remaining fields with a None value, which will fail
