@@ -48,11 +48,6 @@ invariants are triggered after the update. `pre` invariants are used to prevent
 invalid state from being introduced, while `post` invariants ensure that the
 aggregate remains in a valid state after the update.
 
-In Protean, we will mostly be using `post` invariants because the domain model
-is expected to remain valid after any operation. You would typically start
-with the domain in a good state, mutate the elements, and check if all
-invariants are satisfied.
-
 `pre` invariants are useful in certain situations where you want to check state
 before the elements are mutated. For instance, you might want to check if a
 user has enough balance before deducting it. Also, some invariant checks may

@@ -19,8 +19,8 @@ domain events.
 
 Command Handlers are defined with the `Domain.command_handler` decorator:
 
-```python hl_lines="19-22 46-52"
-{! docs_src/guides/exposing-domain/002.py !}
+```python hl_lines="20-23 47-53"
+{! docs_src/guides/access-domain/002.py !}
 ```
 
 ## Workflow
@@ -78,7 +78,10 @@ Each command handler method is wrapped in a `UnitOfWork` context, without
 having to explicitly specify it. Both handler methods in
 `AccountCommandHandler` below are equivalent:
 
-```python hl_lines="5"
+```python hl_lines="8"
+from protean import handle, UnitOfWork
+
+
 @domain.command_handler(part_of=Account)
 class AccountCommandHandler:
     @handle(RegisterCommand)
