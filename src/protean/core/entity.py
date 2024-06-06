@@ -306,10 +306,14 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
                         self, f"filter_{field_name}", partial(field_obj.filter, self)
                     )
 
+        self.defaults()
+
         # Now load the remaining fields with a None value, which will fail
         # for required fields
         for field_name, field_obj in fields(self).items():
-            if field_name not in loaded_fields:
+            if field_name not in loaded_fields and (
+                not hasattr(self, field_name) or getattr(self, field_name) is None
+            ):
                 if not isinstance(field_obj, Association):
                     try:
                         setattr(self, field_name, None)
@@ -325,8 +329,6 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
         for field_name, field_obj in attributes(self).items():
             if field_name not in loaded_fields and not hasattr(self, field_name):
                 setattr(self, field_name, None)
-
-        self.defaults()
 
         self._initialized = True
 

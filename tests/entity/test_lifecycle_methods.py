@@ -1,5 +1,7 @@
 import pytest
 
+from protean import BaseEntity
+from protean.fields import String
 from protean.exceptions import ValidationError
 
 from .elements import Area, Building, BuildingStatus
@@ -15,6 +17,15 @@ class TestDefaults:
         building = Building(name="Foo", floors=1)
 
         assert building.status == BuildingStatus.WIP.value
+
+    def test_defaults_are_applied_before_validation(self):
+        class Foo(BaseEntity):
+            name = String(required=True)
+
+            def defaults(self):
+                self.name = "bar"
+
+        assert Foo().name == "bar"
 
 
 class TestInvariantValidation:

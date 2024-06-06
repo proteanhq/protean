@@ -15,7 +15,7 @@ class TestModel:
         assert issubclass(model_cls, MemoryModel)
         assert model_cls.__name__ == "PersonModel"
 
-    def test_conversation_from_entity_to_model(self, test_domain):
+    def test_conversion_from_entity_to_model(self, test_domain):
         model_cls = test_domain.repository_for(Person)._model
 
         person = Person(first_name="John", last_name="Doe")
@@ -28,7 +28,7 @@ class TestModel:
         assert person_model_obj["first_name"] == "John"
         assert person_model_obj["last_name"] == "Doe"
 
-    def test_conversation_from_model_to_entity(self, test_domain):
+    def test_conversion_from_model_to_entity(self, test_domain):
         model_cls = test_domain.repository_for(Person)._model
         person = Person(first_name="John", last_name="Doe")
         person_model_obj = model_cls.from_entity(person)
@@ -47,7 +47,7 @@ class TestModelWithVO:
         assert issubclass(model_cls, MemoryModel)
         assert model_cls.__name__ == "UserModel"
 
-    def test_conversation_from_entity_to_model(self, test_domain):
+    def test_conversion_from_entity_to_model(self, test_domain):
         model_cls = test_domain.repository_for(User)._model
 
         user1 = User(email_address="john.doe@gmail.com", password="d4e5r6")
