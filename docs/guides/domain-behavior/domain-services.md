@@ -36,7 +36,7 @@ associated with at least two aggregates with the `part_of` option.
 
 The service methods in a Domain Service can be structured in three flavors:
 
-### Class methods
+### 1. Class with class methods
 
 If you don't have any invariants to be managed by the Domain Service, each
 method in the Domain Service can simply be a class method, that receives all
@@ -52,7 +52,7 @@ Invoking it is straight forward:
 OrderPlacementService.place_order(order, inventories)
 ```
 
-### Instance methods
+### 2. Class with instance methods
 
 In this flavor, the Domain Service is instantiated with the aggregates and each
 method performs a distinct business function.
@@ -69,7 +69,7 @@ service = OrderPlacementService(order, inventories)
 service.place_order()
 ```
 
-### Callable class
+### 3. Callable class
 
 If you have a single business function, you can simply model it as a callable
 class:
@@ -83,9 +83,27 @@ service = OrderPlacementService(order, inventories)
 service()
 ```
 
+### Deciding between different flavors
+
+The decision between a class with instance methods and a callable class boils
+down to two factors:
+1. How many business functions does the Domain Service have? If it has only one,
+then a callable class is more elegant.
+2. Do you have `pre` invariants that only apply to specific methods? Then it
+makes sense to construct each method as a separate callable class. If your
+invariant methods apply to all methods, then a class with instance methods is
+preferable.
+
+As usual, you will probably have not enough insight to take this decision
+upfront. As your domain model matures, review regularly and decide on the best
+way to model the Domain Service.
+
 !!!note
     You can include private methods in a Domain Service class by prefixing the
-    method name with an underscore.
+    method name with an underscore. If you encounter a `RecursionError:
+    maximum recursion depth exceeded` error, it is likely that a domain method
+    is calling a private method, but the private method name is not prefixed
+    with an underscore.
 
 ## Typical Workflow
 
@@ -117,7 +135,13 @@ the service method. Unlike in Aggregates though, invariants in Domain Services
 typically deal with validations that span across multiple aggregates.
 
 `pre` invariants check the state of the aggregates before they are mutated,
-while `post` invariants check the state after the mutation. 
+while `post` invariants check the state after the mutation.
+
+!!!note
+   It is a good practice to step back and review the business logic placed in
+   the Domain Service now and then. If an invariant does not use multiple
+   aggregates, it is likely that it belongs within an aggregate and not in the
+   service.
 
 ## A full-blown example
 

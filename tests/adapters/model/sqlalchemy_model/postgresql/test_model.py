@@ -114,8 +114,8 @@ class TestCustomModel:
 
         test_domain.repository_for(Receiver)._dao  # Registers and refreshes DB objects
 
-        provider = test_domain.providers["default"]
-        provider._metadata.create_all()
+        default_provider = test_domain.providers["default"]
+        default_provider._metadata.create_all(default_provider._engine)
 
         model_cls = test_domain.repository_for(Receiver)._model
         assert model_cls.__name__ == "ReceiverInlineModel"

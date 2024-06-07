@@ -1,7 +1,7 @@
-version: "3.8"
+version: "3.9"
 services:
   elasticsearch:
-    image: elasticsearch:7.12.0
+    image: elasticsearch:8.7.0
     environment:
       - xpack.security.enabled=false
       - discovery.type=single-node
@@ -21,7 +21,7 @@ services:
       - 9200:9200
 
   kibana:
-    image: kibana:7.12.0
+    image: kibana:8.7.0
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
     ports:
@@ -30,14 +30,14 @@ services:
       - elasticsearch
 
   redis:
-    image: redis:6.0.9-buster
+    image: redis:7.0.11
     ports:
       - "6379:6379"
     environment:
       - ALLOW_EMPTY_PASSWORD=yes
 
   postgres:
-    image: postgres:11
+    image: postgres:15.2
     ports:
       - "5432:5432"
     environment:

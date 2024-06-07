@@ -121,10 +121,10 @@ nav:
       - guides/domain-behavior/invariants.md
       - guides/domain-behavior/aggregate-mutation.md
       - guides/domain-behavior/domain-services.md
-    - Exposing the domain:
-      - guides/exposing-domain/index.md
-      - guides/exposing-domain/commands.md
-      - guides/exposing-domain/command-handlers.md
+    - Accessing the domain:
+      - guides/access-domain/index.md
+      - guides/access-domain/commands.md
+      - guides/access-domain/command-handlers.md
     # - Application Layer:
     #   - guides/app-layer/index.md
     #   - guides/app-layer/application-services.md
