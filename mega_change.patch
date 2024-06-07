@@ -1,0 +1,1015 @@
+diff --git a/src/protean/adapters/repository/elasticsearch.py b/src/protean/adapters/repository/elasticsearch.py
+index 54d0fff..19a4b93 100644
+--- a/src/protean/adapters/repository/elasticsearch.py
++++ b/src/protean/adapters/repository/elasticsearch.py
+@@ -12,6 +12,7 @@ from elasticsearch import Elasticsearch
+ from elasticsearch.exceptions import NotFoundError
+ from elasticsearch_dsl import Document, Index, Keyword, Mapping, Search, query
+ 
++from protean.container import Options
+ from protean.exceptions import ObjectNotFoundError
+ from protean.fields import Reference
+ from protean.globals import current_domain
+@@ -423,9 +424,7 @@ class ESProvider(BaseProvider):
+         if entity_cls.meta_.schema_name in self._model_classes:
+             model_cls = self._model_classes[entity_cls.meta_.schema_name]
+         else:
+-            from protean.core.model import ModelMeta
+-
+-            meta_ = ModelMeta()
++            meta_ = Options()
+             meta_.entity_cls = entity_cls
+ 
+             # Construct Inner Index class with options
+diff --git a/src/protean/adapters/repository/memory.py b/src/protean/adapters/repository/memory.py
+index f40b9b7..6f7a45f 100644
+--- a/src/protean/adapters/repository/memory.py
++++ b/src/protean/adapters/repository/memory.py
+@@ -11,6 +11,7 @@ from threading import Lock
+ from typing import Any
+ from uuid import UUID
+ 
++from protean.container import Options
+ from protean.core.model import BaseModel
+ from protean.exceptions import ObjectNotFoundError, ValidationError
+ from protean.fields.basic import Auto
+@@ -148,12 +149,10 @@ class MemoryProvider(BaseProvider):
+                 if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
+             }
+ 
+-            from protean.core.model import ModelMeta
++            meta_nested_class = type("Meta", (object,), {"entity_cls": entity_cls})
++            meta_nested_class.__qualname__ = f"{entity_cls.__name__}Model.Meta"
++            custom_attrs.update({"Meta": meta_nested_class})
+ 
+-            meta_ = ModelMeta()
+-            meta_.entity_cls = entity_cls
+-
+-            custom_attrs.update({"meta_": meta_})
+             # FIXME Ensure the custom model attributes are constructed properly
+             decorated_model_cls = type(
+                 model_cls.__name__, (MemoryModel, model_cls), custom_attrs
+@@ -172,13 +171,11 @@ class MemoryProvider(BaseProvider):
+         if entity_cls.meta_.schema_name in self._model_classes:
+             model_cls = self._model_classes[entity_cls.meta_.schema_name]
+         else:
+-            from protean.core.model import ModelMeta
+-
+-            meta_ = ModelMeta()
+-            meta_.entity_cls = entity_cls
++            meta_nested_class = type("Meta", (object,), {"entity_cls": entity_cls})
++            meta_nested_class.__qualname__ = f"{entity_cls.__name__}Model.Meta"
+ 
+             attrs = {
+-                "meta_": meta_,
++                "Meta": meta_nested_class,
+             }
+             # FIXME Ensure the custom model attributes are constructed properly
+             model_cls = type(entity_cls.__name__ + "Model", (MemoryModel,), attrs)
+diff --git a/src/protean/adapters/repository/sqlalchemy.py b/src/protean/adapters/repository/sqlalchemy.py
+index 867deb5..4fb548d 100644
+--- a/src/protean/adapters/repository/sqlalchemy.py
++++ b/src/protean/adapters/repository/sqlalchemy.py
+@@ -5,20 +5,19 @@ import json
+ import logging
+ import uuid
+ 
+-from abc import ABCMeta
+ from enum import Enum
+ from typing import Any
+ 
+ import sqlalchemy.dialects.postgresql as psql
+ 
+-from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm
++from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm, text
+ from sqlalchemy import types as sa_types
+ from sqlalchemy.engine.url import make_url
+ from sqlalchemy.exc import DatabaseError
+-from sqlalchemy.ext import declarative as sa_dec
+-from sqlalchemy.ext.declarative import as_declarative, declared_attr
++from sqlalchemy.orm import DeclarativeBase, declared_attr
+ from sqlalchemy.types import CHAR, TypeDecorator
+ 
++from protean.container import Options
+ from protean.core.value_object import BaseValueObject
+ from protean.core.model import BaseModel
+ from protean.exceptions import (
+@@ -134,10 +133,21 @@ def _custom_json_dumps(value):
+     return json.dumps(value, default=_default)
+ 
+ 
+-class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
+-    """Metaclass for the Sqlalchemy declarative schema"""
++def derive_schema_name(model_cls):
++    # Retain schema name if already present, otherwise derive from entity class
++    if (
++        hasattr(model_cls.meta_, "schema_name")
++        and model_cls.meta_.schema_name is not None
++    ):
++        return model_cls.meta_.schema_name
++    else:
++        return model_cls.meta_.entity_cls.meta_.schema_name
++
++
++class SqlalchemyModel(DeclarativeBase, BaseModel):
++    """Model representation for the Sqlalchemy Database"""
+ 
+-    def __init__(cls, classname, bases, dict_):  # noqa: C901
++    def __init_subclass__(subclass, **kwargs):  # noqa: C901
+         field_mapping = {
+             Boolean: sa_types.Boolean,
+             Date: sa_types.Date,
+@@ -166,13 +176,13 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
+             return field_mapping.get(field_cls)
+ 
+         # Update the class attrs with the entity attributes
+-        if "meta_" in dict_:
+-            entity_cls = dict_["meta_"].entity_cls
++        if "meta_" in subclass.__dict__:
++            entity_cls = subclass.__dict__["meta_"].entity_cls
+             for _, field_obj in attributes(entity_cls).items():
+                 attribute_name = field_obj.attribute_name
+ 
+                 # Map the field if not in attributes
+-                if attribute_name not in cls.__dict__:
++                if attribute_name not in subclass.__dict__:
+                     # Derive field based on field enclosed within ShadowField
+                     if isinstance(field_obj, _ShadowField):
+                         field_obj = field_obj.field_obj
+@@ -185,7 +195,7 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
+                     sa_type_cls = field_mapping_for(field_obj)
+ 
+                     # Upgrade to Postgresql specific Data Types
+-                    if cls.metadata.bind.dialect.name == "postgresql":
++                    if subclass.__dict__["engine"].dialect.name == "postgresql":
+                         if field_cls == Dict and not field_obj.pickled:
+                             sa_type_cls = psql.JSON
+ 
+@@ -228,35 +238,10 @@ class DeclarativeMeta(sa_dec.DeclarativeMeta, ABCMeta):
+                         type_kwargs["length"] = field_obj.max_length
+ 
+                     # Update the attributes of the class
+-                    # SQLAlchemy changed where `DeclarativeMeta.__init__` looks for class attributes
+-                    #   between versions 1.3 and 1.4, and then fixated on `cls.__dict__` in 1.4.36.
+-                    #   While the `setattr` below works with the latest SQLAlchemy version of 1.4.36,
+-                    #   it's better to populate both `dict_` as well as `cls.__dict__` to be compatible
+-                    #   with all 1.4.10+ versions of SQLAlchemy.
+-                    # More info:
+-                    #   * https://github.com/sqlalchemy/sqlalchemy/issues/6791
+-                    #   * https://github.com/sqlalchemy/sqlalchemy/issues/7900
+                     column = Column(sa_type_cls(*type_args, **type_kwargs), **col_args)
+-                    setattr(cls, attribute_name, column)  # Set class attribute
+-                    dict_[attribute_name] = column  # Set in dict_
++                    setattr(subclass, attribute_name, column)  # Set class attribute
+ 
+-        super().__init__(classname, bases, dict_)
+-
+-
+-def derive_schema_name(model_cls):
+-    # Retain schema name if already present, otherwise derive from entity class
+-    if (
+-        hasattr(model_cls.meta_, "schema_name")
+-        and model_cls.meta_.schema_name is not None
+-    ):
+-        return model_cls.meta_.schema_name
+-    else:
+-        return model_cls.meta_.entity_cls.meta_.schema_name
+-
+-
+-@as_declarative(metaclass=DeclarativeMeta)
+-class SqlalchemyModel(BaseModel):
+-    """Model representation for the Sqlalchemy Database"""
++        super().__init_subclass__(**kwargs)
+ 
+     @declared_attr
+     def __tablename__(cls):
+@@ -578,9 +563,9 @@ class SAProvider(BaseProvider):
+                 self.conn_info["SCHEMA"] if "SCHEMA" in self.conn_info else "public"
+             )
+ 
+-            self._metadata = MetaData(bind=self._engine, schema=schema)
++            self._metadata = MetaData(schema=schema)
+         else:
+-            self._metadata = MetaData(bind=self._engine)
++            self._metadata = MetaData()
+ 
+         # A temporary cache of already constructed model classes
+         self._model_classes = {}
+@@ -655,13 +640,13 @@ class SAProvider(BaseProvider):
+         transaction = conn.begin()
+ 
+         if self.conn_info["database"] == self.databases.sqlite.value:
+-            conn.execute("PRAGMA foreign_keys = OFF;")
++            conn.execute(text("PRAGMA foreign_keys = OFF;"))
+ 
+         for table in self._metadata.sorted_tables:
+             conn.execute(table.delete())
+ 
+         if self.conn_info["database"] == self.databases.sqlite.value:
+-            conn.execute("PRAGMA foreign_keys = ON;")
++            conn.execute(text("PRAGMA foreign_keys = ON;"))
+ 
+         transaction.commit()
+ 
+@@ -673,10 +658,10 @@ class SAProvider(BaseProvider):
+         for _, aggregate_record in self.domain.registry.aggregates.items():
+             self.domain.repository_for(aggregate_record.cls)._dao
+ 
+-        self._metadata.create_all()
++        self._metadata.create_all(self._engine)
+ 
+     def _drop_database_artifacts(self):
+-        self._metadata.drop_all()
++        self._metadata.drop_all(self._engine)
+         self._metadata.clear()
+ 
+     def decorate_model_class(self, entity_cls, model_cls):
+@@ -712,15 +697,15 @@ class SAProvider(BaseProvider):
+             # Add the earlier copied columns to the custom attributes
+             custom_attrs = {**custom_attrs, **columns}
+ 
+-            from protean.core.model import ModelMeta
+-
+-            meta_ = ModelMeta(model_cls.meta_)
++            meta_ = Options(model_cls.meta_)
+             meta_.entity_cls = entity_cls
+             meta_.schema_name = (
+                 schema_name if meta_.schema_name is None else meta_.schema_name
+             )
+ 
+-            custom_attrs.update({"meta_": meta_, "metadata": self._metadata})
++            custom_attrs.update(
++                {"meta_": meta_, "engine": self._engine, "metadata": self._metadata}
++            )
+             # FIXME Ensure the custom model attributes are constructed properly
+             decorated_model_cls = type(
+                 model_cls.__name__, (SqlalchemyModel, model_cls), custom_attrs
+@@ -739,10 +724,8 @@ class SAProvider(BaseProvider):
+         if entity_cls.meta_.schema_name in self._model_classes:
+             model_cls = self._model_classes[entity_cls.meta_.schema_name]
+         else:
+-            from protean.core.model import ModelMeta
+-
+             # Construct a new Meta object with existing values
+-            meta_ = ModelMeta()
++            meta_ = Options()
+             meta_.entity_cls = entity_cls
+             # If schema_name is not provided, sqlalchemy can throw
+             #   sqlalchemy.exc.InvalidRequestError: Class does not
+@@ -752,6 +735,7 @@ class SAProvider(BaseProvider):
+ 
+             attrs = {
+                 "meta_": meta_,
++                "engine": self._engine,
+                 "metadata": self._metadata,
+             }
+             # FIXME Ensure the custom model attributes are constructed properly
+diff --git a/src/protean/container.py b/src/protean/container.py
+index 920d0cb..4353c34 100644
+--- a/src/protean/container.py
++++ b/src/protean/container.py
+@@ -8,7 +8,6 @@ from collections import defaultdict
+ from typing import Any, Type, Union
+ 
+ from protean.exceptions import (
+-    IncorrectUsageError,
+     InvalidDataError,
+     NotSupportedError,
+     ValidationError,
+@@ -91,7 +90,8 @@ class OptionsMixin:
+         """
+         super().__init_subclass__()
+ 
+-        # Retrieve inner Meta class
++        final_options = Options()
++
+         # Gather `Meta` class/object if defined
+         options = getattr(subclass, "Meta", None)
+ 
+@@ -103,9 +103,13 @@ class OptionsMixin:
+         #   `__qualname__` contains the Inner class name in the form of a dot notation:
+         #   <OuterClass>.<InnerClass>.
+         if options and options.__qualname__.split(".")[-2] == subclass.__name__:
+-            subclass.meta_ = Options(options)
+-        else:
+-            subclass.meta_ = Options()
++            final_options = final_options + Options(options)
++
++        # meta_object_options = getattr(subclass, "meta_", None)
++        # if meta_object_options:
++        #     final_options = final_options + meta_object_options
++
++        subclass.meta_ = final_options
+ 
+         # Assign default options for remaining items
+         subclass._set_defaults()
+@@ -376,23 +380,10 @@ class IdentityMixin:
+             )
+ 
+             setattr(new_class, _ID_FIELD_NAME, id_field.field_name)
+-
+-            # If the aggregate/entity has been marked abstract,
+-            #   and contains an identifier field, raise exception
+-            if new_class.meta_.abstract and id_field:
+-                raise IncorrectUsageError(
+-                    {
+-                        "_entity": [
+-                            f"Abstract Aggregate `{new_class.__name__}` marked as abstract cannot have"
+-                            " identity fields"
+-                        ]
+-                    }
+-                )
+         except StopIteration:
+             # If no id field is declared then create one
+-            #   If the aggregate/entity is marked abstract,
+-            #   avoid creating an identifier field.
+-            if not new_class.meta_.abstract:
++            #   If the `auto_add_id_field` is False, avoid creating an identifier field.
++            if new_class.meta_.auto_add_id_field:
+                 new_class.__create_id_field()
+ 
+     @classmethod
+diff --git a/src/protean/core/aggregate.py b/src/protean/core/aggregate.py
+index c1f8a2c..41c64cb 100644
+--- a/src/protean/core/aggregate.py
++++ b/src/protean/core/aggregate.py
+@@ -45,9 +45,6 @@ class BaseAggregate(EventedMixin, BaseEntity):
+     # Track current version of Aggregate
+     _version = Integer(default=-1)
+ 
+-    class Meta:
+-        abstract = True
+-
+     def __init__(self, *args, **kwargs):
+         super().__init__(*args, **kwargs)
+ 
+@@ -58,6 +55,7 @@ class BaseAggregate(EventedMixin, BaseEntity):
+     @classmethod
+     def _default_options(cls):
+         return [
++            ("auto_add_id_field", True),
+             ("provider", "default"),
+             ("model", None),
+             ("stream_name", inflection.underscore(cls.__name__)),
+diff --git a/src/protean/core/application_service.py b/src/protean/core/application_service.py
+index 130ade2..56d46e0 100644
+--- a/src/protean/core/application_service.py
++++ b/src/protean/core/application_service.py
+@@ -20,9 +20,6 @@ class BaseApplicationService(Element, OptionsMixin):
+ 
+     element_type = DomainObjects.APPLICATION_SERVICE
+ 
+-    class Meta:
+-        abstract = True
+-
+     def __new__(cls, *args, **kwargs):
+         if cls is BaseApplicationService:
+             raise TypeError("BaseApplicationService cannot be instantiated")
+diff --git a/src/protean/core/command.py b/src/protean/core/command.py
+index f95440c..4976098 100644
+--- a/src/protean/core/command.py
++++ b/src/protean/core/command.py
+@@ -1,5 +1,5 @@
+ from protean.container import BaseContainer, OptionsMixin
+-from protean.exceptions import IncorrectUsageError, InvalidDataError, ValidationError
++from protean.exceptions import IncorrectUsageError, InvalidDataError, ValidationError, NotSupportedError
+ from protean.fields import Field
+ from protean.reflection import _ID_FIELD_NAME, declared_fields
+ from protean.utils import DomainObjects, derive_element_class
+@@ -14,8 +14,10 @@ class BaseCommand(BaseContainer, OptionsMixin):
+ 
+     element_type = DomainObjects.COMMAND
+ 
+-    class Meta:
+-        abstract = True
++    def __new__(cls, *args, **kwargs):
++        if cls is BaseCommand:
++            raise NotSupportedError("BaseCommand cannot be instantiated")
++        return super().__new__(cls)
+ 
+     def __init_subclass__(subclass) -> None:
+         super().__init_subclass__()
+diff --git a/src/protean/core/domain_service.py b/src/protean/core/domain_service.py
+index d6184a7..c04cbaf 100644
+--- a/src/protean/core/domain_service.py
++++ b/src/protean/core/domain_service.py
+@@ -22,9 +22,6 @@ class BaseDomainService(Element, OptionsMixin):
+ 
+     element_type = DomainObjects.DOMAIN_SERVICE
+ 
+-    class Meta:
+-        abstract = True
+-
+     def __new__(cls, *args, **kwargs):
+         if cls is BaseDomainService:
+             raise TypeError("BaseDomainService cannot be instantiated")
+diff --git a/src/protean/core/entity.py b/src/protean/core/entity.py
+index 98214cc..5181847 100644
+--- a/src/protean/core/entity.py
++++ b/src/protean/core/entity.py
+@@ -110,8 +110,10 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
+ 
+     element_type = DomainObjects.ENTITY
+ 
+-    class Meta:
+-        abstract = True
++    def __new__(cls, *args, **kwargs):
++        if cls is BaseEntity:
++            raise TypeError("BaseEntity cannot be instantiated")
++        return super().__new__(cls)
+ 
+     def __init_subclass__(subclass) -> None:
+         super().__init_subclass__()
+@@ -122,6 +124,7 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
+     @classmethod
+     def _default_options(cls):
+         return [
++            ("auto_add_id_field", True),
+             ("provider", "default"),
+             ("model", None),
+             ("part_of", None),
+diff --git a/src/protean/core/event.py b/src/protean/core/event.py
+index b1116b2..d23bd08 100644
+--- a/src/protean/core/event.py
++++ b/src/protean/core/event.py
+@@ -18,8 +18,10 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
+ 
+     element_type = DomainObjects.EVENT
+ 
+-    class Meta:
+-        abstract = True
++    def __new__(cls, *args, **kwargs):
++        if cls is BaseEvent:
++            raise TypeError("BaseEvent cannot be instantiated")
++        return super().__new__(cls)
+ 
+     def __init_subclass__(subclass) -> None:
+         super().__init_subclass__()
+diff --git a/src/protean/core/event_handler.py b/src/protean/core/event_handler.py
+index f720bba..169b881 100644
+--- a/src/protean/core/event_handler.py
++++ b/src/protean/core/event_handler.py
+@@ -15,8 +15,10 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
+ 
+     element_type = DomainObjects.EVENT_HANDLER
+ 
+-    class Meta:
+-        abstract = True
++    def __new__(cls, *args, **kwargs):
++        if cls is BaseEventHandler:
++            raise TypeError("BaseEventHandler cannot be instantiated")
++        return super().__new__(cls)
+ 
+     @classmethod
+     def _default_options(cls):
+@@ -30,11 +32,6 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
+             ("source_stream", None),
+         ]
+ 
+-    def __new__(cls, *args, **kwargs):
+-        if cls is BaseEventHandler:
+-            raise TypeError("BaseEventHandler cannot be instantiated")
+-        return super().__new__(cls)
+-
+ 
+ def event_handler_factory(element_cls, **opts):
+     element_cls = derive_element_class(element_cls, BaseEventHandler, **opts)
+diff --git a/src/protean/core/event_sourced_aggregate.py b/src/protean/core/event_sourced_aggregate.py
+index dcbee2e..1294552 100644
+--- a/src/protean/core/event_sourced_aggregate.py
++++ b/src/protean/core/event_sourced_aggregate.py
+@@ -34,12 +34,16 @@ class BaseEventSourcedAggregate(
+     # Track current version of Aggregate
+     _version = Integer(default=-1)
+ 
+-    class Meta:
+-        abstract = True
++    def __new__(cls, *args, **kwargs):
++        if cls is BaseEventSourcedAggregate:
++            raise TypeError("BaseEventSourcedAggregate cannot be instantiated")
++        return super().__new__(cls)
++
+ 
+     @classmethod
+     def _default_options(cls):
+         return [
++            ("auto_add_id_field", True),
+             ("stream_name", inflection.underscore(cls.__name__)),
+         ]
+ 
+diff --git a/src/protean/core/model.py b/src/protean/core/model.py
+index b03232b..ca467c2 100644
+--- a/src/protean/core/model.py
++++ b/src/protean/core/model.py
+@@ -1,29 +1,11 @@
+ from abc import abstractmethod
+ 
+-from protean.container import Element
++from protean.container import Element, OptionsMixin
+ from protean.exceptions import IncorrectUsageError
+-from protean.utils import DomainObjects
++from protean.utils import DomainObjects, derive_element_class
+ 
+ 
+-class ModelMeta:
+-    """Metadata info for the Model.
+-
+-    Options:
+-    - ``entity_cls``: The Entity that this model is associated with
+-    """
+-
+-    def __init__(self, meta=None):
+-        if meta:
+-            self.entity_cls = getattr(meta, "entity_cls", None)
+-            self.schema_name = getattr(meta, "schema_name", None)
+-            self.database = getattr(meta, "database", None)
+-        else:
+-            self.entity_cls = None
+-            self.schema_name = None
+-            self.database = None
+-
+-
+-class BaseModel(Element):
++class BaseModel(Element, OptionsMixin):
+     """This is a Model representing a data schema in the persistence store. A concrete implementation of this
+     model has to be provided by each persistence store plugin.
+     """
+@@ -35,6 +17,14 @@ class BaseModel(Element):
+             raise TypeError("BaseModel cannot be instantiated")
+         return super().__new__(cls)
+ 
++    @classmethod
++    def _default_options(cls):
++        return [
++            ("entity_cls", None),
++            ("schema_name", None),
++            ("database", None),
++        ]
++
+     @classmethod
+     @abstractmethod
+     def from_entity(cls, entity):
+@@ -47,23 +37,7 @@ class BaseModel(Element):
+ 
+ 
+ def model_factory(element_cls, **kwargs):
+-    element_cls.element_type = DomainObjects.MODEL
+-
+-    if hasattr(element_cls, "Meta"):
+-        element_cls.meta_ = ModelMeta(element_cls.Meta)
+-    else:
+-        element_cls.meta_ = ModelMeta()
+-
+-    if not (hasattr(element_cls.meta_, "entity_cls") and element_cls.meta_.entity_cls):
+-        element_cls.meta_.entity_cls = kwargs.pop("entity_cls", None)
+-
+-    if not (
+-        hasattr(element_cls.meta_, "schema_name") and element_cls.meta_.schema_name
+-    ):
+-        element_cls.meta_.schema_name = kwargs.pop("schema_name", None)
+-
+-    if not (hasattr(element_cls.meta_, "database") and element_cls.meta_.database):
+-        element_cls.meta_.database = kwargs.pop("database", None)
++    element_cls = derive_element_class(element_cls, BaseModel, **kwargs)
+ 
+     if not element_cls.meta_.entity_cls:
+         raise IncorrectUsageError(
+diff --git a/src/protean/core/subscriber.py b/src/protean/core/subscriber.py
+index eb5fb1f..51bb11e 100644
+--- a/src/protean/core/subscriber.py
++++ b/src/protean/core/subscriber.py
+@@ -20,15 +20,15 @@ class BaseSubscriber(Element, OptionsMixin):
+ 
+     element_type = DomainObjects.SUBSCRIBER
+ 
+-    @classmethod
+-    def _default_options(cls):
+-        return [("event", None), ("broker", "default")]
+-
+     def __new__(cls, *args, **kwargs):
+         if cls is BaseSubscriber:
+             raise TypeError("BaseSubscriber cannot be instantiated")
+         return super().__new__(cls)
+ 
++    @classmethod
++    def _default_options(cls):
++        return [("event", None), ("broker", "default")]
++
+     @abstractmethod
+     def __call__(self, event: BaseEvent) -> Optional[Any]:
+         """Placeholder method for receiving notifications on event"""
+diff --git a/src/protean/core/value_object.py b/src/protean/core/value_object.py
+index 54e37de..d934080 100644
+--- a/src/protean/core/value_object.py
++++ b/src/protean/core/value_object.py
+@@ -17,8 +17,11 @@ logger = logging.getLogger(__name__)
+ class BaseValueObject(BaseContainer, OptionsMixin):
+     element_type = DomainObjects.VALUE_OBJECT
+ 
+-    class Meta:
+-        abstract = True
++    def __new__(cls, *args, **kwargs):
++        if cls is BaseValueObject:
++            raise TypeError("BaseValueObject cannot be instantiated")
++        return super().__new__(cls)
++
+ 
+     def __init_subclass__(subclass) -> None:
+         super().__init_subclass__()
+diff --git a/src/protean/core/view.py b/src/protean/core/view.py
+index 74beef3..347e053 100644
+--- a/src/protean/core/view.py
++++ b/src/protean/core/view.py
+@@ -16,8 +16,10 @@ logger = logging.getLogger(__name__)
+ class BaseView(BaseContainer, OptionsMixin):
+     element_type = DomainObjects.VIEW
+ 
+-    class Meta:
+-        abstract = True
++    def __new__(cls, *args, **kwargs):
++        if cls is BaseView:
++            raise TypeError("BaseView cannot be instantiated")
++        return super().__new__(cls)
+ 
+     @classmethod
+     def _default_options(cls):
+diff --git a/src/protean/domain/__init__.py b/src/protean/domain/__init__.py
+index 1083f03..3997601 100644
+--- a/src/protean/domain/__init__.py
++++ b/src/protean/domain/__init__.py
+@@ -29,6 +29,7 @@ from protean.utils import (
+     DomainObjects,
+     EventProcessing,
+     fqn,
++    factory_for
+ )
+ 
+ from .config import Config2, ConfigAttribute
+@@ -371,50 +372,6 @@ class Domain:
+     def registry(self):
+         return self._domain_registry
+ 
+-    def factory_for(self, domain_object_type):
+-        from protean.core.aggregate import aggregate_factory
+-        from protean.core.application_service import application_service_factory
+-        from protean.core.command import command_factory
+-        from protean.core.command_handler import command_handler_factory
+-        from protean.core.domain_service import domain_service_factory
+-        from protean.core.email import email_factory
+-        from protean.core.entity import entity_factory
+-        from protean.core.event import domain_event_factory
+-        from protean.core.event_handler import event_handler_factory
+-        from protean.core.event_sourced_aggregate import event_sourced_aggregate_factory
+-        from protean.core.model import model_factory
+-        from protean.core.repository import repository_factory
+-        from protean.core.serializer import serializer_factory
+-        from protean.core.subscriber import subscriber_factory
+-        from protean.core.value_object import value_object_factory
+-        from protean.core.view import view_factory
+-
+-        factories = {
+-            DomainObjects.AGGREGATE.value: aggregate_factory,
+-            DomainObjects.APPLICATION_SERVICE.value: application_service_factory,
+-            DomainObjects.COMMAND.value: command_factory,
+-            DomainObjects.COMMAND_HANDLER.value: command_handler_factory,
+-            DomainObjects.EVENT.value: domain_event_factory,
+-            DomainObjects.EVENT_HANDLER.value: event_handler_factory,
+-            DomainObjects.EVENT_SOURCED_AGGREGATE.value: event_sourced_aggregate_factory,
+-            DomainObjects.DOMAIN_SERVICE.value: domain_service_factory,
+-            DomainObjects.EMAIL.value: email_factory,
+-            DomainObjects.ENTITY.value: entity_factory,
+-            DomainObjects.MODEL.value: model_factory,
+-            DomainObjects.REPOSITORY.value: repository_factory,
+-            DomainObjects.SUBSCRIBER.value: subscriber_factory,
+-            DomainObjects.SERIALIZER.value: serializer_factory,
+-            DomainObjects.VALUE_OBJECT.value: value_object_factory,
+-            DomainObjects.VIEW.value: view_factory,
+-        }
+-
+-        if domain_object_type.value not in factories:
+-            raise IncorrectUsageError(
+-                {"_entity": [f"Unknown Element Type `{domain_object_type.value}`"]}
+-            )
+-
+-        return factories[domain_object_type.value]
+-
+     def _register_element(self, element_type, element_cls, **kwargs):  # noqa: C901
+         """Register class into the domain"""
+         # Check if `element_cls` is already a subclass of the Element Type
+@@ -428,7 +385,7 @@ class Domain:
+         #       class Account:
+         #  ```
+ 
+-        factory = self.factory_for(element_type)
++        factory = factory_for(element_type)
+         new_cls = factory(element_cls, **kwargs)
+ 
+         if element_type == DomainObjects.MODEL:
+diff --git a/src/protean/fields/basic.py b/src/protean/fields/basic.py
+index 8c0823f..cc8f2f0 100644
+--- a/src/protean/fields/basic.py
++++ b/src/protean/fields/basic.py
+@@ -374,14 +374,8 @@ class Identifier(Field):
+         ]:
+             raise ValidationError({"identity_type": ["Identity type not supported"]})
+ 
+-        # Pick identity type from domain configuration if not provided
+-        try:
+-            if not identity_type:
+-                identity_type = current_domain.config["identity_type"]
+-        except OutOfContextError:  # Domain not active
+-            identity_type = IdentityType.STRING.value
+-
+         self.identity_type = identity_type
++
+         super().__init__(**kwargs)
+ 
+     def _cast_to_type(self, value):
+@@ -390,6 +384,12 @@ class Identifier(Field):
+         if not (isinstance(value, (UUID, str, int))) or isinstance(value, bool):
+             self.fail("invalid", value=value)
+ 
++        # Fixate on IdentityType if not done already
++        #   This happens the first time an identifier field instance is used.
++        #   We don't try to fix this in the constructor because the Domain may not be available at that time.
++        if self.identity_type is None:
++            self.identity_type = current_domain.config["identity_type"]
++
+         # Ensure that the value is of the right type
+         if self.identity_type == IdentityType.UUID.value:
+             if not isinstance(value, UUID):
+diff --git a/src/protean/globals.py b/src/protean/globals.py
+index 605ad0f..1c769b9 100644
+--- a/src/protean/globals.py
++++ b/src/protean/globals.py
+@@ -1,5 +1,7 @@
+ from __future__ import annotations
+ 
++import warnings
++
+ from typing import TYPE_CHECKING, Any
+ 
+ if TYPE_CHECKING:
+@@ -9,8 +11,6 @@ from functools import partial
+ 
+ from werkzeug.local import LocalProxy, LocalStack
+ 
+-from protean.exceptions import OutOfContextError
+-
+ _domain_ctx_err_msg = """\
+ Working outside of domain context.
+ This typically means that you attempted to use functionality that needed
+@@ -23,14 +23,22 @@ documentation for more information.\
+ def _lookup_domain_object(name) -> Any:
+     top = _domain_context_stack.top
+     if top is None:
+-        raise OutOfContextError(_domain_ctx_err_msg)
++        warnings.warn(
++            _domain_ctx_err_msg,
++            stacklevel=3,
++        )
++        return None
+     return getattr(top, name)
+ 
+ 
+ def _find_domain() -> Domain:
+     top = _domain_context_stack.top
+     if top is None:
+-        raise OutOfContextError(_domain_ctx_err_msg)
++        warnings.warn(
++            _domain_ctx_err_msg,
++            stacklevel=3,
++        )
++        return None
+     return top.domain
+ 
+ 
+diff --git a/src/protean/template/domain_template/.gitignore b/src/protean/template/domain_template/.gitignore
+index efa407c..f3419ce 100644
+--- a/src/protean/template/domain_template/.gitignore
++++ b/src/protean/template/domain_template/.gitignore
+@@ -159,4 +159,7 @@ cython_debug/
+ #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
+ #  and can be added to the global gitignore or merged into this file.  For a more nuclear
+ #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
+-#.idea/
+\ No newline at end of file
++#.idea/
++
++# Mac OS
++.DS_Store
+\ No newline at end of file
+diff --git a/src/protean/template/domain_template/src/{{package_name}}/domain.py.jinja b/src/protean/template/domain_template/src/{{package_name}}/domain.py.jinja
+index 3b3d48d..a9baa1e 100644
+--- a/src/protean/template/domain_template/src/{{package_name}}/domain.py.jinja
++++ b/src/protean/template/domain_template/src/{{package_name}}/domain.py.jinja
+@@ -1,7 +1,7 @@
+ from protean.domain import Domain
+ 
+ # Domain Composition Root
+-{{ package_name }} = Domain(__file__, "{{ project_name }}")
++{{ package_name }} = Domain(__file__, "{{ package_name | capitalize }}")
+ 
+ # Initialize and load all domain elements under the composition root
+ {{ package_name }}.init()
+diff --git a/src/protean/template/domain_template/src/{{package_name}}/domain.toml.jinja b/src/protean/template/domain_template/src/{{package_name}}/domain.toml.jinja
+index 583b220..f8e7e14 100644
+--- a/src/protean/template/domain_template/src/{{package_name}}/domain.toml.jinja
++++ b/src/protean/template/domain_template/src/{{package_name}}/domain.toml.jinja
+@@ -1,6 +1,6 @@
+ debug = true
+ testing = true
+-secret_key = ${SECRET_KEY|{{ 999999999999999999999999999999999|ans_random|hash('sha256') }}}
++secret_key = "${SECRET_KEY|{{ 999999999999999999999999999999999|ans_random|hash('sha256') }}}"
+ identity_strategy = "uuid"
+ identity_type = "string"
+ event_processing = "sync"
+@@ -12,11 +12,6 @@ provider = "memory"
+ [databases.memory]
+ provider = "memory"
+ 
+-[databases.sqlite]
+-provider = "sqlalchemy"
+-database = "sqlite"
+-database_uri = "sqlite:///test.db"
+-
+ [brokers.default]
+ provider = "inline"
+ 
+diff --git a/src/protean/utils/__init__.py b/src/protean/utils/__init__.py
+index de21635..e94b2b1 100644
+--- a/src/protean/utils/__init__.py
++++ b/src/protean/utils/__init__.py
+@@ -12,7 +12,7 @@ from datetime import UTC, datetime
+ from enum import Enum
+ from uuid import uuid4
+ 
+-from protean.exceptions import ConfigurationError
++from protean.exceptions import ConfigurationError, IncorrectUsageError
+ from protean.globals import current_domain
+ 
+ logger = logging.getLogger(__name__)
+@@ -132,6 +132,57 @@ class DomainObjects(Enum):
+     VIEW = "VIEW"
+ 
+ 
++def base_classes()->list:
++    return [
++
++    ]
++
++
++def factory_for(domain_object_type) -> callable:
++    from protean.core.aggregate import aggregate_factory
++    from protean.core.application_service import application_service_factory
++    from protean.core.command import command_factory
++    from protean.core.command_handler import command_handler_factory
++    from protean.core.domain_service import domain_service_factory
++    from protean.core.email import email_factory
++    from protean.core.entity import entity_factory
++    from protean.core.event import domain_event_factory
++    from protean.core.event_handler import event_handler_factory
++    from protean.core.event_sourced_aggregate import event_sourced_aggregate_factory
++    from protean.core.model import model_factory
++    from protean.core.repository import repository_factory
++    from protean.core.serializer import serializer_factory
++    from protean.core.subscriber import subscriber_factory
++    from protean.core.value_object import value_object_factory
++    from protean.core.view import view_factory
++
++    factories = {
++        DomainObjects.AGGREGATE.value: aggregate_factory,
++        DomainObjects.APPLICATION_SERVICE.value: application_service_factory,
++        DomainObjects.COMMAND.value: command_factory,
++        DomainObjects.COMMAND_HANDLER.value: command_handler_factory,
++        DomainObjects.EVENT.value: domain_event_factory,
++        DomainObjects.EVENT_HANDLER.value: event_handler_factory,
++        DomainObjects.EVENT_SOURCED_AGGREGATE.value: event_sourced_aggregate_factory,
++        DomainObjects.DOMAIN_SERVICE.value: domain_service_factory,
++        DomainObjects.EMAIL.value: email_factory,
++        DomainObjects.ENTITY.value: entity_factory,
++        DomainObjects.MODEL.value: model_factory,
++        DomainObjects.REPOSITORY.value: repository_factory,
++        DomainObjects.SUBSCRIBER.value: subscriber_factory,
++        DomainObjects.SERIALIZER.value: serializer_factory,
++        DomainObjects.VALUE_OBJECT.value: value_object_factory,
++        DomainObjects.VIEW.value: view_factory,
++    }
++
++    if domain_object_type.value not in factories:
++        raise IncorrectUsageError(
++            {"_entity": [f"Unknown Element Type `{domain_object_type.value}`"]}
++        )
++
++    return factories[domain_object_type.value]
++
++
+ def derive_element_class(element_cls, base_cls, **opts):
+     if not issubclass(element_cls, base_cls):
+         try:
+@@ -188,4 +239,5 @@ __all__ = [
+     "import_from_full_path",
+     "singleton",
+     "utcnow_func",
++    "factory_for"
+ ]
+diff --git a/tests/container/test_options.py b/tests/container/test_options.py
+index 14a881a..7f81d8f 100644
+--- a/tests/container/test_options.py
++++ b/tests/container/test_options.py
+@@ -1,5 +1,6 @@
+-from protean.container import Options
+ from protean import BaseAggregate
++from protean.container import Options
++from protean.fields import String
+ 
+ 
+ class Meta:
+@@ -13,14 +14,12 @@ class TestOptionsStandalone:
+         assert opts is not None
+         assert opts.foo == "bar"
+ 
+-
+     def test_options_construction_from_dict(self):
+         opts = Options({"foo": "bar"})
+ 
+         assert opts is not None
+         assert opts.foo == "bar"
+ 
+-
+     def test_tracking_currently_active_attributes(self):
+         opts = Options({"foo": "bar"})
+         assert opts._opts == {"abstract", "foo"}
+@@ -34,7 +33,6 @@ class TestOptionsStandalone:
+         del opts.baz
+         assert opts._opts == {"abstract", "foo", "waldo"}
+ 
+-
+     def test_option_objects_equality(self):
+         assert Options() == Options()
+         assert Options(Meta) == Options({"foo": "bar"})
+@@ -52,7 +50,6 @@ class TestOptionsStandalone:
+ 
+         assert Options(Meta) != Options(Meta3)
+ 
+-
+     def test_merging_two_option_objects(self):
+         opt1 = Options({"foo": "bar", "baz": "qux"})
+         opt2 = Options({"baz": "quz"})
+@@ -67,8 +64,10 @@ class TestOptionsStandalone:
+ class TestOptionsInElements:
+     def test_options_from_meta_class_in_element(self):
+         class Foo(BaseAggregate):
++            bar = String()
++
+             class Meta:
+-                foo = "bar"
++                foo = "baz"
+ 
+-        assert Foo.meta_.foo == "bar"
+-        assert Foo.meta_.abstract is False
+\ No newline at end of file
++        assert Foo.meta_.foo == "baz"
++        assert Foo.meta_.abstract is False
+diff --git a/tests/test_aggregates.py b/tests/test_aggregates.py
+index 0fd53fd..6240af7 100644
+--- a/tests/test_aggregates.py
++++ b/tests/test_aggregates.py
+@@ -64,28 +64,10 @@ class TestAggregateIdentity:
+ 
+             class Meta:
+                 abstract = True
++                auto_add_id_field = False
+ 
+         assert "id" not in declared_fields(TimeStamped)
+ 
+-    def test_that_abstract_aggregates_cannot_have_a_declared_id_field(
+-        self, test_domain
+-    ):
+-        with pytest.raises(IncorrectUsageError) as exception:
+-
+-            @test_domain.aggregate
+-            class User(BaseAggregate):
+-                email = String(identifier=True)
+-                name = String(max_length=55)
+-
+-                class Meta:
+-                    abstract = True
+-
+-        assert exception.value.messages == {
+-            "_entity": [
+-                "Abstract Aggregate `User` marked as abstract cannot have identity fields"
+-            ]
+-        }
+-
+ 
+ class TestAggregateMeta:
+     class TestAggregateMetaInClassDefinition:
+
+
+
+
+
+
+
+{{ package_name }} = Domain(__file__, "{{ package_name | capitalize }}")

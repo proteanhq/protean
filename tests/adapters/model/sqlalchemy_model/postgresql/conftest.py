@@ -53,9 +53,11 @@ def setup_db():
         domain.repository_for(ListUser)._dao
         domain.repository_for(IntegerListUser)._dao
 
-        domain.providers["default"]._metadata.create_all()
+        default_provider = domain.providers["default"]
+        default_provider._metadata.create_all(default_provider._engine)
 
         yield
 
         # Drop all tables at the end of test suite
-        domain.providers["default"]._metadata.drop_all()
+        default_provider = domain.providers["default"]
+        default_provider._metadata.drop_all(default_provider._engine)
