@@ -114,7 +114,7 @@ Available options are:
 
 ### `abstract`
 
-When specified marks an Aggregate as abstract. If abstract, the aggregate
+Marks an Aggregate as abstract if `True`. If abstract, the aggregate
 cannot be instantiated and needs to be subclassed.
 
 ```python hl_lines="12"
@@ -129,6 +129,13 @@ NotSupportedError                         Traceback (most recent call last)
 ...
 NotSupportedError: TimeStamped class has been marked abstract and cannot be instantiated
 ```
+
+### `auto_add_id_field`
+
+If `True`, the aggregate will not contain an identifier field (acting as
+primary key) added by default. This option is usually combined with
+`abstract` to create classes that are meant to be subclassed by other
+aggregates.
 
 ### `provider`
 

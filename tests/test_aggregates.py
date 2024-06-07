@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from protean import BaseAggregate
-from protean.exceptions import IncorrectUsageError, ValidationError
+from protean.exceptions import ValidationError
 from protean.fields import Date, DateTime, HasMany, Reference, String
 from protean.reflection import declared_fields
 from protean.utils import fully_qualified_name, utcnow_func
@@ -56,7 +56,7 @@ class TestAggregateIdentity:
             email = String(identifier=True)
             username = String(identifier=True)
 
-    def test_that_abstract_aggregates_do_not_have_id_field(self, test_domain):
+    def test_that_abstract_aggregates_get_an_id_field_by_default(self, test_domain):
         @test_domain.aggregate
         class TimeStamped:
             created_at = DateTime(default=utcnow_func)
@@ -65,26 +65,31 @@ class TestAggregateIdentity:
             class Meta:
                 abstract = True
 
-        assert "id" not in declared_fields(TimeStamped)
+        assert "id" in declared_fields(TimeStamped)
 
-    def test_that_abstract_aggregates_cannot_have_a_declared_id_field(
+    def test_that_an_aggregate_can_opt_to_have_no_id_field_by_default(
         self, test_domain
     ):
-        with pytest.raises(IncorrectUsageError) as exception:
+        @test_domain.aggregate
+        class TimeStamped:
+            created_at = DateTime(default=utcnow_func)
+            updated_at = DateTime(default=utcnow_func)
 
-            @test_domain.aggregate
-            class User(BaseAggregate):
-                email = String(identifier=True)
-                name = String(max_length=55)
+            class Meta:
+                auto_add_id_field = False
 
-                class Meta:
-                    abstract = True
+        assert "id" not in declared_fields(TimeStamped)
 
-        assert exception.value.messages == {
-            "_entity": [
-                "Abstract Aggregate `User` marked as abstract cannot have identity fields"
-            ]
-        }
+    def test_that_abstract_aggregates_can_have_an_explicit_id_field(self, test_domain):
+        @test_domain.aggregate
+        class User(BaseAggregate):
+            email = String(identifier=True)
+            name = String(max_length=55)
+
+            class Meta:
+                abstract = True
+
+        assert "email" in declared_fields(User)
 
 
 class TestAggregateMeta:
