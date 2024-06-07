@@ -54,3 +54,9 @@ You can also pass options as parameters to the decorator:
 ```python hl_lines="7"
 {! docs_src/guides/composing-a-domain/021.py !}
 ```
+
+
+### `abstract`
+
+
+### `auto_add_id_field`

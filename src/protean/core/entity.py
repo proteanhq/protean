@@ -77,7 +77,7 @@ class _EntityState:
     fields_cache = _FieldsCacheDescriptor()
 
 
-class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
+class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
     """The Base class for Protean-Compliant Domain Entities.
 
     Provides helper methods to custom define entity attributes, and query attribute names
@@ -122,6 +122,7 @@ class BaseEntity(IdentityMixin, OptionsMixin, BaseContainer):
     @classmethod
     def _default_options(cls):
         return [
+            ("auto_add_id_field", True),
             ("provider", "default"),
             ("model", None),
             ("part_of", None),

@@ -58,6 +58,7 @@ class BaseAggregate(EventedMixin, BaseEntity):
     @classmethod
     def _default_options(cls):
         return [
+            ("auto_add_id_field", True),
             ("provider", "default"),
             ("model", None),
             ("stream_name", inflection.underscore(cls.__name__)),

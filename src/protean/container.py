@@ -8,7 +8,6 @@ from collections import defaultdict
 from typing import Any, Type, Union
 
 from protean.exceptions import (
-    IncorrectUsageError,
     InvalidDataError,
     NotSupportedError,
     ValidationError,
@@ -89,8 +88,6 @@ class OptionsMixin:
         Args:
             subclass (Protean Element): Subclass to initialize with metadata
         """
-        super().__init_subclass__()
-
         # Retrieve inner Meta class
         # Gather `Meta` class/object if defined
         options = getattr(subclass, "Meta", None)
@@ -110,13 +107,19 @@ class OptionsMixin:
         # Assign default options for remaining items
         subclass._set_defaults()
 
+        super().__init_subclass__()
+
     @classmethod
     def _set_defaults(cls):
         # Assign default options for remaining items
         #   with the help of `_default_options()` method defined in the Element's Root.
         #   Element Roots are `Event`, `Subscriber`, `Repository`, and so on.
         for key, default in cls._default_options():
-            value = (hasattr(cls.meta_, key) and getattr(cls.meta_, key)) or default
+            # FIXME Should the `None` check be replaced with a SENTINEL check?
+            if hasattr(cls.meta_, key) and getattr(cls.meta_, key) is not None:
+                value = getattr(cls.meta_, key)
+            else:
+                value = default
             setattr(cls.meta_, key, value)
 
     def __init__(self, *args, **kwargs):
@@ -361,7 +364,13 @@ class IdentityMixin:
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()
 
-        subclass.__set_id_field()
+        # FIXME Is there a better way to check this?
+        if subclass.__name__ not in [
+            "BaseAggregate",
+            "BaseEntity",
+            "BaseEventSourcedAggregate",
+        ]:
+            subclass.__set_id_field()
 
     @classmethod
     def __set_id_field(new_class):
@@ -376,23 +385,11 @@ class IdentityMixin:
             )
 
             setattr(new_class, _ID_FIELD_NAME, id_field.field_name)
-
-            # If the aggregate/entity has been marked abstract,
-            #   and contains an identifier field, raise exception
-            if new_class.meta_.abstract and id_field:
-                raise IncorrectUsageError(
-                    {
-                        "_entity": [
-                            f"Abstract Aggregate `{new_class.__name__}` marked as abstract cannot have"
-                            " identity fields"
-                        ]
-                    }
-                )
         except StopIteration:
             # If no id field is declared then create one
-            #   If the aggregate/entity is marked abstract,
+            #   If entity is explicitly marked with `auto_add_id_field=False`,
             #   avoid creating an identifier field.
-            if not new_class.meta_.abstract:
+            if new_class.meta_.auto_add_id_field:
                 new_class.__create_id_field()
 
     @classmethod

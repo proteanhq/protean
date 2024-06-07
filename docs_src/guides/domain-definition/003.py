@@ -10,7 +10,7 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
-@domain.aggregate(abstract=True)
+@domain.aggregate(abstract=True, auto_add_id_field=False)
 class TimeStamped:
     created_at = DateTime(default=utc_now)
     updated_at = DateTime(default=utc_now)

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseEventSourcedAggregate(
-    IdentityMixin, EventedMixin, OptionsMixin, BaseContainer
+    OptionsMixin, IdentityMixin, EventedMixin, BaseContainer
 ):
     """Base Event Sourced Aggregate class that all EventSourced Aggregates should inherit from.
 
@@ -40,6 +40,7 @@ class BaseEventSourcedAggregate(
     @classmethod
     def _default_options(cls):
         return [
+            ("auto_add_id_field", True),
             ("stream_name", inflection.underscore(cls.__name__)),
         ]
 
