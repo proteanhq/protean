@@ -93,10 +93,7 @@ class TestModelOptions:
                 name = String(max_length=50, required=True)
                 about = Text()
 
-                class Meta:
-                    schema_name = "people"
-
-            test_domain.register(Person)
+            test_domain.register(Person, schema_name="people")
             model_cls = test_domain.repository_for(Person)._model
 
             assert model_cls._index._name == "people"
@@ -154,10 +151,7 @@ class TestModelOptions:
                 name = String(max_length=50, required=True)
                 about = Text()
 
-                class Meta:
-                    schema_name = "people"
-
-            test_domain.register(Person)
+            test_domain.register(Person, schema_name="people")
             model_cls = test_domain.repository_for(Person)._model
 
             assert model_cls._index._name == "foo_people"

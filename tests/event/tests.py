@@ -19,10 +19,7 @@ class TestDomainEventDefinition:
             email = ValueObject(Email, required=True)
             name = String(max_length=50)
 
-            class Meta:
-                stream_name = "user"
-
-        test_domain.register(UserAdded)
+        test_domain.register(UserAdded, stream_name="user")
         event = UserAdded(email_address="john.doe@gmail.com", name="John Doe")
 
         assert event is not None
@@ -69,7 +66,7 @@ class TestDomainEventInitialization:
 
 class TestDomainEventRegistration:
     def test_that_domain_event_can_be_registered_with_domain(self, test_domain):
-        test_domain.register(PersonAdded)
+        test_domain.register(PersonAdded, part_of=Person)
 
         assert fully_qualified_name(PersonAdded) in test_domain.registry.events
 

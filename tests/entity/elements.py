@@ -9,28 +9,19 @@ class Account(BaseAggregate):
     account_number = String(max_length=50, required=True)
 
 
-class AbstractPerson(BaseEntity):
+class AbstractPerson(BaseAggregate):
     age = Integer(default=5)
-
-    class Meta:
-        abstract = True
 
 
 class ConcretePerson(BaseEntity):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
 
-    class Meta:
-        part_of = "Account"
-
 
 class Person(BaseEntity):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
     age = Integer(default=21)
-
-    class Meta:
-        part_of = "Account"
 
 
 class PersonAutoSSN(BaseEntity):
@@ -39,18 +30,12 @@ class PersonAutoSSN(BaseEntity):
     last_name = String(max_length=50)
     age = Integer(default=21)
 
-    class Meta:
-        part_of = "Account"
-
 
 class PersonExplicitID(BaseEntity):
     ssn = String(max_length=36, identifier=True)
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
     age = Integer(default=21)
-
-    class Meta:
-        part_of = "Account"
 
 
 class Relative(BaseEntity):
@@ -59,25 +44,15 @@ class Relative(BaseEntity):
     age = Integer(default=21)
     relative_of = HasOne(Person)
 
-    class Meta:
-        part_of = "Account"
-
 
 class Adult(Person):
     pass
-
-    class Meta:
-        schema_name = "adults"
-        part_of = "Account"
 
 
 class NotAPerson(BaseEntity):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
     age = Integer(default=21)
-
-    class Meta:
-        part_of = "Account"
 
 
 # Entities to test Meta Info overriding # START #
@@ -86,27 +61,17 @@ class DbPerson(BaseEntity):
     last_name = String(max_length=50)
     age = Integer(default=21)
 
-    class Meta:
-        schema_name = "pepes"
-        part_of = "Account"
-
 
 class SqlPerson(Person):
-    class Meta:
-        schema_name = "people"
-        part_of = "Account"
+    pass
 
 
 class DifferentDbPerson(Person):
-    class Meta:
-        provider = "non-default"
-        part_of = "Account"
+    pass
 
 
 class SqlDifferentDbPerson(Person):
-    class Meta:
-        provider = "non-default-sql"
-        part_of = "Account"
+    pass
 
 
 class OrderedPerson(BaseEntity):
@@ -138,9 +103,6 @@ class Building(BaseEntity):
     name = String(max_length=50)
     floors = Integer()
     status = String(choices=BuildingStatus)
-
-    class Meta:
-        part_of = "Area"
 
     def defaults(self):
         if not self.status:

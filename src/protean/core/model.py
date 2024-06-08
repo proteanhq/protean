@@ -1,7 +1,7 @@
 from abc import abstractmethod
 
 from protean.container import Element
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects
 
 
@@ -32,7 +32,7 @@ class BaseModel(Element):
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseModel:
-            raise TypeError("BaseModel cannot be instantiated")
+            raise NotSupportedError("BaseModel cannot be instantiated")
         return super().__new__(cls)
 
     @classmethod

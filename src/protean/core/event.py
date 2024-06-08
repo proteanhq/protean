@@ -1,7 +1,7 @@
 import logging
 
 from protean.container import BaseContainer, OptionsMixin
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import Field
 from protean.reflection import _ID_FIELD_NAME, declared_fields
 from protean.utils import DomainObjects, derive_element_class
@@ -20,6 +20,11 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 
     class Meta:
         abstract = True
+
+    def __new__(cls, *args, **kwargs):
+        if cls is BaseEvent:
+            raise NotSupportedError("BaseEvent cannot be instantiated")
+        return super().__new__(cls)
 
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()

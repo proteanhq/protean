@@ -4,7 +4,7 @@ import pytest
 
 from protean import BaseAggregate, BaseDomainService
 from protean.core import domain_service
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import fully_qualified_name
 
 
@@ -17,15 +17,12 @@ class Aggregate2(BaseAggregate):
 
 
 class perform_something(BaseDomainService):
-    class Meta:
-        part_of = [Aggregate1, Aggregate2]
-
     def __call__(self):
         print("Performing complex process...")
 
 
 def test_that_base_domain_service_class_cannot_be_instantiated():
-    with pytest.raises(TypeError):
+    with pytest.raises(NotSupportedError):
         BaseDomainService()
 
 
@@ -51,7 +48,7 @@ def test_that_domain_service_is_a_callable_class():
 
 
 def test_that_domain_service_can_be_registered_with_domain(test_domain):
-    test_domain.register(perform_something)
+    test_domain.register(perform_something, part_of=[Aggregate1, Aggregate2])
 
     assert (
         fully_qualified_name(perform_something) in test_domain.registry.domain_services
@@ -104,6 +101,6 @@ def test_call_to_wrap_methods_with_invariant_calls(test_domain):
     mock_wrap = mock.Mock(return_value=perform_something)
     domain_service.wrap_methods_with_invariant_calls = mock_wrap
 
-    test_domain.register(perform_something)
+    test_domain.register(perform_something, part_of=[Aggregate1, Aggregate2])
 
     mock_wrap.assert_called_once()

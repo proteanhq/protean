@@ -3,7 +3,7 @@ import logging
 from functools import lru_cache
 
 from protean.container import Element, OptionsMixin
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne
 from protean.globals import current_domain
 from protean.reflection import association_fields, has_association_fields
@@ -39,7 +39,7 @@ class BaseRepository(Element, OptionsMixin):
     def __new__(cls, *args, **kwargs):
         # Prevent instantiation of `BaseRepository itself`
         if cls is BaseRepository:
-            raise TypeError("BaseRepository cannot be instantiated")
+            raise NotSupportedError("BaseRepository cannot be instantiated")
         return super().__new__(cls)
 
     def __init__(self, domain, provider) -> None:

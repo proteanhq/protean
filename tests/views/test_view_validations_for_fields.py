@@ -23,11 +23,12 @@ class Role(BaseEntity):
         part_of = "User"
 
 
-def test_that_views_should_have_at_least_one_identifier_field():
-    with pytest.raises(IncorrectUsageError) as exception:
+def test_that_views_should_have_at_least_one_identifier_field(test_domain):
+    class User(BaseView):
+        first_name = String()
 
-        class User(BaseView):
-            first_name = String()
+    with pytest.raises(IncorrectUsageError) as exception:
+        test_domain.register(User)
 
     assert (
         exception.value.messages["_entity"][0]

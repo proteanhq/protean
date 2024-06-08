@@ -192,7 +192,7 @@ class BaseSerializer(metaclass=_SerializerMetaclass):
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseSerializer:
-            raise TypeError("BaseSerializer cannot be instantiated")
+            raise NotSupportedError("BaseSerializer cannot be instantiated")
         return super().__new__(cls)
 
 

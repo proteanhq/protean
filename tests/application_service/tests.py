@@ -1,6 +1,7 @@
 import pytest
 
 from protean import BaseApplicationService
+from protean.exceptions import NotSupportedError
 from protean.utils import fully_qualified_name
 
 from .elements import DummyApplicationService
@@ -8,7 +9,7 @@ from .elements import DummyApplicationService
 
 class TestApplicationServiceInitialization:
     def test_that_base_application_service_class_cannot_be_instantiated(self):
-        with pytest.raises(TypeError):
+        with pytest.raises(NotSupportedError):
             BaseApplicationService()
 
     def test_that_application_service_can_be_instantiated(self):

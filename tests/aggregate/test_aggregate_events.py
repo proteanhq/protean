@@ -28,21 +28,17 @@ class User(BaseAggregate):
 class UserActivated(BaseEvent):
     user_id = Identifier(required=True)
 
-    class Meta:
-        part_of = User
-
 
 class UserRenamed(BaseEvent):
     user_id = Identifier(required=True)
     name = String(required=True, max_length=50)
 
-    class Meta:
-        part_of = User
-
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(User)
+    test_domain.register(UserActivated, part_of=User)
+    test_domain.register(UserRenamed, part_of=User)
 
 
 def test_that_aggregate_has_events_list():

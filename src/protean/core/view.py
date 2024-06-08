@@ -16,8 +16,10 @@ logger = logging.getLogger(__name__)
 class BaseView(BaseContainer, OptionsMixin):
     element_type = DomainObjects.VIEW
 
-    class Meta:
-        abstract = True
+    def __new__(cls, *args, **kwargs):
+        if cls is BaseView:
+            raise NotSupportedError("BaseView cannot be instantiated")
+        return super().__new__(cls)
 
     @classmethod
     def _default_options(cls):
@@ -53,13 +55,9 @@ class BaseView(BaseContainer, OptionsMixin):
                 setattr(subclass, _ID_FIELD_NAME, id_field.field_name)
 
             except StopIteration:
-                raise IncorrectUsageError(
-                    {
-                        "_entity": [
-                            f"View `{subclass.__name__}` needs to have at least one identifier"
-                        ]
-                    }
-                )
+                # View does not have an ID field. An error will be thrown
+                #   on registering the view, in the factory method.
+                pass
 
     @classmethod
     def __validate_for_basic_field_types(subclass):
@@ -109,10 +107,13 @@ class BaseView(BaseContainer, OptionsMixin):
 def view_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseView, **kwargs)
 
-    if element_cls.meta_.abstract is True:
-        raise NotSupportedError(
-            f"{element_cls.__name__} class has been marked abstract"
-            f" and cannot be instantiated"
+    if not element_cls.meta_.abstract and not hasattr(element_cls, _ID_FIELD_NAME):
+        raise IncorrectUsageError(
+            {
+                "_entity": [
+                    f"View `{element_cls.__name__}` needs to have at least one identifier"
+                ]
+            }
         )
 
     element_cls.meta_.provider = (

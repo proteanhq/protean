@@ -12,12 +12,11 @@ from protean.utils.mixins import Message
 class UserLoggedIn(BaseEvent):
     user_id = Identifier(identifier=True)
 
-    class Meta:
-        stream_name = "authentication"
-
 
 @pytest.mark.eventstore
 def test_appending_raw_events(test_domain):
+    test_domain.register(UserLoggedIn, stream_name="authentication")
+
     identifier = str(uuid4())
     event = UserLoggedIn(user_id=identifier)
     test_domain.event_store.store.append(event)

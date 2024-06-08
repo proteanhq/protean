@@ -27,9 +27,6 @@ class Registered(BaseEvent):
     name = String()
     password_hash = String()
 
-    class Meta:
-        part_of = User
-
 
 class UserEventHandler(BaseEventHandler):
     @handle("$any")
@@ -40,7 +37,7 @@ class UserEventHandler(BaseEventHandler):
 @pytest.mark.asyncio
 async def test_that_an_event_handler_can_be_associated_with_an_all_stream(test_domain):
     test_domain.register(User)
-    test_domain.register(Registered)
+    test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
 
     identifier = str(uuid4())

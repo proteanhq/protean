@@ -24,9 +24,6 @@ class Registered(BaseEvent):
     name = String()
     password_hash = String()
 
-    class Meta:
-        part_of = User
-
 
 def count_up():
     global counter
@@ -42,7 +39,7 @@ class UserEventHandler(BaseEventHandler):
 @pytest.mark.asyncio
 async def test_handler_invocation(test_domain):
     test_domain.register(User)
-    test_domain.register(Registered)
+    test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
 
     identifier = str(uuid4())

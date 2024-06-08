@@ -16,9 +16,6 @@ class Customer(BaseAggregate):
 class Order(BaseEntity):
     ordered_on = Date()
 
-    class Meta:
-        part_of = Customer
-
 
 class Address(BaseEntity):
     street = String(max_length=50)
@@ -26,15 +23,12 @@ class Address(BaseEntity):
     state = String(max_length=50)
     zip_code = String(max_length=10)
 
-    class Meta:
-        part_of = Customer
-
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Customer)
-    test_domain.register(Order)
-    test_domain.register(Address)
+    test_domain.register(Order, part_of=Customer)
+    test_domain.register(Address, part_of=Customer)
     test_domain.init(traverse=False)
 
 

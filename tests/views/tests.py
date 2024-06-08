@@ -1,8 +1,8 @@
+import pytest
+
 from collections import defaultdict
 from enum import Enum
 from uuid import uuid4
-
-import pytest
 
 from protean import BaseView
 from protean.container import Options
@@ -14,9 +14,6 @@ from protean.utils import fully_qualified_name
 
 class AbstractPerson(BaseView):
     age = Integer(default=5)
-
-    class Meta:
-        abstract = True
 
 
 class ConcretePerson(BaseView):
@@ -126,6 +123,23 @@ class Building(BaseView):
             errors["status"].append("should be DONE")
 
         return errors
+
+
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(AbstractPerson, abstract=True)
+    test_domain.register(Person)
+    test_domain.register(PersonAutoSSN)
+    test_domain.register(PersonExplicitID)
+    test_domain.register(Adult)
+    test_domain.register(NotAPerson)
+    test_domain.register(DbPerson, schema_name="peoples")
+    test_domain.register(SqlPerson, schema_name="people")
+    test_domain.register(DifferentDbPerson, provider="non-default")
+    test_domain.register(SqlDifferentDbPerson, provider="non-default-sql")
+    test_domain.register(OrderedPerson, order_by="first_name")
+    test_domain.register(OrderedPersonSubclass, order_by="last_name")
+    test_domain.register(Building)
 
 
 class TestViewRegistration:

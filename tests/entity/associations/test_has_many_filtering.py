@@ -17,14 +17,11 @@ class OrderItem(BaseEntity):
     quantity = Integer()
     price = Float()
 
-    class Meta:
-        part_of = Order
-
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Order)
-    test_domain.register(OrderItem)
+    test_domain.register(OrderItem, part_of=Order)
     test_domain.init(traverse=False)
 
 

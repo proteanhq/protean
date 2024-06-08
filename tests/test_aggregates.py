@@ -57,37 +57,28 @@ class TestAggregateIdentity:
             username = String(identifier=True)
 
     def test_that_abstract_aggregates_get_an_id_field_by_default(self, test_domain):
-        @test_domain.aggregate
+        @test_domain.aggregate(abstract=True)
         class TimeStamped:
             created_at = DateTime(default=utcnow_func)
             updated_at = DateTime(default=utcnow_func)
-
-            class Meta:
-                abstract = True
 
         assert "id" in declared_fields(TimeStamped)
 
     def test_that_an_aggregate_can_opt_to_have_no_id_field_by_default(
         self, test_domain
     ):
-        @test_domain.aggregate
+        @test_domain.aggregate(auto_add_id_field=False)
         class TimeStamped:
             created_at = DateTime(default=utcnow_func)
             updated_at = DateTime(default=utcnow_func)
 
-            class Meta:
-                auto_add_id_field = False
-
         assert "id" not in declared_fields(TimeStamped)
 
     def test_that_abstract_aggregates_can_have_an_explicit_id_field(self, test_domain):
-        @test_domain.aggregate
+        @test_domain.aggregate(abstract=True)
         class User(BaseAggregate):
             email = String(identifier=True)
             name = String(max_length=55)
-
-            class Meta:
-                abstract = True
 
         assert "email" in declared_fields(User)
 
@@ -109,13 +100,10 @@ class TestAggregateAssociations:
 
             comments = HasMany("Comment")
 
-        @test_domain.entity
+        @test_domain.entity(part_of=Post)
         class Comment:
             content = String(max_length=500)
             post = Reference("Post")
-
-            class Meta:
-                part_of = Post
 
         test_domain.init(traverse=False)
 

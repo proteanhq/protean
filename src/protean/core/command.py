@@ -1,5 +1,10 @@
 from protean.container import BaseContainer, OptionsMixin
-from protean.exceptions import IncorrectUsageError, InvalidDataError, ValidationError
+from protean.exceptions import (
+    IncorrectUsageError,
+    InvalidDataError,
+    ValidationError,
+    NotSupportedError,
+)
 from protean.fields import Field
 from protean.reflection import _ID_FIELD_NAME, declared_fields
 from protean.utils import DomainObjects, derive_element_class
@@ -16,6 +21,11 @@ class BaseCommand(BaseContainer, OptionsMixin):
 
     class Meta:
         abstract = True
+
+    def __new__(cls, *args, **kwargs):
+        if cls is BaseCommand:
+            raise NotSupportedError("BaseCommand cannot be instantiated")
+        return super().__new__(cls)
 
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()

@@ -55,9 +55,6 @@ class SubclassRole(Role):
 class AbstractRole(BaseAggregate):
     foo = String(max_length=25)
 
-    class Meta:
-        abstract = True
-
 
 class ConcreteRole(AbstractRole):
     bar = String(max_length=25)
@@ -119,9 +116,6 @@ class Comment(BaseEntity):
 
     post = Reference("tests.aggregate.elements.Post")
 
-    class Meta:
-        part_of = Post
-
 
 class Account(BaseAggregate):
     email = String(required=True, max_length=255, unique=True, identifier=True)
@@ -136,9 +130,6 @@ class Author(BaseEntity):
     posts = HasMany("tests.aggregate.elements.Post")
     account = Reference("tests.aggregate.elements.Account")
 
-    class Meta:
-        part_of = Account
-
 
 class AccountWithId(BaseAggregate):
     email = String(required=True, max_length=255, unique=True)
@@ -150,9 +141,6 @@ class AccountWithId(BaseAggregate):
 class Profile(BaseEntity):
     about_me = Text()
     account = Reference("tests.aggregate.elements.Account")
-
-    class Meta:
-        part_of = Account
 
 
 class ProfileWithAccountId(BaseEntity):

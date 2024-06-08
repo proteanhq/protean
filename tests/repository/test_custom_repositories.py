@@ -20,17 +20,11 @@ class PersonCustomRepository(BaseRepository):
             age__gte=minimum_age
         )
 
-    class Meta:
-        part_of = PersonGeneric
-
 
 class PersonSQLite(BaseAggregate):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50, required=True)
     age = Integer(default=21)
-
-    class Meta:
-        provider = "sqlite"
 
 
 class PersonSQLiteGenericRepository(BaseRepository):
@@ -39,9 +33,6 @@ class PersonSQLiteGenericRepository(BaseRepository):
             age__gte=minimum_age
         )
 
-    class Meta:
-        part_of = PersonSQLite
-
 
 class PersonSQLiteCustomRepository(BaseRepository):
     def find_adults(self, minimum_age: int = 21) -> List[PersonGeneric]:
@@ -49,10 +40,6 @@ class PersonSQLiteCustomRepository(BaseRepository):
         result = provider.raw("SELECT * FROM PERSON_GENERIC WHERE AGE >= 21")
 
         return result
-
-    class Meta:
-        part_of = PersonSQLite
-        database = "sqlite"
 
 
 class TestRepositoryConstructionAndRegistration:
@@ -80,7 +67,7 @@ class TestRepositoryConstructionAndRegistration:
 
     def test_custom_generic_repository_registration(self, custom_test_domain):
         custom_test_domain.register(PersonGeneric)
-        custom_test_domain.register(PersonCustomRepository)
+        custom_test_domain.register(PersonCustomRepository, part_of=PersonGeneric)
         custom_test_domain.repository_for(PersonGeneric)
 
         repo_cls_constructed = custom_test_domain.providers._repositories[
@@ -94,7 +81,7 @@ class TestRepositoryConstructionAndRegistration:
     def test_default_repository_construction_and_registration_for_non_memory_database(
         self, custom_test_domain
     ):
-        custom_test_domain.register(PersonSQLite)
+        custom_test_domain.register(PersonSQLite, provider="sqlite")
         custom_test_domain.repository_for(PersonSQLite)
 
         repo_cls_constructed = custom_test_domain.providers._repositories[
@@ -108,8 +95,10 @@ class TestRepositoryConstructionAndRegistration:
     def test_custom_repository_construction_and_registration_for_non_memory_database(
         self, custom_test_domain
     ):
-        custom_test_domain.register(PersonSQLite)
-        custom_test_domain.register(PersonSQLiteCustomRepository)
+        custom_test_domain.register(PersonSQLite, provider="sqlite")
+        custom_test_domain.register(
+            PersonSQLiteCustomRepository, part_of=PersonSQLite, database="sqlite"
+        )
         custom_test_domain.repository_for(PersonSQLite)
 
         repo_cls_constructed = custom_test_domain.providers._repositories[
@@ -123,9 +112,11 @@ class TestRepositoryConstructionAndRegistration:
     def test_that_sqlite_repository_is_chosen_over_generic_provider(
         self, custom_test_domain
     ):
-        custom_test_domain.register(PersonSQLite)
-        custom_test_domain.register(PersonSQLiteGenericRepository)
-        custom_test_domain.register(PersonSQLiteCustomRepository)
+        custom_test_domain.register(PersonSQLite, provider="sqlite")
+        custom_test_domain.register(PersonSQLiteGenericRepository, part_of=PersonSQLite)
+        custom_test_domain.register(
+            PersonSQLiteCustomRepository, part_of=PersonSQLite, database="sqlite"
+        )
         custom_test_domain.repository_for(PersonSQLite)
 
         repo_cls_constructed = custom_test_domain.providers._repositories[

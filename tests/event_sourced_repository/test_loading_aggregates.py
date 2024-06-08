@@ -24,16 +24,10 @@ class Register(BaseCommand):
     name = String()
     password_hash = String()
 
-    class Meta:
-        part_of = "User"
-
 
 class ChangeAddress(BaseCommand):
     user_id = Identifier()
     address = String()
-
-    class Meta:
-        part_of = "User"
 
 
 class Registered(BaseEvent):
@@ -42,16 +36,10 @@ class Registered(BaseEvent):
     name = String()
     password_hash = String()
 
-    class Meta:
-        part_of = "User"
-
 
 class AddressChanged(BaseEvent):
     user_id = Identifier()
     address = String()
-
-    class Meta:
-        part_of = "User"
 
 
 class User(BaseEventSourcedAggregate):
@@ -111,18 +99,15 @@ class UserCommandHandler(BaseCommandHandler):
 
         user_repo.add(user)
 
-    class Meta:
-        part_of = User
-
 
 @pytest.fixture(autouse=True)
 def register(test_domain):
     test_domain.register(User)
-    test_domain.register(Register)
-    test_domain.register(Registered)
-    test_domain.register(ChangeAddress)
-    test_domain.register(AddressChanged)
-    test_domain.register(UserCommandHandler)
+    test_domain.register(Register, part_of=User)
+    test_domain.register(Registered, part_of=User)
+    test_domain.register(ChangeAddress, part_of=User)
+    test_domain.register(AddressChanged, part_of=User)
+    test_domain.register(UserCommandHandler, part_of=User)
 
 
 @pytest.mark.eventstore

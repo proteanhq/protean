@@ -16,9 +16,6 @@ class Customer(BaseEntity):
     email = String(max_length=254, required=True)
     addresses = List(content_type=ValueObject(Address))
 
-    class Meta:
-        part_of = "Order"
-
 
 # Aggregate that encloses Customer Entity
 class Order(BaseAggregate):
@@ -28,7 +25,7 @@ class Order(BaseAggregate):
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Order)
-    test_domain.register(Customer)
+    test_domain.register(Customer, part_of=Order)
     test_domain.register(Address)
 
 

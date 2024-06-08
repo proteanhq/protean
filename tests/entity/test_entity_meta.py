@@ -80,18 +80,21 @@ class TestOptions:
             "last_name",
             "age",
             "id",
+            "account_id",
         ]
         assert list(attributes(PersonAutoSSN).keys()) == [
             "ssn",
             "first_name",
             "last_name",
             "age",
+            "account_id",
         ]
         assert list(attributes(Relative).keys()) == [
             "first_name",
             "last_name",
             "age",
             "id",
+            "account_id",
         ]  # `relative_of` is ignored
 
     def test_meta_equality(self):

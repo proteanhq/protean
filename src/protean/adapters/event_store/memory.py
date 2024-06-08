@@ -4,19 +4,14 @@ from typing import Any, Dict, List
 from protean import BaseAggregate, BaseRepository
 from protean.globals import current_domain
 from protean.port import BaseEventStore
-from protean.utils import DomainObjects
 from protean.utils.mixins import MessageMetadata, MessageRecord
 
 
 class MemoryMessage(BaseAggregate, MessageRecord):
-    class Meta:
-        provider = "memory"
+    pass
 
 
 class MemoryMessageRepository(BaseRepository):
-    class Meta:
-        part_of = MemoryMessage
-
     def is_category(self, stream_name: str) -> bool:
         if not stream_name:
             return False
@@ -93,8 +88,8 @@ class MemoryEventStore(BaseEventStore):
         super().__init__("Memory", domain, conn_info)
 
         self.domain = domain
-        self.domain._register_element(DomainObjects.AGGREGATE, MemoryMessage)
-        self.domain.register(MemoryMessageRepository)
+        self.domain.register(MemoryMessage, provider="memory")
+        self.domain.register(MemoryMessageRepository, part_of=MemoryMessage)
 
     def _write(
         self,

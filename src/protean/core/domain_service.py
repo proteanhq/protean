@@ -7,7 +7,7 @@ from typing import List, Union
 
 from protean import BaseAggregate
 from protean.container import Element, OptionsMixin
-from protean.exceptions import IncorrectUsageError, ValidationError
+from protean.exceptions import IncorrectUsageError, ValidationError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ class BaseDomainService(Element, OptionsMixin):
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseDomainService:
-            raise TypeError("BaseDomainService cannot be instantiated")
+            raise NotSupportedError("BaseDomainService cannot be instantiated")
         return super().__new__(cls)
 
     @classmethod

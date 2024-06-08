@@ -27,10 +27,10 @@ def setup_db():
         domain.register(Person)
         domain.register(User)
         domain.register(Post)
-        domain.register(Comment)
+        domain.register(Comment, part_of=Post)
         domain.register(Audit)
-        domain.register(Customer)
         domain.register(Order)
+        domain.register(Customer, part_of=Order)
 
         domain.repository_for(Alien)._dao
         domain.repository_for(ComplexUser)._dao

@@ -20,6 +20,11 @@ class BaseValueObject(BaseContainer, OptionsMixin):
     class Meta:
         abstract = True
 
+    def __new__(cls, *args, **kwargs):
+        if cls is BaseValueObject:
+            raise NotSupportedError("BaseValueObject cannot be instantiated")
+        return super().__new__(cls)
+
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()
 

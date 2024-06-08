@@ -31,9 +31,6 @@ class Renamed(BaseEvent):
     id = Identifier()
     name = String()
 
-    class Meta:
-        part_of = User
-
 
 class Sent(BaseEvent):
     email = String()
@@ -70,17 +67,20 @@ class UserMetrics(BaseEventHandler):
 
 
 class AllEventsHandler(BaseEventHandler):
-    class Meta:
-        stream_name = "$all"
-
     @handle("$any")
     def universal_handler(self, _: BaseEvent) -> None:
         pass
 
 
 def test_retrieving_handler_by_event(test_domain):
+    test_domain.register(User)
+    test_domain.register(Registered, part_of=User)
+    test_domain.register(Activated, part_of=User)
+    test_domain.register(Renamed, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.register(UserMetrics, part_of=User)
+    test_domain.register(Email)
+    test_domain.register(Sent, part_of=Email)
     test_domain.register(EmailEventHandler, part_of=Email)
 
     assert test_domain.handlers_for(Registered()) == {UserEventHandler, UserMetrics}
@@ -88,14 +88,20 @@ def test_retrieving_handler_by_event(test_domain):
 
 
 def test_that_all_streams_handler_is_returned(test_domain):
-    test_domain.register(AllEventsHandler)
+    test_domain.register(AllEventsHandler, stream_name="$all")
     assert test_domain.handlers_for(Renamed()) == {AllEventsHandler}
 
 
 def test_that_all_streams_handler_is_always_returned_with_other_handlers(test_domain):
-    test_domain.register(AllEventsHandler)
+    test_domain.register(User)
+    test_domain.register(Registered, part_of=User)
+    test_domain.register(Activated, part_of=User)
+    test_domain.register(Renamed, part_of=User)
+    test_domain.register(AllEventsHandler, stream_name="$all")
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.register(UserMetrics, part_of=User)
+    test_domain.register(Email)
+    test_domain.register(Sent, part_of=Email)
     test_domain.register(EmailEventHandler, part_of=Email)
 
     assert test_domain.handlers_for(Registered()) == {

@@ -1,7 +1,7 @@
 import pytest
 
 from protean import BaseRepository
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import String
 from protean.utils import fully_qualified_name
 
@@ -10,7 +10,7 @@ from .elements import Person, PersonRepository
 
 class TestRepositoryInitialization:
     def test_that_base_repository_class_cannot_be_instantiated(self):
-        with pytest.raises(TypeError):
+        with pytest.raises(NotSupportedError):
             BaseRepository()
 
     def test_that_repository_can_be_instantiated(self, test_domain):
@@ -20,24 +20,10 @@ class TestRepositoryInitialization:
 
 class TestRepositoryRegistration:
     def test_that_repository_can_be_registered_with_domain(self, test_domain):
-        test_domain.register(PersonRepository)
+        test_domain.register(PersonRepository, part_of=Person)
 
         assert (
             fully_qualified_name(PersonRepository) in test_domain.registry.repositories
-        )
-
-    def test_that_repository_can_be_registered_via_annotations(self, test_domain):
-        @test_domain.repository
-        class AnnotatedRepository:
-            def special_method(self):
-                pass
-
-            class Meta:
-                part_of = Person
-
-        assert (
-            fully_qualified_name(AnnotatedRepository)
-            in test_domain.registry.repositories
         )
 
     def test_that_repository_can_be_registered_via_annotations_with_aggregate_cls_parameter(
@@ -66,7 +52,7 @@ class TestRepositoryRegistration:
     def test_that_repository_can_be_retrieved_from_domain_by_its_aggregate_cls(
         self, test_domain
     ):
-        test_domain.register(PersonRepository)
+        test_domain.register(PersonRepository, part_of=Person)
 
         assert isinstance(test_domain.repository_for(Person), PersonRepository)
 
@@ -127,31 +113,22 @@ class TestRepositoryRegistration:
         class User:
             name = String()
 
-        @test_domain.repository(part_of=User)
+        @test_domain.repository(part_of=User, database="memory")
         class UserMemoryRepository:
             def special_method(self):
                 pass
 
-            class Meta:
-                database = "memory"
-
-        @test_domain.repository(part_of=User)
+        @test_domain.repository(part_of=User, database="elasticsearch")
         class UserElasticRepository:
             def special_method(self):
                 pass
 
-            class Meta:
-                database = "elasticsearch"
-
         assert isinstance(test_domain.repository_for(User), UserMemoryRepository)
 
         # Next, we test for a secondary database repository by relinking the User aggregate
-        @test_domain.aggregate
+        @test_domain.aggregate(provider="secondary")
         class User:
             name = String()
-
-            class Meta:
-                provider = "secondary"
 
         assert isinstance(test_domain.repository_for(User), UserElasticRepository)
         # FIXME Reset test_domain?
@@ -159,22 +136,16 @@ class TestRepositoryRegistration:
     def test_incorrect_usage_error_on_repositories_associated_with_invalid_databases(
         self, test_domain
     ):
-        @test_domain.aggregate
+        @test_domain.aggregate(provider="secondary")
         class User:
             name = String()
 
-            class Meta:
-                provider = "secondary"
-
         with pytest.raises(IncorrectUsageError) as exc:
 
-            @test_domain.repository(part_of=User)
+            @test_domain.repository(part_of=User, database="UNKNOWN")
             class CustomUserRepository:
                 def special_method(self):
                     pass
-
-                class Meta:
-                    database = "UNKNOWN"
 
         assert exc.value.messages == {
             "_entity": [

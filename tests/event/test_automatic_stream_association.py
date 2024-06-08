@@ -44,9 +44,6 @@ class Subscribed(BaseEvent):
 
     id = Identifier()
 
-    class Meta:
-        stream_name = "subscriptions"
-
 
 class Sent(BaseEvent):
     email = String()
@@ -56,10 +53,6 @@ class Sent(BaseEvent):
 class Recalled(BaseEvent):
     email = String()
     sent_at = DateTime()
-
-    class Meta:
-        part_of = Email
-        stream_name = "recalls"
 
 
 class UserEventHandler(BaseEventHandler):
@@ -97,7 +90,13 @@ class EmailEventHandler(BaseEventHandler):
 @pytest.fixture(autouse=True)
 def register(test_domain):
     test_domain.register(User)
+    test_domain.register(Registered, stream_name="user")
+    test_domain.register(Activated, stream_name="user")
+    test_domain.register(LoggedIn, part_of=User)
+    test_domain.register(Subscribed, stream_name="subscriptions")
     test_domain.register(Email)
+    test_domain.register(Sent, stream_name="email")
+    test_domain.register(Recalled, part_of=Email, stream_name="recalls")
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.register(EmailEventHandler, part_of=Email)
 

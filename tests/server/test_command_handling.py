@@ -20,15 +20,9 @@ class Register(BaseCommand):
     user_id = Identifier()
     email = String()
 
-    class Meta:
-        part_of = User
-
 
 class Activate(BaseCommand):
     user_id = Identifier()
-
-    class Meta:
-        part_of = User
 
 
 def dummy(*args):
@@ -49,8 +43,8 @@ class UserCommandHandler(BaseCommandHandler):
 @pytest.mark.asyncio
 async def test_handler_invocation(test_domain):
     test_domain.register(User)
-    test_domain.register(Register)
-    test_domain.register(Activate)
+    test_domain.register(Register, part_of=User)
+    test_domain.register(Activate, part_of=User)
     test_domain.register(UserCommandHandler, part_of=User)
 
     identifier = str(uuid4())

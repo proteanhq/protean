@@ -5,6 +5,7 @@ import logging
 
 from protean.container import EventedMixin
 from protean.core.entity import BaseEntity
+from protean.exceptions import NotSupportedError
 from protean.fields import Integer
 from protean.utils import DomainObjects, derive_element_class, inflection
 
@@ -39,14 +40,11 @@ class BaseAggregate(EventedMixin, BaseEntity):
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseAggregate:
-            raise TypeError("BaseAggregate cannot be instantiated")
+            raise NotSupportedError("BaseAggregate cannot be instantiated")
         return super().__new__(cls)
 
     # Track current version of Aggregate
     _version = Integer(default=-1)
-
-    class Meta:
-        abstract = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

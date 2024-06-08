@@ -10,9 +10,9 @@ class TestReferenceFieldAssociation:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Account)
-        test_domain.register(Author)
+        test_domain.register(Author, part_of=Account)
         test_domain.register(Post)
-        test_domain.register(Profile)
+        test_domain.register(Profile, part_of=Account)
 
     def test_initialization_of_an_entity_containing_reference_field(self, test_domain):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")

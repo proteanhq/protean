@@ -37,6 +37,9 @@ class UserCommandHandler(BaseCommandHandler):
 
 @pytest.fixture(autouse=True)
 def register(test_domain):
+    test_domain.register(User)
+    test_domain.register(Register, part_of=User)
+    test_domain.register(Activate, part_of=User)
     test_domain.register(UserCommandHandler, part_of=User)
 
 

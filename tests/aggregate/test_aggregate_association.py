@@ -15,10 +15,10 @@ class TestHasOne:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Account)
-        test_domain.register(Comment)
-        test_domain.register(Author)
         test_domain.register(Post)
-        test_domain.register(Profile)
+        test_domain.register(Comment, part_of=Post)
+        test_domain.register(Author, part_of=Account)
+        test_domain.register(Profile, part_of=Account)
         test_domain.init(traverse=False)
 
     def test_successful_initialization_of_entity_with_has_one_association(
@@ -49,9 +49,9 @@ class TestHasMany:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Account)
-        test_domain.register(Author)
+        test_domain.register(Author, part_of=Account)
         test_domain.register(Post)
-        test_domain.register(Comment)
+        test_domain.register(Comment, part_of=Post)
         test_domain.init(traverse=False)
 
     @pytest.fixture

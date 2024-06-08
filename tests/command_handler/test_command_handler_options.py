@@ -22,10 +22,9 @@ def test_aggregate_cls_specified_during_registration(test_domain):
 
 def test_aggregate_cls_specified_as_a_meta_attribute(test_domain):
     class UserCommandHandlers(BaseCommandHandler):
-        class Meta:
-            part_of = User
+        pass
 
-    test_domain.register(UserCommandHandlers)
+    test_domain.register(UserCommandHandlers, part_of=User)
     assert UserCommandHandlers.meta_.part_of == User
 
 

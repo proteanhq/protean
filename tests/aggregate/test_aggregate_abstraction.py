@@ -9,9 +9,11 @@ from .elements import AbstractRole, ConcreteRole
 
 
 class TestAggregateAbstraction:
-    def test_that_abstract_entities_cannot_be_initialized(self):
+    def test_that_abstract_entities_cannot_be_initialized(self, test_domain):
+        test_domain.register(AbstractRole, abstract=True)
+
         with pytest.raises(NotSupportedError) as exc2:
-            AbstractRole(name="Titan")
+            AbstractRole(foo="Titan")
         assert exc2.value.args[0] == (
             "AbstractRole class has been marked abstract" " and cannot be instantiated"
         )

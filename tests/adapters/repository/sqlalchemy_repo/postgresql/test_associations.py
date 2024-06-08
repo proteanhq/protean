@@ -12,9 +12,6 @@ class Comment(BaseEntity):
 
     post = Reference("Post")
 
-    class Meta:
-        part_of = "Post"
-
 
 class Post(BaseAggregate):
     content = Text(required=True)
@@ -32,7 +29,7 @@ class Audit(BaseAggregate):
 @pytest.mark.postgresql
 def test_updating_a_has_many_association(test_domain):
     test_domain.register(Post)
-    test_domain.register(Comment)
+    test_domain.register(Comment, part_of=Post)
 
     post_repo = test_domain.repository_for(Post)
     post = Post(content="bar")

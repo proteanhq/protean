@@ -14,14 +14,11 @@ class Post(BaseAggregate):
 class Comment(BaseEntity):
     content = String()
 
-    class Meta:
-        part_of = Post
-
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Post)
-    test_domain.register(Comment)
+    test_domain.register(Comment, part_of=Post)
     test_domain.init(traverse=False)
 
 

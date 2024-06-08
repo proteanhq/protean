@@ -133,19 +133,21 @@ class DomainObjects(Enum):
 
 
 def derive_element_class(element_cls, base_cls, **opts):
+    from protean.container import Options
+
     if not issubclass(element_cls, base_cls):
         try:
             new_dict = element_cls.__dict__.copy()
             new_dict.pop("__dict__", None)  # Remove __dict__ to prevent recursion
 
+            new_dict["meta_"] = Options(opts)
+
             element_cls = type(element_cls.__name__, (base_cls,), new_dict)
         except BaseException as exc:
             logger.debug("Error during Element registration:", repr(exc))
             raise
-
-    if hasattr(element_cls, "meta_"):
-        for key, value in opts.items():
-            setattr(element_cls.meta_, key, value)
+    else:
+        element_cls.meta_ = Options(opts)
 
     # Assign default options for remaining items
     element_cls._set_defaults()

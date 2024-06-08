@@ -104,9 +104,6 @@ class TestDomainLevelClassResolution:
 
                 post = Reference("Post")
 
-                class Meta:
-                    part_of = Post
-
             # Still a string reference
             assert isinstance(declared_fields(Comment)["post"].to_cls, str)
 
@@ -115,7 +112,7 @@ class TestDomainLevelClassResolution:
             )  # Comment has not been registered yet
 
             # Registering `Comment` resolves references in both `Comment` and `Post` classes
-            test_domain.register(Comment)
+            test_domain.register(Comment, part_of=Post)
             test_domain._resolve_references()
 
             assert declared_fields(Post)["comments"].to_cls == Comment
@@ -150,10 +147,7 @@ class TestDomainLevelClassResolution:
 
                 post = Reference("Post")
 
-                class Meta:
-                    part_of = Post
-
-            domain.register(Comment)
+            domain.register(Comment, part_of=Post)
 
             assert len(domain._pending_class_resolutions) == 2
             assert all(
@@ -179,10 +173,7 @@ class TestDomainLevelClassResolution:
 
                 post = Reference("Post")
 
-                class Meta:
-                    part_of = Post
-
-            domain.register(Comment)
+            domain.register(Comment, part_of=Post)
 
             # `init` resolves references
             domain.init(traverse=False)
@@ -214,10 +205,7 @@ class TestDomainLevelClassResolution:
                 post = Reference("Post")
                 foo = Reference("Foo")
 
-                class Meta:
-                    part_of = Post
-
-            domain.register(Comment)
+            domain.register(Comment, part_of=Post)
 
             with pytest.raises(ConfigurationError) as exc:
                 domain.init()
@@ -244,11 +232,8 @@ class TestDomainLevelClassResolution:
 
                 post = Reference("Post")
 
-                class Meta:
-                    part_of = Post
-
             test_domain.register(Post)
-            test_domain.register(Comment)
+            test_domain.register(Comment, part_of=Post)
             test_domain._resolve_references()
 
             assert declared_fields(Post)["comments"].to_cls == Comment
@@ -268,11 +253,8 @@ class TestDomainLevelClassResolution:
                 last_name = String(max_length=25)
                 account = Reference("Account")
 
-                class Meta:
-                    part_of = Account
-
             test_domain.register(Account)
-            test_domain.register(Author)
+            test_domain.register(Author, part_of=Account)
             test_domain._resolve_references()
 
             assert declared_fields(Account)["author"].to_cls == Author

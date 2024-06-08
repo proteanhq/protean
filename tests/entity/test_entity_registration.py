@@ -11,11 +11,8 @@ class TestEntityRegistration:
         class Comment(BaseEntity):
             content = String(max_length=500)
 
-            class Meta:
-                part_of = Post
-
         test_domain.register(Post)
-        test_domain.register(Comment)
+        test_domain.register(Comment, part_of=Post)
 
         assert fully_qualified_name(Comment) in test_domain.registry.entities
         assert Comment.meta_.part_of == Post
@@ -25,12 +22,9 @@ class TestEntityRegistration:
         class Post:
             name = String(max_length=50)
 
-        @test_domain.entity
+        @test_domain.entity(part_of=Post)
         class Comment(BaseEntity):
             content = String(max_length=500)
-
-            class Meta:
-                part_of = Post
 
         assert Comment.meta_.part_of == Post
 

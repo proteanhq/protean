@@ -9,8 +9,8 @@ class TestHasOnePersistence:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Post)
-        test_domain.register(PostMeta)
-        test_domain.register(Comment)
+        test_domain.register(PostMeta, part_of=Post)
+        test_domain.register(Comment, part_of=Post)
         test_domain.init(traverse=False)
 
     @pytest.fixture(autouse=True)
@@ -83,8 +83,8 @@ class TestHasManyPersistence:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Post)
-        test_domain.register(PostMeta)
-        test_domain.register(Comment)
+        test_domain.register(PostMeta, part_of=Post)
+        test_domain.register(Comment, part_of=Post)
 
     @pytest.fixture
     def persisted_post(self, test_domain):

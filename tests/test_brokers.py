@@ -25,14 +25,8 @@ class PersonAdded(BaseEvent):
     last_name = String(max_length=50, required=True)
     age = Integer(default=21)
 
-    class Meta:
-        part_of = Person
-
 
 class NotifySSOSubscriber(BaseSubscriber):
-    class Meta:
-        event = PersonAdded
-
     def __call__(self, domain_event_dict):
         print("Received Event: ", domain_event_dict)
 
@@ -53,11 +47,14 @@ class AddNewPersonCommandHandler(BaseCommandHandler):
         print("Received command: ", command)
 
 
-class TestBrokerInitialization:
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(PersonAdded)
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(Person)
+    test_domain.register(PersonAdded, part_of=Person)
+    test_domain.register(NotifySSOSubscriber, event=PersonAdded)
 
+
+class TestBrokerInitialization:
     def test_that_base_broker_class_cannot_be_instantiated(self):
         with pytest.raises(TypeError):
             BaseBroker()
@@ -114,11 +111,6 @@ class TestBrokerInitialization:
 
 
 class TestEventPublish:
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(Person)
-        test_domain.register(PersonAdded)
-
     @pytest.mark.eventstore
     def test_that_event_is_persisted_on_publish(self, mocker, test_domain):
         test_domain.publish(
@@ -138,8 +130,6 @@ class TestEventPublish:
 
 class TestBrokerSubscriberInitialization:
     def test_that_registered_subscribers_are_initialized(self, test_domain):
-        test_domain.register(NotifySSOSubscriber)
-
         test_domain._initialize()
 
         assert (
@@ -156,8 +146,7 @@ class TestBrokerSubscriberInitialization:
     def test_that_subscribers_with_unknown_brokers_cannot_be_initialized(
         self, test_domain
     ):
-        NotifySSOSubscriber.meta_.broker = "unknown"
-        test_domain.register(NotifySSOSubscriber)
+        test_domain.register(NotifySSOSubscriber, event=PersonAdded, broker="unknown")
 
         with pytest.raises(ConfigurationError) as exc:
             test_domain._initialize()

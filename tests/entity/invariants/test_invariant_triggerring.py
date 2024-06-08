@@ -74,9 +74,6 @@ class OrderItem(BaseEntity):
     price = Float()
     subtotal = Float()
 
-    class Meta:
-        part_of = Order
-
     @invariant.post
     def the_quantity_must_be_a_positive_integer_and_the_subtotal_must_be_correctly_calculated(
         self,
@@ -93,8 +90,8 @@ class OrderItem(BaseEntity):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(OrderItem)
     test_domain.register(Order)
+    test_domain.register(OrderItem, part_of=Order)
     test_domain.init(traverse=False)
 
 

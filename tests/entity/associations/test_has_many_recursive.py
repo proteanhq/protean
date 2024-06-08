@@ -16,24 +16,18 @@ class Order(BaseEntity):
     ordered_on = Date()
     items = HasMany("OrderItem")
 
-    class Meta:
-        part_of = Customer
-
 
 class OrderItem(BaseEntity):
     product_id = Identifier(required=True)
     quantity = Float()
     price = Float()
 
-    class Meta:
-        part_of = Order
-
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Customer)
-    test_domain.register(Order)
-    test_domain.register(OrderItem)
+    test_domain.register(Order, part_of=Customer)
+    test_domain.register(OrderItem, part_of=Order)
     test_domain.init(traverse=False)
 
 
