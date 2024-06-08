@@ -18,9 +18,6 @@ class Register(BaseCommand):
     user_id = Identifier()
     email = String()
 
-    class Meta:
-        part_of = User
-
 
 class UserCommandHandlers(BaseCommandHandler):
     @handle(Register)

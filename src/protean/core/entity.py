@@ -110,9 +110,6 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
 
     element_type = DomainObjects.ENTITY
 
-    class Meta:
-        abstract = True
-
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()
 

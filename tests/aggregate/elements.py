@@ -63,46 +63,6 @@ class ConcreteRole(AbstractRole):
 # Aggregates to test Abstraction # END #
 
 
-# Aggregates to test Meta Info overriding # START #
-class DbRole(BaseAggregate):
-    bar = String(max_length=25)
-
-    class Meta:
-        schema_name = "foosball"
-
-
-class SqlRole(Role):
-    class Meta:
-        schema_name = "roles"
-
-
-class DifferentDbRole(Role):
-    class Meta:
-        provider = "non-default"
-
-
-class SqlDifferentDbRole(Role):
-    class Meta:
-        provider = "non-default-sql"
-
-
-class OrderedRole(BaseAggregate):
-    bar = String(max_length=25)
-
-    class Meta:
-        order_by = "bar"
-
-
-class OrderedRoleSubclass(Role):
-    bar = String(max_length=25)
-
-    class Meta:
-        order_by = "bar"
-
-
-# Aggregates to test Meta Info overriding # END #
-
-
 # Aggregates to test associations # START #
 class Post(BaseAggregate):
     content = Text(required=True)
@@ -146,9 +106,6 @@ class Profile(BaseEntity):
 class ProfileWithAccountId(BaseEntity):
     about_me = Text()
     account = Reference("tests.aggregate.elements.AccountWithId")
-
-    class Meta:
-        part_of = AccountWithId
 
 
 # Aggregates to test associations # END #

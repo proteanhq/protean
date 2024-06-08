@@ -266,7 +266,9 @@ class TestModelWithVO:
 class TestCustomModel:
     def test_that_custom_model_can_be_associated_with_entity(self, test_domain):
         test_domain.register(Provider)
-        test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
+        test_domain.register_model(
+            ProviderCustomModel, entity_cls=Provider, schema_name="providers"
+        )
 
         model_cls = test_domain.repository_for(Provider)._model
         assert model_cls.__name__ == "ProviderCustomModel"
@@ -275,7 +277,9 @@ class TestCustomModel:
         self, test_domain
     ):
         test_domain.register(Provider)
-        test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
+        test_domain.register_model(
+            ProviderCustomModel, entity_cls=Provider, schema_name="providers"
+        )
 
         # FIXME Should schema name be equated to the overridden name in the model?
         assert Provider.meta_.schema_name == "provider"
@@ -286,7 +290,9 @@ class TestCustomModel:
 
     def test_that_custom_model_is_persisted_via_dao(self, test_domain):
         test_domain.register(Provider)
-        test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
+        test_domain.register_model(
+            ProviderCustomModel, entity_cls=Provider, schema_name="providers"
+        )
 
         provider_dao = test_domain.repository_for(Provider)._dao
         provider = provider_dao.create(name="John", about="Me, Myself, and Jane")
@@ -294,7 +300,9 @@ class TestCustomModel:
 
     def test_that_custom_model_is_retrievable_via_dao(self, test_domain):
         test_domain.register(Provider)
-        test_domain.register_model(ProviderCustomModel, entity_cls=Provider)
+        test_domain.register_model(
+            ProviderCustomModel, entity_cls=Provider, schema_name="providers"
+        )
 
         provider_dao = test_domain.repository_for(Provider)._dao
         provider = provider_dao.create(name="John", about="Me, Myself, and Jane")

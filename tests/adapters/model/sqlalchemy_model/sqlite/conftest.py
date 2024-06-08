@@ -27,7 +27,9 @@ def setup_db():
         domain.register(Person)
         domain.register(Provider)
         domain.register(User)
-        domain.register_model(ProviderCustomModel, entity_cls=Provider)
+        domain.register_model(
+            ProviderCustomModel, entity_cls=Provider, schema_name="adults"
+        )
 
         domain.repository_for(ArrayUser)._dao
         domain.repository_for(ComplexUser)._dao

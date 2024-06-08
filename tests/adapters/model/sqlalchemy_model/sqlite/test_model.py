@@ -99,7 +99,9 @@ class TestModelWithVO:
 @pytest.mark.sqlite
 class TestCustomModel:
     def test_that_custom_model_can_be_associated_with_entity(self, test_domain):
-        test_domain.register(ProviderCustomModel)
+        test_domain.register(
+            ProviderCustomModel, entity_cls=Provider, schema_name="adults"
+        )
         model_cls = test_domain.repository_for(Provider)._model
         assert model_cls.__name__ == "ProviderCustomModel"
 

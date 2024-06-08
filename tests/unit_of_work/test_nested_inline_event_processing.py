@@ -52,9 +52,6 @@ class Create(BaseCommand):
     topic = String()
     content = Text()
 
-    class Meta:
-        part_of = Post
-
 
 class Created(BaseEvent):
     id = Identifier(identifier=True)

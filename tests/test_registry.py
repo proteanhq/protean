@@ -21,9 +21,6 @@ class Role(BaseEntity):
     name = String(max_length=15, required=True)
     created_on = DateTime(default=datetime.today())
 
-    class Meta:
-        part_of = User
-
 
 def test_element_registration():
     register = _DomainRegistry()

@@ -1,6 +1,5 @@
 import pytest
 
-from protean import BaseAggregate
 from protean.exceptions import NotSupportedError
 from protean.fields import String
 from protean.reflection import declared_fields
@@ -27,11 +26,9 @@ class TestAggregateAbstraction:
         assert concrete_role.foo == "Titan"
 
     def test_that_abstract_entities_can_be_created_with_annotations(self, test_domain):
-        class CustomBaseClass(BaseAggregate):
+        @test_domain.aggregate(abstract=True)
+        class CustomBaseClass:
             foo = String(max_length=25)
-
-            class Meta:
-                abstract = True
 
         @test_domain.aggregate
         class ConcreateSubclass(CustomBaseClass):

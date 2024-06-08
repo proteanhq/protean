@@ -21,9 +21,6 @@ class BaseApplicationService(Element, OptionsMixin):
 
     element_type = DomainObjects.APPLICATION_SERVICE
 
-    class Meta:
-        abstract = True
-
     def __new__(cls, *args, **kwargs):
         if cls is BaseApplicationService:
             raise NotSupportedError("BaseApplicationService cannot be instantiated")

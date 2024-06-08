@@ -37,10 +37,9 @@ def test_that_domain_service_needs_to_be_associated_with_at_least_2_aggregates(
     with pytest.raises(IncorrectUsageError):
 
         class bad_domain_service(BaseDomainService):
-            class Meta:
-                part_of = [Aggregate1]
+            pass
 
-        test_domain.register(bad_domain_service)
+        test_domain.register(bad_domain_service, part_of=[Aggregate1])
 
 
 def test_that_domain_service_is_a_callable_class():

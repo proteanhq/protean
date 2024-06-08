@@ -17,9 +17,6 @@ class Person(BaseEventSourcedAggregate):
     name = String()
     age = Integer()
 
-    class Meta:
-        stream_name = "people"
-
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):

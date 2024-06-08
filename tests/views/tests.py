@@ -46,9 +46,6 @@ class PersonExplicitID(BaseView):
 class Adult(Person):
     pass
 
-    class Meta:
-        schema_name = "adults"
-
 
 class NotAPerson(BaseView):
     identifier = Identifier(identifier=True)
@@ -64,23 +61,17 @@ class DbPerson(BaseView):
     last_name = String(max_length=50)
     age = Integer(default=21)
 
-    class Meta:
-        schema_name = "peoples"
-
 
 class SqlPerson(Person):
-    class Meta:
-        schema_name = "people"
+    pass
 
 
 class DifferentDbPerson(Person):
-    class Meta:
-        provider = "non-default"
+    pass
 
 
 class SqlDifferentDbPerson(Person):
-    class Meta:
-        provider = "non-default-sql"
+    pass
 
 
 class OrderedPerson(BaseView):
@@ -89,13 +80,9 @@ class OrderedPerson(BaseView):
     last_name = String(max_length=50)
     age = Integer(default=21)
 
-    class Meta:
-        order_by = "first_name"
-
 
 class OrderedPersonSubclass(Person):
-    class Meta:
-        order_by = "last_name"
+    pass
 
 
 class BuildingStatus(Enum):

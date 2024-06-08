@@ -14,9 +14,6 @@ class Qux(BaseAggregate):
 class FooRepresentation(BaseSerializer):
     bars = List(content_type=Dict)
 
-    class Meta:
-        part_of = Qux
-
 
 def test_that_list_of_dicts_are_serialized_correctly():
     serialized = FooRepresentation().dump(Qux(bars=[{"a": 1, "b": 1}]))

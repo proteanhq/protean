@@ -62,9 +62,6 @@ class UserMetrics(BaseEventHandler):
     def count_registrations(self, _: BaseEvent) -> None:
         pass
 
-    class Meta:
-        part_of = User
-
 
 class AllEventsHandler(BaseEventHandler):
     @handle("$any")

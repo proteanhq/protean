@@ -38,9 +38,6 @@ class TestSerializerRegistration:
             name = String(required=True)
             age = Integer(required=True)
 
-            class Meta:
-                part_of = User
-
         assert fully_qualified_name(PersonSchema) in test_domain.registry.serializers
 
 

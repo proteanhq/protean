@@ -75,9 +75,11 @@ class Providers(collections.abc.MutableMapping):
         #   }
         #
         # And repository as:
+        #   @domain.repository(part_of=Post, database="postgresql")
         #   class CustomPostRepository:
-        #       class Meta:
-        #           database = "postgresql"
+        #       def custom_method(self):
+        #           ...
+        #
         # The value of `database` would be `postgresql`.
         #
         # In the absence of an explicit database value, the repository is associated with "ALL"

@@ -44,9 +44,6 @@ class SystemMetrics(BaseEventHandler):
     def increment(self, event: BaseEventHandler) -> None:
         count_up()
 
-    class Meta:
-        stream_name = "$all"
-
 
 @pytest.mark.asyncio
 @pytest.mark.eventstore

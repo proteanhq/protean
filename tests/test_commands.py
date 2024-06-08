@@ -118,9 +118,6 @@ class TestCommandInheritance:
     class AbstractCommand(BaseCommand):
         foo = String()
 
-        class Meta:
-            abstract = True
-
     class ConcreteCommand(AbstractCommand):
         bar = String()
 

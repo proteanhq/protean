@@ -37,9 +37,6 @@ class OrderItem(BaseEntity):
     quantity = Integer()
     price = Float()
 
-    class Meta:
-        part_of = "Order"
-
 
 class OrderItemVO(BaseValueObject):
     product_id = Identifier(required=True)

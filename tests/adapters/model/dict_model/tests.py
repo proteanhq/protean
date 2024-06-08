@@ -83,7 +83,9 @@ class TestModelWithVO:
 class TestCustomModel:
     def test_that_custom_model_is_associated_with_entity(self, test_domain):
         test_domain.register(Provider)
-        test_domain.register(ProviderCustomModel)
+        test_domain.register(
+            ProviderCustomModel, entity_cls=Provider, schema_name="adults"
+        )
 
         assert (
             test_domain.repository_for(Provider)._model.__name__

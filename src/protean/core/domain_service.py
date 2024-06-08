@@ -22,9 +22,6 @@ class BaseDomainService(Element, OptionsMixin):
 
     element_type = DomainObjects.DOMAIN_SERVICE
 
-    class Meta:
-        abstract = True
-
     def __new__(cls, *args, **kwargs):
         if cls is BaseDomainService:
             raise NotSupportedError("BaseDomainService cannot be instantiated")

@@ -18,9 +18,6 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 
     element_type = DomainObjects.EVENT
 
-    class Meta:
-        abstract = True
-
     def __new__(cls, *args, **kwargs):
         if cls is BaseEvent:
             raise NotSupportedError("BaseEvent cannot be instantiated")

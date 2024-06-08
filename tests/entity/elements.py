@@ -79,15 +79,9 @@ class OrderedPerson(BaseEntity):
     last_name = String(max_length=50)
     age = Integer(default=21)
 
-    class Meta:
-        order_by = "first_name"
-        part_of = "Account"
-
 
 class OrderedPersonSubclass(Person):
-    class Meta:
-        order_by = "last_name"
-        part_of = "Account"
+    pass
 
 
 class BuildingStatus(Enum):

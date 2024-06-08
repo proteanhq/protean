@@ -30,7 +30,9 @@ def setup_db():
         domain.register(User)
         domain.register(ComplexUser)
         domain.register(Provider)
-        domain.register_model(ProviderCustomModel, entity_cls=Provider)
+        domain.register_model(
+            ProviderCustomModel, entity_cls=Provider, schema_name="providers"
+        )
 
         domain.providers["default"]._create_database_artifacts()
 

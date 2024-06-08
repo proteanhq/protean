@@ -8,9 +8,6 @@ from protean.fields import Reference, String
 class Address(BaseEntity):
     postal_code = String(max_length=6)
 
-    class Meta:
-        part_of = "User"
-
 
 class User(BaseAggregate):
     address = Reference(Address, required=True)

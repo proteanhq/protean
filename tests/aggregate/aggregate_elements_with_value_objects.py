@@ -13,9 +13,6 @@ class File(BaseValueObject):
     url = String(max_length=1024)
     type = String(max_length=15, choices=FileType)
 
-    class Meta:
-        part_of = "Resource"
-
 
 class Resource(BaseAggregate):
     title = String(required=True, max_length=50)

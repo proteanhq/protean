@@ -19,9 +19,6 @@ class BaseCommand(BaseContainer, OptionsMixin):
 
     element_type = DomainObjects.COMMAND
 
-    class Meta:
-        abstract = True
-
     def __new__(cls, *args, **kwargs):
         if cls is BaseCommand:
             raise NotSupportedError("BaseCommand cannot be instantiated")

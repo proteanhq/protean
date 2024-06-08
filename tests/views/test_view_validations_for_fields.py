@@ -12,15 +12,9 @@ class User(BaseAggregate):
 class Email(BaseValueObject):
     address = String()
 
-    class Meta:
-        part_of = "User"
-
 
 class Role(BaseEntity):
     name = String(max_length=50)
-
-    class Meta:
-        part_of = "User"
 
 
 def test_that_views_should_have_at_least_one_identifier_field(test_domain):

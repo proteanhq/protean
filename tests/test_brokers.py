@@ -3,7 +3,6 @@ import pytest
 from protean import (
     BaseAggregate,
     BaseCommand,
-    BaseCommandHandler,
     BaseEvent,
     BaseSubscriber,
 )
@@ -35,16 +34,6 @@ class AddPersonCommand(BaseCommand):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50, required=True)
     age = Integer(default=21)
-
-
-class AddNewPersonCommandHandler(BaseCommandHandler):
-    """CommandHandler that adds a new person into the system"""
-
-    class Meta:
-        command_cls = AddPersonCommand
-
-    def notify(self, command):
-        print("Received command: ", command)
 
 
 @pytest.fixture(autouse=True)

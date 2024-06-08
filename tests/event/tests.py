@@ -41,9 +41,6 @@ class TestDomainEventDefinition:
             email = ValueObject(Email, required=True)
             name = String(max_length=50)
 
-            class Meta:
-                stream_name = "user"
-
         assert UserAdded(
             {
                 "email": {
