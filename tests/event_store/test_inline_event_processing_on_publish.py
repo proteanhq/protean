@@ -27,9 +27,6 @@ class Registered(BaseEvent):
     name = String()
     password_hash = String()
 
-    class Meta:
-        stream_name = "user"
-
 
 class UserEventHandler(BaseEventHandler):
     @handle(Registered)
@@ -39,7 +36,7 @@ class UserEventHandler(BaseEventHandler):
 
 @pytest.mark.eventstore
 def test_inline_event_processing_on_publish_in_sync_mode(test_domain):
-    test_domain.register(Registered)
+    test_domain.register(Registered, stream_name="user")
     test_domain.register(UserEventHandler, stream_name="user")
 
     current_domain.publish(

@@ -17,17 +17,11 @@ class Register(BaseCommand):
     email = String()
     name = String()
 
-    class Meta:
-        part_of = User
-
 
 class Registered(BaseEvent):
     id = Identifier()
     email = String()
     name = String()
-
-    class Meta:
-        part_of = User
 
 
 class SendEmail(BaseEventSourcedAggregate):
@@ -41,17 +35,14 @@ class SendEmailCommand(BaseCommand):
     subject = String()
     content = String()
 
-    class Meta:
-        part_of = SendEmail
-
 
 @pytest.fixture(autouse=True)
 def register(test_domain):
     test_domain.register(User)
-    test_domain.register(Register)
-    test_domain.register(Registered)
+    test_domain.register(Register, part_of=User)
+    test_domain.register(Registered, part_of=User)
     test_domain.register(SendEmail)
-    test_domain.register(SendEmailCommand)
+    test_domain.register(SendEmailCommand, part_of=SendEmail)
 
 
 def test_construct_event_from_message(test_domain):

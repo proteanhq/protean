@@ -1,3 +1,5 @@
+import pytest
+
 from protean import BaseEventSourcedAggregate
 from protean.fields import Integer, String
 
@@ -15,8 +17,12 @@ class Person(BaseEventSourcedAggregate):
     name = String()
     age = Integer()
 
-    class Meta:
-        stream_name = "people"
+
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(User)
+    test_domain.register(AdminUser)
+    test_domain.register(Person, stream_name="people")
 
 
 def test_stream_name_option_of_an_event_sourced_aggregate():

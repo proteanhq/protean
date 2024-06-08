@@ -30,8 +30,8 @@ class TestDefaults:
 
 class TestInvariantValidation:
     def test_that_building_cannot_be_WIP_if_above_4_floors(self, test_domain):
-        test_domain.register(Building)
         test_domain.register(Area)
+        test_domain.register(Building, part_of=Area)
         test_domain.init(traverse=False)
 
         with pytest.raises(ValidationError):

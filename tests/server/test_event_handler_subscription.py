@@ -72,6 +72,7 @@ def setup_event_loop():
 
 
 def test_event_subscriptions(test_domain):
+    test_domain.register(User)
     test_domain.register(UserEventHandler, part_of=User)
     engine = Engine(test_domain, test_mode=True)
 
@@ -81,6 +82,7 @@ def test_event_subscriptions(test_domain):
 
 
 def test_origin_stream_name_in_subscription(test_domain):
+    test_domain.register(User)
     test_domain.register(EmailEventHandler, part_of=User, source_stream="email")
 
     engine = Engine(test_domain, test_mode=True)

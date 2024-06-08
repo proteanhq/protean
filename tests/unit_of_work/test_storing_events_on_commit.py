@@ -51,9 +51,6 @@ class Registered(BaseEvent):
     name = String()
     password_hash = String()
 
-    class Meta:
-        part_of = User
-
 
 class UserCommandHandler(BaseCommandHandler):
     @handle(Register)

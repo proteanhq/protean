@@ -1,6 +1,7 @@
 import logging
 
 from protean.container import Element, OptionsMixin
+from protean.exceptions import NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 
 logger = logging.getLogger(__name__)
@@ -20,12 +21,9 @@ class BaseApplicationService(Element, OptionsMixin):
 
     element_type = DomainObjects.APPLICATION_SERVICE
 
-    class Meta:
-        abstract = True
-
     def __new__(cls, *args, **kwargs):
         if cls is BaseApplicationService:
-            raise TypeError("BaseApplicationService cannot be instantiated")
+            raise NotSupportedError("BaseApplicationService cannot be instantiated")
         return object.__new__(cls, *args, **kwargs)
 
     @classmethod

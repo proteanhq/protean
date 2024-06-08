@@ -18,17 +18,11 @@ def count_up():
 class UserLoggedIn(BaseEvent):
     user_id = Identifier(identifier=True)
 
-    class Meta:
-        stream_name = "authentication"
-
 
 class UserEventHandler(BaseEventHandler):
     @handle(UserLoggedIn)
     def count_users(self, event: UserLoggedIn) -> None:
         count_up()
-
-    class Meta:
-        stream_name = "authentication"
 
 
 @pytest.fixture(autouse=True)
@@ -45,10 +39,13 @@ def auto_set_and_close_loop():
     asyncio.set_event_loop(None)  # Explicitly unset the loop
 
 
-def test_processing_messages_on_start(test_domain):
-    test_domain.register(UserLoggedIn)
-    test_domain.register(UserEventHandler)
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(UserLoggedIn, stream_name="authentication")
+    test_domain.register(UserEventHandler, stream_name="authentication")
 
+
+def test_processing_messages_on_start(test_domain):
     identifier = str(uuid4())
     event = UserLoggedIn(user_id=identifier)
     test_domain.event_store.store.append(event)
@@ -61,9 +58,6 @@ def test_processing_messages_on_start(test_domain):
 
 
 def test_that_read_position_is_updated_after_engine_run(test_domain):
-    test_domain.register(UserLoggedIn)
-    test_domain.register(UserEventHandler)
-
     identifier = str(uuid4())
     event = UserLoggedIn(user_id=identifier)
     test_domain.event_store.store.append(event)
@@ -79,9 +73,6 @@ def test_that_read_position_is_updated_after_engine_run(test_domain):
 
 
 def test_processing_messages_from_beginning_the_first_time(test_domain):
-    test_domain.register(UserLoggedIn)
-    test_domain.register(UserEventHandler)
-
     identifier = str(uuid4())
     event = UserLoggedIn(user_id=identifier)
     test_domain.event_store.store.append(event)

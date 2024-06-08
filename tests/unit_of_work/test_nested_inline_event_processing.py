@@ -52,9 +52,6 @@ class Create(BaseCommand):
     topic = String()
     content = Text()
 
-    class Meta:
-        part_of = Post
-
 
 class Created(BaseEvent):
     id = Identifier(identifier=True)
@@ -88,15 +85,15 @@ class Metrics(BaseEventHandler):
         global published_count
         published_count += 1
 
-    class Meta:
-        stream_name = "post"
-
 
 @pytest.mark.eventstore
 def test_nested_uow_processing(test_domain):
     test_domain.register(Post)
+    test_domain.register(Create, part_of=Post)
+    test_domain.register(Created, part_of=Post)
+    test_domain.register(Published, part_of=Post)
     test_domain.register(PostEventHandler, part_of=Post)
-    test_domain.register(Metrics)
+    test_domain.register(Metrics, stream_name="post")
 
     identifier = str(uuid4())
     PostCommandHandler().create_new_post(

@@ -18,9 +18,6 @@ class PersonRepository(BaseRepository):
     def find_adults(self, minimum_age: int = 21) -> List[Person]:
         return current_domain.repository_for(Person)._dao.filter(age__gte=minimum_age)
 
-    class Meta:
-        part_of = Person
-
 
 class Email(BaseValueObject):
     REGEXP = r"\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?"
@@ -47,10 +44,6 @@ class Provider(BaseAggregate):
 
 class ProviderCustomModel(BaseModel):
     name = Text()
-
-    class Meta:
-        entity_cls = Provider
-        schema_name = "adults"
 
 
 class Receiver(BaseAggregate):

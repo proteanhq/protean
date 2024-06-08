@@ -43,12 +43,15 @@ class Options:
                     if not (attr[0].startswith("__") and attr[0].endswith("__")):
                         setattr(self, attr[0], attr[1])
 
+                self.abstract = getattr(opts, "abstract", None) or False
             elif isinstance(opts, dict):
                 for opt_name, opt_value in opts.items():
                     setattr(self, opt_name, opt_value)
 
-        # Common Meta attributes
-        self.abstract = getattr(opts, "abstract", None) or False
+                self.abstract = opts.get("abstract", None) or False
+        else:
+            # Common Meta attributes
+            self.abstract = getattr(opts, "abstract", None) or False
 
     def __setattr__(self, __name: str, __value: Any) -> None:
         # Ignore if `_opts` is being set
@@ -88,23 +91,10 @@ class OptionsMixin:
         Args:
             subclass (Protean Element): Subclass to initialize with metadata
         """
-        # Retrieve inner Meta class
-        # Gather `Meta` class/object if defined
-        options = getattr(subclass, "Meta", None)
+        if not hasattr(subclass, "meta_"):
+            setattr(subclass, "meta_", Options())
 
-        # Ensure that options are defined in this element class
-        #   and not in one of its base class, by checking if the parent of the
-        #   inner Meta class is the subclass being initialized
-        #
-        # PEP-3155 https://www.python.org/dev/peps/pep-3155/
-        #   `__qualname__` contains the Inner class name in the form of a dot notation:
-        #   <OuterClass>.<InnerClass>.
-        if options and options.__qualname__.split(".")[-2] == subclass.__name__:
-            subclass.meta_ = Options(options)
-        else:
-            subclass.meta_ = Options()
-
-        # Assign default options for remaining items
+        # Assign default options
         subclass._set_defaults()
 
         super().__init_subclass__()
@@ -116,11 +106,8 @@ class OptionsMixin:
         #   Element Roots are `Event`, `Subscriber`, `Repository`, and so on.
         for key, default in cls._default_options():
             # FIXME Should the `None` check be replaced with a SENTINEL check?
-            if hasattr(cls.meta_, key) and getattr(cls.meta_, key) is not None:
-                value = getattr(cls.meta_, key)
-            else:
-                value = default
-            setattr(cls.meta_, key, value)
+            if not (hasattr(cls.meta_, key) and getattr(cls.meta_, key) is not None):
+                setattr(cls.meta_, key, default)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -186,7 +173,7 @@ class BaseContainer(metaclass=ContainerMeta):
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseContainer:
-            raise TypeError("BaseContainer cannot be instantiated")
+            raise NotSupportedError("BaseContainer cannot be instantiated")
         return super().__new__(cls)
 
     def __init__(self, *template, **kwargs):  # noqa: C901

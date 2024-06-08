@@ -56,9 +56,6 @@ class WelcomeNewPerson(BaseSubscriber):
     that a new person was added into the system
     """
 
-    class Meta:
-        event = PersonAdded
-
     def notify(self, event):
         email = WelcomeEmail(to=event.email, data=event.to_dict())
         current_domain.send_email(email)

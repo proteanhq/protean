@@ -22,9 +22,6 @@ class Registered(BaseEvent):
     name = String()
     password_hash = String()
 
-    class Meta:
-        part_of = User
-
 
 def some_function():
     raise Exception("Some exception")
@@ -53,7 +50,7 @@ def auto_set_and_close_loop():
 @pytest.mark.asyncio
 async def test_that_exception_is_raised(test_domain):
     test_domain.register(User)
-    test_domain.register(Registered)
+    test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
 
     identifier = str(uuid4())
@@ -80,7 +77,7 @@ async def test_that_exception_is_raised(test_domain):
 
 def test_exceptions_stop_processing(test_domain):
     test_domain.register(User)
-    test_domain.register(Registered)
+    test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
 
     identifier = str(uuid4())

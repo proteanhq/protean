@@ -3,7 +3,7 @@ import logging
 
 from protean.container import Element, OptionsMixin
 from protean.core.event import BaseEvent
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class, fully_qualified_name
 from protean.utils.mixins import HandlerMixin
 
@@ -15,8 +15,10 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
 
     element_type = DomainObjects.EVENT_HANDLER
 
-    class Meta:
-        abstract = True
+    def __new__(cls, *args, **kwargs):
+        if cls is BaseEventHandler:
+            raise NotSupportedError("BaseEventHandler cannot be instantiated")
+        return super().__new__(cls)
 
     @classmethod
     def _default_options(cls):
@@ -29,11 +31,6 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
             ("stream_name", part_of.meta_.stream_name if part_of else None),
             ("source_stream", None),
         ]
-
-    def __new__(cls, *args, **kwargs):
-        if cls is BaseEventHandler:
-            raise TypeError("BaseEventHandler cannot be instantiated")
-        return super().__new__(cls)
 
 
 def event_handler_factory(element_cls, **opts):

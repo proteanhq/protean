@@ -57,9 +57,6 @@ class OrderItem(BaseEntity):
     quantity = Integer()
     price = Float()
 
-    class Meta:
-        part_of = Order
-
     @invariant.post
     def price_should_be_non_negative(self):
         if self.price < 0:
@@ -67,8 +64,8 @@ class OrderItem(BaseEntity):
 
 
 def test_that_entity_has_recorded_invariants(test_domain):
-    test_domain.register(OrderItem)
     test_domain.register(Order)
+    test_domain.register(OrderItem, part_of=Order)
     test_domain.init(traverse=False)
 
     assert len(Order._invariants["pre"]) == 1

@@ -18,31 +18,22 @@ class Registered(BaseEvent):
     id = Identifier()
     email = String()
 
-    class Meta:
-        part_of = User
-
 
 class Activated(BaseEvent):
     id = Identifier(required=True)
-
-    class Meta:
-        part_of = User
 
 
 class Renamed(BaseEvent):
     id = Identifier(required=True)
     name = String(required=True, max_length=50)
 
-    class Meta:
-        part_of = User
-
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(User)
-    test_domain.register(Registered)
-    test_domain.register(Activated)
-    test_domain.register(Renamed)
+    test_domain.register(Registered, part_of=User)
+    test_domain.register(Activated, part_of=User)
+    test_domain.register(Renamed, part_of=User)
 
 
 @pytest.fixture

@@ -20,23 +20,14 @@ class Registered(BaseEvent):
     id = Identifier()
     email = String()
 
-    class Meta:
-        part_of = User
-
 
 class Activated(BaseEvent):
     id = Identifier(required=True)
-
-    class Meta:
-        part_of = User
 
 
 class Renamed(BaseEvent):
     id = Identifier(required=True)
     name = String(required=True, max_length=50)
-
-    class Meta:
-        part_of = User
 
 
 @pytest.mark.eventstore

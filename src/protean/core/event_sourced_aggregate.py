@@ -8,7 +8,7 @@ from typing import Dict
 
 from protean.container import BaseContainer, EventedMixin, IdentityMixin, OptionsMixin
 from protean.core.event import BaseEvent
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import Field, Integer
 from protean.reflection import _ID_FIELD_NAME, declared_fields, has_fields, id_field
 from protean.utils import (
@@ -34,8 +34,10 @@ class BaseEventSourcedAggregate(
     # Track current version of Aggregate
     _version = Integer(default=-1)
 
-    class Meta:
-        abstract = True
+    def __new__(cls, *args, **kwargs):
+        if cls is BaseEventSourcedAggregate:
+            raise NotSupportedError("BaseEventSourcedAggregate cannot be instantiated")
+        return super().__new__(cls)
 
     @classmethod
     def _default_options(cls):

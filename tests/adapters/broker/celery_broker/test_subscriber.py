@@ -3,19 +3,23 @@ import pytest
 from celery import Task
 
 from protean.adapters.broker.celery import CeleryBroker, ProteanTask
-from protean.globals import current_domain
-from tests.adapters.broker.celery_broker.elements import NotifySSOSubscriber, Person
+from tests.adapters.broker.celery_broker.elements import (
+    NotifySSOSubscriber,
+    Person,
+    PersonAdded,
+)
 
 
 class TestSubscriberNotifications:
     @pytest.fixture(autouse=True)
-    def register(self):
-        current_domain.register(Person)
-        current_domain.register(NotifySSOSubscriber)
+    def register(self, test_domain):
+        test_domain.register(Person)
+        test_domain.register(PersonAdded, part_of=Person)
+        test_domain.register(NotifySSOSubscriber, event=PersonAdded)
 
     @pytest.fixture
-    def broker(self):
-        return current_domain.brokers["default"]
+    def broker(self, test_domain):
+        return test_domain.brokers["default"]
 
     @pytest.fixture
     def decorated_task_obj(self, broker):

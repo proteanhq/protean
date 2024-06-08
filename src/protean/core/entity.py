@@ -110,9 +110,6 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
 
     element_type = DomainObjects.ENTITY
 
-    class Meta:
-        abstract = True
-
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()
 
@@ -512,16 +509,6 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
 
 def entity_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseEntity, **kwargs)
-
-    if element_cls.meta_.abstract is True:
-        raise NotSupportedError(
-            {
-                "_entity": [
-                    f"`{element_cls.__name__}` class has been marked abstract"
-                    f" and cannot be instantiated"
-                ]
-            }
-        )
 
     if not element_cls.meta_.part_of:
         raise IncorrectUsageError(

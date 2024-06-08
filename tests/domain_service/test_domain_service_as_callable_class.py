@@ -35,9 +35,6 @@ class OrderConfirmed(BaseEvent):
     order_id = Identifier(required=True)
     confirmed_at = DateTime(required=True)
 
-    class Meta:
-        part_of = "Order"
-
 
 class Order(BaseAggregate):
     customer_id = Identifier(required=True)
@@ -57,25 +54,16 @@ class OrderItem(BaseEntity):
     quantity = Integer()
     price = Float()
 
-    class Meta:
-        part_of = Order
-
 
 class Warehouse(BaseValueObject):
     location = String()
     contact = String()
-
-    class Meta:
-        part_of = "Inventory"
 
 
 class StockReserved(BaseEvent):
     product_id = Identifier(required=True)
     quantity = Integer(required=True)
     reserved_at = DateTime(required=True)
-
-    class Meta:
-        part_of = "Inventory"
 
 
 class Inventory(BaseAggregate):
@@ -95,9 +83,6 @@ class Inventory(BaseAggregate):
 
 
 class OrderPlacementService(BaseDomainService):
-    class Meta:
-        part_of = [Order, Inventory]
-
     def __init__(self, order, inventories):
         super().__init__(*(order, inventories))
 
@@ -126,12 +111,12 @@ class OrderPlacementService(BaseDomainService):
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Order)
-    test_domain.register(OrderItem)
-    test_domain.register(Warehouse)
+    test_domain.register(OrderItem, part_of=Order)
+    test_domain.register(OrderConfirmed, part_of=Order)
     test_domain.register(Inventory)
-    test_domain.register(OrderConfirmed)
-    test_domain.register(StockReserved)
-    test_domain.register(OrderPlacementService)
+    test_domain.register(Warehouse, part_of=Inventory)
+    test_domain.register(StockReserved, part_of=Inventory)
+    test_domain.register(OrderPlacementService, part_of=[Order, Inventory])
     test_domain.init(traverse=False)
 
 

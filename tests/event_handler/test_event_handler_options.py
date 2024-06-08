@@ -25,10 +25,9 @@ def test_aggregate_cls_specified_during_registration(test_domain):
 
 def test_aggregate_cls_specified_as_a_meta_attribute(test_domain):
     class UserEventHandlers(BaseEventHandler):
-        class Meta:
-            part_of = User
+        pass
 
-    test_domain.register(UserEventHandlers)
+    test_domain.register(UserEventHandlers, part_of=User)
     assert UserEventHandlers.meta_.part_of == User
 
 
@@ -52,10 +51,9 @@ def test_stream_name_option(test_domain):
 
 def test_options_defined_at_different_levels(test_domain):
     class UserEventHandlers(BaseEventHandler):
-        class Meta:
-            stream_name = "person"
+        pass
 
-    test_domain.register(UserEventHandlers, part_of=User)
+    test_domain.register(UserEventHandlers, part_of=User, stream_name="person")
     assert UserEventHandlers.meta_.part_of == User
     assert UserEventHandlers.meta_.stream_name == "person"
 
@@ -64,6 +62,7 @@ def test_that_a_default_stream_name_is_derived_from_aggregate_cls(test_domain):
     class UserEventHandlers(BaseEventHandler):
         pass
 
+    test_domain.register(User)
     test_domain.register(UserEventHandlers, part_of=User)
     assert UserEventHandlers.meta_.stream_name == "user"
 

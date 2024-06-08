@@ -40,7 +40,9 @@ def setup_db():
         domain.register(ListUser)
         domain.register(IntegerListUser)
 
-        domain.register_model(ProviderCustomModel, entity_cls=Provider)
+        domain.register_model(
+            ProviderCustomModel, entity_cls=Provider, schema_name="adults"
+        )
 
         domain.repository_for(ArrayUser)._dao
         domain.repository_for(GenericPostgres)._dao

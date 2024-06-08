@@ -32,24 +32,15 @@ class Registered(BaseEvent):
     name = String()
     password_hash = String()
 
-    class Meta:
-        part_of = User
-
 
 class Activated(BaseEvent):
     id = Identifier()
     activated_at = DateTime()
 
-    class Meta:
-        part_of = User
-
 
 class Sent(BaseEvent):
     email = String()
     sent_at = DateTime()
-
-    class Meta:
-        stream_name = "email"
 
 
 class UserEventHandler(BaseEventHandler):
@@ -76,9 +67,9 @@ class EmailEventHandler(BaseEventHandler):
 def register_elements(test_domain):
     test_domain.register(User)
     test_domain.register(Email)
-    test_domain.register(Registered)
-    test_domain.register(Activated)
-    test_domain.register(Sent)
+    test_domain.register(Registered, part_of=User)
+    test_domain.register(Activated, part_of=User)
+    test_domain.register(Sent, stream_name="email")
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.register(EmailEventHandler, stream_name="email")
 

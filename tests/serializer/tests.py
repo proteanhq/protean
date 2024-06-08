@@ -1,6 +1,7 @@
 import pytest
 
 from protean import BaseSerializer
+from protean.exceptions import NotSupportedError
 from protean.fields import Integer, String
 from protean.reflection import declared_fields
 from protean.utils import fully_qualified_name
@@ -10,7 +11,7 @@ from .elements import User, UserSchema
 
 class TestSerializerInitialization:
     def test_that_base_serializer_class_cannot_be_instantiated(self):
-        with pytest.raises(TypeError):
+        with pytest.raises(NotSupportedError):
             BaseSerializer()
 
     def test_that_a_concrete_serializer_can_be_instantiated(self):
@@ -36,9 +37,6 @@ class TestSerializerRegistration:
         class PersonSchema:
             name = String(required=True)
             age = Integer(required=True)
-
-            class Meta:
-                part_of = User
 
         assert fully_qualified_name(PersonSchema) in test_domain.registry.serializers
 

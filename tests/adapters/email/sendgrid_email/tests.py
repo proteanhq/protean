@@ -11,9 +11,10 @@ from .elements import Person, PersonAdded, WelcomeEmail, WelcomeNewPerson
 class TestEmailTriggering:
     @patch.object(SendgridEmailProvider, "send_email")
     def test_that_email_is_pushed_via_aggregate_command_method(self, mock, test_domain):
-        test_domain.register(PersonAdded)
+        test_domain.register(Person)
+        test_domain.register(PersonAdded, part_of=Person)
         test_domain.register(WelcomeEmail)
-        test_domain.register(WelcomeNewPerson)
+        test_domain.register(WelcomeNewPerson, event=PersonAdded)
 
         Person.add_newcomer(
             {
@@ -26,9 +27,10 @@ class TestEmailTriggering:
         mock.assert_called_once()
 
     def test_that_sendgrid_email_method_is_called(self, mocker, test_domain):
-        test_domain.register(PersonAdded)
+        test_domain.register(Person)
+        test_domain.register(PersonAdded, part_of=Person)
         test_domain.register(WelcomeEmail)
-        test_domain.register(WelcomeNewPerson)
+        test_domain.register(WelcomeNewPerson, event=PersonAdded)
 
         spy = mocker.spy(SendgridEmailProvider, "send_email")
 

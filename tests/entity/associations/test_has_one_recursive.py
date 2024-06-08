@@ -15,23 +15,17 @@ class Dean(BaseEntity):
     age = Integer(min_value=21)
     office = HasOne("Office")
 
-    class Meta:
-        part_of = University
-
 
 class Office(BaseEntity):
     building = String(max_length=25)
     room = Integer(min_value=1)
 
-    class Meta:
-        part_of = Dean
-
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(University)
-    test_domain.register(Dean)
-    test_domain.register(Office)
+    test_domain.register(Dean, part_of=University)
+    test_domain.register(Office, part_of=Dean)
     test_domain.init(traverse=False)
 
 

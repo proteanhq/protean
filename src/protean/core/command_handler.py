@@ -22,7 +22,7 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseCommandHandler:
-            raise TypeError("BaseCommandHandler cannot be instantiated")
+            raise NotSupportedError("BaseCommandHandler cannot be instantiated")
         return super().__new__(cls)
 
 

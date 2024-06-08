@@ -25,9 +25,6 @@ class ChangeAddress(BaseCommand):
     user_id = Identifier()
     full_address = String()
 
-    class Meta:
-        part_of = User
-
 
 class UserCommandHandlers(BaseCommandHandler):
     @handle(Register)
@@ -60,8 +57,11 @@ class PostCommandHandler(BaseCommandHandler):
 
 def test_retrieving_handler_by_command(test_domain):
     test_domain.register(User)
+    test_domain.register(Register, part_of=User)
+    test_domain.register(ChangeAddress, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
     test_domain.register(Post)
+    test_domain.register(Create, part_of=Post)
     test_domain.register(PostCommandHandler, part_of=Post)
 
     assert test_domain.command_handler_for(Register()) == UserCommandHandlers

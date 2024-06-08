@@ -2,7 +2,11 @@ import logging
 
 from protean import BaseEventSourcedAggregate
 from protean.container import Element, OptionsMixin
-from protean.exceptions import IncorrectUsageError, ObjectNotFoundError
+from protean.exceptions import (
+    IncorrectUsageError,
+    ObjectNotFoundError,
+    NotSupportedError,
+)
 from protean.fields import Identifier
 from protean.globals import current_domain, current_uow
 from protean.utils import DomainObjects, derive_element_class
@@ -20,7 +24,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
     def __new__(cls, *args, **kwargs):
         # Prevent instantiation of `BaseEventSourcedRepository itself`
         if cls is BaseEventSourcedRepository:
-            raise TypeError("BaseEventSourcedRepository cannot be instantiated")
+            raise NotSupportedError("BaseEventSourcedRepository cannot be instantiated")
         return super().__new__(cls)
 
     def __init__(self, domain) -> None:

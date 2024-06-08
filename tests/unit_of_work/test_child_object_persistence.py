@@ -9,8 +9,8 @@ class TestUnitOfWorkRegistration:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Post)
-        test_domain.register(PostMeta)
-        test_domain.register(Comment)
+        test_domain.register(PostMeta, part_of=Post)
+        test_domain.register(Comment, part_of=Post)
 
         test_domain.register(PostRepository, part_of=Post)
 

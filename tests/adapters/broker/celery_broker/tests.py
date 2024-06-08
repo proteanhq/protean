@@ -27,8 +27,8 @@ class TestEventProcessing:
     @pytest.fixture(autouse=True)
     def register(self):
         current_domain.register(Person)
-        current_domain.register(PersonAdded)
-        current_domain.register(NotifySSOSubscriber)
+        current_domain.register(PersonAdded, part_of=Person)
+        current_domain.register(NotifySSOSubscriber, event=PersonAdded)
 
     @pytest.mark.xfail
     @patch.object(CeleryBroker, "publish")

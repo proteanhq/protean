@@ -47,10 +47,6 @@ class Provider(BaseAggregate):
 class ProviderCustomModel(BaseModel):
     name = Column(Text)
 
-    class Meta:
-        entity_cls = Provider
-        schema_name = "adults"
-
 
 class Receiver(BaseAggregate):
     name = String()

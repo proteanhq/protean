@@ -58,9 +58,6 @@ class ProviderCustomModel(BaseModel):
     name = Text(fields={"raw": Keyword()})
     about = Text()
 
-    class Meta:
-        schema_name = "providers"
-
 
 class Receiver(BaseAggregate):
     name = String()

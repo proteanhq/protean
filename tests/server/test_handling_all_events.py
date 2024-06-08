@@ -27,9 +27,6 @@ class Registered(BaseEvent):
     name = String()
     password_hash = String()
 
-    class Meta:
-        part_of = User
-
 
 class Post(BaseEventSourcedAggregate):
     topic = String()
@@ -41,27 +38,21 @@ class Created(BaseEvent):
     topic = String()
     content = Text()
 
-    class Meta:
-        part_of = Post
-
 
 class SystemMetrics(BaseEventHandler):
     @handle("$any")
     def increment(self, event: BaseEventHandler) -> None:
         count_up()
 
-    class Meta:
-        stream_name = "$all"
-
 
 @pytest.mark.asyncio
 @pytest.mark.eventstore
 async def test_that_any_message_can_be_handled_with_any_handler(test_domain):
     test_domain.register(User)
-    test_domain.register(Registered)
+    test_domain.register(Registered, part_of=User)
     test_domain.register(Post)
-    test_domain.register(Created)
-    test_domain.register(SystemMetrics)
+    test_domain.register(Created, part_of=Post)
+    test_domain.register(SystemMetrics, stream_name="$all")
 
     identifier = str(uuid4())
     registered = Registered(

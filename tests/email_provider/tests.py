@@ -42,9 +42,10 @@ class TestEmailTriggering:
     @pytest.mark.xfail  # `notify` methods will not be called inline. `send_email` is another notify-type method
     @patch.object(DummyEmailProvider, "send_email")
     def test_that_email_is_pushed_via_aggregate_command_method(self, mock, test_domain):
-        test_domain.register(PersonAdded)
+        test_domain.register(Person)
+        test_domain.register(PersonAdded, part_of=Person)
         test_domain.register(WelcomeEmail)
-        test_domain.register(WelcomeNewPerson)
+        test_domain.register(WelcomeNewPerson, event=PersonAdded)
 
         Person.add_newcomer(
             {

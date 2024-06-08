@@ -1,6 +1,7 @@
 import pytest
 
 from protean import BaseEvent, BaseSubscriber
+from protean.exceptions import NotSupportedError
 from protean.fields import Identifier, Integer, String
 from protean.utils import fully_qualified_name
 
@@ -17,16 +18,13 @@ class NotifySSOSubscriber(BaseSubscriber):
     that a new person was added into the system
     """
 
-    class Meta:
-        event = PersonAdded
-
     def notify(self, event):
         print("Received Event: ", event)
 
 
 class TestSubscriberInitialization:
     def test_that_base_subscriber_class_cannot_be_instantiated(self):
-        with pytest.raises(TypeError):
+        with pytest.raises(NotSupportedError):
             BaseSubscriber()
 
     def test_that_subscriber_can_be_instantiated(self, test_domain):
@@ -36,7 +34,7 @@ class TestSubscriberInitialization:
 
 class TestSubscriberRegistration:
     def test_that_domain_event_can_be_registered_with_domain(self, test_domain):
-        test_domain.register(NotifySSOSubscriber)
+        test_domain.register(NotifySSOSubscriber, event=PersonAdded)
 
         assert (
             fully_qualified_name(NotifySSOSubscriber)

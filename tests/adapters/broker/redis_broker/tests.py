@@ -6,7 +6,13 @@ import redis
 from protean.adapters.broker.redis import RedisBroker
 from protean.globals import current_domain
 
-from .elements import PersonAdded
+from .elements import PersonAdded, Person
+
+
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(Person)
+    test_domain.register(PersonAdded, part_of=Person)
 
 
 @pytest.mark.redis
@@ -81,8 +87,6 @@ class TestReceivingFromRedis:
         assert message.data["id"] == event.id
 
     def test_reconstructing_an_event_object_from_message(self, test_domain):
-        test_domain.register(PersonAdded)
-
         # Publish event
         event = PersonAdded(
             id="1234",

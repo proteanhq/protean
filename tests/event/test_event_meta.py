@@ -58,11 +58,8 @@ def test_that_abstract_events_can_be_defined_without_aggregate_or_stream(test_do
     class AbstractEvent(BaseEvent):
         foo = String()
 
-        class Meta:
-            abstract = True
-
     try:
-        test_domain.register(AbstractEvent)
+        test_domain.register(AbstractEvent, abstract=True)
     except Exception:
         pytest.fail(
             "Abstract events should be definable without being associated with an aggregate or a stream"

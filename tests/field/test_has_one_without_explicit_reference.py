@@ -19,14 +19,11 @@ class Book(BaseAggregate):
 class Author(BaseEntity):
     name = String(required=True, max_length=50)
 
-    class Meta:
-        part_of = "Book"
-
 
 @pytest.fixture(autouse=True)
 def register(test_domain):
     test_domain.register(Book)
-    test_domain.register(Author)
+    test_domain.register(Author, part_of=Book)
     test_domain.init(traverse=False)
 
 

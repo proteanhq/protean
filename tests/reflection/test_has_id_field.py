@@ -4,14 +4,11 @@ from protean.fields.basic import Identifier
 from protean.reflection import has_id_field
 
 
-class Entity1(BaseEntity):
+class Aggregate1(BaseAggregate):
     foo = String()
 
-    class Meta:
-        part_of = "Aggregate1"
 
-
-class Aggregate1(BaseAggregate):
+class Entity1(BaseEntity):
     foo = String()
 
 

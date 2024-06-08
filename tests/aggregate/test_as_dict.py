@@ -59,9 +59,6 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
 
             post = Reference("Post")
 
-            class Meta:
-                part_of = "Post"
-
         class Post(BaseAggregate):
             title = String(required=True, max_length=1000)
             slug = String(required=True, max_length=1024)
@@ -70,7 +67,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             comments = HasMany(Comment)
 
         test_domain.register(Post)
-        test_domain.register(Comment)
+        test_domain.register(Comment, part_of=Post)
 
         post = Post(title="Test Post", slug="test-post", content="Do Re Mi Fa")
         comment1 = Comment(content="first comment")
@@ -95,9 +92,6 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             content = Text(required=True)
             post = Reference("Post")
 
-            class Meta:
-                part_of = "Post"
-
         class Post(BaseAggregate):
             title = String(required=True, max_length=1000)
             slug = String(required=True, max_length=1024)
@@ -106,7 +100,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             comments = HasMany(Comment)
 
         test_domain.register(Post)
-        test_domain.register(Comment)
+        test_domain.register(Comment, part_of=Post)
         test_domain.init(traverse=False)
 
         post = Post(title="Test Post", slug="test-post", content="Do Re Mi Fa")
@@ -136,11 +130,8 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
         class PostMeta(BaseEntity):
             likes = Integer(default=0)
 
-            class Meta:
-                part_of = Post
-
         test_domain.register(Post)
-        test_domain.register(PostMeta)
+        test_domain.register(PostMeta, part_of=Post)
         test_domain.init(traverse=False)
 
         meta = PostMeta(likes=27)

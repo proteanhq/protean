@@ -15,22 +15,16 @@ class Dean(BaseEntity):
     name = String(max_length=50)
     age = Integer(min_value=21)
 
-    class Meta:
-        part_of = Department
-
 
 class Location(BaseEntity):
     building = String(max_length=50)
-
-    class Meta:
-        part_of = Department
 
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Department)
-    test_domain.register(Dean)
-    test_domain.register(Location)
+    test_domain.register(Dean, part_of=Department)
+    test_domain.register(Location, part_of=Department)
     test_domain.init(traverse=False)
 
 

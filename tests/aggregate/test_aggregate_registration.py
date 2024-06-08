@@ -16,11 +16,7 @@ class TestAggregateRegistration:
         class User(BaseAggregate):
             name = String(max_length=50)
 
-            class Meta:
-                provider = "foobar"
-                model = "UserModel"
-
-        test_domain.register(User)
+        test_domain.register(User, provider="foobar", model="UserModel")
 
         assert User.meta_.provider == "foobar"
         assert User.meta_.model == "UserModel"
@@ -29,8 +25,6 @@ class TestAggregateRegistration:
         @test_domain.aggregate(provider="foobar", model="UserModel")
         class User(BaseAggregate):
             name = String(max_length=50)
-
-        test_domain.register(User)
 
         assert User.meta_.provider == "foobar"
         assert User.meta_.model == "UserModel"

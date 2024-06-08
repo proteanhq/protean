@@ -20,9 +20,6 @@ class UserRegistrationCommand(BaseCommand):
     password = String(required=True, max_length=255)
     age = Integer(default=21)
 
-    class Meta:
-        part_of = User
-
 
 class TestCommandInitialization:
     def test_that_command_object_class_cannot_be_instantiated(self):
@@ -59,7 +56,7 @@ class TestCommandInitialization:
 
 class TestCommandRegistration:
     def test_that_command_can_be_registered_with_domain(self, test_domain):
-        test_domain.register(UserRegistrationCommand)
+        test_domain.register(UserRegistrationCommand, part_of=User)
 
         assert (
             fully_qualified_name(UserRegistrationCommand)
@@ -121,9 +118,6 @@ class TestCommandInheritance:
     class AbstractCommand(BaseCommand):
         foo = String()
 
-        class Meta:
-            abstract = True
-
     class ConcreteCommand(AbstractCommand):
         bar = String()
 
@@ -134,12 +128,9 @@ class TestCommandInheritance:
         )
 
     def test_inheritance_of_parent_fields_with_annotations(self, test_domain):
-        @test_domain.command
+        @test_domain.command(abstract=True)
         class AbstractCommand2:
             foo = String()
-
-            class Meta:
-                abstract = True
 
         @test_domain.command(part_of=User)
         class ConcreteCommand2(AbstractCommand2):

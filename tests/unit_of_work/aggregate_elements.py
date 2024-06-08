@@ -19,18 +19,12 @@ class PostMeta(BaseEntity):
 
     post = Reference(Post)
 
-    class Meta:
-        part_of = Post
-
 
 class Comment(BaseEntity):
     content = Text(required=True)
     commented_at = DateTime(required=True, default=datetime.now())
 
     post = Reference(Post)
-
-    class Meta:
-        part_of = Post
 
 
 class PostRepository(BaseRepository):

@@ -18,7 +18,7 @@ class TestAggregatePersistenceWithRepository:
     @pytest.fixture(autouse=True)
     def register_repositories(self, test_domain):
         test_domain.register(Person)
-        test_domain.register(PersonRepository)
+        test_domain.register(PersonRepository, part_of=Person)
         yield
 
     @pytest.fixture

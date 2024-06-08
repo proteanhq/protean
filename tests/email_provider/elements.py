@@ -33,9 +33,6 @@ class PersonAdded(BaseEvent):
     last_name = String(max_length=50, required=True)
     age = Integer(default=21)
 
-    class Meta:
-        part_of = Person
-
 
 class WelcomeEmail(BaseEmail):
     """Emailer to welcome new additions"""
@@ -64,9 +61,6 @@ class WelcomeNewPerson(BaseSubscriber):
     """Subscriber that notifies an external SSO system
     that a new person was added into the system
     """
-
-    class Meta:
-        event = PersonAdded
 
     def notify(self, event):
         email = WelcomeEmail(to=event["email"], data=event)

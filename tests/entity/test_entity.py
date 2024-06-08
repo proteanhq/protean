@@ -1,8 +1,11 @@
+import pytest
+
 from protean.container import Options
 from protean.fields import Auto, Integer, String
 from protean.reflection import attributes, declared_fields
 
 from .elements import (
+    Account,
     AbstractPerson,
     ConcretePerson,
     Person,
@@ -14,6 +17,24 @@ from .elements import (
     DifferentDbPerson,
     Adult,
 )
+
+
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(Account)
+    test_domain.register(AbstractPerson, abstract=True)
+    test_domain.register(ConcretePerson, part_of=Account)
+    test_domain.register(Person, part_of=Account)
+    test_domain.register(PersonAutoSSN, part_of=Account)
+    test_domain.register(Relative, part_of=Account)
+    test_domain.register(
+        SqlDifferentDbPerson, part_of=Account, provider="non-default-sql"
+    )
+    test_domain.register(SqlPerson, part_of=Account, schema_name="people")
+    test_domain.register(DbPerson, part_of=Account, schema_name="pepes")
+    test_domain.register(DifferentDbPerson, part_of=Account, provider="non-default")
+    test_domain.register(Adult, part_of=Account, schema_name="adults")
+    test_domain.init(traverse=False)
 
 
 class TestEntityMeta:
@@ -80,16 +101,19 @@ class TestEntityMeta:
             "last_name",
             "age",
             "id",
+            "account_id",
         ]
         assert list(attributes(PersonAutoSSN).keys()) == [
             "ssn",
             "first_name",
             "last_name",
             "age",
+            "account_id",
         ]
         assert list(attributes(Relative).keys()) == [
             "first_name",
             "last_name",
             "age",
             "id",
+            "account_id",
         ]  # `relative_of` is ignored

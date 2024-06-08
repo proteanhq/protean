@@ -55,55 +55,12 @@ class SubclassRole(Role):
 class AbstractRole(BaseAggregate):
     foo = String(max_length=25)
 
-    class Meta:
-        abstract = True
-
 
 class ConcreteRole(AbstractRole):
     bar = String(max_length=25)
 
 
 # Aggregates to test Abstraction # END #
-
-
-# Aggregates to test Meta Info overriding # START #
-class DbRole(BaseAggregate):
-    bar = String(max_length=25)
-
-    class Meta:
-        schema_name = "foosball"
-
-
-class SqlRole(Role):
-    class Meta:
-        schema_name = "roles"
-
-
-class DifferentDbRole(Role):
-    class Meta:
-        provider = "non-default"
-
-
-class SqlDifferentDbRole(Role):
-    class Meta:
-        provider = "non-default-sql"
-
-
-class OrderedRole(BaseAggregate):
-    bar = String(max_length=25)
-
-    class Meta:
-        order_by = "bar"
-
-
-class OrderedRoleSubclass(Role):
-    bar = String(max_length=25)
-
-    class Meta:
-        order_by = "bar"
-
-
-# Aggregates to test Meta Info overriding # END #
 
 
 # Aggregates to test associations # START #
@@ -119,9 +76,6 @@ class Comment(BaseEntity):
 
     post = Reference("tests.aggregate.elements.Post")
 
-    class Meta:
-        part_of = Post
-
 
 class Account(BaseAggregate):
     email = String(required=True, max_length=255, unique=True, identifier=True)
@@ -136,9 +90,6 @@ class Author(BaseEntity):
     posts = HasMany("tests.aggregate.elements.Post")
     account = Reference("tests.aggregate.elements.Account")
 
-    class Meta:
-        part_of = Account
-
 
 class AccountWithId(BaseAggregate):
     email = String(required=True, max_length=255, unique=True)
@@ -151,16 +102,10 @@ class Profile(BaseEntity):
     about_me = Text()
     account = Reference("tests.aggregate.elements.Account")
 
-    class Meta:
-        part_of = Account
-
 
 class ProfileWithAccountId(BaseEntity):
     about_me = Text()
     account = Reference("tests.aggregate.elements.AccountWithId")
-
-    class Meta:
-        part_of = AccountWithId
 
 
 # Aggregates to test associations # END #

@@ -27,9 +27,6 @@ class PersonRepository(BaseRepository):
     def find_adults(self, minimum_age: int = 21) -> List[Person]:
         return current_domain.repository_for(Person)._dao.filter(age__gte=minimum_age)
 
-    class Meta:
-        part_of = Person
-
 
 class Email(BaseValueObject):
     REGEXP = r"\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?"
@@ -52,7 +49,7 @@ class User(BaseAggregate):
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Person)
-    test_domain.register(PersonRepository)
+    test_domain.register(PersonRepository, part_of=Person)
     test_domain.register(User)
 
 

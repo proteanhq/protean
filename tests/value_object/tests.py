@@ -16,12 +16,11 @@ from .elements import (
 )
 
 
-def test_vo_marked_abstract_cannot_be_instantiated():
+def test_vo_marked_abstract_cannot_be_instantiated(test_domain):
     class AbstractBalance(Balance):
         amount = Float()
 
-        class Meta:
-            abstract = True
+    test_domain.register(AbstractBalance, abstract=True)
 
     with pytest.raises(NotSupportedError) as exc:
         AbstractBalance(amount=100.0)

@@ -10,9 +10,6 @@ class Aggregate2(BaseAggregate):
 
 
 class test_handler(BaseDomainService):
-    class Meta:
-        part_of = [Aggregate1, Aggregate2]
-
     @invariant.pre
     def some_invariant_1(self):
         pass
@@ -28,7 +25,7 @@ class test_handler(BaseDomainService):
 def test_that_domain_service_has_recorded_invariants(test_domain):
     test_domain.register(Aggregate1)
     test_domain.register(Aggregate2)
-    test_domain.register(test_handler)
+    test_domain.register(test_handler, part_of=[Aggregate1, Aggregate2])
     test_domain.init(traverse=False)
 
     assert len(test_handler._invariants) == 2
