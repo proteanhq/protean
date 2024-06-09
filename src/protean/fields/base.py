@@ -101,7 +101,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         messages.update(error_messages or {})
         self.error_messages = messages
 
-    def _generic_param_values_for_repr(self):
+    def _generic_param_values_for_repr(self) -> list[str]:
         """Return the generic parameter values for the Field's repr"""
         values = []
         if self.description:
@@ -117,7 +117,10 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
             if callable(self.default):
                 values.append(f"default={self.default.__name__}")
             else:
-                values.append(f"default='{self.default}'")
+                if isinstance(self.default, str):
+                    values.append(f"default='{self.default}'")
+                else:
+                    values.append(f"default={self.default}")
         return values
 
     def __repr__(self):

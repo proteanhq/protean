@@ -22,7 +22,6 @@ from protean.core.model import BaseModel
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import HasMany, HasOne, Reference, ValueObject
-from protean.globals import current_domain
 from protean.reflection import declared_fields, has_fields
 from protean.utils import (
     CommandProcessing,
@@ -815,9 +814,9 @@ class Domain:
 
         self.brokers.publish(event)
 
-        if current_domain.config["event_processing"] == EventProcessing.SYNC.value:
+        if self.config["event_processing"] == EventProcessing.SYNC.value:
             # Consume events right-away
-            handler_classes = current_domain.handlers_for(event)
+            handler_classes = self.handlers_for(event)
             for handler_cls in handler_classes:
                 handler_methods = (
                     handler_cls._handlers[fqn(event.__class__)]

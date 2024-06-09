@@ -115,8 +115,8 @@ class TestIdentityType:
             identifier = Identifier()
 
             # Can load UUIDs as Strings
-            assert identifier.identity_type == IdentityType.STRING.value
             assert identifier._load(str(uuid_val)) == str(uuid_val)
+            assert identifier.identity_type == IdentityType.STRING.value
 
             # Can load arbitrary strings as well
             assert identifier._load("42") == "42"
@@ -125,14 +125,18 @@ class TestIdentityType:
         domain.config["identity_type"] = IdentityType.INTEGER.value
         with domain.domain_context():
             identifier = Identifier()
-            assert identifier.identity_type == IdentityType.INTEGER.value
             assert identifier._load(42) == 42
+            assert identifier.identity_type == IdentityType.INTEGER.value
             assert identifier.as_dict(42) == 42
 
         domain.config["identity_type"] = IdentityType.UUID.value
         with domain.domain_context():
             uuid_val = uuid4()
             identifier = Identifier()
-            assert identifier.identity_type == IdentityType.UUID.value
             assert identifier._load(uuid_val) == uuid_val
+            assert identifier.identity_type == IdentityType.UUID.value
             assert identifier.as_dict(uuid_val) == str(uuid_val)
+
+    def test_invalid_identity_type(self):
+        with pytest.raises(ValidationError):
+            Identifier(identity_type="invalid")

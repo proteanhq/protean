@@ -1,5 +1,5 @@
 from protean.fields import String
-from tests.support.test_domains.test13.publishing13 import domain
+from tests.support.domains.test13.publishing13 import domain
 
 
 @domain.aggregate

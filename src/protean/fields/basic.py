@@ -8,7 +8,7 @@ import bleach
 
 from dateutil.parser import parse as date_parser
 
-from protean.exceptions import InvalidOperationError, OutOfContextError, ValidationError
+from protean.exceptions import InvalidOperationError, ValidationError
 from protean.fields import Field, validators
 from protean.fields.embedded import ValueObject
 from protean.globals import current_domain
@@ -130,8 +130,8 @@ class Integer(Field):
         # Generate repr values specific to this field
         values = self._generic_param_values_for_repr()
         if self.max_value:
-            values.append(f"max_value={self.max_length}")
-        if self.min_value:
+            values.append(f"max_value={self.max_value}")
+        if self.min_value or self.min_value == 0:
             values.append(f"min_value={self.min_value}")
 
         return f"{self.__class__.__name__}(" + ", ".join(values) + ")"
@@ -173,8 +173,8 @@ class Float(Field):
         # Generate repr values specific to this field
         values = self._generic_param_values_for_repr()
         if self.max_value:
-            values.append(f"max_value={self.max_length}")
-        if self.min_value:
+            values.append(f"max_value={self.max_value}")
+        if self.min_value or self.min_value == 0.0:
             values.append(f"min_value={self.min_value}")
 
         return f"{self.__class__.__name__}(" + ", ".join(values) + ")"
@@ -374,13 +374,6 @@ class Identifier(Field):
         ]:
             raise ValidationError({"identity_type": ["Identity type not supported"]})
 
-        # Pick identity type from domain configuration if not provided
-        try:
-            if not identity_type:
-                identity_type = current_domain.config["identity_type"]
-        except OutOfContextError:  # Domain not active
-            identity_type = IdentityType.STRING.value
-
         self.identity_type = identity_type
         super().__init__(**kwargs)
 
@@ -389,6 +382,12 @@ class Identifier(Field):
         # A Boolean value is tested for specifically because `isinstance(value, int)` is `True` for Boolean values
         if not (isinstance(value, (UUID, str, int))) or isinstance(value, bool):
             self.fail("invalid", value=value)
+
+        # Fixate on IdentityType if not done already
+        #   This happens the first time an identifier field instance is used.
+        #   We don't try to fix this in the constructor because the Domain may not be available at that time.
+        if self.identity_type is None:
+            self.identity_type = current_domain.config["identity_type"]
 
         # Ensure that the value is of the right type
         if self.identity_type == IdentityType.UUID.value:
@@ -462,6 +461,16 @@ class Nested(Field):
     def as_dict(self, value):
         """Return JSON-compatible value of self"""
         return value
+
+    def __repr__(self):
+        # Generate repr values specific to this field
+        values = []
+        if self.schema_name:
+            values.append(f"'{self.schema_name}'")
+
+        values.extend(self._generic_param_values_for_repr())
+
+        return f"{self.__class__.__name__}(" + ", ".join(values) + ")"
 
 
 class Date(Field):

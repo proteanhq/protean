@@ -1,0 +1,147 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Protean CLI",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "protean",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "new",
+                "-o",
+                "/Users/subhashb/wspace/proteanhq/test-scaffolding",
+                "-d",
+                "author_name=Subhash Bhushan",
+                "-d",
+                "author_email=subhash@gmail.com",
+            ]
+        },
+        {
+            "name": "Python: Debug Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "purpose": ["debug-test"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Python: Pytest",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "justMyCode": false,
+            "args": [
+                "tests/test_aggregates.py::TestAggregateIdentity::test_that_abstract_aggregates_do_not_have_id_field",
+            ]
+        },
+        {
+            "name": "Python: Sqlite - Specific test case",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "justMyCode": false,
+            "args": [
+                "tests/adapters/repository/sqlalchemy_repo/sqlite/test_provider.py::TestProviders::test_provider_raw",
+                "--sqlite"
+            ]
+        },
+        {
+            "name": "Python: Postgres - Specific test case",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "justMyCode": false,
+            "args": [
+                "tests/adapters/model/sqlalchemy_model/postgresql/test_array_datatype.py::test_array_data_type_association",
+                "--postgresql"
+            ]
+        },
+        {
+            "name": "Python: Redis - Specific test case",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/adapters/broker/redis_broker/tests.py::TestPublishingToRedis::test_event_message_structure",
+                "--redis"
+            ]
+        },
+        {
+            "name": "Python: MessageDB - Specific test case",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/adapters/event_store/message_db_event_store/tests.py::TestMessageDBEventStore::test_error_on_message_db_initialization",
+                "--message_db"
+            ]
+        },
+        {
+            "name": "Python: Elasticsearch Generic",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "justMyCode": false,
+            "args": [
+                "tests/adapters/repository/test_generic.py::TestConcurrency::test_expected_version_error_on_version_mismatch",
+                "--db=ELASTICSEARCH"
+            ]
+        },
+        {
+            "name": "Python: Elasticsearch",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "justMyCode": false,
+            "args": [
+                "tests/adapters/model/elasticsearch_model/tests.py::TestModelOptions::TestModelSettings::test_settings_override_in_custom_model",
+                "--elasticsearch"
+            ]
+        },
+        {
+            "name": "Python: All Postgresql",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["--postgresql"]
+        },
+        {
+            "name": "Generic Tests - Postgresql",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/adapters/repository/test_generic.py::TestPersistenceViaRepository::test_that_aggregate_can_be_persisted_with_repository",
+                "-m",
+                "database",
+                "--db=POSTGRESQL",
+                "-sv"
+            ]
+        },
+        {
+            "name": "Generic Tests - Elasticsearch",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/adapters/repository/test_generic.py::TestPersistenceViaRepository::test_that_aggregate_can_be_persisted_with_repository",
+                "--db=elasticsearch",
+                "-sv"
+            ]
+        }
+    ]
+}

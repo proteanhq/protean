@@ -19,7 +19,6 @@ from .core.unit_of_work import UnitOfWork
 from .core.value_object import BaseValueObject
 from .core.view import BaseView
 from .domain import Domain
-from .globals import current_domain, current_uow
 from .server import Engine
 from .utils import get_version
 from .utils.mixins import handle
@@ -47,8 +46,6 @@ __all__ = [
     "QuerySet",
     "UnitOfWork",
     "apply",
-    "current_domain",
-    "current_uow",
     "get_version",
     "handle",
     "invariant",

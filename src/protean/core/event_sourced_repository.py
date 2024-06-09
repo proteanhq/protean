@@ -8,7 +8,7 @@ from protean.exceptions import (
     NotSupportedError,
 )
 from protean.fields import Identifier
-from protean.globals import current_domain, current_uow
+from protean.globals import current_uow
 from protean.utils import DomainObjects, derive_element_class
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         if current_uow and identifier in current_uow._identity_map:
             return current_uow._identity_map[identifier]
 
-        aggregate = current_domain.event_store.store.load_aggregate(
+        aggregate = self._domain.event_store.store.load_aggregate(
             self.meta_.part_of, identifier
         )
 

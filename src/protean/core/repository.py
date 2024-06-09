@@ -5,7 +5,6 @@ from functools import lru_cache
 from protean.container import Element, OptionsMixin
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne
-from protean.globals import current_domain
 from protean.reflection import association_fields, has_association_fields
 from protean.utils import (
     Database,
@@ -147,23 +146,23 @@ class BaseRepository(Element, OptionsMixin):
                         # If the item was changed directly AND added via `add`, then
                         #   we give preference to the object in the cache
                         if item not in entity._temp_cache[field_name]["updated"]:
-                            current_domain.repository_for(field.to_cls)._dao.save(item)
+                            self._domain.repository_for(field.to_cls)._dao.save(item)
 
                 for _, item in entity._temp_cache[field_name]["removed"].items():
-                    current_domain.repository_for(field.to_cls)._dao.delete(item)
+                    self._domain.repository_for(field.to_cls)._dao.delete(item)
                 entity._temp_cache[field_name][
                     "removed"
                 ] = {}  # Empty contents of `removed` cache
 
                 for _, item in entity._temp_cache[field_name]["updated"].items():
-                    current_domain.repository_for(field.to_cls)._dao.save(item)
+                    self._domain.repository_for(field.to_cls)._dao.save(item)
                 entity._temp_cache[field_name][
                     "updated"
                 ] = {}  # Empty contents of `updated` cache
 
                 for _, item in entity._temp_cache[field_name]["added"].items():
                     item.state_.mark_new()
-                    current_domain.repository_for(field.to_cls)._dao.save(item)
+                    self._domain.repository_for(field.to_cls)._dao.save(item)
                 entity._temp_cache[field_name][
                     "added"
                 ] = {}  # Empty contents of `added` cache
@@ -173,7 +172,7 @@ class BaseRepository(Element, OptionsMixin):
                 #   These are ones whose attributes have been changed directly
                 #   instead of being routed via `add`/`remove`
                 item = getattr(entity, field_name)
-                to_cls_repo = current_domain.repository_for(field.to_cls)
+                to_cls_repo = self._domain.repository_for(field.to_cls)
                 if item is not None and item.state_.is_changed:
                     to_cls_repo._dao.save(item)
                 # Or a new instance has been assigned

@@ -1,4 +1,4 @@
-from protean.fields import String, Text
+from protean.fields import Auto, Float, Integer, String, Text
 
 
 def test_identifier_in_repr():
@@ -85,3 +85,51 @@ def test_text_repr_and_str():
         == str(text_obj4)
         == "Text(required=True, default='John Doe', sanitize=False)"
     )
+
+
+def test_integer_repr_and_str():
+    int_obj1 = Integer(required=True)
+    int_obj2 = Integer(required=True, default=100)
+    int_obj3 = Integer(required=True, min_value=0, max_value=100)
+    int_obj4 = Integer(required=True, default=100, min_value=0, max_value=100)
+
+    assert repr(int_obj1) == str(int_obj1) == "Integer(required=True)"
+    assert repr(int_obj2) == str(int_obj2) == "Integer(required=True, default=100)"
+    assert (
+        repr(int_obj3)
+        == str(int_obj3)
+        == "Integer(required=True, max_value=100, min_value=0)"
+    )
+    assert (
+        repr(int_obj4)
+        == str(int_obj4)
+        == "Integer(required=True, default=100, max_value=100, min_value=0)"
+    )
+
+
+def test_float_repr_and_str():
+    float_obj1 = Float(required=True)
+    float_obj2 = Float(required=True, default=100.0)
+    float_obj3 = Float(required=True, min_value=0.0, max_value=100.0)
+    float_obj4 = Float(required=True, default=100.0, min_value=0.0, max_value=100.0)
+
+    assert repr(float_obj1) == str(float_obj1) == "Float(required=True)"
+    assert repr(float_obj2) == str(float_obj2) == "Float(required=True, default=100.0)"
+    assert (
+        repr(float_obj3)
+        == str(float_obj3)
+        == "Float(required=True, max_value=100.0, min_value=0.0)"
+    )
+    assert (
+        repr(float_obj4)
+        == str(float_obj4)
+        == "Float(required=True, default=100.0, max_value=100.0, min_value=0.0)"
+    )
+
+
+def test_auto_repr_and_str():
+    auto_obj1 = Auto()
+    auto_obj2 = Auto(required=True, increment=True)
+
+    assert repr(auto_obj1) == str(auto_obj1) == "Auto()"
+    assert repr(auto_obj2) == str(auto_obj2) == "Auto(increment=True)"
