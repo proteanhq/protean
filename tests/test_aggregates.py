@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from protean import BaseAggregate
-from protean.exceptions import ValidationError
+from protean.exceptions import ValidationError, NotSupportedError
 from protean.fields import Date, DateTime, HasMany, Reference, String
 from protean.reflection import declared_fields
 from protean.utils import fully_qualified_name, utcnow_func
@@ -49,12 +49,15 @@ class TestAggregateInitialization:
 
 
 class TestAggregateIdentity:
-    # FIXME This should fail
     def test_exception_on_multiple_identifiers(self, test_domain):
-        @test_domain.aggregate
-        class Person:
-            email = String(identifier=True)
-            username = String(identifier=True)
+        with pytest.raises(NotSupportedError) as exc:
+
+            @test_domain.aggregate
+            class Person:
+                email = String(identifier=True)
+                username = String(identifier=True)
+
+        assert "Only one identifier field is allowed" in exc.value.args[0]["_entity"][0]
 
     def test_that_abstract_aggregates_get_an_id_field_by_default(self, test_domain):
         @test_domain.aggregate(abstract=True)

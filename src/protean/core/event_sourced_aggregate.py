@@ -9,8 +9,8 @@ from typing import Dict
 from protean.container import BaseContainer, EventedMixin, IdentityMixin, OptionsMixin
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.fields import Field, Integer
-from protean.reflection import _ID_FIELD_NAME, declared_fields, has_fields, id_field
+from protean.fields import Integer
+from protean.reflection import id_field
 from protean.utils import (
     DomainObjects,
     derive_element_class,
@@ -49,9 +49,6 @@ class BaseEventSourcedAggregate(
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()
 
-        if not subclass.meta_.abstract:
-            subclass.__validate_id_field()
-
         # Associate a `_projections` map with subclasses.
         #   It needs to be initialized here because if it
         #   were initialized in __init__, the same collection object
@@ -61,30 +58,6 @@ class BaseEventSourcedAggregate(
 
         # Store associated events
         setattr(subclass, "_events_cls_map", {})
-
-    @classmethod
-    def __validate_id_field(subclass):
-        """Lookup the id field for this view and assign"""
-        # FIXME What does it mean when there are no declared fields?
-        #   Does it translate to an abstract view?
-        if has_fields(subclass):
-            try:
-                id_field = next(
-                    field
-                    for _, field in declared_fields(subclass).items()
-                    if isinstance(field, (Field)) and field.identifier
-                )
-
-                setattr(subclass, _ID_FIELD_NAME, id_field.field_name)
-
-            except StopIteration:
-                raise IncorrectUsageError(
-                    {
-                        "_entity": [
-                            f"Event Sourced Aggregate `{subclass.__name__}` needs to have at least one identifier"
-                        ]
-                    }
-                )
 
     def __eq__(self, other):
         """Equivalence check to be based only on Identity"""

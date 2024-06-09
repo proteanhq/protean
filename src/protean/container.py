@@ -12,7 +12,7 @@ from protean.exceptions import (
     NotSupportedError,
     ValidationError,
 )
-from protean.fields import Auto, Field, FieldBase, Reference, ValueObject
+from protean.fields import Auto, Field, FieldBase, ValueObject
 from protean.utils import generate_identity
 
 from .reflection import _FIELDS, _ID_FIELD_NAME, attributes, declared_fields, fields
@@ -365,15 +365,27 @@ class IdentityMixin:
         """Lookup the id field for this entity and assign"""
         # FIXME What does it mean when there are no declared fields?
         #   Does it translate to an abstract entity?
-        try:
-            id_field = next(
-                field
-                for _, field in declared_fields(new_class).items()
-                if isinstance(field, (Field, Reference)) and field.identifier
+        id_fields = [
+            field
+            for _, field in declared_fields(new_class).items()
+            if isinstance(field, Field) and field.identifier
+        ]
+
+        if len(id_fields) > 1:
+            raise NotSupportedError(
+                {
+                    "_entity": [
+                        f"Multiple identifier fields found in entity {new_class.__name__}. "
+                        f"Only one identifier field is allowed."
+                    ]
+                }
             )
 
-            setattr(new_class, _ID_FIELD_NAME, id_field.field_name)
-        except StopIteration:
+        elif len(id_fields) == 1:
+            # Remember the identity field
+            setattr(new_class, _ID_FIELD_NAME, id_fields[0].field_name)
+
+        else:
             # If no id field is declared then create one
             #   If entity is explicitly marked with `auto_add_id_field=False`,
             #   avoid creating an identifier field.
