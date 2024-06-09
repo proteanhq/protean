@@ -35,12 +35,16 @@ class Options:
         self._opts = set()
 
         if opts:
-            if inspect.isclass(opts):
+            # FIXME Remove support passing a class as opts after revamping BaseSerializer
+            #   The `inspect.isclass` check will not be necessary
+            if isinstance(opts, (self.__class__)) or inspect.isclass(opts):
                 attributes = inspect.getmembers(
                     opts, lambda a: not (inspect.isroutine(a))
                 )
                 for attr in attributes:
-                    if not (attr[0].startswith("__") and attr[0].endswith("__")):
+                    if not (
+                        attr[0].startswith("__") and attr[0].endswith("__")
+                    ) and attr[0] not in ["_opts"]:
                         setattr(self, attr[0], attr[1])
 
                 self.abstract = getattr(opts, "abstract", None) or False
@@ -108,9 +112,6 @@ class OptionsMixin:
             # FIXME Should the `None` check be replaced with a SENTINEL check?
             if not (hasattr(cls.meta_, key) and getattr(cls.meta_, key) is not None):
                 setattr(cls.meta_, key, default)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
 
 class ContainerMeta(type):

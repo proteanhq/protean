@@ -11,6 +11,7 @@ from threading import Lock
 from typing import Any
 from uuid import UUID
 
+from protean.container import Options
 from protean.core.model import BaseModel
 from protean.exceptions import ObjectNotFoundError, ValidationError
 from protean.fields.basic import Auto
@@ -148,9 +149,7 @@ class MemoryProvider(BaseProvider):
                 if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
             }
 
-            from protean.core.model import ModelMeta
-
-            meta_ = ModelMeta()
+            meta_ = Options()
             meta_.entity_cls = entity_cls
 
             custom_attrs.update({"meta_": meta_})
@@ -172,9 +171,7 @@ class MemoryProvider(BaseProvider):
         if entity_cls.meta_.schema_name in self._model_classes:
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
-            from protean.core.model import ModelMeta
-
-            meta_ = ModelMeta()
+            meta_ = Options()
             meta_.entity_cls = entity_cls
 
             attrs = {
