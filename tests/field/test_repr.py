@@ -129,9 +129,7 @@ def test_float_repr_and_str():
 
 def test_auto_repr_and_str():
     auto_obj1 = Auto()
-    auto_obj2 = Auto(required=True)
-    auto_obj3 = Auto(required=True, increment=True)
+    auto_obj2 = Auto(required=True, increment=True)
 
     assert repr(auto_obj1) == str(auto_obj1) == "Auto()"
-    assert repr(auto_obj2) == str(auto_obj2) == "Auto(required=True)"
-    assert repr(auto_obj3) == str(auto_obj3) == "Auto(required=True, increment=True)"
+    assert repr(auto_obj2) == str(auto_obj2) == "Auto(increment=True)"
