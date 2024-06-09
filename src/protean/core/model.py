@@ -1,29 +1,11 @@
 from abc import abstractmethod
 
-from protean.container import Element
+from protean.container import Element, OptionsMixin
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.utils import DomainObjects
+from protean.utils import DomainObjects, derive_element_class
 
 
-class ModelMeta:
-    """Metadata info for the Model.
-
-    Options:
-    - ``entity_cls``: The Entity that this model is associated with
-    """
-
-    def __init__(self, meta=None):
-        if meta:
-            self.entity_cls = getattr(meta, "entity_cls", None)
-            self.schema_name = getattr(meta, "schema_name", None)
-            self.database = getattr(meta, "database", None)
-        else:
-            self.entity_cls = None
-            self.schema_name = None
-            self.database = None
-
-
-class BaseModel(Element):
+class BaseModel(Element, OptionsMixin):
     """This is a Model representing a data schema in the persistence store. A concrete implementation of this
     model has to be provided by each persistence store plugin.
     """
@@ -34,6 +16,14 @@ class BaseModel(Element):
         if cls is BaseModel:
             raise NotSupportedError("BaseModel cannot be instantiated")
         return super().__new__(cls)
+
+    @classmethod
+    def _default_options(cls):
+        return [
+            ("entity_cls", None),
+            ("schema_name", None),
+            ("database", None),
+        ]
 
     @classmethod
     @abstractmethod
@@ -47,23 +37,7 @@ class BaseModel(Element):
 
 
 def model_factory(element_cls, **kwargs):
-    element_cls.element_type = DomainObjects.MODEL
-
-    if hasattr(element_cls, "Meta"):
-        element_cls.meta_ = ModelMeta(element_cls.Meta)
-    else:
-        element_cls.meta_ = ModelMeta()
-
-    if not (hasattr(element_cls.meta_, "entity_cls") and element_cls.meta_.entity_cls):
-        element_cls.meta_.entity_cls = kwargs.pop("entity_cls", None)
-
-    if not (
-        hasattr(element_cls.meta_, "schema_name") and element_cls.meta_.schema_name
-    ):
-        element_cls.meta_.schema_name = kwargs.pop("schema_name", None)
-
-    if not (hasattr(element_cls.meta_, "database") and element_cls.meta_.database):
-        element_cls.meta_.database = kwargs.pop("database", None)
+    element_cls = derive_element_class(element_cls, BaseModel, **kwargs)
 
     if not element_cls.meta_.entity_cls:
         raise IncorrectUsageError(

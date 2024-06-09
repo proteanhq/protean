@@ -12,6 +12,7 @@ from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Document, Index, Keyword, Mapping, Search, query
 
+from protean.container import Options
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import Reference
 from protean.globals import current_domain
@@ -399,10 +400,24 @@ class ESProvider(BaseProvider):
 
             # Construct Inner Index class with options
             options = {}
-            options["name"] = model_cls.meta_.schema_name or schema_name
+
+            # Set schema name intelligently
+            #   model_cls.meta_.schema_name - would come from custom model's options
+            #   model_cls._index._name - would come from custom model's `Index` inner class
+            #   schema_name - is derived
+            index_name = (
+                model_cls._index._name if hasattr(model_cls, "_index") else None
+            )
+            options["name"] = model_cls.meta_.schema_name or index_name or schema_name
+
+            # Gather adapter settings
             if "SETTINGS" in self.conn_info and self.conn_info["SETTINGS"]:
                 options["settings"] = self.conn_info["SETTINGS"]
+
+            # Set options into `Index` inner class for ElasticsearchModel
             index_cls = type("Index", (object,), options)
+
+            # Add the Index class to the custom attributes
             custom_attrs.update({"Index": index_cls})
 
             # FIXME Ensure the custom model attributes are constructed properly
@@ -423,9 +438,7 @@ class ESProvider(BaseProvider):
         if entity_cls.meta_.schema_name in self._model_classes:
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
-            from protean.core.model import ModelMeta
-
-            meta_ = ModelMeta()
+            meta_ = Options()
             meta_.entity_cls = entity_cls
 
             # Construct Inner Index class with options

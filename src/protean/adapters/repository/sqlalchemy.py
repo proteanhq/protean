@@ -16,6 +16,7 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.types import CHAR, TypeDecorator
 
+from protean.container import Options
 from protean.core.value_object import BaseValueObject
 from protean.core.model import BaseModel
 from protean.exceptions import (
@@ -695,9 +696,7 @@ class SAProvider(BaseProvider):
             # Add the earlier copied columns to the custom attributes
             custom_attrs = {**custom_attrs, **columns}
 
-            from protean.core.model import ModelMeta
-
-            meta_ = ModelMeta(model_cls.meta_)
+            meta_ = Options(model_cls.meta_)
             meta_.entity_cls = entity_cls
             meta_.schema_name = (
                 schema_name if meta_.schema_name is None else meta_.schema_name
@@ -724,10 +723,8 @@ class SAProvider(BaseProvider):
         if entity_cls.meta_.schema_name in self._model_classes:
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
-            from protean.core.model import ModelMeta
-
             # Construct a new Meta object with existing values
-            meta_ = ModelMeta()
+            meta_ = Options()
             meta_.entity_cls = entity_cls
             # If schema_name is not provided, sqlalchemy can throw
             #   sqlalchemy.exc.InvalidRequestError: Class does not
