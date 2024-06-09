@@ -13,14 +13,14 @@ from tests.shared import change_working_directory_to
 class TestDomainTraversal:
     @pytest.mark.no_test_domain
     def test_loading_domain_without_init(self):
-        from tests.support.test_domains.test6 import publishing6
+        from tests.support.domains.test6 import publishing6
 
         assert publishing6.domain is not None
         assert len(publishing6.domain.registry.aggregates) == 0
 
     @pytest.mark.no_test_domain
     def test_loading_domain_with_init(self):
-        from tests.support.test_domains.test7 import publishing7
+        from tests.support.domains.test7 import publishing7
 
         assert publishing7.domain is not None
         publishing7.domain.init()
@@ -28,7 +28,7 @@ class TestDomainTraversal:
 
     @pytest.mark.no_test_domain
     def test_loading_nested_domain_with_init(self):
-        from tests.support.test_domains.test13 import publishing13
+        from tests.support.domains.test13 import publishing13
 
         assert publishing13.domain is not None
         publishing13.domain.init()

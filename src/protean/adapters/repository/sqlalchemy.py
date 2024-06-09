@@ -22,7 +22,6 @@ from protean.core.model import BaseModel
 from protean.exceptions import (
     ConfigurationError,
     ObjectNotFoundError,
-    OutOfContextError,
 )
 from protean.fields import (
     Auto,
@@ -95,22 +94,20 @@ def _get_identity_type():
 
     If `current_domain` is not yet available, it simply means that Protean is still being loaded.
     Default to `Identity.STRING`
+
+    Raises:
+        OutOfContextError: If the method is called outside the context of a domain
     """
-    try:
-        if current_domain.config["identity_type"] == IdentityType.INTEGER.value:
-            return sa_types.Integer
-        elif current_domain.config["identity_type"] == IdentityType.STRING.value:
-            return sa_types.String
-        elif current_domain.config["identity_type"] == IdentityType.UUID.value:
-            return GUID
-        else:
-            raise ConfigurationError(
-                f'Unknown Identity Type {current_domain.config["identity_type"]}'
-            )
-    except OutOfContextError:
-        # This happens only when the module is being imported the first time.
-        #   All further calls will have `current_domain` available.
+    if current_domain.config["identity_type"] == IdentityType.INTEGER.value:
+        return sa_types.Integer
+    elif current_domain.config["identity_type"] == IdentityType.STRING.value:
         return sa_types.String
+    elif current_domain.config["identity_type"] == IdentityType.UUID.value:
+        return GUID
+    else:
+        raise ConfigurationError(
+            f'Unknown Identity Type {current_domain.config["identity_type"]}'
+        )
 
 
 def _default(value):

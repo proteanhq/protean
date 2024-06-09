@@ -135,9 +135,6 @@ output/*/index.html
 .testmondata
 *.rdb
 
-# VS Code
-.vscode
-
 # Sphinx
 docs-sphinx/.doctrees
 

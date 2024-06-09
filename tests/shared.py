@@ -30,9 +30,9 @@ def change_working_directory_to(path):
     """Change working directory to a specific test directory
     and add it to the Python path so that the test can import.
 
-    The test directory is expected to be in `support/test_domains`.
+    The test directory is expected to be in `support/domains`.
     """
-    test_path = (Path(__file__) / ".." / "support" / "test_domains" / path).resolve()
+    test_path = (Path(__file__) / ".." / "support" / "domains" / path).resolve()
 
     os.chdir(test_path)
     sys.path.insert(0, str(test_path))
