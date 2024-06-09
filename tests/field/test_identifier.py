@@ -136,3 +136,7 @@ class TestIdentityType:
             assert identifier._load(uuid_val) == uuid_val
             assert identifier.identity_type == IdentityType.UUID.value
             assert identifier.as_dict(uuid_val) == str(uuid_val)
+
+    def test_invalid_identity_type(self):
+        with pytest.raises(ValidationError):
+            Identifier(identity_type="invalid")
