@@ -836,27 +836,31 @@ class Domain:
     # Broker Functionality #
     ########################
 
-    def publish(self, event: BaseEvent) -> None:
+    def publish(self, events: Union[BaseEvent, List[BaseEvent]]) -> None:
         """Publish Events to all configured brokers.
         Args:
-            event (BaseEvent): The Event object containing data to be pushed
+            events (BaseEvent): The Event object containing data to be pushed
         """
-        # Persist event in Message Store
-        self.event_store.store.append(event)
+        if not isinstance(events, list):
+            events = [events]
 
-        self.brokers.publish(event)
+        for event in events:
+            # Persist event in Message Store
+            self.event_store.store.append(event)
 
-        if self.config["event_processing"] == EventProcessing.SYNC.value:
-            # Consume events right-away
-            handler_classes = self.handlers_for(event)
-            for handler_cls in handler_classes:
-                handler_methods = (
-                    handler_cls._handlers[fqn(event.__class__)]
-                    or handler_cls._handlers["$any"]
-                )
+            self.brokers.publish(event)
 
-                for handler_method in handler_methods:
-                    handler_method(handler_cls(), event)
+            if self.config["event_processing"] == EventProcessing.SYNC.value:
+                # Consume events right-away
+                handler_classes = self.handlers_for(event)
+                for handler_cls in handler_classes:
+                    handler_methods = (
+                        handler_cls._handlers[fqn(event.__class__)]
+                        or handler_cls._handlers["$any"]
+                    )
+
+                    for handler_method in handler_methods:
+                        handler_method(handler_cls(), event)
 
     #####################
     # Handling Commands #

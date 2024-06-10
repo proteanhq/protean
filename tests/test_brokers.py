@@ -117,6 +117,31 @@ class TestEventPublish:
         assert len(messages) == 1
         messages[0].stream_name == "person-1234"
 
+    @pytest.mark.eventstore
+    def test_that_multiple_events_are_persisted_on_publish(self, mocker, test_domain):
+        test_domain.publish(
+            [
+                PersonAdded(
+                    id="1234",
+                    first_name="John",
+                    last_name="Doe",
+                    age=24,
+                ),
+                PersonAdded(
+                    id="1235",
+                    first_name="Jane",
+                    last_name="Doe",
+                    age=25,
+                ),
+            ]
+        )
+
+        messages = test_domain.event_store.store.read("person")
+
+        assert len(messages) == 2
+        assert messages[0].stream_name == "person-1234"
+        assert messages[1].stream_name == "person-1235"
+
 
 class TestBrokerSubscriberInitialization:
     def test_that_registered_subscribers_are_initialized(self, test_domain):
