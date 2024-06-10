@@ -120,6 +120,7 @@ nav:
       - guides/domain-behavior/validations.md
       - guides/domain-behavior/invariants.md
       - guides/domain-behavior/aggregate-mutation.md
+      - guides/domain-behavior/raising-events.md
       - guides/domain-behavior/domain-services.md
     - Accessing the domain:
       - guides/access-domain/index.md

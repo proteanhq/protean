@@ -1,1 +1,68 @@
-# Raising Events
+# Propagating State
+
+An aggregate rarely exists in isolation - it's state changes often mean
+that other parts of the system of the system have to sync up. In DDD, the
+mechanism to accomplish this is through Domain Events.
+
+## Raising Events
+
+When an aggregate mutates, it also (preferably) raises one or more events
+to record the state change in time, as well as propagate it within and beyond
+the bounded context.
+
+```python hl_lines="15-19"
+--8<-- "guides/domain-behavior/002.py:16:35"
+```
+
+The generated events are collected in the mutated aggregate:
+
+```shell hl_lines="8 12-15"
+In [1]: account = Account(account_number="1234", balance=1000.0, overdraft_limit=50.0)
+
+In [2]: account.withdraw(500.0)
+
+In [3]: account.to_dict()
+Out[3]: 
+{'account_number': '1234',
+ 'balance': 500.0,
+ 'overdraft_limit': 50.0,
+ 'id': '37fc8d10-1209-41d2-a6fa-4f7312912212'}
+
+In [4]: account._events
+Out[4]: [<AccountWithdrawn: AccountWithdrawn object (
+{'account_number': '1234',
+ 'amount': 500.0})>]
+```
+
+Any entity in the aggregate cluster can raise events. But the events are
+collected in the aggregate alone. As we will see in the future, aggregates
+are also responisible for consuming events and performing state changes on
+underlying entities.
+
+## Dispatching Events
+
+These events are dispatched automatically to registered brokers when the
+aggregate is persisted. We will explore this when we discuss repositories, but
+you can also manually publish the events to the rest of the system with
+`domain.publish()`.
+
+<!-- FIXME Add link to repositories above -->
+
+```shell hl_lines="11 16"
+In [1]: order = Order(
+   ...:         customer_id=1, premium_customer=True,
+   ...:         items=[
+   ...:             OrderItem(product_id=1, quantity=2, price=10.0),
+   ...:             OrderItem(product_id=2, quantity=1, price=20.0),
+   ...:         ]
+   ...:     )
+
+In [2]: order.confirm()
+
+In [3]: order._events
+Out[3]: 
+[<OrderConfirmed: OrderConfirmed object ({'order_id': '149b5549-3903-459e-9127-731266372472', 'confirmed_at': '2024-06-10 22:53:25.827101+00:00'})>,
+ <OrderDiscountApplied: OrderDiscountApplied object ({'order_id': '149b5549-3903-459e-9127-731266372472', 'customer_id': '1'})>]
+
+In [4]: domain.publish(order._events)
+```

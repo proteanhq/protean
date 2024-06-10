@@ -70,32 +70,3 @@ InsufficientFundsException                Traceback (most recent call last)
 ...
 InsufficientFundsException: Balance cannot be below overdraft limit
 ```
-
-## Raising Events
-
-The aggregate also (preferably) raises one or more events to recort the state
-change and to propagate the change within and beyond the bounded context.
-
-```python hl_lines="15"
---8<-- "guides/domain-behavior/002.py:16:33"
-```
-
-The events are visible as part of the mutated aggregate. When we review the
-Application Layer, we will also talk about how these events are dispatched
-automatically.
-
-```shell hl_lines="8 12-13"
-In [1]: account = Account(account_number="1234", balance=1000.0, overdraft_limit=50.0)
-
-In [2]: account.withdraw(500.0)
-
-In [3]: account.to_dict()
-Out[3]: 
-{'account_number': '1234',
- 'balance': 500.0,
- 'overdraft_limit': 50.0,
- 'id': '37fc8d10-1209-41d2-a6fa-4f7312912212'}
-
-In [4]: account._events
-Out[4]: [<AccountWithdrawn: AccountWithdrawn object ({'account_number': '1234', 'amount': 500.0})>]
-```

@@ -52,7 +52,7 @@ class Order:
             )
 
 
-@domain.entity
+@domain.entity(part_of=Order)
 class OrderItem:
     product_id = Identifier()
     quantity = Integer()
