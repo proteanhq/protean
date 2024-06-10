@@ -11,6 +11,7 @@ from uuid import uuid4
 from protean import fields
 from protean.container import BaseContainer, OptionsMixin
 from protean.core.command import BaseCommand
+from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 from protean.core.unit_of_work import UnitOfWork
@@ -134,8 +135,17 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     ) -> Message:
         identifier = getattr(aggregate, id_field(aggregate).field_name)
 
+        #  Recursively follow `part_of` trail until BaseAggregate and derive its stream_name
+        part_of = event.meta_.part_of
+        aggregate_stream_name = None
+        if part_of:
+            while not issubclass(part_of, (BaseAggregate, BaseEventSourcedAggregate)):
+                part_of = part_of.meta_.part_of
+
+            aggregate_stream_name = part_of.meta_.stream_name
+
         # Use explicit stream name if provided, or fallback on Aggregate's stream name
-        stream_name = event.meta_.stream_name or event.meta_.part_of.meta_.stream_name
+        stream_name = event.meta_.stream_name or aggregate_stream_name
 
         return cls(
             stream_name=f"{stream_name}-{identifier}",
@@ -172,11 +182,17 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
         else:
             identifier = str(uuid4())
 
+        #  Recursively follow `part_of` trail until BaseAggregate and derive its stream_name
+        part_of = message_object.meta_.part_of
+        aggregate_stream_name = None
+        if part_of:
+            while not issubclass(part_of, (BaseAggregate, BaseEventSourcedAggregate)):
+                part_of = part_of.meta_.part_of
+
+            aggregate_stream_name = part_of.meta_.stream_name
+
         # Use explicit stream name if provided, or fallback on Aggregate's stream name
-        stream_name = (
-            message_object.meta_.stream_name
-            or message_object.meta_.part_of.meta_.stream_name
-        )
+        stream_name = message_object.meta_.stream_name or aggregate_stream_name
 
         if isinstance(message_object, BaseEvent):
             stream_name = f"{stream_name}-{identifier}"

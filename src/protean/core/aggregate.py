@@ -3,7 +3,6 @@
 import inspect
 import logging
 
-from protean.container import EventedMixin
 from protean.core.entity import BaseEntity
 from protean.exceptions import NotSupportedError
 from protean.fields import Integer
@@ -12,7 +11,7 @@ from protean.utils import DomainObjects, derive_element_class, inflection
 logger = logging.getLogger(__name__)
 
 
-class BaseAggregate(EventedMixin, BaseEntity):
+class BaseAggregate(BaseEntity):
     """This is the base class for Domain Aggregates.
 
     Aggregates are fundamental, coarse-grained building blocks of a domain model. They are

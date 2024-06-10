@@ -58,6 +58,14 @@ class UserCommandHandler(BaseCommandHandler):
         User.register(command)
 
 
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(User)
+    test_domain.register(Registered, part_of=User)
+    test_domain.register(Register, part_of=User)
+    test_domain.register(UserCommandHandler, part_of=User)
+
+
 @pytest.mark.eventstore
 def test_persisting_events_on_commit(test_domain):
     identifier = str(uuid4())

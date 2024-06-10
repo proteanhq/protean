@@ -5,8 +5,10 @@ from collections import defaultdict
 from typing import List, Optional, Type
 
 from protean import BaseEvent, BaseEventHandler
+from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
+from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 from protean.core.event_sourced_repository import (
     BaseEventSourcedRepository,
     event_sourced_repository_factory,
@@ -103,7 +105,16 @@ class EventStore:
 
         all_stream_handlers = self._event_streams.get("$all", set())
 
-        stream_name = event.meta_.stream_name or event.meta_.part_of.meta_.stream_name
+        #  Recursively follow `part_of` trail until BaseAggregate and derive its stream_name
+        part_of = event.meta_.part_of
+        aggregate_stream_name = None
+        if part_of:
+            while not issubclass(part_of, (BaseAggregate, BaseEventSourcedAggregate)):
+                part_of = part_of.meta_.part_of
+
+            aggregate_stream_name = part_of.meta_.stream_name
+
+        stream_name = event.meta_.stream_name or aggregate_stream_name
         stream_handlers = self._event_streams.get(stream_name, set())
 
         return set.union(stream_handlers, all_stream_handlers)

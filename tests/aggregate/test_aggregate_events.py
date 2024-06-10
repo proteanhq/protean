@@ -2,9 +2,9 @@ from enum import Enum
 
 import pytest
 
-from protean import BaseAggregate, BaseEvent
+from protean import BaseAggregate, BaseEntity, BaseEvent
 from protean.core.unit_of_work import UnitOfWork
-from protean.fields import Identifier, String
+from protean.fields import Identifier, String, HasOne
 from protean.globals import current_domain
 
 
@@ -13,10 +13,25 @@ class UserStatus(Enum):
     ARCHIVED = "ARCHIVED"
 
 
+class Account(BaseEntity):
+    password_hash = String(max_length=512)
+
+    def change_password(self, password):
+        self.password_hash = password
+        self.raise_(PasswordChanged(account_id=self.id, user_id=self.user_id))
+
+
+class PasswordChanged(BaseEvent):
+    account_id = Identifier(required=True)
+    user_id = Identifier(required=True)
+
+
 class User(BaseAggregate):
     name = String(max_length=50, required=True)
     email = String(required=True)
     status = String(choices=UserStatus)
+
+    account = HasOne(Account)
 
     def activate(self):
         self.raise_(UserActivated(user_id=self.id))
@@ -37,8 +52,10 @@ class UserRenamed(BaseEvent):
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(User)
+    test_domain.register(Account, part_of=User)
     test_domain.register(UserActivated, part_of=User)
     test_domain.register(UserRenamed, part_of=User)
+    test_domain.register(PasswordChanged, part_of=Account)
 
 
 def test_that_aggregate_has_events_list():
@@ -76,3 +93,26 @@ def test_that_events_are_empty_after_uow():
         user_repo.add(user)
 
     assert len(user._events) == 0
+
+
+@pytest.mark.eventstore
+def test_events_can_be_raised_by_entities():
+    user = User(
+        name="John Doe",
+        email="john.doe@example.com",
+        account=Account(password_hash="password"),
+    )
+
+    user.account.change_password("new_password")
+
+    assert len(user._events) == 1
+    # Events are still stored at the aggregate level
+    assert len(user.account._events) == 0
+    assert isinstance(user._events[0], PasswordChanged)
+
+    with UnitOfWork():
+        user_repo = current_domain.repository_for(User)
+        user_repo.add(user)
+
+    assert len(user._events) == 0
+    assert len(user.account._events) == 0

@@ -340,8 +340,18 @@ class BaseContainer(metaclass=ContainerMeta):
 
 class EventedMixin:
     def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+        """Initialize an instance-level variable named `_events` to track events
+        raised in the aggregate cluster.
 
+        This method cannot have a super invocation, because we don't want it to
+        invoke BaseContainer's `__init__` method. But there is a conflict regarding
+        this between BaseAggregate and BaseEventSourcedAggregate. So this Mixin's
+        functionality has been replicated temporarily in BaseAggregate class.
+
+        Other mixins that are inherited by BaseEntity and BaseEventSourcedAggregate
+        work with `__init_subclass__`, and do not have this issue.
+        """
+        super().__init__(*args, **kwargs)
         self._events = []
 
     def raise_(self, event) -> None:

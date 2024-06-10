@@ -149,6 +149,7 @@ todos
 # Temporary Python files
 tester*.py
 tester-*
+*.patch
 
 # Temporary Docs folder
 docs-old/*

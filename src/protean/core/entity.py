@@ -184,6 +184,9 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
         # To control invariant checks
         self._disable_invariant_checks = False
 
+        # Placeholder for temporary storage of raised events
+        self._events = []
+
         # Collect Reference field attribute names to prevent accidental overwriting
         # of shadow fields.
         reference_attributes = {
@@ -389,6 +392,13 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
     def _postcheck(self, return_errors=False):
         """Invariant checks performed after initialization and attribute changes"""
         return self._run_invariants("post", return_errors=return_errors)
+
+    def raise_(self, event) -> None:
+        """Raise an event in the aggregate cluster.
+
+        The event is always registered on the aggregate, irrespective of where
+        it is raised in the entity cluster."""
+        self._root._events.append(event)
 
     def __eq__(self, other):
         """Equivalence check to be based only on Identity"""
