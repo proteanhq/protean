@@ -58,19 +58,18 @@ class BaseCommand(BaseContainer, OptionsMixin):
 
         When an identifier is provided, its value is used to construct
         unique stream name."""
-        if declared_fields(subclass):
-            try:
-                id_field = next(
-                    field
-                    for _, field in declared_fields(subclass).items()
-                    if isinstance(field, (Field)) and field.identifier
-                )
+        try:
+            id_field = next(
+                field
+                for _, field in declared_fields(subclass).items()
+                if isinstance(field, (Field)) and field.identifier
+            )
 
-                setattr(subclass, _ID_FIELD_NAME, id_field.field_name)
+            setattr(subclass, _ID_FIELD_NAME, id_field.field_name)
 
-            except StopIteration:
-                # No Identity fields declared
-                pass
+        except StopIteration:
+            # No Identity fields declared
+            pass
 
 
 def command_factory(element_cls, **kwargs):

@@ -28,9 +28,7 @@ def id_field(class_or_instance):
     try:
         field_name = getattr(class_or_instance, _ID_FIELD_NAME)
     except AttributeError:
-        raise IncorrectUsageError(
-            {"identity": [f"{class_or_instance} does not have identity fields"]}
-        )
+        return None
 
     return fields(class_or_instance)[field_name]
 
