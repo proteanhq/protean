@@ -62,16 +62,26 @@ def command_handler_factory(element_cls, **kwargs):
                     method
                 )
 
-                # Associate Command with the handler's stream
-                if inspect.isclass(method._target_cls) and issubclass(
+                # Throw error if target_cls is not a Command
+                if not inspect.isclass(method._target_cls) or not issubclass(
                     method._target_cls, BaseCommand
                 ):
-                    # Order of preference:
-                    #   1. Stream name defined in command
-                    #   2. Stream name derived from aggregate associated with command handler
-                    method._target_cls.meta_.stream_name = (
-                        method._target_cls.meta_.stream_name
-                        or element_cls.meta_.part_of.meta_.stream_name
+                    raise IncorrectUsageError(
+                        {
+                            "_command_handler": [
+                                f"Method `{method_name}` in Command Handler `{element_cls.__name__}` "
+                                "is not associated with a command"
+                            ]
+                        }
                     )
+
+                # Associate Command with the handler's stream
+                # Order of preference:
+                #   1. Stream name defined in command
+                #   2. Stream name derived from aggregate associated with command handler
+                method._target_cls.meta_.stream_name = (
+                    method._target_cls.meta_.stream_name
+                    or element_cls.meta_.part_of.meta_.stream_name
+                )
 
     return element_cls
