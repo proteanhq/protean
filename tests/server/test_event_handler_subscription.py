@@ -92,7 +92,7 @@ def test_origin_stream_name_in_subscription(test_domain):
     assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream_name == "email"
 
 
-def test_that_stream_name_overrides_the_derived_stream_name_from_aggregate_cls(
+def test_that_stream_name_overrides_the_derived_stream_name_from_owning_aggregate(
     test_domain,
 ):
     test_domain.register(

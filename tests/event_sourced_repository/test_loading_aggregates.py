@@ -108,6 +108,7 @@ def register(test_domain):
     test_domain.register(ChangeAddress, part_of=User)
     test_domain.register(AddressChanged, part_of=User)
     test_domain.register(UserCommandHandler, part_of=User)
+    test_domain.init(traverse=False)
 
 
 @pytest.mark.eventstore

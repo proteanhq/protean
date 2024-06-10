@@ -198,6 +198,9 @@ class Domain:
         # Resolve all pending references
         self._resolve_references()
 
+        # Assign Aggregate Clusters
+        self._assign_aggregate_clusters()
+
         # Run Validations
         self._validate_domain()
 
@@ -658,7 +661,7 @@ class Domain:
                 }
             )
 
-        # Check if `HasOne` and `HasMany` fields are linked to entities and not aggregates
+        # Confirm `HasOne` and `HasMany` fields are linked to entities and not aggregates
         for _, aggregate in self.registry.aggregates.items():
             for _, field_obj in declared_fields(aggregate.cls).items():
                 if isinstance(field_obj, (HasOne, HasMany)):
@@ -707,6 +710,35 @@ class Domain:
                     ]
                 }
             )
+
+    def _assign_aggregate_clusters(self):
+        """Assign Aggregate Clusters to all relevant elements"""
+        from protean.core.aggregate import BaseAggregate
+        from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
+
+        # Assign Aggregates and EventSourcedAggregates to their own cluster
+        for element_type in [
+            DomainObjects.AGGREGATE,
+            DomainObjects.EVENT_SOURCED_AGGREGATE,
+        ]:
+            for _, element in self.registry._elements[element_type.value].items():
+                element.cls.meta_.aggregate_cluster = element.cls
+
+        # Derive root aggregate for other elements and assign as aggregate_cluster
+        for element_type in [
+            DomainObjects.ENTITY,
+            DomainObjects.EVENT,
+            DomainObjects.COMMAND,
+        ]:
+            for _, element in self.registry._elements[element_type.value].items():
+                part_of = element.cls.meta_.part_of
+                if part_of:
+                    while not issubclass(
+                        part_of, (BaseAggregate, BaseEventSourcedAggregate)
+                    ):
+                        part_of = part_of.meta_.part_of
+
+                element.cls.meta_.aggregate_cluster = part_of
 
     ######################
     # Element Decorators #

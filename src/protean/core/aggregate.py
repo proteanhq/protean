@@ -57,6 +57,7 @@ class BaseAggregate(BaseEntity):
         return [
             ("auto_add_id_field", True),
             ("provider", "default"),
+            ("aggregate_cluster", None),
             ("model", None),
             ("stream_name", inflection.underscore(cls.__name__)),
             ("schema_name", inflection.underscore(cls.__name__)),

@@ -123,6 +123,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
             ("provider", "default"),
             ("model", None),
             ("part_of", None),
+            ("aggregate_cluster", None),
             ("schema_name", inflection.underscore(cls.__name__)),
         ]
 

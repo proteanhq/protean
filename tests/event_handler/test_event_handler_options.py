@@ -15,7 +15,7 @@ class Registered(BaseEvent):
     email = String()
 
 
-def test_aggregate_cls_specified_during_registration(test_domain):
+def test_part_of_specified_during_registration(test_domain):
     class UserEventHandlers(BaseEventHandler):
         pass
 
@@ -23,7 +23,7 @@ def test_aggregate_cls_specified_during_registration(test_domain):
     assert UserEventHandlers.meta_.part_of == User
 
 
-def test_aggregate_cls_specified_as_a_meta_attribute(test_domain):
+def test_part_of_specified_as_a_meta_attribute(test_domain):
     class UserEventHandlers(BaseEventHandler):
         pass
 
@@ -31,7 +31,7 @@ def test_aggregate_cls_specified_as_a_meta_attribute(test_domain):
     assert UserEventHandlers.meta_.part_of == User
 
 
-def test_aggregate_cls_defined_via_annotation(
+def test_part_of_defined_via_annotation(
     test_domain,
 ):
     @test_domain.event_handler(part_of=User)
@@ -58,7 +58,7 @@ def test_options_defined_at_different_levels(test_domain):
     assert UserEventHandlers.meta_.stream_name == "person"
 
 
-def test_that_a_default_stream_name_is_derived_from_aggregate_cls(test_domain):
+def test_that_a_default_stream_name_is_derived_from_part_of(test_domain):
     class UserEventHandlers(BaseEventHandler):
         pass
 

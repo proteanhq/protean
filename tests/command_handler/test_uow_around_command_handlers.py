@@ -1,4 +1,5 @@
 import mock
+import pytest
 
 from protean import BaseAggregate, BaseCommand, BaseCommandHandler, handle
 from protean.fields import Identifier, String
@@ -24,10 +25,20 @@ class UserCommandHandlers(BaseCommandHandler):
         dummy(self, command)
 
 
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(User)
+    test_domain.register(Register, part_of=User)
+    test_domain.register(UserCommandHandlers, part_of=User)
+    test_domain.init(traverse=False)
+
+
+# This only works because of the `__init__.py` file in tests/command_handler folder
+#   because it needs to import `dummy` method from `tests.command_handler.test_uow_around_command_handlers`
 @mock.patch("protean.utils.mixins.UnitOfWork.__enter__")
 @mock.patch("tests.command_handler.test_uow_around_command_handlers.dummy")
 @mock.patch("protean.utils.mixins.UnitOfWork.__exit__")
-def test_that_method_is_enclosed_in_uow(mock_exit, mock_dummy, mock_enter, test_domain):
+def test_that_method_is_enclosed_in_uow(mock_exit, mock_dummy, mock_enter):
     mock_parent = mock.Mock()
 
     mock_parent.attach_mock(mock_enter, "m1")

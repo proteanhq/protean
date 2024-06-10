@@ -37,6 +37,7 @@ def test_command_submission_without_aggregate(test_domain):
 def test_command_submission(test_domain):
     test_domain.register(User)
     test_domain.register(Register, part_of=User)
+    test_domain.init(traverse=False)
 
     identifier = str(uuid4())
     test_domain.event_store.store.append(

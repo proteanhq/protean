@@ -71,6 +71,7 @@ def test_that_multiple_events_are_raised_per_aggregate_in_the_same_uow(test_doma
     test_domain.register(UserCommandHandler, part_of=User)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Renamed, part_of=User)
+    test_domain.init(traverse=False)
 
     identifier = str(uuid4())
     UserCommandHandler().register_user(

@@ -44,6 +44,7 @@ class BaseEventSourcedAggregate(
         return [
             ("auto_add_id_field", True),
             ("stream_name", inflection.underscore(cls.__name__)),
+            ("aggregate_cluster", None),
         ]
 
     def __init_subclass__(subclass) -> None:

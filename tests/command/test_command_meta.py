@@ -49,6 +49,7 @@ def test_that_abstract_commands_can_be_defined_without_aggregate_or_stream(test_
 def test_command_associated_with_aggregate(test_domain):
     test_domain.register(User)
     test_domain.register(Register, part_of=User)
+    test_domain.init(traverse=False)
 
     identifier = str(uuid4())
     test_domain.process(
@@ -82,3 +83,20 @@ def test_command_associated_with_stream_name(test_domain):
 
     assert len(messages) == 1
     messages[0].stream_name == f"foo:command-{identifier}"
+
+
+def test_aggregate_cluster_of_event(test_domain):
+    test_domain.register(User)
+    test_domain.register(Register, part_of=User)
+    test_domain.init(traverse=False)
+
+    assert Register.meta_.aggregate_cluster == User
+
+
+def test_no_aggregate_cluster_for_command_with_stream(test_domain):
+    class SendEmail(BaseCommand):
+        email = String()
+
+    test_domain.register(SendEmail, stream_name="email")
+
+    assert SendEmail.meta_.aggregate_cluster is None

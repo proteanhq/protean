@@ -50,7 +50,12 @@ class BaseCommand(BaseContainer, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return [("abstract", False), ("part_of", None), ("stream_name", None)]
+        return [
+            ("abstract", False),
+            ("part_of", None),
+            ("stream_name", None),
+            ("aggregate_cluster", None),
+        ]
 
     @classmethod
     def __track_id_field(subclass):

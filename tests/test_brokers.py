@@ -41,6 +41,7 @@ def register_elements(test_domain):
     test_domain.register(Person)
     test_domain.register(PersonAdded, part_of=Person)
     test_domain.register(NotifySSOSubscriber, event=PersonAdded)
+    test_domain.init(traverse=False)
 
 
 class TestBrokerInitialization:

@@ -26,7 +26,7 @@ class TestRepositoryRegistration:
             fully_qualified_name(PersonRepository) in test_domain.registry.repositories
         )
 
-    def test_that_repository_can_be_registered_via_annotations_with_aggregate_cls_parameter(
+    def test_that_repository_can_be_registered_via_annotations_with_part_of_parameter(
         self, test_domain
     ):
         @test_domain.repository(part_of=Person)
@@ -39,7 +39,7 @@ class TestRepositoryRegistration:
             in test_domain.registry.repositories
         )
 
-    def test_that_repository_cannot_be_registered_via_annotations_without_aggregate_cls(
+    def test_that_repository_cannot_be_registered_via_annotations_without_part_of(
         self, test_domain
     ):
         with pytest.raises(IncorrectUsageError):
@@ -49,14 +49,14 @@ class TestRepositoryRegistration:
                 def special_method(self):
                     pass
 
-    def test_that_repository_can_be_retrieved_from_domain_by_its_aggregate_cls(
+    def test_that_repository_can_be_retrieved_from_domain_by_its_part_of(
         self, test_domain
     ):
         test_domain.register(PersonRepository, part_of=Person)
 
         assert isinstance(test_domain.repository_for(Person), PersonRepository)
 
-    def test_that_fetching_an_unknown_repository_by_aggregate_cls_creates_one_automatically(
+    def test_that_fetching_an_unknown_repository_by_part_of_creates_one_automatically(
         self, test_domain
     ):
         repo = test_domain.repository_for(Person)

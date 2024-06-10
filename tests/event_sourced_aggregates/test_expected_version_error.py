@@ -63,6 +63,10 @@ class User(BaseEventSourcedAggregate):
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(User)
+    test_domain.register(UserRegistered, part_of=User)
+    test_domain.register(UserActivated, part_of=User)
+    test_domain.register(UserRenamed, part_of=User)
+    test_domain.init(traverse=False)
 
 
 @pytest.mark.eventstore
