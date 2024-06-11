@@ -168,6 +168,8 @@ def generate_identity():
             raise ConfigurationError(
                 f'Unknown Identity Type {current_domain.config["identity_type"]}'
             )
+    elif current_domain.config["identity_strategy"] == IdentityStrategy.FUNCTION.value:
+        return current_domain._identity_function()
 
     return None  # Database will generate the identity
 

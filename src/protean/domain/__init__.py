@@ -127,6 +127,7 @@ class Domain:
         root_path: str,
         name: str = "",
         load_toml: bool = True,
+        identity_function: Optional[Callable] = None,
     ):
         self.root_path = root_path
 
@@ -147,6 +148,9 @@ class Domain:
         #: exactly like a regular dictionary but supports additional methods
         #: to load a config from files.
         self.config = self.load_config(load_toml)
+
+        # The function to invoke to generate identity
+        self._identity_function = identity_function
 
         self.providers = Providers(self)
         self.event_store = EventStore(self)
