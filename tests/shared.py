@@ -26,6 +26,14 @@ def assert_str_is_uuid(value: str) -> None:
         pytest.fail("Invalid UUID")
 
 
+def assert_int_is_uuid(value: int) -> None:
+    """Assert that an integer is a valid UUID"""
+    try:
+        UUID(int=value)
+    except ValueError:
+        pytest.fail("Invalid UUID")
+
+
 def change_working_directory_to(path):
     """Change working directory to a specific test directory
     and add it to the Python path so that the test can import.

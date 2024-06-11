@@ -311,8 +311,18 @@ class Auto(Field):
         increment (bool): Flag indicating whether the field value should be incremented automatically.
     """
 
-    def __init__(self, increment=False, **kwargs):
+    def __init__(
+        self,
+        increment=False,
+        identity_strategy: str = None,
+        identity_function: str = None,
+        identity_type: str = None,
+        **kwargs,
+    ):
         self.increment = increment
+        self.identity_strategy = identity_strategy
+        self.identity_function = identity_function
+        self.identity_type = identity_type
 
         super().__init__(**kwargs)
 
