@@ -95,13 +95,15 @@ nav:
     #  - guides/getting-started/quickstart.md
     - Compose a Domain:
       - guides/compose-a-domain/index.md
+      - guides/compose-a-domain/domain-object.md
       - guides/compose-a-domain/register-elements.md
-      - guides/compose-a-domain/activate-domain.md
       - guides/compose-a-domain/initialize-domain.md
+      - guides/compose-a-domain/activate-domain.md
       - guides/compose-a-domain/when-to-compose.md
       - guides/compose-a-domain/element-decorators.md
       - guides/compose-a-domain/object-model.md
       - guides/compose-a-domain/configuration.md
+      - guides/compose-a-domain/identity.md
     - Defining Concepts:
       - guides/domain-definition/index.md
       - Fields:
