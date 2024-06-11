@@ -201,20 +201,34 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
 
         # Pick identifier if provided in template or kwargs
         #   Generate if not provided
+        #
+        # Find identity field name
         id_field_obj = id_field(self)
         id_field_name = id_field_obj.field_name
+
+        # Look for id field in kwargs and load value if present
         if kwargs and id_field_name in kwargs:
             setattr(self, id_field_name, kwargs.pop(id_field_name))
             loaded_fields.append(id_field_name)
         elif template:
+            # Look for id field in template dictionary and load value if present
             for dictionary in template:
                 if id_field_name in dictionary:
                     setattr(self, id_field_name, dictionary[id_field_name])
                     loaded_fields.append(id_field_name)
                     break
         else:
+            # A value was not supplied, so generate one
             if type(id_field_obj) is Auto and not id_field_obj.increment:
-                setattr(self, id_field_name, generate_identity())
+                setattr(
+                    self,
+                    id_field_name,
+                    generate_identity(
+                        id_field_obj.identity_strategy,
+                        id_field_obj.identity_function,
+                        id_field_obj.identity_type,
+                    ),
+                )
                 loaded_fields.append(id_field_name)
 
         # Load the attributes based on the template
@@ -284,7 +298,15 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                 and not field_obj.increment
             ):
                 if not getattr(self, field_obj.field_name, None):
-                    setattr(self, field_obj.field_name, generate_identity())
+                    setattr(
+                        self,
+                        field_obj.field_name,
+                        generate_identity(
+                            field_obj.identity_strategy,
+                            field_obj.identity_function,
+                            field_obj.identity_type,
+                        ),
+                    )
                 loaded_fields.append(field_obj.field_name)
 
         # Load Associations

@@ -656,6 +656,15 @@ class Domain:
 
     def _validate_domain(self):
         """A method to validate the domain for correctness, called just before the domain is activated."""
+        # Check `identity_function` is provided if `identity_strategy` is `function`
+        if self.config["identity_strategy"] == self.IdentityStrategy.FUNCTION.value:
+            if not self._identity_function:
+                raise ConfigurationError(
+                    {
+                        "element": "Identity Strategy is set to `function`, but no Identity Function is provided"
+                    }
+                )
+
         # Check if all references are resolved
         if self._pending_class_resolutions:
             raise ConfigurationError(

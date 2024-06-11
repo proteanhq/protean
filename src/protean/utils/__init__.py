@@ -10,6 +10,7 @@ import logging
 
 from datetime import UTC, datetime
 from enum import Enum
+from typing import Callable, Any
 from uuid import uuid4
 
 from protean.exceptions import ConfigurationError
@@ -20,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 class IdentityStrategy(Enum):
     UUID = "uuid"
-    DATABASE = "database"
     FUNCTION = "function"
 
 
@@ -155,23 +155,48 @@ def derive_element_class(element_cls, base_cls, **opts):
     return element_cls
 
 
-def generate_identity():
-    """Generate Unique Identifier, based on configured strategy"""
-    if current_domain.config["identity_strategy"] == IdentityStrategy.UUID.value:
-        if current_domain.config["identity_type"] == IdentityType.INTEGER.value:
-            return uuid4().int
-        elif current_domain.config["identity_type"] == IdentityType.STRING.value:
-            return str(uuid4())
-        elif current_domain.config["identity_type"] == IdentityType.UUID.value:
-            return uuid4()
-        else:
-            raise ConfigurationError(
-                f'Unknown Identity Type {current_domain.config["identity_type"]}'
-            )
-    elif current_domain.config["identity_strategy"] == IdentityStrategy.FUNCTION.value:
-        return current_domain._identity_function()
+def generate_identity(
+    identity_strategy: str = None,
+    identity_function: Callable[[], Any] | None = None,
+    identity_type: str = None,
+):
+    """Generate Unique Identifier, based on configured strategy and type.
 
-    return None  # Database will generate the identity
+    If an identity type is provided, it will override the domain's configuration.
+    """
+    id_value = None
+
+    # Consider strategy defined in the Auto field. If not provided, fall back to the
+    #   domain's configuration.
+    id_strategy = identity_strategy or current_domain.config["identity_strategy"]
+
+    # UUID Strategy
+    if id_strategy == IdentityStrategy.UUID.value:
+        id_type = identity_type or current_domain.config["identity_type"]
+
+        if id_type == IdentityType.INTEGER.value:
+            id_value = uuid4().int
+        elif id_type == IdentityType.STRING.value:
+            id_value = str(uuid4())
+        elif id_type == IdentityType.UUID.value:
+            id_value = uuid4()
+        else:
+            raise ConfigurationError(f"Unknown Identity Type {id_type}")
+
+    # Function Strategy
+    elif current_domain.config["identity_strategy"] == IdentityStrategy.FUNCTION.value:
+        # Run the function configured as part of the Auto field. If not provided, fall back
+        #   to the function defined at the domain level.
+        id_function = identity_function or current_domain._identity_function
+
+        id_value = id_function()
+
+    else:
+        raise ConfigurationError(
+            f'Unknown Identity Strategy {current_domain.config["identity_strategy"]}'
+        )
+
+    return id_value
 
 
 __all__ = [
