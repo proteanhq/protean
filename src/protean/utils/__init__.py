@@ -184,7 +184,7 @@ def generate_identity(
             raise ConfigurationError(f"Unknown Identity Type {id_type}")
 
     # Function Strategy
-    elif current_domain.config["identity_strategy"] == IdentityStrategy.FUNCTION.value:
+    elif id_strategy == IdentityStrategy.FUNCTION.value:
         # Run the function configured as part of the Auto field. If not provided, fall back
         #   to the function defined at the domain level.
         id_function = identity_function or current_domain._identity_function
@@ -192,9 +192,7 @@ def generate_identity(
         id_value = id_function()
 
     else:
-        raise ConfigurationError(
-            f'Unknown Identity Strategy {current_domain.config["identity_strategy"]}'
-        )
+        raise ConfigurationError(f"Unknown Identity Strategy {id_strategy}")
 
     return id_value
 
