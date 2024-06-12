@@ -103,6 +103,24 @@ In [5]: user.to_dict()
 Out[5]: {'user_id': '9cf4ddc4-2919-4021-bd1a-c8083b5fdda7', 'name': 'John Doe'}
 ```
 
+### Automatic Identity field
+
+When an identity field is not supplied, an `Auto` field called `id` is
+automatically added to the entity.
+
+```py
+{! docs_src/guides/domain-definition/fields/simple-fields/001.py !}
+```
+
+```shell hl_lines="6"
+In [1]: from protean.reflection import declared_fields
+
+In [2]: declared_fields(Person)
+Out[2]: 
+{'name': String(required=True, max_length=50, min_length=2),
+ 'id': Auto(identifier=True)}
+```
+
 ### Composite keys
 
 Protean does not support composite keys. A `NotSupportedError` is thrown when
@@ -119,22 +137,6 @@ In [10]: @domain.aggregate
 ---------------------------------------------------------------------------
 ...
 NotSupportedError: {'_entity': ['Multiple identifier fields found in entity Order. Only one identifier field is allowed.']}
-```
-
-When an identity field is not supplied, an `Auto` field called `id` is
-automatically added to the entity.
-
-```py
-{! docs_src/guides/domain-definition/fields/simple-fields/001.py !}
-```
-
-```shell hl_lines="6"
-In [1]: from protean.reflection import declared_fields
-
-In [2]: declared_fields(Person)
-Out[2]: 
-{'name': String(required=True, max_length=50, min_length=2),
- 'id': Auto(identifier=True)}
 ```
 
 ## Element-level Identity Customization

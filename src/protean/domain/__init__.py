@@ -18,6 +18,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.model import BaseModel
+from protean.core.repository import BaseRepository
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import HasMany, HasOne, Reference, ValueObject
@@ -949,7 +950,7 @@ class Domain:
     ############################
 
     # FIXME Optimize calls to this method with cache, but also with support for Multitenancy
-    def repository_for(self, part_of):
+    def repository_for(self, part_of) -> BaseRepository:
         if isinstance(part_of, str):
             raise IncorrectUsageError(
                 {

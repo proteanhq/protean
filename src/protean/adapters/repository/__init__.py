@@ -123,7 +123,7 @@ class Providers(collections.abc.MutableMapping):
         except KeyError:
             raise AssertionError(f"No Provider registered with name {provider_name}")
 
-    def repository_for(self, part_of):
+    def repository_for(self, part_of) -> BaseRepository:
         """Retrieve a Repository registered for the Aggregate"""
         if self._providers is None:
             self._initialize()

@@ -38,6 +38,8 @@ theme:
     - content.code.select
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - mdx_include
   - pymdownx.details
   - pymdownx.superfences:
@@ -124,6 +126,12 @@ nav:
       - guides/domain-behavior/aggregate-mutation.md
       - guides/domain-behavior/raising-events.md
       - guides/domain-behavior/domain-services.md
+    - Persisting State:
+      - guides/persist-state/index.md
+      - guides/persist-state/persist-aggregates.md
+      - guides/persist-state/retreive-aggregates.md
+      - guides/persist-state/custom-repository.md
+      - guides/persist-state/unit-of-work.md
     - Accessing the domain:
       - guides/access-domain/index.md
       - guides/access-domain/commands.md
