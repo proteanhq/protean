@@ -6,8 +6,10 @@ from typing import TYPE_CHECKING
 
 from protean.container import Element, OptionsMixin
 from protean.core.aggregate import BaseAggregate
+from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne
+from protean.globals import current_uow
 from protean.port.dao import BaseDAO
 from protean.port.provider import BaseProvider
 from protean.reflection import association_fields, has_association_fields
@@ -112,6 +114,14 @@ class BaseRepository(Element, OptionsMixin):
         transaction in progress, changes are committed immediately to the persistence store. This mechanism
         is part of the DAO's design, and is automatically used wherever one tries to persist data.
         """
+        # `add` is typically invoked in handler methods in Command Handlers and Event Handlers, which are
+        #   enclosed in a UoW automatically. Therefore, if there is a UoW in progress, we can assume
+        #   that it is the active session. If not, we will start a new UoW and commit it after the operation
+        #   is complete.
+        own_current_uow = None
+        if not (current_uow and current_uow.in_progress):
+            own_current_uow = UnitOfWork()
+            own_current_uow.start()
 
         # If there are HasMany/HasOne fields in the aggregate, sync child objects added/removed,
         if has_association_fields(aggregate):
@@ -122,6 +132,10 @@ class BaseRepository(Element, OptionsMixin):
             aggregate.state_.is_persisted and aggregate.state_.is_changed
         ):
             self._dao.save(aggregate)
+
+        # If we started a UnitOfWork, commit it now
+        if own_current_uow:
+            own_current_uow.commit()
 
         return aggregate
 
