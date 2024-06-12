@@ -4,7 +4,7 @@ import logging
 from typing import List, Union
 
 from protean import BaseCommandHandler, BaseEventHandler
-from protean.port import BaseEventStore
+from protean.port.event_store import BaseEventStore
 from protean.utils.mixins import Message, MessageType
 
 logging.basicConfig(

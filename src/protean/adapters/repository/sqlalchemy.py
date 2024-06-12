@@ -17,6 +17,7 @@ from sqlalchemy.exc import DatabaseError
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from protean.container import Options
+from protean.core.queryset import ResultSet
 from protean.core.value_object import BaseValueObject
 from protean.core.model import BaseModel
 from protean.exceptions import (
@@ -41,7 +42,7 @@ from protean.fields import (
 from protean.fields.association import Reference, _ReferenceField
 from protean.fields.embedded import _ShadowField
 from protean.globals import current_domain, current_uow
-from protean.port.dao import BaseDAO, BaseLookup, ResultSet
+from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
 from protean.reflection import attributes, id_field
 from protean.utils import IdentityType

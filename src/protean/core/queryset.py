@@ -1,13 +1,20 @@
 """QuerySet Implementation"""
 
+from __future__ import annotations
+
 import copy
 import logging
 
-from typing import Any, Union
+from typing import Any, Union, TYPE_CHECKING
 
 from protean.globals import current_uow
 from protean.utils import DomainObjects
 from protean.utils.query import Q
+
+if TYPE_CHECKING:
+    from protean.port.dao import BaseDAO
+    from protean.domain import Domain
+    from protean.core.entity import BaseEntity
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +45,10 @@ class QuerySet:
 
     def __init__(
         self,
-        owner_dao,
-        domain,
-        entity_cls,
-        criteria=None,
+        owner_dao: BaseDAO,
+        domain: Domain,
+        entity_cls: BaseEntity,
+        criteria: Q = None,
         offset: int = 0,
         # Aggregates should be loaded in entirety
         # FIXME Should this limit be removed entirely?
@@ -141,7 +148,7 @@ class QuerySet:
 
         return clone
 
-    def all(self):
+    def all(self) -> ResultSet:
         """Primary method to fetch data based on filters
 
         Also trigged when the QuerySet is evaluated by calling one of the following methods:
@@ -378,3 +385,56 @@ class QuerySet:
     def has_prev(self):
         """Return True if there are previous values present"""
         return self._data.has_prev
+
+
+class ResultSet(object):
+    """This is an internal helper class returned by DAO query operations.
+
+    The purpose of this class is to prevent DAO-specific data structures from leaking into the domain layer.
+    It can help check whether results exist, traverse the results, fetch the total number of items and also provide
+    basic pagination support.
+    """
+
+    def __init__(self, offset: int, limit: int, total: int, items: list):
+        # the current offset (zero indexed)
+        self.offset = offset
+        # the number of items to be displayed on a page.
+        self.limit = limit
+        # the total number of items matching the query
+        self.total = total
+        # the items for the current page
+        self.items = items
+
+    @property
+    def has_prev(self):
+        """Is `True` if the results are a subset of all results"""
+        return bool(self.items) and self.offset > 0
+
+    @property
+    def has_next(self):
+        """Is `True` if more pages exist"""
+        return (self.offset + self.limit) < self.total
+
+    @property
+    def first(self):
+        """Return the first item from results"""
+        if self.items:
+            return self.items[0]
+
+    @property
+    def last(self):
+        """Return the last item from results"""
+        if self.items:
+            return self.items[-1]
+
+    def __bool__(self):
+        """Returns `True` when the resultset is not empty"""
+        return bool(self.items)
+
+    def __iter__(self):
+        """Returns an iterable on items, to support traversal"""
+        return iter(self.items)
+
+    def __len__(self):
+        """Returns number of items in the resultset"""
+        return len(self.items)

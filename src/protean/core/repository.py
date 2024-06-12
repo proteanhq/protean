@@ -1,10 +1,19 @@
+from __future__ import annotations
+
 import logging
 
 from functools import lru_cache
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
 
 from protean.container import Element, OptionsMixin
+from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne
+from protean.port.provider import BaseProvider
+from protean.port.dao import BaseDAO
 from protean.reflection import association_fields, has_association_fields
 from protean.utils import (
     Database,
@@ -19,14 +28,13 @@ logger = logging.getLogger(__name__)
 class BaseRepository(Element, OptionsMixin):
     """This is the baseclass for concrete Repository implementations.
 
-    The three methods in this baseclass to `add`, `get` or `remove` entities are sufficient in most cases
+    The three methods in this baseclass to `add`, `get` or `all` entities are sufficient in most cases
     to handle application requirements. They have built-in support for handling child relationships and
-    honor Unit of Work constructs. While they can be overriddent, it is generally suggested to call the
+    honor Unit of Work constructs. While they can be overridden, it is generally suggested to call the
     parent method first before writing custom code.
 
-    Repositories are strictly meant to be used in conjunction with Aggregate elements. While it is possible
-    to link and use :ref:`user-entity`, it is always better to deal with persistence at the level of the transaction
-    boundary, which is at the aggregate's level.
+    Repositories are strictly meant to be used in conjunction with Aggregate elements. It is always prudent to deal
+    with persistence at the transaction boundary, which is at an Aggregate's level.
     """
 
     element_type = DomainObjects.REPOSITORY
@@ -41,7 +49,7 @@ class BaseRepository(Element, OptionsMixin):
             raise NotSupportedError("BaseRepository cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, domain, provider) -> None:
+    def __init__(self, domain: Domain, provider: BaseProvider) -> None:
         self._domain = domain
         self._provider = provider
 
@@ -81,12 +89,12 @@ class BaseRepository(Element, OptionsMixin):
 
     @property
     @lru_cache()
-    def _dao(self):
+    def _dao(self) -> BaseDAO:
         """Retrieve a DAO registered for the Aggregate with a live connection"""
         # Fixate on Model class at the domain level because an explicit model may have been registered
         return self._provider.get_dao(self.meta_.part_of, self._model)
 
-    def add(self, aggregate):  # noqa: C901
+    def add(self, aggregate: BaseAggregate) -> BaseAggregate:  # noqa: C901
         """This method helps persist or update aggregates into the persistence store.
 
         Returns the persisted aggregate.
@@ -200,7 +208,7 @@ class BaseRepository(Element, OptionsMixin):
                     entity._temp_cache[field_name]["change"] = None
                     entity._temp_cache[field_name]["old_value"] = None
 
-    def get(self, identifier):
+    def get(self, identifier) -> BaseAggregate:
         """This is a utility method to fetch data from the persistence store by its key identifier. All child objects,
         including enclosed entities, are returned as part of this call.
 

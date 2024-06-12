@@ -1,6 +1,6 @@
 import mock
 
-from protean.port import BaseEventStore
+from protean.port.event_store import BaseEventStore
 
 
 def test_domain_event_store_attribute(test_domain):

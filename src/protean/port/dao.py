@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import logging
 
 from abc import ABCMeta, abstractmethod
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from protean.core.entity import BaseEntity
-from protean.core.queryset import QuerySet
+from protean.core.model import BaseModel
+from protean.core.queryset import QuerySet, ResultSet
 from protean.exceptions import (
     ExpectedVersionError,
     ObjectNotFoundError,
@@ -13,64 +16,15 @@ from protean.exceptions import (
 )
 from protean.fields import Auto, Field
 from protean.globals import current_uow
+from protean.port.provider import BaseProvider
 from protean.reflection import declared_fields, id_field, unique_fields
 from protean.utils import DomainObjects
 from protean.utils.query import Q
 
+if TYPE_CHECKING:
+    from protean.domain import Domain
+
 logger = logging.getLogger(__name__)
-
-
-class ResultSet(object):
-    """This is an internal helper class returned by DAO query operations.
-
-    The purpose of this class is to prevent DAO-specific data structures from leaking into the domain layer.
-    It can help check whether results exist, traverse the results, fetch the total number of items and also provide
-    basic pagination support.
-    """
-
-    def __init__(self, offset: int, limit: int, total: int, items: list):
-        # the current offset (zero indexed)
-        self.offset = offset
-        # the number of items to be displayed on a page.
-        self.limit = limit
-        # the total number of items matching the query
-        self.total = total
-        # the items for the current page
-        self.items = items
-
-    @property
-    def has_prev(self):
-        """Is `True` if the results are a subset of all results"""
-        return bool(self.items) and self.offset > 0
-
-    @property
-    def has_next(self):
-        """Is `True` if more pages exist"""
-        return (self.offset + self.limit) < self.total
-
-    @property
-    def first(self):
-        """Return the first item from results"""
-        if self.items:
-            return self.items[0]
-
-    @property
-    def last(self):
-        """Return the last item from results"""
-        if self.items:
-            return self.items[-1]
-
-    def __bool__(self):
-        """Returns `True` when the resultset is not empty"""
-        return bool(self.items)
-
-    def __iter__(self):
-        """Returns an iterable on items, to support traversal"""
-        return iter(self.items)
-
-    def __len__(self):
-        """Returns number of items in the resultset"""
-        return len(self.items)
 
 
 class BaseDAO(metaclass=ABCMeta):
@@ -92,7 +46,13 @@ class BaseDAO(metaclass=ABCMeta):
     :param entity_cls: the domain entity class associated with the DAO.
     """
 
-    def __init__(self, domain, provider, entity_cls, model_cls):
+    def __init__(
+        self,
+        domain: Domain,
+        provider: BaseProvider,
+        entity_cls: BaseEntity,
+        model_cls: BaseModel,
+    ):
         #: Holds a reference to the domain to which the DAO belongs to.
         self.domain = domain
 

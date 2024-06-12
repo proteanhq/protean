@@ -1,4 +1,4 @@
-from protean.port.dao import ResultSet
+from protean.core.queryset import ResultSet
 
 
 class TestResultSet:

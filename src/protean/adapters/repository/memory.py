@@ -13,10 +13,11 @@ from uuid import UUID
 
 from protean.container import Options
 from protean.core.model import BaseModel
+from protean.core.queryset import ResultSet
 from protean.exceptions import ObjectNotFoundError, ValidationError
 from protean.fields.basic import Auto
 from protean.globals import current_uow
-from protean.port.dao import BaseDAO, BaseLookup, ResultSet
+from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
 from protean.reflection import attributes, fields, id_field
 from protean.utils.query import Q

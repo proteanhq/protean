@@ -13,10 +13,11 @@ from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Document, Index, Keyword, Mapping, Search, query
 
 from protean.container import Options
+from protean.core.queryset import ResultSet
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import Reference
 from protean.globals import current_domain
-from protean.port.dao import BaseDAO, BaseLookup, ResultSet
+from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
 from protean.reflection import attributes, id_field
 from protean.utils import IdentityStrategy, IdentityType

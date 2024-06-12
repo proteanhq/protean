@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
 from typing import Any, Dict, List
 
-from protean import BaseAggregate, BaseRepository
+from protean.core.aggregate import BaseAggregate
+from protean.core.repository import BaseRepository
 from protean.globals import current_domain
-from protean.port import BaseEventStore
+from protean.port.event_store import BaseEventStore
 from protean.utils.mixins import MessageMetadata, MessageRecord
 
 
