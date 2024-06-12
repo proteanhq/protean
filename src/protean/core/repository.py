@@ -222,12 +222,6 @@ class BaseRepository(Element, OptionsMixin):
         """
         return self._dao.get(identifier)
 
-    def all(self):
-        """This is a utility method to fetch all records of own type from persistence store.
-
-        Returns a list of all records."""
-        return self._dao.query.all().items
-
 
 def repository_factory(element_cls, **opts):
     element_cls = derive_element_class(element_cls, BaseRepository, **opts)

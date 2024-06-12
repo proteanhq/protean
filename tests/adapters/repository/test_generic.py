@@ -71,7 +71,7 @@ class TestPersistenceViaRepository:
         person = Person(first_name="John", last_name="Doe")
         test_domain.repository_for(Person).add(person)
 
-        assert test_domain.repository_for(Person).all() == [person]
+        assert test_domain.repository_for(Person)._dao.query.all().items == [person]
 
 
 @pytest.mark.database
