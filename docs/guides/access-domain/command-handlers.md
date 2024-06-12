@@ -28,9 +28,9 @@ Command Handlers are defined with the `Domain.command_handler` decorator:
 ```mermaid
 sequenceDiagram
   autonumber
-  Domain->>Command Handler: Command object
-  Command Handler->>Command Handler: Load aggregate
-  Command Handler->>Aggregate: Extract data and invoke method
+  App->>Command Handler: Command object
+  Command Handler->>Command Handler: Extract data and Load aggregate
+  Command Handler->>Aggregate: Invoke method
   Aggregate->>Aggregate: Mutate
   Aggregate-->>Command Handler: 
   Command Handler->>Command Handler: Persist aggregate
