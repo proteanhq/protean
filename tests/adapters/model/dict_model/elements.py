@@ -1,5 +1,4 @@
 import re
-
 from typing import List
 
 from protean import BaseAggregate, BaseModel, BaseRepository, BaseValueObject, invariant

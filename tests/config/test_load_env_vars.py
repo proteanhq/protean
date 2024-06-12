@@ -1,10 +1,10 @@
 import os
+
 import pytest
+from mock import patch
 
 from protean.domain.config import Config2
 from protean.exceptions import ConfigurationError
-from mock import patch
-
 from protean.utils.domain_discovery import derive_domain
 from tests.shared import change_working_directory_to
 

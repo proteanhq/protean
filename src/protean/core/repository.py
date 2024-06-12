@@ -1,19 +1,15 @@
 from __future__ import annotations
 
 import logging
-
 from functools import lru_cache
 from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from protean.domain import Domain
 
 from protean.container import Element, OptionsMixin
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne
-from protean.port.provider import BaseProvider
 from protean.port.dao import BaseDAO
+from protean.port.provider import BaseProvider
 from protean.reflection import association_fields, has_association_fields
 from protean.utils import (
     Database,
@@ -21,6 +17,9 @@ from protean.utils import (
     derive_element_class,
     fully_qualified_name,
 )
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
 

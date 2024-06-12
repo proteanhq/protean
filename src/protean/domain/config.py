@@ -1,10 +1,10 @@
 import logging
 import os
 import re
+
 import tomllib
 
 from protean.exceptions import ConfigurationError
-
 
 logger = logging.getLogger(__name__)
 

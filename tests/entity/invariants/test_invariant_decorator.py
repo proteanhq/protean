@@ -3,7 +3,7 @@ from enum import Enum
 
 from protean import BaseAggregate, BaseEntity, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Date, Float, Integer, String, HasMany
+from protean.fields import Date, Float, HasMany, Integer, String
 
 
 class OrderStatus(Enum):

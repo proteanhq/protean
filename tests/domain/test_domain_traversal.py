@@ -1,12 +1,10 @@
 import os
 import sys
-
 from pathlib import Path
 
 import pytest
 
 from protean.utils.domain_discovery import derive_domain
-
 from tests.shared import change_working_directory_to
 
 

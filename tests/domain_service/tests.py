@@ -1,7 +1,6 @@
 import mock
 import pytest
 
-
 from protean import BaseAggregate, BaseDomainService
 from protean.core import domain_service
 from protean.exceptions import IncorrectUsageError, NotSupportedError

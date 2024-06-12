@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from protean.fields import DateTime, HasMany, Reference, String
+
 from ..publishing20 import publishing
 
 

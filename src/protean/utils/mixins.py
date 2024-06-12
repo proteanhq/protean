@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import functools
 import logging
-
 from collections import defaultdict
 from enum import Enum
 from typing import Callable, Dict, Union

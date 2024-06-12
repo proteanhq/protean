@@ -1,5 +1,4 @@
 import pytest
-
 from sqlalchemy import types as sa_types
 
 from protean import BaseAggregate

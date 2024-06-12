@@ -1,7 +1,9 @@
 import os
+
 import pytest
-from protean.domain.config import Config2
 from mock import patch
+
+from protean.domain.config import Config2
 from protean.exceptions import ConfigurationError
 
 

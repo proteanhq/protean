@@ -1,7 +1,7 @@
 from enum import Enum
 
 from protean import Domain
-from protean.fields import String, Identifier
+from protean.fields import Identifier, String
 
 domain = Domain(__file__, load_toml=False)
 

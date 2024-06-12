@@ -1,5 +1,4 @@
 import re
-
 from datetime import datetime
 
 from elasticsearch_dsl import Keyword, Text
@@ -7,9 +6,8 @@ from elasticsearch_dsl import Keyword, Text
 from protean import BaseAggregate, BaseValueObject, invariant
 from protean.core.model import BaseModel
 from protean.exceptions import ValidationError
-from protean.fields import DateTime, Integer, String
+from protean.fields import DateTime, Integer, String, ValueObject
 from protean.fields import Text as ProteanText
-from protean.fields import ValueObject
 
 
 class Person(BaseAggregate):

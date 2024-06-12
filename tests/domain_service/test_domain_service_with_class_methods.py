@@ -1,22 +1,22 @@
-import pytest
-
 from datetime import datetime, timezone
 from enum import Enum
 from uuid import uuid4
 
+import pytest
+
 from protean import (
     BaseAggregate,
     BaseDomainService,
+    BaseEntity,
     BaseEvent,
     BaseValueObject,
-    BaseEntity,
 )
 from protean.fields import (
     DateTime,
     Float,
+    HasMany,
     Identifier,
     Integer,
-    HasMany,
     String,
     ValueObject,
 )

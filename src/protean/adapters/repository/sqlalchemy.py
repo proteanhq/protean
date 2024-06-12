@@ -4,12 +4,10 @@ import copy
 import json
 import logging
 import uuid
-
 from enum import Enum
 from typing import Any
 
 import sqlalchemy.dialects.postgresql as psql
-
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm, text
 from sqlalchemy import types as sa_types
 from sqlalchemy.engine.url import make_url
@@ -17,9 +15,9 @@ from sqlalchemy.exc import DatabaseError
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from protean.container import Options
+from protean.core.model import BaseModel
 from protean.core.queryset import ResultSet
 from protean.core.value_object import BaseValueObject
-from protean.core.model import BaseModel
 from protean.exceptions import (
     ConfigurationError,
     ObjectNotFoundError,

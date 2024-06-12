@@ -1,7 +1,6 @@
 import logging
 
 import typer
-
 from typing_extensions import Annotated
 
 from protean.exceptions import NoDomainException

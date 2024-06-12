@@ -1,5 +1,4 @@
 import json
-
 from typing import TYPE_CHECKING, Dict
 
 import redis

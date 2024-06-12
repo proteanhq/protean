@@ -1,6 +1,6 @@
-import pytest
-
 from enum import Enum
+
+import pytest
 
 from protean.exceptions import ValidationError
 from protean.fields import String

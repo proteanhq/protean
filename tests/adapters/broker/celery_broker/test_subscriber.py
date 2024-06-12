@@ -1,5 +1,4 @@
 import pytest
-
 from celery import Task
 
 from protean.adapters.broker.celery import CeleryBroker, ProteanTask

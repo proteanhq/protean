@@ -1,6 +1,5 @@
 import logging
 import logging.config
-
 from collections.abc import Iterable
 from typing import Dict
 

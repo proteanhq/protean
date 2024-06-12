@@ -1,9 +1,9 @@
-from enum import Enum
 from datetime import date
+from enum import Enum
 
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Date, Float, Identifier, Integer, String, HasMany
+from protean.fields import Date, Float, HasMany, Identifier, Integer, String
 
 domain = Domain(__file__, load_toml=False)
 

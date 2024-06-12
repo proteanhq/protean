@@ -3,7 +3,7 @@ from abc import abstractmethod
 from protean import exceptions, utils
 from protean.exceptions import ValidationError
 from protean.globals import current_domain
-from protean.reflection import id_field, has_association_fields, association_fields
+from protean.reflection import association_fields, has_association_fields, id_field
 
 from .base import Field, FieldBase
 from .mixins import FieldCacheMixin, FieldDescriptorMixin

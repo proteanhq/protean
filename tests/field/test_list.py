@@ -1,18 +1,18 @@
-import pytest
+from datetime import date, datetime
 
-from datetime import datetime, date
+import pytest
 
 from protean import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields.basic import (
-    List,
-    String,
-    Integer,
     Boolean,
     Date,
     DateTime,
-    Float,
     Dict,
+    Float,
+    Integer,
+    List,
+    String,
 )
 from protean.fields.embedded import ValueObject
 

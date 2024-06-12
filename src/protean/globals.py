@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from protean import Domain, UnitOfWork
-
 from functools import partial
+from typing import TYPE_CHECKING, Any
 
 from werkzeug.local import LocalProxy, LocalStack
 
 from protean.exceptions import OutOfContextError
+
+if TYPE_CHECKING:
+    from protean import Domain, UnitOfWork
 
 _domain_ctx_err_msg = """\
 Working outside of domain context.

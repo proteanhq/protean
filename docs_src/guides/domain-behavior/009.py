@@ -1,8 +1,7 @@
 from datetime import datetime, timezone
 
-from protean import Domain, invariant
+from protean import Domain, fields, invariant
 from protean.exceptions import ValidationError
-from protean import fields
 
 domain = Domain(__file__, load_toml=False)
 

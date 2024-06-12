@@ -3,7 +3,6 @@
 import collections
 import importlib
 import logging
-
 from collections import defaultdict
 
 from protean.core.repository import BaseRepository, repository_factory

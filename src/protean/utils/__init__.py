@@ -7,10 +7,9 @@ to the maximum extent possible.
 import functools
 import importlib
 import logging
-
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Callable, Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from protean.exceptions import ConfigurationError

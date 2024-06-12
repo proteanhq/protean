@@ -4,7 +4,6 @@ import os
 import re
 import sys
 import traceback
-
 from types import ModuleType
 
 from protean import Domain

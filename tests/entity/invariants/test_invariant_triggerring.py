@@ -1,11 +1,11 @@
-import pytest
-
 from datetime import date, datetime
 from enum import Enum
 
-from protean import BaseAggregate, BaseEntity, invariant, atomic_change
+import pytest
+
+from protean import BaseAggregate, BaseEntity, atomic_change, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Date, Float, Identifier, Integer, String, HasMany
+from protean.fields import Date, Float, HasMany, Identifier, Integer, String
 
 
 class OrderStatus(Enum):

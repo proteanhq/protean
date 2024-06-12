@@ -1,11 +1,9 @@
 """Module for defining basic Field types of Entity"""
 
 import datetime
-
 from uuid import UUID
 
 import bleach
-
 from dateutil.parser import parse as date_parser
 
 from protean.exceptions import InvalidOperationError, ValidationError

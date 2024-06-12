@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import copy
 import logging
-
-from typing import Any, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Union
 
 from protean.globals import current_uow
 from protean.utils import DomainObjects
 from protean.utils.query import Q
 
 if TYPE_CHECKING:
-    from protean.port.dao import BaseDAO
-    from protean.domain import Domain
     from protean.core.entity import BaseEntity
+    from protean.domain import Domain
+    from protean.port.dao import BaseDAO
 
 logger = logging.getLogger(__name__)
 

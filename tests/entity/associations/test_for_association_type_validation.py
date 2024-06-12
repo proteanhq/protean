@@ -2,7 +2,7 @@ import pytest
 
 from protean import BaseAggregate, BaseEntity
 from protean.exceptions import ValidationError
-from protean.fields import Integer, String, HasOne, HasMany
+from protean.fields import HasMany, HasOne, Integer, String
 
 
 class University(BaseAggregate):

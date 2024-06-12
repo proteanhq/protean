@@ -1,6 +1,6 @@
-from protean import BaseAggregate, BaseValueObject, Domain, BaseEvent, BaseCommand
+from protean import BaseAggregate, BaseCommand, BaseEvent, BaseValueObject, Domain
 from protean.fields import Float, Identifier, String
-from protean.reflection import id_field, declared_fields
+from protean.reflection import declared_fields, id_field
 
 domain = Domain(__name__)
 

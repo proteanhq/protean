@@ -1,5 +1,5 @@
 from protean import Domain
-from protean.fields import HasMany, Float, String, Text
+from protean.fields import Float, HasMany, String, Text
 
 domain = Domain(__file__, load_toml=False)
 

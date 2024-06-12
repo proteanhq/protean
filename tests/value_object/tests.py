@@ -1,6 +1,6 @@
 import pytest
 
-from protean.exceptions import IncorrectUsageError, ValidationError, NotSupportedError
+from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Float
 from protean.reflection import attributes, declared_fields
 

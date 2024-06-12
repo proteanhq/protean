@@ -1,13 +1,13 @@
-import pytest
 import random
 import re
 import time
-
 from uuid import UUID
+
+import pytest
 
 from protean import BaseAggregate, BaseView
 from protean.fields import Auto
-from tests.shared import assert_str_is_uuid, assert_int_is_uuid
+from tests.shared import assert_int_is_uuid, assert_str_is_uuid
 
 
 class TestValueGeneration:

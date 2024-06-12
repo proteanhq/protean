@@ -2,8 +2,8 @@ import pytest
 
 from protean import (
     BaseAggregate,
-    BaseEntity,
     BaseCommand,
+    BaseEntity,
     BaseEvent,
     BaseEventSourcedAggregate,
 )

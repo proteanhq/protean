@@ -1,4 +1,5 @@
 from typing import Any
+
 from protean import Domain
 from protean.exceptions import ValidationError
 from protean.fields import String

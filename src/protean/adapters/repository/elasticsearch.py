@@ -2,12 +2,10 @@
 
 import json
 import logging
-
 from typing import Any
 from uuid import UUID
 
 import elasticsearch_dsl
-
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Document, Index, Keyword, Mapping, Search, query

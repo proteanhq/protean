@@ -1,5 +1,4 @@
 import pytest
-
 from elasticsearch_dsl import Keyword, Text
 
 from protean import BaseAggregate

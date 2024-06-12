@@ -1,6 +1,6 @@
 import pytest
 
-from protean import BaseEntity, BaseAggregate
+from protean import BaseAggregate, BaseEntity
 from protean.fields import HasOne, Integer, String
 from protean.reflection import declared_fields
 

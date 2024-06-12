@@ -1,7 +1,6 @@
 import collections
 import re
 import time
-
 from threading import RLock
 from typing import Optional, Union
 

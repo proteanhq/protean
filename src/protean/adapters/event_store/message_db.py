@@ -2,7 +2,6 @@ from typing import Any, Dict, List
 from urllib.parse import urlparse
 
 import psycopg2
-
 from message_db.client import MessageDB
 
 from protean.exceptions import ConfigurationError

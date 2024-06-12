@@ -4,7 +4,7 @@ import pytest
 
 from protean import BaseAggregate, BaseEntity, BaseEvent
 from protean.core.unit_of_work import UnitOfWork
-from protean.fields import Identifier, String, HasOne
+from protean.fields import HasOne, Identifier, String
 from protean.globals import current_domain
 
 

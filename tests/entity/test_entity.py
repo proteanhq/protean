@@ -5,17 +5,17 @@ from protean.fields import Auto, Integer, String
 from protean.reflection import attributes, declared_fields
 
 from .elements import (
-    Account,
     AbstractPerson,
+    Account,
+    Adult,
     ConcretePerson,
+    DbPerson,
+    DifferentDbPerson,
     Person,
     PersonAutoSSN,
     Relative,
     SqlDifferentDbPerson,
     SqlPerson,
-    DbPerson,
-    DifferentDbPerson,
-    Adult,
 )
 
 

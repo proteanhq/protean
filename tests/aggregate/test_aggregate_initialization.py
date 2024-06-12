@@ -3,8 +3,8 @@ from datetime import datetime
 
 import pytest
 
-from protean import BaseEntity, BaseAggregate
-from protean.exceptions import ValidationError, NotSupportedError
+from protean import BaseAggregate, BaseEntity
+from protean.exceptions import NotSupportedError, ValidationError
 from protean.reflection import attributes, declared_fields
 from protean.utils import fully_qualified_name
 

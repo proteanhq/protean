@@ -1,7 +1,6 @@
 """Test cases for all available field type implementations"""
 
 import enum
-
 from datetime import datetime
 
 import pytest

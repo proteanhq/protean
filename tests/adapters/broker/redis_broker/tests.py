@@ -6,7 +6,7 @@ import redis
 from protean.adapters.broker.redis import RedisBroker
 from protean.globals import current_domain
 
-from .elements import PersonAdded, Person
+from .elements import Person, PersonAdded
 
 
 @pytest.fixture(autouse=True)

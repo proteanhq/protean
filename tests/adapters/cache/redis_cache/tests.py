@@ -2,7 +2,6 @@ import json
 import time
 
 import pytest
-
 from redis import Redis
 
 from protean import BaseView

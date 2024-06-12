@@ -6,9 +6,9 @@ from protean.exceptions import ValidationError
 from protean.fields import (
     DateTime,
     Float,
+    HasMany,
     Identifier,
     Integer,
-    HasMany,
     String,
     ValueObject,
 )

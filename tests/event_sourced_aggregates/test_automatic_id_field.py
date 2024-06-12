@@ -1,6 +1,6 @@
 from protean import BaseEventSourcedAggregate
 from protean.fields import Auto, DateTime, Identifier, Integer, String
-from protean.reflection import fields, id_field, declared_fields
+from protean.reflection import declared_fields, fields, id_field
 from protean.utils import utcnow_func
 
 

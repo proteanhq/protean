@@ -1,10 +1,10 @@
-import pytest
-
 from datetime import datetime
 
-from protean import BaseEntity, BaseAggregate
+import pytest
+
+from protean import BaseAggregate, BaseEntity
 from protean.exceptions import ObjectNotFoundError, TooManyObjectsError
-from protean.fields import Date, Float, Integer, String, HasMany
+from protean.fields import Date, Float, HasMany, Integer, String
 
 
 class Order(BaseAggregate):

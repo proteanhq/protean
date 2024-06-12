@@ -2,7 +2,6 @@
 
 import inspect
 import logging
-
 from collections import defaultdict
 
 from protean.container import BaseContainer, OptionsMixin, fields

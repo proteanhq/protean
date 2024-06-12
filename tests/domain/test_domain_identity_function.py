@@ -2,7 +2,7 @@ import random
 import re
 import time
 
-from protean import Domain, BaseAggregate
+from protean import BaseAggregate, Domain
 from protean.fields import Auto
 
 

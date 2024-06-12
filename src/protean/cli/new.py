@@ -1,11 +1,9 @@
 import os
 import re
 import shutil
-
 from typing import List, Optional
 
 import typer
-
 from copier import run_copy
 from typing_extensions import Annotated
 

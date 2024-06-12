@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from protean import BaseAggregate
-from protean.exceptions import ValidationError, NotSupportedError
+from protean.exceptions import NotSupportedError, ValidationError
 from protean.fields import Date, DateTime, HasMany, Reference, String
 from protean.reflection import declared_fields
 from protean.utils import fully_qualified_name, utcnow_func

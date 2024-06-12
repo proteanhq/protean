@@ -1,8 +1,8 @@
-import pytest
-
 from collections import defaultdict
 from enum import Enum
 from uuid import uuid4
+
+import pytest
 
 from protean import BaseView
 from protean.container import Options

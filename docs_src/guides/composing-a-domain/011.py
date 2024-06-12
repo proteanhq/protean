@@ -1,7 +1,6 @@
 import uuid
 
 import sqlalchemy as sa
-
 from sqlalchemy.dialects.postgresql import UUID
 
 from protean import Domain

@@ -2,8 +2,8 @@ from protean.container import BaseContainer, OptionsMixin
 from protean.exceptions import (
     IncorrectUsageError,
     InvalidDataError,
-    ValidationError,
     NotSupportedError,
+    ValidationError,
 )
 from protean.fields import Field
 from protean.reflection import _ID_FIELD_NAME, declared_fields

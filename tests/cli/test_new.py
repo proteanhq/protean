@@ -1,9 +1,7 @@
 import os
-
 from pathlib import Path
 
 import pytest
-
 from typer.testing import CliRunner
 
 from protean.cli import app

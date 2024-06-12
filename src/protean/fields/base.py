@@ -1,7 +1,6 @@
 """Module for defining base Field class"""
 
 import enum
-
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from typing import Any, Callable, Iterable, List

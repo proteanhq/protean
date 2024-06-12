@@ -131,6 +131,9 @@ protean = "protean.cli:app"
 # Configurations #
 ##################
 
+[tool.ruff.lint.isort]
+known-first-party = ["protean"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

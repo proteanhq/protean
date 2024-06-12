@@ -1,6 +1,5 @@
 import asyncio
 import logging
-
 from typing import List, Union
 
 from protean import BaseCommandHandler, BaseEventHandler

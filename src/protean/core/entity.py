@@ -4,7 +4,6 @@ import copy
 import functools
 import inspect
 import logging
-
 from collections import defaultdict
 from functools import partial
 
@@ -12,7 +11,7 @@ from protean.container import BaseContainer, IdentityMixin, OptionsMixin
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Auto, HasMany, Reference, ValueObject
 from protean.fields.association import Association
-from protean.reflection import attributes, declared_fields, fields, id_field, _FIELDS
+from protean.reflection import _FIELDS, attributes, declared_fields, fields, id_field
 from protean.utils import (
     DomainObjects,
     derive_element_class,

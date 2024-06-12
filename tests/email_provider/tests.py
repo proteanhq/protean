@@ -1,5 +1,4 @@
 import pytest
-
 from mock import patch
 
 from protean import BaseEmail

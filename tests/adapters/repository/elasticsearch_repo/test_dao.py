@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
-
 from elasticsearch import Elasticsearch
 
 from protean import Q, QuerySet

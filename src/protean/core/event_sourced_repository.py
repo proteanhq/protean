@@ -4,8 +4,8 @@ from protean import BaseEventSourcedAggregate
 from protean.container import Element, OptionsMixin
 from protean.exceptions import (
     IncorrectUsageError,
-    ObjectNotFoundError,
     NotSupportedError,
+    ObjectNotFoundError,
 )
 from protean.fields import Identifier
 from protean.globals import current_uow

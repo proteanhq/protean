@@ -3,8 +3,8 @@
 import pytest
 
 from protean import BaseAggregate, atomic_change, invariant
-from protean.fields import Integer
 from protean.exceptions import ValidationError
+from protean.fields import Integer
 
 
 class TestAtomicChange:

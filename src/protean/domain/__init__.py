@@ -5,7 +5,6 @@ to register Domain Elements.
 import inspect
 import logging
 import sys
-
 from collections import defaultdict
 from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union

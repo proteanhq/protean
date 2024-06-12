@@ -15,7 +15,6 @@ import sys
 import typing
 
 import typer
-
 from IPython.terminal.embed import InteractiveShellEmbed
 from typing_extensions import Annotated
 

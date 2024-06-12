@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from protean import Domain, handle
-from protean.globals import current_domain
 from protean.fields import DateTime, Identifier, String
+from protean.globals import current_domain
 
 publishing = Domain(__file__, "Publishing", load_toml=False)
 

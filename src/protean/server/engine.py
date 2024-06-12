@@ -4,7 +4,6 @@ import asyncio
 import logging
 import signal
 import traceback
-
 from typing import Type, Union
 
 from protean.core.command_handler import BaseCommandHandler

@@ -1,8 +1,8 @@
 import pytest
 
 from protean import BaseEntity
-from protean.fields import String
 from protean.exceptions import ValidationError
+from protean.fields import String
 
 from .elements import Area, Building, BuildingStatus
 
