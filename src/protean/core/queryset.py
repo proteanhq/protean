@@ -397,11 +397,11 @@ class ResultSet(object):
     def __init__(self, offset: int, limit: int, total: int, items: list):
         # the current offset (zero indexed)
         self.offset = offset
-        # the number of items to be displayed on a page.
+        # the number of items to be fetched
         self.limit = limit
         # the total number of items matching the query
         self.total = total
-        # the items for the current page
+        # the results
         self.items = items
 
     @property
@@ -437,3 +437,15 @@ class ResultSet(object):
     def __len__(self):
         """Returns number of items in the resultset"""
         return len(self.items)
+
+    def __repr__(self):
+        return f"<ResultSet: {len(self.items)} items>"
+
+    def to_dict(self):
+        """Return the resultset as a dictionary"""
+        return {
+            "offset": self.offset,
+            "limit": self.limit,
+            "total": self.total,
+            "items": self.items,
+        }

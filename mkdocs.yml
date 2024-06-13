@@ -129,9 +129,9 @@ nav:
     - Persisting State:
       - guides/persist-state/index.md
       - guides/persist-state/persist-aggregates.md
-      - guides/persist-state/retreive-aggregates.md
-      - guides/persist-state/custom-repository.md
       - guides/persist-state/unit-of-work.md
+      - guides/persist-state/retreive-aggregates.md
+      - guides/persist-state/database-specificity.md
     - Accessing the domain:
       - guides/access-domain/index.md
       - guides/access-domain/commands.md

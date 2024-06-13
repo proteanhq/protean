@@ -27,3 +27,6 @@ store:
 
 - Working with the Application Layer
 - Unit of Work
+
+`repository_for`
+Using repositories for filtering vs. for read-side operations

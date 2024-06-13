@@ -26,7 +26,7 @@ with UnitOfWork():
     # Do something
 ```
 
-### `current_uow`
+## `current_uow`
 
 The current active `UnitOfWork` is accessible through
 `protean.globals.current_uow` proxy. This is useful when you want to

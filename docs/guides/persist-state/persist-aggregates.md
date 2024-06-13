@@ -3,7 +3,7 @@
 Aggregates are saved into the configured database using `add` method of the
 repository.
 
-```python hl_lines="23"
+```python hl_lines="20"
 {! docs_src/guides/persist-state/001.py !}
 ```
 

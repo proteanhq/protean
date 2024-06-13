@@ -40,3 +40,17 @@ class TestResultSet:
 
         assert bool(resultset) is True
         assert bool(empty_resultset) is False
+
+    def test_resultset_repr(self):
+        resultset = ResultSet(offset=0, limit=10, total=2, items=["foo", "bar"])
+
+        assert repr(resultset) == "<ResultSet: 2 items>"
+
+    def test_resultset_to_dict(self):
+        resultset = ResultSet(offset=0, limit=10, total=2, items=["foo", "bar"])
+        assert resultset.to_dict() == {
+            "offset": 0,
+            "limit": 10,
+            "total": 2,
+            "items": ["foo", "bar"],
+        }
