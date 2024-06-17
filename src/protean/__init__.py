@@ -1,4 +1,4 @@
-__version__ = "0.11.0"
+__version__ = "0.12.0"
 
 from .core.aggregate import BaseAggregate, atomic_change
 from .core.application_service import BaseApplicationService
