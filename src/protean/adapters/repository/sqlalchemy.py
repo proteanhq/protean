@@ -93,9 +93,6 @@ def _get_identity_type():
 
     If `current_domain` is not yet available, it simply means that Protean is still being loaded.
     Default to `Identity.STRING`
-
-    Raises:
-        OutOfContextError: If the method is called outside the context of a domain
     """
     if current_domain.config["identity_type"] == IdentityType.INTEGER.value:
         return sa_types.Integer

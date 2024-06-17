@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import warnings
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from werkzeug.local import LocalProxy, LocalStack
-
-from protean.exceptions import OutOfContextError
 
 if TYPE_CHECKING:
     from protean import Domain, UnitOfWork
@@ -22,14 +21,22 @@ documentation for more information.\
 def _lookup_domain_object(name) -> Any:
     top = _domain_context_stack.top
     if top is None:
-        raise OutOfContextError(_domain_ctx_err_msg)
+        warnings.warn(
+            _domain_ctx_err_msg,
+            stacklevel=3,
+        )
+        return None
     return getattr(top, name)
 
 
 def _find_domain() -> Domain:
     top = _domain_context_stack.top
     if top is None:
-        raise OutOfContextError(_domain_ctx_err_msg)
+        warnings.warn(
+            _domain_ctx_err_msg,
+            stacklevel=3,
+        )
+        return None
     return top.domain
 
 

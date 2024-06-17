@@ -101,7 +101,3 @@ class SendError(Exception):
 
 class ExpectedVersionError(Exception):
     """Raised on expected version conflicts in EventSourcing"""
-
-
-class OutOfContextError(RuntimeError):
-    """Raised when current_domain global is accessed without an active context"""

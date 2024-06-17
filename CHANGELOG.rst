@@ -1,12 +1,49 @@
 Release History
 ===============
 
-DEV
----
+0.12.0
+------
 
 * Switch from Copier to Typer and add comprehensive tests for project generation
 * Switch docs to Material for MkDocs and host on https://docs.proteanhq.com
 * Initialize domain name to domain's module name when not provided
+* CLI module refactoring and adjusments for Typer
+* Add `protean shell` CLI command
+* Make Commands and Events immutable
+* Replace `flake8` + `black` + `isort` with `ruff``
+* Enhance support for different identity types in `Identifier` field
+* Generate and assign identity as first step during entity initialization
+* Auto-add reference fields in child entities
+* Allow specifying child entities during Aggregate initialization
+* Ensure Associations can only link to other entities
+* Resolve references when initializing Domain ([#419](https://github.com/proteanhq/protean/pull/419))
+* Avoid using `current_domain` where domain is readily accessible in code and tests
+* Allow nesting of associations
+* Validate for type of values supplied to associations
+* Remove via param for associations
+* Allow parent linkage from underlying entity in associations
+* Rename aggregate_cls to part_of
+* Preserve owner and root linkages in child entities
+* Introduce @invariant decorator and run on initialization and attribute changes
+* Introduce domain config in TOML with capability to fetch environment variables
+* Don't traverse folders with known toml files
+* Scan for config files from current folder up to 2 levels up
+* Domain Service Enhancements with `pre` and `post` invariant structures
+* Allow filtering on `HasMany` entities
+* Support lists as field value choices along with Enums
+* Run `Entity.defaults` before validations
+* Upgrade SQLAlchemy to 2.0.x
+* Allow control of automatic identity field addition
+* Remove support for inner Meta class
+* Revamp BaseModel for parity with other domain elements
+* Disallow multiple identity fields in aggregates
+* Register raised events only on Aggregates 
+* Track aggregate cluster to which elements belong
+* Allow publishing multiple events in a single call
+* Accept custom identity function to generate identities
+* Support identity generation customization in Auto field
+* Remove allmethod from repository
+* Enclose naked `Repository.add` calls within UoW
 
 0.11.0
 ------
