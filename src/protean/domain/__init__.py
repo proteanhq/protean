@@ -313,9 +313,16 @@ class Domain:
     def load_config(self, load_toml=True):
         """Load configuration from dist or a .toml file."""
         if load_toml:
-            return Config2.load_from_path(self.root_path, dict(self.default_config))
+            config = Config2.load_from_path(self.root_path, dict(self.default_config))
         else:
-            return Config2.load_from_dict(dict(self.default_config))
+            config = Config2.load_from_dict(dict(self.default_config))
+
+        # Load Constants
+        if "custom" in config:
+            for constant, value in config["custom"].items():
+                setattr(self, constant, value)
+
+        return config
 
     def domain_context(self, **kwargs):
         """Create an :class:`~protean.context.DomainContext`. Use as a ``with``
