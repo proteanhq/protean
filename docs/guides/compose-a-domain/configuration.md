@@ -8,8 +8,7 @@ The `environment` attribute specifies the current running environment of the
 application. By default, the environment is `development`. The current
 environment can be gathered from an environment variable called `PROTEAN_ENV`.
 
-The framework
-recognizes `development` and `production` environments, but additional
+Protean recognizes `development` and `production` environments, but additional
 environments such as `pre-prod`, `staging`, and `testing` can be specified as
 needed.
 

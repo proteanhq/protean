@@ -64,7 +64,7 @@ the fact_. `StockDepleted` is a better choice than the imperative
 dive deeper into these parameters in the Processing Events section.
 <!-- FIXME Add link to events processing section -->
 - Events are essentially Data Transfer Objects (DTO)- they can only hold
-simple fields.
+simple fields and Value Objects.
 - Events should only contain information directly relevant to the event. A
 receiver that needs more information should be listening to other pertinent
 events and add read-only structures to its own state to take decisions later.

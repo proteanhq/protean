@@ -101,17 +101,10 @@ jobs:
           REDIS_PORT: ${{ job.services.redis.ports[6379] }}
 
       - name: CodeCOV
-        uses: codecov/codecov-action@v3
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
-          PGPASSWORD:
-            postgres
-            # The hostname used to communicate with the Redis service container
-          REDIS_HOST: localhost
-          # The default Redis port
-          REDIS_PORT: ${{ job.services.redis.ports[6379] }}
+        uses: codecov/codecov-action@v4.0.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   docs-deploy:
     runs-on: ubuntu-latest
     needs: test

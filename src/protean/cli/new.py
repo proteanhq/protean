@@ -76,7 +76,7 @@ def new(
     # Add the project name to answers
     data_dict["project_name"] = project_name
 
-    # Create project from the cookiecutter-protean.git repo template
+    # Create project from repo template
     run_copy(
         f"{protean.__path__[0]}/template",
         project_directory or ".",

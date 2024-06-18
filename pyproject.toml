@@ -50,7 +50,6 @@ classifiers=[
 [tool.poetry.dependencies]
 python = "^3.11"
 bleach = ">=4.1.0"
-cookiecutter = ">=1.7.0"
 copier = "^9.1.1"
 inflection = ">=0.5.1"
 ipython = "^8.23.0"
