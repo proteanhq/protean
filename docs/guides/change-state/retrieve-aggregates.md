@@ -4,7 +4,7 @@ An aggregate can be retreived with the repository's `get` method, if you know
 its identity:
 
 ```python hl_lines="16 20"
-{! docs_src/guides/persist-state/001.py !}
+{! docs_src/guides/change-state/001.py !}
 ```
 
 1.  Identity is explicitly set to **1**.
@@ -26,7 +26,7 @@ expected to enclose methods that represent business queries.
 Defining a custom repository is straight-forward:
 
 ```python hl_lines="16"
-{! docs_src/guides/persist-state/004.py !}
+{! docs_src/guides/change-state/004.py !}
 ```
 
 1. The repository is connected to `Person` aggregate through the `part_of`
@@ -66,6 +66,10 @@ Out[8]:
     perform. `adults` is a good name for a method that fetches persons
     over the age of 18.
 
+!!!note
+   A repository can be connected to a specific persistence store by specifying
+   the `database` parameter.
+
 ## Data Acsess Objects (DAO)
 
 You would have observed the query in the repository above was performed on a
@@ -88,7 +92,7 @@ For the purposes of this guide, assume that the following `Person` aggregates
 exist in the database:
 
 ```python hl_lines="7-11"
-{! docs_src/guides/persist-state/005.py !}
+{! docs_src/guides/change-state/005.py !}
 ```
 
 ```shell

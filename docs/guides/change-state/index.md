@@ -1,4 +1,6 @@
-# Persisting State
+# Changing State
+
+## Persisting State
 
 - About Repositories and Repository Pattern
 
@@ -6,14 +8,14 @@
 - Repository Configuration
 - Automatic generation of repositories
 
-## Basic Structure
+### Basic Structure
 
 A repository provides three primary methods to interact with the persistence
 store:
 
-### **`add`** - Adds a new entity to the persistence store.
+#### **`add`** - Adds a new entity to the persistence store.
 
-### **`get`** - Retrieves an entity from the persistence store.
+#### **`get`** - Retrieves an entity from the persistence store.
 
 - Persisting aggregates
 - Retreiving aggregates

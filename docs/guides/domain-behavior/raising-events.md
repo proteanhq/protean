@@ -1,10 +1,8 @@
-# Propagating State
+# Raising Events
 
 An aggregate rarely exists in isolation - it's state changes often mean
 that other parts of the system of the system have to sync up. In DDD, the
 mechanism to accomplish this is through Domain Events.
-
-## Raising Events
 
 When an aggregate mutates, it also (preferably) raises one or more events
 to record the state change in time, as well as propagate it within and beyond

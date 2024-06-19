@@ -126,16 +126,18 @@ nav:
       - guides/domain-behavior/aggregate-mutation.md
       - guides/domain-behavior/raising-events.md
       - guides/domain-behavior/domain-services.md
-    - Persisting State:
-      - guides/persist-state/index.md
-      - guides/persist-state/persist-aggregates.md
-      - guides/persist-state/unit-of-work.md
-      - guides/persist-state/retreive-aggregates.md
-      - guides/persist-state/database-specificity.md
-    - Accessing the domain:
-      - guides/access-domain/index.md
-      - guides/access-domain/commands.md
-      - guides/access-domain/command-handlers.md
+    - Changing State:
+      - guides/change-state/index.md
+      - guides/change-state/commands.md
+      - guides/change-state/command-handlers.md
+      - guides/change-state/persist-aggregates.md
+      - guides/change-state/unit-of-work.md
+      - guides/change-state/retrieve-aggregates.md
+    - Propagating State:
+      - guides/propagate-state/index.md
+      - guides/propagate-state/event-handlers.md
+    #   - guides/propagate-state/events-across-contexts.md
+    #   - guides/propagate-state/views.md
     # - Application Layer:
     #   - guides/app-layer/index.md
     #   - guides/app-layer/application-services.md

@@ -22,8 +22,8 @@ to eventually make the rest of the system consistent.
 
 A command is defined with the `Domain.command` decorator:
 
-```python hl_lines="12-15"
-{! docs_src/guides/access-domain/001.py !}
+```python hl_lines="13-16"
+{! docs_src/guides/change-state/006.py !}
 ```
 
 A command is always associated with an aggregate class with the `part_of`
