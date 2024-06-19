@@ -242,6 +242,8 @@ class HandlerMixin:
         super().__init_subclass__()
 
         # Associate a `_handlers` map with subclasses.
+        # `_handlers` is a dictionary mapping the event/command to handler methods.
+        #
         #   It needs to be initialized here because if it
         #   were initialized in __init__, the same collection object
         #   would be made available across all subclasses,

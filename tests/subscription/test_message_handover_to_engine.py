@@ -47,6 +47,7 @@ async def test_that_subscription_invokes_engine_handler_on_message(
     mock_handle_message, test_domain
 ):
     test_domain.register(User)
+    test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
 
     identifier = str(uuid4())

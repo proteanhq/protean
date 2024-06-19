@@ -102,7 +102,7 @@ class EventStore:
 
         all_stream_handlers = self._event_streams.get("$all", set())
 
-        # Take the Aggregate's stream_name
+        # Get the Aggregate's stream_name
         aggregate_stream_name = None
         if event.meta_.aggregate_cluster:
             aggregate_stream_name = event.meta_.aggregate_cluster.meta_.stream_name
@@ -110,7 +110,13 @@ class EventStore:
         stream_name = event.meta_.stream_name or aggregate_stream_name
         stream_handlers = self._event_streams.get(stream_name, set())
 
-        return set.union(stream_handlers, all_stream_handlers)
+        # Gather all handlers that are configured to run on this event
+        configured_stream_handlers = set()
+        for stream_handler in stream_handlers:
+            if fqn(event.__class__) in stream_handler._handlers:
+                configured_stream_handlers.add(stream_handler)
+
+        return set.union(configured_stream_handlers, all_stream_handlers)
 
     def command_handler_for(self, command: BaseCommand) -> Optional[BaseCommandHandler]:
         if self._command_streams is None:

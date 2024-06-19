@@ -2,7 +2,6 @@ import inspect
 import logging
 
 from protean.container import Element, OptionsMixin
-from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class, fully_qualified_name
 from protean.utils.mixins import HandlerMixin
@@ -62,23 +61,6 @@ def event_handler_factory(element_cls, **opts):
             else:
                 element_cls._handlers[fully_qualified_name(method._target_cls)].add(
                     method
-                )
-
-            # Associate Event with the handler's stream
-            if inspect.isclass(method._target_cls) and issubclass(
-                method._target_cls, BaseEvent
-            ):
-                # Order of preference:
-                #   1. Stream name defined in event
-                #   2. Stream name defined for the event handler
-                #   3. Stream name derived from aggregate
-                stream_name = element_cls.meta_.stream_name or (
-                    element_cls.meta_.part_of.meta_.stream_name
-                    if element_cls.meta_.part_of
-                    else None
-                )
-                method._target_cls.meta_.stream_name = (
-                    method._target_cls.meta_.stream_name or stream_name
                 )
 
     return element_cls

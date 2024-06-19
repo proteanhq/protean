@@ -511,6 +511,12 @@ class Domain:
                     )
                     cls.meta_.part_of = to_cls
 
+                    # Also set the stream name if there is a `stream_name` option in `meta_`
+                    # FIXME Could this task be pushed to the element itself, so each element
+                    #   can do stuff beyond `stream_name`?
+                    if hasattr(cls.meta_, "stream_name") and not cls.meta_.stream_name:
+                        cls.meta_.stream_name = to_cls.meta_.stream_name
+
             # Remove from pending list now that the class has been resolved
             del self._pending_class_resolutions[name]
 

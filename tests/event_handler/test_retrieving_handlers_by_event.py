@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
 from protean.fields import DateTime, Identifier, String
 
@@ -69,7 +71,8 @@ class AllEventsHandler(BaseEventHandler):
         pass
 
 
-def test_retrieving_handler_by_event(test_domain):
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
     test_domain.register(User)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Activated, part_of=User)
@@ -80,6 +83,8 @@ def test_retrieving_handler_by_event(test_domain):
     test_domain.register(Sent, part_of=Email)
     test_domain.register(EmailEventHandler, part_of=Email)
 
+
+def test_retrieving_handler_by_event(test_domain):
     assert test_domain.handlers_for(Registered()) == {UserEventHandler, UserMetrics}
     assert test_domain.handlers_for(Sent()) == {EmailEventHandler}
 
@@ -90,16 +95,7 @@ def test_that_all_streams_handler_is_returned(test_domain):
 
 
 def test_that_all_streams_handler_is_always_returned_with_other_handlers(test_domain):
-    test_domain.register(User)
-    test_domain.register(Registered, part_of=User)
-    test_domain.register(Activated, part_of=User)
-    test_domain.register(Renamed, part_of=User)
     test_domain.register(AllEventsHandler, stream_name="$all")
-    test_domain.register(UserEventHandler, part_of=User)
-    test_domain.register(UserMetrics, part_of=User)
-    test_domain.register(Email)
-    test_domain.register(Sent, part_of=Email)
-    test_domain.register(EmailEventHandler, part_of=Email)
 
     assert test_domain.handlers_for(Registered()) == {
         UserEventHandler,
