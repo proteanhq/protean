@@ -1,6 +1,15 @@
 Release History
 ===============
 
+0.12.1
+------
+
+* Make constants under `[custom]` section available directly on the domain
+* Simplify domain traversal logic and improve performance
+* Optimize fetching handlers for domain events
+* Remove clone method from Entity/Aggregate
+* Remove `provider`` meta option from Entities
+
 0.12.0
 ------
 
