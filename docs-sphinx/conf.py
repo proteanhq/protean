@@ -29,7 +29,7 @@ project = "Protean"
 year = datetime.date.today().strftime("%Y")
 author = "Subhash Bhushan C"
 copyright = "{0}, {1}".format(year, author)
-version = release = "0.12.0"
+version = release = "0.12.1"
 
 pygments_style = "autumn"
 templates_path = ["."]
