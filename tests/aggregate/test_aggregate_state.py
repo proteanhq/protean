@@ -71,16 +71,6 @@ class TestState:
         )
         assert not person.state_.is_new
 
-    def test_that_aggregate_copying_resets_state_in_the_new_aggregate_object(
-        self, test_domain
-    ):
-        person1 = test_domain.repository_for(Person)._dao.create(
-            first_name="John", last_name="Doe"
-        )
-        person2 = person1.clone()
-
-        assert person2.state_.is_new
-
     def test_that_entity_marked_as_changed_if_attributes_are_updated(self, test_domain):
         person = test_domain.repository_for(Person)._dao.create(
             first_name="John", last_name="Doe"

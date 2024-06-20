@@ -510,13 +510,6 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
             "{}: {}".format(id_field(self).field_name, identifier),
         )
 
-    def clone(self):
-        """Deepclone the entity, but reset state"""
-        clone_copy = copy.deepcopy(self)
-        clone_copy.state_ = _EntityState()
-
-        return clone_copy
-
     def _set_root_and_owner(self, root, owner):
         """Set the root and owner entities on all child entities
 

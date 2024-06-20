@@ -334,10 +334,6 @@ class BaseContainer(metaclass=ContainerMeta):
             for field_name, field_obj in fields(self).items()
         }
 
-    def clone(self):
-        """Deepclone the command"""
-        return copy.deepcopy(self)
-
     @classmethod
     def _default_options(cls):
         # FIXME Raise exception
