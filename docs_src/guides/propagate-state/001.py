@@ -49,3 +49,23 @@ class ManageInventory:
         inventory.in_stock -= event.quantity  # (2)
 
         repo.add(inventory)
+
+
+domain.init()
+with domain.domain_context():
+    # Persist Order
+    order = Order(book_id=1, quantity=10, total_amount=100)
+    domain.repository_for(Order).add(order)
+
+    # Persist Inventory
+    inventory = Inventory(book_id=1, in_stock=100)
+    domain.repository_for(Inventory).add(inventory)
+
+    # Ship Order
+    order.ship_order()
+    domain.repository_for(Order).add(order)
+
+    # Verify that Inventory Level has been reduced
+    stock = domain.repository_for(Inventory).get(inventory.id)
+    print(stock.to_dict())
+    assert stock.in_stock == 90

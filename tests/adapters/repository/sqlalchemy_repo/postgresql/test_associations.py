@@ -30,6 +30,7 @@ class Audit(BaseAggregate):
 def test_updating_a_has_many_association(test_domain):
     test_domain.register(Post)
     test_domain.register(Comment, part_of=Post)
+    test_domain.init(traverse=False)
 
     post_repo = test_domain.repository_for(Post)
     post = Post(content="bar")
@@ -51,6 +52,7 @@ def test_updating_a_has_many_association(test_domain):
 @pytest.mark.postgresql
 def test_embedded_dict_field_in_value_object(test_domain):
     test_domain.register(Audit)
+    test_domain.init(traverse=False)
 
     audit_repo = test_domain.repository_for(Audit)
     audit = Audit(permission=Permission(dict_object={"foo": "bar"}))

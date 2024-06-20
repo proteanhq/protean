@@ -23,6 +23,7 @@ def setup_db():
         domain.register(Alien)
         domain.register(User)
         domain.register(ComplexUser)
+        domain.init(traverse=False)
 
         domain.providers["default"]._create_database_artifacts()
 

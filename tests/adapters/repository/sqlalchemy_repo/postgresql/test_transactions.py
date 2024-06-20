@@ -14,6 +14,7 @@ class TestTransactions:
     def register_elements(self, test_domain):
         test_domain.register(Person)
         test_domain.register(PersonRepository, part_of=Person)
+        test_domain.init(traverse=False)
 
     def random_name(self):
         return "".join(random.choices(string.ascii_uppercase + string.digits, k=15))

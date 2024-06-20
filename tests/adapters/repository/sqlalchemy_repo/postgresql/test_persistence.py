@@ -15,6 +15,7 @@ class Event(BaseAggregate):
 @pytest.mark.postgresql
 def test_persistence_and_retrieval(test_domain):
     test_domain.register(Event)
+    test_domain.init(traverse=False)
 
     repo = test_domain.repository_for(Event)
     event = Event(

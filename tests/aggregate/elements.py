@@ -87,7 +87,11 @@ class Account(BaseAggregate):
 class Author(BaseEntity):
     first_name = String(required=True, max_length=25)
     last_name = String(max_length=25)
-    posts = HasMany("tests.aggregate.elements.Post")
+    account = Reference("tests.aggregate.elements.Account")
+
+
+class Profile(BaseEntity):
+    about_me = Text()
     account = Reference("tests.aggregate.elements.Account")
 
 
@@ -96,11 +100,6 @@ class AccountWithId(BaseAggregate):
     password = String(required=True, max_length=255)
     username = String(max_length=255, unique=True)
     author = HasOne("tests.aggregate.elements.Author")
-
-
-class Profile(BaseEntity):
-    about_me = Text()
-    account = Reference("tests.aggregate.elements.Account")
 
 
 class ProfileWithAccountId(BaseEntity):

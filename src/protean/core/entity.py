@@ -1,6 +1,5 @@
 """Entity Functionality and Classes"""
 
-import copy
 import functools
 import inspect
 import logging
@@ -119,7 +118,6 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
     def _default_options(cls):
         return [
             ("auto_add_id_field", True),
-            ("provider", "default"),
             ("model", None),
             ("part_of", None),
             ("aggregate_cluster", None),

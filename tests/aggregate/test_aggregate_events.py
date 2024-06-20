@@ -56,6 +56,7 @@ def register_elements(test_domain):
     test_domain.register(UserActivated, part_of=User)
     test_domain.register(UserRenamed, part_of=User)
     test_domain.register(PasswordChanged, part_of=User)
+    test_domain.init(traverse=False)
 
 
 def test_that_aggregate_has_events_list():

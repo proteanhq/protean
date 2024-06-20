@@ -27,6 +27,7 @@ def test_persisting_and_retrieving_list_of_value_objects(test_domain):
     test_domain.register(Order)
     test_domain.register(Customer, part_of=Order)
     test_domain.register(Address)
+    test_domain.init(traverse=False)
 
     order = Order(
         customer=Customer(

@@ -66,14 +66,6 @@ class SqlPerson(Person):
     pass
 
 
-class DifferentDbPerson(Person):
-    pass
-
-
-class SqlDifferentDbPerson(Person):
-    pass
-
-
 class OrderedPerson(BaseEntity):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)

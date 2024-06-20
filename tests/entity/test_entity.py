@@ -10,11 +10,9 @@ from .elements import (
     Adult,
     ConcretePerson,
     DbPerson,
-    DifferentDbPerson,
     Person,
     PersonAutoSSN,
     Relative,
-    SqlDifferentDbPerson,
     SqlPerson,
 )
 
@@ -27,12 +25,8 @@ def register_elements(test_domain):
     test_domain.register(Person, part_of=Account)
     test_domain.register(PersonAutoSSN, part_of=Account)
     test_domain.register(Relative, part_of=Account)
-    test_domain.register(
-        SqlDifferentDbPerson, part_of=Account, provider="non-default-sql"
-    )
     test_domain.register(SqlPerson, part_of=Account, schema_name="people")
     test_domain.register(DbPerson, part_of=Account, schema_name="pepes")
-    test_domain.register(DifferentDbPerson, part_of=Account, provider="non-default")
     test_domain.register(Adult, part_of=Account, schema_name="adults")
     test_domain.init(traverse=False)
 
@@ -82,15 +76,6 @@ class TestEntityMeta:
         """Test that `schema_name` can be overridden"""
         assert hasattr(SqlPerson.meta_, "schema_name")
         assert getattr(SqlPerson.meta_, "schema_name") == "people"
-
-    def test_default_and_overridden_provider_in_meta(self):
-        assert getattr(Person.meta_, "provider") == "default"
-        assert getattr(DifferentDbPerson.meta_, "provider") == "non-default"
-
-    def test_provider_can_be_overridden_in_entity_subclass(self):
-        """Test that `provider` can be overridden"""
-        assert hasattr(SqlDifferentDbPerson.meta_, "provider")
-        assert getattr(SqlDifferentDbPerson.meta_, "provider") == "non-default-sql"
 
     def test_that_schema_is_not_inherited(self):
         assert Person.meta_.schema_name != Adult.meta_.schema_name

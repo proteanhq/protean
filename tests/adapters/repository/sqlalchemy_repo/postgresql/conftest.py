@@ -31,6 +31,7 @@ def setup_db():
         domain.register(Audit)
         domain.register(Order)
         domain.register(Customer, part_of=Order)
+        domain.init(traverse=False)
 
         domain.repository_for(Alien)._dao
         domain.repository_for(ComplexUser)._dao

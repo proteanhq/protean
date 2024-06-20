@@ -205,6 +205,9 @@ class Domain:
         # Assign Aggregate Clusters
         self._assign_aggregate_clusters()
 
+        # Set Aggregate Cluster Options
+        self._set_aggregate_cluster_options()
+
         # Run Validations
         self._validate_domain()
 
@@ -725,6 +728,21 @@ class Domain:
                 }
             )
 
+        # Check that entities have the same provider as the aggregate
+        for _, entity in self.registry._elements[DomainObjects.ENTITY.value].items():
+            if (
+                entity.cls.meta_.aggregate_cluster.meta_.provider
+                != entity.cls.meta_.provider
+            ):
+                raise IncorrectUsageError(
+                    {
+                        "element": (
+                            f"Entity `{entity.cls.__name__}` has a different provider "
+                            f"than its aggregate `{entity.cls.meta_.aggregate_cluster.__name__}`"
+                        )
+                    }
+                )
+
     def _assign_aggregate_clusters(self):
         """Assign Aggregate Clusters to all relevant elements"""
         from protean.core.aggregate import BaseAggregate
@@ -747,12 +765,23 @@ class Domain:
             for _, element in self.registry._elements[element_type.value].items():
                 part_of = element.cls.meta_.part_of
                 if part_of:
+                    # Traverse up the graph tree to find the root aggregate
                     while not issubclass(
                         part_of, (BaseAggregate, BaseEventSourcedAggregate)
                     ):
                         part_of = part_of.meta_.part_of
 
                 element.cls.meta_.aggregate_cluster = part_of
+
+    def _set_aggregate_cluster_options(self):
+        for element_type in [DomainObjects.ENTITY]:
+            for _, element in self.registry._elements[element_type.value].items():
+                if not hasattr(element.cls.meta_, "provider"):
+                    setattr(
+                        element.cls.meta_,
+                        "provider",
+                        element.cls.meta_.aggregate_cluster.meta_.provider,
+                    )
 
     ######################
     # Element Decorators #

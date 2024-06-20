@@ -33,6 +33,7 @@ def setup_db():
         domain.register_model(
             ProviderCustomModel, entity_cls=Provider, schema_name="providers"
         )
+        domain.init(traverse=False)
 
         domain.providers["default"]._create_database_artifacts()
 

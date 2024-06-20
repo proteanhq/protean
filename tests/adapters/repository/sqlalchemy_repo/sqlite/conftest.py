@@ -22,6 +22,7 @@ def setup_db():
         domain.register(Alien)
         domain.register(User)
         domain.register(ComplexUser)
+        domain.init(traverse=False)
 
         domain.repository_for(Person)._dao
         domain.repository_for(Alien)._dao

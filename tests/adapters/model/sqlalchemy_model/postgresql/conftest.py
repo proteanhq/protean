@@ -43,6 +43,7 @@ def setup_db():
         domain.register_model(
             ProviderCustomModel, entity_cls=Provider, schema_name="adults"
         )
+        domain.init(traverse=False)
 
         domain.repository_for(ArrayUser)._dao
         domain.repository_for(GenericPostgres)._dao

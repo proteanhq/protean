@@ -181,3 +181,74 @@ the aggregate.
     used only when the configured database is active. Refer to the section on
     `Customizing Persistence schemas` for more information.
     <!-- FIXME Add link to customizing persistence schemas -->
+
+## Associations
+
+Protean provides multiple options for Aggregates to weave object graphs with
+enclosed Entities.
+
+### `HasOne`
+
+A HasOne field establishes a has-one relation with the entity. In the example
+below, `Post` has exactly one `Statistic` record associated with it.
+
+```python hl_lines="18 22-26"
+{! docs_src/guides/domain-definition/008.py !}
+```
+
+```shell
+>>> post = Post(title='Foo')
+>>> post.stats = Statistic(likes=10, dislikes=1)
+>>> current_domain.repository_for(Post).add(post)
+```
+
+### `HasMany`
+
+```python hl_lines="19 29-33"
+{! docs_src/guides/domain-definition/008.py !}
+```
+
+Below is an example of adding multiple comments to the domain defined above:
+
+```shell
+❯ protean shell --domain docs_src/guides/domain-definition/008.py
+...
+In [1]: from protean.globals import current_domain
+
+In [2]: post = Post(title='Foo')
+
+In [3]: comment1 = Comment(content='bar')
+
+In [4]: comment2 = Comment(content='baz')
+
+In [5]: post.add_comments([comment1, comment2])
+
+In [6]: current_domain.repository_for(Post).add(post)
+Out[6]: <Post: Post object (id: 19031285-6e27-4b7e-8b06-47ba6766208a)>
+
+In [7]: post.to_dict()
+Out[7]: 
+{'title': 'Foo',
+ 'created_on': '2024-05-06 14:29:22.946329+00:00',
+ 'comments': [{'content': 'bar', 'id': 'af238f7b-5225-41fc-ae37-36cd4cface66'},
+  {'content': 'baz', 'id': '5b7fa5ad-7b64-4194-ade7-fb7a4b3a8a15'}],
+ 'id': '19031285-6e27-4b7e-8b06-47ba6766208a'}
+```
+
+### `Reference`
+
+A `Reference` field establishes the opposite relationship with the parent at
+the data level. Entities that are connected by `HasMany` and `HasOne`
+relationships are connected to the owning aggregate with a `Reference` field
+acting as the foreign key.
+
+```shell
+In [8]: post = current_domain.repository_for(Post).get(post.id)
+
+In [9]: post.comments[0].post
+Out[9]: <Post: Post object (id: e288ee30-e1d5-4fb3-94d8-d8083a6dc9db)>
+
+In [10]: post.comments[0].post_id
+Out[10]: 'e288ee30-e1d5-4fb3-94d8-d8083a6dc9db'
+```
+<!-- FIXME Add details about the attribute `<>_id` and the entity `<>` -->

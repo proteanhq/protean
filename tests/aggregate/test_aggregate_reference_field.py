@@ -3,7 +3,7 @@ import pytest
 from protean.exceptions import ValidationError
 from protean.reflection import attributes
 
-from .elements import Account, Author, Post, Profile
+from .elements import Account, Author
 
 
 class TestReferenceFieldAssociation:
@@ -11,8 +11,7 @@ class TestReferenceFieldAssociation:
     def register_elements(self, test_domain):
         test_domain.register(Account)
         test_domain.register(Author, part_of=Account)
-        test_domain.register(Post)
-        test_domain.register(Profile, part_of=Account)
+        test_domain.init(traverse=False)
 
     def test_initialization_of_an_entity_containing_reference_field(self, test_domain):
         account = Account(email="john.doe@gmail.com", password="a1b2c3")

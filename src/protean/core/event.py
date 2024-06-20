@@ -48,8 +48,8 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         )
 
         # This method is called during class import, so we cannot use part_of if it
-        #   is still a string. We ignore it for now, and resolve `stream_name` in
-        #   the factory after the domain has resolved references.
+        #   is still a string. We ignore it for now, and resolve `stream_name` later
+        #   when the domain has resolved references.
         # FIXME A better mechanism would be to not set stream_name here, unless explicitly
         #   specified, and resolve it during `domain.init()`
         part_of = None if isinstance(part_of, str) else part_of

@@ -68,6 +68,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
 
         test_domain.register(Post)
         test_domain.register(Comment, part_of=Post)
+        test_domain.init(traverse=False)
 
         post = Post(title="Test Post", slug="test-post", content="Do Re Mi Fa")
         comment1 = Comment(content="first comment")
