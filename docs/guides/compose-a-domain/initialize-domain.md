@@ -33,13 +33,13 @@ exposes them in a registry.
 
 ## 3. Inject dependencies
 
+Calling `domain.init()` establishes connectivity with the underlying infra,
+testing access, and making them available for use by the rest of the system. 
+
 By default, a protean domain is configured to use in-memory replacements for
 infrastructure, like databases, brokers, and caches. They are useful for
 testing and prototyping. But for production purposes, you will want to choose
 a database that actually persists data.
-
-Calling `domain.init()` establishes connectivity with the underlying infra,
-testing access, and making them available for use by the rest of the system. 
 
 ```python hl_lines="5-9 11"
 {! docs_src/guides/composing-a-domain/017.py !}

@@ -2,10 +2,10 @@ from protean import Domain
 
 domain = Domain(__file__, load_toml=False)
 
-domain.config["DATABASES"]["default"] = {
-    "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",
-    "DATABASE": "SQLITE",
-    "DATABASE_URI": "sqlite:///:memory:",
+domain.config["databases"]["default"] = {
+    "provider": "sqlalchemy",
+    "database": "sqlite",
+    "database_uri": "sqlite:///test.db",
 }
 
 domain.init(traverse=False)
