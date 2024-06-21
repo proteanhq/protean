@@ -123,7 +123,6 @@ nav:
         - guides/domain-definition/entities.md
         - guides/domain-definition/value-objects.md
         - guides/domain-definition/events.md
-        - guides/domain-definition/repositories.md
       - Adding Behavior:
         - guides/domain-behavior/index.md
         - guides/domain-behavior/validations.md
@@ -143,6 +142,10 @@ nav:
       - Propagating State:
         - guides/propagate-state/index.md
         - guides/propagate-state/event-handlers.md
+      - Projections:
+        - guides/projections/index.md
+        - guides/projections/views.md
+
     #   - guides/propagate-state/events-across-contexts.md
     #   - guides/propagate-state/views.md
     # - Application Layer:

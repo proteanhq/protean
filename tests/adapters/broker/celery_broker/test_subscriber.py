@@ -15,6 +15,7 @@ class TestSubscriberNotifications:
         test_domain.register(Person)
         test_domain.register(PersonAdded, part_of=Person)
         test_domain.register(NotifySSOSubscriber, event=PersonAdded)
+        test_domain.init(traverse=False)
 
     @pytest.fixture
     def broker(self, test_domain):

@@ -29,6 +29,21 @@ A command is defined with the `Domain.command` decorator:
 A command is always associated with an aggregate class with the `part_of`
 option, as seen in the example above.
 
+## Submitting Commands
+
+Since a Protean domain constructs and manages the object graph of all
+domain elements, you don't need to identify the appropriate Command Handler
+for your commands.
+
+You can simply submit the command to the domain for processing with
+`domain.process`.
+
+```shell
+In [1]: command = PublishArticle(article_id="1")
+
+In [2]: publishing.process(command)
+```
+
 ## Workflow
 
 Command objects are often instantiated by the API controller, which acts as the

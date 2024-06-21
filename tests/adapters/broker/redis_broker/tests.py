@@ -13,6 +13,7 @@ from .elements import Person, PersonAdded
 def register_elements(test_domain):
     test_domain.register(Person)
     test_domain.register(PersonAdded, part_of=Person)
+    test_domain.init(traverse=False)
 
 
 @pytest.mark.redis

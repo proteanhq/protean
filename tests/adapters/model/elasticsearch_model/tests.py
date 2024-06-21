@@ -55,6 +55,7 @@ class TestDefaultModel:
         from elasticsearch_dsl import Index
 
         test_domain.register(Receiver)
+        test_domain.init(traverse=False)
 
         # Ensure that index is created for `Receiver` - START
         provider = test_domain.providers["default"]
@@ -82,6 +83,8 @@ class TestModelOptions:
                 about = Text()
 
             test_domain.register(Person)
+            test_domain.init(traverse=False)
+
             model_cls = test_domain.repository_for(Person)._model
 
             assert model_cls.__name__ == "PersonModel"
@@ -318,6 +321,8 @@ class TestCustomModel:
         @test_domain.model(entity_cls=Receiver)
         class ReceiverInlineModel:
             name = Text(fields={"raw": Keyword()})
+
+        test_domain.init(traverse=False)
 
         # Ensure that index is created for `Receiver` - START
         provider = test_domain.providers["default"]

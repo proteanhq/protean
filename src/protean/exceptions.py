@@ -10,9 +10,10 @@ logger = logging.getLogger(__name__)
 class ProteanException(Exception):
     """Base class for all Exceptions raised within Protean"""
 
-    def __init__(self, messages, **kwargs):
+    def __init__(self, messages, traceback=None, **kwargs):
         logger.debug(f"Exception:: {messages}")
         self.messages = messages
+        self.traceback = traceback
         super().__init__(**kwargs)
 
     def __str__(self):

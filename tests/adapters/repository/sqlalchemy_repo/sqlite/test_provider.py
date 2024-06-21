@@ -18,6 +18,7 @@ class TestProviders:
     def register_elements(self, test_domain):
         test_domain.register(Person)
         test_domain.register(Alien)
+        test_domain.init(traverse=False)
 
     def test_initialization_of_providers_on_first_call(self, test_domain):
         """Test that ``providers`` object is available"""
