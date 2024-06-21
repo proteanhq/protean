@@ -19,8 +19,8 @@ domain.init(traverse=False)
 ```
 
 If you choose to not traverse, Protean will not be able to detect domain
-elements automatically. You are responsible for registering each element
-with Protean explicitly.
+elements automatically. ***You are responsible for registering each element
+with the domain explicitly***.
 
 ## 2. Construct the object graph
 
@@ -41,7 +41,7 @@ a database that actually persists data.
 Calling `domain.init()` establishes connectivity with the underlying infra,
 testing access, and making them available for use by the rest of the system. 
 
-```python hl_lines="5-11"
+```python hl_lines="5-9 11"
 {! docs_src/guides/composing-a-domain/017.py !}
 ```
 
@@ -49,6 +49,5 @@ In the example above, the domain activates an SQLite database repository and
 makes it available for domain elements for further use.
 
 <!-- FIXME Add link to accessing active/configured dependencies -->
-<!-- FIXME Add link to configuration handling -->
-Refer to Configuration Handling to understand the different ways to configure
+Refer to [Configuration Handling](configuration.md) to understand the different ways to configure
 the domain.

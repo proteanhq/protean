@@ -10,4 +10,4 @@ class User(BaseAggregate):
     age = Integer()
 
 
-domain.register(User)
+domain.register(User, stream_name="account")

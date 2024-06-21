@@ -23,6 +23,7 @@ theme:
     - navigation.instant.prefetch
     - navigation.instant.progress
     - navigation.tracking
+    - navigation.sections
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.expand
@@ -60,7 +61,6 @@ nav:
     - index.md
     - intro/philosophy.md
     - intro/whitepaper.md
-    - intro/features.md
   - Core Concepts:
     # - core-concepts/index.md
     - core-concepts/analysis-model.md
@@ -96,51 +96,53 @@ nav:
     #   - core-concepts/event-sourcing/snapshots.md
     #   - core-concepts/event-sourcing/projections.md
   - Guides:
-    - guides/index.md
     - guides/getting-started/start-here.md
     - guides/getting-started/installation.md
     #  - guides/getting-started/quickstart.md
-    - Compose a Domain:
-      - guides/compose-a-domain/index.md
-      - guides/compose-a-domain/domain-object.md
-      - guides/compose-a-domain/register-elements.md
-      - guides/compose-a-domain/initialize-domain.md
-      - guides/compose-a-domain/activate-domain.md
-      - guides/compose-a-domain/when-to-compose.md
-      - guides/compose-a-domain/element-decorators.md
-      - guides/compose-a-domain/object-model.md
-      - guides/compose-a-domain/configuration.md
-      - guides/compose-a-domain/identity.md
-    - Defining Concepts:
-      - guides/domain-definition/index.md
-      - Fields:
-        - guides/domain-definition/fields/index.md
-        - guides/domain-definition/fields/options.md
-        - guides/domain-definition/fields/simple-fields.md
-        - guides/domain-definition/fields/container-fields.md
-        - guides/domain-definition/fields/association-fields.md
-      - guides/domain-definition/aggregates.md
-      - guides/domain-definition/entities.md
-      - guides/domain-definition/value-objects.md
-      - guides/domain-definition/events.md
-      - guides/domain-definition/repositories.md
-    - Adding Behavior:
-      - guides/domain-behavior/index.md
-      - guides/domain-behavior/validations.md
-      - guides/domain-behavior/invariants.md
-      - guides/domain-behavior/aggregate-mutation.md
-      - guides/domain-behavior/raising-events.md
-      - guides/domain-behavior/domain-services.md
-    - Changing State:
-      - guides/change-state/index.md
-      - guides/change-state/commands.md
-      - guides/change-state/command-handlers.md
-      - guides/change-state/persist-aggregates.md
-      - guides/change-state/unit-of-work.md
-      - guides/change-state/retrieve-aggregates.md
-    - Propagating State:
-      - guides/propagate-state/index.md
-      - guides/propagate-state/event-handlers.md
+
+    - Domain Model:
+      - Compose a Domain:
+        - guides/compose-a-domain/index.md
+        - guides/compose-a-domain/register-elements.md
+        - guides/compose-a-domain/initialize-domain.md
+        - guides/compose-a-domain/activate-domain.md
+        - guides/compose-a-domain/when-to-compose.md
+        - guides/compose-a-domain/element-decorators.md
+        - guides/compose-a-domain/object-model.md
+        - guides/compose-a-domain/configuration.md
+        - guides/compose-a-domain/identity.md
+      - Defining Concepts:
+        - guides/domain-definition/index.md
+        - Fields:
+          - guides/domain-definition/fields/index.md
+          - guides/domain-definition/fields/options.md
+          - guides/domain-definition/fields/simple-fields.md
+          - guides/domain-definition/fields/container-fields.md
+          - guides/domain-definition/fields/association-fields.md
+        - guides/domain-definition/aggregates.md
+        - guides/domain-definition/entities.md
+        - guides/domain-definition/value-objects.md
+        - guides/domain-definition/events.md
+        - guides/domain-definition/repositories.md
+      - Adding Behavior:
+        - guides/domain-behavior/index.md
+        - guides/domain-behavior/validations.md
+        - guides/domain-behavior/invariants.md
+        - guides/domain-behavior/aggregate-mutation.md
+        - guides/domain-behavior/raising-events.md
+        - guides/domain-behavior/domain-services.md
+      - Changing State:
+        - guides/change-state/index.md
+        - guides/change-state/commands.md
+        - guides/change-state/command-handlers.md
+        - guides/change-state/persist-aggregates.md
+        - guides/change-state/unit-of-work.md
+        - guides/change-state/retrieve-aggregates.md
+      
+    - App Layer:
+      - Propagating State:
+        - guides/propagate-state/index.md
+        - guides/propagate-state/event-handlers.md
     #   - guides/propagate-state/events-across-contexts.md
     #   - guides/propagate-state/views.md
     # - Application Layer:
@@ -179,13 +181,14 @@ nav:
     #   - guides/testing/integration-testing.md
     #   - guides/testing/functional-testing.md
     #   - guides/testing/acceptance-testing.md
-    - Command Line Interface:
-      - guides/cli/index.md
-      - guides/cli/discovery.md
-      - guides/cli/new.md
-      - guides/cli/shell.md
-      - guides/cli/docs.md
-      - guides/cli/test.md
+    - Utilities:
+      - CLI:
+        - guides/cli/index.md
+        - guides/cli/discovery.md
+        - guides/cli/new.md
+        - guides/cli/shell.md
+        - guides/cli/docs.md
+        - guides/cli/test.md
   # - Advanced:
   #   - advanced/index.md
   #   - advanced/multi-domain.md

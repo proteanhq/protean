@@ -1,4 +1,4 @@
-# Command Line Interface
+# CLI
 
 When you install Protean, you also get a handy command line interface - the `protean` script - in your virtualenv. Driven by [Typer](https://typer.tiangolo.com), the script gives access to commands that can help you scaffold projects, generate new code, and run background servers. The `--help` option will give more information about any commands and options.
 

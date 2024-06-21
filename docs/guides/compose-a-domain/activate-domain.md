@@ -22,48 +22,7 @@ thread's execution. The domain context keeps track of the domain-level data
 during the lifetime of a domain object, and is used while processing handlers,
 CLI commands, or other activities. 
 
-## Storing Data
-
-The domain context also provides a `g` object for storing data. It is a simple
-namespace object that has the same lifetime as an domain context.
-
-!!! note
-    The `g` name stands for "global", but that is referring to the data
-    being global within a context. The data on `g` is lost after the context
-    ends, and it is not an appropriate place to store data between domain
-    calls. Use a session or a database to store data across domain model calls.
-
-A common use for g is to manage resources during a domain call.
-
-1. `get_X()` creates resource X if it does not exist, caching it as g.X.
-
-2. `teardown_X()` closes or otherwise deallocates the resource if it exists.
-It is registered as a `teardown_domain_context()` handler.
-
-Using this pattern, you can, for example, manage a file connection for the
-lifetime of a domain call:
-
-```python
-from protean.globals import g
-
-def get_log():
-    if 'log' not in g:
-        g.log = open_log_file()
-
-    return g.log
-
-@domain.teardown_appcontext
-def teardown_log_file(exception):
-    file_obj = g.pop('log', None)
-
-    if not file_obj.closed:
-        file_obj.close()
-```
-
-Now, every call to `get_log()` during the domain call will return the same file
-object, and it will be closed automatically at the end of processing.
-
-## Pushing up the Domain Context
+## Activating the Domain Context
 
 A Protean domain is activated close to the application's entrypoint, like an
 API request. In many other cases, like Protean's server processing commands and
@@ -110,3 +69,44 @@ context.pop()
 !!! warning
     If you do activate context manually, ensure you call context.pop() once the
     task has been completed to prevent context leakage across threads.
+
+## Storing Data
+
+The domain context also provides a `g` object for storing data. It is a simple
+namespace object that has the same lifetime as an domain context.
+
+!!! note
+    The `g` name stands for "global", but that is referring to the data
+    being global within a context. The data on `g` is lost after the context
+    ends, and it is not an appropriate place to store data between domain
+    calls. Use a session or a database to store data across domain model calls.
+
+A common use for g is to manage resources during a domain call.
+
+1. `get_X()` creates resource X if it does not exist, caching it as g.X.
+
+2. `teardown_X()` closes or otherwise deallocates the resource if it exists.
+It is registered as a `teardown_domain_context()` handler.
+
+Using this pattern, you can, for example, manage a file connection for the
+lifetime of a domain call:
+
+```python
+from protean.globals import g
+
+def get_log():
+    if 'log' not in g:
+        g.log = open_log_file()
+
+    return g.log
+
+@domain.teardown_appcontext
+def teardown_log_file(exception):
+    file_obj = g.pop('log', None)
+
+    if not file_obj.closed:
+        file_obj.close()
+```
+
+Now, every call to `get_log()` during the domain call will return the same file
+object, and it will be closed automatically at the end of processing.

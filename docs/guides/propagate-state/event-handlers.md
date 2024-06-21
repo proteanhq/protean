@@ -46,8 +46,6 @@ Out[8]: {
  'in_stock': 90,
  'id': '9272d70f-b796-417d-8f30-e01302d9f1a9'
  }
-
-In [9]: 
 ```
 
 ## Configuration Options

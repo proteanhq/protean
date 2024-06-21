@@ -16,7 +16,7 @@ There are many version managers that help you create virtual environments,
 but we will quickly walk through the steps to create a virtual environment with
 one bundled with Python, `venv`.
 
-## Create an environment
+## Create a virtual environment
 
 Create a project folder and a `.venv` folder within. Follow Python's
 [venv guide](https://docs.python.org/3/library/venv.html) to install a new
@@ -55,7 +55,7 @@ Use the ``protean`` CLI to verify the installation:
 
 ```shell
 $ protean --version
-Protean 0.11.0
+Protean 0.12.1
 ```
 
 To verify that Protean can be seen by your current installation of Python,
@@ -65,7 +65,7 @@ try importing Protean from a ``python`` shell:
 $ python
 >>> import protean
 >>> protean.get_version()
-'0.11.0'
+'0.12.1'
 ```
 
 -------------------
