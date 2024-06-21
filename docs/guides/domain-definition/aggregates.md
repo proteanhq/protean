@@ -197,9 +197,11 @@ below, `Post` has exactly one `Statistic` record associated with it.
 ```
 
 ```shell
->>> post = Post(title='Foo')
->>> post.stats = Statistic(likes=10, dislikes=1)
->>> current_domain.repository_for(Post).add(post)
+In [1]: post = Post(title='Foo')
+
+In [2]: post.stats = Statistic(likes=10, dislikes=1)
+
+In [3]: current_domain.repository_for(Post).add(post)
 ```
 
 ### `HasMany`
@@ -211,8 +213,6 @@ below, `Post` has exactly one `Statistic` record associated with it.
 Below is an example of adding multiple comments to the domain defined above:
 
 ```shell
-❯ protean shell --domain docs_src/guides/domain-definition/008.py
-...
 In [1]: from protean.globals import current_domain
 
 In [2]: post = Post(title='Foo')

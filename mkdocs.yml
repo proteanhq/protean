@@ -4,6 +4,9 @@ repo_name: proteanhq/protean
 repo_url: https://github.com/proteanhq/protean
 theme:
   name: material
+  font:
+    text: Inter
+    code: JetBrains Mono
   palette:
   - media: '(prefers-color-scheme: light)'
     scheme: default
@@ -36,6 +39,8 @@ theme:
     - content.code.annotate
     - content.code.copy
     - content.code.select
+plugins:
+  - privacy
 markdown_extensions:
   - admonition
   - attr_list
@@ -201,3 +206,5 @@ nav:
   - Community: 
     - community/index.md
     - community/contributing.md
+extra_css:
+  - stylesheets/extra.css

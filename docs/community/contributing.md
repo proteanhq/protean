@@ -72,7 +72,7 @@ without your patch. Run the tests as described below.
 - Push your commits to your fork on GitHub and [create a pull request](
         https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/
         proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request).
-Link to the issue being addressed with `fixes #123` or `closes #123` in the pull request.
+- Link to the issue being addressed with `fixes #123` or `closes #123` in the pull request.
 
 ```sh
 $ git push --set-upstream fork your-branch-name
@@ -86,13 +86,15 @@ Run the basic test suite with:
 $ protean test
 ```
 
-This runs the basic tests for the current environment, which is usually sufficient. If you want to run 
-the full test suite, you can sep up dependent services locally with docker:
+This runs the basic tests for the current environment, which is usually
+sufficient. If you want to run  the full test suite, you can sep up
+dependent services locally with docker:
 
 ```sh
 $ make up
 $ protean test -c FULL
 ```
 
-Running a full test will also generate a coverage report as part of test output. Writing tests for lines
-that do not have coverage is a great way to start contributing.
+Running a full test will also generate a coverage report as part of test
+output. Writing tests for lines that do not have coverage is a great way to
+start contributing.
