@@ -99,7 +99,9 @@ def test_that_snapshot_is_constructed_after_threshold(test_domain):
         repo.add(user)
 
     for i in range(
-        3, test_domain.config["SNAPSHOT_THRESHOLD"] + 2
+        3,
+        test_domain.config["SNAPSHOT_THRESHOLD"]
+        + 2,  # Run one time more than threshold
     ):  # Start at 3 because we already have two events
         with UnitOfWork():
             user = repo.get(identifier)

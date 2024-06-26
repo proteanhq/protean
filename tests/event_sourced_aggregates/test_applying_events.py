@@ -6,7 +6,6 @@ import pytest
 from protean import BaseCommand, BaseEvent, BaseEventSourcedAggregate, apply
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
-from protean.utils.mixins import Message
 
 
 class UserStatus(Enum):
@@ -76,18 +75,15 @@ def test_applying_events():
     activated = UserActivated(user_id=identifier)
     renamed = UserRenamed(user_id=identifier, name="Jane Doe")
 
-    user = User.register(**registered.to_dict())
+    user = User.register(**registered.payload)
 
-    msg_registered = Message.to_aggregate_event_message(user, registered)
-    user._apply(msg_registered.to_dict())
+    user._apply(registered)
     assert user.status == UserStatus.INACTIVE.value
 
-    msg_activated = Message.to_aggregate_event_message(user, activated)
-    user._apply(msg_activated.to_dict())
+    user._apply(activated)
     assert user.status == UserStatus.ACTIVE.value
 
-    msg_renamed = Message.to_aggregate_event_message(user, renamed)
-    user._apply(msg_renamed.to_dict())
+    user._apply(renamed)
     assert user.name == "Jane Doe"
 
 

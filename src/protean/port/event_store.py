@@ -136,50 +136,63 @@ class BaseEventStore(metaclass=ABCMeta):
             Optional[BaseEventSourcedAggregate]: Return fully-formed aggregate when events exist,
                 or None.
         """
-        snapshot = self._read_last_message(
+        snapshot_message = self._read_last_message(
             f"{part_of.meta_.stream_name}:snapshot-{identifier}"
         )
 
-        if snapshot:
-            aggregate = part_of(**snapshot["data"])
-            position_in_snapshot = snapshot["data"]["_version"]
+        if snapshot_message:
+            # We have a snapshot, so initialize aggregate from snapshot
+            #   and apply subsequent events
+            aggregate = part_of(**snapshot_message["data"])
+            position_in_snapshot = aggregate._version
 
-            events = deque(
+            event_stream = deque(
                 self._read(
                     f"{part_of.meta_.stream_name}-{identifier}",
-                    position=position_in_snapshot + 1,
+                    position=aggregate._version + 1,
                 )
             )
-        else:
-            events = deque(self._read(f"{part_of.meta_.stream_name}-{identifier}"))
 
-            if not events:
+            events = []
+            for event_message in event_stream:
+                event = Message.from_dict(event_message).to_object()
+                aggregate._apply(event)
+        else:
+            # No snapshot, so initialize aggregate from events
+            event_stream = deque(
+                self._read(f"{part_of.meta_.stream_name}-{identifier}")
+            )
+
+            if not event_stream:
                 return None
 
-            # Handle first event separately to initialize the aggregate
-            first_event = events.popleft()
-            aggregate = part_of(**first_event["data"])
+            events = []
+            for event_message in event_stream:
+                events.append(Message.from_dict(event_message).to_object())
 
-            # Also apply the first event in case a method has been specified
-            aggregate._apply(first_event)
-            aggregate._version += 1
+            aggregate = part_of.from_events(events)
 
-        # Apply all other events one-by-one
-        for event in events:
-            aggregate._apply(event)
-            aggregate._version += 1
-
+        ####################################
+        # ADD SNAPSHOT IF BEYOND THRESHOLD #
+        ####################################
+        # FIXME Delay creating snapshot or push to a background process
         # If there are more events than SNAPSHOT_THRESHOLD, create a new snapshot
         if (
-            snapshot
-            and len(events) > 1
+            snapshot_message
+            and len(event_stream) > 1
             and (
-                events[-1]["position"] - position_in_snapshot
+                event_stream[-1]["position"] - position_in_snapshot
                 >= self.domain.config["SNAPSHOT_THRESHOLD"]
             )
         ) or (
-            not snapshot and len(events) + 1 >= self.domain.config["SNAPSHOT_THRESHOLD"]
-        ):  # Account for the first event that was popped
+            not snapshot_message
+            and len(event_stream) >= self.domain.config["SNAPSHOT_THRESHOLD"]
+        ):
+            # Snapshot is of type "SNAPSHOT" and contains only the aggregate's data
+            #   (no metadata, so no event type)
+            # This makes reconstruction of the aggregate from the snapshot easier,
+            #   and also avoids spurious data just to satisfy Metadata's structure
+            #   and conditions.
             self._write(
                 f"{part_of.meta_.stream_name}:snapshot-{identifier}",
                 "SNAPSHOT",

@@ -42,7 +42,7 @@ def registered_user(test_domain):
     identifier = str(uuid4())
 
     event1 = Registered(id=identifier, email="john.doe@example.com")
-    user = User(**event1.to_dict())
+    user = User(**event1.payload)
     test_domain.event_store.store.append_aggregate_event(user, event1)
 
     return user

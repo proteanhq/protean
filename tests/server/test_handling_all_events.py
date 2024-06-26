@@ -61,12 +61,12 @@ async def test_that_any_message_can_be_handled_with_any_handler(test_domain):
         name="John Doe",
         password_hash="hash",
     )
-    user = User(**registered.to_dict())
+    user = User(**registered.payload)
     message1 = Message.to_aggregate_event_message(user, registered)
 
     post_identifier = str(uuid4())
     created = Created(id=post_identifier, topic="Foo", content="Bar")
-    post = Post(**created.to_dict())
+    post = Post(**created.payload)
     test_domain.event_store.store.append_aggregate_event(post, created)
     message2 = Message.to_aggregate_event_message(post, created)
 

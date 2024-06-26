@@ -9,16 +9,12 @@ from protean import (
     BaseCommandHandler,
     BaseEvent,
     BaseEventSourcedAggregate,
+    apply,
     handle,
 )
 from protean.fields import Identifier, String
 from protean.globals import current_domain
 from protean.utils import fqn
-
-
-class User(BaseEventSourcedAggregate):
-    name = String()
-    email = String()
 
 
 class Register(BaseCommand):
@@ -38,6 +34,19 @@ class Registered(BaseEvent):
 class Renamed(BaseEvent):
     id = Identifier()
     name = String()
+
+
+class User(BaseEventSourcedAggregate):
+    name = String()
+    email = String()
+
+    @apply
+    def registered(self, event: Registered) -> None:
+        self.email = event.email
+
+    @apply
+    def renamed(self, event: Renamed) -> None:
+        self.name = event.name
 
 
 class UserCommandHandler(BaseCommandHandler):

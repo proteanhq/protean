@@ -3,7 +3,7 @@ import inspect
 import logging
 import typing
 from collections import defaultdict
-from typing import Dict
+from typing import List
 
 from protean.container import BaseContainer, EventedMixin, IdentityMixin, OptionsMixin
 from protean.core.event import BaseEvent
@@ -84,20 +84,38 @@ class BaseEventSourcedAggregate(
         # FIXME Add Object Class Type to hash
         return hash(getattr(self, id_field(self).field_name))
 
-    def _apply(self, event_dict: Dict) -> None:
+    def _apply(self, event: BaseEvent) -> None:
         """Apply the event onto the aggregate by calling the appropriate projection.
 
         Args:
             event (BaseEvent): Event object to apply
         """
         # FIXME Handle case of missing projection
-        for fn in self._projections[event_dict["type"]]:
-            # Reconstruct Event object
-            event_cls = self._events_cls_map[event_dict["type"]]
-            event = event_cls(**event_dict["data"])
+        event_name = fully_qualified_name(event.__class__)
 
+        # FIXME Handle case of missing projection method
+        if event_name not in self._projections:
+            raise NotImplementedError(
+                f"No handler registered for event {event_name} in {self.__class__.__name__}"
+            )
+
+        for fn in self._projections[event_name]:
             # Call event handler method
             fn(self, event)
+            self._version += 1
+
+    @classmethod
+    def from_events(cls, events: List[BaseEvent]) -> "BaseEventSourcedAggregate":
+        """Reconstruct an aggregate from a list of events."""
+        # Initialize the aggregate with the first event's payload and apply it
+        aggregate = cls(**events[0].payload)
+        aggregate._apply(events[0])
+
+        # Apply the rest of the events
+        for event in events[1:]:
+            aggregate._apply(event)
+
+        return aggregate
 
 
 def apply(fn):
