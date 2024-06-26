@@ -27,6 +27,10 @@ class TestDomainEventDefinition:
         assert event.email_address == "john.doe@gmail.com"
 
         assert event.to_dict() == {
+            "_metadata": {
+                "kind": "EVENT",
+                "timestamp": str(event._metadata.timestamp),
+            },
             "email": {
                 "address": "john.doe@gmail.com",
             },

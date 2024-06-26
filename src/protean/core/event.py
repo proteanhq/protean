@@ -1,12 +1,19 @@
 import logging
+from datetime import datetime, timezone
 
 from protean.container import BaseContainer, OptionsMixin
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.fields import Field
-from protean.reflection import _ID_FIELD_NAME, declared_fields
+from protean.fields import DateTime, Field, String, ValueObject
+from protean.reflection import _ID_FIELD_NAME, declared_fields, fields
 from protean.utils import DomainObjects, derive_element_class
 
 logger = logging.getLogger(__name__)
+
+
+class Metadata(BaseValueObject):
+    kind = String(default="EVENT")
+    timestamp = DateTime(default=lambda: datetime.now(timezone.utc))
 
 
 class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
@@ -22,6 +29,9 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         if cls is BaseEvent:
             raise NotSupportedError("BaseEvent cannot be instantiated")
         return super().__new__(cls)
+
+    # Track Metadata
+    _metadata = ValueObject(Metadata, default=lambda: Metadata())
 
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()
@@ -79,6 +89,22 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         except StopIteration:
             # No Identity fields declared
             pass
+
+    @property
+    def payload(self):
+        """Return the payload of the event."""
+        return {
+            field_name: field_obj.as_dict(getattr(self, field_name, None))
+            for field_name, field_obj in fields(self).items()
+            if field_name not in {"_metadata"}
+        }
+
+    def __eq__(self, other) -> bool:
+        """Equivalence check based only on data."""
+        if type(other) is not type(self):
+            return False
+
+        return self.payload == other.payload
 
 
 def domain_event_factory(element_cls, **kwargs):

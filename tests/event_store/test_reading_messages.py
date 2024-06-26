@@ -61,7 +61,7 @@ def test_reading_a_message(test_domain):
 def test_reading_many_messages(test_domain):
     identifier = str(uuid4())
     event1 = Registered(id=identifier, email="john.doe@example.com")
-    user = User(**event1.to_dict())
+    user = User(**event1.payload)
     test_domain.event_store.store.append_aggregate_event(user, event1)
 
     event2 = Activated(id=identifier)
@@ -81,7 +81,7 @@ def test_reading_many_messages(test_domain):
 def test_limiting_no_of_messages(test_domain):
     identifier = str(uuid4())
     event1 = Registered(id=identifier, email="john.doe@example.com")
-    user = User(**event1.to_dict())
+    user = User(**event1.payload)
     test_domain.event_store.store.append_aggregate_event(user, event1)
 
     event2 = Activated(id=identifier)
@@ -104,7 +104,7 @@ def test_limiting_no_of_messages(test_domain):
 def test_reading_messages_from_position(test_domain):
     identifier = str(uuid4())
     event1 = Registered(id=identifier, email="john.doe@example.com")
-    user = User(**event1.to_dict())
+    user = User(**event1.payload)
     test_domain.event_store.store.append_aggregate_event(user, event1)
 
     event2 = Activated(id=identifier)
@@ -124,7 +124,7 @@ def test_reading_messages_from_position(test_domain):
 def test_reading_messages_from_position_with_limit(test_domain):
     identifier = str(uuid4())
     event1 = Registered(id=identifier, email="john.doe@example.com")
-    user = User(**event1.to_dict())
+    user = User(**event1.payload)
     test_domain.event_store.store.append_aggregate_event(user, event1)
 
     event2 = Activated(id=identifier)
@@ -146,7 +146,7 @@ def test_reading_messages_from_position_with_limit(test_domain):
 def test_reading_messages_by_category(test_domain):
     identifier = str(uuid4())
     event1 = Registered(id=identifier, email="john.doe@example.com")
-    user = User(**event1.to_dict())
+    user = User(**event1.payload)
     test_domain.event_store.store.append_aggregate_event(user, event1)
 
     event2 = Activated(id=identifier)
@@ -166,7 +166,7 @@ def test_reading_messages_by_category(test_domain):
 def test_reading_last_message(test_domain):
     identifier = str(uuid4())
     event1 = Registered(id=identifier, email="john.doe@example.com")
-    user = User(**event1.to_dict())
+    user = User(**event1.payload)
     test_domain.event_store.store.append_aggregate_event(user, event1)
 
     event2 = Activated(id=identifier)

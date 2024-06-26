@@ -212,5 +212,3 @@ nav:
   - Community: 
     - community/index.md
     - community/contributing.md
-extra_css:
-  - stylesheets/extra.css

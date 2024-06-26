@@ -50,7 +50,7 @@ def register(test_domain):
 def test_construct_message_from_event(test_domain):
     identifier = str(uuid4())
     event = Registered(id=identifier, email="john.doe@gmail.com", name="John Doe")
-    user = User(**event.to_dict())
+    user = User(**event.payload)
 
     # This simulates the call by UnitOfWork
     message = Message.to_aggregate_event_message(user, event)

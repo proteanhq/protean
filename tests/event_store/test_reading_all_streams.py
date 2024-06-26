@@ -48,7 +48,7 @@ class Published(BaseEvent):
 def test_reading_messages_from_all_streams(test_domain):
     user_identifier = str(uuid4())
     event1 = Registered(id=user_identifier, email="john.doe@example.com")
-    user = User(**event1.to_dict())
+    user = User(**event1.payload)
     test_domain.event_store.store.append_aggregate_event(user, event1)
 
     event2 = Activated(id=user_identifier)
@@ -59,7 +59,7 @@ def test_reading_messages_from_all_streams(test_domain):
 
     post_identifier = str(uuid4())
     event4 = Created(id=post_identifier, topic="Foo", content="Bar")
-    post = Post(**event4.to_dict())
+    post = Post(**event4.payload)
     test_domain.event_store.store.append_aggregate_event(post, event4)
 
     event5 = Published(id=post_identifier)

@@ -21,6 +21,18 @@ from protean.utils import utcnow_func
 published_count = 0
 
 
+class Create(BaseCommand):
+    id = Identifier(identifier=True)
+    topic = String()
+    content = Text()
+
+
+class Created(BaseEvent):
+    id = Identifier(identifier=True)
+    topic = String()
+    content = Text()
+
+
 class Published(BaseEvent):
     id = Identifier(required=True)
     published_time = DateTime(default=utcnow_func)
@@ -43,20 +55,13 @@ class Post(BaseEventSourcedAggregate):
             self.raise_(Published(id=self.id))
 
     @apply
+    def created(self, event: Created):
+        self.topic = event.topic
+        self.content = event.content
+
+    @apply
     def mark_published(self, _: Published) -> None:
         self.is_published = True
-
-
-class Create(BaseCommand):
-    id = Identifier(identifier=True)
-    topic = String()
-    content = Text()
-
-
-class Created(BaseEvent):
-    id = Identifier(identifier=True)
-    topic = String()
-    content = Text()
 
 
 class PostCommandHandler(BaseCommandHandler):
