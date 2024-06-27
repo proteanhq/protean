@@ -23,7 +23,10 @@ def test_raising_event(test_domain):
     test_domain.register(UserLoggedIn, stream_name="authentication")
 
     identifier = str(uuid4())
-    test_domain.raise_(UserLoggedIn(user_id=identifier))
+    user = User(id=identifier, email="test@example.com", name="Test User")
+    user.raise_(UserLoggedIn(user_id=identifier))
+
+    test_domain.repository_for(User).add(user)
 
     messages = test_domain.event_store.store.read("authentication")
 

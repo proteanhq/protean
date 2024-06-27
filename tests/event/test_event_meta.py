@@ -1,5 +1,3 @@
-from uuid import uuid4
-
 import pytest
 
 from protean import BaseEvent, BaseEventSourcedAggregate
@@ -34,22 +32,6 @@ def test_event_definition_without_aggregate_or_stream(test_domain):
             "Event `UserLoggedIn` needs to be associated with an aggregate or a stream"
         ]
     }
-
-
-def test_event_definition_with_just_part_of(test_domain):
-    try:
-        identifier = str(uuid4())
-        test_domain.raise_(UserLoggedIn(user_id=identifier))
-    except IncorrectUsageError:
-        pytest.fail("Failed raising event when associated with Aggregate")
-
-
-def test_event_definition_with_just_stream(test_domain):
-    try:
-        identifier = str(uuid4())
-        test_domain.raise_(UserLoggedIn(user_id=identifier))
-    except IncorrectUsageError:
-        pytest.fail("Failed raising event when associated with Stream")
 
 
 def test_that_abstract_events_can_be_defined_without_aggregate_or_stream(test_domain):
