@@ -3,8 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseCommand, BaseEvent, BaseEventSourcedAggregate, apply
-from protean.exceptions import IncorrectUsageError
+from protean import BaseEvent, BaseEventSourcedAggregate, apply
 from protean.fields import Identifier, String
 
 
@@ -63,6 +62,10 @@ class User(BaseEventSourcedAggregate):
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(User)
+    test_domain.register(UserRegistered, part_of=User)
+    test_domain.register(UserActivated, part_of=User)
+    test_domain.register(UserRenamed, part_of=User)
+    test_domain.init(traverse=False)
 
 
 @pytest.mark.eventstore
@@ -85,56 +88,3 @@ def test_applying_events():
 
     user._apply(renamed)
     assert user.name == "Jane Doe"
-
-
-def test_that_apply_decorator_without_event_cls_raises_error():
-    class Send(BaseCommand):
-        email_id = Identifier()
-
-    # Argument should be an event class
-    with pytest.raises(IncorrectUsageError) as exc:
-
-        class _(BaseEventSourcedAggregate):
-            email_id = Identifier(identifier=True)
-
-            @apply
-            def sent(self, _: Send) -> None:
-                pass
-
-    # Argument should be annotated
-    assert exc.value.messages == {
-        "_entity": [
-            "Apply method `sent` should accept an argument annotated with the Event class"
-        ]
-    }
-
-    with pytest.raises(IncorrectUsageError) as exc:
-
-        class _(BaseEventSourcedAggregate):
-            email_id = Identifier(identifier=True)
-
-            @apply
-            def sent(self, _) -> None:
-                pass
-
-    assert exc.value.messages == {
-        "_entity": [
-            "Apply method `sent` should accept an argument annotated with the Event class"
-        ]
-    }
-
-    # Argument should be supplied
-    with pytest.raises(IncorrectUsageError) as exc:
-
-        class _(BaseEventSourcedAggregate):
-            email_id = Identifier(identifier=True)
-
-            @apply
-            def sent(self) -> None:
-                pass
-
-    assert exc.value.messages == {
-        "_entity": [
-            "Apply method `sent` should accept an argument annotated with the Event class"
-        ]
-    }

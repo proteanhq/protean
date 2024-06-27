@@ -96,7 +96,7 @@ class BaseEventSourcedAggregate(
         # FIXME Handle case of missing projection method
         if event_name not in self._projections:
             raise NotImplementedError(
-                f"No handler registered for event {event_name} in {self.__class__.__name__}"
+                f"No handler registered for event `{event_name}` in `{self.__class__.__name__}`"
             )
 
         for fn in self._projections[event_name]:
@@ -125,7 +125,7 @@ def apply(fn):
         raise IncorrectUsageError(
             {
                 "_entity": [
-                    f"Apply method {fn.__name__} has incorrect number of arguments"
+                    f"Handler method `{fn.__name__}` has incorrect number of arguments"
                 ]
             }
         )
@@ -183,9 +183,6 @@ def event_sourced_aggregate_factory(element_cls, **opts):
             #
             #   The domain validation should check for the same event class being present
             #   in `_events_cls_map` of multiple aggregate classes.
-            if inspect.isclass(method._event_cls) and issubclass(
-                method._event_cls, BaseEvent
-            ):
-                method._event_cls.meta_.part_of = element_cls
+            method._event_cls.meta_.part_of = element_cls
 
     return element_cls

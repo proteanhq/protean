@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class Metadata(BaseValueObject):
     kind = String(default="EVENT")
     timestamp = DateTime(default=lambda: datetime.now(timezone.utc))
+    version = String(default="v1")
 
 
 class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
@@ -89,6 +90,18 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         except StopIteration:
             # No Identity fields declared
             pass
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, finalize=False, **kwargs)
+
+        if hasattr(self.__class__, "__version__"):
+            # Value Objects are immutable, so we create a clone/copy and associate it
+            self._metadata = Metadata(
+                self._metadata.to_dict(), version=self.__class__.__version__
+            )
+
+        # Finally lock the event and make it immutable
+        self._initialized = True
 
     @property
     def payload(self):

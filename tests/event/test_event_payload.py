@@ -38,6 +38,7 @@ def test_event_payload():
         "_metadata": {
             "kind": "EVENT",
             "timestamp": str(event._metadata.timestamp),
+            "version": "v1",
         },
         "user_id": event.user_id,
     }
