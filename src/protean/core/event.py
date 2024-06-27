@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from protean.container import BaseContainer, OptionsMixin
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.fields import DateTime, Field, String, ValueObject
+from protean.fields import DateTime, Field, Integer, String, ValueObject
 from protean.reflection import _ID_FIELD_NAME, declared_fields, fields
 from protean.utils import DomainObjects, derive_element_class
 
@@ -12,9 +12,21 @@ logger = logging.getLogger(__name__)
 
 
 class Metadata(BaseValueObject):
-    kind = String(default="EVENT")
+    # Unique identifier of the Event
+    # Format is <domain-name>.<event-class-name>.<event-version>.<aggregate-id>.<aggregate-version>
+    id = String()
+
+    # Time of event generation
     timestamp = DateTime(default=lambda: datetime.now(timezone.utc))
+
+    # Version of the event
+    # Can be overridden with `__version__` class attr in Event class definition
     version = String(default="v1")
+
+    # Sequence of the event in the aggregate
+    # This is the version of the aggregate *after* the time of event generation,
+    #   so it will always be one more than the version in the event store.
+    sequence_id = Integer()
 
 
 class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin

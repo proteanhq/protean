@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -39,16 +39,14 @@ def test_event_has_metadata_value_object():
 def test_metadata_defaults():
     event = UserLoggedIn(user_id=str(uuid4()))
     assert event._metadata is not None
-    assert event._metadata.kind == "EVENT"
     assert isinstance(event._metadata.timestamp, datetime)
 
 
 def test_metadata_can_be_overridden():
-    # Setting `kind` breaks the system elsewhere, but suffices for this test
-    event = UserLoggedIn(user_id=str(uuid4()), _metadata={"kind": "FOO"})
+    now_timestamp = datetime.now() - timedelta(hours=1)
+    event = UserLoggedIn(user_id=str(uuid4()), _metadata={"timestamp": now_timestamp})
     assert event._metadata is not None
-    assert event._metadata.kind == "FOO"
-    assert isinstance(event._metadata.timestamp, datetime)
+    assert event._metadata.timestamp == now_timestamp
 
 
 class TestEventMetadataVersion:
@@ -80,15 +78,15 @@ def test_event_metadata():
     event = user._events[0]
     assert event._metadata is not None
 
-    assert event._metadata.kind == "EVENT"
     assert isinstance(event._metadata.timestamp, datetime)
-    # assert event._metadata.id == f"test.user.v1.{user.user_id}.1"
+    assert event._metadata.id == f"Test.User.v1.{user.id}.0"
 
     assert event.to_dict() == {
         "_metadata": {
-            "kind": "EVENT",
+            "id": f"Test.User.v1.{user.id}.0",
             "timestamp": str(event._metadata.timestamp),
             "version": "v1",
+            "sequence_id": 0,
         },
         "user_id": event.user_id,
     }

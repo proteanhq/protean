@@ -12,6 +12,8 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.fields import Auto, Field, FieldBase, ValueObject
+from protean.globals import current_domain
+from protean.reflection import id_field
 from protean.utils import generate_identity
 
 from .reflection import _FIELDS, _ID_FIELD_NAME, attributes, declared_fields, fields
@@ -366,7 +368,29 @@ class EventedMixin:
         self._events = []
 
     def raise_(self, event) -> None:
-        self._events.append(event)
+        """Raise an event in the aggregate cluster.
+
+        The version of the aggregate is incremented with every event raised, which is true
+        in the case of Event Sourced Aggregates.
+
+        Event is immutable, so we clone a new event object from the event raised,
+        and add the enhanced metadata to it.
+        """
+        self._version += 1
+
+        identifier = getattr(self, id_field(self).field_name)
+
+        event_with_metadata = event.__class__(
+            event.to_dict(),
+            _metadata={
+                "id": f"{current_domain.name}.{self.__class__.__name__}.{event._metadata.version}.{identifier}.{self._version}",
+                "timestamp": event._metadata.timestamp,
+                "version": event._metadata.version,
+                "sequence_id": self._version,
+            },
+        )
+
+        self._events.append(event_with_metadata)
 
 
 class IdentityMixin:

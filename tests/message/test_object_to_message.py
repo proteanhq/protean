@@ -49,11 +49,11 @@ def register(test_domain):
 
 def test_construct_message_from_event(test_domain):
     identifier = str(uuid4())
-    event = Registered(id=identifier, email="john.doe@gmail.com", name="John Doe")
-    user = User(**event.payload)
+    user = User(id=identifier, email="john.doe@example.com", name="John Doe")
+    user.raise_(Registered(id=identifier, email="john.doe@gmail.com", name="John Doe"))
 
     # This simulates the call by UnitOfWork
-    message = Message.to_aggregate_event_message(user, event)
+    message = Message.to_aggregate_event_message(user, user._events[-1])
 
     assert message is not None
     assert type(message) is Message
@@ -63,9 +63,9 @@ def test_construct_message_from_event(test_domain):
     assert message.stream_name == f"{User.meta_.stream_name}-{identifier}"
     assert message.metadata.kind == "EVENT"
     assert message.metadata.owner == test_domain.name
-    assert message.data == event.to_dict()
+    assert message.data == user._events[-1].to_dict()
     assert message.time is None
-    assert message.expected_version == user._version
+    assert message.expected_version == user._version - 1
 
     # Verify Message Dict
     message_dict = message.to_dict()
@@ -74,9 +74,11 @@ def test_construct_message_from_event(test_domain):
     assert message_dict["metadata"]["kind"] == "EVENT"
     assert message_dict["metadata"]["owner"] == test_domain.name
     assert message_dict["stream_name"] == f"{User.meta_.stream_name}-{identifier}"
-    assert message_dict["data"] == event.to_dict()
+    assert message_dict["data"] == user._events[-1].to_dict()
     assert message_dict["time"] is None
-    assert message_dict["expected_version"] == user._version
+    assert (
+        message_dict["expected_version"] == user._version - 1
+    )  # Expected version is always one less than current
 
 
 def test_construct_message_from_command(test_domain):

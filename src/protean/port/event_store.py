@@ -100,10 +100,6 @@ class BaseEventStore(metaclass=ABCMeta):
             expected_version=message.expected_version,
         )
 
-        # Increment aggregate's version as we process events
-        #    to correctly handle expected version
-        aggregate._version += 1
-
         return position
 
     def append(self, object: Union[BaseEvent, BaseCommand]) -> int:

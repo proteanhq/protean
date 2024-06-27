@@ -55,20 +55,32 @@ async def test_that_any_message_can_be_handled_with_any_handler(test_domain):
     test_domain.register(SystemMetrics, stream_name="$all")
 
     identifier = str(uuid4())
-    registered = Registered(
+    user = User(
         id=identifier,
         email="john.doe@example.com",
         name="John Doe",
         password_hash="hash",
     )
-    user = User(**registered.payload)
-    message1 = Message.to_aggregate_event_message(user, registered)
+    user.raise_(
+        Registered(
+            id=identifier,
+            email="john.doe@example.com",
+            name="John Doe",
+            password_hash="hash",
+        )
+    )
+    message1 = Message.to_aggregate_event_message(user, user._events[-1])
 
     post_identifier = str(uuid4())
-    created = Created(id=post_identifier, topic="Foo", content="Bar")
-    post = Post(**created.payload)
-    test_domain.event_store.store.append_aggregate_event(post, created)
-    message2 = Message.to_aggregate_event_message(post, created)
+    post = Post(
+        id=post_identifier,
+        topic="Foo",
+        content="Bar",
+    )
+    post.raise_(Created(id=post_identifier, topic="Foo", content="Bar"))
+
+    test_domain.event_store.store.append_aggregate_event(post, post._events[-1])
+    message2 = Message.to_aggregate_event_message(post, post._events[-1])
 
     engine = Engine(domain=test_domain, test_mode=True)
     await engine.handle_message(SystemMetrics, message1)

@@ -79,17 +79,14 @@ async def test_no_filtering_for_event_handlers_without_defined_origin_stream(
     user = User(id=identifier, email="john.doe@gmail.com", name="John Doe")
     email = Email(id=identifier, email="john.doe@gmail.com")
 
-    # Construct 3 dummy messages
+    user.raise_(Registered(id=identifier, email="john.doe@gmail.com", name="John Doe"))
+    user.raise_(Activated(id=identifier, activated_at=datetime.now(UTC)))
+    email.raise_(Sent(email="john.doe@gmail.com", sent_at=datetime.now(UTC)))
+    # Construct 3 dummy messages and modify Sent message to have originated from the user stream
     messages = [
-        Message.to_aggregate_event_message(
-            user, Registered(id=identifier, email="john.doe@gmail.com", name="John Doe")
-        ),
-        Message.to_aggregate_event_message(
-            user, Activated(id=identifier, activated_at=datetime.now(UTC))
-        ),
-        Message.to_aggregate_event_message(
-            email, Sent(email="john.doe@gmail.com", sent_at=datetime.now(UTC))
-        ),
+        Message.to_aggregate_event_message(user, user._events[0]),
+        Message.to_aggregate_event_message(user, user._events[1]),
+        Message.to_aggregate_event_message(email, email._events[0]),
     ]
 
     messages[2].metadata = MessageMetadata(
