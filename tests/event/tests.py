@@ -33,7 +33,8 @@ class TestDomainEventDefinition:
                     "id": None,  # ID is none because the event is not being raised in the proper way (with `_raise`)
                     "timestamp": str(event._metadata.timestamp),
                     "version": "v1",
-                    "sequence_id": None,  # Sequence is unknown because event is not being raised as part of an aggregate
+                    "sequence_id": None,  # Sequence is unknown as event is not being raised as part of an aggregate
+                    "payload_hash": event._metadata.payload_hash,
                 },
                 "email": {
                     "address": "john.doe@gmail.com",
@@ -96,12 +97,13 @@ class TestDomainEventEquivalence:
     def test_that_two_domain_events_with_different_values_are_not_considered_equal(
         self,
     ):
-        identifier = uuid.uuid4()
+        person1 = Person(id=uuid.uuid4(), first_name="John", last_name="Doe")
+        person1.raise_(PersonAdded(id=person1.id, first_name="John", last_name="Doe"))
 
-        event_1 = PersonAdded(id=identifier, first_name="John", last_name="Doe")
-        event_2 = PersonAdded(id=identifier, first_name="Jane", last_name="Doe")
+        person2 = Person(id=uuid.uuid4(), first_name="Jane", last_name="Doe")
+        person2.raise_(PersonAdded(id=person2.id, first_name="Jane", last_name="Doe"))
 
-        assert event_1 != event_2
+        assert person1._events[0] != person2._events[0]
 
     def test_that_two_domain_events_with_different_values_are_not_considered_equal_with_different_types(
         self,

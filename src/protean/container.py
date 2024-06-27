@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import inspect
+import json
 import logging
 from collections import defaultdict
 from typing import Any, Type, Union
@@ -383,10 +384,19 @@ class EventedMixin:
         event_with_metadata = event.__class__(
             event.to_dict(),
             _metadata={
-                "id": f"{current_domain.name}.{self.__class__.__name__}.{event._metadata.version}.{identifier}.{self._version}",
+                "id": (
+                    f"{current_domain.name}.{self.__class__.__name__}.{event._metadata.version}"
+                    f".{identifier}.{self._version}"
+                ),
                 "timestamp": event._metadata.timestamp,
                 "version": event._metadata.version,
                 "sequence_id": self._version,
+                "payload_hash": hash(
+                    json.dumps(
+                        event.payload,
+                        sort_keys=True,
+                    )
+                ),
             },
         )
 
