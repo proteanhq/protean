@@ -101,14 +101,14 @@ def test_origin_stream_name_in_aggregate_event_from_command_without_origin_strea
         email="john.doe@gmail.com",
         name="John Doe",
     )
-    event_message = Message.to_aggregate_event_message(
-        user,
-        Register(
+    user.raise_(
+        Registered(
             user_id=user_id,
             email="john.doe@gmail.com",
             name="John Doe",
-        ),
+        )
     )
+    event_message = Message.to_aggregate_event_message(user, user._events[-1])
 
     assert event_message.metadata.origin_stream_name is None
 
@@ -128,14 +128,14 @@ def test_origin_stream_name_in_aggregate_event_from_command_with_origin_stream_n
         email="john.doe@gmail.com",
         name="John Doe",
     )
-    event_message = Message.to_aggregate_event_message(
-        user,
-        Register(
+    user.raise_(
+        Registered(
             user_id=user_id,
             email="john.doe@gmail.com",
             name="John Doe",
-        ),
+        )
     )
+    event_message = Message.to_aggregate_event_message(user, user._events[-1])
 
     assert event_message.metadata.origin_stream_name == "foo"
 

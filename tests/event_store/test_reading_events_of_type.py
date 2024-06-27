@@ -13,10 +13,25 @@ class User(BaseEventSourcedAggregate):
     email = String()
     name = String(max_length=50)
 
+    @classmethod
+    def register(cls, id, email, name):
+        user = User(id=id, email=email, name=name)
+        user.raise_(Registered(id=id, email=email, name=name))
+
+        return user
+
+    def activate(self):
+        self.raise_(Activated(id=self.id))
+
+    def rename(self, name):
+        self.name = name
+        self.raise_(Renamed(id=self.id, name=name))
+
 
 class Registered(BaseEvent):
     id = Identifier()
     email = String()
+    name = String()
 
 
 class Activated(BaseEvent):
@@ -41,9 +56,8 @@ def register_elements(test_domain):
 def registered_user(test_domain):
     identifier = str(uuid4())
 
-    event1 = Registered(id=identifier, email="john.doe@example.com")
-    user = User(**event1.payload)
-    test_domain.event_store.store.append_aggregate_event(user, event1)
+    user = User.register(id=identifier, email="john.doe@example.com", name="John Doe")
+    test_domain.event_store.store.append_aggregate_event(user, user._events[0])
 
     return user
 
@@ -57,60 +71,46 @@ def test_reading_events_of_type_with_just_one_message(test_domain, registered_us
 
 @pytest.mark.eventstore
 def test_reading_events_of_type_with_other_events_present(test_domain, registered_user):
+    registered_user.activate()
     test_domain.event_store.store.append_aggregate_event(
-        registered_user, Activated(id=registered_user.id)
+        registered_user, registered_user._events[1]
     )
 
     assert isinstance(test_domain.event_store.events_of_type(Registered)[0], Registered)
     assert isinstance(test_domain.event_store.events_of_type(Activated)[0], Activated)
 
 
-@pytest.mark.eventstore
-def test_reading_events_of_type_with_multiple_events(test_domain, registered_user):
-    test_domain.event_store.store.append_aggregate_event(
-        registered_user, Activated(id=registered_user.id)
-    )
-
-    for i in range(10):
+class TestEventStoreEventsOfType:
+    @pytest.fixture(autouse=True)
+    def activate_and_rename(self, registered_user, test_domain):
+        registered_user.activate()
         test_domain.event_store.store.append_aggregate_event(
-            registered_user, Renamed(id=registered_user.id, name=f"John Doe {i}")
+            registered_user, registered_user._events[1]
         )
 
-    events = test_domain.event_store.events_of_type(Renamed)
-    assert len(events) == 10
-    assert events[-1].name == "John Doe 9"
+        for i in range(10):
+            registered_user.rename(name=f"John Doe {i}")
+            test_domain.event_store.store.append_aggregate_event(
+                registered_user, registered_user._events[-1]
+            )
 
+        yield
 
-@pytest.mark.eventstore
-def test_reading_events_of_type_with_multiple_events_in_stream(
-    test_domain, registered_user
-):
-    test_domain.event_store.store.append_aggregate_event(
-        registered_user, Activated(id=registered_user.id)
-    )
+    @pytest.mark.eventstore
+    def test_reading_events_of_type_with_multiple_events(self, test_domain):
+        events = test_domain.event_store.events_of_type(Renamed)
+        assert len(events) == 10
+        assert events[-1].name == "John Doe 9"
 
-    for i in range(10):
-        test_domain.event_store.store.append_aggregate_event(
-            registered_user, Renamed(id=registered_user.id, name=f"John Doe {i}")
-        )
+    @pytest.mark.eventstore
+    def test_reading_events_of_type_with_multiple_events_in_stream(self, test_domain):
+        events = test_domain.event_store.events_of_type(Renamed, "user")
+        assert len(events) == 10
+        assert events[-1].name == "John Doe 9"
 
-    events = test_domain.event_store.events_of_type(Renamed, "user")
-    assert len(events) == 10
-    assert events[-1].name == "John Doe 9"
-
-
-@pytest.mark.eventstore
-def test_reading_events_of_type_with_multiple_events_in_different_stream(
-    test_domain, registered_user
-):
-    test_domain.event_store.store.append_aggregate_event(
-        registered_user, Activated(id=registered_user.id)
-    )
-
-    for i in range(10):
-        test_domain.event_store.store.append_aggregate_event(
-            registered_user, Renamed(id=registered_user.id, name=f"John Doe {i}")
-        )
-
-    events = test_domain.event_store.events_of_type(Renamed, "group")
-    assert len(events) == 0
+    @pytest.mark.eventstore
+    def test_reading_events_of_type_with_multiple_events_in_different_stream(
+        self, test_domain
+    ):
+        events = test_domain.event_store.events_of_type(Renamed, "group")
+        assert len(events) == 0

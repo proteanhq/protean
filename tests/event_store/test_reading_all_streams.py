@@ -13,10 +13,25 @@ class User(BaseEventSourcedAggregate):
     email = String()
     name = String(max_length=50)
 
+    @classmethod
+    def register(cls, id, email, name):
+        user = User(id=id, email=email, name=name)
+        user.raise_(Registered(id=id, email=email, name=name))
+
+        return user
+
+    def activate(self):
+        self.raise_(Activated(id=self.id))
+
+    def rename(self, name):
+        self.name = name
+        self.raise_(Renamed(id=self.id, name=name))
+
 
 class Registered(BaseEvent):
     id = Identifier()
     email = String()
+    name = String()
 
 
 class Activated(BaseEvent):
@@ -31,6 +46,16 @@ class Renamed(BaseEvent):
 class Post(BaseEventSourcedAggregate):
     topic = String()
     content = Text()
+
+    @classmethod
+    def create(self, id, topic, content):
+        post = Post(id=id, topic=topic, content=content)
+        post.raise_(Created(id=id, topic=topic, content=content))
+
+        return post
+
+    def publish(self):
+        self.raise_(Published(id=self.id))
 
 
 class Created(BaseEvent):
@@ -47,23 +72,23 @@ class Published(BaseEvent):
 @pytest.mark.eventstore
 def test_reading_messages_from_all_streams(test_domain):
     user_identifier = str(uuid4())
-    event1 = Registered(id=user_identifier, email="john.doe@example.com")
-    user = User(**event1.payload)
-    test_domain.event_store.store.append_aggregate_event(user, event1)
+    user = User.register(
+        id=user_identifier, email="john.doe@example.com", name="John Doe"
+    )
+    test_domain.event_store.store.append_aggregate_event(user, user._events[0])
 
-    event2 = Activated(id=user_identifier)
-    test_domain.event_store.store.append_aggregate_event(user, event2)
+    user.activate()
+    test_domain.event_store.store.append_aggregate_event(user, user._events[1])
 
-    event3 = Renamed(id=user_identifier, name="Jane Doe")
-    test_domain.event_store.store.append_aggregate_event(user, event3)
+    user.rename(name="Johnny Doe")
+    test_domain.event_store.store.append_aggregate_event(user, user._events[2])
 
     post_identifier = str(uuid4())
-    event4 = Created(id=post_identifier, topic="Foo", content="Bar")
-    post = Post(**event4.payload)
-    test_domain.event_store.store.append_aggregate_event(post, event4)
+    post = Post.create(id=post_identifier, topic="Foo", content="Bar")
+    test_domain.event_store.store.append_aggregate_event(post, post._events[0])
 
-    event5 = Published(id=post_identifier)
-    test_domain.event_store.store.append_aggregate_event(post, event5)
+    post.publish()
+    test_domain.event_store.store.append_aggregate_event(post, post._events[1])
 
     messages = test_domain.event_store.store.read("$all")
     assert len(messages) == 5

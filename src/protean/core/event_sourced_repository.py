@@ -31,6 +31,11 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         self._domain = domain
 
     def add(self, aggregate: BaseEventSourcedAggregate) -> None:
+        if aggregate is None:
+            raise IncorrectUsageError(
+                {"_entity": ["Aggregate object to persist is invalid"]}
+            )
+
         # `add` is typically invoked in handler methods in Command Handlers and Event Handlers, which are
         #   enclosed in a UoW automatically. Therefore, if there is a UoW in progress, we can assume
         #   that it is the active session. If not, we will start a new UoW and commit it after the operation

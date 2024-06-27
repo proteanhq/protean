@@ -7,7 +7,6 @@ import pytest
 
 from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
 from protean.fields import Identifier, String
-from protean.globals import current_domain
 from protean.server import Engine
 from protean.server.subscription import Subscription
 from protean.utils import TypeMatcher, fully_qualified_name
@@ -27,6 +26,15 @@ class User(BaseEventSourcedAggregate):
     email = String()
     name = String()
     password_hash = String()
+
+    @classmethod
+    def register(cls, id, email, name, password_hash):
+        user = User(id=id, email=email, name=name, password_hash=password_hash)
+        user.raise_(
+            Registered(id=id, email=email, name=name, password_hash=password_hash)
+        )
+
+        return user
 
 
 def count_up():
@@ -51,19 +59,13 @@ async def test_that_subscription_invokes_engine_handler_on_message(
     test_domain.register(UserEventHandler, part_of=User)
 
     identifier = str(uuid4())
-    user = User(
+    user = User.register(
         id=identifier,
         email="john.doe@example.com",
         name="John Doe",
         password_hash="hash",
     )
-    event = Registered(
-        id=identifier,
-        email="john.doe@example.com",
-        name="John Doe",
-        password_hash="hash",
-    )
-    current_domain.event_store.store.append_aggregate_event(user, event)
+    test_domain.repository_for(User).add(user)
 
     engine = Engine(test_domain, test_mode=True)
     subscription = Subscription(

@@ -97,12 +97,13 @@ async def test_write_position_after_interval(test_domain):
     sent_at = datetime.now(UTC)
     email = Email(id=str(uuid4()), email=email_address, sent_at=sent_at)
     event = Sent(email=email_address, sent_at=sent_at)
+    email.raise_(event)
 
     # ASSERT Initial state
     last_written_position = await email_event_handler_subscription.fetch_last_position()
     assert last_written_position == -1  # Default value
 
-    test_domain.event_store.store.append_aggregate_event(email, event)
+    test_domain.event_store.store.append_aggregate_event(email, email._events[0])
 
     await email_event_handler_subscription.tick()
 
@@ -113,7 +114,8 @@ async def test_write_position_after_interval(test_domain):
 
     # Populate 15 messages (5 more than default interval)
     for _ in range(15):
-        test_domain.event_store.store.append_aggregate_event(email, event)
+        email.raise_(event)
+        test_domain.event_store.store.append_aggregate_event(email, email._events[-1])
 
     await email_event_handler_subscription.tick()
     last_written_position = await email_event_handler_subscription.fetch_last_position()
@@ -147,7 +149,8 @@ async def test_that_positions_are_not_written_when_already_in_sync(test_domain):
 
     # Populate 15 messages (5 more than default interval)
     for _ in range(15):
-        test_domain.event_store.store.append_aggregate_event(email, event)
+        email.raise_(event)
+        test_domain.event_store.store.append_aggregate_event(email, email._events[-1])
 
     # Consume messages (By default, 10 messages per tick)
     await email_event_handler_subscription.tick()

@@ -45,18 +45,18 @@ def register(test_domain):
     test_domain.register(SendEmailCommand, part_of=SendEmail)
 
 
-def test_construct_event_from_message(test_domain):
+def test_construct_event_from_message():
     identifier = str(uuid4())
-    event = Registered(id=identifier, email="john.doe@gmail.com", name="John Doe")
-    user = User(**event.payload)
-    message = Message.to_aggregate_event_message(user, event)
+    user = User(id=identifier, email="john.doe@gmail.com", name="John Doe")
+    user.raise_(Registered(id=identifier, email="john.doe@gmail.com", name="John Doe"))
+    message = Message.to_aggregate_event_message(user, user._events[-1])
 
     reconstructed_event = message.to_object()
     assert isinstance(reconstructed_event, Registered)
     assert reconstructed_event.id == identifier
 
 
-def test_construct_command_from_message(test_domain):
+def test_construct_command_from_message():
     identifier = str(uuid4())
     command = Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
     message = Message.to_message(command)

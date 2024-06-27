@@ -49,13 +49,15 @@ async def test_handler_invocation(test_domain):
         name="John Doe",
         password_hash="hash",
     )
-    event = Registered(
-        id=identifier,
-        email="john.doe@example.com",
-        name="John Doe",
-        password_hash="hash",
+    user.raise_(
+        Registered(
+            id=identifier,
+            email="john.doe@example.com",
+            name="John Doe",
+            password_hash="hash",
+        )
     )
-    message = Message.to_aggregate_event_message(user, event)
+    message = Message.to_aggregate_event_message(user, user._events[-1])
 
     engine = Engine(domain=test_domain, test_mode=True)
     await engine.handle_message(UserEventHandler, message)

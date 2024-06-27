@@ -26,17 +26,21 @@ class TestDomainEventDefinition:
         assert event.email == Email(address="john.doe@gmail.com")
         assert event.email_address == "john.doe@gmail.com"
 
-        assert event.to_dict() == {
-            "_metadata": {
-                "kind": "EVENT",
-                "timestamp": str(event._metadata.timestamp),
-                "version": "v1",
-            },
-            "email": {
-                "address": "john.doe@gmail.com",
-            },
-            "name": "John Doe",
-        }
+        assert (
+            event.to_dict()
+            == {
+                "_metadata": {
+                    "id": None,  # ID is none because the event is not being raised in the proper way (with `_raise`)
+                    "timestamp": str(event._metadata.timestamp),
+                    "version": "v1",
+                    "sequence_id": None,  # Sequence is unknown because event is not being raised as part of an aggregate
+                },
+                "email": {
+                    "address": "john.doe@gmail.com",
+                },
+                "name": "John Doe",
+            }
+        )
 
     def test_that_domain_event_can_be_reconstructed_from_dict_enclosing_vo(self):
         class Email(BaseValueObject):

@@ -30,6 +30,20 @@ class User(BaseEventSourcedAggregate):
     name = String()
     status = String(default="INACTIVE")
 
+    @classmethod
+    def register(cls, id, email, name):
+        user = User(id=id, email=email, name=name)
+        user.raise_(Registered(id=id, email=email, name=name))
+
+        return user
+
+    def activate(self):
+        self.raise_(Activated(id=self.id))
+
+    def rename(self, name):
+        self.name = name
+        self.raise_(Renamed(id=self.id, name=name))
+
     @apply
     def registered(self, _: Registered) -> None:
         self.status = "INACTIVE"
@@ -55,9 +69,8 @@ def register_elements(test_domain):
 @pytest.mark.eventstore
 def test_appending_messages_to_aggregate(test_domain):
     identifier = str(uuid4())
-    event = Registered(id=identifier, email="john.doe@example.com")
-    user = User(id=identifier, email="john.doe@example.com")
-    test_domain.event_store.store.append_aggregate_event(user, event)
+    user = User.register(id=identifier, email="john.doe@example.com", name="John Doe")
+    test_domain.event_store.store.append_aggregate_event(user, user._events[0])
 
     messages = test_domain.event_store.store._read("user")
 
@@ -67,22 +80,20 @@ def test_appending_messages_to_aggregate(test_domain):
 @pytest.mark.eventstore
 def test_version_increment_on_new_event(test_domain):
     identifier = str(uuid4())
-    event1 = Registered(id=identifier, email="john.doe@example.com")
-
-    user = User(**event1.payload)
-    test_domain.event_store.store.append_aggregate_event(user, event1)
+    user = User.register(id=identifier, email="john.doe@example.com", name="John Doe")
+    test_domain.event_store.store.append_aggregate_event(user, user._events[0])
 
     events = test_domain.event_store.store._read(f"user-{identifier}")
     assert events[0]["position"] == 0
 
-    event2 = Activated(id=identifier)
-    test_domain.event_store.store.append_aggregate_event(user, event2)
+    user.activate()
+    test_domain.event_store.store.append_aggregate_event(user, user._events[1])
 
     events = test_domain.event_store.store._read(f"user-{identifier}")
     assert events[-1]["position"] == 1
 
-    event3 = Renamed(id=identifier, name="Jane Doe")
-    test_domain.event_store.store.append_aggregate_event(user, event3)
+    user.rename(name="John Doe 2")
+    test_domain.event_store.store.append_aggregate_event(user, user._events[2])
 
     events = test_domain.event_store.store._read(f"user-{identifier}")
     assert events[-1]["position"] == 2

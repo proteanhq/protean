@@ -27,23 +27,11 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
-def test_event_payload():
-    user_id = str(uuid4())
-    user = User(id=user_id, email="<EMAIL>", name="<NAME>")
-
+def test_event_is_generated_with_unique_id():
+    identifier = str(uuid4())
+    user = User(id=identifier, email="foo@bar.com", name="Foo Bar")
     user.login()
+
     event = user._events[0]
-
-    assert event.to_dict() == {
-        "_metadata": {
-            "id": f"Test.User.v1.{user_id}.0",
-            "timestamp": str(event._metadata.timestamp),
-            "version": "v1",
-            "sequence_id": 0,
-        },
-        "user_id": event.user_id,
-    }
-
-    assert event.payload == {
-        "user_id": event.user_id,
-    }
+    assert event._metadata.id == f"Test.User.v1.{identifier}.0"
+    assert event._metadata.sequence_id == 0
