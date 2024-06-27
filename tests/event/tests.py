@@ -30,6 +30,7 @@ class TestDomainEventDefinition:
             "_metadata": {
                 "kind": "EVENT",
                 "timestamp": str(event._metadata.timestamp),
+                "version": "v1",
             },
             "email": {
                 "address": "john.doe@gmail.com",
@@ -78,3 +79,38 @@ class TestDomainEventRegistration:
                 pass
 
         assert fully_qualified_name(AnnotatedDomainEvent) in test_domain.registry.events
+
+
+class TestDomainEventEquivalence:
+    def test_that_two_domain_events_with_same_values_are_considered_equal(self):
+        identifier = uuid.uuid4()
+        event_1 = PersonAdded(id=identifier, first_name="John", last_name="Doe")
+        event_2 = PersonAdded(id=identifier, first_name="John", last_name="Doe")
+
+        assert event_1 == event_2
+
+    def test_that_two_domain_events_with_different_values_are_not_considered_equal(
+        self,
+    ):
+        identifier = uuid.uuid4()
+
+        event_1 = PersonAdded(id=identifier, first_name="John", last_name="Doe")
+        event_2 = PersonAdded(id=identifier, first_name="Jane", last_name="Doe")
+
+        assert event_1 != event_2
+
+    def test_that_two_domain_events_with_different_values_are_not_considered_equal_with_different_types(
+        self,
+    ):
+        identifier = uuid.uuid4()
+
+        class User(Person):
+            pass
+
+        class UserAdded(PersonAdded):
+            pass
+
+        event_1 = PersonAdded(id=identifier, first_name="John", last_name="Doe")
+        event_2 = UserAdded(id=identifier, first_name="John", last_name="Doe")
+
+        assert event_1 != event_2

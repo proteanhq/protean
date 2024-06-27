@@ -187,6 +187,12 @@ class BaseContainer(metaclass=ContainerMeta):
         """
         self._initialized = False
 
+        # Flag to control if the container is marked initialized and immutable
+        #   Other elements, like BaseEvent, that subclass BaseContainer, will be
+        #   able to augment the initialization with their custom code, and then
+        #   mark the container as initialized.
+        self._finalize = kwargs.pop("finalize", True)
+
         if self.meta_.abstract is True:
             raise NotSupportedError(
                 f"{self.__class__.__name__} class has been marked abstract"
@@ -264,7 +270,8 @@ class BaseContainer(metaclass=ContainerMeta):
 
         self.defaults()
 
-        self._initialized = True
+        if self._finalize:
+            self._initialized = True
 
         # Raise any errors found during load
         if self.errors:
@@ -317,6 +324,7 @@ class BaseContainer(metaclass=ContainerMeta):
                 "_temp_cache",  # Temporary cache (Assocations) for storing data befor persisting
                 "_events",  # Temp placeholder for events raised by the entity
                 "_initialized",  # Flag to indicate if the entity has been initialized
+                "_finalize",  # Flag to indicate if the entity is to be finalized
                 "_root",  # Root entity in the hierarchy
                 "_owner",  # Owner entity in the hierarchy
                 "_disable_invariant_checks",  # Flag to disable invariant checks
