@@ -32,7 +32,7 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         return super().__new__(cls)
 
     # Track Metadata
-    _metadata = ValueObject(Metadata, default=lambda: Metadata())
+    _metadata = ValueObject(Metadata, default=lambda: Metadata())  # pragma: no cover
 
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()

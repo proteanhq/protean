@@ -1,6 +1,6 @@
 import logging
 
-from protean import BaseEventSourcedAggregate
+from protean import BaseEventSourcedAggregate, UnitOfWork
 from protean.container import Element, OptionsMixin
 from protean.exceptions import (
     IncorrectUsageError,
@@ -31,7 +31,21 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         self._domain = domain
 
     def add(self, aggregate: BaseEventSourcedAggregate) -> None:
-        current_uow._add_to_identity_map(aggregate)
+        # `add` is typically invoked in handler methods in Command Handlers and Event Handlers, which are
+        #   enclosed in a UoW automatically. Therefore, if there is a UoW in progress, we can assume
+        #   that it is the active session. If not, we will start a new UoW and commit it after the operation
+        #   is complete.
+        own_current_uow = None
+        if not (current_uow and current_uow.in_progress):
+            own_current_uow = UnitOfWork()
+            own_current_uow.start()
+
+        uow = current_uow or own_current_uow
+        uow._add_to_identity_map(aggregate)
+
+        # If we started a UnitOfWork, commit it now
+        if own_current_uow:
+            own_current_uow.commit()
 
     def get(self, identifier: Identifier) -> BaseEventSourcedAggregate:
         """Retrieve a fully-formed Aggregate from a stream of Events.

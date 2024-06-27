@@ -1,0 +1,37 @@
+import mock
+import pytest
+
+from protean import BaseEventSourcedAggregate
+from protean.fields import Identifier, String
+
+
+class User(BaseEventSourcedAggregate):
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
+
+
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(User)
+    test_domain.init(traverse=False)
+
+
+@mock.patch("protean.core.repository.UnitOfWork.start")
+@mock.patch("protean.core.repository.UnitOfWork.commit")
+def test_that_method_is_enclosed_in_uow(mock_commit, mock_start, test_domain):
+    mock_parent = mock.Mock()
+
+    mock_parent.attach_mock(mock_start, "m1")
+    mock_parent.attach_mock(mock_commit, "m2")
+
+    with test_domain.domain_context():
+        user = User(id=1, email="john.doe@example.com", name="John Doe")
+        test_domain.repository_for(User).add(user)
+
+    mock_parent.assert_has_calls(
+        [
+            mock.call.m1(),
+            mock.call.m2(),
+        ]
+    )

@@ -949,18 +949,6 @@ class Domain:
     ###################
     # Handling Events #
     ###################
-    def raise_(self, event: BaseEvent) -> None:
-        """Raise Domain Event in the stream specified in its options, or using the associated
-        aggregate's stream name.
-
-        Args:
-            event (BaseEvent): Event to record
-
-        Returns:
-            None: Returns nothing.
-        """
-        self.event_store.store.append(event)
-
     def handlers_for(self, event: BaseEvent) -> List[BaseEventHandler]:
         """Return Event Handlers listening to a specific event
 
