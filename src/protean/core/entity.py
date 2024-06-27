@@ -2,6 +2,7 @@
 
 import functools
 import inspect
+import json
 import logging
 from collections import defaultdict
 from functools import partial
@@ -10,6 +11,7 @@ from protean.container import BaseContainer, IdentityMixin, OptionsMixin
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Auto, HasMany, Reference, ValueObject
 from protean.fields.association import Association
+from protean.globals import current_domain
 from protean.reflection import _FIELDS, attributes, declared_fields, fields, id_field
 from protean.utils import (
     DomainObjects,
@@ -418,7 +420,36 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
 
         The event is always registered on the aggregate, irrespective of where
         it is raised in the entity cluster."""
-        self._root._events.append(event)
+
+        # We consider the version of the aggregate *after* persistence
+        new_version = self._root._version + 1
+
+        # This is just a counter to uniquely gather all events generated
+        #   in the same edit session
+        event_number = len(self._root._events) + 1
+
+        identifier = getattr(self, id_field(self).field_name)
+
+        event_with_metadata = event.__class__(
+            event.to_dict(),
+            _metadata={
+                "id": (
+                    f"{current_domain.name}.{self.__class__.__name__}.{event._metadata.version}"
+                    f".{identifier}.{new_version}.{event_number}"
+                ),
+                "timestamp": event._metadata.timestamp,
+                "version": event._metadata.version,
+                "sequence_id": f"{new_version}.{event_number}",
+                "payload_hash": hash(
+                    json.dumps(
+                        event.payload,
+                        sort_keys=True,
+                    )
+                ),
+            },
+        )
+
+        self._root._events.append(event_with_metadata)
 
     def __eq__(self, other):
         """Equivalence check to be based only on Identity"""

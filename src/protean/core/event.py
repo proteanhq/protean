@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -24,9 +25,16 @@ class Metadata(BaseValueObject):
     version = String(default="v1")
 
     # Sequence of the event in the aggregate
-    # This is the version of the aggregate *after* the time of event generation,
-    #   so it will always be one more than the version in the event store.
-    sequence_id = Integer()
+    # This is the version of the aggregate as it will be *after* persistence.
+    #
+    # For Event Sourced aggregates, sequence_id is the same as version (like "1").
+    # For Regular aggregates, sequence_id is `version`.`eventnumber` (like "0.1"). This is to
+    #   ensure that the ordering is possible even when multiple events are raised as past of
+    #   single update.
+    sequence_id = String()
+
+    # Hash of the payload
+    payload_hash = Integer()
 
 
 class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
@@ -129,7 +137,11 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         if type(other) is not type(self):
             return False
 
-        return self.payload == other.payload
+        return self._metadata.id == other._metadata.id
+
+    def __hash__(self) -> int:
+        """Hash based on data."""
+        return hash(json.dumps(self.payload, sort_keys=True))
 
 
 def domain_event_factory(element_cls, **kwargs):

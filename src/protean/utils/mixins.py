@@ -152,7 +152,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 # schema_version=event.meta_.version,  # FIXME Maintain version for event
             ),
             # Expect the previous version
-            expected_version=event._metadata.sequence_id - 1,
+            expected_version=int(event._metadata.sequence_id) - 1,
         )
 
     def to_object(self) -> Union[BaseEvent, BaseCommand]:

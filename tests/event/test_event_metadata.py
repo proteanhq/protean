@@ -86,7 +86,8 @@ def test_event_metadata():
             "id": f"Test.User.v1.{user.id}.0",
             "timestamp": str(event._metadata.timestamp),
             "version": "v1",
-            "sequence_id": 0,
+            "sequence_id": "0",
+            "payload_hash": event._metadata.payload_hash,
         },
         "user_id": event.user_id,
     }
