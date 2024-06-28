@@ -133,6 +133,17 @@ class BaseRepository(Element, OptionsMixin):
         ):
             self._dao.save(aggregate)
 
+            # If there are Fact Events associated with the Aggregate, raise them now
+            if aggregate.meta_.fact_events:
+                payload = aggregate.to_dict()
+
+                # Remove state attribute from the payload, as it is not needed for the Fact Event
+                payload.pop("state_", None)
+
+                # Construct and raise the Fact Event
+                fact_event = aggregate._fact_event_cls(**payload)
+                aggregate.raise_(fact_event)
+
         # If we started a UnitOfWork, commit it now
         if own_current_uow:
             own_current_uow.commit()

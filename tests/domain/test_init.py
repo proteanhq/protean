@@ -27,3 +27,10 @@ def test_domain_init_calls_resolve_references(test_domain):
     test_domain._resolve_references = mock_resolve_references
     test_domain.init(traverse=False)
     mock_resolve_references.assert_called_once()
+
+
+def test_domain_init_constructs_fact_events(test_domain):
+    mock_generate_fact_event_classes = mock.Mock()
+    test_domain._generate_fact_event_classes = mock_generate_fact_event_classes
+    test_domain.init(traverse=False)
+    mock_generate_fact_event_classes.assert_called_once()

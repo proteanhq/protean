@@ -84,12 +84,14 @@ class TestReferenceFieldAssociation:
     def test_fetch_after_save_and_ensure_reference_is_not_auto_loaded(
         self, test_domain
     ):
-        account = Account(email="john.doe@gmail.com", password="a1b2c3")
+        account = Account(
+            email="john.doe@gmail.com",
+            password="a1b2c3",
+            author=Author(first_name="John", last_name="Doe"),
+        )
         test_domain.repository_for(Account).add(account)
-        author = Author(first_name="John", last_name="Doe", account=account)
-        test_domain.repository_for(Author).add(author)
 
-        author = test_domain.repository_for(Author).get(author.id)
+        author = test_domain.repository_for(Account).get(account.email).author
         # Reference attribute is not loaded automatically
         assert "account" not in author.__dict__
         assert author.account_email == account.email

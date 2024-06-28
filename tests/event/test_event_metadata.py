@@ -6,7 +6,7 @@ import pytest
 from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.fields import String, ValueObject
 from protean.fields.basic import Identifier
-from protean.reflection import declared_fields, fields
+from protean.reflection import fields
 
 
 class User(BaseEventSourcedAggregate):
@@ -30,8 +30,8 @@ def register_elements(test_domain):
 
 
 def test_event_has_metadata_value_object():
-    assert "_metadata" in declared_fields(UserLoggedIn)
-    assert isinstance(declared_fields(UserLoggedIn)["_metadata"], ValueObject)
+    assert "_metadata" in fields(UserLoggedIn)
+    assert isinstance(fields(UserLoggedIn)["_metadata"], ValueObject)
 
     assert hasattr(UserLoggedIn, "_metadata")
 

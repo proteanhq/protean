@@ -49,7 +49,7 @@ def test_vo_cannot_have_association_fields():
     assert str(exception.value) == str(
         {
             "_value_object": [
-                "Value Objects can only contain basic field types. Remove addresses (HasMany) from class Office"
+                "Value Objects cannot have associations. Remove addresses (HasMany) from class Office"
             ]
         }
     )
