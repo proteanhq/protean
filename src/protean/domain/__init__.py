@@ -13,6 +13,7 @@ from werkzeug.datastructures import ImmutableDict
 
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
+from protean.core.aggregate import element_to_fact_event
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
@@ -204,6 +205,9 @@ class Domain:
 
         # Set Aggregate Cluster Options
         self._set_aggregate_cluster_options()
+
+        # Generate Fact Event Classes
+        self._generate_fact_event_classes()
 
         # Run Validations
         self._validate_domain()
@@ -779,6 +783,15 @@ class Domain:
                         "provider",
                         element.cls.meta_.aggregate_cluster.meta_.provider,
                     )
+
+    def _generate_fact_event_classes(self):
+        """Generate FactEvent classes for all aggregates with `fact_events` enabled"""
+        for _, element in self.registry._elements[
+            DomainObjects.AGGREGATE.value
+        ].items():
+            if element.cls.meta_.fact_events:
+                event_cls = element_to_fact_event(element.cls)
+                self.register(event_cls, part_of=element.cls)
 
     ######################
     # Element Decorators #

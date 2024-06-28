@@ -4,8 +4,11 @@ import inspect
 import logging
 
 from protean.core.entity import BaseEntity
+from protean.core.event import BaseEvent
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import NotSupportedError
-from protean.fields import Integer
+from protean.fields import HasMany, HasOne, Integer, List, Reference, ValueObject
+from protean.reflection import fields
 from protean.utils import DomainObjects, derive_element_class, inflection
 
 logger = logging.getLogger(__name__)
@@ -61,7 +64,69 @@ class BaseAggregate(BaseEntity):
             ("model", None),
             ("stream_name", inflection.underscore(cls.__name__)),
             ("schema_name", inflection.underscore(cls.__name__)),
+            ("fact_events", False),
         ]
+
+
+def element_to_fact_event(element_cls):
+    """Convert an Element to a Fact Event.
+
+    This is a helper function to convert an Element to a Fact Event. Fact Events are used to
+    store the state of an Aggregate Element at a point in time. This function is used during
+    domain initialization to detect aggregates that have registered for fact events generation.
+
+    Associations are converted to Value Objects:
+    1. A `HasOne` association is replaced with a Value Object.
+    2. A `HasMany` association is replaced with a List of Value Objects.
+
+    The target class of associations is constructed as the Value Object.
+    """
+    # Gather all fields defined in the element, except References.
+    #   We ignore references.
+    attrs = {
+        key: value
+        for key, value in fields(element_cls).items()
+        if not isinstance(value, Reference)
+    }
+
+    # Recursively convert HasOne and HasMany associations to Value Objects
+    for key, value in attrs.items():
+        if isinstance(value, HasOne):
+            attrs[key] = element_to_fact_event(value.to_cls)
+        elif isinstance(value, HasMany):
+            attrs[key] = List(content_type=element_to_fact_event(value.to_cls))
+
+    # If we are dealing with an Entity, we convert it to a Value Object
+    #   and return it.
+    if element_cls.element_type == DomainObjects.ENTITY:
+        for _, attr_value in attrs.items():
+            if attr_value.identifier:
+                attr_value.identifier = False
+            if attr_value.unique:
+                attr_value.unique = False
+
+        value_object_cls = type(
+            f"{element_cls.__name__}ValueObject",
+            (BaseValueObject,),
+            attrs,
+        )
+        value_object_field = ValueObject(value_object_cls=value_object_cls)
+        return value_object_field
+
+    # Otherwise, we are dealing with an aggregate. By the time we reach here,
+    #   we have already converted all associations in the aggregate to Value Objects.
+    #   We can now proceed to construct the Fact Event.
+    event_cls = type(
+        f"{element_cls.__name__}FactEvent",
+        (BaseEvent,),
+        attrs,
+    )
+
+    # Store the fact event class as part of the aggregate itself
+    setattr(element_cls, "_fact_event_cls", event_cls)
+
+    # Return the fact event class to be registered with the domain
+    return event_cls
 
 
 def aggregate_factory(element_cls, **kwargs):
@@ -79,8 +144,9 @@ def aggregate_factory(element_cls, **kwargs):
     return element_cls
 
 
-# Context manager to temporarily disable invariant checks on aggregate
 class atomic_change:
+    """Context manager to temporarily disable invariant checks on aggregate"""
+
     def __init__(self, aggregate):
         self.aggregate = aggregate
 

@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from protean.container import BaseContainer, OptionsMixin, fields
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
-from protean.fields import Reference, ValueObject
+from protean.fields import Reference
 from protean.fields.association import Association
 from protean.utils import DomainObjects, derive_element_class
 
@@ -34,11 +34,12 @@ class BaseValueObject(BaseContainer, OptionsMixin):
     @classmethod
     def __validate_for_basic_field_types(subclass):
         for field_name, field_obj in fields(subclass).items():
-            if isinstance(field_obj, (Reference, Association, ValueObject)):
+            # Value objects can hold all kinds of fields, except associations
+            if isinstance(field_obj, (Reference, Association)):
                 raise IncorrectUsageError(
                     {
                         "_value_object": [
-                            f"Value Objects can only contain basic field types. "
+                            f"Value Objects cannot have associations. "
                             f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
                         ]
                     }

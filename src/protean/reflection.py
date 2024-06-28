@@ -95,7 +95,10 @@ def declared_fields(class_or_instance):
     # Might it be worth caching this, per class?
     try:
         fields_dict = dict(getattr(class_or_instance, _FIELDS))
+
+        # Remove internal fields
         fields_dict.pop("_version", None)
+        fields_dict.pop("_metadata", None)
     except AttributeError:
         raise IncorrectUsageError(
             {"field": [f"{class_or_instance} does not have fields"]}
