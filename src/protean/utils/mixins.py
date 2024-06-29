@@ -151,8 +151,11 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 **cls.derived_metadata(MessageType.EVENT.value),
                 # schema_version=event.meta_.version,  # FIXME Maintain version for event
             ),
-            # Expect the previous version
-            expected_version=int(event._metadata.sequence_id) - 1,
+            # If this is a Fact Event, don't set an expected version.
+            # Otherwise, expect the previous version
+            expected_version=None
+            if event.__class__.__name__.endswith("FactEvent")
+            else int(event._metadata.sequence_id) - 1,
         )
 
     def to_object(self) -> Union[BaseEvent, BaseCommand]:

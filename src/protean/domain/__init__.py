@@ -21,7 +21,11 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.model import BaseModel
 from protean.core.repository import BaseRepository
 from protean.domain.registry import _DomainRegistry
-from protean.exceptions import ConfigurationError, IncorrectUsageError
+from protean.exceptions import (
+    ConfigurationError,
+    IncorrectUsageError,
+    NotSupportedError,
+)
 from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.reflection import declared_fields, has_fields
 from protean.utils import (
@@ -561,7 +565,9 @@ class Domain:
         if getattr(element_cls, "element_type", None) not in [
             element for element in DomainObjects
         ]:
-            raise NotImplementedError
+            raise NotSupportedError(
+                f"Element `{element_cls.__name__}` is not a valid element class"
+            )
 
         return self._register_element(element_cls.element_type, element_cls, **kwargs)
 
@@ -786,12 +792,18 @@ class Domain:
 
     def _generate_fact_event_classes(self):
         """Generate FactEvent classes for all aggregates with `fact_events` enabled"""
-        for _, element in self.registry._elements[
-            DomainObjects.AGGREGATE.value
-        ].items():
-            if element.cls.meta_.fact_events:
-                event_cls = element_to_fact_event(element.cls)
-                self.register(event_cls, part_of=element.cls)
+        for element_type in [
+            DomainObjects.AGGREGATE,
+            DomainObjects.EVENT_SOURCED_AGGREGATE,
+        ]:
+            for _, element in self.registry._elements[element_type.value].items():
+                if element.cls.meta_.fact_events:
+                    event_cls = element_to_fact_event(element.cls)
+                    self.register(
+                        event_cls,
+                        part_of=element.cls,
+                        stream_name=element.cls.meta_.stream_name + "-fact",
+                    )
 
     ######################
     # Element Decorators #

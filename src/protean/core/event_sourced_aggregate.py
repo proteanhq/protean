@@ -41,9 +41,10 @@ class BaseEventSourcedAggregate(
     @classmethod
     def _default_options(cls):
         return [
-            ("auto_add_id_field", True),
-            ("stream_name", inflection.underscore(cls.__name__)),
             ("aggregate_cluster", None),
+            ("auto_add_id_field", True),
+            ("fact_events", False),
+            ("stream_name", inflection.underscore(cls.__name__)),
         ]
 
     def __init_subclass__(subclass) -> None:

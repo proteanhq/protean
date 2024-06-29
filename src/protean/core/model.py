@@ -20,9 +20,9 @@ class BaseModel(Element, OptionsMixin):
     @classmethod
     def _default_options(cls):
         return [
+            ("database", None),
             ("entity_cls", None),
             ("schema_name", None),
-            ("database", None),
         ]
 
     @classmethod

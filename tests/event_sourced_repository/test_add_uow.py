@@ -1,12 +1,18 @@
 import mock
 import pytest
 
-from protean import BaseEventSourcedAggregate
+from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.fields import Identifier, String
 
 
 class User(BaseEventSourcedAggregate):
     id = Identifier(identifier=True)
+    email = String()
+    name = String()
+
+
+class Registered(BaseEvent):
+    id = Identifier()
     email = String()
     name = String()
 
@@ -27,6 +33,7 @@ def test_that_method_is_enclosed_in_uow(mock_commit, mock_start, test_domain):
 
     with test_domain.domain_context():
         user = User(id=1, email="john.doe@example.com", name="John Doe")
+        user.raise_(Registered(id=1, email="john.doe@example.com", name="John Doe"))
         test_domain.repository_for(User).add(user)
 
     mock_parent.assert_has_calls(

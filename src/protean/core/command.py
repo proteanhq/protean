@@ -52,9 +52,9 @@ class BaseCommand(BaseContainer, OptionsMixin):
     def _default_options(cls):
         return [
             ("abstract", False),
+            ("aggregate_cluster", None),
             ("part_of", None),
             ("stream_name", None),
-            ("aggregate_cluster", None),
         ]
 
     @classmethod

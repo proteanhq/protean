@@ -87,9 +87,9 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 
         return [
             ("abstract", False),
+            ("aggregate_cluster", None),
             ("part_of", None),
             ("stream_name", part_of.meta_.stream_name if part_of else None),
-            ("aggregate_cluster", None),
         ]
 
     @classmethod

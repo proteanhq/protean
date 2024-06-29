@@ -1,7 +1,11 @@
 import pytest
 
 from protean import BaseAggregate, BaseEntity, Domain
-from protean.exceptions import ConfigurationError, IncorrectUsageError
+from protean.exceptions import (
+    ConfigurationError,
+    IncorrectUsageError,
+    NotSupportedError,
+)
 from protean.fields import DateTime, HasMany, HasOne, Reference, String, Text
 from protean.reflection import declared_fields
 from protean.utils import fully_qualified_name
@@ -9,10 +13,12 @@ from protean.utils import fully_qualified_name
 from .elements import UserAggregate, UserEntity, UserFoo, UserVO
 
 
-class TestDomainRegistration:
+class TestElementRegistration:
     def test_that_only_recognized_element_types_can_be_registered(self, test_domain):
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotSupportedError) as exc:
             test_domain.registry.register_element(UserFoo)
+
+        assert exc.value.args[0] == "Element `UserFoo` is not a valid element class"
 
     def test_register_aggregate_with_domain(self, test_domain):
         test_domain.registry.register_element(UserAggregate)
@@ -41,8 +47,19 @@ class TestDomainRegistration:
         class Bar(Foo):
             foo = String(max_length=50)
 
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotSupportedError) as exc:
             test_domain.register(Bar)
+
+        assert exc.value.args[0] == "Element `Bar` is not a valid element class"
+
+    def test_options_are_validated_on_element_registration(self, test_domain):
+        class Foo(BaseAggregate):
+            foo = String(max_length=50)
+
+        with pytest.raises(ConfigurationError) as exc:
+            test_domain.register(Foo, foo="bar")
+
+        assert exc.value.args[0] == "Unknown option(s) {'foo'}"
 
 
 class TestDomainAnnotations:
