@@ -36,21 +36,32 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
                 {"_entity": ["Aggregate object to persist is invalid"]}
             )
 
-        # `add` is typically invoked in handler methods in Command Handlers and Event Handlers, which are
-        #   enclosed in a UoW automatically. Therefore, if there is a UoW in progress, we can assume
-        #   that it is the active session. If not, we will start a new UoW and commit it after the operation
-        #   is complete.
-        own_current_uow = None
-        if not (current_uow and current_uow.in_progress):
-            own_current_uow = UnitOfWork()
-            own_current_uow.start()
+        # Proceed only if aggregate has events
+        if len(aggregate._events) > 0:
+            # `add` is typically invoked in handler methods in Command Handlers and Event Handlers, which are
+            #   enclosed in a UoW automatically. Therefore, if there is a UoW in progress, we can assume
+            #   that it is the active session. If not, we will start a new UoW and commit it after the operation
+            #   is complete.
+            own_current_uow = None
+            if not (current_uow and current_uow.in_progress):
+                own_current_uow = UnitOfWork()
+                own_current_uow.start()
 
-        uow = current_uow or own_current_uow
-        uow._add_to_identity_map(aggregate)
+            uow = current_uow or own_current_uow
 
-        # If we started a UnitOfWork, commit it now
-        if own_current_uow:
-            own_current_uow.commit()
+            # If Aggregate has signed up Fact Events, raise them now
+            if aggregate.meta_.fact_events:
+                payload = aggregate.to_dict()
+
+                # Construct and raise the Fact Event
+                fact_event = aggregate._fact_event_cls(**payload)
+                aggregate.raise_(fact_event)
+
+            uow._add_to_identity_map(aggregate)
+
+            # If we started a UnitOfWork, commit it now
+            if own_current_uow:
+                own_current_uow.commit()
 
     def get(self, identifier: Identifier) -> BaseEventSourcedAggregate:
         """Retrieve a fully-formed Aggregate from a stream of Events.

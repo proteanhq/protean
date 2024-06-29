@@ -26,7 +26,7 @@ class BaseSubscriber(Element, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return [("event", None), ("broker", "default")]
+        return [("broker", "default"), ("event", None)]
 
     @abstractmethod
     def __call__(self, event: BaseEvent) -> Optional[Any]:

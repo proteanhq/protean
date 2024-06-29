@@ -6,6 +6,7 @@ import pytest
 
 from protean import BaseAggregate, BaseEntity
 from protean.domain.registry import _DomainRegistry
+from protean.exceptions import NotSupportedError
 from protean.fields import DateTime, Identifier, Integer, String
 from protean.utils import DomainObjects
 
@@ -78,13 +79,13 @@ def test_that_registering_an_unknown_element_type_triggers_an_error():
 
     register = _DomainRegistry()
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(NotSupportedError):
         register.register_element(FooBar1)
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(NotSupportedError):
         register.register_element(FooBar2)
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(NotSupportedError):
         register.register_element(FooBar3)
 
 

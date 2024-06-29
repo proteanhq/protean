@@ -21,6 +21,13 @@ class BaseValueObject(BaseContainer, OptionsMixin):
             raise NotSupportedError("BaseValueObject cannot be instantiated")
         return super().__new__(cls)
 
+    @classmethod
+    def _default_options(cls):
+        return [
+            ("abstract", False),
+            ("part_of", None),
+        ]
+
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()
 

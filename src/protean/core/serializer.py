@@ -195,6 +195,10 @@ class BaseSerializer(metaclass=_SerializerMetaclass):
             raise NotSupportedError("BaseSerializer cannot be instantiated")
         return super().__new__(cls)
 
+    @classmethod
+    def _default_options(cls):
+        return []
+
 
 def serializer_factory(element_cls, **kwargs):
     return derive_element_class(element_cls, BaseSerializer, **kwargs)

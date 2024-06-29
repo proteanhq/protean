@@ -29,7 +29,7 @@ def test_generation_of_first_fact_event_on_persistence(test_domain):
     test_domain.repository_for(User).add(user)
 
     # Read event from event store
-    event_messages = test_domain.event_store.store.read(f"user-{user.id}")
+    event_messages = test_domain.event_store.store.read(f"user-fact-{user.id}")
     assert len(event_messages) == 1
 
     # Deserialize event

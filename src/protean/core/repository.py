@@ -42,7 +42,7 @@ class BaseRepository(Element, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return [("part_of", None), ("database", "ALL")]
+        return [("database", "ALL"), ("part_of", None)]
 
     def __new__(cls, *args, **kwargs):
         # Prevent instantiation of `BaseRepository itself`
@@ -133,7 +133,7 @@ class BaseRepository(Element, OptionsMixin):
         ):
             self._dao.save(aggregate)
 
-            # If there are Fact Events associated with the Aggregate, raise them now
+            # If Aggregate has signed up Fact Events, raise them now
             if aggregate.meta_.fact_events:
                 payload = aggregate.to_dict()
 

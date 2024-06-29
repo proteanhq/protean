@@ -58,13 +58,14 @@ class BaseAggregate(BaseEntity):
     @classmethod
     def _default_options(cls):
         return [
-            ("auto_add_id_field", True),
-            ("provider", "default"),
+            ("abstract", False),
             ("aggregate_cluster", None),
-            ("model", None),
-            ("stream_name", inflection.underscore(cls.__name__)),
-            ("schema_name", inflection.underscore(cls.__name__)),
+            ("auto_add_id_field", True),
             ("fact_events", False),
+            ("model", None),
+            ("provider", "default"),
+            ("schema_name", inflection.underscore(cls.__name__)),
+            ("stream_name", inflection.underscore(cls.__name__)),
         ]
 
 

@@ -24,11 +24,12 @@ class BaseView(BaseContainer, OptionsMixin):
     @classmethod
     def _default_options(cls):
         return [
-            ("provider", "default"),
+            ("abstract", False),
             ("cache", None),
             ("model", None),
-            ("schema_name", inflection.underscore(cls.__name__)),
             ("order_by", ()),
+            ("provider", "default"),
+            ("schema_name", inflection.underscore(cls.__name__)),
         ]
 
     def __init_subclass__(subclass) -> None:

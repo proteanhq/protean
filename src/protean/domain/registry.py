@@ -5,6 +5,7 @@ from typing import Any, Dict
 
 import inflection
 
+from protean.exceptions import NotSupportedError
 from protean.utils import DomainObjects, fully_qualified_name
 
 logger = logging.getLogger(__name__)
@@ -78,7 +79,9 @@ class _DomainRegistry:
 
     def register_element(self, element_cls):
         if self._is_invalid_element_cls(element_cls):
-            raise NotImplementedError
+            raise NotSupportedError(
+                f"Element `{element_cls.__name__}` is not a valid element class"
+            )
 
         element_name = fully_qualified_name(element_cls)
 
