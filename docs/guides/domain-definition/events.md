@@ -10,33 +10,6 @@ occurrence or change in the domain. Events are raised by aggregates to signal
 that something noteworthy has happened, allowing other parts of the system to
 react - and sync - to these changes in a decoupled manner.
 
-Events have a few primary functions:
-
-1. **Events allows different components to communicate with each other.**
-
-    Within a domain or across, events can be used as a mechanism to implement
-    eventual consistency, in the same bounded context or across. This promotes
-    loose coupling by decoupling the producer (e.g., an aggregate that raises
-    an event) from the consumers (e.g., various components that handle the
-    event).
-
-    Such a design eliminates the need for two-phase commits (global
-    transactions) across bounded contexts, optimizing performance at the level
-    of each transaction.
-
-2. **Events act as API contracts.**
-
-    Events define a clear and consistent structure for data that is shared
-    between different components of the system. This promotes system-wide
-    interoperability and integration between components.
-
-3. **Events help preserve context boundaries.**
-
-    Events propagate information across bounded contexts, thus helping to
-    sync changes throughout the application domain. This allows each domain
-    to be modeled in the architecture pattern that is most appropriate for its
-    use case.
-
 ## Defining Events
 
 Event names should be descriptive and convey the specific change or occurrence
@@ -54,22 +27,135 @@ Events are always connected to an Aggregate class, specified with the
 `part_of` param in the decorator. An exception to this rule is when the
 Event class has been marked _Abstract_.
 
-## Key Facts
 
-- Events should be named in past tense, because we observe domain events _after
-the fact_. `StockDepleted` is a better choice than the imperative
-`DepleteStock` as an event name.
-- An event is associated with an aggregate or a stream, specified with
-`part_of` or `stream` parameters to the decorator, as above. We will
-dive deeper into these parameters in the Processing Events section.
-<!-- FIXME Add link to events processing section -->
-- Events are essentially Data Transfer Objects (DTO)- they can only hold
-simple fields and Value Objects.
-- Events should only contain information directly relevant to the event. A
-receiver that needs more information should be listening to other pertinent
-events and add read-only structures to its own state to take decisions later.
-A receiver should not query the current state from the sender because the
-sender's state could have already mutated.
+## Event Structure
+
+An event is made of three parts:
+
+### Headers
+
+#### `trace_id`
+
+The `trace_id` is a unique identifier of UUID format, that connects all
+processing originating from a request. Trace IDs provide a detailed view of
+the request's journey through the system. It helps in understanding the
+complete flow of a request, showing each service interaction, the time taken,
+and where any delays occur.
+
+### Metadata
+
+An event's metadata provides additional context about the event.
+
+#### `id`
+
+The unique identifier of the event. The event ID is a structured string, of the
+format **<domain>.<aggregate>.<version>.<aggregate-id>.<sequence_id>**.
+
+#### `timestamp`
+
+The timestamp of event generation.
+
+#### `version`
+
+The version of the event.
+
+#### `sequence_id`
+
+The sequence ID is the version of the aggregate when the event was generated,
+along with the sequence number of the event within the update.
+
+For example, if the aggregate was updated twice, the first update would have a
+sequence ID of `1.1`, and the second update would have a sequence ID of `2.1`.
+If the next update generated two events, then the sequence ID of the second
+event would be `3.2`.
+
+#### `payload_hash`
+
+The hash of the event's payload.
+
+## Payload
+
+The payload is a dictionary of key-value pairs that convey the information
+about the event.
+
+The payload is made available as the data in the event. If
+you want to extract just the payload, you can use the `payload` property
+of the event.
+
+```shell hl_lines="17 19-20"
+In [1]: user = User(id="1", email="<EMAIL>", name="<NAME>")
+
+In [2]: user.login()
+
+In [3]: event = user._events[0]
+
+In [4]: event
+Out[4]: <UserLoggedIn: UserLoggedIn object ({'_metadata': {'id': '002.User.v1.1.0.1', 'timestamp': '2024-06-30 19:20:53.587542+00:00', 'version': 'v1', 'sequence_id': '0.1', 'payload_hash': 5473995227001335107}, 'user_id': '1'})>
+
+In [5]: event.to_dict()
+Out[5]: 
+{'_metadata': {'id': '002.User.v1.1.0.1',
+  'timestamp': '2024-06-30 19:20:53.587542+00:00',
+  'version': 'v1',
+  'sequence_id': '0.1',
+  'payload_hash': 5473995227001335107},
+ 'user_id': '1'}
+
+In [6]: event.payload
+Out[6]: {'user_id': '1'}
+```
+
+## Versioning
+
+Because events serve as API contracts of an aggregate with the rest of the
+ecosystem, they are versioned to signal changes to contract.
+
+By default, events have a version of **v1**.
+
+You can specify a version with the `__version__` class attribute:
+
+```python hl_lines="3"
+@domain.event(part_of=User)
+class UserActivated:
+    __version__ = "v2"
+
+    user_id = Identifier(required=True)
+    activated_at = DateTime(required=True)
+```
+
+The configured version is reflected in `version` and `id` attributes of the
+generated event:
+
+```python hl_lines="34 50 52 66 68"
+{! docs_src/guides/domain-definition/events/002.py !}
+```
+
+## Fact Events
+
+A fact event encloses the entire state of the aggregate at that specific point
+in time. It contains all of the attributes and values necessary to completely
+describe the fact in the context of your business. You can think of a fact
+event similarly to how you may think of a row in a database: a complete set of
+data pertaining to the row at that point in time.
+
+Fact events enable a pattern known as **Event-carried State Transfer**, which is
+one of the best ways to asynchronously distribute immutable state to all
+consumers who need it. With fact events, consumers do not have to build up the
+state themselves from multiple delta event types, which can be risky and
+error-prone, especially as data schemas evolve and change over time. Instead,
+they rely on the owning service to compute and produce a fully detailed fact
+event.
+
+Fact events are generated automatically by the framework with the
+`fact_events=True` option in the `domain.aggregate` decorator.
+
+Fact events are automatically generated by Protean. The event name is of the
+format `<AggregateName>FactEvent`, and the stream name will be
+`<snakecase_aggregate_name>-<fact>-<aggregate_-_id>`.
+
+```python hl_lines="11 38-52"
+{! docs_src/guides/domain-definition/events/003.py!}
+```
 
 ## Immutability
 

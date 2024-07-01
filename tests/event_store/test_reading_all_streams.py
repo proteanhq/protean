@@ -69,6 +69,18 @@ class Published(BaseEvent):
     published_time = DateTime(default=utcnow_func)
 
 
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(User)
+    test_domain.register(Registered, part_of=User)
+    test_domain.register(Activated, part_of=User)
+    test_domain.register(Renamed, part_of=User)
+
+    test_domain.register(Post)
+    test_domain.register(Created, part_of=Post)
+    test_domain.register(Published, part_of=Post)
+
+
 @pytest.mark.eventstore
 def test_reading_messages_from_all_streams(test_domain):
     user_identifier = str(uuid4())

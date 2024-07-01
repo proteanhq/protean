@@ -18,6 +18,7 @@ class TestProperties:
             "id": 12,
             "name": "ADMIN",
             "created_on": str(current_time),
+            "_version": -1,
         }
 
     def test_repr_output_of_aggregate(self):

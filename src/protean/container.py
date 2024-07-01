@@ -17,7 +17,14 @@ from protean.globals import current_domain
 from protean.reflection import id_field
 from protean.utils import generate_identity
 
-from .reflection import _FIELDS, _ID_FIELD_NAME, attributes, declared_fields, fields
+from .reflection import (
+    _FIELDS,
+    _ID_FIELD_NAME,
+    attributes,
+    data_fields,
+    declared_fields,
+    fields,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -342,7 +349,7 @@ class BaseContainer(metaclass=ContainerMeta):
         """Return data as a dictionary"""
         return {
             field_name: field_obj.as_dict(getattr(self, field_name, None))
-            for field_name, field_obj in fields(self).items()
+            for field_name, field_obj in data_fields(self).items()
         }
 
     @classmethod
@@ -368,7 +375,7 @@ class EventedMixin:
         super().__init__(*args, **kwargs)
         self._events = []
 
-    def raise_(self, event) -> None:
+    def raise_(self, event, fact_event=False) -> None:
         """Raise an event in the aggregate cluster.
 
         The version of the aggregate is incremented with every event raised, which is true
@@ -377,7 +384,8 @@ class EventedMixin:
         Event is immutable, so we clone a new event object from the event raised,
         and add the enhanced metadata to it.
         """
-        self._version += 1
+        if not fact_event:
+            self._version += 1
 
         identifier = getattr(self, id_field(self).field_name)
 

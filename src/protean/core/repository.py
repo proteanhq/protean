@@ -139,6 +139,7 @@ class BaseRepository(Element, OptionsMixin):
 
                 # Remove state attribute from the payload, as it is not needed for the Fact Event
                 payload.pop("state_", None)
+                payload.pop("_next_version", None)
 
                 # Construct and raise the Fact Event
                 fact_event = aggregate._fact_event_cls(**payload)

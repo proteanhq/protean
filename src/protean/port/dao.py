@@ -353,15 +353,17 @@ class BaseDAO(metaclass=ABCMeta):
             identifier = getattr(entity_obj, id_field(self.entity_cls).field_name)
             persisted_entity = self.get(identifier)
 
+            # The version of aggregate in the persistence store should be the same as
+            #   the version we are dealing with.
             if persisted_entity._version != entity_obj._version:
                 raise ExpectedVersionError(
                     f"Wrong expected version: {entity_obj._version} "
                     f"(Aggregate: {self.entity_cls.__name__}({identifier}), Version: {persisted_entity._version})"
                 )
 
-            entity_obj._version += 1
-        else:
-            entity_obj._version = 0
+        # Now that we are certain we are dealing with the correct version,
+        #   we can safely update the version to the next version.
+        entity_obj._version = entity_obj._next_version
 
     def save(self, entity_obj):
         """Create or update an entity in the data store, depending on its state. An identity for entity record is

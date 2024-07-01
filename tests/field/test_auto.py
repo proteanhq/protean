@@ -21,7 +21,7 @@ class TestValueGeneration:
 
         assert isinstance(auto.auto_field, str)
         assert_str_is_uuid(str(auto.auto_field))
-        assert auto.to_dict() == {"auto_field": str(auto.auto_field)}
+        assert auto.to_dict() == {"_version": -1, "auto_field": str(auto.auto_field)}
 
     def test_automatic_uuid_generation_of_non_identifier_fields(self, test_domain):
         class AutoTest(BaseAggregate):
@@ -36,6 +36,7 @@ class TestValueGeneration:
         assert_str_is_uuid(str(auto.auto_field2))
 
         assert auto.to_dict() == {
+            "_version": -1,
             "id": str(auto.id),
             "auto_field1": str(auto.auto_field1),
             "auto_field2": str(auto.auto_field2),

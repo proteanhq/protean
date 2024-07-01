@@ -1,6 +1,7 @@
 import logging
 
 from protean.exceptions import (
+    ConfigurationError,
     ExpectedVersionError,
     InvalidOperationError,
     ValidationError,
@@ -114,6 +115,10 @@ class UnitOfWork:
             else:
                 msg = str(exc)
             raise ExpectedVersionError(msg) from None
+        except ConfigurationError as exc:
+            # Configuration errors can be raised if events are misconfigured
+            #   We just re-raise it for the client to handle.
+            raise exc
         except Exception as exc:
             logger.error(
                 f"Error during Commit: {str(exc)}. Rolling back Transaction..."

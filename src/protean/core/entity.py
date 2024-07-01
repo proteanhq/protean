@@ -12,7 +12,14 @@ from protean.exceptions import IncorrectUsageError, NotSupportedError, Validatio
 from protean.fields import Auto, HasMany, Reference, ValueObject
 from protean.fields.association import Association
 from protean.globals import current_domain
-from protean.reflection import _FIELDS, attributes, declared_fields, fields, id_field
+from protean.reflection import (
+    _FIELDS,
+    attributes,
+    data_fields,
+    declared_fields,
+    fields,
+    id_field,
+)
 from protean.utils import (
     DomainObjects,
     derive_element_class,
@@ -421,9 +428,16 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
 
         The event is always registered on the aggregate, irrespective of where
         it is raised in the entity cluster."""
-
-        # We consider the version of the aggregate *after* persistence
-        new_version = self._root._version + 1
+        # Events are sometimes raised from within the aggregate, well-before persistence.
+        #   In that case, the aggregate's next version has to be considered in events,
+        #   because we want to associate the event with the version that will be persisted.
+        #
+        # Other times, an event is generated after persistence, like in the case of
+        #   fact events. In this case, the aggregate's current version and next version
+        #   will be the same.
+        #
+        # So we simply take the latest version, among `_version` and `_next_version`.
+        aggregate_version = max(self._root._version, self._root._next_version)
 
         # This is just a counter to uniquely gather all events generated
         #   in the same edit session
@@ -436,11 +450,11 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
             _metadata={
                 "id": (
                     f"{current_domain.name}.{self.__class__.__name__}.{event._metadata.version}"
-                    f".{identifier}.{new_version}.{event_number}"
+                    f".{identifier}.{aggregate_version}.{event_number}"
                 ),
                 "timestamp": event._metadata.timestamp,
                 "version": event._metadata.version,
-                "sequence_id": f"{new_version}.{event_number}",
+                "sequence_id": f"{aggregate_version}.{event_number}",
                 "payload_hash": hash(
                     json.dumps(
                         event.payload,
@@ -512,7 +526,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
         # FIXME Memoize this function
         field_values = {}
 
-        for field_name, field_obj in declared_fields(self).items():
+        for field_name, field_obj in data_fields(self).items():
             if (
                 not isinstance(field_obj, (ValueObject, Reference))
                 and getattr(self, field_name, None) is not None

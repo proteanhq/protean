@@ -391,6 +391,9 @@ class Domain:
         from protean.core.event import domain_event_factory
         from protean.core.event_handler import event_handler_factory
         from protean.core.event_sourced_aggregate import event_sourced_aggregate_factory
+        from protean.core.event_sourced_repository import (
+            event_sourced_repository_factory,
+        )
         from protean.core.model import model_factory
         from protean.core.repository import repository_factory
         from protean.core.serializer import serializer_factory
@@ -406,6 +409,7 @@ class Domain:
             DomainObjects.EVENT.value: domain_event_factory,
             DomainObjects.EVENT_HANDLER.value: event_handler_factory,
             DomainObjects.EVENT_SOURCED_AGGREGATE.value: event_sourced_aggregate_factory,
+            DomainObjects.EVENT_SOURCED_REPOSITORY.value: event_sourced_repository_factory,
             DomainObjects.DOMAIN_SERVICE.value: domain_service_factory,
             DomainObjects.EMAIL.value: email_factory,
             DomainObjects.ENTITY.value: entity_factory,

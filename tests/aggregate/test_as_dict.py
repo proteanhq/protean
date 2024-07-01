@@ -28,6 +28,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             "title": "Test Post",
             "slug": "test-post",
             "content": "Do Re Mi Fa",
+            "_version": -1,
         }
 
     def test_as_dict_with_date_fields(self):
@@ -51,6 +52,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             "slug": "test-post",
             "content": "Do Re Mi Fa",
             "posted_at": str(current_time),
+            "_version": -1,
         }
 
     def test_as_dict_with_aggregate_that_has_many_entities(self, test_domain):
@@ -84,6 +86,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
                 {"id": comment1.id, "content": "first comment"},
                 {"id": comment2.id, "content": "second comment"},
             ],
+            "_version": -1,
         }
 
     def test_as_dict_with_aggregate_that_has_many_entities_with_reference(
@@ -118,6 +121,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
                 {"id": comment1.id, "content": "first comment"},
                 {"id": comment2.id, "content": "second comment"},
             ],
+            "_version": -1,
         }
 
     def test_as_dict_with_aggregate_that_has_one_entity(self, test_domain):
@@ -146,6 +150,7 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
             "slug": "test-post",
             "content": "Do Re Mi Fa",
             "meta": {"id": meta.id, "likes": 27},
+            "_version": -1,
         }
 
     def test_as_dict_with_aggregate_that_has_a_value_object(self, test_domain):
@@ -163,4 +168,5 @@ class TestAggregateWithNoEnclosedEntitiesOrValueObjects:
                 "address": "john.doe@gmail.com",
             },
             "password": "secret",
+            "_version": -1,
         }

@@ -111,4 +111,5 @@ class TestAggregatesWithEntities:
                     "commented_at": str(comment2.commented_at),
                 },
             ],
+            "_version": -1,
         }

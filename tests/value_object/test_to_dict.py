@@ -27,7 +27,7 @@ class EntityWithDateTimeVO(BaseAggregate):
 class TestAsDict:
     def test_empty_simple_vo(self):
         simple = SimpleVOEntity(id=12)
-        assert simple.to_dict() == {"id": 12}
+        assert simple.to_dict() == {"_version": -1, "id": 12}
 
     def test_simple_vo_dict(self):
         vo = SimpleVO(foo="foo", bar="bar")
@@ -36,7 +36,11 @@ class TestAsDict:
     def test_embedded_simple_vo(self):
         vo = SimpleVO(foo="foo", bar="bar")
         simple = SimpleVOEntity(id=12, vo=vo)
-        assert simple.to_dict() == {"id": 12, "vo": {"foo": "foo", "bar": "bar"}}
+        assert simple.to_dict() == {
+            "_version": -1,
+            "id": 12,
+            "vo": {"foo": "foo", "bar": "bar"},
+        }
 
     def test_datetime_vo_dict(self):
         now = datetime.now(UTC)
@@ -47,4 +51,8 @@ class TestAsDict:
         now = datetime.now(UTC)
         vo = VOWithDateTime(foo="foo", now=now)
         simple = EntityWithDateTimeVO(id=12, vo=vo)
-        assert simple.to_dict() == {"id": 12, "vo": {"foo": "foo", "now": str(now)}}
+        assert simple.to_dict() == {
+            "_version": -1,
+            "id": 12,
+            "vo": {"foo": "foo", "now": str(now)},
+        }

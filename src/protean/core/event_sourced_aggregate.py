@@ -175,15 +175,4 @@ def event_sourced_aggregate_factory(element_cls, **opts):
                 method._event_cls
             )
 
-            # Associate Event with the aggregate class
-            #
-            # This can potentially cause a problem because an Event can only be associated
-            #   with one aggregate class, but multiple event handlers can consume it.
-            #   By resetting the event's aggregate class, its previous association is lost.
-            #   We catch this problem during domain validation.
-            #
-            #   The domain validation should check for the same event class being present
-            #   in `_events_cls_map` of multiple aggregate classes.
-            method._event_cls.meta_.part_of = element_cls
-
     return element_cls
