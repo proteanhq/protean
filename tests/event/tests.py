@@ -5,12 +5,27 @@ import pytest
 from protean import BaseEvent, BaseValueObject
 from protean.exceptions import NotSupportedError
 from protean.fields import String, ValueObject
+from protean.reflection import data_fields, declared_fields, fields
 from protean.utils import fully_qualified_name
 
 from .elements import Person, PersonAdded
 
 
 class TestDomainEventDefinition:
+    def test_domain_event_dict_keys(self):
+        assert all(
+            key in declared_fields(PersonAdded)
+            for key in ["first_name", "last_name", "age", "id"]
+        )
+        assert all(
+            key in data_fields(PersonAdded)
+            for key in ["first_name", "last_name", "age", "id"]
+        )
+        assert all(
+            key in fields(PersonAdded)
+            for key in ["first_name", "last_name", "age", "id", "_metadata"]
+        )
+
     def test_that_domain_event_can_accommodate_value_objects(self, test_domain):
         class Email(BaseValueObject):
             address = String(max_length=255)

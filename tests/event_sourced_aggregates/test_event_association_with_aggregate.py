@@ -3,7 +3,7 @@ from enum import Enum
 import pytest
 
 from protean import BaseEvent, BaseEventSourcedAggregate, apply
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import Identifier, String
 
 
@@ -26,6 +26,10 @@ class UserActivated(BaseEvent):
 class UserRenamed(BaseEvent):
     user_id = Identifier(required=True)
     name = String(required=True, max_length=50)
+
+
+class UserArchived(BaseEvent):
+    user_id = Identifier(required=True)
 
 
 class User(BaseEventSourcedAggregate):
@@ -70,10 +74,14 @@ class Email(BaseEventSourcedAggregate):
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(User)
+    test_domain.register(UserRegistered, part_of=User)
+    test_domain.register(UserActivated, part_of=User)
+    test_domain.register(UserRenamed, part_of=User)
+    test_domain.register(Email)
 
 
 @pytest.mark.eventstore
-def test_that_event_is_associated_with_aggregate_by_apply_methods():
+def test_that_event_is_associated_with_aggregate():
     assert UserRegistered.meta_.part_of == User
     assert UserActivated.meta_.part_of == User
     assert UserRenamed.meta_.part_of == User
@@ -93,3 +101,17 @@ def test_that_trying_to_associate_an_event_with_multiple_aggregates_throws_an_er
             "tests.event_sourced_aggregates.test_event_association_with_aggregate.UserRegistered"
         ]
     }
+
+
+@pytest.mark.eventstore
+def test_an_unassociated_event_throws_error(test_domain):
+    user = User.register(user_id="1", name="<NAME>", email="<EMAIL>")
+    user.raise_(UserArchived(user_id=user.user_id))
+
+    with pytest.raises(ConfigurationError) as exc:
+        test_domain.repository_for(User).add(user)
+
+    assert exc.value.args[0] == (
+        "No stream name found for `UserArchived`. "
+        "Either specify an explicit stream name or associate the event with an aggregate."
+    )

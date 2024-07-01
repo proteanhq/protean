@@ -65,13 +65,21 @@ class EmailEventHandler(BaseEventHandler):
         pass
 
 
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(User)
+    test_domain.register(Registered, part_of=User)
+    test_domain.register(Activated, part_of=User)
+    test_domain.register(UserEventHandler, part_of=User)
+    test_domain.register(Email)
+    test_domain.register(Sent, part_of=Email)
+    test_domain.register(EmailEventHandler, stream_name="email")
+
+
 @pytest.mark.asyncio
 async def test_no_filtering_for_event_handlers_without_defined_origin_stream(
     test_domain,
 ):
-    test_domain.register(UserEventHandler, part_of=User)
-    test_domain.register(EmailEventHandler, stream_name="email")
-
     engine = Engine(test_domain, test_mode=True)
     email_event_handler_subscription = engine._subscriptions[fqn(EmailEventHandler)]
 

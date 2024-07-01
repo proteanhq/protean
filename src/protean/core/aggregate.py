@@ -48,12 +48,18 @@ class BaseAggregate(BaseEntity):
     # Track current version of Aggregate
     _version = Integer(default=-1)
 
+    # Temporary variable to track next version of Aggregate
+    _next_version = Integer(default=0)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # Set root in all child elements
         #   This is where we kick-off the process of setting the owner and root
         self._set_root_and_owner(self, self)
+
+        # Increment version and set next version
+        self._next_version = self._version + 1
 
     @classmethod
     def _default_options(cls):
@@ -83,11 +89,13 @@ def element_to_fact_event(element_cls):
     The target class of associations is constructed as the Value Object.
     """
     # Gather all fields defined in the element, except References.
-    #   We ignore references.
+    #   We ignore references in event payloads. We also ignore
+    #   the `_next_version` field because it is a temporary in-flight
+    #   field used to track the next version of the aggregate.
     attrs = {
         key: value
         for key, value in fields(element_cls).items()
-        if not isinstance(value, Reference)
+        if not isinstance(value, Reference) and key not in ["_next_version"]
     }
 
     # Recursively convert HasOne and HasMany associations to Value Objects

@@ -63,6 +63,11 @@ def test_generation_of_first_fact_event_on_persistence(test_domain):
     assert event.name == "John Doe"
     assert event.email == "john.doe@example.com"
 
+    # Check event versions
+    assert event._metadata.id.endswith(".0")
+    assert event._metadata.sequence_id == "0"
+    assert event._version == 0
+
 
 def test_generation_of_subsequent_fact_events_after_fetch(test_domain):
     # Initialize and save
@@ -90,14 +95,22 @@ def test_generation_of_subsequent_fact_events_after_fetch(test_domain):
     fact_event_messages = test_domain.event_store.store.read(f"user-fact-{user.id}")
     assert len(fact_event_messages) == 2
 
-    # Deserialize 1st event
+    # Deserialize 1st event and verify
     event = Message.to_object(fact_event_messages[0])
     assert event is not None
     assert event.__class__.__name__ == "UserFactEvent"
     assert event.name == "John Doe"
 
-    # Deserialize 2nd event
+    assert event._metadata.id.endswith(".0")
+    assert event._metadata.sequence_id == "0"
+    assert event._version == 0
+
+    # Deserialize 2nd event and verify
     event = Message.to_object(fact_event_messages[1])
     assert event is not None
     assert event.__class__.__name__ == "UserFactEvent"
     assert event.name == "Jane Doe"
+
+    assert event._metadata.id.endswith(".1")
+    assert event._metadata.sequence_id == "1"
+    assert event._version == 1

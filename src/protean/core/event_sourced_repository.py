@@ -54,8 +54,8 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
                 payload = aggregate.to_dict()
 
                 # Construct and raise the Fact Event
-                fact_event = aggregate._fact_event_cls(**payload)
-                aggregate.raise_(fact_event)
+                fact_event_obj = aggregate._fact_event_cls(**payload)
+                aggregate.raise_(fact_event_obj, fact_event=True)
 
             uow._add_to_identity_map(aggregate)
 
@@ -115,7 +115,7 @@ def event_sourced_repository_factory(element_cls, **opts):
         raise IncorrectUsageError(
             {
                 "_entity": [
-                    f"Repository `{element_cls.__name__}` can only be associated with an Aggregate"
+                    f"Repository `{element_cls.__name__}` can only be associated with an Event Sourced Aggregate"
                 ]
             }
         )

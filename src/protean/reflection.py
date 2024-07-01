@@ -24,6 +24,26 @@ def fields(class_or_instance):
     return fields_dict
 
 
+def data_fields(class_or_instance):
+    """Return a tuple describing the data fields of this dataclass.
+
+    Accepts a dataclass or an instance of one. Tuple elements are of
+    type Field.
+    """
+    try:
+        fields_dict = dict(getattr(class_or_instance, _FIELDS))
+
+        # Remove internal fields
+        fields_dict.pop("_next_version", None)
+        fields_dict.pop("_metadata", None)
+    except AttributeError:
+        raise IncorrectUsageError(
+            {"field": [f"{class_or_instance} does not have fields"]}
+        )
+
+    return fields_dict
+
+
 def id_field(class_or_instance):
     try:
         field_name = getattr(class_or_instance, _ID_FIELD_NAME)
@@ -98,6 +118,7 @@ def declared_fields(class_or_instance):
 
         # Remove internal fields
         fields_dict.pop("_version", None)
+        fields_dict.pop("_next_version", None)
         fields_dict.pop("_metadata", None)
     except AttributeError:
         raise IncorrectUsageError(

@@ -143,6 +143,17 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         """Hash based on data."""
         return hash(json.dumps(self.payload, sort_keys=True))
 
+    def to_dict(self):
+        """Return data as a dictionary.
+
+        We need to override this method in Event, because `to_dict()` of `BaseContainer`
+        eliminates `_metadata`.
+        """
+        return {
+            field_name: field_obj.as_dict(getattr(self, field_name, None))
+            for field_name, field_obj in fields(self).items()
+        }
+
 
 def domain_event_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseEvent, **kwargs)

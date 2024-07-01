@@ -1,6 +1,6 @@
 import pytest
 
-from protean import BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseEventSourcedAggregate
 from protean.core.event_sourced_repository import BaseEventSourcedRepository
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, String
@@ -29,5 +29,30 @@ def test_that_a_custom_repository_cannot_be_associated_with_event_sourced_aggreg
     class CustomUserRepository(BaseEventSourcedRepository):
         pass
 
-    with pytest.raises(IncorrectUsageError):
-        test_domain.register(CustomUserRepository, part_of=User)
+    with pytest.raises(IncorrectUsageError) as exc:
+        test_domain.register(CustomUserRepository)
+
+    assert exc.value.messages == {
+        "_entity": [
+            "Repository `CustomUserRepository` should be associated with an Aggregate"
+        ]
+    }
+
+
+def test_that_an_event_sourced_repository_can_only_be_associated_with_an_event_sourced_aggregate(
+    test_domain,
+):
+    class CustomAggregate(BaseAggregate):
+        pass
+
+    class CustomRepository(BaseEventSourcedRepository):
+        pass
+
+    with pytest.raises(IncorrectUsageError) as exc:
+        test_domain.register(CustomRepository, part_of=CustomAggregate)
+
+    assert exc.value.messages == {
+        "_entity": [
+            "Repository `CustomRepository` can only be associated with an Event Sourced Aggregate"
+        ]
+    }
