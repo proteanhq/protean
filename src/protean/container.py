@@ -226,13 +226,17 @@ class BaseContainer(metaclass=ContainerMeta):
 
         # Now load against the keyword arguments
         for field_name, val in kwargs.items():
+            # Record that a field was encountered by appending to `loaded_fields`
+            #   When it fails validations, we want it's errors to be recorded
+            #
+            #   Not remembering the field was recorded will result in it being set to `None`
+            #   which will raise a ValidationError of its own for the wrong reasons (required field not set)
+            loaded_fields.append(field_name)
             try:
                 setattr(self, field_name, val)
             except ValidationError as err:
                 for field_name in err.messages:
                     self.errors[field_name].extend(err.messages[field_name])
-            finally:
-                loaded_fields.append(field_name)
 
         # Load Value Objects from associated fields
         #   This block will dynamically construct value objects from field values

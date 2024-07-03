@@ -1,0 +1,52 @@
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color:        #1D3557;
+
+  --md-accent-fg-color:         #E76F51;
+
+  --md-typeset-a-color:         var(--md-accent-fg-color);
+
+  color-scheme: light;
+}
+
+p {
+  line-height: 1.75em;
+}
+
+a, a:hover, a:visited, a:active {
+  text-decoration: none;
+}
+
+p a, article ul li a {
+  font-weight: 600;
+}
+
+.md-typeset h1, .md-typeset h2 {
+  color: var(--md-primary-fg-color);
+  font-weight: 800;
+  letter-spacing: -.025em;
+}
+
+.md-typeset h1 {
+  font-size: 1.875em;
+}
+
+.md-typeset h2 {
+  font-size: 1.5em;
+}
+
+.md-typeset h3 {
+  font-weight: 600;
+  font-size: 1.25em;
+}
+
+.md-nav {
+  line-height: 1.5em;
+}
+
+.md-nav__link {
+  color: var(--md-primary-fg-color) !important;
+}
+
+.md-nav__title {
+  color: var(--md-primary-fg-color) !important;
+}

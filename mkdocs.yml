@@ -2,6 +2,7 @@ site_name: Protean
 site_url: https://docs.proteanhq.com
 repo_name: proteanhq/protean
 repo_url: https://github.com/proteanhq/protean
+
 theme:
   name: material
   font:
@@ -18,6 +19,7 @@ theme:
     toggle:
       icon: material/lightbulb-outline
       name: Switch to light mode
+
   features:
     - navigation.instant
     - navigation.instant.prefetch
@@ -40,6 +42,10 @@ theme:
     - content.code.annotate
     - content.code.copy
     - content.code.select
+
+extra_css:
+  - stylesheets/extra.css
+
 plugins:
   - privacy
 markdown_extensions:
@@ -64,6 +70,7 @@ nav:
   - Core Concepts:
     # - core-concepts/index.md
     - core-concepts/analysis-model.md
+    - core-concepts/streams.md
     # - core-concepts/identity.md
     # - Domain-Driven Design:
     #   - core-concepts/domain-driven-design/index.md

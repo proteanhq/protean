@@ -32,7 +32,7 @@ def test_contact_has_address_vo():
 
 def test_outer_vo_initialization():
     contact = Contact(
-        email="<EMAIL>",
+        email="john.doe@example.com",
         phone_number="123-456-7890",
         address=Address(
             street="123 Main Street", city="Anytown", state="CA", zip_code="12345"
@@ -40,3 +40,25 @@ def test_outer_vo_initialization():
     )
 
     assert contact is not None
+    assert contact.email == "john.doe@example.com"
+    assert contact.address == Address(
+        street="123 Main Street", city="Anytown", state="CA", zip_code="12345"
+    )
+    assert contact.address_street == "123 Main Street"
+
+
+def test_vo_initialization_with_attributes():
+    contact = Contact(
+        email="john.doe@example.com",
+        phone_number="123-456-7890",
+        address_street="123 Main Street",
+        address_city="Anytown",
+        address_state="CA",
+        address_zip_code="12345",
+    )
+
+    assert contact is not None
+    assert contact.email == "john.doe@example.com"
+    assert contact.address == Address(
+        street="123 Main Street", city="Anytown", state="CA", zip_code="12345"
+    )

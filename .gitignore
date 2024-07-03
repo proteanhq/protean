@@ -65,9 +65,6 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
-docs-sphinx/_build/
-
 # PyBuilder
 target/
 
@@ -134,9 +131,6 @@ output/*/index.html
 *.bak
 .testmondata
 *.rdb
-
-# Sphinx
-docs-sphinx/.doctrees
 
 # TODOs
 TODO

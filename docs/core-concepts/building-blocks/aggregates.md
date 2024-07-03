@@ -3,10 +3,10 @@
 An aggregate is a cluster of domain objects that can be treated as a single
 unit for data changes.
 
-Each aggregate has a root entity, known as the aggregate root, which is
+Each aggregate has a root entity, known as the aggregate root,
 responsible for enforcing business rules and ensuring the consistency of
 changes within the aggregate. In Protean, **aggregate** and **aggregate root**
-are synonymous.
+are treated as synonymous.
 
 Aggregates help to maintain the integrity of the data by defining boundaries
 within which invariants must be maintained.
@@ -29,7 +29,7 @@ is aborted.
 
 ### Aggregates enclose business invariants. { data-toc-label="Invariants" }
 
-Aggregates contain invariants that should be satisfied at all times - they
+Aggregates contain invariants that should always be satisfied - they
 are checked before and after every change to the aggregate. Invariants can be
 specified at the level of an aggregate's fields, the entire aggregate cluster,
 individual entities, or domain services that operate on multiple aggregates.
@@ -40,7 +40,7 @@ Aggregates compose a graph of enclosed elements. The objects themselves can nest
 other objects and so on infinitely, though it is recommended to not go beyond
 2 levels.
 
-### Aggregates can hold two types of objects - Entites and Value Objects. { data-toc-label="Types of Objects" }
+### Aggregates can hold two types of objects - Entities and Value Objects. { data-toc-label="Types of Objects" }
 Entities are objects with an identity. Value objects don't have identity; their
 data defines their identity.
 
@@ -57,20 +57,20 @@ They internally load and manage the objects within their cluster.
 
 Aggregates are persisted and retrieved with the help of repositories.
 Repositories are collection-oriented - they mimic how a collection data type,
-like list, dictionary and set, would work. Repositories can be augmented with
+like list, dictionary, and set, would work. Repositories can be augmented with
 custom methods to perform business queries.
 
 ### Aggregates are transaction boundaries.  { data-toc-label="Transactions" }
 
 All changes to aggregates are performed within a transaction. This means that
 all objects in the aggregates cluster are enclosed in a single transaction
-during persistence. This also translates to mean that all objects within an
-aggregate cluster are kep together in the same persistence store.
+during persistence. This also means that all objects within an
+aggregate cluster are kept together in the same persistence store.
 
 ### Aggregates can enclose up to 500 entities. { data-toc-label="Limits" }
 
 The object graph under an aggregate is loaded eagerly. The number of associations
-under an aggregate are limited to 500. If you expect the number of entities to
+under an aggregate is limited to 500. If you expect the number of entities to
 exceed this limit, rethink your aggregate boundary. One way would be to split
 the aggregate into multiple aggregates. Another would be to make the underlying
 entity an aggregate by itself.

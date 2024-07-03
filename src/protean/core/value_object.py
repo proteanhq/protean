@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from protean.container import BaseContainer, OptionsMixin, fields
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
-from protean.fields import Reference
+from protean.fields import Reference, ValueObject
 from protean.fields.association import Association
 from protean.utils import DomainObjects, derive_element_class
 
@@ -126,6 +126,29 @@ class BaseValueObject(BaseContainer, OptionsMixin):
                 for field_name in err.messages:
                     self.errors[field_name].extend(err.messages[field_name])
 
+        # Load Value Objects from associated fields
+        #   This block will dynamically construct value objects from field values
+        #   and associated the vo with the entity
+        # If the value object was already provided, it will not be overridden.
+        for field_name, field_obj in fields(self).items():
+            if isinstance(field_obj, (ValueObject)) and not getattr(self, field_name):
+                attrs = [
+                    (embedded_field.field_name, embedded_field.attribute_name)
+                    for embedded_field in field_obj.embedded_fields.values()
+                ]
+                values = {name: kwargs.get(attr) for name, attr in attrs}
+                try:
+                    value_object = field_obj.value_object_cls(**values)
+                    # Set VO value only if the value object is not None/Empty
+                    if value_object:
+                        setattr(self, field_name, value_object)
+                        loaded_fields.append(field_name)
+                except ValidationError as err:
+                    for sub_field_name in err.messages:
+                        self.errors["{}_{}".format(field_name, sub_field_name)].extend(
+                            err.messages[sub_field_name]
+                        )
+
         # Now load the remaining fields with a None value, which will fail
         # for required fields
         for field_name in fields(self):
@@ -139,14 +162,14 @@ class BaseValueObject(BaseContainer, OptionsMixin):
         for field in custom_errors:
             self.errors[field].extend(custom_errors[field])
 
+        # If we made it this far, the Value Object is initialized
+        #   and should be marked as such
+        self._initialized = True
+
         # Raise any errors found during load
         if self.errors:
             logger.error(self.errors)
             raise ValidationError(self.errors)
-
-        # If we made it this far, the Value Object is initialized
-        #   and should be marked as such
-        self._initialized = True
 
     def __setattr__(self, name, value):
         if not hasattr(self, "_initialized") or not self._initialized:
