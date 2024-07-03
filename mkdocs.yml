@@ -82,9 +82,9 @@ nav:
     - Building Blocks:
       - core-concepts/building-blocks/index.md
       - core-concepts/building-blocks/aggregates.md
-    #   - core-concepts/building-blocks/entities.md
-    #   - core-concepts/building-blocks/value-objects.md
-    #   - core-concepts/building-blocks/domain-services.md
+      - core-concepts/building-blocks/entities.md
+      - core-concepts/building-blocks/value-objects.md
+      - core-concepts/building-blocks/domain-services.md
     #   - core-concepts/building-blocks/commands.md
     #   - core-concepts/building-blocks/command-handlers.md
       - core-concepts/building-blocks/events.md

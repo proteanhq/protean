@@ -12,18 +12,25 @@ p {
   line-height: 1.75em;
 }
 
-a, a:hover, a:visited, a:active {
+/* Don't change link color on visits */
+a, a:hover, a:visited {
   text-decoration: none;
 }
 
+/* Bold links */
 p a, article ul li a {
   font-weight: 600;
 }
 
-.md-typeset h1, .md-typeset h2 {
+/* Primary color and tighter space */
+.md-typeset h1, .md-typeset h2, .md-typeset h3 {
   color: var(--md-primary-fg-color);
-  font-weight: 800;
   letter-spacing: -.025em;
+}
+
+/* Heavier fonts */
+.md-typeset h1, .md-typeset h2 {
+  font-weight: 800;
 }
 
 .md-typeset h1 {
@@ -39,14 +46,18 @@ p a, article ul li a {
   font-size: 1.25em;
 }
 
+/* Spacing between nav links */
 .md-nav {
   line-height: 1.5em;
 }
 
-.md-nav__link {
-  color: var(--md-primary-fg-color) !important;
+/* Change nav links color on the left nav bar */
+.md-nav--primary .md-nav__item--section label.md-nav__link,
+.md-nav--lifted>.md-nav__list>.md-nav__item>[for] {
+  color: var(--md-primary-fg-color);
 }
 
+/* Change nav title color */
 .md-nav__title {
   color: var(--md-primary-fg-color) !important;
 }
