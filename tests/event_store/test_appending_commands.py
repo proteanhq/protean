@@ -22,6 +22,7 @@ class Register(BaseCommand):
 
 def test_command_submission_without_aggregate(test_domain):
     test_domain.register(User)
+    test_domain.init(traverse=False)
 
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.register(Register)

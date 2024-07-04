@@ -22,7 +22,9 @@ class TestDomainTraversal:
 
         assert publishing7.domain is not None
         publishing7.domain.init()
-        assert len(publishing7.domain.registry.aggregates) == 1
+        assert (
+            len(publishing7.domain.registry.aggregates) == 2
+        )  # Includes MemoryMessage Aggregate
 
     @pytest.mark.no_test_domain
     def test_loading_nested_domain_with_init(self):
@@ -30,7 +32,9 @@ class TestDomainTraversal:
 
         assert publishing13.domain is not None
         publishing13.domain.init()
-        assert len(publishing13.domain.registry.aggregates) == 2
+        assert (
+            len(publishing13.domain.registry.aggregates) == 3
+        )  # Includes MemoryMessage Aggregate
 
 
 @pytest.mark.no_test_domain
@@ -54,7 +58,7 @@ class TestMultiFolderStructureTraversal:
         assert domain.name == "Publishing20"
 
         domain.init()
-        assert len(domain.registry.aggregates) == 2
+        assert len(domain.registry.aggregates) == 3  # Includes MemoryMessage Aggregate
 
     def test_elements_in_folder_with_their_own_toml_are_ignored(self):
         change_working_directory_to("test21")
@@ -64,4 +68,4 @@ class TestMultiFolderStructureTraversal:
         assert domain.name == "Publishing21"
 
         domain.init()
-        assert len(domain.registry.aggregates) == 1
+        assert len(domain.registry.aggregates) == 2  # Includes MemoryMessage Aggregate

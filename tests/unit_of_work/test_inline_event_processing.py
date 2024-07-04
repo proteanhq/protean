@@ -96,6 +96,7 @@ def test_inline_event_processing_in_sync_mode(test_domain):
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.register(UserMetrics, part_of=User)
+    test_domain.init(traverse=False)
 
     identifier = str(uuid4())
     UserCommandHandler().register_user(

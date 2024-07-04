@@ -36,7 +36,11 @@ def test_event_payload():
 
     assert event.to_dict() == {
         "_metadata": {
-            "id": f"Test.User.v1.{user_id}.0",
+            "id": f"user-{user_id}-0",
+            "type": "User.UserLoggedIn.v1",
+            "kind": "EVENT",
+            "stream_name": "user",
+            "origin_stream_name": None,
             "timestamp": str(event._metadata.timestamp),
             "version": "v1",
             "sequence_id": "0",

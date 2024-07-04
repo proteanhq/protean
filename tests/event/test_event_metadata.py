@@ -79,11 +79,15 @@ def test_event_metadata():
     assert event._metadata is not None
 
     assert isinstance(event._metadata.timestamp, datetime)
-    assert event._metadata.id == f"Test.User.v1.{user.id}.0"
+    assert event._metadata.id == f"user-{user.id}-0"
 
     assert event.to_dict() == {
         "_metadata": {
-            "id": f"Test.User.v1.{user.id}.0",
+            "id": f"user-{user.id}-0",
+            "type": "User.UserLoggedIn.v1",
+            "kind": "EVENT",
+            "stream_name": "user",
+            "origin_stream_name": None,
             "timestamp": str(event._metadata.timestamp),
             "version": "v1",
             "sequence_id": "0",

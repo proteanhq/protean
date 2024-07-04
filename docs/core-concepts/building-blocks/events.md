@@ -7,6 +7,11 @@ consistent and informed.
 
 ## Facts
 
+### Events are always associated with aggregates. { data-toc-label="Linked to Aggregates" }
+An event is always associated to the aggregate that emits it. Events of an
+event type are emitted to the aggregate stream that the event type is
+associated with.
+
 ### Events are essentially Data Transfer Objects (DTO). { data-toc-label="Data Transfer Objects" }
 They can only hold simple fields and Value Objects.
 
@@ -97,6 +102,11 @@ or notifying external consumers for choice events, like `LowInventoryAlert`.
 They are also appropriate for composing a custom view of the state based on
 events (for example in Command Query Resource Separation).
 
+#### Multiple Event Types
+
+Aggregates usually emit events of multiple delta event types. Each event
+is individually associated with the aggregate.
+
 ### Fact Events
 
 A fact event encloses the entire state of the aggregate at that specific point
@@ -111,6 +121,7 @@ these events, consumers do not have to build up the state themselves from
 multiple delta event types, which can be risky and error-prone, especially as
 data schemas evolve and change over time. Instead, they rely on the owning
 service to compute and produce a fully detailed fact event.
+
 
 ## Persistence
 

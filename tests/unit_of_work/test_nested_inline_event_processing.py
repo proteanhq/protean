@@ -99,6 +99,7 @@ def test_nested_uow_processing(test_domain):
     test_domain.register(Published, part_of=Post)
     test_domain.register(PostEventHandler, part_of=Post)
     test_domain.register(Metrics, stream_name="post")
+    test_domain.init(traverse=False)
 
     identifier = str(uuid4())
     PostCommandHandler().create_new_post(

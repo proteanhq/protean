@@ -11,7 +11,7 @@ from protean.container import BaseContainer, IdentityMixin, OptionsMixin
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Auto, HasMany, Reference, ValueObject
 from protean.fields.association import Association
-from protean.globals import current_domain
+from protean.globals import g
 from protean.reflection import (
     _FIELDS,
     attributes,
@@ -449,9 +449,12 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
             event.to_dict(),
             _metadata={
                 "id": (
-                    f"{current_domain.name}.{self.__class__.__name__}.{event._metadata.version}"
-                    f".{identifier}.{aggregate_version}.{event_number}"
+                    f"{self._root.meta_.stream_name}-{identifier}-{aggregate_version}.{event_number}"
                 ),
+                "type": f"{self._root.__class__.__name__}.{event.__class__.__name__}.{event._metadata.version}",
+                "kind": "EVENT",
+                "stream_name": self._root.meta_.stream_name,
+                "origin_stream_name": event._metadata.origin_stream_name,
                 "timestamp": event._metadata.timestamp,
                 "version": event._metadata.version,
                 "sequence_id": f"{aggregate_version}.{event_number}",

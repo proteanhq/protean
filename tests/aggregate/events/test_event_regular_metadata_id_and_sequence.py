@@ -56,7 +56,7 @@ def test_initialization_with_first_event():
     user = User(name="John Doe", email="john.doe@example.com")
     user.activate()
 
-    assert user._events[0]._metadata.id == f"Test.User.v1.{user.id}.0.1"
+    assert user._events[0]._metadata.id == f"user-{user.id}-0.1"
     assert user._events[0]._metadata.sequence_id == "0.1"
 
 
@@ -65,9 +65,9 @@ def test_initialization_with_multiple_events():
     user.activate()
     user.change_name("Jane Doe")
 
-    assert user._events[0]._metadata.id == f"Test.User.v1.{user.id}.0.1"
+    assert user._events[0]._metadata.id == f"user-{user.id}-0.1"
     assert user._events[0]._metadata.sequence_id == "0.1"
-    assert user._events[1]._metadata.id == f"Test.User.v1.{user.id}.0.2"
+    assert user._events[1]._metadata.id == f"user-{user.id}-0.2"
     assert user._events[1]._metadata.sequence_id == "0.2"
 
 
@@ -79,10 +79,7 @@ def test_one_event_after_persistence(test_domain):
     refreshed_user = test_domain.repository_for(User).get(user.id)
     refreshed_user.change_name("Jane Doe")
 
-    assert (
-        refreshed_user._events[0]._metadata.id
-        == f"Test.User.v1.{refreshed_user.id}.1.1"
-    )
+    assert refreshed_user._events[0]._metadata.id == f"user-{refreshed_user.id}-1.1"
     assert refreshed_user._events[0]._metadata.sequence_id == "1.1"
 
 
@@ -95,15 +92,9 @@ def test_multiple_events_after_persistence(test_domain):
     refreshed_user.change_name("Jane Doe")
     refreshed_user.change_name("Baby Doe")
 
-    assert (
-        refreshed_user._events[0]._metadata.id
-        == f"Test.User.v1.{refreshed_user.id}.1.1"
-    )
+    assert refreshed_user._events[0]._metadata.id == f"user-{refreshed_user.id}-1.1"
     assert refreshed_user._events[0]._metadata.sequence_id == "1.1"
-    assert (
-        refreshed_user._events[1]._metadata.id
-        == f"Test.User.v1.{refreshed_user.id}.1.2"
-    )
+    assert refreshed_user._events[1]._metadata.id == f"user-{refreshed_user.id}-1.2"
     assert refreshed_user._events[1]._metadata.sequence_id == "1.2"
 
 
@@ -121,13 +112,7 @@ def test_multiple_events_after_multiple_persistence(test_domain):
     refreshed_user.change_name("Ark Doe")
     refreshed_user.change_name("Zing Doe")
 
-    assert (
-        refreshed_user._events[0]._metadata.id
-        == f"Test.User.v1.{refreshed_user.id}.2.1"
-    )
+    assert refreshed_user._events[0]._metadata.id == f"user-{refreshed_user.id}-2.1"
     assert refreshed_user._events[0]._metadata.sequence_id == "2.1"
-    assert (
-        refreshed_user._events[1]._metadata.id
-        == f"Test.User.v1.{refreshed_user.id}.2.2"
-    )
+    assert refreshed_user._events[1]._metadata.id == f"user-{refreshed_user.id}-2.2"
     assert refreshed_user._events[1]._metadata.sequence_id == "2.2"

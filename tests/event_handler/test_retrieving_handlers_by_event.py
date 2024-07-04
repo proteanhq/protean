@@ -85,17 +85,20 @@ def register_elements(test_domain):
 
 
 def test_retrieving_handler_by_event(test_domain):
+    test_domain._initialize()
     assert test_domain.handlers_for(Registered()) == {UserEventHandler, UserMetrics}
     assert test_domain.handlers_for(Sent()) == {EmailEventHandler}
 
 
 def test_that_all_streams_handler_is_returned(test_domain):
     test_domain.register(AllEventsHandler, stream_name="$all")
+    test_domain._initialize()
     assert test_domain.handlers_for(Renamed()) == {AllEventsHandler}
 
 
 def test_that_all_streams_handler_is_always_returned_with_other_handlers(test_domain):
     test_domain.register(AllEventsHandler, stream_name="$all")
+    test_domain._initialize()
 
     assert test_domain.handlers_for(Registered()) == {
         UserEventHandler,

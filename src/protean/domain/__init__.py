@@ -298,6 +298,7 @@ class Domain:
         self.providers._initialize()
         self.caches._initialize()
         self.brokers._initialize()
+        self.event_store._initialize()
 
     def make_config(self):
         """Used to construct the config; invoked by the Domain constructor."""

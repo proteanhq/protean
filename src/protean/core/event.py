@@ -6,6 +6,7 @@ from protean.container import BaseContainer, OptionsMixin
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import DateTime, Field, Integer, String, ValueObject
+from protean.globals import g
 from protean.reflection import _ID_FIELD_NAME, declared_fields, fields
 from protean.utils import DomainObjects, derive_element_class
 
@@ -16,6 +17,20 @@ class Metadata(BaseValueObject):
     # Unique identifier of the Event
     # Format is <domain-name>.<event-class-name>.<event-version>.<aggregate-id>.<aggregate-version>
     id = String()
+
+    # Type of the event
+    # Format is <domain-name>.<event-class-name>.<event-version>
+    type = String()
+
+    # Kind of the object
+    # Can be one of "EVENT", "COMMAND"
+    kind = String()
+
+    # Name of the stream to which the event/command is written
+    stream_name = String()
+
+    # Name of the stream that originated this event/command
+    origin_stream_name = String()
 
     # Time of event generation
     timestamp = DateTime(default=lambda: datetime.now(timezone.utc))
@@ -114,11 +129,27 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     def __init__(self, *args, **kwargs):
         super().__init__(*args, finalize=False, **kwargs)
 
-        if hasattr(self.__class__, "__version__"):
-            # Value Objects are immutable, so we create a clone/copy and associate it
-            self._metadata = Metadata(
-                self._metadata.to_dict(), version=self.__class__.__version__
-            )
+        version = (
+            self.__class__.__version__
+            if hasattr(self.__class__, "__version__")
+            else "v1"
+        )
+
+        origin_stream_name = None
+        if hasattr(g, "message_in_context"):
+            if (
+                g.message_in_context.metadata.kind == "COMMAND"
+                and g.message_in_context.metadata.origin_stream_name is not None
+            ):
+                origin_stream_name = g.message_in_context.metadata.origin_stream_name
+
+        # Value Objects are immutable, so we create a clone/copy and associate it
+        self._metadata = Metadata(
+            self._metadata.to_dict(),  # Template
+            kind="EVENT",
+            origin_stream_name=origin_stream_name,
+            version=version,
+        )
 
         # Finally lock the event and make it immutable
         self._initialized = True

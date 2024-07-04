@@ -80,6 +80,8 @@ def register_elements(test_domain):
     test_domain.register(Created, part_of=Post)
     test_domain.register(Published, part_of=Post)
 
+    test_domain.init(traverse=False)
+
 
 @pytest.mark.eventstore
 def test_reading_messages_from_all_streams(test_domain):

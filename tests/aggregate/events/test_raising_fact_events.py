@@ -1,12 +1,8 @@
 import pytest
 
-from protean import BaseAggregate, BaseEntity
-from protean.fields import HasOne, String
+from protean import BaseAggregate
+from protean.fields import String
 from protean.utils.mixins import Message
-
-
-class Account(BaseEntity):
-    password_hash = String(max_length=512)
 
 
 class User(BaseAggregate):
@@ -14,13 +10,10 @@ class User(BaseAggregate):
     email = String(required=True)
     status = String(choices=["ACTIVE", "ARCHIVED"])
 
-    account = HasOne(Account)
-
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(User, fact_events=True)
-    test_domain.register(Account, part_of=User)
     test_domain.init(traverse=False)
 
 
@@ -47,7 +40,7 @@ def test_generation_of_first_fact_event_on_persistence(event):
 
 
 def test_fact_event_version_metadata(event):
-    assert event._metadata.id.endswith(".0.1")
+    assert event._metadata.id.endswith("-0.1")
     assert event._metadata.sequence_id == "0.1"
     assert event._version == 0
 
@@ -67,6 +60,6 @@ def test_fact_event_version_metadata_after_second_edit(test_domain):
     # Deserialize event
     event = Message.to_object(event_messages[1])
 
-    assert event._metadata.id.endswith(".1.1")
+    assert event._metadata.id.endswith("-1.1")
     assert event._metadata.sequence_id == "1.1"
     assert event._version == 1

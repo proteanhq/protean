@@ -3,6 +3,8 @@ import pytest
 
 @pytest.mark.eventstore
 def test_deriving_category(test_domain):
+    test_domain.init(traverse=False)
+
     assert test_domain.event_store.store.category(None) == ""
     assert test_domain.event_store.store.category("") == ""
 

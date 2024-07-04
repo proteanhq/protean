@@ -62,7 +62,6 @@ def test_construct_message_from_event(test_domain):
     assert message.type == fully_qualified_name(Registered)
     assert message.stream_name == f"{User.meta_.stream_name}-{identifier}"
     assert message.metadata.kind == "EVENT"
-    assert message.metadata.owner == test_domain.name
     assert message.data == user._events[-1].to_dict()
     assert message.time is None
     assert message.expected_version == user._version - 1
@@ -72,7 +71,6 @@ def test_construct_message_from_event(test_domain):
 
     assert message_dict["type"] == fully_qualified_name(Registered)
     assert message_dict["metadata"]["kind"] == "EVENT"
-    assert message_dict["metadata"]["owner"] == test_domain.name
     assert message_dict["stream_name"] == f"{User.meta_.stream_name}-{identifier}"
     assert message_dict["data"] == user._events[-1].to_dict()
     assert message_dict["time"] is None
@@ -94,7 +92,6 @@ def test_construct_message_from_command(test_domain):
     assert message.type == fully_qualified_name(Register)
     assert message.stream_name == f"{User.meta_.stream_name}:command-{identifier}"
     assert message.metadata.kind == "COMMAND"
-    assert message.metadata.owner == test_domain.name
     assert message.data == command.to_dict()
     assert message.time is None
 
@@ -102,7 +99,6 @@ def test_construct_message_from_command(test_domain):
     message_dict = message.to_dict()
     assert message_dict["type"] == fully_qualified_name(Register)
     assert message_dict["metadata"]["kind"] == "COMMAND"
-    assert message_dict["metadata"]["owner"] == test_domain.name
     assert (
         message_dict["stream_name"] == f"{User.meta_.stream_name}:command-{identifier}"
     )
