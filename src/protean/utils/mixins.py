@@ -10,7 +10,7 @@ from uuid import uuid4
 from protean import fields
 from protean.container import BaseContainer, OptionsMixin
 from protean.core.command import BaseCommand
-from protean.core.event import BaseEvent
+from protean.core.event import BaseEvent, Metadata
 from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 from protean.core.unit_of_work import UnitOfWork
 from protean.core.value_object import BaseValueObject
@@ -26,26 +26,6 @@ class MessageType(Enum):
     EVENT = "EVENT"
     COMMAND = "COMMAND"
     READ_POSITION = "READ_POSITION"
-
-
-class MessageMetadata(BaseValueObject):
-    # Marks message as a `COMMAND` or an `EVENT`
-    kind = fields.String(required=True, max_length=15, choices=MessageType)
-
-    # Name of service that owns the contract of the message
-    owner = fields.String(max_length=50)
-
-    # Allows for parsing of different versions, in case of
-    #   breaking changes.
-    schema_version = fields.Integer()
-
-    # `origin_stream_name` helps keep track of the origin of a message.
-    #   A command created by an event is automatically associated with the original stream.
-    #   Events raised subsequently by the commands also carry forward the original stream name.
-    origin_stream_name = fields.String()
-
-    # FIXME Provide mechanism to add custom metadata fields/structure
-    #   Can come handy in case of multi-tenancy, etc.
 
 
 class MessageRecord(BaseContainer):
@@ -77,7 +57,7 @@ class MessageRecord(BaseContainer):
     data = fields.Dict()
 
     # JSON representation of the message metadata
-    metadata = fields.ValueObject(MessageMetadata)
+    metadata = fields.ValueObject(Metadata)
 
 
 class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
@@ -120,7 +100,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
             stream_name=message["stream_name"],
             type=message["type"],
             data=message["data"],
-            metadata=MessageMetadata(**message["metadata"]),
+            metadata=message["metadata"],
             position=message["position"],
             global_position=message["global_position"],
             time=message["time"],
@@ -133,35 +113,25 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     ) -> Message:
         identifier = getattr(aggregate, id_field(aggregate).field_name)
 
-        # Take the Aggregate's stream_name
-        aggregate_stream_name = None
-        if event.meta_.aggregate_cluster:
-            aggregate_stream_name = event.meta_.aggregate_cluster.meta_.stream_name
-
-        # Use explicit stream name if provided, or fallback on Aggregate's stream name
-        stream_name = event.meta_.stream_name or aggregate_stream_name
-
-        if not stream_name:
+        if not event.meta_.stream_name:
             raise ConfigurationError(
                 f"No stream name found for `{event.__class__.__name__}`. "
                 "Either specify an explicit stream name or associate the event with an aggregate."
             )
 
+        # If this is a Fact Event, don't set an expected version.
+        # Otherwise, expect the previous version
+        if event.__class__.__name__.endswith("FactEvent"):
+            expected_version = None
+        else:
+            expected_version = int(event._metadata.sequence_id) - 1
+
         return cls(
-            stream_name=f"{stream_name}-{identifier}",
+            stream_name=f"{event.meta_.stream_name}-{identifier}",
             type=fully_qualified_name(event.__class__),
             data=event.to_dict(),
-            metadata=MessageMetadata(
-                kind=MessageType.EVENT.value,
-                owner=current_domain.name,
-                **cls.derived_metadata(MessageType.EVENT.value),
-                # schema_version=event.meta_.version,  # FIXME Maintain version for event
-            ),
-            # If this is a Fact Event, don't set an expected version.
-            # Otherwise, expect the previous version
-            expected_version=None
-            if event.__class__.__name__.endswith("FactEvent")
-            else int(event._metadata.sequence_id) - 1,
+            metadata=event._metadata,
+            expected_version=expected_version,
         )
 
     def to_object(self) -> Union[BaseEvent, BaseCommand]:
@@ -186,22 +156,16 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
         else:
             identifier = str(uuid4())
 
-        # Take the Aggregate's stream_name
-        aggregate_stream_name = None
-        if message_object.meta_.aggregate_cluster:
-            aggregate_stream_name = (
-                message_object.meta_.aggregate_cluster.meta_.stream_name
+        if not message_object.meta_.stream_name:
+            raise ConfigurationError(
+                f"No stream name found for `{message_object.__class__.__name__}`. "
+                "Either specify an explicit stream name or associate the event with an aggregate."
             )
 
-        # Use explicit stream name if provided, or fallback on Aggregate's stream name
-        stream_name = message_object.meta_.stream_name or aggregate_stream_name
-
         if isinstance(message_object, BaseEvent):
-            stream_name = f"{stream_name}-{identifier}"
-            kind = MessageType.EVENT.value
+            stream_name = f"{message_object.meta_.stream_name}-{identifier}"
         elif isinstance(message_object, BaseCommand):
-            stream_name = f"{stream_name}:command-{identifier}"
-            kind = MessageType.COMMAND.value
+            stream_name = f"{message_object.meta_.stream_name}:command-{identifier}"
         else:
             raise NotImplementedError  # FIXME Handle unknown messages better
 
@@ -209,12 +173,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
             stream_name=stream_name,
             type=fully_qualified_name(message_object.__class__),
             data=message_object.to_dict(),
-            metadata=MessageMetadata(
-                kind=kind,
-                owner=current_domain.name,
-                **cls.derived_metadata(kind),
-            ),
-            # schema_version=command.meta_.version,  # FIXME Maintain version
+            metadata=message_object._metadata,
         )
 
 

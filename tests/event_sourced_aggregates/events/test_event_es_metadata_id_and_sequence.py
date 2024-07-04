@@ -33,5 +33,5 @@ def test_event_is_generated_with_unique_id():
     user.login()
 
     event = user._events[0]
-    assert event._metadata.id == f"Test.User.v1.{identifier}.0"
+    assert event._metadata.id == f"user-{identifier}-0"
     assert event._metadata.sequence_id == "0"

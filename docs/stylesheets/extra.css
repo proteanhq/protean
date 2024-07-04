@@ -23,7 +23,7 @@ p a, article ul li a {
 }
 
 /* Primary color and tighter space */
-.md-typeset h1, .md-typeset h2, .md-typeset h3 {
+.md-typeset h1, .md-typeset h2, .md-typeset h3, .md-typeset h4 {
   color: var(--md-primary-fg-color);
   letter-spacing: -.025em;
 }

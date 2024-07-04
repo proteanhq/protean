@@ -63,6 +63,7 @@ def test_retrieving_handler_by_command(test_domain):
     test_domain.register(Post)
     test_domain.register(Create, part_of=Post)
     test_domain.register(PostCommandHandler, part_of=Post)
+    test_domain.init(traverse=False)
 
     assert test_domain.command_handler_for(Register()) == UserCommandHandlers
     assert test_domain.command_handler_for(Create()) == PostCommandHandler
@@ -82,6 +83,7 @@ def test_error_on_defining_multiple_handlers_for_a_command(test_domain):
     test_domain.register(User)
     test_domain.register(UserCommandHandlers, part_of=User)
     test_domain.register(AdminUserCommandHandlers, part_of=User)
+    test_domain.init(traverse=False)
 
     with pytest.raises(NotSupportedError) as exc:
         test_domain.command_handler_for(Register())

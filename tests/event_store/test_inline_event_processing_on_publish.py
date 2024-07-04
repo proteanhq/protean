@@ -38,6 +38,7 @@ class UserEventHandler(BaseEventHandler):
 def test_inline_event_processing_on_publish_in_sync_mode(test_domain):
     test_domain.register(Registered, stream_name="user")
     test_domain.register(UserEventHandler, stream_name="user")
+    test_domain.init(traverse=False)
 
     current_domain.publish(
         Registered(

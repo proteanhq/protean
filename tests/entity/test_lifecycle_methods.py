@@ -8,6 +8,12 @@ from .elements import Area, Building, BuildingStatus
 
 
 class TestDefaults:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Area)
+        test_domain.register(Building, part_of=Area)
+        test_domain.init(traverse=False)
+
     def test_that_building_is_marked_as_done_if_above_4_floors(self):
         building = Building(name="Foo", floors=4)
 

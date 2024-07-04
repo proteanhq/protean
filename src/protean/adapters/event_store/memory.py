@@ -2,10 +2,11 @@ from datetime import UTC, datetime
 from typing import Any, Dict, List
 
 from protean.core.aggregate import BaseAggregate
+from protean.core.event import Metadata
 from protean.core.repository import BaseRepository
 from protean.globals import current_domain
 from protean.port.event_store import BaseEventStore
-from protean.utils.mixins import MessageMetadata, MessageRecord
+from protean.utils.mixins import MessageRecord
 
 
 class MemoryMessage(BaseAggregate, MessageRecord):
@@ -52,7 +53,7 @@ class MemoryMessageRepository(BaseRepository):
                 position=next_position,
                 type=message_type,
                 data=data,
-                metadata=MessageMetadata(**metadata) if metadata else None,
+                metadata=metadata,
                 time=datetime.now(UTC),
             )
         )

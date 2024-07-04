@@ -186,6 +186,9 @@ def test_domain(db_config, store_config, request):
         domain.config["databases"]["default"] = db_config
         domain.config["event_store"] = store_config
 
+        # We initialize and load default configuration into the domain here
+        #   so that test cases that don't need explicit domain setup can
+        #   still function.
         domain._initialize()
 
         with domain.domain_context():
@@ -232,4 +235,5 @@ def run_around_tests(test_domain):
             cache = test_domain.caches[cache_name]
             cache.flush_all()
 
-        test_domain.event_store.store._data_reset()
+        if test_domain.event_store.store:
+            test_domain.event_store.store._data_reset()

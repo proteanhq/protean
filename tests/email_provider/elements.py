@@ -21,7 +21,9 @@ class Person(BaseAggregate):
         )
 
         # Publish Event via the domain
-        current_domain.publish(PersonAdded(**newcomer.to_dict()))
+        payload = newcomer.to_dict()
+        payload.pop("_version")
+        current_domain.publish(PersonAdded(**payload))
 
         return newcomer
 

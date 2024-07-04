@@ -9,6 +9,7 @@ class TestModel:
     @pytest.fixture(autouse=True)
     def register_person_aggregate(self, test_domain):
         test_domain.register(Person)
+        test_domain.init(traverse=False)
 
     def test_that_model_class_is_created_automatically(self, test_domain):
         model_cls = test_domain.repository_for(Person)._model

@@ -7,6 +7,10 @@ from protean.exceptions import ConfigurationError
 
 @pytest.mark.message_db
 class TestMessageDBEventStore:
+    @pytest.fixture(autouse=True)
+    def initialize_domain(self, test_domain):
+        test_domain.init(traverse=False)
+
     def test_retrieving_message_store_from_domain(self, test_domain):
         assert test_domain.event_store is not None
         assert test_domain.event_store.store is not None
@@ -18,6 +22,7 @@ class TestMessageDBEventStore:
         domain.config["event_store"]["database_uri"] = (
             "postgresql://message_store@localhost:5433/dummy"
         )
+        domain.init(traverse=False)
 
         with pytest.raises(ConfigurationError) as exc:
             domain.event_store.store._write(

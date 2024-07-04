@@ -60,11 +60,10 @@ def register(test_domain):
     test_domain.register(Email)
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.register(EmailEventHandler, part_of=Email)
+    test_domain.init(traverse=False)
 
 
 def test_streams_initialization(test_domain):
-    test_domain.event_store.store  # Initializes store if not initialized already
-
     assert len(test_domain.event_store._event_streams) == 2
     assert all(
         stream_name in test_domain.event_store._event_streams

@@ -31,38 +31,32 @@ class EventStore:
 
     @property
     def store(self):
-        if self._event_store is None:
-            self._initialize()
-
         return self._event_store
 
     def _initialize(self):
-        if not self._event_store:
-            logger.debug("Initializing Event Store...")
+        logger.debug("Initializing Event Store...")
 
-            configured_event_store = self.domain.config["event_store"]
-            if configured_event_store and isinstance(configured_event_store, dict):
-                event_store_full_path = EVENT_STORE_PROVIDERS[
-                    configured_event_store["provider"]
-                ]
-                event_store_module, event_store_class = event_store_full_path.rsplit(
-                    ".", maxsplit=1
-                )
+        configured_event_store = self.domain.config["event_store"]
+        if configured_event_store and isinstance(configured_event_store, dict):
+            event_store_full_path = EVENT_STORE_PROVIDERS[
+                configured_event_store["provider"]
+            ]
+            event_store_module, event_store_class = event_store_full_path.rsplit(
+                ".", maxsplit=1
+            )
 
-                event_store_cls = getattr(
-                    importlib.import_module(event_store_module), event_store_class
-                )
+            event_store_cls = getattr(
+                importlib.import_module(event_store_module), event_store_class
+            )
 
-                store = event_store_cls(self.domain, configured_event_store)
-            else:
-                raise ConfigurationError(
-                    "Configure at least one event store in the domain"
-                )
+            store = event_store_cls(self.domain, configured_event_store)
+        else:
+            raise ConfigurationError("Configure at least one event store in the domain")
 
-            self._event_store = store
+        self._event_store = store
 
-            self._initialize_event_streams()
-            self._initialize_command_streams()
+        self._initialize_event_streams()
+        self._initialize_command_streams()
 
         return self._event_store
 
@@ -85,9 +79,6 @@ class EventStore:
             )
 
     def repository_for(self, part_of):
-        if self._event_store is None:
-            self._initialize()
-
         repository_cls = type(
             part_of.__name__ + "Repository", (BaseEventSourcedRepository,), {}
         )
@@ -97,20 +88,12 @@ class EventStore:
         return repository_cls(self.domain)
 
     def handlers_for(self, event: BaseEvent) -> List[BaseEventHandler]:
-        if self._event_streams is None:
-            self._initialize_event_streams()
-
+        """Return all handlers configured to run on the given event."""
+        # Gather handlers configured to run on all events
         all_stream_handlers = self._event_streams.get("$all", set())
 
-        # Get the Aggregate's stream_name
-        aggregate_stream_name = None
-        if event.meta_.aggregate_cluster:
-            aggregate_stream_name = event.meta_.aggregate_cluster.meta_.stream_name
-
-        stream_name = event.meta_.stream_name or aggregate_stream_name
-        stream_handlers = self._event_streams.get(stream_name, set())
-
-        # Gather all handlers that are configured to run on this event
+        # Gather all handlers configured to run on this event
+        stream_handlers = self._event_streams.get(event.meta_.stream_name, set())
         configured_stream_handlers = set()
         for stream_handler in stream_handlers:
             if fqn(event.__class__) in stream_handler._handlers:
@@ -119,9 +102,6 @@ class EventStore:
         return set.union(configured_stream_handlers, all_stream_handlers)
 
     def command_handler_for(self, command: BaseCommand) -> Optional[BaseCommandHandler]:
-        if self._command_streams is None:
-            self._initialize_command_streams()
-
         stream_name = command.meta_.stream_name or (
             command.meta_.part_of.meta_.stream_name if command.meta_.part_of else None
         )

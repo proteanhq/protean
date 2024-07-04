@@ -29,6 +29,7 @@ class UserCommandHandlers(BaseCommandHandler):
 def test_that_command_can_be_processed_inline(test_domain):
     test_domain.register(User)
     test_domain.register(UserCommandHandlers, part_of=User)
+    test_domain.init(traverse=False)
 
     assert test_domain.config["command_processing"] == CommandProcessing.SYNC.value
 
@@ -39,6 +40,7 @@ def test_that_command_can_be_processed_inline(test_domain):
 def test_that_command_is_persisted_in_message_store(test_domain):
     test_domain.register(User)
     test_domain.register(UserCommandHandlers, part_of=User)
+    test_domain.init(traverse=False)
 
     identifier = str(uuid4())
     test_domain.process(Register(user_id=identifier, email="john.doe@gmail.com"))
