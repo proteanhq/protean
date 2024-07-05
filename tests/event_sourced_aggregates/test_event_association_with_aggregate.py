@@ -106,12 +106,9 @@ def test_that_trying_to_associate_an_event_with_multiple_aggregates_throws_an_er
 @pytest.mark.eventstore
 def test_an_unassociated_event_throws_error(test_domain):
     user = User.register(user_id="1", name="<NAME>", email="<EMAIL>")
-    user.raise_(UserArchived(user_id=user.user_id))
-
     with pytest.raises(ConfigurationError) as exc:
-        test_domain.repository_for(User).add(user)
+        user.raise_(UserArchived(user_id=user.user_id))
 
     assert exc.value.args[0] == (
-        "No stream name found for `UserArchived`. "
-        "Either specify an explicit stream name or associate the event with an aggregate."
+        "Event `UserArchived` is not associated with aggregate `User`"
     )

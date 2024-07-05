@@ -52,12 +52,3 @@ def test_that_part_of_is_resolved_correctly():
 
 def test_aggregate_cluster_of_event():
     assert UserLoggedIn.meta_.aggregate_cluster == User
-
-
-def test_no_aggregate_cluster_for_command_with_stream(test_domain):
-    class EmailSent(BaseEvent):
-        email = String()
-
-    test_domain.register(EmailSent, stream_name="email")
-
-    assert EmailSent.meta_.aggregate_cluster is None

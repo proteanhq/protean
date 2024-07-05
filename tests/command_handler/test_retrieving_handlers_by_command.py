@@ -2,7 +2,7 @@ import pytest
 
 from protean import BaseCommand, BaseEventSourcedAggregate, handle
 from protean.core.command_handler import BaseCommandHandler
-from protean.exceptions import NotSupportedError
+from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.fields import Identifier, String, Text
 
 
@@ -76,7 +76,13 @@ def test_for_no_errors_when_no_handler_method_has_not_been_defined_for_a_command
 
 
 def test_retrieving_handlers_for_unknown_command(test_domain):
-    assert test_domain.command_handler_for(UnknownCommand) is None
+    with pytest.raises(ConfigurationError) as exc:
+        test_domain.command_handler_for(UnknownCommand)
+
+    assert (
+        exc.value.args[0]
+        == "Command `UnknownCommand` needs to be associated with an aggregate"
+    )
 
 
 def test_error_on_defining_multiple_handlers_for_a_command(test_domain):

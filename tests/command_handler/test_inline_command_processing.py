@@ -28,6 +28,7 @@ class UserCommandHandlers(BaseCommandHandler):
 
 def test_that_command_can_be_processed_inline(test_domain):
     test_domain.register(User)
+    test_domain.register(Register, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
     test_domain.init(traverse=False)
 
@@ -39,6 +40,7 @@ def test_that_command_can_be_processed_inline(test_domain):
 
 def test_that_command_is_persisted_in_message_store(test_domain):
     test_domain.register(User)
+    test_domain.register(Register, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
     test_domain.init(traverse=False)
 

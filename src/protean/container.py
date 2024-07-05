@@ -8,12 +8,12 @@ from collections import defaultdict
 from typing import Any, Type, Union
 
 from protean.exceptions import (
+    ConfigurationError,
     InvalidDataError,
     NotSupportedError,
     ValidationError,
 )
 from protean.fields import Auto, Field, FieldBase, ValueObject
-from protean.globals import g
 from protean.reflection import id_field
 from protean.utils import generate_identity
 
@@ -388,18 +388,31 @@ class EventedMixin:
         Event is immutable, so we clone a new event object from the event raised,
         and add the enhanced metadata to it.
         """
+        # Verify that event is indeed associated with this aggregate
+        if event.meta_.part_of != self.__class__:
+            raise ConfigurationError(
+                f"Event `{event.__class__.__name__}` is not associated with "
+                f"aggregate `{self.__class__.__name__}`"
+            )
+
         if not fact_event:
             self._version += 1
 
         identifier = getattr(self, id_field(self).field_name)
 
+        # Set Fact Event stream to be `<aggregate_stream_name>-fact`
+        if event.__class__.__name__.endswith("FactEvent"):
+            stream_name = f"{self.meta_.stream_name}-fact"
+        else:
+            stream_name = self.meta_.stream_name
+
         event_with_metadata = event.__class__(
             event.to_dict(),
             _metadata={
-                "id": (f"{self.meta_.stream_name}-{identifier}-{self._version}"),
+                "id": (f"{stream_name}-{identifier}-{self._version}"),
                 "type": f"{self.__class__.__name__}.{event.__class__.__name__}.{event._metadata.version}",
                 "kind": "EVENT",
-                "stream_name": self.meta_.stream_name,
+                "stream_name": f"{stream_name}-{identifier}",
                 "origin_stream_name": event._metadata.origin_stream_name,
                 "timestamp": event._metadata.timestamp,
                 "version": event._metadata.version,

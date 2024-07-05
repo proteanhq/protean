@@ -5,7 +5,6 @@ import logging
 from collections import defaultdict
 from enum import Enum
 from typing import Callable, Dict, Union
-from uuid import uuid4
 
 from protean import fields
 from protean.container import BaseContainer, OptionsMixin
@@ -13,10 +12,8 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent, Metadata
 from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 from protean.core.unit_of_work import UnitOfWork
-from protean.core.value_object import BaseValueObject
 from protean.exceptions import ConfigurationError
-from protean.globals import current_domain, g
-from protean.reflection import has_id_field, id_field
+from protean.globals import current_domain
 from protean.utils import fully_qualified_name
 
 logger = logging.getLogger(__name__)
@@ -72,29 +69,6 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     expected_version = fields.Integer()
 
     @classmethod
-    def derived_metadata(cls, new_message_type: str) -> Dict:
-        additional_metadata = {}
-
-        if hasattr(g, "message_in_context"):
-            if (
-                new_message_type == "COMMAND"
-                and g.message_in_context.metadata.kind == "EVENT"
-            ):
-                additional_metadata["origin_stream_name"] = (
-                    g.message_in_context.stream_name
-                )
-
-            if (
-                new_message_type == "EVENT"
-                and g.message_in_context.metadata.kind == "COMMAND"
-                and g.message_in_context.metadata.origin_stream_name is not None
-            ):
-                additional_metadata["origin_stream_name"] = (
-                    g.message_in_context.metadata.origin_stream_name
-                )
-        return additional_metadata
-
-    @classmethod
     def from_dict(cls, message: Dict) -> Message:
         return Message(
             stream_name=message["stream_name"],
@@ -111,14 +85,6 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     def to_aggregate_event_message(
         cls, aggregate: BaseEventSourcedAggregate, event: BaseEvent
     ) -> Message:
-        identifier = getattr(aggregate, id_field(aggregate).field_name)
-
-        if not event.meta_.stream_name:
-            raise ConfigurationError(
-                f"No stream name found for `{event.__class__.__name__}`. "
-                "Either specify an explicit stream name or associate the event with an aggregate."
-            )
-
         # If this is a Fact Event, don't set an expected version.
         # Otherwise, expect the previous version
         if event.__class__.__name__.endswith("FactEvent"):
@@ -127,7 +93,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
             expected_version = int(event._metadata.sequence_id) - 1
 
         return cls(
-            stream_name=f"{event.meta_.stream_name}-{identifier}",
+            stream_name=event._metadata.stream_name,
             type=fully_qualified_name(event.__class__),
             data=event.to_dict(),
             metadata=event._metadata,
@@ -151,23 +117,13 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
 
     @classmethod
     def to_message(cls, message_object: Union[BaseEvent, BaseCommand]) -> Message:
-        if has_id_field(message_object):
-            identifier = getattr(message_object, id_field(message_object).field_name)
-        else:
-            identifier = str(uuid4())
-
-        if not message_object.meta_.stream_name:
+        if not message_object.meta_.part_of.meta_.stream_name:
             raise ConfigurationError(
                 f"No stream name found for `{message_object.__class__.__name__}`. "
                 "Either specify an explicit stream name or associate the event with an aggregate."
             )
 
-        if isinstance(message_object, BaseEvent):
-            stream_name = f"{message_object.meta_.stream_name}-{identifier}"
-        elif isinstance(message_object, BaseCommand):
-            stream_name = f"{message_object.meta_.stream_name}:command-{identifier}"
-        else:
-            raise NotImplementedError  # FIXME Handle unknown messages better
+        stream_name = message_object._metadata.stream_name
 
         return cls(
             stream_name=stream_name,

@@ -3,11 +3,13 @@ to register Domain Elements.
 """
 
 import inspect
+import json
 import logging
 import sys
 from collections import defaultdict
 from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from uuid import uuid4
 
 from werkzeug.datastructures import ImmutableDict
 
@@ -27,7 +29,8 @@ from protean.exceptions import (
     NotSupportedError,
 )
 from protean.fields import HasMany, HasOne, Reference, ValueObject
-from protean.reflection import declared_fields, has_fields
+from protean.globals import g
+from protean.reflection import declared_fields, has_fields, id_field
 from protean.utils import (
     CommandProcessing,
     DomainObjects,
@@ -804,11 +807,7 @@ class Domain:
             for _, element in self.registry._elements[element_type.value].items():
                 if element.cls.meta_.fact_events:
                     event_cls = element_to_fact_event(element.cls)
-                    self.register(
-                        event_cls,
-                        part_of=element.cls,
-                        stream_name=element.cls.meta_.stream_name + "-fact",
-                    )
+                    self.register(event_cls, part_of=element.cls)
 
     ######################
     # Element Decorators #
@@ -935,6 +934,47 @@ class Domain:
     #####################
     # Handling Commands #
     #####################
+    def _enrich_command(self, command: BaseCommand) -> BaseCommand:
+        # Enrich Command
+        identifier = None
+        identity_field = id_field(command)
+        if identity_field:
+            identifier = getattr(command, identity_field.field_name)
+        else:
+            identifier = str(uuid4())
+
+        stream_name = f"{command.meta_.part_of.meta_.stream_name}:command-{identifier}"
+
+        origin_stream_name = None
+        if hasattr(g, "message_in_context"):
+            if g.message_in_context.metadata.kind == "EVENT":
+                origin_stream_name = g.message_in_context.stream_name
+
+        command_with_metadata = command.__class__(
+            command.to_dict(),
+            _metadata={
+                "id": (str(uuid4())),
+                "type": (
+                    f"{command.meta_.part_of.__class__.__name__}.{command.__class__.__name__}."
+                    f"{command._metadata.version}"
+                ),
+                "kind": "EVENT",
+                "stream_name": stream_name,
+                "origin_stream_name": origin_stream_name,
+                "timestamp": command._metadata.timestamp,
+                "version": command._metadata.version,
+                "sequence_id": None,
+                "payload_hash": hash(
+                    json.dumps(
+                        command.payload,
+                        sort_keys=True,
+                    )
+                ),
+            },
+        )
+
+        return command_with_metadata
+
     def process(self, command: BaseCommand, asynchronous: bool = True) -> Optional[Any]:
         """Process command and return results based on specified preference.
 
@@ -950,7 +990,8 @@ class Domain:
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
         """
-        position = self.event_store.store.append(command)
+        command_with_metadata = self._enrich_command(command)
+        position = self.event_store.store.append(command_with_metadata)
 
         if (
             not asynchronous

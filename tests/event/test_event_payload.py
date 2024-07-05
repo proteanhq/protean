@@ -39,7 +39,7 @@ def test_event_payload():
             "id": f"user-{user_id}-0",
             "type": "User.UserLoggedIn.v1",
             "kind": "EVENT",
-            "stream_name": "user",
+            "stream_name": f"user-{user_id}",
             "origin_stream_name": None,
             "timestamp": str(event._metadata.timestamp),
             "version": "v1",

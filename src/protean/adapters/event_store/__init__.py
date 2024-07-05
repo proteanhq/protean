@@ -93,7 +93,9 @@ class EventStore:
         all_stream_handlers = self._event_streams.get("$all", set())
 
         # Gather all handlers configured to run on this event
-        stream_handlers = self._event_streams.get(event.meta_.stream_name, set())
+        stream_handlers = self._event_streams.get(
+            event.meta_.part_of.meta_.stream_name, set()
+        )
         configured_stream_handlers = set()
         for stream_handler in stream_handlers:
             if fqn(event.__class__) in stream_handler._handlers:
@@ -102,12 +104,12 @@ class EventStore:
         return set.union(configured_stream_handlers, all_stream_handlers)
 
     def command_handler_for(self, command: BaseCommand) -> Optional[BaseCommandHandler]:
-        stream_name = command.meta_.stream_name or (
-            command.meta_.part_of.meta_.stream_name if command.meta_.part_of else None
-        )
+        if not command.meta_.part_of:
+            raise ConfigurationError(
+                f"Command `{command.__name__}` needs to be associated with an aggregate"
+            )
 
-        if not stream_name:
-            return None
+        stream_name = command.meta_.part_of.meta_.stream_name
 
         handler_classes = self._command_streams.get(stream_name, set())
 

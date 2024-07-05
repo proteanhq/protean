@@ -29,6 +29,7 @@ def test_that_a_handler_is_recorded_against_command_handler(test_domain):
             pass
 
     test_domain.register(User)
+    test_domain.register(Register, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
 
     assert fully_qualified_name(Register) in UserCommandHandlers._handlers
@@ -45,7 +46,10 @@ def test_that_multiple_handlers_can_be_recorded_against_command_handler(test_dom
             pass
 
     test_domain.register(User)
+    test_domain.register(Register, part_of=User)
+    test_domain.register(ChangeAddress, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
+    test_domain.init(traverse=False)
 
     assert len(UserCommandHandlers._handlers) == 2
     assert all(
@@ -82,6 +86,7 @@ def test_that_multiple_handlers_cannot_be_recorded_against_the_same_command(
 
     with pytest.raises(NotSupportedError) as exc:
         test_domain.register(User)
+        test_domain.register(Register, part_of=User)
         test_domain.register(UserCommandHandlers, part_of=User)
 
     assert (
