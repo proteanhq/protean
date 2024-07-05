@@ -86,7 +86,7 @@ def test_event_metadata():
             "id": f"user-{user.id}-0",
             "type": "User.UserLoggedIn.v1",
             "kind": "EVENT",
-            "stream_name": "user",
+            "stream_name": f"user-{user.id}",
             "origin_stream_name": None,
             "timestamp": str(event._metadata.timestamp),
             "version": "v1",

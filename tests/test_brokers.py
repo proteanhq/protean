@@ -27,7 +27,7 @@ class PersonAdded(BaseEvent):
 
 class NotifySSOSubscriber(BaseSubscriber):
     def __call__(self, domain_event_dict):
-        print("Received Event: ", domain_event_dict)
+        pass
 
 
 class AddPersonCommand(BaseCommand):
@@ -103,14 +103,16 @@ class TestBrokerInitialization:
 class TestEventPublish:
     @pytest.mark.eventstore
     def test_that_event_is_persisted_on_publish(self, mocker, test_domain):
-        test_domain.publish(
+        person = Person(first_name="John", last_name="Doe", age=24)
+        person.raise_(
             PersonAdded(
-                id="1234",
-                first_name="John",
-                last_name="Doe",
-                age=24,
+                id=person.id,
+                first_name=person.first_name,
+                last_name=person.last_name,
+                age=person.age,
             )
         )
+        test_domain.publish(person._events[0])
 
         messages = test_domain.event_store.store.read("person")
 
@@ -119,20 +121,28 @@ class TestEventPublish:
 
     @pytest.mark.eventstore
     def test_that_multiple_events_are_persisted_on_publish(self, mocker, test_domain):
+        person1 = Person(id="1234", first_name="John", last_name="Doe", age=24)
+        person1.raise_(
+            PersonAdded(
+                id=person1.id,
+                first_name=person1.first_name,
+                last_name=person1.last_name,
+                age=person1.age,
+            )
+        )
+        person2 = Person(id="1235", first_name="Jane", last_name="Doe", age=23)
+        person2.raise_(
+            PersonAdded(
+                id=person2.id,
+                first_name=person2.first_name,
+                last_name=person2.last_name,
+                age=person2.age,
+            )
+        )
         test_domain.publish(
             [
-                PersonAdded(
-                    id="1234",
-                    first_name="John",
-                    last_name="Doe",
-                    age=24,
-                ),
-                PersonAdded(
-                    id="1235",
-                    first_name="Jane",
-                    last_name="Doe",
-                    age=25,
-                ),
+                person1._events[0],
+                person2._events[0],
             ]
         )
 

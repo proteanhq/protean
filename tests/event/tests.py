@@ -2,9 +2,9 @@ import uuid
 
 import pytest
 
-from protean import BaseEvent, BaseValueObject
+from protean import BaseAggregate, BaseEvent, BaseValueObject
 from protean.exceptions import NotSupportedError
-from protean.fields import String, ValueObject
+from protean.fields import Identifier, String, ValueObject
 from protean.reflection import data_fields, declared_fields, fields
 from protean.utils import fully_qualified_name
 
@@ -30,12 +30,23 @@ class TestDomainEventDefinition:
         class Email(BaseValueObject):
             address = String(max_length=255)
 
-        class UserAdded(BaseEvent):
+        class User(BaseAggregate):
             email = ValueObject(Email, required=True)
             name = String(max_length=50)
 
-        test_domain.register(UserAdded, stream_name="user")
-        event = UserAdded(email_address="john.doe@gmail.com", name="John Doe")
+        class UserAdded(BaseEvent):
+            id = Identifier(identifier=True)
+            email = ValueObject(Email, required=True)
+            name = String(max_length=50)
+
+        test_domain.register(UserAdded, part_of=User)
+
+        user = User(
+            id=str(uuid.uuid4()),
+            email=Email(address="john.doe@gmail.com"),
+            name="John Doe",
+        )
+        event = UserAdded(id=user.id, email_address=user.email_address, name=user.name)
 
         assert event is not None
         assert event.email == Email(address="john.doe@gmail.com")
@@ -59,6 +70,7 @@ class TestDomainEventDefinition:
                     "address": "john.doe@gmail.com",
                 },
                 "name": "John Doe",
+                "id": user.id,
             }
         )
 

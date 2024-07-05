@@ -67,8 +67,10 @@ def test_command_associated_with_aggregate(test_domain):
 
 
 @pytest.mark.eventstore
-def test_command_associated_with_stream_name(test_domain):
-    test_domain.register(Register, stream_name="foo")
+def test_command_associated_with_aggregate_with_custom_stream_name(test_domain):
+    test_domain.register(User, stream_name="foo")
+    test_domain.register(Register, part_of=User)
+    test_domain.init(traverse=False)
 
     identifier = str(uuid4())
     test_domain.process(
@@ -91,12 +93,3 @@ def test_aggregate_cluster_of_event(test_domain):
     test_domain.init(traverse=False)
 
     assert Register.meta_.aggregate_cluster == User
-
-
-def test_no_aggregate_cluster_for_command_with_stream(test_domain):
-    class SendEmail(BaseCommand):
-        email = String()
-
-    test_domain.register(SendEmail, stream_name="email")
-
-    assert SendEmail.meta_.aggregate_cluster is None

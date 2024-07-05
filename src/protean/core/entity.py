@@ -11,7 +11,6 @@ from protean.container import BaseContainer, IdentityMixin, OptionsMixin
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Auto, HasMany, Reference, ValueObject
 from protean.fields.association import Association
-from protean.globals import g
 from protean.reflection import (
     _FIELDS,
     attributes,
@@ -443,17 +442,23 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
         #   in the same edit session
         event_number = len(self._root._events) + 1
 
-        identifier = getattr(self, id_field(self).field_name)
+        identifier = getattr(self._root, id_field(self._root).field_name)
+
+        # Set Fact Event stream to be `<aggregate_stream_name>-fact`
+        if event.__class__.__name__.endswith("FactEvent"):
+            stream_name = f"{self._root.meta_.stream_name}-fact"
+        else:
+            stream_name = self._root.meta_.stream_name
 
         event_with_metadata = event.__class__(
             event.to_dict(),
             _metadata={
                 "id": (
-                    f"{self._root.meta_.stream_name}-{identifier}-{aggregate_version}.{event_number}"
+                    f"{stream_name}-{identifier}-{aggregate_version}.{event_number}"
                 ),
                 "type": f"{self._root.__class__.__name__}.{event.__class__.__name__}.{event._metadata.version}",
                 "kind": "EVENT",
-                "stream_name": self._root.meta_.stream_name,
+                "stream_name": f"{stream_name}-{identifier}",
                 "origin_stream_name": event._metadata.origin_stream_name,
                 "timestamp": event._metadata.timestamp,
                 "version": event._metadata.version,

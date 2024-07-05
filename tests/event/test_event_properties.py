@@ -20,6 +20,13 @@ class Registered(BaseEvent):
     name = String()
 
 
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(User)
+    test_domain.register(Registered, part_of=User)
+    test_domain.init(traverse=False)
+
+
 def test_that_events_are_immutable():
     event = Registered(email="john.doe@gmail.com", name="John Doe", user_id="1234")
     with pytest.raises(IncorrectUsageError):

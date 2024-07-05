@@ -3,8 +3,9 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventHandler, Engine, handle
+from protean import BaseAggregate, BaseEvent, BaseEventHandler, Engine, handle
 from protean.fields import Identifier
+from protean.utils import EventProcessing
 
 counter = 0
 
@@ -12,6 +13,10 @@ counter = 0
 def count_up():
     global counter
     counter += 1
+
+
+class User(BaseAggregate):
+    user_id = Identifier(identifier=True)
 
 
 class UserLoggedIn(BaseEvent):
@@ -40,14 +45,18 @@ def auto_set_and_close_loop():
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(UserLoggedIn, stream_name="authentication")
+    test_domain.config["event_processing"] = EventProcessing.ASYNC.value
+    test_domain.register(User, stream_name="authentication")
+    test_domain.register(UserLoggedIn, part_of=User)
     test_domain.register(UserEventHandler, stream_name="authentication")
+    test_domain.init(traverse=False)
 
 
 def test_processing_messages_on_start(test_domain):
     identifier = str(uuid4())
-    event = UserLoggedIn(user_id=identifier)
-    test_domain.event_store.store.append(event)
+    user = User(user_id=identifier)
+    user.raise_(UserLoggedIn(user_id=identifier))
+    test_domain.repository_for(User).add(user)
 
     engine = Engine(domain=test_domain, test_mode=True)
     engine.run()
@@ -58,8 +67,9 @@ def test_processing_messages_on_start(test_domain):
 
 def test_that_read_position_is_updated_after_engine_run(test_domain):
     identifier = str(uuid4())
-    event = UserLoggedIn(user_id=identifier)
-    test_domain.event_store.store.append(event)
+    user = User(user_id=identifier)
+    user.raise_(UserLoggedIn(user_id=identifier))
+    test_domain.repository_for(User).add(user)
 
     messages = test_domain.event_store.store.read("authentication")
     assert len(messages) == 1
@@ -73,8 +83,9 @@ def test_that_read_position_is_updated_after_engine_run(test_domain):
 
 def test_processing_messages_from_beginning_the_first_time(test_domain):
     identifier = str(uuid4())
-    event = UserLoggedIn(user_id=identifier)
-    test_domain.event_store.store.append(event)
+    user = User(user_id=identifier)
+    user.raise_(UserLoggedIn(user_id=identifier))
+    test_domain.repository_for(User).add(user)
 
     engine = Engine(domain=test_domain, test_mode=True)
     engine.run()

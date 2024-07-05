@@ -41,7 +41,7 @@ def test_command_submission(test_domain):
     test_domain.init(traverse=False)
 
     identifier = str(uuid4())
-    test_domain.event_store.store.append(
+    test_domain.process(
         Register(
             user_id=identifier,
             email="john.doe@gmail.com",

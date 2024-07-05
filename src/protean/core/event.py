@@ -89,22 +89,10 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 
     @classmethod
     def _default_options(cls):
-        part_of = (
-            getattr(cls.meta_, "part_of") if hasattr(cls.meta_, "part_of") else None
-        )
-
-        # This method is called during class import, so we cannot use part_of if it
-        #   is still a string. We ignore it for now, and resolve `stream_name` later
-        #   when the domain has resolved references.
-        # FIXME A better mechanism would be to not set stream_name here, unless explicitly
-        #   specified, and resolve it during `domain.init()`
-        part_of = None if isinstance(part_of, str) else part_of
-
         return [
             ("abstract", False),
             ("aggregate_cluster", None),
             ("part_of", None),
-            ("stream_name", part_of.meta_.stream_name if part_of else None),
         ]
 
     @classmethod
@@ -189,10 +177,7 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 def domain_event_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseEvent, **kwargs)
 
-    if (
-        not (element_cls.meta_.part_of or element_cls.meta_.stream_name)
-        and not element_cls.meta_.abstract
-    ):
+    if not element_cls.meta_.part_of and not element_cls.meta_.abstract:
         raise IncorrectUsageError(
             {
                 "_event": [
