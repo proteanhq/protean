@@ -96,6 +96,8 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
                 }
             )
 
+        aggregate._event_position = aggregate._version
+
         return aggregate
 
 

@@ -33,6 +33,11 @@ class BaseEventSourcedAggregate(
     # Track current version of Aggregate
     _version = Integer(default=-1)
 
+    # Temporary variable to track version of events of Aggregate
+    #   This can be different from the version of the Aggregate itself because
+    #   a single aggregate update could have triggered multiple events.
+    _event_position = -1
+
     def __new__(cls, *args, **kwargs):
         if cls is BaseEventSourcedAggregate:
             raise NotSupportedError("BaseEventSourcedAggregate cannot be instantiated")

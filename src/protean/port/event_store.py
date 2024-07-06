@@ -85,12 +85,13 @@ class BaseEventStore(metaclass=ABCMeta):
     def read_last_message(self, stream_name) -> Message:
         # FIXME Rename to read_last_stream_message
         raw_message = self._read_last_message(stream_name)
-        return Message.from_dict(raw_message)
+        if raw_message:
+            return Message.from_dict(raw_message)
 
-    def append_aggregate_event(
-        self, aggregate: BaseEventSourcedAggregate, event: BaseEvent
-    ) -> int:
-        message = Message.to_aggregate_event_message(aggregate, event)
+        return None
+
+    def append(self, object: Union[BaseEvent, BaseCommand]) -> int:
+        message = Message.to_message(object)
 
         position = self._write(
             message.stream_name,
@@ -101,16 +102,6 @@ class BaseEventStore(metaclass=ABCMeta):
         )
 
         return position
-
-    def append(self, object: Union[BaseEvent, BaseCommand]) -> int:
-        message = Message.to_message(object)
-
-        return self._write(
-            message.stream_name,
-            message.type,
-            message.data,
-            metadata=message.metadata.to_dict(),
-        )
 
     def load_aggregate(
         self, part_of: Type[BaseEventSourcedAggregate], identifier: Identifier

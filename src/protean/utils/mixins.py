@@ -10,7 +10,6 @@ from protean import fields
 from protean.container import BaseContainer, OptionsMixin
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent, Metadata
-from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ConfigurationError
 from protean.globals import current_domain
@@ -81,25 +80,6 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
             id=message["id"],
         )
 
-    @classmethod
-    def to_aggregate_event_message(
-        cls, aggregate: BaseEventSourcedAggregate, event: BaseEvent
-    ) -> Message:
-        # If this is a Fact Event, don't set an expected version.
-        # Otherwise, expect the previous version
-        if event.__class__.__name__.endswith("FactEvent"):
-            expected_version = None
-        else:
-            expected_version = int(event._metadata.sequence_id) - 1
-
-        return cls(
-            stream_name=event._metadata.stream_name,
-            type=fully_qualified_name(event.__class__),
-            data=event.to_dict(),
-            metadata=event._metadata,
-            expected_version=expected_version,
-        )
-
     def to_object(self) -> Union[BaseEvent, BaseCommand]:
         if self.metadata.kind == MessageType.EVENT.value:
             element_record = current_domain.registry.events[self.type]
@@ -123,13 +103,21 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 "Either specify an explicit stream name or associate the event with an aggregate."
             )
 
-        stream_name = message_object._metadata.stream_name
+        # Set the expected version of the stream
+        #   Applies only to events
+        expected_version = None
+        if message_object._metadata.kind == MessageType.EVENT.value:
+            # If this is a Fact Event, don't set an expected version.
+            # Otherwise, expect the previous version
+            if not message_object.__class__.__name__.endswith("FactEvent"):
+                expected_version = message_object._expected_version
 
         return cls(
-            stream_name=stream_name,
+            stream_name=message_object._metadata.stream_name,
             type=fully_qualified_name(message_object.__class__),
             data=message_object.to_dict(),
             metadata=message_object._metadata,
+            expected_version=expected_version,
         )
 
 

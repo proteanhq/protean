@@ -55,7 +55,7 @@ async def test_that_an_event_handler_can_be_associated_with_an_all_stream(test_d
             password_hash="hash",
         )
     )
-    message = Message.to_aggregate_event_message(user, user._events[-1])
+    message = Message.to_message(user._events[-1])
 
     engine = Engine(domain=test_domain, test_mode=True)
     await engine.handle_message(UserEventHandler, message)

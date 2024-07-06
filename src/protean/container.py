@@ -342,6 +342,9 @@ class BaseContainer(metaclass=ContainerMeta):
                 "_root",  # Root entity in the hierarchy
                 "_owner",  # Owner entity in the hierarchy
                 "_disable_invariant_checks",  # Flag to disable invariant checks
+                "_next_version",  # Temp placeholder to track next version of the entity
+                "_event_position",  # Temp placeholder to track event version of the entity
+                "_expected_version",  # Temp placeholder to track expected version of an event
             ]
             or name.startswith(("add_", "remove_", "get_one_from_", "filter_"))
         ):
@@ -408,6 +411,7 @@ class EventedMixin:
 
         event_with_metadata = event.__class__(
             event.to_dict(),
+            _expected_version=self._event_position,
             _metadata={
                 "id": (f"{stream_name}-{identifier}-{self._version}"),
                 "type": f"{self.__class__.__name__}.{event.__class__.__name__}.{event._metadata.version}",
@@ -425,6 +429,9 @@ class EventedMixin:
                 ),
             },
         )
+
+        # Increment the event position after generating event
+        self._event_position = self._event_position + 1
 
         self._events.append(event_with_metadata)
 

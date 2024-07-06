@@ -49,7 +49,12 @@ class BaseAggregate(BaseEntity):
     _version = Integer(default=-1)
 
     # Temporary variable to track next version of Aggregate
-    _next_version = Integer(default=0)
+    _next_version = 0
+
+    # Temporary variable to track version of events of Aggregate
+    #   This can be different from the version of the Aggregate itself because
+    #   a single aggregate update could have triggered multiple events.
+    _event_position = -1
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -95,7 +100,7 @@ def element_to_fact_event(element_cls):
     attrs = {
         key: value
         for key, value in fields(element_cls).items()
-        if not isinstance(value, Reference) and key not in ["_next_version"]
+        if not isinstance(value, Reference)
     }
 
     # Recursively convert HasOne and HasMany associations to Value Objects

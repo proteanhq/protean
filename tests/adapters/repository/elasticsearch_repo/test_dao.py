@@ -17,6 +17,7 @@ class TestDAO:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
+        test_domain.init(traverse=False)
 
     def test_successful_initialization_of_dao(self, test_domain):
         test_domain.repository_for(Person)._dao.query.all()
@@ -59,6 +60,7 @@ class TestDAODeleteFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
+        test_domain.init(traverse=False)
 
     def test_delete_an_object_in_repository_by_id(self, test_domain):
         """Delete an object in the repository by ID"""
@@ -214,6 +216,7 @@ class TestDAORetrievalFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
+        test_domain.init(traverse=False)
 
     @pytest.fixture
     def identifier(self):
@@ -670,6 +673,7 @@ class TestDAOSaveFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
+        test_domain.init(traverse=False)
 
     def test_creation_throws_error_on_missing_fields(self, test_domain):
         """Add an entity to the repository missing a required attribute"""
@@ -712,6 +716,7 @@ class TestDAOUpdateFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
+        test_domain.init(traverse=False)
 
     def test_update_an_existing_entity_in_the_repository(self, test_domain):
         identifier = uuid4()
@@ -902,6 +907,7 @@ class TestDAOValidations:
     def register_elements(self, test_domain):
         test_domain.register(Person)
         test_domain.register(User)
+        test_domain.init(traverse=False)
 
     @pytest.mark.xfail
     def test_unique(self, test_domain):

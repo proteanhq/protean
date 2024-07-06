@@ -57,7 +57,7 @@ async def test_handler_invocation(test_domain):
             password_hash="hash",
         )
     )
-    message = Message.to_aggregate_event_message(user, user._events[-1])
+    message = Message.to_message(user._events[-1])
 
     engine = Engine(domain=test_domain, test_mode=True)
     await engine.handle_message(UserEventHandler, message)

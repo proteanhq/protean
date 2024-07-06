@@ -12,6 +12,7 @@ class TestElasticsearchRepository:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
+        test_domain.init(traverse=False)
 
     @pytest.fixture
     def identifier(self):

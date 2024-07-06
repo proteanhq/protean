@@ -117,6 +117,9 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     def __init__(self, *args, **kwargs):
         super().__init__(*args, finalize=False, **kwargs)
 
+        # Store the expected version temporarily for use during persistence
+        self._expected_version = kwargs.pop("_expected_version", -1)
+
         version = (
             self.__class__.__version__
             if hasattr(self.__class__, "__version__")

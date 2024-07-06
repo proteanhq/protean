@@ -34,7 +34,6 @@ def data_fields(class_or_instance):
         fields_dict = dict(getattr(class_or_instance, _FIELDS))
 
         # Remove internal fields
-        fields_dict.pop("_next_version", None)
         fields_dict.pop("_metadata", None)
     except AttributeError:
         raise IncorrectUsageError(
@@ -118,7 +117,6 @@ def declared_fields(class_or_instance):
 
         # Remove internal fields
         fields_dict.pop("_version", None)
-        fields_dict.pop("_next_version", None)
         fields_dict.pop("_metadata", None)
     except AttributeError:
         raise IncorrectUsageError(

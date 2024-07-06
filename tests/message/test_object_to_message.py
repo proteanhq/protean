@@ -53,7 +53,7 @@ def test_construct_message_from_event(test_domain):
     user.raise_(Registered(id=identifier, email="john.doe@gmail.com", name="John Doe"))
 
     # This simulates the call by UnitOfWork
-    message = Message.to_aggregate_event_message(user, user._events[-1])
+    message = Message.to_message(user._events[-1])
 
     assert message is not None
     assert type(message) is Message

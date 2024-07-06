@@ -49,7 +49,7 @@ def test_construct_event_from_message():
     identifier = str(uuid4())
     user = User(id=identifier, email="john.doe@gmail.com", name="John Doe")
     user.raise_(Registered(id=identifier, email="john.doe@gmail.com", name="John Doe"))
-    message = Message.to_aggregate_event_message(user, user._events[-1])
+    message = Message.to_message(user._events[-1])
 
     reconstructed_event = message.to_object()
     assert isinstance(reconstructed_event, Registered)
