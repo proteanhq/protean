@@ -66,7 +66,7 @@
             "module": "pytest",
             "justMyCode": false,
             "args": [
-                "tests/adapters/model/sqlalchemy_model/postgresql/test_array_datatype.py::test_array_data_type_association",
+                "tests/adapters/model/sqlalchemy_model/postgresql/test_json_datatype.py::test_persistence_of_json_with_array_data",
                 "--postgresql"
             ]
         },

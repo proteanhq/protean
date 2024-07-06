@@ -44,7 +44,7 @@ def registered_user(test_domain):
     identifier = str(uuid4())
     user = User(id=identifier, email="john.doe@example.com")
     user.raise_(Registered(id=identifier, email="john.doe@example.com"))
-    test_domain.event_store.store.append_aggregate_event(user, user._events[-1])
+    test_domain.event_store.store.append(user._events[-1])
 
     return user
 
@@ -52,9 +52,7 @@ def registered_user(test_domain):
 @pytest.fixture
 def activated_user(test_domain, registered_user):
     registered_user.raise_(Activated(id=registered_user.id))
-    test_domain.event_store.store.append_aggregate_event(
-        registered_user, registered_user._events[-1]
-    )
+    test_domain.event_store.store.append(registered_user._events[-1])
 
     return registered_user
 
@@ -63,9 +61,7 @@ def activated_user(test_domain, registered_user):
 def renamed_user(test_domain, activated_user):
     for i in range(10):
         activated_user.raise_(Renamed(id=activated_user.id, name=f"John Doe {i}"))
-        test_domain.event_store.store.append_aggregate_event(
-            activated_user, activated_user._events[-1]
-        )
+        test_domain.event_store.store.append(activated_user._events[-1])
 
     return activated_user
 

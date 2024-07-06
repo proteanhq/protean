@@ -69,7 +69,7 @@ async def test_that_any_message_can_be_handled_with_any_handler(test_domain):
             password_hash="hash",
         )
     )
-    message1 = Message.to_aggregate_event_message(user, user._events[-1])
+    message1 = Message.to_message(user._events[-1])
 
     post_identifier = str(uuid4())
     post = Post(
@@ -79,8 +79,8 @@ async def test_that_any_message_can_be_handled_with_any_handler(test_domain):
     )
     post.raise_(Created(id=post_identifier, topic="Foo", content="Bar"))
 
-    test_domain.event_store.store.append_aggregate_event(post, post._events[-1])
-    message2 = Message.to_aggregate_event_message(post, post._events[-1])
+    test_domain.event_store.store.append(post._events[-1])
+    message2 = Message.to_message(post._events[-1])
 
     engine = Engine(domain=test_domain, test_mode=True)
     await engine.handle_message(SystemMetrics, message1)

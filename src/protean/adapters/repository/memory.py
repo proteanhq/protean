@@ -21,12 +21,6 @@ from protean.port.provider import BaseProvider
 from protean.reflection import attributes, fields, id_field
 from protean.utils.query import Q
 
-# Global in-memory store of dict data. Keyed by name, to provide
-# multiple named local memory caches.
-_databases = defaultdict(dict)
-_locks = defaultdict(Lock)
-_counters = defaultdict(count)
-
 
 def derive_schema_name(model_cls):
     if hasattr(model_cls.meta_, "schema_name"):
@@ -63,9 +57,9 @@ class MemorySession:
             self._db = current_uow._sessions[self._provider.name]._db
         else:
             self._db = {
-                "data": copy.deepcopy(_databases),
-                "lock": _locks.setdefault(self._provider.name, Lock()),
-                "counters": _counters,
+                "data": copy.deepcopy(self._provider._databases),
+                "lock": self._provider._locks.setdefault(self._provider.name, Lock()),
+                "counters": self._provider._counters,
             }
 
     def add(self, element):
@@ -84,8 +78,7 @@ class MemorySession:
         if current_uow and self._provider.name in current_uow._sessions:
             current_uow._sessions[self._provider.name]._db["data"] = self._db["data"]
         else:
-            global _databases
-            _databases = self._db["data"]
+            self._provider._databases = self._db["data"]
 
     def rollback(self):
         pass
@@ -103,6 +96,11 @@ class MemoryProvider(BaseProvider):
         # In case of `MemoryProvider`, the `database` value will always be `memory`.
         conn_info["database"] = "memory"
         super().__init__(name, domain, conn_info)
+
+        # Global in-memory store of dict data.
+        self._databases = defaultdict(dict)
+        self._locks = defaultdict(Lock)
+        self._counters = defaultdict(count)
 
         # A temporary cache of already constructed model classes
         self._model_classes = {}
@@ -122,10 +120,9 @@ class MemoryProvider(BaseProvider):
 
     def _data_reset(self):
         """Reset data"""
-        global _databases, _locks, _counters
-        _databases = defaultdict(dict)
-        _locks = defaultdict(Lock)
-        _counters = defaultdict(count)
+        self._databases = defaultdict(dict)
+        self._locks = defaultdict(Lock)
+        self._counters = defaultdict(count)
 
         # Discard any active Unit of Work
         if current_uow and current_uow.in_progress:

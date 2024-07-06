@@ -9,7 +9,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne
-from protean.globals import current_uow
+from protean.globals import current_domain, current_uow
 from protean.port.dao import BaseDAO
 from protean.port.provider import BaseProvider
 from protean.reflection import association_fields, has_association_fields
@@ -139,7 +139,6 @@ class BaseRepository(Element, OptionsMixin):
 
                 # Remove state attribute from the payload, as it is not needed for the Fact Event
                 payload.pop("state_", None)
-                payload.pop("_next_version", None)
 
                 # Construct and raise the Fact Event
                 fact_event = aggregate._fact_event_cls(**payload)
@@ -246,7 +245,16 @@ class BaseRepository(Element, OptionsMixin):
         `find_residents_of_area(zipcode)`, etc. It is also possible to make use of more complicated,
         domain-friendly design patterns like the `Specification` pattern.
         """
-        return self._dao.get(identifier)
+        aggregate = self._dao.get(identifier)
+
+        # Fetch and sync events version
+        last_message = current_domain.event_store.store.read_last_message(
+            f"{aggregate.meta_.stream_name}-{identifier}"
+        )
+        if last_message:
+            aggregate._event_position = last_message.position
+
+        return aggregate
 
 
 def repository_factory(element_cls, **opts):

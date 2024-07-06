@@ -71,13 +71,15 @@ def test_origin_stream_name_in_event_from_command_without_origin_stream_name(
 ):
     g.message_in_context = register_command_message
 
-    event_message = Message.to_message(
+    user = User(id=user_id, email="john.doe@gmail.com", name="John Doe")
+    user.raise_(
         Registered(
             user_id=user_id,
             email="john.doe@gmail.com",
             name="John Doe",
         )
     )
+    event_message = Message.to_message(user._events[-1])
     assert event_message.metadata.origin_stream_name is None
 
 
@@ -91,13 +93,15 @@ def test_origin_stream_name_in_event_from_command_with_origin_stream_name(
     )  # Metadata is a VO and immutable, so creating a copy with updated value
     g.message_in_context = command_message
 
-    event_message = Message.to_message(
+    user = User(id=user_id, email="john.doe@gmail.com", name="John Doe")
+    user.raise_(
         Registered(
             user_id=user_id,
             email="john.doe@gmail.com",
             name="John Doe",
         )
     )
+    event_message = Message.to_message(user._events[-1])
 
     assert event_message.metadata.origin_stream_name == "foo"
 
@@ -118,7 +122,7 @@ def test_origin_stream_name_in_aggregate_event_from_command_without_origin_strea
             name="John Doe",
         )
     )
-    event_message = Message.to_aggregate_event_message(user, user._events[-1])
+    event_message = Message.to_message(user._events[-1])
 
     assert event_message.metadata.origin_stream_name is None
 
@@ -145,7 +149,7 @@ def test_origin_stream_name_in_aggregate_event_from_command_with_origin_stream_n
             name="John Doe",
         )
     )
-    event_message = Message.to_aggregate_event_message(user, user._events[-1])
+    event_message = Message.to_message(user._events[-1])
 
     assert event_message.metadata.origin_stream_name == "foo"
 

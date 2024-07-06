@@ -13,18 +13,20 @@ class Event(BaseAggregate):
     payload = Dict()
 
 
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(Event)
+    test_domain.init(traverse=False)
+
+
 @pytest.mark.postgresql
 def test_json_data_type_association(test_domain):
-    test_domain.register(Event)
-
     model_cls = test_domain.repository_for(Event)._model
     type(model_cls.payload.property.columns[0].type) is sa_types.JSON
 
 
 @pytest.mark.postgresql
 def test_basic_dict_data_type_operations(test_domain):
-    test_domain.register(Event)
-
     model_cls = test_domain.repository_for(Event)._model
 
     event = Event(
@@ -39,8 +41,6 @@ def test_basic_dict_data_type_operations(test_domain):
 
 @pytest.mark.postgresql
 def test_json_with_array_data(test_domain):
-    test_domain.register(Event)
-
     model_cls = test_domain.repository_for(Event)._model
 
     event = Event(
@@ -62,8 +62,6 @@ def test_json_with_array_data(test_domain):
 
 @pytest.mark.postgresql
 def test_persistence_of_json_with_array_data(test_domain):
-    test_domain.register(Event)
-
     event = Event(
         name="UserCreated",
         payload=[

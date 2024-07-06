@@ -8,7 +8,7 @@ from protean.exceptions import (
 )
 from protean.globals import _uow_context_stack, current_domain
 from protean.reflection import id_field
-from protean.utils import DomainObjects, EventProcessing, fqn
+from protean.utils import EventProcessing, fqn
 
 logger = logging.getLogger(__name__)
 
@@ -78,16 +78,9 @@ class UnitOfWork:
             events = []
             for _, item in self._identity_map.items():
                 if item._events:
-                    if item.element_type == DomainObjects.EVENT_SOURCED_AGGREGATE:
-                        for event in item._events:
-                            current_domain.event_store.store.append_aggregate_event(
-                                item, event
-                            )
-                            events.append((item, event))
-                    else:
-                        for event in item._events:
-                            current_domain.event_store.store.append(event)
-                            events.append((item, event))
+                    for event in item._events:
+                        current_domain.event_store.store.append(event)
+                        events.append((item, event))
                 item._events = []
 
             # Iteratively consume all events produced in this session

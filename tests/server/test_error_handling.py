@@ -67,7 +67,7 @@ async def test_that_exception_is_raised(test_domain):
             password_hash="hash",
         )
     )
-    message = Message.to_aggregate_event_message(user, user._events[-1])
+    message = Message.to_message(user._events[-1])
 
     engine = Engine(domain=test_domain, test_mode=True)
 
@@ -96,7 +96,7 @@ def test_exceptions_stop_processing(test_domain):
             password_hash="hash",
         )
     )
-    test_domain.event_store.store.append_aggregate_event(user, user._events[0])
+    test_domain.event_store.store.append(user._events[0])
 
     engine = Engine(domain=test_domain)
     engine.run()

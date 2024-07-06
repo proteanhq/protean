@@ -85,14 +85,14 @@ class TestUnitOfWorkTransactions:
             repo_with_uow.add(person_to_be_added)
 
             # Update an existing Person record
-            person_to_be_updated.last_name = "FooBar"
-            repo_with_uow.add(person_to_be_updated)
+            persisted_person = repo.get(person_to_be_updated.id)
+            persisted_person.last_name = "FooBar"
+            repo_with_uow.add(persisted_person)
 
             # Test that the underlying database is untouched
             assert len(person_dao.outside_uow().query.all().items) == 1
             assert (
-                person_dao.outside_uow().get(person_to_be_updated.id).last_name
-                != "FooBar"
+                person_dao.outside_uow().get(persisted_person.id).last_name != "FooBar"
             )
 
         assert len(person_dao.query.all().items) == 2

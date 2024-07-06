@@ -89,20 +89,20 @@ def test_reading_messages_from_all_streams(test_domain):
     user = User.register(
         id=user_identifier, email="john.doe@example.com", name="John Doe"
     )
-    test_domain.event_store.store.append_aggregate_event(user, user._events[0])
+    test_domain.event_store.store.append(user._events[0])
 
     user.activate()
-    test_domain.event_store.store.append_aggregate_event(user, user._events[1])
+    test_domain.event_store.store.append(user._events[1])
 
     user.rename(name="Johnny Doe")
-    test_domain.event_store.store.append_aggregate_event(user, user._events[2])
+    test_domain.event_store.store.append(user._events[2])
 
     post_identifier = str(uuid4())
     post = Post.create(id=post_identifier, topic="Foo", content="Bar")
-    test_domain.event_store.store.append_aggregate_event(post, post._events[0])
+    test_domain.event_store.store.append(post._events[0])
 
     post.publish()
-    test_domain.event_store.store.append_aggregate_event(post, post._events[1])
+    test_domain.event_store.store.append(post._events[1])
 
     messages = test_domain.event_store.store.read("$all")
     assert len(messages) == 5
