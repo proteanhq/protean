@@ -1,5 +1,10 @@
 # Community
 
-## Get Involved
+## Support questions
 
-[Contribute to Protean](contributing.md)
+## Reporting Issues
+
+## Contribute to Protean
+
+- [Submit enhancements](./contributing/setup.md)
+- [Build adapters](./contributing/adapters.md)

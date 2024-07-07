@@ -24,6 +24,6 @@ def callback():
 def preview():
     """Run a live preview server"""
     try:
-        subprocess.call(["mkdocs", "serve"])
+        subprocess.call(["mkdocs", "serve", "--dev-addr=0.0.0.0:8000"])
     except KeyboardInterrupt:
         pass

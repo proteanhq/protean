@@ -1,5 +1,6 @@
 [data-md-color-scheme="default"] {
   --md-primary-fg-color:        #1D3557;
+  --md-primary-bg-color-light:  #457B9D;
 
   --md-accent-fg-color:         #E76F51;
 
@@ -60,4 +61,8 @@ p a, article ul li a {
 /* Change nav title color */
 .md-nav__title {
   color: var(--md-primary-fg-color) !important;
+}
+
+.md-tabs {
+  background-color: var(--md-primary-bg-color-light);
 }

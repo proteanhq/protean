@@ -2,6 +2,7 @@ site_name: Protean
 site_url: https://docs.proteanhq.com
 repo_name: proteanhq/protean
 repo_url: https://github.com/proteanhq/protean
+copyright: Copyright &copy; 2019 - 2024 Subhash Bhushan
 
 theme:
   name: material
@@ -21,27 +22,27 @@ theme:
       name: Switch to light mode
 
   features:
-    - navigation.instant
-    - navigation.instant.prefetch
-    - navigation.instant.progress
-    - navigation.tracking
-    - navigation.sections
-    - navigation.tabs
-    - navigation.tabs.sticky
-    - navigation.expand
-    - navigation.path
-    - navigation.prune
-    - navigation.indexes
-    - navigation.footer
-    - toc.follow
-    - navigation.top
-    - search.suggest
-    - search.highlight
-    - content.tabs.link
-    - content.tooltips
     - content.code.annotate
     - content.code.copy
     - content.code.select
+    - content.tabs.link
+    - content.tooltips
+    - navigation.expand
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.path
+    - navigation.prune
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.suggest
+    - toc.follow
 
 extra_css:
   - stylesheets/extra.css
@@ -214,8 +215,25 @@ nav:
   #   - examples/index.md
   #   - examples/quickstart.md
   # - faq.md
+  - Adapters:
+    - adapters/index.md
+    - Database:
+      - adapters/database/index.md
+      - adapters/database/postgresql.md
+      - adapters/database/elasticsearch.md
+      - adapters/database/redis.md
+    - Brokers:
+      - adapters/broker/index.md
+      - adapters/broker/redis.md
+    - Caches:
+      - adapters/cache/index.md
+      - adapters/cache/redis.md
+    - Event Stores:
+      - adapters/eventstore/index.md
+      - adapters/eventstore/message-db.md
   - glossary.md
   # - changelog.md
   - Community: 
     - community/index.md
-    - community/contributing.md
+    - community/contributing/setup.md
+    - community/contributing/adapters.md

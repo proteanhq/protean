@@ -14,8 +14,11 @@ settings = "{'number_of_shards': 3}"
 
 Additional options for finer control:
 
-### namespace_prefix =IE${lasticsearch instance are prefixed with the specified stri}norexample, if the namespace prefix is `prod`, the index for aggregate
-`Person` will be `prod-person`.
+### NAMESPACE_PREFIX
+
+Elasticsearch instance are prefixed with the specified string. For example, if
+the namespace prefix is `prod`, the index for aggregate `Person` will be
+`prod-person`.
 
 ### NAMESPACE_SEPARATOR
 
