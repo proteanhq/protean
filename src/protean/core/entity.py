@@ -138,21 +138,6 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
             ("schema_name", inflection.underscore(cls.__name__)),
         ]
 
-    @classmethod
-    def _extract_options(cls, **opts):
-        """A stand-in method for setting customized options on the Domain Element
-
-        Empty by default. To be overridden in each Element that expects or needs
-        specific options.
-        """
-        for key, default in cls._default_options():
-            value = (
-                opts.pop(key, None)
-                or (hasattr(cls.meta_, key) and getattr(cls.meta_, key))
-                or default
-            )
-            setattr(cls.meta_, key, value)
-
     def __init__(self, *template, **kwargs):  # noqa: C901
         """
         Initialise the entity object.
@@ -217,6 +202,9 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
         id_field_obj = id_field(self)
         id_field_name = id_field_obj.field_name
 
+        ############
+        # ID Value #
+        ############
         # Look for id field in kwargs and load value if present
         if kwargs and id_field_name in kwargs:
             setattr(self, id_field_name, kwargs.pop(id_field_name))
@@ -225,7 +213,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
             # Look for id field in template dictionary and load value if present
             for dictionary in template:
                 if id_field_name in dictionary:
-                    setattr(self, id_field_name, dictionary[id_field_name])
+                    setattr(self, id_field_name, dictionary.pop(id_field_name))
                     loaded_fields.append(id_field_name)
                     break
         else:
@@ -242,33 +230,40 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                 )
                 loaded_fields.append(id_field_name)
 
-        # Load the attributes based on the template
+        ########################
+        # Load supplied values #
+        ########################
+        # Gather values from template
+        template_values = {}
         for dictionary in template:
             if not isinstance(dictionary, dict):
                 raise AssertionError(
-                    f'Positional argument "{dictionary}" passed must be a dict.'
+                    f"Positional argument {dictionary} passed must be a dict. "
                     f"This argument serves as a template for loading common "
                     f"values.",
                 )
             for field_name, val in dictionary.items():
-                if field_name not in kwargs and field_name not in loaded_fields:
-                    kwargs[field_name] = val
+                template_values[field_name] = val
 
-        # Now load against the keyword arguments
-        for field_name, val in kwargs.items():
-            if field_name not in loaded_fields:
-                try:
-                    setattr(self, field_name, val)
-                except ValidationError as err:
-                    for field_name in err.messages:
-                        self.errors[field_name].extend(err.messages[field_name])
-                finally:
-                    loaded_fields.append(field_name)
+        supplied_values = {**template_values, **kwargs}
 
-                    # Also note reference field name if its attribute was loaded
-                    if field_name in reference_attributes:
-                        loaded_fields.append(reference_attributes[field_name])
+        # Now load the attributes from template and kwargs
+        for field_name, val in supplied_values.items():
+            try:
+                setattr(self, field_name, val)
+            except ValidationError as err:
+                for field_name in err.messages:
+                    self.errors[field_name].extend(err.messages[field_name])
+            finally:
+                loaded_fields.append(field_name)
 
+                # Also note reference field name if its attribute was loaded
+                if field_name in reference_attributes:
+                    loaded_fields.append(reference_attributes[field_name])
+
+        ######################
+        # Load value objects #
+        ######################
         # Load Value Objects from associated fields
         #   This block will dynamically construct value objects from field values
         #   and associated the vo with the entity
@@ -279,7 +274,9 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                     (embedded_field.field_name, embedded_field.attribute_name)
                     for embedded_field in field_obj.embedded_fields.values()
                 ]
-                kwargs_values = {name: kwargs.get(attr) for name, attr in attrs}
+                kwargs_values = {
+                    name: supplied_values.get(attr) for name, attr in attrs
+                }
 
                 # Check if any of the values in `values` are not None
                 #   If all values are None, it means that the value object is not being set
@@ -290,17 +287,17 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                 if any(kwargs_values.values()):
                     try:
                         value_object = field_obj.value_object_cls(**kwargs_values)
-
-                        # Set VO value only if the value object is not None/Empty
-                        if value_object:
-                            setattr(self, field_name, value_object)
-                            loaded_fields.append(field_name)
+                        setattr(self, field_name, value_object)
+                        loaded_fields.append(field_name)
                     except ValidationError as err:
                         for sub_field_name in err.messages:
                             self.errors[
                                 "{}_{}".format(field_name, sub_field_name)
                             ].extend(err.messages[sub_field_name])
 
+        #############################
+        # Generate other identities #
+        #############################
         # Load other identities
         for field_name, field_obj in declared_fields(self).items():
             if (
@@ -308,19 +305,20 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                 and type(field_obj) is Auto
                 and not field_obj.increment
             ):
-                if not getattr(self, field_obj.field_name, None):
-                    setattr(
-                        self,
-                        field_obj.field_name,
-                        generate_identity(
-                            field_obj.identity_strategy,
-                            field_obj.identity_function,
-                            field_obj.identity_type,
-                        ),
-                    )
+                setattr(
+                    self,
+                    field_obj.field_name,
+                    generate_identity(
+                        field_obj.identity_strategy,
+                        field_obj.identity_function,
+                        field_obj.identity_type,
+                    ),
+                )
                 loaded_fields.append(field_obj.field_name)
 
-        # Load Associations
+        #####################
+        # Load Associations #
+        #####################
         for field_name, field_obj in declared_fields(self).items():
             if isinstance(field_obj, Association):
                 getattr(self, field_name)  # This refreshes the values in associations
@@ -343,6 +341,9 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
 
         self.defaults()
 
+        #################################
+        # Mark remaining fields as None #
+        #################################
         # Now load the remaining fields with a None value, which will fail
         # for required fields
         for field_name, field_obj in fields(self).items():
@@ -529,7 +530,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
         for data in data_dict:
             if not isinstance(data, dict):
                 raise AssertionError(
-                    f'Positional argument "{data}" passed must be a dict.'
+                    f"Positional argument {data} passed must be a dict. "
                     f"This argument serves as a template for loading common "
                     f"values.",
                 )

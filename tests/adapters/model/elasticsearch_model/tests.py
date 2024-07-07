@@ -229,7 +229,7 @@ class TestModelWithVO:
         assert issubclass(model_cls, ElasticsearchModel)
         assert model_cls.__name__ == "ComplexUserModel"
 
-    def test_conversation_from_entity_to_model(self, test_domain):
+    def test_conversion_from_entity_to_model(self, test_domain):
         model_cls = test_domain.repository_for(ComplexUser)._model
 
         user1 = ComplexUser(email_address="john.doe@gmail.com", password="d4e5r6")
@@ -255,7 +255,7 @@ class TestModelWithVO:
         assert hasattr(user1_model_obj, "email") is False
         assert hasattr(user2_model_obj, "email") is False
 
-    def test_conversation_from_model_to_entity(self, test_domain):
+    def test_conversion_from_model_to_entity(self, test_domain):
         model_cls = test_domain.repository_for(ComplexUser)._model
         user1 = ComplexUser(email_address="john.doe@gmail.com", password="d4e5r6")
         user1_model_obj = model_cls.from_entity(user1)

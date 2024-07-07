@@ -108,7 +108,7 @@
             "module": "pytest",
             "justMyCode": false,
             "args": [
-                "tests/adapters/model/elasticsearch_model/tests.py::TestDefaultModel::test_dynamically_constructed_model_attributes",
+                "tests/adapters/model/elasticsearch_model/tests.py::TestModelWithVO::test_conversion_from_model_to_entity",
                 "--elasticsearch"
             ]
         },

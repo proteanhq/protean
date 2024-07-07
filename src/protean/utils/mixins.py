@@ -11,7 +11,7 @@ from protean.container import BaseContainer, OptionsMixin
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent, Metadata
 from protean.core.unit_of_work import UnitOfWork
-from protean.exceptions import ConfigurationError
+from protean.exceptions import ConfigurationError, InvalidDataError
 from protean.globals import current_domain
 from protean.utils import fully_qualified_name
 
@@ -86,21 +86,17 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
         elif self.metadata.kind == MessageType.COMMAND.value:
             element_record = current_domain.registry.commands[self.type]
         else:
-            raise NotImplementedError  # FIXME Handle unknown messages better
-
-        if not element_record:
-            raise ConfigurationError(
-                f"Element {self.type.split('.')[-1]} is not registered with the domain"
+            raise InvalidDataError(
+                {"_message": ["Message type is not supported for deserialization"]}
             )
 
         return element_record.cls(**self.data)
 
     @classmethod
     def to_message(cls, message_object: Union[BaseEvent, BaseCommand]) -> Message:
-        if not message_object.meta_.part_of.meta_.stream_name:
+        if not message_object.meta_.part_of:
             raise ConfigurationError(
-                f"No stream name found for `{message_object.__class__.__name__}`. "
-                "Either specify an explicit stream name or associate the event with an aggregate."
+                f"`{message_object.__class__.__name__}` is not associated with an aggregate."
             )
 
         # Set the expected version of the stream

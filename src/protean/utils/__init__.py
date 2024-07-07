@@ -212,7 +212,6 @@ __all__ = [
     "TypeMatcher",
     "convert_str_values_to_list",
     "derive_element_class",
-    "fetch_element_cls_from_registry",
     "fully_qualified_name",
     "generate_identity",
     "get_version",

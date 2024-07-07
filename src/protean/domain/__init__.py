@@ -15,6 +15,7 @@ from werkzeug.datastructures import ImmutableDict
 
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
+from protean.container import Element
 from protean.core.aggregate import element_to_fact_event
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
@@ -303,17 +304,13 @@ class Domain:
         self.brokers._initialize()
         self.event_store._initialize()
 
-    def make_config(self):
-        """Used to construct the config; invoked by the Domain constructor."""
+    def load_config(self, load_toml=True):
+        """Load configuration from dist or a .toml file."""
         defaults = dict(self.default_config)
         defaults["env"] = get_env()
         defaults["debug"] = get_debug_flag()
-        return self.config_class(self.root_path, defaults)
-
-    def load_config(self, load_toml=True):
-        """Load configuration from dist or a .toml file."""
         if load_toml:
-            config = Config2.load_from_path(self.root_path, dict(self.default_config))
+            config = Config2.load_from_path(self.root_path, defaults)
         else:
             config = Config2.load_from_dict(dict(self.default_config))
 
@@ -498,40 +495,39 @@ class Domain:
         """
         for name in list(self._pending_class_resolutions.keys()):
             for resolution_type, params in self._pending_class_resolutions[name]:
-                if resolution_type == "Association":
-                    field_obj, owner_cls = params
-                    to_cls = self.fetch_element_cls_from_registry(
-                        field_obj.to_cls,
-                        (
-                            DomainObjects.AGGREGATE,
-                            DomainObjects.EVENT_SOURCED_AGGREGATE,
-                            DomainObjects.ENTITY,
-                        ),
-                    )
-                    field_obj._resolve_to_cls(self, to_cls, owner_cls)
-                elif resolution_type == "ValueObject":
-                    field_obj, owner_cls = params
-                    to_cls = self.fetch_element_cls_from_registry(
-                        field_obj.value_object_cls,
-                        (DomainObjects.VALUE_OBJECT,),
-                    )
-                    field_obj._resolve_to_cls(self, to_cls, owner_cls)
-                elif resolution_type == "AggregateCls":
-                    cls = params
-                    to_cls = self.fetch_element_cls_from_registry(
-                        cls.meta_.part_of,
-                        (
-                            DomainObjects.AGGREGATE,
-                            DomainObjects.EVENT_SOURCED_AGGREGATE,
-                        ),
-                    )
-                    cls.meta_.part_of = to_cls
-
-                    # Also set the stream name if there is a `stream_name` option in `meta_`
-                    # FIXME Could this task be pushed to the element itself, so each element
-                    #   can do stuff beyond `stream_name`?
-                    if hasattr(cls.meta_, "stream_name") and not cls.meta_.stream_name:
-                        cls.meta_.stream_name = to_cls.meta_.stream_name
+                match resolution_type:
+                    case "Association":
+                        field_obj, owner_cls = params
+                        to_cls = self.fetch_element_cls_from_registry(
+                            field_obj.to_cls,
+                            (
+                                DomainObjects.AGGREGATE,
+                                DomainObjects.EVENT_SOURCED_AGGREGATE,
+                                DomainObjects.ENTITY,
+                            ),
+                        )
+                        field_obj._resolve_to_cls(self, to_cls, owner_cls)
+                    case "ValueObject":
+                        field_obj, owner_cls = params
+                        to_cls = self.fetch_element_cls_from_registry(
+                            field_obj.value_object_cls,
+                            (DomainObjects.VALUE_OBJECT,),
+                        )
+                        field_obj._resolve_to_cls(self, to_cls, owner_cls)
+                    case "AggregateCls":
+                        cls = params
+                        to_cls = self.fetch_element_cls_from_registry(
+                            cls.meta_.part_of,
+                            (
+                                DomainObjects.AGGREGATE,
+                                DomainObjects.EVENT_SOURCED_AGGREGATE,
+                            ),
+                        )
+                        cls.meta_.part_of = to_cls
+                    case _:
+                        raise NotSupportedError(
+                            f"Resolution Type {resolution_type} not supported"
+                        )
 
             # Remove from pending list now that the class has been resolved
             del self._pending_class_resolutions[name]
@@ -579,40 +575,23 @@ class Domain:
 
         return self._register_element(element_cls.element_type, element_cls, **kwargs)
 
-    def delist(self, element_cls):
-        """Delist a Domain Element.
-
-        This method will result in a no-op if the entity class was not found
-        in the registry for whatever reason.
-        """
-        if getattr(element_cls, "element_type", None) not in [
-            element for element in DomainObjects
-        ]:
-            raise NotImplementedError
-
-        self._domain_registry.dei_element(element_cls.element_type, element_cls)
-
     def fetch_element_cls_from_registry(
-        self, element: Union[str, Any], element_types: Tuple[DomainObjects, ...]
-    ) -> Any:
+        self, element: str, element_types: Tuple[DomainObjects, ...]
+    ) -> Element:
         """Util Method to fetch an Element's class from its name"""
-        if isinstance(element, str):
+        try:
+            # Try fetching by class name
+            return self._get_element_by_name(element_types, element).cls
+        except ConfigurationError:
             try:
-                # Try fetching by class name
-                return self._get_element_by_name(element_types, element).cls
+                # Try fetching by fully qualified class name
+                return self._get_element_by_fully_qualified_name(
+                    element_types, element
+                ).cls
             except ConfigurationError:
-                try:
-                    # Try fetching by fully qualified class name
-                    return self._get_element_by_fully_qualified_name(
-                        element_types, element
-                    ).cls
-                except ConfigurationError:
-                    # Element has not been registered
-                    # FIXME print a helpful debug message
-                    raise
-        else:
-            # FIXME Check if entity is subclassed from BaseEntity
-            return element
+                # Element has not been registered
+                # FIXME print a helpful debug message
+                raise
 
     def _get_element_by_name(self, element_types, element_name):
         """Fetch Domain record with the provided Element name"""

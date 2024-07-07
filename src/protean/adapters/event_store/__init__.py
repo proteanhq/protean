@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import importlib
 import logging
 from collections import defaultdict
-from typing import List, Optional, Type
+from typing import TYPE_CHECKING, DefaultDict, List, Optional, Set, Type
 
 from protean import BaseEvent, BaseEventHandler
 from protean.core.command import BaseCommand
@@ -14,6 +16,10 @@ from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.utils import fqn
 from protean.utils.mixins import Message
 
+if TYPE_CHECKING:
+    from protean.domain import Domain
+    from protean.port.event_store import BaseEventStore
+
 logger = logging.getLogger(__name__)
 
 EVENT_STORE_PROVIDERS = {
@@ -24,45 +30,47 @@ EVENT_STORE_PROVIDERS = {
 
 class EventStore:
     def __init__(self, domain):
-        self.domain = domain
-        self._event_store = None
-        self._event_streams = None
-        self._command_streams = None
+        self.domain: Domain = domain
+        self._event_store: BaseEventStore = None
+        self._event_streams: DefaultDict[str, Set[BaseEventHandler]] = defaultdict(set)
+        self._command_streams: DefaultDict[str, Set[BaseCommandHandler]] = defaultdict(
+            set
+        )
 
     @property
     def store(self):
         return self._event_store
 
-    def _initialize(self):
+    def _initialize_event_store(self) -> BaseEventStore:
+        configured_event_store = self.domain.config["event_store"]
+        event_store_full_path = EVENT_STORE_PROVIDERS[
+            configured_event_store["provider"]
+        ]
+        event_store_module, event_store_class = event_store_full_path.rsplit(
+            ".", maxsplit=1
+        )
+
+        event_store_cls = getattr(
+            importlib.import_module(event_store_module), event_store_class
+        )
+
+        store = event_store_cls(self.domain, configured_event_store)
+
+        return store
+
+    def _initialize(self) -> None:
         logger.debug("Initializing Event Store...")
 
-        configured_event_store = self.domain.config["event_store"]
-        if configured_event_store and isinstance(configured_event_store, dict):
-            event_store_full_path = EVENT_STORE_PROVIDERS[
-                configured_event_store["provider"]
-            ]
-            event_store_module, event_store_class = event_store_full_path.rsplit(
-                ".", maxsplit=1
-            )
-
-            event_store_cls = getattr(
-                importlib.import_module(event_store_module), event_store_class
-            )
-
-            store = event_store_cls(self.domain, configured_event_store)
-        else:
-            raise ConfigurationError("Configure at least one event store in the domain")
-
-        self._event_store = store
+        # Initialize the Event Store
+        #
+        # An event store is always present by default. If not configured explicitly,
+        #   a memory-based event store is used.
+        self._event_store = self._initialize_event_store()
 
         self._initialize_event_streams()
         self._initialize_command_streams()
 
-        return self._event_store
-
     def _initialize_event_streams(self):
-        self._event_streams = defaultdict(set)
-
         for _, record in self.domain.registry.event_handlers.items():
             stream_name = (
                 record.cls.meta_.stream_name
@@ -71,8 +79,6 @@ class EventStore:
             self._event_streams[stream_name].add(record.cls)
 
     def _initialize_command_streams(self):
-        self._command_streams = defaultdict(set)
-
         for _, record in self.domain.registry.command_handlers.items():
             self._command_streams[record.cls.meta_.part_of.meta_.stream_name].add(
                 record.cls

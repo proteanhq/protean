@@ -86,6 +86,16 @@ def command_handler_factory(element_cls, **kwargs):
                         }
                     )
 
+                if method._target_cls.meta_.part_of != element_cls.meta_.part_of:
+                    raise IncorrectUsageError(
+                        {
+                            "_command_handler": [
+                                f"Command `{method._target_cls.__name__}` in Command Handler `{element_cls.__name__}` "
+                                "is not associated with the same aggregate as the Command Handler"
+                            ]
+                        }
+                    )
+
                 # Associate Command with the handler's stream
                 # Order of preference:
                 #   1. Stream name defined in command

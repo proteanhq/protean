@@ -13,6 +13,12 @@ from protean.utils import fully_qualified_name
 from .elements import UserAggregate, UserEntity, UserFoo, UserVO
 
 
+def test_domain_name_string():
+    domain = Domain(__file__, "Foo", load_toml=False)
+
+    assert str(domain) == "Domain: Foo"
+
+
 class TestElementRegistration:
     def test_that_only_recognized_element_types_can_be_registered(self, test_domain):
         with pytest.raises(NotSupportedError) as exc:

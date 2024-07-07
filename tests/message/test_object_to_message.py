@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from protean import BaseCommand, BaseEvent, BaseEventSourcedAggregate
+from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
 from protean.utils import fully_qualified_name
 from protean.utils.mixins import Message
@@ -17,6 +18,10 @@ class Register(BaseCommand):
     id = Identifier(identifier=True)
     email = String()
     name = String()
+
+
+class Activate(BaseCommand):
+    id = Identifier()
 
 
 class Registered(BaseEvent):
@@ -163,3 +168,12 @@ def test_construct_message_from_either_event_or_command(test_domain):
     assert message.metadata.kind == "EVENT"
     assert message.data == event.to_dict()
     assert message.time is None
+
+
+def test_object_is_registered_with_domain():
+    command = Activate(id=str(uuid4()))
+
+    with pytest.raises(ConfigurationError) as exc:
+        Message.to_message(command)
+
+    assert exc.value.args[0] == "`Activate` is not associated with an aggregate."

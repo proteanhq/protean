@@ -398,23 +398,26 @@ class Identifier(Field):
             self.identity_type = current_domain.config["identity_type"]
 
         # Ensure that the value is of the right type
-        if self.identity_type == IdentityType.UUID.value:
-            if not isinstance(value, UUID):
-                try:
-                    value = UUID(value)
-                except (ValueError, AttributeError):
-                    self.fail("invalid", value=value)
-        elif self.identity_type == IdentityType.INTEGER.value:
-            if not isinstance(value, int):
-                try:
-                    value = int(value)
-                except ValueError:
-                    self.fail("invalid", value=value)
-        elif self.identity_type == IdentityType.STRING.value:
-            if not isinstance(value, str):
-                value = str(value)
-        else:
-            raise ValidationError({"identity_type": ["Identity type not supported"]})
+        match self.identity_type:
+            case IdentityType.UUID.value:
+                if not isinstance(value, UUID):
+                    try:
+                        value = UUID(value)
+                    except (ValueError, AttributeError):
+                        self.fail("invalid", value=value)
+            case IdentityType.INTEGER.value:
+                if not isinstance(value, int):
+                    try:
+                        value = int(value)
+                    except ValueError:
+                        self.fail("invalid", value=value)
+            case IdentityType.STRING.value:
+                if not isinstance(value, str):
+                    value = str(value)
+            case _:
+                raise ValidationError(
+                    {"identity_type": ["Identity type not supported"]}
+                )
 
         return value
 

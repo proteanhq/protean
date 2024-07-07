@@ -3,6 +3,8 @@ from uuid import uuid4
 import pytest
 
 from protean import BaseCommand, BaseEvent, BaseEventSourcedAggregate
+from protean.core.event import Metadata
+from protean.exceptions import InvalidDataError
 from protean.fields import Identifier, String
 from protean.utils.mixins import Message
 
@@ -16,6 +18,10 @@ class Register(BaseCommand):
     id = Identifier(identifier=True)
     email = String()
     name = String()
+
+
+class Activate(BaseCommand):
+    id = Identifier()
 
 
 class Registered(BaseEvent):
@@ -64,3 +70,14 @@ def test_construct_command_from_message():
     reconstructed_command = message.to_object()
     assert isinstance(reconstructed_command, Register)
     assert reconstructed_command.id == identifier
+
+
+def test_invalid_message_throws_exception():
+    message = Message(metadata=Metadata(kind="INVALID"))
+
+    with pytest.raises(InvalidDataError) as exc:
+        message.to_object()
+
+    assert exc.value.messages == {
+        "_message": ["Message type is not supported for deserialization"]
+    }

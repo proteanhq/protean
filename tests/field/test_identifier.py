@@ -69,8 +69,10 @@ class TestIdentityType:
         assert identifier.as_dict(value) == "42"
 
     def test_with_identity_type_as_invalid(self):
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError) as exc:
             Identifier(identity_type="invalid")
+
+        assert exc.value.messages == {"identity_type": ["Identity type not supported"]}
 
     def test_with_invalid_value_for_uuid_identity_type(self):
         identifier = Identifier(identity_type=IdentityType.UUID.value)
@@ -106,6 +108,19 @@ class TestIdentityType:
         # With STRING, an INTEGER will be converted to a string
         identifier._load(42) == "42"
 
+    def test_invalid_identity_type_in_domain_config(self):
+        domain = Domain(__file__, load_toml=False)
+        domain.config["identity_type"] = "invalid"
+
+        with domain.domain_context():
+            identifier = Identifier()
+            with pytest.raises(ValidationError) as exc:
+                identifier._load(42)
+
+            assert exc.value.messages == {
+                "identity_type": ["Identity type not supported"]
+            }
+
     def test_that_default_is_picked_from_domain_config(self):
         domain = Domain(__file__, load_toml=False)
 
@@ -136,7 +151,3 @@ class TestIdentityType:
             assert identifier._load(uuid_val) == uuid_val
             assert identifier.identity_type == IdentityType.UUID.value
             assert identifier.as_dict(uuid_val) == str(uuid_val)
-
-    def test_invalid_identity_type(self):
-        with pytest.raises(ValidationError):
-            Identifier(identity_type="invalid")
