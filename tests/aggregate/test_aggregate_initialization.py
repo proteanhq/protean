@@ -137,6 +137,15 @@ class TestAggregateInitialization:
         assert person.last_name == "Doe"
         assert person.age == 23
 
+    def test_template_param_is_a_dict(self):
+        with pytest.raises(AssertionError) as exc:
+            Person(["John", "Doe", 23])
+
+        assert str(exc.value) == (
+            "Positional argument ['John', 'Doe', 23] passed must be a dict. "
+            "This argument serves as a template for loading common values."
+        )
+
     def test_error_message_content_on_validation_error(self):
         # Single error message
         try:

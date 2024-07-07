@@ -1,7 +1,7 @@
 import pytest
 
 from protean import BaseAggregate, BaseEvent, BaseEventHandler
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import Identifier, String
 
 
@@ -13,6 +13,11 @@ class User(BaseAggregate):
 class Registered(BaseEvent):
     user_id = Identifier()
     email = String()
+
+
+def test_that_base_command_handler_cannot_be_instantianted():
+    with pytest.raises(NotSupportedError):
+        BaseEventHandler()
 
 
 def test_part_of_specified_during_registration(test_domain):

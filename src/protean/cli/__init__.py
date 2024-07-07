@@ -47,6 +47,7 @@ class Category(str, Enum):
     CORE = "CORE"
     EVENTSTORE = "EVENTSTORE"
     DATABASE = "DATABASE"
+    COVERAGE = "COVERAGE"
     FULL = "FULL"
 
 
@@ -119,6 +120,22 @@ def test(
             for store in ["MESSAGE_DB"]:
                 print(f"Running tests for EVENTSTORE: {store}...")
                 subprocess.call(commands + ["-m", "eventstore", f"--store={store}"])
+        case "COVERAGE":
+            subprocess.call(
+                commands
+                + [
+                    "--slow",
+                    "--sqlite",
+                    "--postgresql",
+                    "--elasticsearch",
+                    "--redis",
+                    "--message_db",
+                    "--cov=protean",
+                    "--cov-config",
+                    ".coveragerc",
+                    "tests",
+                ]
+            )
         case _:
             print("Running core tests...")
             subprocess.call(commands)
