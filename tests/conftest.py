@@ -153,8 +153,7 @@ def db_config(request):
         return {
             "MEMORY": {"provider": "memory"},
             "POSTGRESQL": {
-                "provider": "sqlalchemy",
-                "database": "postgresql",
+                "provider": "postgresql",
                 "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
             },
             "ELASTICSEARCH": {
@@ -163,8 +162,7 @@ def db_config(request):
                 "database_uri": {"hosts": ["localhost"]},
             },
             "SQLITE": {
-                "provider": "sqlalchemy",
-                "database": "sqlite",
+                "provider": "sqlite",
                 "database_uri": "sqlite:///test.db",
             },
         }[request.config.getoption("--db", "MEMORY")]

@@ -1,6 +1,5 @@
 identity_type = "uuid"
 
 [databases.default]
-provider = "sqlalchemy"
-database = "postgresql"
+provider = "postgresql"
 database_uri = "postgresql://postgres:postgres@localhost:5432/postgres"

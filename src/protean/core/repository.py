@@ -73,7 +73,7 @@ class BaseRepository(Element, OptionsMixin):
         #   If no database is specified, model can be used for all databases
         if custom_model_cls and (
             custom_model_cls.meta_.database is None
-            or custom_model_cls.meta_.database == self._provider.conn_info["database"]
+            or custom_model_cls.meta_.database == self._provider.__class__.__database__
         ):
             # Get the decorated model class.
             #   This is a no-op if the provider decides that the model is fully-baked

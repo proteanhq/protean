@@ -307,11 +307,12 @@ class ElasticsearchDAO(BaseDAO):
 
 
 class ESProvider(BaseProvider):
+    __database__ = "elasticsearch"
+
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Provider with Connection/Adapter details"""
 
         # In case of `ESProvider`, the `database` value will always be `ELASTICSEARCH`.
-        conn_info["database"] = "elasticsearch"
         conn_info["database_uri"] = json.loads(conn_info["database_uri"])
         super().__init__(name, domain, conn_info)
 
@@ -493,9 +494,10 @@ class ESProvider(BaseProvider):
             repo = self.domain.repository_for(element_record.cls)
 
             model_cls = repo._model
-            if provider.conn_info[
-                "database"
-            ] == "elasticsearch" and conn.indices.exists(index=model_cls._index._name):
+            if (
+                provider.__class__.__database__ == "elasticsearch"
+                and conn.indices.exists(index=model_cls._index._name)
+            ):
                 conn.delete_by_query(
                     refresh=True,
                     index=model_cls._index._name,
@@ -513,9 +515,10 @@ class ESProvider(BaseProvider):
         for _, element_record in elements.items():
             provider = current_domain.providers[element_record.cls.meta_.provider]
             model_cls = current_domain.repository_for(element_record.cls)._model
-            if provider.conn_info[
-                "database"
-            ] == "elasticsearch" and not model_cls._index.exists(using=conn):
+            if (
+                provider.__class__.__database__ == "elasticsearch"
+                and not model_cls._index.exists(using=conn)
+            ):
                 # We use model_cls here to ensure the index is created along with mappings
                 model_cls.init(using=conn)
 
@@ -530,9 +533,10 @@ class ESProvider(BaseProvider):
         for _, element_record in elements.items():
             model_cls = self.domain.repository_for(element_record.cls)._model
             provider = self.domain.providers[element_record.cls.meta_.provider]
-            if provider.conn_info[
-                "database"
-            ] == "elasticsearch" and model_cls._index.exists(using=conn):
+            if (
+                provider.__class__.__database__ == "elasticsearch"
+                and model_cls._index.exists(using=conn)
+            ):
                 conn.indices.delete(index=model_cls._index._name)
 
 

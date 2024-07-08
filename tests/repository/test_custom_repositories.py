@@ -46,8 +46,7 @@ class TestRepositoryConstructionAndRegistration:
     @pytest.fixture
     def custom_test_domain(self, test_domain):
         test_domain.config["databases"]["sqlite"] = {
-            "provider": "sqlalchemy",
-            "database": "sqlite",
+            "provider": "sqlite",
             "database_uri": "sqlite:///test.db",
         }
         test_domain._initialize()

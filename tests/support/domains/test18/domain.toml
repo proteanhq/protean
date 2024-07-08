@@ -1,6 +1,5 @@
 [databases.secondary]
-provider = "sqlalchemy"
-database = "sqlite"
+provider = "sqlite"
 database_uri = "${SQLITE_DB_LOCATION}"
 
 [custom]

@@ -527,13 +527,6 @@ class SAProvider(BaseProvider):
 
     def __init__(self, *args, **kwargs):
         """Initialize and maintain Engine"""
-        # Since SQLAlchemyProvider can cater to multiple databases, it is important
-        #   that we know which database we are dealing with, to run database-specific
-        #   statements like `PRAGMA` for SQLite.
-        if "database" not in args[2]:
-            logger.error(f"Missing `database` information in conn_info: {args[2]}")
-            raise ConfigurationError("Missing `database` attribute in Connection info")
-
         super().__init__(*args, **kwargs)
 
         kwargs = self._get_database_specific_engine_args()
@@ -544,7 +537,7 @@ class SAProvider(BaseProvider):
             **kwargs,
         )
 
-        if self.conn_info["database"] == self.databases.postgresql.value:
+        if self.__database__ == self.databases.postgresql.value:
             # Nest database tables under a schema, so that we have complete control
             #   on creating/dropping db structures. We cannot control structures in the
             #   the default `public` schema.
@@ -567,7 +560,7 @@ class SAProvider(BaseProvider):
 
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
         """
-        if self.conn_info["database"] == self.databases.postgresql.value:
+        if self.__database__ == self.databases.postgresql.value:
             return {"isolation_level": "AUTOCOMMIT"}
 
         return {}
@@ -580,7 +573,7 @@ class SAProvider(BaseProvider):
 
         Return: a dictionary with additional arguments and values.
         """
-        if self.conn_info["database"] == self.databases.postgresql.value:
+        if self.__database__ == self.databases.postgresql.value:
             return {"autoflush": False}
 
         return {}
@@ -608,7 +601,7 @@ class SAProvider(BaseProvider):
 
         Return: None
         """
-        if self.conn_info["database"] == self.databases.sqlite.value:
+        if self.__database__ == self.databases.sqlite.value:
             conn.execute(text("PRAGMA case_sensitive_like = ON;"))
 
         return conn
@@ -631,13 +624,13 @@ class SAProvider(BaseProvider):
 
         transaction = conn.begin()
 
-        if self.conn_info["database"] == self.databases.sqlite.value:
+        if self.__database__ == self.databases.sqlite.value:
             conn.execute(text("PRAGMA foreign_keys = OFF;"))
 
         for table in self._metadata.sorted_tables:
             conn.execute(table.delete())
 
-        if self.conn_info["database"] == self.databases.sqlite.value:
+        if self.__database__ == self.databases.sqlite.value:
             conn.execute(text("PRAGMA foreign_keys = ON;"))
 
         transaction.commit()
@@ -751,6 +744,14 @@ class SAProvider(BaseProvider):
         assert isinstance(data, (dict, None))
 
         return self.get_connection().execute(text(query), data)
+
+
+class PostgresqlProvider(SAProvider):
+    __database__ = SAProvider.databases.postgresql.value
+
+
+class SqliteProvider(SAProvider):
+    __database__ = SAProvider.databases.sqlite.value
 
 
 operators = {

@@ -14,8 +14,7 @@ provider = "memory"
 provider = "memory"
 
 [tool.protean.databases.sqlite]
-provider = "sqlalchemy"
-database = "sqlite"
+provider = "sqlite"
 database_uri = "sqlite:///test.db"
 
 [tool.protean.brokers.default]

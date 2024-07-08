@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 DATABASE_PROVIDERS = {
     "memory": "protean.adapters.MemoryProvider",
-    "sqlalchemy": "protean.adapters.repository.sqlalchemy.SAProvider",
+    "postgresql": "protean.adapters.repository.sqlalchemy.PostgresqlProvider",
+    "sqlite": "protean.adapters.repository.sqlalchemy.SqliteProvider",
     "elasticsearch": "protean.adapters.repository.elasticsearch.ESProvider",
 }
 
@@ -67,8 +68,7 @@ class Providers(collections.abc.MutableMapping):
         # For example, with the following PostgreSQL configuration:
         #   databases = {
         #       "default": {
-        #           "provider": "sqlalchemy",
-        #           "database": "postgresql",
+        #           "provider": "postgresql",
         #           "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
         #       },
         #   }
@@ -130,7 +130,7 @@ class Providers(collections.abc.MutableMapping):
 
         provider_name = part_of.meta_.provider
         provider = self._providers[provider_name]
-        database = provider.conn_info["database"]
+        database = provider.__class__.__database__
 
         aggregate_name = fully_qualified_name(part_of)
 

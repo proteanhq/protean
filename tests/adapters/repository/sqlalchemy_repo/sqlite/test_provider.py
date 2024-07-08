@@ -5,7 +5,7 @@ from sqlalchemy.engine.result import Result
 from sqlalchemy.orm.session import Session
 
 from protean.adapters.repository import Providers
-from protean.adapters.repository.sqlalchemy import SAProvider
+from protean.adapters.repository.sqlalchemy import SqliteProvider
 
 from .elements import Alien, Person
 
@@ -30,7 +30,7 @@ class TestProviders:
         """Test provider info loaded for tests"""
 
         provider1 = test_domain.providers["default"]
-        assert isinstance(provider1, SAProvider)
+        assert isinstance(provider1, SqliteProvider)
 
     def test_provider_get_connection(self, test_domain):
         """Test ``get_connection`` method and check for connection details"""

@@ -90,11 +90,12 @@ class MemorySession:
 class MemoryProvider(BaseProvider):
     """Provider class for Dict Repositories"""
 
+    __database__ = "memory"
+
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Provider with Connection/Adapter details"""
 
         # In case of `MemoryProvider`, the `database` value will always be `memory`.
-        conn_info["database"] = "memory"
         super().__init__(name, domain, conn_info)
 
         # Global in-memory store of dict data.

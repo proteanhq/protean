@@ -9,8 +9,7 @@ domain = Domain(__file__, "SQLite-Domain", load_toml=False)
 
 domain.config["databases"] = {
     "default": {
-        "provider": "sqlalchemy",
-        "database": "sqlite",
+        "provider": "sqlite",
         "database_uri": "sqlite:///:memory:",
     }
 }
