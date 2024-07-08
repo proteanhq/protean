@@ -1,4 +1,4 @@
-# Configuratiion
+# Configuration
 
 ## Primary Configuration Attributes
 

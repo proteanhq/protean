@@ -11,8 +11,8 @@ helps fulfill this goal.
 
 ## Configuration
 
-Identity options are specified at the Domain level with [configuration
-attributes](./configuration#domain-configuration-attributes). A combination of
+Identity options are specified at the Domain level with
+[configuration attributes](./configuration.md#domain-configuration-attributes). A combination of
 identity strategy and identity type work together to generate identity values.
 
 ```toml
@@ -37,7 +37,7 @@ The following strategies are supported for identity generation:
 - **uuid** - Identity is a uuid4 identifier. This is the default and preferred
 strategy.
 - **function** - A function is invoked to generate identity values, supplied
-as [`identity_function`](domain-object.md#identity_function) when constructing
+as [`identity_function`](./compose-a-domain/index.md#identity_function) when constructing
 the domain object.
 
 ### Type
@@ -141,7 +141,7 @@ NotSupportedError: {'_entity': ['Multiple identifier fields found in entity Orde
 
 ## Element-level Identity Customization
 
-The identity of a single entity element can be customized by explicit
+The identity of an aggregate or entity element can be customized by explicit
 configuration of an `Auto` or `Identifier`:
 
 ```python hl_lines="9-10 15-20"

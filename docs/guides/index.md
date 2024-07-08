@@ -1,3 +1,3 @@
-# User Guide
+# Guide
 
-[Command Line Interface](cli/index.md)
+Everything you need to know about using Protean.

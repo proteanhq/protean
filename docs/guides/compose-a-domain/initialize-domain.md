@@ -49,5 +49,5 @@ In the example above, the domain activates an SQLite database repository and
 makes it available for domain elements for further use.
 
 <!-- FIXME Add link to accessing active/configured dependencies -->
-Refer to [Configuration Handling](configuration.md) to understand the different ways to configure
+Refer to [Configuration handling](../configuration.md) to understand the different ways to configure
 the domain.

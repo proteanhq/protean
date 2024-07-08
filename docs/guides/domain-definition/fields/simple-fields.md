@@ -183,9 +183,9 @@ Out[3]:
 ```
 
 Identity values are UUIDs by default. You can customize this behavior with
-`identity_strategy` and `identity_type` [config attributes](../../compose-a-domain/configuration.md#domain-configuration-attributes).
+`identity_strategy` and `identity_type` [config attributes](../../configuration.md#domain-configuration-attributes).
 
-The [Identity](../identity.md) section deep dives into identities in Protean.
+The [Identity](../../identity.md) section deep dives into identities in Protean.
 
 ## Identifier
 
@@ -210,5 +210,5 @@ In [2]: user.to_dict()
 Out[2]: {'user_id': 1, 'name': 'John Doe', 'subscribed': False}
 ```
 
-Refer to [Identity](../identity.md) section for a deep dive into identities
+Refer to [Identity](../../identity.md) section for a deep dive into identities
 in Protean.

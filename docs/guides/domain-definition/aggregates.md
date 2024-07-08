@@ -48,7 +48,7 @@ mandatory), and also fine-tune how it is persisted (like a database column
 name in `referenced_as`).
 
 The full list of available fields in Protean and their options is available in
-[Data Fields](../data-fields/index.md) section.
+[Data Fields](../domain-definition/fields/index.md) section.
 
 ## Initialization
 
@@ -69,7 +69,7 @@ This would output something like:
 ```
 
 You see an `id` attribute appear in the results. We discuss **identity**
-deeply in a [later](identity.md) section.
+deeply in the [identity](../identity.md) section.
 
 ## Inheritance
 

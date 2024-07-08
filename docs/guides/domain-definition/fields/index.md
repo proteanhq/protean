@@ -16,13 +16,13 @@ elements. They help Protean fine-tune and customize attribute access, making
 it possible to define properties, manage attributes, and control data
 validation.
 
-## Field Options
+## Field Arguments
 
-Protean fields come with various options that enhance their functionality and
-integration with the backend systems. These include required, default, choices,
-and unique, among others, which allow for a highly customizable and robust
-domain model definition. These options provide the necessary tools for
-you to handle various real-world scenarios effectively.
+Protean fields come with various options to model real-world scenarios effectively.
+These include `required`, `default`, `choices`, and `unique`, among others, which allow for a highly customizable and robust
+domain model definition.
+
+Read more in [Arguments](./arguments.md) section.
 
 ## Types of Fields
 
@@ -30,8 +30,8 @@ you to handle various real-world scenarios effectively.
 
 Simple fields handle basic data types like strings, integers, and dates.
 They are the building blocks for defining straightforward data attributes in
-models. Options like max_length for String or max_value and min_value for
-numeric fields like Integer and Float allow developers to specify constraints
+models. Options like `max_length` for `String` or `max_value` and `min_value` for
+numeric fields like `Integer` and `Float` allow you to specify constraints
 directly in the model's definition.
 
 ### Container Fields
