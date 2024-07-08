@@ -113,7 +113,7 @@ class TestModelOptions:
                     name = "people"
 
             test_domain.register(Person)
-            test_domain.register_model(PeopleModel, entity_cls=Person)
+            test_domain.register_model(PeopleModel, part_of=Person)
 
             model_cls = test_domain.repository_for(Person)._model
             assert model_cls.__name__ == "PeopleModel"
@@ -173,7 +173,7 @@ class TestModelOptions:
                     name = "custom-people"
 
             test_domain.register(Person)
-            test_domain.register_model(PeopleModel, entity_cls=Person)
+            test_domain.register_model(PeopleModel, part_of=Person)
 
             model_cls = test_domain.repository_for(Person)._model
             assert model_cls.__name__ == "PeopleModel"
@@ -210,7 +210,7 @@ class TestModelOptions:
                     settings = {"number_of_shards": 2}
 
             test_domain.register(Person)
-            test_domain.register_model(PeopleModel, entity_cls=Person)
+            test_domain.register_model(PeopleModel, part_of=Person)
 
             model_cls = test_domain.repository_for(Person)._model
             assert model_cls.__name__ == "PeopleModel"
@@ -269,7 +269,7 @@ class TestCustomModel:
     def test_that_custom_model_can_be_associated_with_entity(self, test_domain):
         test_domain.register(Provider)
         test_domain.register_model(
-            ProviderCustomModel, entity_cls=Provider, schema_name="providers"
+            ProviderCustomModel, part_of=Provider, schema_name="providers"
         )
 
         model_cls = test_domain.repository_for(Provider)._model
@@ -280,7 +280,7 @@ class TestCustomModel:
     ):
         test_domain.register(Provider)
         test_domain.register_model(
-            ProviderCustomModel, entity_cls=Provider, schema_name="providers"
+            ProviderCustomModel, part_of=Provider, schema_name="providers"
         )
 
         # FIXME Should schema name be equated to the overridden name in the model?
@@ -293,7 +293,7 @@ class TestCustomModel:
     def test_that_custom_model_is_persisted_via_dao(self, test_domain):
         test_domain.register(Provider)
         test_domain.register_model(
-            ProviderCustomModel, entity_cls=Provider, schema_name="providers"
+            ProviderCustomModel, part_of=Provider, schema_name="providers"
         )
 
         provider_dao = test_domain.repository_for(Provider)._dao
@@ -303,7 +303,7 @@ class TestCustomModel:
     def test_that_custom_model_is_retrievable_via_dao(self, test_domain):
         test_domain.register(Provider)
         test_domain.register_model(
-            ProviderCustomModel, entity_cls=Provider, schema_name="providers"
+            ProviderCustomModel, part_of=Provider, schema_name="providers"
         )
 
         provider_dao = test_domain.repository_for(Provider)._dao
@@ -318,7 +318,7 @@ class TestCustomModel:
 
         test_domain.register(Receiver)
 
-        @test_domain.model(entity_cls=Receiver)
+        @test_domain.model(part_of=Receiver)
         class ReceiverInlineModel:
             name = Text(fields={"raw": Keyword()})
 
@@ -343,7 +343,7 @@ class TestCustomModel:
 
         test_domain.register(Receiver)
 
-        @test_domain.model(entity_cls=Receiver)
+        @test_domain.model(part_of=Receiver)
         class ReceiverInlineModel:
             id = Keyword()
             name = Text(fields={"raw": Keyword()})

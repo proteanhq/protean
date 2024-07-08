@@ -28,7 +28,7 @@ def setup_db():
         domain.register(Provider)
         domain.register(User)
         domain.register_model(
-            ProviderCustomModel, entity_cls=Provider, schema_name="adults"
+            ProviderCustomModel, part_of=Provider, schema_name="adults"
         )
         domain.init(traverse=False)
 

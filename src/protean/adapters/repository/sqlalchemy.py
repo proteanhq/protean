@@ -133,7 +133,7 @@ def derive_schema_name(model_cls):
     ):
         return model_cls.meta_.schema_name
     else:
-        return model_cls.meta_.entity_cls.meta_.schema_name
+        return model_cls.meta_.part_of.meta_.schema_name
 
 
 class SqlalchemyModel(orm.DeclarativeBase, BaseModel):
@@ -169,7 +169,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseModel):
 
         # Update the class attrs with the entity attributes
         if "meta_" in subclass.__dict__:
-            entity_cls = subclass.__dict__["meta_"].entity_cls
+            entity_cls = subclass.__dict__["meta_"].part_of
             for _, field_obj in attributes(entity_cls).items():
                 attribute_name = field_obj.attribute_name
 
@@ -243,7 +243,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseModel):
     def from_entity(cls, entity):
         """Convert the entity to a model object"""
         item_dict = {}
-        for attribute_obj in attributes(cls.meta_.entity_cls).values():
+        for attribute_obj in attributes(cls.meta_.part_of).values():
             if isinstance(attribute_obj, Reference):
                 item_dict[attribute_obj.relation.attribute_name] = (
                     attribute_obj.relation.value
@@ -258,9 +258,9 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseModel):
     def to_entity(cls, model_obj: "SqlalchemyModel"):
         """Convert the model object to an entity"""
         item_dict = {}
-        for field_name in attributes(cls.meta_.entity_cls):
+        for field_name in attributes(cls.meta_.part_of):
             item_dict[field_name] = getattr(model_obj, field_name, None)
-        return cls.meta_.entity_cls(item_dict)
+        return cls.meta_.part_of(item_dict)
 
 
 class SADAO(BaseDAO):
@@ -683,7 +683,7 @@ class SAProvider(BaseProvider):
             custom_attrs = {**custom_attrs, **columns}
 
             meta_ = Options(model_cls.meta_)
-            meta_.entity_cls = entity_cls
+            meta_.part_of = entity_cls
             meta_.schema_name = (
                 schema_name if meta_.schema_name is None else meta_.schema_name
             )
@@ -711,7 +711,7 @@ class SAProvider(BaseProvider):
         else:
             # Construct a new Meta object with existing values
             meta_ = Options()
-            meta_.entity_cls = entity_cls
+            meta_.part_of = entity_cls
             # If schema_name is not provided, sqlalchemy can throw
             #   sqlalchemy.exc.InvalidRequestError: Class does not
             #   have a __table__ or __tablename__ specified and

@@ -47,7 +47,7 @@ class ElasticsearchModel(Document):
     def from_entity(cls, entity) -> "ElasticsearchModel":
         """Convert the entity to a Elasticsearch record"""
         item_dict = {}
-        for attribute_obj in attributes(cls.meta_.entity_cls).values():
+        for attribute_obj in attributes(cls.meta_.part_of).values():
             if isinstance(attribute_obj, Reference):
                 item_dict[attribute_obj.relation.attribute_name] = (
                     attribute_obj.relation.value
@@ -61,7 +61,7 @@ class ElasticsearchModel(Document):
 
         # Elasticsearch stores identity in a special field `meta.id`.
         # Set `meta.id` to the identifier set in entity
-        id_field_name = id_field(cls.meta_.entity_cls).field_name
+        id_field_name = id_field(cls.meta_.part_of).field_name
 
         if id_field_name in item_dict:
             model_obj.meta.id = item_dict[id_field_name]
@@ -75,7 +75,7 @@ class ElasticsearchModel(Document):
 
         # Convert the values in ES Model as a dictionary
         values = item.to_dict()
-        for field_name in attributes(cls.meta_.entity_cls):
+        for field_name in attributes(cls.meta_.part_of):
             item_dict[field_name] = values.get(field_name, None)
 
         identifier = None
@@ -90,14 +90,14 @@ class ElasticsearchModel(Document):
 
         # Elasticsearch stores identity in a special field `meta.id`.
         # Extract identity from `meta.id` and set identifier
-        id_field_name = id_field(cls.meta_.entity_cls).field_name
+        id_field_name = id_field(cls.meta_.part_of).field_name
         item_dict[id_field_name] = identifier
 
         # Set version from document meta, only if `_version` attr is present
-        if hasattr(cls.meta_.entity_cls, "_version"):
+        if hasattr(cls.meta_.part_of, "_version"):
             item_dict["_version"] = item.meta.version
 
-        entity_obj = cls.meta_.entity_cls(item_dict)
+        entity_obj = cls.meta_.part_of(item_dict)
 
         return entity_obj
 
@@ -439,7 +439,7 @@ class ESProvider(BaseProvider):
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
             meta_ = Options()
-            meta_.entity_cls = entity_cls
+            meta_.part_of = entity_cls
 
             # Construct Inner Index class with options
             options = {}

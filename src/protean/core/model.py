@@ -21,7 +21,7 @@ class BaseModel(Element, OptionsMixin):
     def _default_options(cls):
         return [
             ("database", None),
-            ("entity_cls", None),
+            ("part_of", None),
             ("schema_name", None),
         ]
 
@@ -39,7 +39,7 @@ class BaseModel(Element, OptionsMixin):
 def model_factory(element_cls, **kwargs):
     element_cls = derive_element_class(element_cls, BaseModel, **kwargs)
 
-    if not element_cls.meta_.entity_cls:
+    if not element_cls.meta_.part_of:
         raise IncorrectUsageError(
             {
                 "_entity": [

@@ -447,7 +447,7 @@ class Domain:
 
         if element_type == DomainObjects.MODEL:
             # Remember model association with aggregate/entity class, for easy fetching
-            self._models[fqn(new_cls.meta_.entity_cls)] = new_cls
+            self._models[fqn(new_cls.meta_.part_of)] = new_cls
 
         # Register element with domain
         self._domain_registry.register_element(new_cls)

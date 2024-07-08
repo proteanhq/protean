@@ -26,7 +26,7 @@ def derive_schema_name(model_cls):
     if hasattr(model_cls.meta_, "schema_name"):
         return model_cls.meta_.schema_name
     else:
-        return model_cls.meta_.entity_cls.meta_.schema_name
+        return model_cls.meta_.part_of.meta_.schema_name
 
 
 class MemoryModel(BaseModel):
@@ -43,7 +43,7 @@ class MemoryModel(BaseModel):
     @classmethod
     def to_entity(cls, item: "MemoryModel"):
         """Convert the dictionary record to an entity"""
-        return cls.meta_.entity_cls(**item)
+        return cls.meta_.part_of(**item)
 
 
 class MemorySession:
@@ -148,7 +148,7 @@ class MemoryProvider(BaseProvider):
             }
 
             meta_ = Options()
-            meta_.entity_cls = entity_cls
+            meta_.part_of = entity_cls
 
             custom_attrs.update({"meta_": meta_})
             # FIXME Ensure the custom model attributes are constructed properly
@@ -170,7 +170,7 @@ class MemoryProvider(BaseProvider):
             model_cls = self._model_classes[entity_cls.meta_.schema_name]
         else:
             meta_ = Options()
-            meta_.entity_cls = entity_cls
+            meta_.part_of = entity_cls
 
             attrs = {
                 "meta_": meta_,
