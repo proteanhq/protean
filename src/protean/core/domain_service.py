@@ -109,8 +109,8 @@ def wrap_methods_with_invariant_calls(cls):
     return cls
 
 
-def domain_service_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseDomainService, **kwargs)
+def domain_service_factory(element_cls, domain, **opts):
+    element_cls = derive_element_class(element_cls, BaseDomainService, **opts)
 
     if not element_cls.meta_.part_of or len(element_cls.meta_.part_of) < 2:
         raise IncorrectUsageError(

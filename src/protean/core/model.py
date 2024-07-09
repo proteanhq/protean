@@ -36,8 +36,8 @@ class BaseModel(Element, OptionsMixin):
         """Convert Model Object to Entity Object"""
 
 
-def model_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseModel, **kwargs)
+def model_factory(element_cls, domain, **opts):
+    element_cls = derive_element_class(element_cls, BaseModel, **opts)
 
     if not element_cls.meta_.part_of:
         raise IncorrectUsageError(

@@ -113,8 +113,8 @@ class BaseCommand(BaseContainer, OptionsMixin):
             pass
 
 
-def command_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseCommand, **kwargs)
+def command_factory(element_cls, domain, **opts):
+    element_cls = derive_element_class(element_cls, BaseCommand, **opts)
 
     if not element_cls.meta_.part_of and not element_cls.meta_.abstract:
         raise IncorrectUsageError(

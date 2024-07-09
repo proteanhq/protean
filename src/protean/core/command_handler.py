@@ -26,8 +26,8 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
         return super().__new__(cls)
 
 
-def command_handler_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseCommandHandler, **kwargs)
+def command_handler_factory(element_cls, domain, **opts):
+    element_cls = derive_element_class(element_cls, BaseCommandHandler, **opts)
 
     if not element_cls.meta_.part_of:
         raise IncorrectUsageError(

@@ -143,8 +143,8 @@ def element_to_fact_event(element_cls):
     return event_cls
 
 
-def aggregate_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseAggregate, **kwargs)
+def aggregate_factory(element_cls, domain, **opts):
+    element_cls = derive_element_class(element_cls, BaseAggregate, **opts)
 
     # Iterate through methods marked as `@invariant` and record them for later use
     #   `_invariants` is a dictionary initialized in BaseEntity.__init_subclass__

@@ -89,7 +89,7 @@ class EventStore:
             part_of.__name__ + "Repository", (BaseEventSourcedRepository,), {}
         )
         repository_cls = event_sourced_repository_factory(
-            repository_cls, part_of=part_of
+            repository_cls, self.domain, part_of=part_of
         )
         return repository_cls(self.domain)
 

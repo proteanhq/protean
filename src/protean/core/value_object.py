@@ -201,8 +201,8 @@ class BaseValueObject(BaseContainer, OptionsMixin):
             raise ValidationError(errors)
 
 
-def value_object_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseValueObject, **kwargs)
+def value_object_factory(element_cls, domain, **opts):
+    element_cls = derive_element_class(element_cls, BaseValueObject, **opts)
 
     # Iterate through methods marked as `@invariant` and record them for later use
     methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)

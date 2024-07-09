@@ -257,7 +257,7 @@ class BaseRepository(Element, OptionsMixin):
         return aggregate
 
 
-def repository_factory(element_cls, **opts):
+def repository_factory(element_cls, domain, **opts):
     element_cls = derive_element_class(element_cls, BaseRepository, **opts)
 
     if not element_cls.meta_.part_of:

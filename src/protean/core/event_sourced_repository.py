@@ -101,7 +101,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
         return aggregate
 
 
-def event_sourced_repository_factory(element_cls, **opts):
+def event_sourced_repository_factory(element_cls, domain, **opts):
     element_cls = derive_element_class(element_cls, BaseEventSourcedRepository, **opts)
 
     if not element_cls.meta_.part_of:
