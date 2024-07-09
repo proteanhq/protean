@@ -75,6 +75,10 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         if not subclass.meta_.abstract:
             subclass.__track_id_field()
 
+        # Use explicit version if specified, else default to "v1"
+        if not hasattr(subclass, "__version__"):
+            setattr(subclass, "__version__", "v1")
+
     def __setattr__(self, name, value):
         if not hasattr(self, "_initialized") or not self._initialized:
             return super().__setattr__(name, value)
@@ -120,12 +124,6 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         # Store the expected version temporarily for use during persistence
         self._expected_version = kwargs.pop("_expected_version", -1)
 
-        version = (
-            self.__class__.__version__
-            if hasattr(self.__class__, "__version__")
-            else "v1"
-        )
-
         origin_stream_name = None
         if hasattr(g, "message_in_context"):
             if (
@@ -139,7 +137,7 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             self._metadata.to_dict(),  # Template
             kind="EVENT",
             origin_stream_name=origin_stream_name,
-            version=version,
+            version=self.__class__.__version__,  # Was set in `__init_subclass__`
         )
 
         # Finally lock the event and make it immutable
