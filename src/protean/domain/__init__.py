@@ -11,8 +11,6 @@ from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
-from werkzeug.datastructures import ImmutableDict
-
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
 from protean.container import Element
@@ -47,6 +45,48 @@ logger = logging.getLogger(__name__)
 
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
+
+
+def _default_config():
+    """Return the default configuration for a Protean application.
+
+    This is placed in a separate function because we want to be absolutely
+    sure that we are using a copy of the defaults when we manipulate config
+    directly in tests. Housing it within the main `Domain` class can
+    potentially lead to issues because the config can be overwritten by accident.
+    """
+    from protean.utils import IdentityStrategy, IdentityType
+
+    return {
+        "env": None,
+        "debug": None,
+        "secret_key": None,
+        "identity_strategy": IdentityStrategy.UUID.value,
+        "identity_type": IdentityType.STRING.value,
+        "databases": {
+            "default": {"provider": "memory"},
+            "memory": {"provider": "memory"},
+        },
+        "event_processing": EventProcessing.ASYNC.value,
+        "command_processing": CommandProcessing.ASYNC.value,
+        "event_store": {
+            "provider": "memory",
+        },
+        "caches": {
+            "default": {
+                "provider": "memory",
+                "TTL": 300,
+            }
+        },
+        "brokers": {"default": {"provider": "inline"}},
+        "EMAIL_PROVIDERS": {
+            "default": {
+                "provider": "protean.adapters.DummyEmailProvider",
+                "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
+            },
+        },
+        "SNAPSHOT_THRESHOLD": 10,
+    }
 
 
 class Domain:
@@ -97,39 +137,6 @@ class Domain:
     #: This attribute can also be configured from the config with the
     #: :data:`secret_key` configuration key. Defaults to ``None``.
     secret_key = ConfigAttribute("secret_key")
-
-    default_config = ImmutableDict(
-        {
-            "env": None,
-            "debug": None,
-            "secret_key": None,
-            "identity_strategy": IdentityStrategy.UUID.value,
-            "identity_type": IdentityType.STRING.value,
-            "databases": {
-                "default": {"provider": "memory"},
-                "memory": {"provider": "memory"},
-            },
-            "event_processing": EventProcessing.ASYNC.value,
-            "command_processing": CommandProcessing.ASYNC.value,
-            "event_store": {
-                "provider": "memory",
-            },
-            "caches": {
-                "default": {
-                    "provider": "memory",
-                    "TTL": 300,
-                }
-            },
-            "brokers": {"default": {"provider": "inline"}},
-            "EMAIL_PROVIDERS": {
-                "default": {
-                    "provider": "protean.adapters.DummyEmailProvider",
-                    "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
-                },
-            },
-            "SNAPSHOT_THRESHOLD": 10,
-        },
-    )
 
     def __init__(
         self,
@@ -306,13 +313,13 @@ class Domain:
 
     def load_config(self, load_toml=True):
         """Load configuration from dist or a .toml file."""
-        defaults = dict(self.default_config)
+        defaults = _default_config()
         defaults["env"] = get_env()
         defaults["debug"] = get_debug_flag()
         if load_toml:
             config = Config2.load_from_path(self.root_path, defaults)
         else:
-            config = Config2.load_from_dict(dict(self.default_config))
+            config = Config2.load_from_dict(defaults)
 
         # Load Constants
         if "custom" in config:

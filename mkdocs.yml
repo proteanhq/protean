@@ -216,6 +216,7 @@ nav:
   # - faq.md
   - Adapters:
     - adapters/index.md
+    - adapters/internals.md
     - Database:
       - adapters/database/index.md
       - adapters/database/postgresql.md

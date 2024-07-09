@@ -1,12 +1,5 @@
-import pytest
-
 from protean import Domain
 from protean.utils import IdentityStrategy
-
-
-def test_that_default_config_is_immutable():
-    with pytest.raises(TypeError):
-        Domain.default_config["identity_strategy"] = "FOO"
 
 
 def test_that_config_is_unique_to_each_domain():

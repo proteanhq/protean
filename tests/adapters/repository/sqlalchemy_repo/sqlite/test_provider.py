@@ -4,8 +4,10 @@ import pytest
 from sqlalchemy.engine.result import Result
 from sqlalchemy.orm.session import Session
 
+from protean import Domain
 from protean.adapters.repository import Providers
 from protean.adapters.repository.sqlalchemy import SqliteProvider
+from protean.exceptions import ConfigurationError
 
 from .elements import Alien, Person
 
@@ -39,6 +41,23 @@ class TestProviders:
         assert conn is not None
         assert isinstance(conn, Session)
         assert conn.is_active
+
+    def test_provider_is_alive(self, test_domain):
+        """Test ``is_alive`` method"""
+        assert test_domain.providers["default"].is_alive()
+
+    @pytest.mark.no_test_domain
+    def test_exception_on_invalid_provider(self):
+        """Test exception on invalid provider"""
+        domain = Domain(__file__, load_toml=False)
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": "sqlite:////C:/Users/username/foobar.db",
+        }
+        with pytest.raises(ConfigurationError) as exc:
+            domain.init(traverse=False)
+
+        assert "Could not connect to database at" in str(exc.value)
 
     def test_provider_raw(self, test_domain):
         """Test raw queries"""

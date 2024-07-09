@@ -376,6 +376,11 @@ class ESProvider(BaseProvider):
             verify_certs=self.conn_info.get("VERIFY_CERTS", False),
         )
 
+    def is_alive(self) -> bool:
+        """Check if the connection is alive"""
+        conn = self.get_connection()
+        return conn.ping()
+
     def get_dao(self, entity_cls, model_cls):
         """Return a DAO object configured with a live connection"""
         return ElasticsearchDAO(self.domain, self, entity_cls, model_cls)

@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from protean import Domain
 from protean.domain.config import Config2
 from protean.exceptions import ConfigurationError
 from protean.utils.domain_discovery import derive_domain
@@ -126,7 +125,9 @@ class TestLoadingTOML:
 
 class TestLoadingDefaults:
     def test_that_config_is_loaded_from_dict(self):
-        config_dict = dict(Domain.default_config)
+        from protean.domain import _default_config
+
+        config_dict = _default_config()
         config_dict["custom"] = {"FOO": "bar", "qux": "quux"}
         config = Config2.load_from_dict(config_dict)
         assert config["databases"]["default"]["provider"] == "memory"
