@@ -84,7 +84,7 @@ def test_event_metadata():
     assert event.to_dict() == {
         "_metadata": {
             "id": f"user-{user.id}-0",
-            "type": "User.UserLoggedIn.v1",
+            "type": "Test.UserLoggedIn.v1",
             "kind": "EVENT",
             "stream_name": f"user-{user.id}",
             "origin_stream_name": None,

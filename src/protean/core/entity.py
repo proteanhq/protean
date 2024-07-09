@@ -16,6 +16,7 @@ from protean.exceptions import (
 )
 from protean.fields import Auto, HasMany, Reference, ValueObject
 from protean.fields.association import Association
+from protean.globals import current_domain
 from protean.reflection import (
     _FIELDS,
     attributes,
@@ -470,7 +471,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                 "id": (
                     f"{stream_name}-{identifier}-{aggregate_version}.{event_number}"
                 ),
-                "type": f"{self._root.__class__.__name__}.{event.__class__.__name__}.{event._metadata.version}",
+                "type": f"{current_domain.name}.{event.__class__.__name__}.{event._metadata.version}",
                 "kind": "EVENT",
                 "stream_name": f"{stream_name}-{identifier}",
                 "origin_stream_name": event._metadata.origin_stream_name,
