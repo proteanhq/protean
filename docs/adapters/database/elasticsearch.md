@@ -1,5 +1,7 @@
 # Elasticsearch
 
+## Configuration
+
 To use Elasticsearch as a database provider, use the below configuration setting:
 
 ```toml
@@ -14,18 +16,18 @@ settings = "{'number_of_shards': 3}"
 
 Additional options for finer control:
 
-### NAMESPACE_PREFIX
+### namespace_prefix
 
 Elasticsearch instance are prefixed with the specified string. For example, if
 the namespace prefix is `prod`, the index for aggregate `Person` will be
 `prod-person`.
 
-### NAMESPACE_SEPARATOR
+### namespace_separator
 
 Custom character to join namespace_prefix =n ${Default} yphen(`-`). For example, with `NAMESPACE_SEPARATOR` as `_` and namespace
 prefix as `prod`, the index of aggregate `Person` will be `prod_person`.
 
-### SETTINGS
+### settings
 
 Index settings passed as-is to Elasticsearch instance.
 

@@ -49,6 +49,10 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """Get the connection object for the repository"""
 
     @abstractmethod
+    def is_alive(self) -> bool:
+        """Check if the connection is alive"""
+
+    @abstractmethod
     def get_dao(self, entity_cls, model_cls):
         """Return a DAO object configured with a live connection"""
 

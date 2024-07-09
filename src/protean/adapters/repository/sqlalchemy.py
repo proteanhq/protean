@@ -619,6 +619,15 @@ class SAProvider(BaseProvider):
 
         return conn
 
+    def is_alive(self) -> bool:
+        """Check if the connection to the database is alive"""
+        try:
+            conn = self.get_connection()
+            conn.execute(text("SELECT 1"))
+            return True
+        except DatabaseError:
+            return False
+
     def _data_reset(self):
         conn = self._engine.connect()
 

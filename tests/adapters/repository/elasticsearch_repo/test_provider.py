@@ -1,11 +1,11 @@
-"""Module to test SQLAlchemy Provider Class"""
-
 import pytest
 from elasticsearch import Elasticsearch
 from elasticsearch_dsl.response import Response
 
+from protean import Domain
 from protean.adapters import Providers
 from protean.adapters.repository.elasticsearch import ESProvider
+from protean.exceptions import ConfigurationError
 
 from .elements import Alien, Person
 
@@ -38,6 +38,23 @@ class TestProviders:
         conn = test_domain.providers["default"].get_connection()
         assert conn is not None
         assert isinstance(conn, Elasticsearch)
+
+    def test_provider_is_alive(self, test_domain):
+        """Test ``is_alive`` method"""
+        assert test_domain.providers["default"].is_alive()
+
+    @pytest.mark.no_test_domain
+    def test_exception_on_invalid_provider(self):
+        """Test exception on invalid provider"""
+        domain = Domain(__file__, load_toml=False)
+        domain.config["databases"]["default"] = {
+            "provider": "elasticsearch",
+            "database_uri": '{"hosts": ["imaginary"]}',
+        }
+        with pytest.raises(ConfigurationError) as exc:
+            domain.init(traverse=False)
+
+        assert "Could not connect to database at" in str(exc.value)
 
     @pytest.mark.pending
     def test_provider_raw(self, test_domain):

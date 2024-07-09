@@ -119,6 +119,10 @@ class MemoryProvider(BaseProvider):
         """Return the dictionary database object"""
         return MemorySession(self, new_connection=True)
 
+    def is_alive(self) -> bool:
+        """Check if the connection is alive"""
+        return True
+
     def _data_reset(self):
         """Reset data"""
         self._databases = defaultdict(dict)

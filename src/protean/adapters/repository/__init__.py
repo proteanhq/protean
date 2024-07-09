@@ -109,6 +109,13 @@ class Providers(collections.abc.MutableMapping):
                 )
                 provider = provider_cls(provider_name, self.domain, conn_info)
 
+                # Initialize a connection to check if everything is ok
+                conn = provider.is_alive()
+                if not conn:
+                    raise ConfigurationError(
+                        f"Could not connect to database at {conn_info['database_uri']}"
+                    )
+
                 provider_objects[provider_name] = provider
 
         self._providers = provider_objects

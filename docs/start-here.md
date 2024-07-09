@@ -11,7 +11,7 @@ Welcome to Protean! Whether you're a seasoned developer or new to the framework,
 Ready to dive in? The first step is to get Protean up and running on your system. The [Installation guide](./guides/getting-started/installation.md) will take you through a brief tour to setup Protean locally.
 
 ## Core Concepts
-Time to get acquainted with the building blocks of Protean. Get to know the driving principles and core ideas that shape this framework in [Introduction](./core-concepts/index.md). In [Building Blocks](./core-concepts/building-blocks/index.md) explore key DDD concepts like Aggregates, Repositories, Events, and more, to understand the core structures of Protean.
+Get to know the driving principles and core ideas that shape this framework in [Introduction](./core-concepts/index.md). In [Building Blocks](./core-concepts/building-blocks/index.md), explore key DDD concepts like Aggregates, Repositories, Events, and more, to understand the core structures of Protean.
 
 ## Building with Protean
 
