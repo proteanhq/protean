@@ -6,7 +6,7 @@ from protean.fields import Auto, String
 domain = Domain(__file__, load_toml=False)
 
 
-def gen_id():
+def gen_id():  # (1)
     return int(time.time() * 1000)
 
 
@@ -14,7 +14,7 @@ def gen_id():
 class User:
     user_id = Auto(
         identifier=True,
-        identity_strategy="function",
+        identity_strategy="function",  # (2)
         identity_function=gen_id,
         identity_type="integer",
     )

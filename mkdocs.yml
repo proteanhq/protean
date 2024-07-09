@@ -143,18 +143,16 @@ nav:
         - guides/change-state/index.md
         - guides/change-state/commands.md
         - guides/change-state/command-handlers.md
+      - Persisting State:
         - guides/change-state/persist-aggregates.md
         - guides/change-state/unit-of-work.md
         - guides/change-state/retrieve-aggregates.md
-      - Propagating State:
-        - guides/propagate-state/index.md
-        - guides/propagate-state/event-handlers.md
-      - Projections:
-        - guides/projections/index.md
-        - guides/projections/views.md
+      - Consuming State Changes:
+        - guides/consume-state/index.md
+        - guides/consume-state/event-handlers.md
+        - guides/consume-state/views.md
 
-    #   - guides/propagate-state/events-across-contexts.md
-    #   - guides/propagate-state/views.md
+    #   - guides/consume-state/events-across-contexts.md
     # - Application Layer:
     #   - guides/app-layer/index.md
     #   - guides/app-layer/application-services.md

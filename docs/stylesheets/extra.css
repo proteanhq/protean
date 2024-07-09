@@ -23,6 +23,14 @@ p a, article ul li a {
   font-weight: 600;
 }
 
+.md-content__inner p, ul li {
+  font-size: 0.9em;
+}
+
+.md-typeset code {
+  font-size: 0.80em;
+}
+
 /* Primary color and tighter space */
 .md-typeset h1, .md-typeset h2, .md-typeset h3, .md-typeset h4 {
   color: var(--md-primary-fg-color);

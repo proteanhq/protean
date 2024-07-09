@@ -121,7 +121,7 @@ Out[2]:
  'id': Auto(identifier=True)}
 ```
 
-### Composite keys
+### No Composite keys
 
 Protean does not support composite keys. A `NotSupportedError` is thrown when
 multiple identifier fields are found.
@@ -147,6 +147,9 @@ configuration of an `Auto` or `Identifier`:
 ```python hl_lines="9-10 15-20"
 {! docs_src/guides/composing-a-domain/024.py !}
 ```
+
+1. A custom function that generates identity in the form of epoch time
+2. Arguments to `Auto` field control how the identity is generated.
 
 ```shell hl_lines="4"
 In [1]: user = User(name="John Doe")

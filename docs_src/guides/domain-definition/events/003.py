@@ -36,17 +36,21 @@ with domain.domain_context():
     """ Output:
     {
         "_metadata": {
-            "id": "__main__.User.v1.e6bb751f-1304-4609-b1ff-b0ffad8e01ad.0.1",
-            "timestamp": "2024-06-30 19:41:15.997664+00:00",
+            "id": "user-fact-e97cef08-f11d-43eb-8a69-251a0828bbff-0.1",
+            "type": "User.UserFactEvent.v1",
+            "kind": "EVENT",
+            "stream_name": "user-fact-e97cef08-f11d-43eb-8a69-251a0828bbff",
+            "origin_stream_name": null,
+            "timestamp": "2024-07-09 17:24:41.800475+00:00",
             "version": "v1",
             "sequence_id": "0.1",
-            "payload_hash": 2404640527973230107
+            "payload_hash": -1529271686230030119
         },
         "_version": 0,
         "name": "John Doe",
         "email": "john.doe@example.com",
         "status": null,
         "account": null,
-        "id": "e6bb751f-1304-4609-b1ff-b0ffad8e01ad"
+        "id": "e97cef08-f11d-43eb-8a69-251a0828bbff"
     }
     """

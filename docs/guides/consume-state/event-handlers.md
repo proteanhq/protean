@@ -11,7 +11,7 @@ a simplified example of an Event Handler connected to `Inventory` aggregate
 syncing stock levels corresponding to changes in the `Order` aggregate.
 
 ```python hl_lines="26-27 44"
-{! docs_src/guides/propagate-state/001.py !}
+{! docs_src/guides/consume-state/001.py !}
 ```
 
 1. `Order` aggregate fires `OrderShipped` event on book being shipped.

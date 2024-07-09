@@ -13,7 +13,7 @@ domain model.
 Views are defined with the `Domain.view` decorator.
 
 ```python hl_lines="15-19"
---8<-- "guides/projections/001.py:60:66"
+--8<-- "guides/consume-state/002.py:68:74"
 ```
 
 ## Workflow
@@ -55,5 +55,5 @@ Below is a full-blown example of a view `ProductInventory` synced with the
 events.
 
 ```python hl_lines="68-74 115-127 129-136"
-{! docs_src/guides/projections/001.py !}
+{! docs_src/guides/consume-state/001.py !}
 ```
