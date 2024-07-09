@@ -85,5 +85,5 @@ class BaseEmail(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         return [email for email in (self.to + self.cc + self.bcc) if email]
 
 
-def email_factory(element_cls, **kwargs):
+def email_factory(element_cls, domain, **opts):
     return derive_element_class(element_cls, BaseEmail)

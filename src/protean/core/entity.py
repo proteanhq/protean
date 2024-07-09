@@ -602,8 +602,8 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                             item._set_root_and_owner(self._root, self)
 
 
-def entity_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseEntity, **kwargs)
+def entity_factory(element_cls, domain, **opts):
+    element_cls = derive_element_class(element_cls, BaseEntity, **opts)
 
     if not element_cls.meta_.part_of:
         raise IncorrectUsageError(

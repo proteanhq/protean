@@ -436,7 +436,7 @@ class Domain:
 
         return factories[domain_object_type.value]
 
-    def _register_element(self, element_type, element_cls, **kwargs):  # noqa: C901
+    def _register_element(self, element_type, element_cls, **opts):  # noqa: C901
         """Register class into the domain"""
         # Check if `element_cls` is already a subclass of the Element Type
         #   which would be the case in an explicit declaration like `class Account(BaseEntity):`
@@ -450,7 +450,7 @@ class Domain:
         #  ```
 
         factory = self.factory_for(element_type)
-        new_cls = factory(element_cls, **kwargs)
+        new_cls = factory(element_cls, self, **opts)
 
         if element_type == DomainObjects.MODEL:
             # Remember model association with aggregate/entity class, for easy fetching

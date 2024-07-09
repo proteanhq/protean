@@ -34,8 +34,8 @@ class BaseSubscriber(Element, OptionsMixin):
         raise NotImplementedError
 
 
-def subscriber_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseSubscriber, **kwargs)
+def subscriber_factory(element_cls, domain, **opts):
+    element_cls = derive_element_class(element_cls, BaseSubscriber, **opts)
 
     if not element_cls.meta_.event:
         raise IncorrectUsageError(

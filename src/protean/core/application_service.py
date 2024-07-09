@@ -31,5 +31,5 @@ class BaseApplicationService(Element, OptionsMixin):
         return []
 
 
-def application_service_factory(element_cls, **kwargs):
-    return derive_element_class(element_cls, BaseApplicationService, **kwargs)
+def application_service_factory(element_cls, domain, **opts):
+    return derive_element_class(element_cls, BaseApplicationService, **opts)

@@ -164,7 +164,7 @@ def apply(fn):
     return wrapper
 
 
-def event_sourced_aggregate_factory(element_cls, **opts):
+def event_sourced_aggregate_factory(element_cls, domain, **opts):
     element_cls = derive_element_class(element_cls, BaseEventSourcedAggregate, **opts)
 
     # Iterate through methods marked as `@apply` and construct a projections map

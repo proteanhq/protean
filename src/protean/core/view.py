@@ -105,8 +105,8 @@ class BaseView(BaseContainer, OptionsMixin):
         return hash(getattr(self, id_field(self).field_name))
 
 
-def view_factory(element_cls, **kwargs):
-    element_cls = derive_element_class(element_cls, BaseView, **kwargs)
+def view_factory(element_cls, domain, **opts):
+    element_cls = derive_element_class(element_cls, BaseView, **opts)
 
     if not element_cls.meta_.abstract and not hasattr(element_cls, _ID_FIELD_NAME):
         raise IncorrectUsageError(
@@ -118,17 +118,17 @@ def view_factory(element_cls, **kwargs):
         )
 
     element_cls.meta_.provider = (
-        kwargs.pop("provider", None)
+        opts.pop("provider", None)
         or (hasattr(element_cls, "meta_") and element_cls.meta_.provider)
         or "default"
     )
     element_cls.meta_.cache = (
-        kwargs.pop("cache", None)
+        opts.pop("cache", None)
         or (hasattr(element_cls, "meta_") and element_cls.meta_.cache)
         or None
     )
     element_cls.meta_.model = (
-        kwargs.pop("model", None)
+        opts.pop("model", None)
         or (hasattr(element_cls, "meta_") and element_cls.meta_.model)
         or None
     )

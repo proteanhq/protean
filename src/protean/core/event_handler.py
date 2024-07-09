@@ -32,7 +32,7 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
         ]
 
 
-def event_handler_factory(element_cls, **opts):
+def event_handler_factory(element_cls, domain, **opts):
     element_cls = derive_element_class(element_cls, BaseEventHandler, **opts)
 
     if not (element_cls.meta_.part_of or element_cls.meta_.stream_name):

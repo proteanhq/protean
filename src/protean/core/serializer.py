@@ -200,5 +200,5 @@ class BaseSerializer(metaclass=_SerializerMetaclass):
         return []
 
 
-def serializer_factory(element_cls, **kwargs):
-    return derive_element_class(element_cls, BaseSerializer, **kwargs)
+def serializer_factory(element_cls, domain, **opts):
+    return derive_element_class(element_cls, BaseSerializer, **opts)
