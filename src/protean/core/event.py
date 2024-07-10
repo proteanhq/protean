@@ -4,7 +4,11 @@ from datetime import datetime, timezone
 
 from protean.container import BaseContainer, OptionsMixin
 from protean.core.value_object import BaseValueObject
-from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.exceptions import (
+    ConfigurationError,
+    IncorrectUsageError,
+    NotSupportedError,
+)
 from protean.fields import DateTime, Field, Integer, String, ValueObject
 from protean.globals import g
 from protean.reflection import _ID_FIELD_NAME, declared_fields, fields
@@ -121,6 +125,11 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     def __init__(self, *args, **kwargs):
         super().__init__(*args, finalize=False, **kwargs)
 
+        if not hasattr(self.__class__, "__type__"):
+            raise ConfigurationError(
+                f"Event `{self.__class__.__name__}` should be registered with a domain"
+            )
+
         # Store the expected version temporarily for use during persistence
         self._expected_version = kwargs.pop("_expected_version", -1)
 
@@ -134,7 +143,8 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 
         # Value Objects are immutable, so we create a clone/copy and associate it
         self._metadata = Metadata(
-            self._metadata.to_dict(),  # Template
+            self._metadata.to_dict(),  # Template from old Metadata
+            type=self.__class__.__type__,
             kind="EVENT",
             origin_stream_name=origin_stream_name,
             version=self.__class__.__version__,  # Was set in `__init_subclass__`
@@ -186,5 +196,12 @@ def domain_event_factory(element_cls, domain, **opts):
                 ]
             }
         )
+
+    # Set the event type for the event class
+    setattr(
+        element_cls,
+        "__type__",
+        f"{domain.name}.{element_cls.__name__}.{element_cls.__version__}",
+    )
 
     return element_cls

@@ -406,18 +406,18 @@ class EventedMixin:
 
         # Set Fact Event stream to be `<aggregate_stream_name>-fact`
         if event.__class__.__name__.endswith("FactEvent"):
-            stream_name = f"{self.meta_.stream_name}-fact"
+            stream_name = f"{self.meta_.stream_name}-fact-{identifier}"
         else:
-            stream_name = self.meta_.stream_name
+            stream_name = f"{self.meta_.stream_name}-{identifier}"
 
         event_with_metadata = event.__class__(
             event.to_dict(),
             _expected_version=self._event_position,
             _metadata={
-                "id": (f"{stream_name}-{identifier}-{self._version}"),
-                "type": f"{current_domain.name}.{event.__class__.__name__}.{event._metadata.version}",
-                "kind": "EVENT",
-                "stream_name": f"{stream_name}-{identifier}",
+                "id": (f"{stream_name}-{self._version}"),
+                "type": event._metadata.type,
+                "kind": event._metadata.kind,
+                "stream_name": stream_name,
                 "origin_stream_name": event._metadata.origin_stream_name,
                 "timestamp": event._metadata.timestamp,
                 "version": event._metadata.version,

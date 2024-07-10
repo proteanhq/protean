@@ -57,7 +57,7 @@ class TestDomainEventDefinition:
             == {
                 "_metadata": {
                     "id": None,  # ID is none because the event is not being raised in the proper way (with `_raise`)
-                    "type": None,  # Type is none here because of the same reason as above
+                    "type": "Test.UserAdded.v1",
                     "kind": "EVENT",
                     "stream_name": None,  # Type is none here because of the same reason as above
                     "origin_stream_name": None,
@@ -74,13 +74,22 @@ class TestDomainEventDefinition:
             }
         )
 
-    def test_that_domain_event_can_be_reconstructed_from_dict_enclosing_vo(self):
+    def test_that_domain_event_can_be_reconstructed_from_dict_enclosing_vo(
+        self, test_domain
+    ):
         class Email(BaseValueObject):
             address = String(max_length=255)
+
+        class User(BaseAggregate):
+            email = ValueObject(Email, required=True)
+            name = String(max_length=50)
 
         class UserAdded(BaseEvent):
             email = ValueObject(Email, required=True)
             name = String(max_length=50)
+
+        test_domain.register(User)
+        test_domain.register(UserAdded, part_of=User)
 
         assert UserAdded(
             {
@@ -97,7 +106,10 @@ class TestDomainEventInitialization:
         with pytest.raises(NotSupportedError):
             BaseEvent()
 
-    def test_that_domain_event_can_be_instantiated(self):
+    def test_that_domain_event_can_be_instantiated(self, test_domain):
+        test_domain.register(Person)
+        test_domain.register(PersonAdded, part_of=Person)
+
         service = PersonAdded(id=uuid.uuid4(), first_name="John", last_name="Doe")
         assert service is not None
 

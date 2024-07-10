@@ -110,5 +110,5 @@ def test_an_unassociated_event_throws_error(test_domain):
         user.raise_(UserArchived(user_id=user.user_id))
 
     assert exc.value.args[0] == (
-        "Event `UserArchived` is not associated with aggregate `User`"
+        "Event `UserArchived` should be registered with a domain"
     )
