@@ -2,7 +2,14 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from tests.event.elements import PersonAdded
+from tests.event.elements import Person, PersonAdded
+
+
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(Person)
+    test_domain.register(PersonAdded, part_of=Person)
+    test_domain.init(traverse=False)
 
 
 def test_that_message_has_unique_identifier():

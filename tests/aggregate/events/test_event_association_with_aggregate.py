@@ -43,6 +43,14 @@ class User(BaseEventSourcedAggregate):
         self.raise_(UserRenamed(user_id=self.user_id, name=name))
 
 
+class User2(User):
+    pass
+
+
+class UserUnknownEvent(BaseEvent):
+    user_id = Identifier(required=True)
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(User)
@@ -56,6 +64,19 @@ def test_an_unassociated_event_throws_error(test_domain):
     with pytest.raises(ConfigurationError) as exc:
         user.raise_(UserArchived(user_id=user.user_id))
 
+    assert (
+        exc.value.args[0] == "Event `UserArchived` should be registered with a domain"
+    )
+
+
+def test_that_event_associated_with_another_aggregate_throws_error(test_domain):
+    test_domain.register(User2)
+    test_domain.register(UserUnknownEvent, part_of=User2)
+
+    user = User.register(user_id="1", name="<NAME>", email="<EMAIL>")
+    with pytest.raises(ConfigurationError) as exc:
+        user.raise_(UserUnknownEvent(user_id=user.user_id))
+
     assert exc.value.args[0] == (
-        "Event `UserArchived` is not associated with aggregate `User`"
+        "Event `UserUnknownEvent` is not associated with aggregate `User`"
     )

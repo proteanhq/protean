@@ -58,10 +58,12 @@ class TestEventMetadataVersion:
         event = UserLoggedIn(user_id=str(uuid4()))
         assert event._metadata.version == "v1"
 
-    def test_overridden_version(self):
+    def test_overridden_version(self, test_domain):
         class UserLoggedIn(BaseEvent):
             __version__ = "v2"
             user_id = Identifier(identifier=True)
+
+        test_domain.register(UserLoggedIn, part_of=User)
 
         event = UserLoggedIn(user_id=str(uuid4()))
         assert event._metadata.version == "v2"
