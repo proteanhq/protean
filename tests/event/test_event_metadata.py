@@ -49,7 +49,22 @@ def test_metadata_can_be_overridden():
     assert event._metadata.timestamp == now_timestamp
 
 
-class TestEventMetadataVersion:
+class TestMetadataType:
+    def test_metadata_has_type_field(self):
+        metadata_field = fields(UserLoggedIn)["_metadata"]
+        assert hasattr(metadata_field.value_object_cls, "type")
+
+    def test_command_metadata_type_default(self):
+        assert hasattr(UserLoggedIn, "__type__")
+        assert UserLoggedIn.__type__ == "Test.UserLoggedIn.v1"
+
+    def test_type_value_in_metadata(self, test_domain):
+        user = User(id=str(uuid4()), email="john.doe@gmail.com", name="John Doe")
+        user.raise_(UserLoggedIn(user_id=user.id))
+        assert user._events[0]._metadata.type == "Test.UserLoggedIn.v1"
+
+
+class TestMetadataVersion:
     def test_metadata_has_event_version(self):
         metadata_field = fields(UserLoggedIn)["_metadata"]
         assert hasattr(metadata_field.value_object_cls, "version")

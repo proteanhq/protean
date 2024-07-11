@@ -35,6 +35,10 @@ class BaseCommand(BaseContainer, OptionsMixin):
         if not subclass.meta_.abstract:
             subclass.__track_id_field()
 
+        # Use explicit version if specified, else default to "v1"
+        if not hasattr(subclass, "__version__"):
+            setattr(subclass, "__version__", "v1")
+
     def __init__(self, *args, **kwargs):
         try:
             super().__init__(*args, finalize=False, **kwargs)
@@ -124,5 +128,12 @@ def command_factory(element_cls, domain, **opts):
                 ]
             }
         )
+
+    # Set the command type for the command class
+    setattr(
+        element_cls,
+        "__type__",
+        f"{domain.name}.{element_cls.__name__}.{element_cls.__version__}",
+    )
 
     return element_cls
