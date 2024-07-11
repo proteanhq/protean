@@ -13,7 +13,6 @@ from protean.core.event_sourced_repository import (
     event_sourced_repository_factory,
 )
 from protean.exceptions import ConfigurationError, NotSupportedError
-from protean.utils import fqn
 from protean.utils.mixins import Message
 
 if TYPE_CHECKING:
