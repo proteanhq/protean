@@ -38,4 +38,5 @@ def test_appending_raw_events(test_domain):
 
     assert message.stream_name == f"authentication-{identifier}"
     assert message.metadata.kind == "EVENT"
-    assert message.data == event.to_dict()
+    assert message.data == event.payload
+    assert message.metadata == event._metadata
