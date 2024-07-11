@@ -7,7 +7,6 @@ import pytest
 from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.fields import String
 from protean.fields.basic import Identifier
-from protean.utils import fqn
 from protean.utils.mixins import Message
 
 
@@ -136,5 +135,5 @@ def test_reading_messages_by_category(test_domain, activated_user):
 def test_reading_last_message(test_domain, renamed_user):
     # Reading by stream
     message = test_domain.event_store.store.read_last_message(f"user-{renamed_user.id}")
-    assert message.type == fqn(Renamed)
+    assert message.type == Renamed.__type__
     assert message.data["name"] == "John Doe 9"

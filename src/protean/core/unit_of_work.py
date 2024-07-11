@@ -8,7 +8,7 @@ from protean.exceptions import (
 )
 from protean.globals import _uow_context_stack, current_domain
 from protean.reflection import id_field
-from protean.utils import EventProcessing, fqn
+from protean.utils import EventProcessing
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ class UnitOfWork:
                     handler_classes = current_domain.handlers_for(event)
                     for handler_cls in handler_classes:
                         handler_methods = (
-                            handler_cls._handlers[fqn(event.__class__)]
+                            handler_cls._handlers[event.__class__.__type__]
                             or handler_cls._handlers["$any"]
                         )
 

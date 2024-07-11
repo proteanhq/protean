@@ -5,7 +5,6 @@ import pytest
 from protean import BaseCommand, BaseEvent, BaseEventSourcedAggregate
 from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
-from protean.utils import fully_qualified_name
 from protean.utils.mixins import Message
 
 
@@ -64,7 +63,7 @@ def test_construct_message_from_event(test_domain):
     assert type(message) is Message
 
     # Verify Message Content
-    assert message.type == fully_qualified_name(Registered)
+    assert message.type == Registered.__type__
     assert message.stream_name == f"{User.meta_.stream_name}-{identifier}"
     assert message.metadata.kind == "EVENT"
     assert message.data == user._events[-1].to_dict()
@@ -74,7 +73,7 @@ def test_construct_message_from_event(test_domain):
     # Verify Message Dict
     message_dict = message.to_dict()
 
-    assert message_dict["type"] == fully_qualified_name(Registered)
+    assert message_dict["type"] == Registered.__type__
     assert message_dict["metadata"]["kind"] == "EVENT"
     assert message_dict["stream_name"] == f"{User.meta_.stream_name}-{identifier}"
     assert message_dict["data"] == user._events[-1].to_dict()
@@ -87,6 +86,7 @@ def test_construct_message_from_event(test_domain):
 def test_construct_message_from_command(test_domain):
     identifier = str(uuid4())
     command = Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
+    command_with_metadata = test_domain._enrich_command(command)
     test_domain.process(command)
 
     messages = test_domain.event_store.store.read("user:command")
@@ -96,20 +96,20 @@ def test_construct_message_from_command(test_domain):
     assert type(message) is Message
 
     # Verify Message Content
-    assert message.type == fully_qualified_name(Register)
+    assert message.type == Register.__type__
     assert message.stream_name == f"{User.meta_.stream_name}:command-{identifier}"
     assert message.metadata.kind == "COMMAND"
-    assert message.data == command.to_dict()
+    assert message.data == command_with_metadata.to_dict()
     assert message.time is not None
 
     # Verify Message Dict
     message_dict = message.to_dict()
-    assert message_dict["type"] == fully_qualified_name(Register)
+    assert message_dict["type"] == Register.__type__
     assert message_dict["metadata"]["kind"] == "COMMAND"
     assert (
         message_dict["stream_name"] == f"{User.meta_.stream_name}:command-{identifier}"
     )
-    assert message_dict["data"] == command.to_dict()
+    assert message_dict["data"] == command_with_metadata.to_dict()
     assert message_dict["time"] is not None
 
 
@@ -147,7 +147,7 @@ def test_construct_message_from_either_event_or_command(test_domain):
     assert type(message) is Message
 
     # Verify Message Content
-    assert message.type == fully_qualified_name(Register)
+    assert message.type == Register.__type__
     assert message.stream_name == f"{User.meta_.stream_name}:command-{identifier}"
     assert message.metadata.kind == "COMMAND"
     assert message.data == command.to_dict()
@@ -163,7 +163,7 @@ def test_construct_message_from_either_event_or_command(test_domain):
     assert type(message) is Message
 
     # Verify Message Content
-    assert message.type == fully_qualified_name(Registered)
+    assert message.type == Registered.__type__
     assert message.stream_name == f"{User.meta_.stream_name}-{identifier}"
     assert message.metadata.kind == "EVENT"
     assert message.data == event.to_dict()

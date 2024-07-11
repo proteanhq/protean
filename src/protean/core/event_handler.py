@@ -2,8 +2,9 @@ import inspect
 import logging
 
 from protean.container import Element, OptionsMixin
+from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.utils import DomainObjects, derive_element_class, fully_qualified_name
+from protean.utils import DomainObjects, derive_element_class
 from protean.utils.mixins import HandlerMixin
 
 logger = logging.getLogger(__name__)
@@ -59,8 +60,12 @@ def event_handler_factory(element_cls, domain, **opts):
                 # can have only one `$any` handler method.
                 element_cls._handlers["$any"] = {method}
             else:
-                element_cls._handlers[fully_qualified_name(method._target_cls)].add(
-                    method
+                # Target could be an event or an event type string
+                event_type = (
+                    method._target_cls.__type__
+                    if issubclass(method._target_cls, BaseEvent)
+                    else method._target_cls
                 )
+                element_cls._handlers[event_type].add(method)
 
     return element_cls

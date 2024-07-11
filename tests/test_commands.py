@@ -15,7 +15,7 @@ class User(BaseAggregate):
 
 
 class UserRegistrationCommand(BaseCommand):
-    email = String(required=True, max_length=250)
+    email = String(required=True, identifier=True, max_length=250)
     username = String(required=True, max_length=50)
     password = String(required=True, max_length=255)
     age = Integer(default=21)
@@ -83,7 +83,9 @@ class TestCommandProperties:
             email="john.doe@gmail.com", username="john.doe", password="secret1!"
         )
 
-        assert command1 == command2
+        # The commands themselves will not be equal because their metadata, like
+        #   timestamp, can differ. But their payloads should be equal
+        assert command1.payload == command2.payload
 
     def test_that_commands_are_immutable(self):
         command = UserRegistrationCommand(
@@ -96,7 +98,7 @@ class TestCommandProperties:
         command = UserRegistrationCommand(
             email="john.doe@gmail.com", username="john.doe", password="secret1!"
         )
-        assert command.to_dict() == {
+        assert command.payload == {
             "email": "john.doe@gmail.com",
             "username": "john.doe",
             "password": "secret1!",

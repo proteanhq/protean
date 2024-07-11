@@ -469,6 +469,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
             _metadata={
                 "id": (f"{stream_name}-{aggregate_version}.{event_number}"),
                 "type": event._metadata.type,
+                "fqn": event._metadata.fqn,
                 "kind": event._metadata.kind,
                 "stream_name": stream_name,
                 "origin_stream_name": event._metadata.origin_stream_name,

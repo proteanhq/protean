@@ -7,6 +7,7 @@ from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.fields import String, ValueObject
 from protean.fields.basic import Identifier
 from protean.reflection import fields
+from protean.utils import fqn
 
 
 class User(BaseEventSourcedAggregate):
@@ -102,6 +103,7 @@ def test_event_metadata():
         "_metadata": {
             "id": f"user-{user.id}-0",
             "type": "Test.UserLoggedIn.v1",
+            "fqn": fqn(UserLoggedIn),
             "kind": "EVENT",
             "stream_name": f"user-{user.id}",
             "origin_stream_name": None,

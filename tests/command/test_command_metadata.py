@@ -5,6 +5,7 @@ import pytest
 from protean import BaseAggregate, BaseCommand
 from protean.fields import Identifier, String
 from protean.reflection import fields
+from protean.utils import fqn
 
 
 class User(BaseAggregate):
@@ -56,3 +57,27 @@ class TestMetadataVersion:
 
         command = Login(user_id=str(uuid4()))
         assert command._metadata.version == "v2"
+
+
+def test_command_metadata(test_domain):
+    identifier = str(uuid4())
+    command = test_domain._enrich_command(Login(user_id=identifier))
+
+    assert (
+        command.to_dict()
+        == {
+            "_metadata": {
+                "id": f"{identifier}",  # FIXME Double-check command identifier format and construction
+                "type": "Test.Login.v1",
+                "fqn": fqn(Login),
+                "kind": "COMMAND",
+                "stream_name": f"user:command-{identifier}",
+                "origin_stream_name": None,
+                "timestamp": str(command._metadata.timestamp),
+                "version": "v1",
+                "sequence_id": None,
+                "payload_hash": command._metadata.payload_hash,
+            },
+            "user_id": command.user_id,
+        }
+    )

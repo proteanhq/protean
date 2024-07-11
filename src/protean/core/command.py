@@ -9,7 +9,7 @@ from protean.exceptions import (
 from protean.fields import Field, ValueObject
 from protean.globals import g
 from protean.reflection import _ID_FIELD_NAME, declared_fields, fields
-from protean.utils import DomainObjects, derive_element_class
+from protean.utils import DomainObjects, derive_element_class, fqn
 
 
 class BaseCommand(BaseContainer, OptionsMixin):
@@ -58,6 +58,7 @@ class BaseCommand(BaseContainer, OptionsMixin):
             self._metadata = Metadata(
                 self._metadata.to_dict(),  # Template
                 kind="COMMAND",
+                fqn=fqn(self.__class__),
                 origin_stream_name=origin_stream_name,
                 version=version,
             )
@@ -115,6 +116,17 @@ class BaseCommand(BaseContainer, OptionsMixin):
         except StopIteration:
             # No Identity fields declared
             pass
+
+    def to_dict(self):
+        """Return data as a dictionary.
+
+        We need to override this method in Command, because `to_dict()` of `BaseContainer`
+        eliminates `_metadata`.
+        """
+        return {
+            field_name: field_obj.as_dict(getattr(self, field_name, None))
+            for field_name, field_obj in fields(self).items()
+        }
 
 
 def command_factory(element_cls, domain, **opts):

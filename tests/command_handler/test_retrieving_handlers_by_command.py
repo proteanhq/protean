@@ -78,7 +78,7 @@ def test_for_no_errors_when_no_handler_method_has_not_been_defined_for_a_command
     test_domain.register(UserCommandHandlers, part_of=User)
     test_domain.init(traverse=False)
 
-    assert test_domain.command_handler_for(ChangeAddress) is None
+    assert test_domain.command_handler_for(ChangeAddress()) is None
 
 
 def test_retrieving_handlers_for_unknown_command(test_domain):
