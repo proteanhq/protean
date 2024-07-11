@@ -66,7 +66,7 @@ def test_construct_message_from_event(test_domain):
     assert message.type == Registered.__type__
     assert message.stream_name == f"{User.meta_.stream_name}-{identifier}"
     assert message.metadata.kind == "EVENT"
-    assert message.data == user._events[-1].to_dict()
+    assert message.data == user._events[-1].payload
     assert message.time is None
     assert message.expected_version == user._version - 1
 
@@ -76,7 +76,7 @@ def test_construct_message_from_event(test_domain):
     assert message_dict["type"] == Registered.__type__
     assert message_dict["metadata"]["kind"] == "EVENT"
     assert message_dict["stream_name"] == f"{User.meta_.stream_name}-{identifier}"
-    assert message_dict["data"] == user._events[-1].to_dict()
+    assert message_dict["data"] == user._events[-1].payload
     assert message_dict["time"] is None
     assert (
         message_dict["expected_version"] == user._version - 1
@@ -99,7 +99,7 @@ def test_construct_message_from_command(test_domain):
     assert message.type == Register.__type__
     assert message.stream_name == f"{User.meta_.stream_name}:command-{identifier}"
     assert message.metadata.kind == "COMMAND"
-    assert message.data == command_with_metadata.to_dict()
+    assert message.data == command_with_metadata.payload
     assert message.time is not None
 
     # Verify Message Dict
@@ -109,7 +109,7 @@ def test_construct_message_from_command(test_domain):
     assert (
         message_dict["stream_name"] == f"{User.meta_.stream_name}:command-{identifier}"
     )
-    assert message_dict["data"] == command_with_metadata.to_dict()
+    assert message_dict["data"] == command_with_metadata.payload
     assert message_dict["time"] is not None
 
 
@@ -150,7 +150,7 @@ def test_construct_message_from_either_event_or_command(test_domain):
     assert message.type == Register.__type__
     assert message.stream_name == f"{User.meta_.stream_name}:command-{identifier}"
     assert message.metadata.kind == "COMMAND"
-    assert message.data == command.to_dict()
+    assert message.data == command.payload
 
     user = User(id=identifier, email="john.doe@example.com", name="John Doe")
     user.raise_(Registered(id=identifier, email="john.doe@gmail.com", name="John Doe"))
@@ -166,7 +166,7 @@ def test_construct_message_from_either_event_or_command(test_domain):
     assert message.type == Registered.__type__
     assert message.stream_name == f"{User.meta_.stream_name}-{identifier}"
     assert message.metadata.kind == "EVENT"
-    assert message.data == event.to_dict()
+    assert message.data == event.payload
     assert message.time is None
 
 
