@@ -89,13 +89,7 @@ class UnitOfWork:
                 for _, event in events:
                     handler_classes = current_domain.handlers_for(event)
                     for handler_cls in handler_classes:
-                        handler_methods = (
-                            handler_cls._handlers[event.__class__.__type__]
-                            or handler_cls._handlers["$any"]
-                        )
-
-                        for handler_method in handler_methods:
-                            handler_method(handler_cls(), event)
+                        handler_cls._handle(event)
 
             logger.debug("Commit Successful")
         except ValueError as exc:

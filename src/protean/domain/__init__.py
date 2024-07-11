@@ -909,13 +909,7 @@ class Domain:
                 # Consume events right-away
                 handler_classes = self.handlers_for(event)
                 for handler_cls in handler_classes:
-                    handler_methods = (
-                        handler_cls._handlers[event.__class__.__type__]
-                        or handler_cls._handlers["$any"]
-                    )
-
-                    for handler_method in handler_methods:
-                        handler_method(handler_cls(), event)
+                    handler_cls._handle(event)
 
     #####################
     # Handling Commands #
@@ -995,10 +989,7 @@ class Domain:
         ):
             handler_class = self.command_handler_for(command)
             if handler_class:
-                handler_method = next(
-                    iter(handler_class._handlers[command.__class__.__type__])
-                )
-                handler_method(handler_class(), command)
+                handler_class._handle(command_with_metadata)
 
         return position
 
