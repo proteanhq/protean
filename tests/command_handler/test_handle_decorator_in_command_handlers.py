@@ -4,7 +4,6 @@ from protean import BaseAggregate, BaseCommand, handle
 from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import NotSupportedError
 from protean.fields import Identifier, String
-from protean.utils import fully_qualified_name
 
 
 class User(BaseAggregate):
@@ -32,7 +31,7 @@ def test_that_a_handler_is_recorded_against_command_handler(test_domain):
     test_domain.register(Register, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
 
-    assert fully_qualified_name(Register) in UserCommandHandlers._handlers
+    assert Register.__type__ in UserCommandHandlers._handlers
 
 
 def test_that_multiple_handlers_can_be_recorded_against_command_handler(test_domain):
@@ -55,19 +54,19 @@ def test_that_multiple_handlers_can_be_recorded_against_command_handler(test_dom
     assert all(
         handle_name in UserCommandHandlers._handlers
         for handle_name in [
-            fully_qualified_name(Register),
-            fully_qualified_name(ChangeAddress),
+            Register.__type__,
+            ChangeAddress.__type__,
         ]
     )
 
-    assert len(UserCommandHandlers._handlers[fully_qualified_name(Register)]) == 1
-    assert len(UserCommandHandlers._handlers[fully_qualified_name(ChangeAddress)]) == 1
+    assert len(UserCommandHandlers._handlers[Register.__type__]) == 1
+    assert len(UserCommandHandlers._handlers[ChangeAddress.__type__]) == 1
     assert (
-        next(iter(UserCommandHandlers._handlers[fully_qualified_name(Register)]))
+        next(iter(UserCommandHandlers._handlers[Register.__type__]))
         == UserCommandHandlers.register
     )
     assert (
-        next(iter(UserCommandHandlers._handlers[fully_qualified_name(ChangeAddress)]))
+        next(iter(UserCommandHandlers._handlers[ChangeAddress.__type__]))
         == UserCommandHandlers.update_billing_address
     )
 

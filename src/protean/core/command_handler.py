@@ -3,7 +3,7 @@ import inspect
 from protean.container import Element, OptionsMixin
 from protean.core.command import BaseCommand
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.utils import DomainObjects, derive_element_class, fully_qualified_name
+from protean.utils import DomainObjects, derive_element_class
 from protean.utils.mixins import HandlerMixin
 
 
@@ -45,23 +45,6 @@ def command_handler_factory(element_cls, domain, **opts):
             if not (
                 method_name.startswith("__") and method_name.endswith("__")
             ) and hasattr(method, "_target_cls"):
-                # Do not allow multiple handlers per command
-                if (
-                    fully_qualified_name(method._target_cls) in element_cls._handlers
-                    and len(
-                        element_cls._handlers[fully_qualified_name(method._target_cls)]
-                    )
-                    != 0
-                ):
-                    raise NotSupportedError(
-                        f"Command {method._target_cls.__name__} cannot be handled by multiple handlers"
-                    )
-
-                # `_handlers` maps the command to its handler method
-                element_cls._handlers[fully_qualified_name(method._target_cls)].add(
-                    method
-                )
-
                 # Throw error if target_cls is not a Command
                 if not inspect.isclass(method._target_cls) or not issubclass(
                     method._target_cls, BaseCommand
@@ -95,6 +78,24 @@ def command_handler_factory(element_cls, domain, **opts):
                             ]
                         }
                     )
+
+                command_type = (
+                    method._target_cls.__type__
+                    if issubclass(method._target_cls, BaseCommand)
+                    else method._target_cls
+                )
+
+                # Do not allow multiple handlers per command
+                if (
+                    command_type in element_cls._handlers
+                    and len(element_cls._handlers[command_type]) != 0
+                ):
+                    raise NotSupportedError(
+                        f"Command {method._target_cls.__name__} cannot be handled by multiple handlers"
+                    )
+
+                # `_handlers` maps the command to its handler method
+                element_cls._handlers[command_type].add(method)
 
                 # Associate Command with the handler's stream
                 # Order of preference:

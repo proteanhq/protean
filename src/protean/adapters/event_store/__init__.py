@@ -104,7 +104,7 @@ class EventStore:
         )
         configured_stream_handlers = set()
         for stream_handler in stream_handlers:
-            if fqn(event.__class__) in stream_handler._handlers:
+            if event.__class__.__type__ in stream_handler._handlers:
                 configured_stream_handlers.add(stream_handler)
 
         return set.union(configured_stream_handlers, all_stream_handlers)
@@ -129,7 +129,7 @@ class EventStore:
         for handler_cls in handler_classes:
             try:
                 handler_method = next(
-                    iter(handler_cls._handlers[fqn(command.__class__)])
+                    iter(handler_cls._handlers[command.__class__.__type__])
                 )
                 handler_methods.add((handler_cls, handler_method))
             except StopIteration:
@@ -149,7 +149,7 @@ class EventStore:
         events = [
             event
             for event in self.domain.event_store.store._read(stream_name)
-            if event["type"] == fqn(event_cls)
+            if event["type"] == event_cls.__type__
         ]
 
         return Message.from_dict(events[-1]).to_object() if len(events) > 0 else None
@@ -175,5 +175,5 @@ class EventStore:
         return [
             Message.from_dict(event).to_object()
             for event in self.domain.event_store.store._read(stream_name)
-            if event["type"] == fqn(event_cls)
+            if event["type"] == event_cls.__type__
         ]

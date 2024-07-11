@@ -58,6 +58,7 @@ class TestDomainEventDefinition:
                 "_metadata": {
                     "id": None,  # ID is none because the event is not being raised in the proper way (with `_raise`)
                     "type": "Test.UserAdded.v1",
+                    "fqn": fully_qualified_name(UserAdded),
                     "kind": "EVENT",
                     "stream_name": None,  # Type is none here because of the same reason as above
                     "origin_stream_name": None,

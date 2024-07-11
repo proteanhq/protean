@@ -14,7 +14,6 @@ from protean import (
 )
 from protean.fields import Identifier, String
 from protean.globals import current_domain
-from protean.utils import fqn
 
 
 class Register(BaseCommand):
@@ -100,6 +99,6 @@ def test_that_multiple_events_are_raised_per_aggregate_in_the_same_uow(test_doma
     messages = test_domain.event_store.store._read("user")
 
     assert len(messages) == 3
-    assert messages[0]["type"] == f"{fqn(Registered)}"
-    assert messages[1]["type"] == f"{fqn(Renamed)}"
-    assert messages[2]["type"] == f"{fqn(Renamed)}"
+    assert messages[0]["type"] == Registered.__type__
+    assert messages[1]["type"] == Renamed.__type__
+    assert messages[2]["type"] == Renamed.__type__

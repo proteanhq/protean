@@ -14,7 +14,6 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.fields import Auto, Field, FieldBase, ValueObject
-from protean.globals import current_domain
 from protean.reflection import id_field
 from protean.utils import generate_identity
 
@@ -416,6 +415,7 @@ class EventedMixin:
             _metadata={
                 "id": (f"{stream_name}-{self._version}"),
                 "type": event._metadata.type,
+                "fqn": event._metadata.fqn,
                 "kind": event._metadata.kind,
                 "stream_name": stream_name,
                 "origin_stream_name": event._metadata.origin_stream_name,

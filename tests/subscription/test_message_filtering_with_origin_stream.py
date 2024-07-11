@@ -113,4 +113,4 @@ async def test_message_filtering_for_event_handlers_with_defined_origin_stream(
     )
 
     assert len(filtered_messages) == 1
-    assert filtered_messages[0].type == fqn(Sent)
+    assert filtered_messages[0].type == Sent.__type__

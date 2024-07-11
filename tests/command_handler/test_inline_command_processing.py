@@ -1,7 +1,10 @@
 from uuid import uuid4
 
+import pytest
+
 from protean import BaseAggregate, BaseCommand, handle
 from protean.core.command_handler import BaseCommandHandler
+from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
 from protean.utils import CommandProcessing
 
@@ -19,11 +22,28 @@ class Register(BaseCommand):
     email = String()
 
 
+class Login(BaseCommand):
+    user_id = Identifier()
+
+
 class UserCommandHandlers(BaseCommandHandler):
     @handle(Register)
     def register(self, event: Register) -> None:
         global counter
         counter += 1
+
+
+@pytest.fixture(autouse=True)
+def register(test_domain):
+    test_domain.register(User)
+    test_domain.register(Register, part_of=User)
+    test_domain.register(UserCommandHandlers, part_of=User)
+    test_domain.init(traverse=False)
+
+
+def test_unregistered_command_raises_error(test_domain):
+    with pytest.raises(IncorrectUsageError):
+        test_domain.process(Login(user_id=str(uuid4())))
 
 
 def test_that_command_can_be_processed_inline(test_domain):
@@ -39,11 +59,6 @@ def test_that_command_can_be_processed_inline(test_domain):
 
 
 def test_that_command_is_persisted_in_message_store(test_domain):
-    test_domain.register(User)
-    test_domain.register(Register, part_of=User)
-    test_domain.register(UserCommandHandlers, part_of=User)
-    test_domain.init(traverse=False)
-
     identifier = str(uuid4())
     test_domain.process(Register(user_id=identifier, email="john.doe@gmail.com"))
 

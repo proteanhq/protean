@@ -76,7 +76,11 @@ class MemoryMessageRepository(BaseRepository):
         if stream_name == "$all":
             pass  # Don't filter on stream name
         elif self.is_category(stream_name):
-            q = q.filter(stream_name__contains=stream_name)
+            # If filtering on category, ensure the supplied stream name
+            #   is the only thing in the category.
+            # Eg. If stream_name is 'user', then only 'user' should be in the category,
+            #   and not even `user:command`
+            q = q.filter(stream_name__contains=f"{stream_name}-")
         else:
             q = q.filter(stream_name=stream_name)
 

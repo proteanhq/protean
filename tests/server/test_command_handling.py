@@ -52,7 +52,8 @@ async def test_handler_invocation(test_domain):
         user_id=identifier,
         email="john.doe@example.com",
     )
-    message = Message.to_message(command)
+    enriched_command = test_domain._enrich_command(command)
+    message = Message.to_message(enriched_command)
 
     engine = Engine(domain=test_domain, test_mode=True)
     await engine.handle_message(UserCommandHandler, message)

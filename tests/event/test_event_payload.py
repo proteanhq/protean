@@ -5,6 +5,7 @@ import pytest
 from protean import BaseEvent, BaseEventSourcedAggregate
 from protean.fields import String
 from protean.fields.basic import Identifier
+from protean.utils import fqn
 
 
 class User(BaseEventSourcedAggregate):
@@ -38,6 +39,7 @@ def test_event_payload():
         "_metadata": {
             "id": f"user-{user_id}-0",
             "type": "Test.UserLoggedIn.v1",
+            "fqn": fqn(UserLoggedIn),
             "kind": "EVENT",
             "stream_name": f"user-{user_id}",
             "origin_stream_name": None,

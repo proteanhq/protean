@@ -2,7 +2,6 @@ import pytest
 
 from protean import BaseAggregate, BaseEvent, BaseEventHandler, handle
 from protean.fields import Identifier, String
-from protean.utils import fully_qualified_name
 
 
 class User(BaseAggregate):
@@ -27,9 +26,10 @@ def test_that_a_handler_is_recorded_against_event_handler(test_domain):
             pass
 
     test_domain.register(User)
+    test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandlers, part_of=User)
 
-    assert fully_qualified_name(Registered) in UserEventHandlers._handlers
+    assert Registered.__type__ in UserEventHandlers._handlers
 
 
 def test_that_multiple_handlers_can_be_recorded_against_event_handler(test_domain):
@@ -43,25 +43,27 @@ def test_that_multiple_handlers_can_be_recorded_against_event_handler(test_domai
             pass
 
     test_domain.register(User)
+    test_domain.register(Registered, part_of=User)
+    test_domain.register(AddressChanged, part_of=User)
     test_domain.register(UserEventHandlers, part_of=User)
 
     assert len(UserEventHandlers._handlers) == 2
     assert all(
         handle_name in UserEventHandlers._handlers
         for handle_name in [
-            fully_qualified_name(Registered),
-            fully_qualified_name(AddressChanged),
+            Registered.__type__,
+            AddressChanged.__type__,
         ]
     )
 
-    assert len(UserEventHandlers._handlers[fully_qualified_name(Registered)]) == 1
-    assert len(UserEventHandlers._handlers[fully_qualified_name(AddressChanged)]) == 1
+    assert len(UserEventHandlers._handlers[Registered.__type__]) == 1
+    assert len(UserEventHandlers._handlers[AddressChanged.__type__]) == 1
     assert (
-        next(iter(UserEventHandlers._handlers[fully_qualified_name(Registered)]))
+        next(iter(UserEventHandlers._handlers[Registered.__type__]))
         == UserEventHandlers.send_email_notification
     )
     assert (
-        next(iter(UserEventHandlers._handlers[fully_qualified_name(AddressChanged)]))
+        next(iter(UserEventHandlers._handlers[AddressChanged.__type__]))
         == UserEventHandlers.updated_billing_address
     )
 
@@ -81,9 +83,7 @@ def test_that_multiple_handlers_can_be_recorded_against_the_same_event(test_doma
 
     assert len(UserEventHandlers._handlers) == 1  # Against Registered Event
 
-    handlers_for_registered = UserEventHandlers._handlers[
-        fully_qualified_name(Registered)
-    ]
+    handlers_for_registered = UserEventHandlers._handlers[Registered.__type__]
     assert len(handlers_for_registered) == 2
     assert all(
         handler_method in handlers_for_registered

@@ -910,7 +910,7 @@ class Domain:
                 handler_classes = self.handlers_for(event)
                 for handler_cls in handler_classes:
                     handler_methods = (
-                        handler_cls._handlers[fqn(event.__class__)]
+                        handler_cls._handlers[event.__class__.__type__]
                         or handler_cls._handlers["$any"]
                     )
 
@@ -939,11 +939,9 @@ class Domain:
         command_with_metadata = command.__class__(
             command.to_dict(),
             _metadata={
-                "id": (str(uuid4())),
-                "type": (
-                    f"{command.meta_.part_of.__class__.__name__}.{command.__class__.__name__}."
-                    f"{command._metadata.version}"
-                ),
+                "id": identifier,  # FIXME Double check command ID format and construction
+                "type": command.__class__.__type__,
+                "fqn": command._metadata.fqn,
                 "kind": "EVENT",
                 "stream_name": stream_name,
                 "origin_stream_name": origin_stream_name,
@@ -976,6 +974,18 @@ class Domain:
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
         """
+        if (
+            fqn(command.__class__)
+            not in self.registry._elements[DomainObjects.COMMAND.value]
+        ):
+            raise IncorrectUsageError(
+                {
+                    "element": [
+                        f"Element {command.__class__.__name__} is not registered in domain {self.name}"
+                    ]
+                }
+            )
+
         command_with_metadata = self._enrich_command(command)
         position = self.event_store.store.append(command_with_metadata)
 
@@ -986,7 +996,7 @@ class Domain:
             handler_class = self.command_handler_for(command)
             if handler_class:
                 handler_method = next(
-                    iter(handler_class._handlers[fqn(command.__class__)])
+                    iter(handler_class._handlers[command.__class__.__type__])
                 )
                 handler_method(handler_class(), command)
 

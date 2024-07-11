@@ -13,7 +13,6 @@ from protean.core.event import BaseEvent, Metadata
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ConfigurationError, InvalidDataError
 from protean.globals import current_domain
-from protean.utils import fully_qualified_name
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +81,9 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
 
     def to_object(self) -> Union[BaseEvent, BaseCommand]:
         if self.metadata.kind == MessageType.EVENT.value:
-            element_record = current_domain.registry.events[self.type]
+            element_record = current_domain.registry.events[self.metadata.fqn]
         elif self.metadata.kind == MessageType.COMMAND.value:
-            element_record = current_domain.registry.commands[self.type]
+            element_record = current_domain.registry.commands[self.metadata.fqn]
         else:
             raise InvalidDataError(
                 {"_message": ["Message type is not supported for deserialization"]}
@@ -110,7 +109,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
 
         return cls(
             stream_name=message_object._metadata.stream_name,
-            type=fully_qualified_name(message_object.__class__),
+            type=message_object.__class__.__type__,
             data=message_object.to_dict(),
             metadata=message_object._metadata,
             expected_version=expected_version,
@@ -162,7 +161,7 @@ class HandlerMixin:
     @classmethod
     def _handle(cls, message: Message) -> None:
         # Use Event-specific handlers if available, or fallback on `$any` if defined
-        handlers = cls._handlers[message.type] or cls._handlers["$any"]
+        handlers = cls._handlers[message.metadata.type] or cls._handlers["$any"]
 
         for handler_method in handlers:
             handler_method(cls(), message.to_object())

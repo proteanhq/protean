@@ -12,19 +12,25 @@ from protean.exceptions import (
 from protean.fields import DateTime, Field, Integer, String, ValueObject
 from protean.globals import g
 from protean.reflection import _ID_FIELD_NAME, declared_fields, fields
-from protean.utils import DomainObjects, derive_element_class
+from protean.utils import DomainObjects, derive_element_class, fqn
 
 logger = logging.getLogger(__name__)
 
 
 class Metadata(BaseValueObject):
-    # Unique identifier of the Event
-    # Format is <domain-name>.<event-class-name>.<event-version>.<aggregate-id>.<aggregate-version>
+    # Unique identifier of the event/command
+    #
+    # FIXME Fix the format documentation
+    # Event Format is <domain-name>.<class-name>.<version>.<aggregate-id>.<aggregate-version>
+    # Command Format is <domain-name>.<class-name>.<version>
     id = String()
 
     # Type of the event
     # Format is <domain-name>.<event-class-name>.<event-version>
     type = String()
+
+    # Fully Qualified Name of the event/command
+    fqn = String()
 
     # Kind of the object
     # Can be one of "EVENT", "COMMAND"
@@ -40,9 +46,10 @@ class Metadata(BaseValueObject):
     timestamp = DateTime(default=lambda: datetime.now(timezone.utc))
 
     # Version of the event
-    # Can be overridden with `__version__` class attr in Event class definition
+    # Can be overridden with `__version__` class attr in event/command class definition
     version = String(default="v1")
 
+    # Applies to Events only
     # Sequence of the event in the aggregate
     # This is the version of the aggregate as it will be *after* persistence.
     #
@@ -146,6 +153,7 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             self._metadata.to_dict(),  # Template from old Metadata
             type=self.__class__.__type__,
             kind="EVENT",
+            fqn=fqn(self.__class__),
             origin_stream_name=origin_stream_name,
             version=self.__class__.__version__,  # Was set in `__init_subclass__`
         )
