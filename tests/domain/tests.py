@@ -13,10 +13,41 @@ from protean.utils import fully_qualified_name
 from .elements import UserAggregate, UserEntity, UserFoo, UserVO
 
 
+def test_domain_name():
+    domain = Domain(__file__, "Foo", load_toml=False)
+
+    assert domain.name == "Foo"
+
+
 def test_domain_name_string():
     domain = Domain(__file__, "Foo", load_toml=False)
 
     assert str(domain) == "Domain: Foo"
+
+
+def test_normalized_domain_name():
+    # A few test cases to check if domain names are normalized correctly
+    #   Each item is a tuple of (name, normalized_name)
+    data = [
+        ("Foo", "foo"),
+        ("Foo20", "foo20"),
+        ("Foo 20", "foo_20"),
+        ("FooBar", "foobar"),
+        ("Foo Bar", "foo_bar"),
+        ("Foo Bar Baz", "foo_bar_baz"),
+        ("Foo-Bar", "foo_bar"),
+        ("Foo_Bar", "foo_bar"),
+        ("Foo Bar 20", "foo_bar_20"),
+        ("Donald E. Knuth", "donald_e_knuth"),
+        ("MyDomain", "mydomain"),
+        ("My Domain", "my_domain"),
+        ("My-Domain", "my_domain"),
+        ("My Domain 1", "my_domain_1"),
+        ("My Domain 1.0", "my_domain_1_0"),
+    ]
+    for name, result in data:
+        domain = Domain(__file__, name, load_toml=False)
+        assert domain.normalized_name == result, f"Failed for {name}"
 
 
 class TestElementRegistration:

@@ -11,6 +11,8 @@ from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
+from inflection import parameterize, transliterate, underscore
+
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
 from protean.container import Element
@@ -186,6 +188,21 @@ class Domain:
         # Placeholder array for resolving classes referenced by domain elements
         # FIXME Should all protean elements be subclassed from a base element?
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
+
+    @property
+    @lru_cache()
+    def normalized_name(self) -> str:
+        """Return the normalized name of the domain.
+
+        The normalized name is the underscored version of the domain name.
+        Examples:
+        - `MyDomain` -> `my_domain`
+        - `My Domain` -> `my_domain`
+        - `My-Domain` -> `my_domain`
+        - `My Domain 1` -> `my_domain_1`
+        - `My Domain 1.0` -> `my_domain_1_0`
+        """
+        return underscore(parameterize(transliterate(self.name)))
 
     def init(self, traverse=True):  # noqa: C901
         """Parse the domain folder, and attach elements dynamically to the domain.
