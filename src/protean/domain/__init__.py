@@ -11,7 +11,7 @@ from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
-from inflection import parameterize, transliterate, underscore
+from inflection import parameterize, titleize, transliterate, underscore
 
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
@@ -188,6 +188,23 @@ class Domain:
         # Placeholder array for resolving classes referenced by domain elements
         # FIXME Should all protean elements be subclassed from a base element?
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
+
+    @property
+    @lru_cache()
+    def camel_case_name(self) -> str:
+        """Return the CamelCase name of the domain.
+
+        The CamelCase name is the name of the domain with the first letter capitalized.
+        Examples:
+        - `my_domain` -> `MyDomain`
+        - `my_domain_1` -> `MyDomain1`
+        - `my_domain_1_0` -> `MyDomain10`
+        """
+        # Transliterating the name to remove any special characters and camelize
+        formatted_string = titleize(transliterate(self.name).replace("-", " "))
+
+        # Eliminate non-alphanumeric characters
+        return "".join(filter(str.isalnum, formatted_string))
 
     @property
     @lru_cache()

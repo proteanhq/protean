@@ -26,7 +26,7 @@ def test_domain_name_string():
 
 
 def test_normalized_domain_name():
-    # A few test cases to check if domain names are normalized correctly
+    # Test cases to check if domain names are normalized correctly
     #   Each item is a tuple of (name, normalized_name)
     data = [
         ("Foo", "foo"),
@@ -48,6 +48,31 @@ def test_normalized_domain_name():
     for name, result in data:
         domain = Domain(__file__, name, load_toml=False)
         assert domain.normalized_name == result, f"Failed for {name}"
+
+
+def test_camel_case_domain_name():
+    # Test cases to check if domain names are converted to camel case correctly
+    #   Each item is a tuple of (name, camel_case_name)
+    data = [
+        ("My Domain", "MyDomain"),
+        ("my_domain", "MyDomain"),
+        ("my-domain", "MyDomain"),
+        ("foo", "Foo"),
+        ("foo_bar", "FooBar"),
+        ("foo_bar_baz", "FooBarBaz"),
+        ("foo-bar-baz", "FooBarBaz"),
+        ("foo-bar", "FooBar"),
+        ("foo_bar_baz", "FooBarBaz"),
+        ("foo-bar-baz", "FooBarBaz"),
+        ("donald_e_knuth", "DonaldEKnuth"),
+        ("donald-e-knuth", "DonaldEKnuth"),
+        ("Donald E. Knuth", "DonaldEKnuth"),
+        ("My Domain 1", "MyDomain1"),
+        ("My Domain 1.0", "MyDomain10"),
+    ]
+    for name, result in data:
+        domain = Domain(__file__, name, load_toml=False)
+        assert domain.camel_case_name == result, f"Failed for {name}"
 
 
 class TestElementRegistration:
