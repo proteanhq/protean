@@ -8,7 +8,7 @@ from protean.utils.domain_discovery import derive_domain
 from tests.shared import change_working_directory_to
 
 
-class TestDomainName:
+class TestDomainNameDerivation:
     @pytest.fixture(autouse=True)
     def reset_path(self):
         """Reset sys.path after every test run"""
