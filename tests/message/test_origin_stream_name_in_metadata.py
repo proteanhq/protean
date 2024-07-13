@@ -66,7 +66,7 @@ def registered_event_message(user_id):
     return Message.to_message(user._events[0])
 
 
-def test_origin_stream_name_in_event_from_command_without_origin_stream_name(
+def test_origin_stream_in_event_from_command_without_origin_stream(
     user_id, register_command_message
 ):
     g.message_in_context = register_command_message
@@ -80,16 +80,16 @@ def test_origin_stream_name_in_event_from_command_without_origin_stream_name(
         )
     )
     event_message = Message.to_message(user._events[-1])
-    assert event_message.metadata.origin_stream_name is None
+    assert event_message.metadata.origin_stream is None
 
 
-def test_origin_stream_name_in_event_from_command_with_origin_stream_name(
+def test_origin_stream_in_event_from_command_with_origin_stream(
     user_id, register_command_message
 ):
     command_message = register_command_message
 
     command_message.metadata = Metadata(
-        command_message.metadata.to_dict(), origin_stream_name="foo"
+        command_message.metadata.to_dict(), origin_stream="foo"
     )  # Metadata is a VO and immutable, so creating a copy with updated value
     g.message_in_context = command_message
 
@@ -103,10 +103,10 @@ def test_origin_stream_name_in_event_from_command_with_origin_stream_name(
     )
     event_message = Message.to_message(user._events[-1])
 
-    assert event_message.metadata.origin_stream_name == "foo"
+    assert event_message.metadata.origin_stream == "foo"
 
 
-def test_origin_stream_name_in_aggregate_event_from_command_without_origin_stream_name(
+def test_origin_stream_in_aggregate_event_from_command_without_origin_stream(
     user_id, register_command_message
 ):
     g.message_in_context = register_command_message
@@ -124,16 +124,16 @@ def test_origin_stream_name_in_aggregate_event_from_command_without_origin_strea
     )
     event_message = Message.to_message(user._events[-1])
 
-    assert event_message.metadata.origin_stream_name is None
+    assert event_message.metadata.origin_stream is None
 
 
-def test_origin_stream_name_in_aggregate_event_from_command_with_origin_stream_name(
+def test_origin_stream_in_aggregate_event_from_command_with_origin_stream(
     user_id, register_command_message
 ):
     command_message = register_command_message
 
     command_message.metadata = Metadata(
-        command_message.metadata.to_dict(), origin_stream_name="foo"
+        command_message.metadata.to_dict(), origin_stream="foo"
     )  # Metadata is a VO and immutable, so creating a copy with updated value
     g.message_in_context = command_message
 
@@ -151,10 +151,10 @@ def test_origin_stream_name_in_aggregate_event_from_command_with_origin_stream_n
     )
     event_message = Message.to_message(user._events[-1])
 
-    assert event_message.metadata.origin_stream_name == "foo"
+    assert event_message.metadata.origin_stream == "foo"
 
 
-def test_origin_stream_name_in_command_from_event(
+def test_origin_stream_in_command_from_event(
     user_id, test_domain, registered_event_message
 ):
     g.message_in_context = registered_event_message
@@ -167,4 +167,4 @@ def test_origin_stream_name_in_command_from_event(
     enriched_command = test_domain._enrich_command(command)
     command_message = Message.to_message(enriched_command)
 
-    assert command_message.metadata.origin_stream_name == f"user-{user_id}"
+    assert command_message.metadata.origin_stream == f"user-{user_id}"

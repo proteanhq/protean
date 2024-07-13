@@ -13,42 +13,40 @@ class MemoryMessage(BaseAggregate, MessageRecord):
 
 
 class MemoryMessageRepository(BaseRepository):
-    def is_category(self, stream_name: str) -> bool:
-        if not stream_name:
+    def is_category(self, stream: str) -> bool:
+        if not stream:
             return False
 
-        return "-" not in stream_name
+        return "-" not in stream
 
-    def stream_version(self, stream_name: str):
+    def stream_version(self, stream: str):
         repo = current_domain.repository_for(MemoryMessage)
-        results = (
-            repo._dao.query.filter(stream_name=stream_name).order_by("-position").all()
-        )
+        results = repo._dao.query.filter(stream=stream).order_by("-position").all()
 
         return results.first.position if results.items else -1
 
     def write(
         self,
-        stream_name: str,
+        stream: str,
         message_type: str,
         data: Dict,
         metadata: Dict = None,
         expected_version: int = None,
     ) -> int:
         # Fetch stream version
-        _stream_version = self.stream_version(stream_name)
+        _stream_version = self.stream_version(stream)
 
         if expected_version is not None and expected_version != _stream_version:
             raise ValueError(
                 f"Wrong expected version: {expected_version} "
-                f"(Stream: {stream_name}, Stream Version: {_stream_version})"
+                f"(Stream: {stream}, Stream Version: {_stream_version})"
             )
 
         next_position = _stream_version + 1
 
         self.add(
             MemoryMessage(
-                stream_name=stream_name,
+                stream=stream,
                 position=next_position,
                 type=message_type,
                 data=data,
@@ -61,7 +59,7 @@ class MemoryMessageRepository(BaseRepository):
 
     def read(
         self,
-        stream_name: str,
+        stream: str,
         sql: str = None,
         position: int = 0,
         no_of_messages: int = 1000,
@@ -73,16 +71,16 @@ class MemoryMessageRepository(BaseRepository):
             .limit(no_of_messages)
         )
 
-        if stream_name == "$all":
+        if stream == "$all":
             pass  # Don't filter on stream name or category
-        elif self.is_category(stream_name):
+        elif self.is_category(stream):
             # If filtering on category, ensure the supplied stream name
             #   is the only thing in the category.
-            # Eg. If stream_name is 'user', then only 'user' should be in the category,
+            # Eg. If stream is 'user', then only 'user' should be in the category,
             #   and not even `user:command`
-            q = q.filter(stream_name__contains=f"{stream_name}-")
+            q = q.filter(stream__contains=f"{stream}-")
         else:
-            q = q.filter(stream_name=stream_name)
+            q = q.filter(stream=stream)
 
         items = q.all().items
         return [item.to_dict() for item in items]
@@ -98,29 +96,29 @@ class MemoryEventStore(BaseEventStore):
 
     def _write(
         self,
-        stream_name: str,
+        stream: str,
         message_type: str,
         data: Dict,
         metadata: Dict = None,
         expected_version: int = None,
     ) -> int:
         repo = self.domain.repository_for(MemoryMessage)
-        return repo.write(stream_name, message_type, data, metadata, expected_version)
+        return repo.write(stream, message_type, data, metadata, expected_version)
 
     def _read(
         self,
-        stream_name: str,
+        stream: str,
         sql: str = None,
         position: int = 0,
         no_of_messages: int = 1000,
     ) -> List[Dict[str, Any]]:
         repo = self.domain.repository_for(MemoryMessage)
-        return repo.read(stream_name, sql, position, no_of_messages)
+        return repo.read(stream, sql, position, no_of_messages)
 
-    def _read_last_message(self, stream_name) -> Dict[str, Any]:
+    def _read_last_message(self, stream) -> Dict[str, Any]:
         repo = self.domain.repository_for(MemoryMessage)
 
-        messages = repo.read(stream_name)
+        messages = repo.read(stream)
         return messages[-1] if messages else None
 
     def _data_reset(self) -> None:

@@ -25,7 +25,7 @@ class BaseEventStore(metaclass=ABCMeta):
     @abstractmethod
     def _write(
         self,
-        stream_name: str,
+        stream: str,
         message_type: str,
         data: Dict,
         metadata: Dict | None = None,
@@ -41,7 +41,7 @@ class BaseEventStore(metaclass=ABCMeta):
     @abstractmethod
     def _read(
         self,
-        stream_name: str,
+        stream_nae: str,
         sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
@@ -52,28 +52,28 @@ class BaseEventStore(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _read_last_message(self, stream_name) -> Dict[str, Any]:
+    def _read_last_message(self, stream) -> Dict[str, Any]:
         """Read the last message from the event store.
 
         Implemented by the concrete event store adapter.
         """
 
-    def category(self, stream_name: str) -> str:
-        if not stream_name:
+    def category(self, stream: str) -> str:
+        if not stream:
             return ""
 
-        stream_category, _, _ = stream_name.partition("-")
+        stream_category, _, _ = stream.partition("-")
         return stream_category
 
     def read(
         self,
-        stream_name: str,
+        stream: str,
         sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
     ):
         raw_messages = self._read(
-            stream_name, sql=sql, position=position, no_of_messages=no_of_messages
+            stream, sql=sql, position=position, no_of_messages=no_of_messages
         )
 
         messages = []
@@ -82,9 +82,9 @@ class BaseEventStore(metaclass=ABCMeta):
 
         return messages
 
-    def read_last_message(self, stream_name) -> Message:
+    def read_last_message(self, stream) -> Message:
         # FIXME Rename to read_last_stream_message
-        raw_message = self._read_last_message(stream_name)
+        raw_message = self._read_last_message(stream)
         if raw_message:
             return Message.from_dict(raw_message)
 
@@ -94,7 +94,7 @@ class BaseEventStore(metaclass=ABCMeta):
         message = Message.to_message(object)
 
         position = self._write(
-            message.stream_name,
+            message.stream,
             message.type,
             message.data,
             metadata=message.metadata.to_dict(),

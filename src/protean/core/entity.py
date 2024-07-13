@@ -459,20 +459,20 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
 
         # Set Fact Event stream to be `<aggregate_stream_name>-fact`
         if event.__class__.__name__.endswith("FactEvent"):
-            stream_name = f"{self._root.meta_.stream_category}-fact-{identifier}"
+            stream = f"{self._root.meta_.stream_category}-fact-{identifier}"
         else:
-            stream_name = f"{self._root.meta_.stream_category}-{identifier}"
+            stream = f"{self._root.meta_.stream_category}-{identifier}"
 
         event_with_metadata = event.__class__(
             event.to_dict(),
             _expected_version=self._root._event_position,
             _metadata={
-                "id": (f"{stream_name}-{aggregate_version}.{event_number}"),
+                "id": (f"{stream}-{aggregate_version}.{event_number}"),
                 "type": event._metadata.type,
                 "fqn": event._metadata.fqn,
                 "kind": event._metadata.kind,
-                "stream_name": stream_name,
-                "origin_stream_name": event._metadata.origin_stream_name,
+                "stream": stream,
+                "origin_stream": event._metadata.origin_stream,
                 "timestamp": event._metadata.timestamp,
                 "version": event._metadata.version,
                 "sequence_id": f"{aggregate_version}.{event_number}",
