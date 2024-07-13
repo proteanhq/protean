@@ -63,7 +63,7 @@ def test_command_associated_with_aggregate(test_domain):
     messages = test_domain.event_store.store.read("user:command")
 
     assert len(messages) == 1
-    messages[0].stream == f"user:command-{identifier}"
+    messages[0].stream_name == f"user:command-{identifier}"
 
 
 @pytest.mark.eventstore
@@ -84,7 +84,7 @@ def test_command_associated_with_aggregate_with_custom_stream_name(test_domain):
     messages = test_domain.event_store.store.read("foo:command")
 
     assert len(messages) == 1
-    messages[0].stream == f"foo:command-{identifier}"
+    messages[0].stream_name == f"foo:command-{identifier}"
 
 
 def test_aggregate_cluster_of_event(test_domain):

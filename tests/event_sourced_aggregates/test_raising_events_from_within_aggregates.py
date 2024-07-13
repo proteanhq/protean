@@ -86,11 +86,11 @@ def test_that_events_can_be_raised_from_within_aggregates(test_domain):
     messages = test_domain.event_store.store._read("user")
 
     assert len(messages) == 1
-    assert messages[0]["stream"] == f"user-{identifier}"
+    assert messages[0]["stream_name"] == f"user-{identifier}"
     assert messages[0]["type"] == Registered.__type__
 
     messages = test_domain.event_store.store._read("user:command")
 
     assert len(messages) == 1
-    assert messages[0]["stream"] == f"user:command-{identifier}"
+    assert messages[0]["stream_name"] == f"user:command-{identifier}"
     assert messages[0]["type"] == Register.__type__

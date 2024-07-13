@@ -16,11 +16,11 @@ def test_stream_category_from_part_of(test_domain):
     test_domain.register(User)
     test_domain.register(UserLoggedIn, part_of=User)
 
-    assert UserLoggedIn.meta_.part_of.meta_.stream_category == "user"
+    assert UserLoggedIn.meta_.part_of.meta_.stream_category == "test::user"
 
 
 def test_stream_category_from_explicit_stream_category_in_aggregate(test_domain):
     test_domain.register(User, stream_category="authentication")
     test_domain.register(UserLoggedIn, part_of=User)
 
-    assert UserLoggedIn.meta_.part_of.meta_.stream_category == "authentication"
+    assert UserLoggedIn.meta_.part_of.meta_.stream_category == "test::authentication"

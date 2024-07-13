@@ -1078,7 +1078,7 @@ class Domain:
         origin_stream = None
         if hasattr(g, "message_in_context"):
             if g.message_in_context.metadata.kind == "EVENT":
-                origin_stream = g.message_in_context.stream
+                origin_stream = g.message_in_context.stream_name
 
         command_with_metadata = command.__class__(
             command.to_dict(),

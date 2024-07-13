@@ -23,7 +23,7 @@ def event(test_domain):
     test_domain.repository_for(User).add(user)
 
     # Read event from event store
-    event_messages = test_domain.event_store.store.read(f"user-fact-{user.id}")
+    event_messages = test_domain.event_store.store.read(f"test::user-fact-{user.id}")
     assert len(event_messages) == 1
 
     # Deserialize event
@@ -54,7 +54,7 @@ def test_fact_event_version_metadata_after_second_edit(test_domain):
     test_domain.repository_for(User).add(refreshed_user)
 
     # Read event from event store
-    event_messages = test_domain.event_store.store.read(f"user-fact-{user.id}")
+    event_messages = test_domain.event_store.store.read(f"test::user-fact-{user.id}")
     assert len(event_messages) == 2
 
     # Deserialize event

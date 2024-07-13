@@ -52,7 +52,7 @@ class BaseCommand(BaseContainer, OptionsMixin):
             origin_stream = None
             if hasattr(g, "message_in_context"):
                 if g.message_in_context.metadata.kind == "EVENT":
-                    origin_stream = g.message_in_context.stream
+                    origin_stream = g.message_in_context.stream_name
 
             # Value Objects are immutable, so we create a clone/copy and associate it
             self._metadata = Metadata(

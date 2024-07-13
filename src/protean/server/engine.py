@@ -107,7 +107,7 @@ class Engine:
                 )
             except Exception as exc:  # Includes handling `ConfigurationError`
                 logger.error(
-                    f"Error handling message {message.stream}-{message.id} "
+                    f"Error handling message {message.stream_name}-{message.id} "
                     f"in {handler_cls.__name__}"
                 )
                 logger.error(f"{str(exc)}")

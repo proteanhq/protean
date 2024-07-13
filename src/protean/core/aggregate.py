@@ -155,6 +155,11 @@ def aggregate_factory(element_cls, domain, **opts):
         ) and hasattr(method, "_invariant"):
             element_cls._invariants[method._invariant][method_name] = method
 
+    # Set stream name to be `domain_name::aggregate_name`
+    element_cls.meta_.stream_category = (
+        f"{domain.normalized_name}::{element_cls.meta_.stream_category}"
+    )
+
     return element_cls
 
 
