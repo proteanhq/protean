@@ -34,8 +34,10 @@ def test_only_commands_can_be_associated_with_command_handlers(test_domain):
             pass
 
     test_domain.register(User)
+    test_domain.register(UserCommandHandlers, part_of=User)
+
     with pytest.raises(IncorrectUsageError) as exc:
-        test_domain.register(UserCommandHandlers, part_of=User)
+        test_domain.init(traverse=False)
 
     assert exc.value.messages == {
         "_command_handler": [
@@ -51,8 +53,10 @@ def test_commands_have_to_be_registered_with_an_aggregate(test_domain):
             pass
 
     test_domain.register(User)
+    test_domain.register(UserCommandHandlers, part_of=User)
+
     with pytest.raises(IncorrectUsageError) as exc:
-        test_domain.register(UserCommandHandlers, part_of=User)
+        test_domain.init(traverse=False)
 
     assert exc.value.messages == {
         "_command_handler": [
@@ -76,8 +80,10 @@ def test_command_and_command_handler_have_to_be_associated_with_same_aggregate(
     test_domain.register(User)
     test_domain.register(User2)
     test_domain.register(Register, part_of=User)
+    test_domain.register(UserCommandHandlers, part_of=User2)
+
     with pytest.raises(IncorrectUsageError) as exc:
-        test_domain.register(UserCommandHandlers, part_of=User2)
+        test_domain.init(traverse=False)
 
     assert exc.value.messages == {
         "_command_handler": [

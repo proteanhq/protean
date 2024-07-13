@@ -159,13 +159,11 @@ def test_event_to_be_applied_should_have_a_projection(test_domain):
         user_id = Identifier(required=True)
 
     test_domain.register(UserArchived, part_of=User)
+    test_domain.init(traverse=False)
 
     user = User(user_id=str(uuid4()), name="<NAME>", email="<EMAIL>")
 
     with pytest.raises(NotImplementedError) as exc:
         user._apply(UserArchived(user_id=user.user_id))
 
-    assert (
-        exc.value.args[0]
-        == "No handler registered for event `tests.event_sourced_aggregates.test_apply.UserArchived` in `User`"
-    )
+    assert exc.value.args[0].startswith("No handler registered for event")

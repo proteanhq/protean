@@ -49,6 +49,7 @@ def register(test_domain):
     test_domain.register(Registered, part_of=User)
     test_domain.register(SendEmail)
     test_domain.register(SendEmailCommand, part_of=SendEmail)
+    test_domain.init(traverse=False)
 
 
 def test_construct_event_from_message():

@@ -39,6 +39,7 @@ async def test_that_an_event_handler_can_be_associated_with_an_all_stream(test_d
     test_domain.register(User)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
+    test_domain.init(traverse=False)
 
     identifier = str(uuid4())
     user = User(

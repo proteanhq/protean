@@ -57,6 +57,7 @@ async def test_that_subscription_invokes_engine_handler_on_message(
     test_domain.register(User)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
+    test_domain.init(traverse=False)
 
     identifier = str(uuid4())
     user = User.register(

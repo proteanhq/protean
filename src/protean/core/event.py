@@ -30,7 +30,7 @@ class Metadata(BaseValueObject):
     type = String()
 
     # Fully Qualified Name of the event/command
-    fqn = String()
+    fqn = String(sanitize=False)
 
     # Kind of the object
     # Can be one of "EVENT", "COMMAND"
@@ -204,12 +204,5 @@ def domain_event_factory(element_cls, domain, **opts):
                 ]
             }
         )
-
-    # Set the event type for the event class
-    setattr(
-        element_cls,
-        "__type__",
-        f"{domain.name}.{element_cls.__name__}.{element_cls.__version__}",
-    )
 
     return element_cls

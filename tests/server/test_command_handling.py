@@ -46,6 +46,7 @@ async def test_handler_invocation(test_domain):
     test_domain.register(Register, part_of=User)
     test_domain.register(Activate, part_of=User)
     test_domain.register(UserCommandHandler, part_of=User)
+    test_domain.init(traverse=False)
 
     identifier = str(uuid4())
     command = Register(

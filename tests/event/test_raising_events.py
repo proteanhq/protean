@@ -21,6 +21,7 @@ class UserLoggedIn(BaseEvent):
 def test_raising_event(test_domain):
     test_domain.register(User, stream_name="authentication")
     test_domain.register(UserLoggedIn, part_of=User)
+    test_domain.init(traverse=False)
 
     identifier = str(uuid4())
     user = User(id=identifier, email="test@example.com", name="Test User")

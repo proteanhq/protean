@@ -141,11 +141,4 @@ def command_factory(element_cls, domain, **opts):
             }
         )
 
-    # Set the command type for the command class
-    setattr(
-        element_cls,
-        "__type__",
-        f"{domain.name}.{element_cls.__name__}.{element_cls.__version__}",
-    )
-
     return element_cls

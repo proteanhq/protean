@@ -80,6 +80,7 @@ class TestMetadataVersion:
             user_id = Identifier(identifier=True)
 
         test_domain.register(UserLoggedIn, part_of=User)
+        test_domain.init(traverse=False)
 
         event = UserLoggedIn(user_id=str(uuid4()))
         assert event._metadata.version == "v2"

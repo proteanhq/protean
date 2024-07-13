@@ -57,6 +57,7 @@ def register_elements(test_domain):
     test_domain.register(UserRegistered, part_of=User)
     test_domain.register(UserActivated, part_of=User)
     test_domain.register(UserRenamed, part_of=User)
+    test_domain.init(traverse=False)
 
 
 def test_an_unassociated_event_throws_error(test_domain):
@@ -72,6 +73,7 @@ def test_an_unassociated_event_throws_error(test_domain):
 def test_that_event_associated_with_another_aggregate_throws_error(test_domain):
     test_domain.register(User2)
     test_domain.register(UserUnknownEvent, part_of=User2)
+    test_domain.init(traverse=False)
 
     user = User.register(user_id="1", name="<NAME>", email="<EMAIL>")
     with pytest.raises(ConfigurationError) as exc:
