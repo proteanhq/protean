@@ -249,7 +249,7 @@ class BaseRepository(Element, OptionsMixin):
 
         # Fetch and sync events version
         last_message = current_domain.event_store.store.read_last_message(
-            f"{aggregate.meta_.stream_name}-{identifier}"
+            f"{aggregate.meta_.stream_category}-{identifier}"
         )
         if last_message:
             aggregate._event_position = last_message.position

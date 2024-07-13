@@ -405,9 +405,9 @@ class EventedMixin:
 
         # Set Fact Event stream to be `<aggregate_stream_name>-fact`
         if event.__class__.__name__.endswith("FactEvent"):
-            stream_name = f"{self.meta_.stream_name}-fact-{identifier}"
+            stream_name = f"{self.meta_.stream_category}-fact-{identifier}"
         else:
-            stream_name = f"{self.meta_.stream_name}-{identifier}"
+            stream_name = f"{self.meta_.stream_category}-{identifier}"
 
         event_with_metadata = event.__class__(
             event.to_dict(),

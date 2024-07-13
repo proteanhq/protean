@@ -74,7 +74,7 @@ class MemoryMessageRepository(BaseRepository):
         )
 
         if stream_name == "$all":
-            pass  # Don't filter on stream name
+            pass  # Don't filter on stream name or category
         elif self.is_category(stream_name):
             # If filtering on category, ensure the supplied stream name
             #   is the only thing in the category.

@@ -22,20 +22,20 @@ class Person(BaseEventSourcedAggregate):
 def register_elements(test_domain):
     test_domain.register(User)
     test_domain.register(AdminUser)
-    test_domain.register(Person, stream_name="people")
+    test_domain.register(Person, stream_category="people")
 
 
-def test_stream_name_option_of_an_event_sourced_aggregate():
-    assert User.meta_.stream_name == "user"
+def test_stream_category_option_of_an_event_sourced_aggregate():
+    assert User.meta_.stream_category == "user"
 
     # Verify snake-casing the Aggregate name
-    assert AdminUser.meta_.stream_name == "admin_user"
+    assert AdminUser.meta_.stream_category == "admin_user"
 
-    # Verify manually set stream_name
-    assert Person.meta_.stream_name == "people"
+    # Verify manually set stream_category
+    assert Person.meta_.stream_category == "people"
 
 
-def test_stream_name_option_of_an_event_sourced_aggregate_defined_via_annotation(
+def test_stream_category_option_of_an_event_sourced_aggregate_defined_via_annotation(
     test_domain,
 ):
     @test_domain.event_sourced_aggregate
@@ -43,11 +43,11 @@ def test_stream_name_option_of_an_event_sourced_aggregate_defined_via_annotation
         name = String()
         age = Integer()
 
-    assert Adult.meta_.stream_name == "adult"
+    assert Adult.meta_.stream_category == "adult"
 
-    @test_domain.event_sourced_aggregate(stream_name="children")
+    @test_domain.event_sourced_aggregate(stream_category="children")
     class Child(BaseEventSourcedAggregate):
         name = String()
         age = Integer()
 
-    assert Child.meta_.stream_name == "children"
+    assert Child.meta_.stream_category == "children"

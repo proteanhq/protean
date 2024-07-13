@@ -53,6 +53,6 @@ def test_command_handler_subscriptions(engine):
 
     assert fully_qualified_name(UserCommandHandler) in engine._subscriptions
     assert (
-        engine._subscriptions[fully_qualified_name(UserCommandHandler)].stream_name
+        engine._subscriptions[fully_qualified_name(UserCommandHandler)].stream_category
         == "user:command"
     )

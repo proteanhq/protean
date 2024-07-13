@@ -182,6 +182,17 @@ the aggregate.
     `Customizing Persistence schemas` for more information.
     <!-- FIXME Add link to customizing persistence schemas -->
 
+### `stream_category`
+
+The stream to which the aggregate outpus events and processes commands from.
+The category is automatically derived as the `underscore` version of the
+aggregate's name, but can be overridden. E.g. `User` has `user` as the
+automatic stream category, `OrderItem` will have `order_item`.
+
+The stream category is used by all elements in the aggregate's cluster,
+including Command Handlers and Event Handlers to determine the event or command
+stream to listen to.
+
 ## Associations
 
 Protean provides multiple options for Aggregates to weave object graphs with

@@ -43,9 +43,9 @@ class UserEventHandler(BaseEventHandler):
 
 @pytest.mark.eventstore
 def test_inline_event_processing_on_publish_in_sync_mode(test_domain):
-    test_domain.register(User, stream_name="user")
+    test_domain.register(User, stream_category="user")
     test_domain.register(Registered, part_of=User)
-    test_domain.register(UserEventHandler, stream_name="user")
+    test_domain.register(UserEventHandler, stream_category="user")
     test_domain.init(traverse=False)
 
     user = User(

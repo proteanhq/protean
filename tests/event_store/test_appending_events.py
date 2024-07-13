@@ -19,7 +19,7 @@ class UserLoggedIn(BaseEvent):
 
 @pytest.mark.eventstore
 def test_appending_raw_events(test_domain):
-    test_domain.register(User, stream_name="authentication")
+    test_domain.register(User, stream_category="authentication")
     test_domain.register(UserLoggedIn, part_of=User)
     test_domain.init(traverse=False)
 

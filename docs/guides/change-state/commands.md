@@ -9,6 +9,7 @@ carry intent and information necessary to perform a specific action.
 
 ## Key Facts
 
+- Commands are unique throughout the domain.
 - Commands are typically named using imperative verbs that clearly describe the intended action or change. E.g. CreateOrder, UpdateCustomerAddress,
 ShipProduct, and CancelReservation.
 - Commands are typically related to an aggregate, because aggregates are the

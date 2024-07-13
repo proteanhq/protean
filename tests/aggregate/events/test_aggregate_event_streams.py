@@ -53,7 +53,7 @@ def register_elements(test_domain):
 
 class TestDeltaEvents:
     def test_aggregate_stream_name(self):
-        assert User.meta_.stream_name == "user"
+        assert User.meta_.stream_category == "user"
 
     def test_event_metadata(self):
         user = User(name="John Doe", email="john.doe@example.com")

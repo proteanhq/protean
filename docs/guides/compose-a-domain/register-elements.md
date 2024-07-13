@@ -21,8 +21,8 @@ depending upon the element being registered.
 {! docs_src/guides/composing-a-domain/015.py !}
 ```
 
-In the above example, the `User` aggregate's default stream name **`user`** is
-customized to **`account`**.
+In the above example, the `User` aggregate's default stream category **`user`**
+is customized to **`account`**.
 
 Review the [object model](../object-model.md) to understand
 multiple ways to pass these options. Refer to each domain element's

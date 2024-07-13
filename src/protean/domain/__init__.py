@@ -1073,7 +1073,9 @@ class Domain:
         else:
             identifier = str(uuid4())
 
-        stream_name = f"{command.meta_.part_of.meta_.stream_name}:command-{identifier}"
+        stream_name = (
+            f"{command.meta_.part_of.meta_.stream_category}:command-{identifier}"
+        )
 
         origin_stream_name = None
         if hasattr(g, "message_in_context"):

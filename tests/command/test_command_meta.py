@@ -68,7 +68,7 @@ def test_command_associated_with_aggregate(test_domain):
 
 @pytest.mark.eventstore
 def test_command_associated_with_aggregate_with_custom_stream_name(test_domain):
-    test_domain.register(User, stream_name="foo")
+    test_domain.register(User, stream_category="foo")
     test_domain.register(Register, part_of=User)
     test_domain.init(traverse=False)
 

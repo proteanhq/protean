@@ -80,10 +80,10 @@ def test_event_subscriptions(test_domain):
 
     assert len(engine._subscriptions) == 1
     assert fqn(UserEventHandler) in engine._subscriptions
-    assert engine._subscriptions[fqn(UserEventHandler)].stream_name == "user"
+    assert engine._subscriptions[fqn(UserEventHandler)].stream_category == "user"
 
 
-def test_origin_stream_name_in_subscription(test_domain):
+def test_origin_stream_category_in_subscription(test_domain):
     test_domain.register(User)
     test_domain.register(Sent, part_of=User)
     test_domain.register(EmailEventHandler, part_of=User, source_stream="email")
@@ -91,7 +91,7 @@ def test_origin_stream_name_in_subscription(test_domain):
     engine = Engine(test_domain, test_mode=True)
 
     assert len(engine._subscriptions) == 1
-    assert engine._subscriptions[fqn(EmailEventHandler)].stream_name == "user"
+    assert engine._subscriptions[fqn(EmailEventHandler)].stream_category == "user"
     assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream_name == "email"
 
 
@@ -101,12 +101,12 @@ def test_that_stream_name_overrides_the_derived_stream_name_from_owning_aggregat
     test_domain.register(
         EmailEventHandler,
         part_of=User,
-        stream_name="identity",
+        stream_category="identity",
         source_stream="email",
     )
 
     engine = Engine(test_domain, test_mode=True)
 
     assert len(engine._subscriptions) == 1
-    assert engine._subscriptions[fqn(EmailEventHandler)].stream_name == "identity"
+    assert engine._subscriptions[fqn(EmailEventHandler)].stream_category == "identity"
     assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream_name == "email"

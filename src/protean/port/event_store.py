@@ -124,7 +124,7 @@ class BaseEventStore(metaclass=ABCMeta):
                 or None.
         """
         snapshot_message = self._read_last_message(
-            f"{part_of.meta_.stream_name}:snapshot-{identifier}"
+            f"{part_of.meta_.stream_category}:snapshot-{identifier}"
         )
 
         if snapshot_message:
@@ -135,7 +135,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
             event_stream = deque(
                 self._read(
-                    f"{part_of.meta_.stream_name}-{identifier}",
+                    f"{part_of.meta_.stream_category}-{identifier}",
                     position=aggregate._version + 1,
                 )
             )
@@ -147,7 +147,7 @@ class BaseEventStore(metaclass=ABCMeta):
         else:
             # No snapshot, so initialize aggregate from events
             event_stream = deque(
-                self._read(f"{part_of.meta_.stream_name}-{identifier}")
+                self._read(f"{part_of.meta_.stream_category}-{identifier}")
             )
 
             if not event_stream:
@@ -181,7 +181,7 @@ class BaseEventStore(metaclass=ABCMeta):
             #   and also avoids spurious data just to satisfy Metadata's structure
             #   and conditions.
             self._write(
-                f"{part_of.meta_.stream_name}:snapshot-{identifier}",
+                f"{part_of.meta_.stream_category}:snapshot-{identifier}",
                 "SNAPSHOT",
                 aggregate.to_dict(),
             )

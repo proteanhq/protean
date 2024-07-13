@@ -71,7 +71,7 @@ def register_elements(test_domain):
     test_domain.register(Activated, part_of=User)
     test_domain.register(Sent, part_of=Email)
     test_domain.register(UserEventHandler, part_of=User)
-    test_domain.register(EmailEventHandler, stream_name="email")
+    test_domain.register(EmailEventHandler, stream_category="email")
     test_domain.init(traverse=False)
 
 
