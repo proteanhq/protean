@@ -29,30 +29,32 @@ class MessageDBStore(BaseEventStore):
 
     def _write(
         self,
-        stream: str,
+        stream_name: str,
         message_type: str,
         data: Dict,
         metadata: Dict | None = None,
         expected_version: int | None = None,
     ) -> int:
         """Write a message to the event store."""
-        return self.client.write(stream, message_type, data, metadata, expected_version)
+        return self.client.write(
+            stream_name, message_type, data, metadata, expected_version
+        )
 
     def _read(
         self,
-        stream: str,
+        stream_name: str,
         sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
     ) -> List[Dict[str, Any]]:
         """Read messages from the event store."""
         return self.client.read(
-            stream, position=position, no_of_messages=no_of_messages
+            stream_name, position=position, no_of_messages=no_of_messages
         )
 
-    def _read_last_message(self, stream) -> Dict[str, Any]:
+    def _read_last_message(self, stream_name) -> Dict[str, Any]:
         """Read the last message from the event store."""
-        return self.client.read_last_message(stream)
+        return self.client.read_last_message(stream_name)
 
     def _data_reset(self):
         """Utility function to empty messages, to be used only by test harness.

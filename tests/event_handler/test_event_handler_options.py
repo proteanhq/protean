@@ -50,17 +50,19 @@ def test_stream_category_option(test_domain):
     class UserEventHandlers(BaseEventHandler):
         pass
 
-    test_domain.register(UserEventHandlers, stream_category="user")
-    assert UserEventHandlers.meta_.stream_category == "user"
+    test_domain.register(UserEventHandlers, stream_category="test::user")
+    assert UserEventHandlers.meta_.stream_category == "test::user"
 
 
 def test_options_defined_at_different_levels(test_domain):
     class UserEventHandlers(BaseEventHandler):
         pass
 
-    test_domain.register(UserEventHandlers, part_of=User, stream_category="person")
+    test_domain.register(
+        UserEventHandlers, part_of=User, stream_category="test::person"
+    )
     assert UserEventHandlers.meta_.part_of == User
-    assert UserEventHandlers.meta_.stream_category == "person"
+    assert UserEventHandlers.meta_.stream_category == "test::person"
 
 
 def test_that_a_default_stream_category_is_derived_from_part_of(test_domain):
@@ -69,7 +71,7 @@ def test_that_a_default_stream_category_is_derived_from_part_of(test_domain):
 
     test_domain.register(User)
     test_domain.register(UserEventHandlers, part_of=User)
-    assert UserEventHandlers.meta_.stream_category == "user"
+    assert UserEventHandlers.meta_.stream_category == "test::user"
 
 
 def test_source_stream_option(test_domain):

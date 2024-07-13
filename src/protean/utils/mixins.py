@@ -43,7 +43,7 @@ class MessageRecord(BaseContainer):
     id = fields.Auto()
 
     # Name of stream to which the message is written
-    stream = fields.String(max_length=255)
+    stream_name = fields.String(max_length=255)
 
     # The type of the message
     type = fields.String()
@@ -69,7 +69,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     @classmethod
     def from_dict(cls, message: Dict) -> Message:
         return Message(
-            stream=message["stream"],
+            stream_name=message["stream_name"],
             type=message["type"],
             data=message["data"],
             metadata=message["metadata"],
@@ -110,7 +110,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 expected_version = message_object._expected_version
 
         return cls(
-            stream=message_object._metadata.stream,
+            stream_name=message_object._metadata.stream,
             type=message_object.__class__.__type__,
             data=message_object.payload,
             metadata=message_object._metadata,

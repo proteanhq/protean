@@ -71,7 +71,7 @@ def test_command_metadata(test_domain):
                 "type": "Test.Login.v1",
                 "fqn": fqn(Login),
                 "kind": "COMMAND",
-                "stream": f"user:command-{identifier}",
+                "stream": f"test::user:command-{identifier}",
                 "origin_stream": None,
                 "timestamp": str(command._metadata.timestamp),
                 "version": "v1",

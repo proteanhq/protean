@@ -54,7 +54,7 @@ class TestPublishingToRedis:
                 "position",
                 "time",
                 "id",
-                "stream",
+                "stream_name",
                 "type",
                 "data",
                 "metadata",

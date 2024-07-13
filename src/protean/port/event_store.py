@@ -94,7 +94,7 @@ class BaseEventStore(metaclass=ABCMeta):
         message = Message.to_message(object)
 
         position = self._write(
-            message.stream,
+            message.stream_name,
             message.type,
             message.data,
             metadata=message.metadata.to_dict(),

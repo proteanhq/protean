@@ -53,7 +53,7 @@ def register_elements(test_domain):
 
 class TestDeltaEvents:
     def test_aggregate_stream_name(self):
-        assert User.meta_.stream_category == "user"
+        assert User.meta_.stream_category == "test::user"
 
     def test_event_metadata(self):
         user = User(name="John Doe", email="john.doe@example.com")
@@ -61,12 +61,12 @@ class TestDeltaEvents:
         user.activate()
 
         assert len(user._events) == 2
-        assert user._events[0]._metadata.id == f"user-{user.id}-0.1"
+        assert user._events[0]._metadata.id == f"test::user-{user.id}-0.1"
         assert user._events[0]._metadata.type == "Test.UserRenamed.v1"
         assert user._events[0]._metadata.version == "v1"
         assert user._events[0]._metadata.sequence_id == "0.1"
 
-        assert user._events[1]._metadata.id == f"user-{user.id}-0.2"
+        assert user._events[1]._metadata.id == f"test::user-{user.id}-0.2"
         assert user._events[1]._metadata.type == "Test.UserActivated.v1"
         assert user._events[1]._metadata.version == "v1"
         assert user._events[1]._metadata.sequence_id == "0.2"
@@ -77,7 +77,7 @@ class TestDeltaEvents:
 
         message = Message.to_message(user._events[0])
 
-        assert message.stream == f"user-{user.id}"
+        assert message.stream_name == f"test::user-{user.id}"
 
     def test_event_metadata_from_stream(self, test_domain):
         user = User(name="John Doe", email="john.doe@example.com")
@@ -86,15 +86,15 @@ class TestDeltaEvents:
 
         test_domain.repository_for(User).add(user)
 
-        event_messages = test_domain.event_store.store.read(f"user-{user.id}")
+        event_messages = test_domain.event_store.store.read(f"test::user-{user.id}")
         assert len(event_messages) == 2
 
-        assert event_messages[0].metadata.id == f"user-{user.id}-0.1"
+        assert event_messages[0].metadata.id == f"test::user-{user.id}-0.1"
         assert event_messages[0].metadata.type == "Test.UserRenamed.v1"
         assert event_messages[0].metadata.version == "v1"
         assert event_messages[0].metadata.sequence_id == "0.1"
 
-        assert event_messages[1].metadata.id == f"user-{user.id}-0.2"
+        assert event_messages[1].metadata.id == f"test::user-{user.id}-0.2"
         assert event_messages[1].metadata.type == "Test.UserActivated.v1"
         assert event_messages[1].metadata.version == "v1"
         assert event_messages[1].metadata.sequence_id == "0.2"
