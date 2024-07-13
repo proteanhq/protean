@@ -83,7 +83,7 @@ def import_from_full_path(domain, path):
 
 def fully_qualified_name(cls):
     """Return Fully Qualified name along with module"""
-    return ".".join([cls.__module__, cls.__name__])
+    return ".".join([cls.__module__, cls.__qualname__])
 
 
 fqn = fully_qualified_name

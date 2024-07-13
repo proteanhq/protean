@@ -76,6 +76,7 @@ def register_elements(test_domain):
     test_domain.register(Email)
     test_domain.register(Sent, part_of=Email)
     test_domain.register(EmailEventHandler, stream_name="email", source_stream="user")
+    test_domain.init(traverse=False)
 
 
 @pytest.mark.asyncio

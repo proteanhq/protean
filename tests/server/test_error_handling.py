@@ -51,6 +51,7 @@ async def test_that_exception_is_raised(test_domain):
     test_domain.register(User)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
+    test_domain.init(traverse=False)
 
     identifier = str(uuid4())
     user = User(

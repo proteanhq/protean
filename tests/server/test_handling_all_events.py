@@ -53,6 +53,7 @@ async def test_that_any_message_can_be_handled_with_any_handler(test_domain):
     test_domain.register(Post)
     test_domain.register(Created, part_of=Post)
     test_domain.register(SystemMetrics, stream_name="$all")
+    test_domain.init(traverse=False)
 
     identifier = str(uuid4())
     user = User(

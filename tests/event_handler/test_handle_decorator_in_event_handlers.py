@@ -28,6 +28,7 @@ def test_that_a_handler_is_recorded_against_event_handler(test_domain):
     test_domain.register(User)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandlers, part_of=User)
+    test_domain.init(traverse=False)
 
     assert Registered.__type__ in UserEventHandlers._handlers
 
@@ -46,6 +47,7 @@ def test_that_multiple_handlers_can_be_recorded_against_event_handler(test_domai
     test_domain.register(Registered, part_of=User)
     test_domain.register(AddressChanged, part_of=User)
     test_domain.register(UserEventHandlers, part_of=User)
+    test_domain.init(traverse=False)
 
     assert len(UserEventHandlers._handlers) == 2
     assert all(
@@ -80,6 +82,7 @@ def test_that_multiple_handlers_can_be_recorded_against_the_same_event(test_doma
 
     test_domain.register(User)
     test_domain.register(UserEventHandlers, part_of=User)
+    test_domain.init(traverse=False)
 
     assert len(UserEventHandlers._handlers) == 1  # Against Registered Event
 

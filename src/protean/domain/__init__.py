@@ -258,6 +258,15 @@ class Domain:
         # Generate Fact Event Classes
         self._generate_fact_event_classes()
 
+        # Generate and set event/command `__type__` value
+        self._set_event_and_command_type()
+
+        # Parse and setup handler methods in Command Handlers
+        self._setup_command_handlers()
+
+        # Parse and setup handler methods in Event Handlers
+        self._setup_event_handlers()
+
         # Run Validations
         self._validate_domain()
 
@@ -817,6 +826,113 @@ class Domain:
                         "provider",
                         element.cls.meta_.aggregate_cluster.meta_.provider,
                     )
+
+    def _set_event_and_command_type(self):
+        for element_type in [DomainObjects.EVENT, DomainObjects.COMMAND]:
+            for _, element in self.registry._elements[element_type.value].items():
+                setattr(
+                    element.cls,
+                    "__type__",
+                    (
+                        f"{self.name}."
+                        # f"{element.cls.meta_.aggregate_cluster.__class__.__name__}."
+                        f"{element.cls.__name__}."
+                        f"{element.cls.__version__}"
+                    ),
+                )
+
+    def _setup_command_handlers(self):
+        for element_type in [DomainObjects.COMMAND_HANDLER]:
+            for _, element in self.registry._elements[element_type.value].items():
+                # Iterate through methods marked as `@handle` and construct a handler map
+                if not element.cls._handlers:  # Protect against re-registration
+                    methods = inspect.getmembers(
+                        element.cls, predicate=inspect.isroutine
+                    )
+                    for method_name, method in methods:
+                        if not (
+                            method_name.startswith("__") and method_name.endswith("__")
+                        ) and hasattr(method, "_target_cls"):
+                            # Throw error if target_cls is not a Command
+                            if not inspect.isclass(
+                                method._target_cls
+                            ) or not issubclass(method._target_cls, BaseCommand):
+                                raise IncorrectUsageError(
+                                    {
+                                        "_command_handler": [
+                                            f"Method `{method_name}` in Command Handler `{element.cls.__name__}` "
+                                            "is not associated with a command"
+                                        ]
+                                    }
+                                )
+
+                            # Throw error if target_cls is not associated with an aggregate
+                            if not method._target_cls.meta_.part_of:
+                                raise IncorrectUsageError(
+                                    {
+                                        "_command_handler": [
+                                            f"Command `{method._target_cls.__name__}` in Command Handler `{element.cls.__name__}` "
+                                            "is not associated with an aggregate"
+                                        ]
+                                    }
+                                )
+
+                            if (
+                                method._target_cls.meta_.part_of
+                                != element.cls.meta_.part_of
+                            ):
+                                raise IncorrectUsageError(
+                                    {
+                                        "_command_handler": [
+                                            f"Command `{method._target_cls.__name__}` in Command Handler `{element.cls.__name__}` "
+                                            "is not associated with the same aggregate as the Command Handler"
+                                        ]
+                                    }
+                                )
+
+                            command_type = (
+                                method._target_cls.__type__
+                                if issubclass(method._target_cls, BaseCommand)
+                                else method._target_cls
+                            )
+
+                            # Do not allow multiple handlers per command
+                            if (
+                                command_type in element.cls._handlers
+                                and len(element.cls._handlers[command_type]) != 0
+                            ):
+                                raise NotSupportedError(
+                                    f"Command {method._target_cls.__name__} cannot be handled by multiple handlers"
+                                )
+
+                            # `_handlers` maps the command to its handler method
+                            element.cls._handlers[command_type].add(method)
+
+    def _setup_event_handlers(self):
+        for element_type in [DomainObjects.EVENT_HANDLER]:
+            for _, element in self.registry._elements[element_type.value].items():
+                # Iterate through methods marked as `@handle` and construct a handler map
+                #
+                # Also, if `_target_cls` is an event, associate it with the event handler's
+                #   aggregate or stream
+                methods = inspect.getmembers(element.cls, predicate=inspect.isroutine)
+                for method_name, method in methods:
+                    if not (
+                        method_name.startswith("__") and method_name.endswith("__")
+                    ) and hasattr(method, "_target_cls"):
+                        # `_handlers` is a dictionary mapping the event to the handler method.
+                        if method._target_cls == "$any":
+                            # This replaces any existing `$any` handler, by design. An Event Handler
+                            # can have only one `$any` handler method.
+                            element.cls._handlers["$any"] = {method}
+                        else:
+                            # Target could be an event or an event type string
+                            event_type = (
+                                method._target_cls.__type__
+                                if issubclass(method._target_cls, BaseEvent)
+                                else method._target_cls
+                            )
+                            element.cls._handlers[event_type].add(method)
 
     def _generate_fact_event_classes(self):
         """Generate FactEvent classes for all aggregates with `fact_events` enabled"""

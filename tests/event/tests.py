@@ -40,6 +40,7 @@ class TestDomainEventDefinition:
             name = String(max_length=50)
 
         test_domain.register(UserAdded, part_of=User)
+        test_domain.init(traverse=False)
 
         user = User(
             id=str(uuid.uuid4()),
@@ -91,6 +92,7 @@ class TestDomainEventDefinition:
 
         test_domain.register(User)
         test_domain.register(UserAdded, part_of=User)
+        test_domain.init(traverse=False)
 
         assert UserAdded(
             {
@@ -110,6 +112,7 @@ class TestDomainEventInitialization:
     def test_that_domain_event_can_be_instantiated(self, test_domain):
         test_domain.register(Person)
         test_domain.register(PersonAdded, part_of=Person)
+        test_domain.init(traverse=False)
 
         service = PersonAdded(id=uuid.uuid4(), first_name="John", last_name="Doe")
         assert service is not None
@@ -131,6 +134,12 @@ class TestDomainEventRegistration:
 
 
 class TestDomainEventEquivalence:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Person)
+        test_domain.register(PersonAdded, part_of=Person)
+        test_domain.init(traverse=False)
+
     def test_that_two_domain_events_with_same_values_are_considered_equal(self):
         identifier = uuid.uuid4()
         event_1 = PersonAdded(id=identifier, first_name="John", last_name="Doe")

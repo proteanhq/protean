@@ -30,6 +30,7 @@ class UserEventHandlers(BaseEventHandler):
 def test_that_method_is_enclosed_in_uow(mock_exit, mock_dummy, mock_enter, test_domain):
     test_domain.register(User)
     test_domain.register(Registered, part_of=User)
+    test_domain.init(traverse=False)
 
     mock_parent = mock.Mock()
 
