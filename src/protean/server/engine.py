@@ -60,7 +60,7 @@ class Engine:
                 record.cls.meta_.stream_category
                 or record.cls.meta_.part_of.meta_.stream_category,
                 record.cls,
-                origin_stream_name=record.cls.meta_.source_stream,
+                origin_stream=record.cls.meta_.source_stream,
             )
 
         for handler_name, record in self.domain.registry.command_handlers.items():
@@ -107,7 +107,7 @@ class Engine:
                 )
             except Exception as exc:  # Includes handling `ConfigurationError`
                 logger.error(
-                    f"Error handling message {message.stream_name}-{message.id} "
+                    f"Error handling message {message.stream}-{message.id} "
                     f"in {handler_cls.__name__}"
                 )
                 logger.error(f"{str(exc)}")

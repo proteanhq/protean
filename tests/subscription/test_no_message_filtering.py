@@ -100,7 +100,7 @@ async def test_no_filtering_for_event_handlers_without_defined_origin_stream(
     ]
 
     messages[2].metadata = Metadata(
-        messages[2].metadata.to_dict(), origin_stream_name=f"user-{identifier}"
+        messages[2].metadata.to_dict(), origin_stream=f"user-{identifier}"
     )  # Metadata is a VO and immutable, so creating a copy with updated value
 
     # Mock `read` method and have it return the 3 messages

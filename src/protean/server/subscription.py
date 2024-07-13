@@ -31,7 +31,7 @@ class Subscription:
         handler: Union[BaseEventHandler, BaseCommandHandler],
         messages_per_tick: int = 10,
         position_update_interval: int = 10,
-        origin_stream_name: str | None = None,
+        origin_stream: str | None = None,
         tick_interval: int = 1,
     ) -> None:
         """
@@ -44,7 +44,7 @@ class Subscription:
             handler (Union[BaseEventHandler, BaseCommandHandler]): The event or command handler.
             messages_per_tick (int, optional): The number of messages to process per tick. Defaults to 10.
             position_update_interval (int, optional): The interval at which to update the current position. Defaults to 10.
-            origin_stream_name (str | None, optional): The name of the origin stream to filter messages. Defaults to None.
+            origin_stream (str | None, optional): The name of the origin stream to filter messages. Defaults to None.
             tick_interval (int, optional): The interval between ticks. Defaults to 1.
         """
         self.engine = engine
@@ -57,7 +57,7 @@ class Subscription:
         self.handler = handler
         self.messages_per_tick = messages_per_tick
         self.position_update_interval = position_update_interval
-        self.origin_stream_name = origin_stream_name
+        self.origin_stream = origin_stream
         self.tick_interval = tick_interval
 
         self.subscriber_stream_name = f"position-${subscriber_id}"
@@ -218,7 +218,7 @@ class Subscription:
             {"position": position},
             metadata={
                 "kind": MessageType.READ_POSITION.value,
-                "origin_stream_name": self.stream_category,
+                "origin_stream": self.stream_category,
             },
         )
 
@@ -232,17 +232,17 @@ class Subscription:
         Returns:
             List[Message]: The filtered list of messages.
         """
-        if not self.origin_stream_name:
+        if not self.origin_stream:
             return messages
 
         filtered_messages = []
 
         for message in messages:
             origin_stream = message.metadata and self.store.category(
-                message.metadata.origin_stream_name
+                message.metadata.origin_stream
             )
 
-            if self.origin_stream_name == origin_stream:
+            if self.origin_stream == origin_stream:
                 filtered_messages.append(message)
 
         logger.debug(f"Filtered {len(filtered_messages)} out of {len(messages)}")

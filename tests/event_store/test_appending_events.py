@@ -36,7 +36,7 @@ def test_appending_raw_events(test_domain):
     message = messages[0]
     assert isinstance(message, Message)
 
-    assert message.stream_name == f"authentication-{identifier}"
+    assert message.stream == f"authentication-{identifier}"
     assert message.metadata.kind == "EVENT"
     assert message.data == event.payload
     assert message.metadata == event._metadata

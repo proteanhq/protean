@@ -1073,14 +1073,12 @@ class Domain:
         else:
             identifier = str(uuid4())
 
-        stream_name = (
-            f"{command.meta_.part_of.meta_.stream_category}:command-{identifier}"
-        )
+        stream = f"{command.meta_.part_of.meta_.stream_category}:command-{identifier}"
 
-        origin_stream_name = None
+        origin_stream = None
         if hasattr(g, "message_in_context"):
             if g.message_in_context.metadata.kind == "EVENT":
-                origin_stream_name = g.message_in_context.stream_name
+                origin_stream = g.message_in_context.stream
 
         command_with_metadata = command.__class__(
             command.to_dict(),
@@ -1089,8 +1087,8 @@ class Domain:
                 "type": command.__class__.__type__,
                 "fqn": command._metadata.fqn,
                 "kind": "EVENT",
-                "stream_name": stream_name,
-                "origin_stream_name": origin_stream_name,
+                "stream": stream,
+                "origin_stream": origin_stream,
                 "timestamp": command._metadata.timestamp,
                 "version": command._metadata.version,
                 "sequence_id": None,

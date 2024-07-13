@@ -61,8 +61,8 @@ class TestDomainEventDefinition:
                     "type": "Test.UserAdded.v1",
                     "fqn": fully_qualified_name(UserAdded),
                     "kind": "EVENT",
-                    "stream_name": None,  # Type is none here because of the same reason as above
-                    "origin_stream_name": None,
+                    "stream": None,  # Stream is none here because of the same reason as above
+                    "origin_stream": None,
                     "timestamp": str(event._metadata.timestamp),
                     "version": "v1",
                     "sequence_id": None,  # Sequence is unknown as event is not being raised as part of an aggregate

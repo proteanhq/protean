@@ -37,10 +37,10 @@ class Metadata(BaseValueObject):
     kind = String()
 
     # Name of the stream to which the event/command is written
-    stream_name = String()
+    stream = String()
 
     # Name of the stream that originated this event/command
-    origin_stream_name = String()
+    origin_stream = String()
 
     # Time of event generation
     timestamp = DateTime(default=lambda: datetime.now(timezone.utc))
@@ -140,13 +140,13 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         # Store the expected version temporarily for use during persistence
         self._expected_version = kwargs.pop("_expected_version", -1)
 
-        origin_stream_name = None
+        origin_stream = None
         if hasattr(g, "message_in_context"):
             if (
                 g.message_in_context.metadata.kind == "COMMAND"
-                and g.message_in_context.metadata.origin_stream_name is not None
+                and g.message_in_context.metadata.origin_stream is not None
             ):
-                origin_stream_name = g.message_in_context.metadata.origin_stream_name
+                origin_stream = g.message_in_context.metadata.origin_stream
 
         # Value Objects are immutable, so we create a clone/copy and associate it
         self._metadata = Metadata(
@@ -154,7 +154,7 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             type=self.__class__.__type__,
             kind="EVENT",
             fqn=fqn(self.__class__),
-            origin_stream_name=origin_stream_name,
+            origin_stream=origin_stream,
             version=self.__class__.__version__,  # Was set in `__init_subclass__`
         )
 

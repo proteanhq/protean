@@ -92,7 +92,7 @@ def test_origin_stream_category_in_subscription(test_domain):
 
     assert len(engine._subscriptions) == 1
     assert engine._subscriptions[fqn(EmailEventHandler)].stream_category == "user"
-    assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream_name == "email"
+    assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream == "email"
 
 
 def test_that_stream_name_overrides_the_derived_stream_name_from_owning_aggregate(
@@ -109,4 +109,4 @@ def test_that_stream_name_overrides_the_derived_stream_name_from_owning_aggregat
 
     assert len(engine._subscriptions) == 1
     assert engine._subscriptions[fqn(EmailEventHandler)].stream_category == "identity"
-    assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream_name == "email"
+    assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream == "email"

@@ -403,22 +403,22 @@ class EventedMixin:
 
         identifier = getattr(self, id_field(self).field_name)
 
-        # Set Fact Event stream to be `<aggregate_stream_name>-fact`
+        # Set Fact Event stream to be `<aggregate_stream>-fact`
         if event.__class__.__name__.endswith("FactEvent"):
-            stream_name = f"{self.meta_.stream_category}-fact-{identifier}"
+            stream = f"{self.meta_.stream_category}-fact-{identifier}"
         else:
-            stream_name = f"{self.meta_.stream_category}-{identifier}"
+            stream = f"{self.meta_.stream_category}-{identifier}"
 
         event_with_metadata = event.__class__(
             event.to_dict(),
             _expected_version=self._event_position,
             _metadata={
-                "id": (f"{stream_name}-{self._version}"),
+                "id": (f"{stream}-{self._version}"),
                 "type": event._metadata.type,
                 "fqn": event._metadata.fqn,
                 "kind": event._metadata.kind,
-                "stream_name": stream_name,
-                "origin_stream_name": event._metadata.origin_stream_name,
+                "stream": stream,
+                "origin_stream": event._metadata.origin_stream,
                 "timestamp": event._metadata.timestamp,
                 "version": event._metadata.version,
                 "sequence_id": self._version,

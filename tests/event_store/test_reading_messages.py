@@ -73,7 +73,7 @@ def test_reading_a_message(test_domain, registered_user):
 
     message = messages[0]
     assert isinstance(message, Message)
-    assert message.stream_name == f"user-{registered_user.id}"
+    assert message.stream == f"user-{registered_user.id}"
     assert message.metadata.kind == "EVENT"
     assert message.data == registered_user._events[-1].payload
     assert message.metadata == registered_user._events[-1]._metadata
@@ -85,7 +85,7 @@ def test_reading_many_messages(test_domain, activated_user):
 
     assert len(messages) == 2
 
-    assert messages[0].stream_name == f"user-{activated_user.id}"
+    assert messages[0].stream == f"user-{activated_user.id}"
     assert messages[0].metadata.kind == "EVENT"
     assert messages[0].data == activated_user._events[0].payload
     assert messages[0].metadata == activated_user._events[0]._metadata
@@ -128,7 +128,7 @@ def test_reading_messages_by_category(test_domain, activated_user):
 
     assert len(messages) == 2
 
-    assert messages[0].stream_name == f"user-{activated_user.id}"
+    assert messages[0].stream == f"user-{activated_user.id}"
     assert messages[0].metadata.kind == "EVENT"
     assert messages[0].data == activated_user._events[0].payload
     assert messages[0].metadata == activated_user._events[0]._metadata

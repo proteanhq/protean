@@ -117,7 +117,7 @@ class TestEventPublish:
         messages = test_domain.event_store.store.read("person")
 
         assert len(messages) == 1
-        messages[0].stream_name == "person-1234"
+        messages[0].stream == "person-1234"
 
     @pytest.mark.eventstore
     def test_that_multiple_events_are_persisted_on_publish(self, mocker, test_domain):
@@ -149,8 +149,8 @@ class TestEventPublish:
         messages = test_domain.event_store.store.read("person")
 
         assert len(messages) == 2
-        assert messages[0].stream_name == "person-1234"
-        assert messages[1].stream_name == "person-1235"
+        assert messages[0].stream == "person-1234"
+        assert messages[1].stream == "person-1235"
 
 
 class TestBrokerSubscriberInitialization:

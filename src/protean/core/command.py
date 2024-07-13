@@ -49,17 +49,17 @@ class BaseCommand(BaseContainer, OptionsMixin):
                 else "v1"
             )
 
-            origin_stream_name = None
+            origin_stream = None
             if hasattr(g, "message_in_context"):
                 if g.message_in_context.metadata.kind == "EVENT":
-                    origin_stream_name = g.message_in_context.stream_name
+                    origin_stream = g.message_in_context.stream
 
             # Value Objects are immutable, so we create a clone/copy and associate it
             self._metadata = Metadata(
                 self._metadata.to_dict(),  # Template
                 kind="COMMAND",
                 fqn=fqn(self.__class__),
-                origin_stream_name=origin_stream_name,
+                origin_stream=origin_stream,
                 version=version,
             )
 

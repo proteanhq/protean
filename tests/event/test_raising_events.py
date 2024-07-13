@@ -32,4 +32,4 @@ def test_raising_event(test_domain):
     messages = test_domain.event_store.store.read("authentication")
 
     assert len(messages) == 1
-    assert messages[0].stream_name == f"authentication-{identifier}"
+    assert messages[0].stream == f"authentication-{identifier}"
