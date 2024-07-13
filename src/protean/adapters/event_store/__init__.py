@@ -71,15 +71,15 @@ class EventStore:
 
     def _initialize_event_streams(self):
         for _, record in self.domain.registry.event_handlers.items():
-            stream_name = (
-                record.cls.meta_.stream_name
-                or record.cls.meta_.part_of.meta_.stream_name
+            stream_category = (
+                record.cls.meta_.stream_category
+                or record.cls.meta_.part_of.meta_.stream_category
             )
-            self._event_streams[stream_name].add(record.cls)
+            self._event_streams[stream_category].add(record.cls)
 
     def _initialize_command_streams(self):
         for _, record in self.domain.registry.command_handlers.items():
-            self._command_streams[record.cls.meta_.part_of.meta_.stream_name].add(
+            self._command_streams[record.cls.meta_.part_of.meta_.stream_category].add(
                 record.cls
             )
 
@@ -99,7 +99,7 @@ class EventStore:
 
         # Gather all handlers configured to run on this event
         stream_handlers = self._event_streams.get(
-            event.meta_.part_of.meta_.stream_name, set()
+            event.meta_.part_of.meta_.stream_category, set()
         )
         configured_stream_handlers = set()
         for stream_handler in stream_handlers:
@@ -114,9 +114,9 @@ class EventStore:
                 f"Command `{command.__name__}` needs to be associated with an aggregate"
             )
 
-        stream_name = command.meta_.part_of.meta_.stream_name
+        stream_category = command.meta_.part_of.meta_.stream_category
 
-        handler_classes = self._command_streams.get(stream_name, set())
+        handler_classes = self._command_streams.get(stream_category, set())
 
         # No command handlers have been configured to run this command
         if len(handler_classes) == 0:
@@ -142,19 +142,19 @@ class EventStore:
         return next(iter(handler_methods))[0] if handler_methods else None
 
     def last_event_of_type(
-        self, event_cls: Type[BaseEvent], stream_name: str = None
+        self, event_cls: Type[BaseEvent], stream_category: str = None
     ) -> BaseEvent:
-        stream_name = stream_name or "$all"
+        stream_category = stream_category or "$all"
         events = [
             event
-            for event in self.domain.event_store.store._read(stream_name)
+            for event in self.domain.event_store.store._read(stream_category)
             if event["type"] == event_cls.__type__
         ]
 
         return Message.from_dict(events[-1]).to_object() if len(events) > 0 else None
 
     def events_of_type(
-        self, event_cls: Type[BaseEvent], stream_name: str = None
+        self, event_cls: Type[BaseEvent], stream_category: str = None
     ) -> List[BaseEvent]:
         """Read events of a specific type in a given stream.
 
@@ -163,16 +163,13 @@ class EventStore:
 
         If no stream is specified, events of the requested type will be retrieved from all streams.
 
-        :param event_cls: Class of the event type to be retrieved
-        :param stream_name: Stream from which events are to be retrieved
-        :type event_cls: BaseEvent Class
-        :type stream_name: String, optional, default is `None`
+        :param event_cls: Class of the event type to be retrieved. Subclass of `BaseEvent`.
+        :param stream_category: Stream from which events are to be retrieved. String, optional, default is `None`
         :return: A list of events of `event_cls` type
-        :rtype: list
         """
-        stream_name = stream_name or "$all"
+        stream_category = stream_category or "$all"
         return [
             Message.from_dict(event).to_object()
-            for event in self.domain.event_store.store._read(stream_name)
+            for event in self.domain.event_store.store._read(stream_category)
             if event["type"] == event_cls.__type__
         ]

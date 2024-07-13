@@ -18,7 +18,7 @@ class MultipleAnyEventHandler(BaseEventHandler):
 
 
 def test_any_handler(test_domain):
-    test_domain.register(AllEventHandler, stream_name="$all")
+    test_domain.register(AllEventHandler, stream_category="$all")
     test_domain.init(traverse=False)
 
     len(AllEventHandler._handlers) == 1
@@ -26,7 +26,7 @@ def test_any_handler(test_domain):
 
 
 def test_that_there_can_be_only_one_any_handler_method_per_event_handler(test_domain):
-    test_domain.register(MultipleAnyEventHandler, stream_name="$all")
+    test_domain.register(MultipleAnyEventHandler, stream_category="$all")
     test_domain.init(traverse=False)
 
     assert len(MultipleAnyEventHandler._handlers["$any"]) == 1

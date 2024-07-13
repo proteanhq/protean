@@ -76,7 +76,7 @@ class BaseAggregate(BaseEntity):
             ("model", None),
             ("provider", "default"),
             ("schema_name", inflection.underscore(cls.__name__)),
-            ("stream_name", inflection.underscore(cls.__name__)),
+            ("stream_category", inflection.underscore(cls.__name__)),
         ]
 
 

@@ -69,8 +69,8 @@ def register(test_domain):
 def test_streams_initialization(test_domain):
     assert len(test_domain.event_store._event_streams) == 2
     assert all(
-        stream_name in test_domain.event_store._event_streams
-        for stream_name in ["user", "email"]
+        stream_category in test_domain.event_store._event_streams
+        for stream_category in ["user", "email"]
     )
 
     assert test_domain.event_store._event_streams["user"] == {UserEventHandler}

@@ -27,14 +27,14 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
         return [
             ("part_of", None),
             ("source_stream", None),
-            ("stream_name", part_of.meta_.stream_name if part_of else None),
+            ("stream_category", part_of.meta_.stream_category if part_of else None),
         ]
 
 
 def event_handler_factory(element_cls, domain, **opts):
     element_cls = derive_element_class(element_cls, BaseEventHandler, **opts)
 
-    if not (element_cls.meta_.part_of or element_cls.meta_.stream_name):
+    if not (element_cls.meta_.part_of or element_cls.meta_.stream_category):
         raise IncorrectUsageError(
             {
                 "_entity": [

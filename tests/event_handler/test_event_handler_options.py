@@ -46,30 +46,30 @@ def test_part_of_defined_via_annotation(
     assert UserEventHandlers.meta_.part_of == User
 
 
-def test_stream_name_option(test_domain):
+def test_stream_category_option(test_domain):
     class UserEventHandlers(BaseEventHandler):
         pass
 
-    test_domain.register(UserEventHandlers, stream_name="user")
-    assert UserEventHandlers.meta_.stream_name == "user"
+    test_domain.register(UserEventHandlers, stream_category="user")
+    assert UserEventHandlers.meta_.stream_category == "user"
 
 
 def test_options_defined_at_different_levels(test_domain):
     class UserEventHandlers(BaseEventHandler):
         pass
 
-    test_domain.register(UserEventHandlers, part_of=User, stream_name="person")
+    test_domain.register(UserEventHandlers, part_of=User, stream_category="person")
     assert UserEventHandlers.meta_.part_of == User
-    assert UserEventHandlers.meta_.stream_name == "person"
+    assert UserEventHandlers.meta_.stream_category == "person"
 
 
-def test_that_a_default_stream_name_is_derived_from_part_of(test_domain):
+def test_that_a_default_stream_category_is_derived_from_part_of(test_domain):
     class UserEventHandlers(BaseEventHandler):
         pass
 
     test_domain.register(User)
     test_domain.register(UserEventHandlers, part_of=User)
-    assert UserEventHandlers.meta_.stream_name == "user"
+    assert UserEventHandlers.meta_.stream_category == "user"
 
 
 def test_source_stream_option(test_domain):
@@ -80,7 +80,7 @@ def test_source_stream_option(test_domain):
     assert UserEventHandlers.meta_.source_stream == "email"
 
 
-def test_that_aggregate_or_stream_name_has_to_be_specified(test_domain):
+def test_that_aggregate_or_stream_category_has_to_be_specified(test_domain):
     class UserEventHandlers(BaseEventHandler):
         pass
 

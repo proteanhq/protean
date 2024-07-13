@@ -51,10 +51,14 @@ Out[8]: {
 ## Configuration Options
 
 - **`part_of`**: The aggregate to which the event handler is connected.
-- **`stream_name`**: The event handler listens to events on this stream.
-The stream name defaults to the aggregate's stream. This option comes handy
-when the event handler belongs to an aggregate and needs to listen to another
-aggregate's events.
+- **`stream_category`**: The event handler listens to events on this stream
+category. The stream category defaults to
+[the category of the aggregate](../domain-definition/aggregates.md#stream_category)
+associated with the handler.
+
+An Event Handler can be part of an aggregate, and have the stream category of
+a different aggregate. This is the mechanism for an aggregate to listen to
+another aggregate's events to sync its own state.
 - **`source_stream`**: When specified, the event handler only consumes events
 generated in response to events or commands from this original stream.
 For example, `EmailNotifications` event handler listening to `OrderShipped`

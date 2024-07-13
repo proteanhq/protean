@@ -27,7 +27,7 @@ class Subscription:
         self,
         engine,
         subscriber_id: str,
-        stream_name: str,
+        stream_category: str,
         handler: Union[BaseEventHandler, BaseCommandHandler],
         messages_per_tick: int = 10,
         position_update_interval: int = 10,
@@ -40,7 +40,7 @@ class Subscription:
         Args:
             engine: The Protean engine instance.
             subscriber_id (str): The unique identifier for the subscriber.
-            stream_name (str): The name of the stream to subscribe to.
+            stream_category (str): The name of the stream to subscribe to.
             handler (Union[BaseEventHandler, BaseCommandHandler]): The event or command handler.
             messages_per_tick (int, optional): The number of messages to process per tick. Defaults to 10.
             position_update_interval (int, optional): The interval at which to update the current position. Defaults to 10.
@@ -53,7 +53,7 @@ class Subscription:
         self.loop = engine.loop
 
         self.subscriber_id = subscriber_id
-        self.stream_name = stream_name
+        self.stream_category = stream_category
         self.handler = handler
         self.messages_per_tick = messages_per_tick
         self.position_update_interval = position_update_interval
@@ -218,7 +218,7 @@ class Subscription:
             {"position": position},
             metadata={
                 "kind": MessageType.READ_POSITION.value,
-                "origin_stream_name": self.stream_name,
+                "origin_stream_name": self.stream_category,
             },
         )
 
@@ -259,7 +259,7 @@ class Subscription:
             List[Message]: The next batch of messages to process.
         """
         messages = self.store.read(
-            self.stream_name,
+            self.stream_category,
             position=self.current_position + 1,
             no_of_messages=self.messages_per_tick,
         )  # FIXME Implement filtering

@@ -91,13 +91,13 @@ def test_retrieving_handler_by_event(test_domain):
 
 
 def test_that_all_streams_handler_is_returned(test_domain):
-    test_domain.register(AllEventsHandler, stream_name="$all")
+    test_domain.register(AllEventsHandler, stream_category="$all")
     test_domain.init(traverse=False)
     assert test_domain.handlers_for(Renamed()) == {AllEventsHandler}
 
 
 def test_that_all_streams_handler_is_always_returned_with_other_handlers(test_domain):
-    test_domain.register(AllEventsHandler, stream_name="$all")
+    test_domain.register(AllEventsHandler, stream_category="$all")
     test_domain.init(traverse=False)
 
     assert test_domain.handlers_for(Registered()) == {

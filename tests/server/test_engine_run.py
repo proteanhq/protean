@@ -46,9 +46,9 @@ def auto_set_and_close_loop():
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.config["event_processing"] = EventProcessing.ASYNC.value
-    test_domain.register(User, stream_name="authentication")
+    test_domain.register(User, stream_category="authentication")
     test_domain.register(UserLoggedIn, part_of=User)
-    test_domain.register(UserEventHandler, stream_name="authentication")
+    test_domain.register(UserEventHandler, stream_category="authentication")
     test_domain.init(traverse=False)
 
 
