@@ -834,7 +834,7 @@ class Domain:
                     element.cls,
                     "__type__",
                     (
-                        f"{self.name}."
+                        f"{self.camel_case_name}."
                         # f"{element.cls.meta_.aggregate_cluster.__class__.__name__}."
                         f"{element.cls.__name__}."
                         f"{element.cls.__version__}"

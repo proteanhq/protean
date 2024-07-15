@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 from protean.container import Element, OptionsMixin
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
+from protean.core.view import BaseView
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne
 from protean.globals import current_domain, current_uow
@@ -95,10 +96,12 @@ class BaseRepository(Element, OptionsMixin):
         # Fixate on Model class at the domain level because an explicit model may have been registered
         return self._provider.get_dao(self.meta_.part_of, self._model)
 
-    def add(self, aggregate: BaseAggregate) -> BaseAggregate:  # noqa: C901
-        """This method helps persist or update aggregates into the persistence store.
+    def add(
+        self, item: Union[BaseAggregate, BaseView]
+    ) -> Union[BaseAggregate, BaseView]:  # noqa: C901
+        """This method helps persist or update aggregates or views into the persistence store.
 
-        Returns the persisted aggregate.
+        Returns the persisted item.
 
         Protean adopts a collection-oriented design pattern to handle persistence. What this means is that
         the Repository interface does not hint in any way that there is an underlying persistence mechanism,
@@ -124,31 +127,31 @@ class BaseRepository(Element, OptionsMixin):
             own_current_uow.start()
 
         # If there are HasMany/HasOne fields in the aggregate, sync child objects added/removed,
-        if has_association_fields(aggregate):
-            self._sync_children(aggregate)
+        if has_association_fields(item):
+            self._sync_children(item)
 
-        # Persist only if the aggregate object is new, or it has changed since last persistence
-        if (not aggregate.state_.is_persisted) or (
-            aggregate.state_.is_persisted and aggregate.state_.is_changed
+        # Persist only if the item object is new, or it has changed since last persistence
+        if (not item.state_.is_persisted) or (
+            item.state_.is_persisted and item.state_.is_changed
         ):
-            self._dao.save(aggregate)
+            self._dao.save(item)
 
             # If Aggregate has signed up Fact Events, raise them now
-            if aggregate.meta_.fact_events:
-                payload = aggregate.to_dict()
+            if item.element_type == DomainObjects.AGGREGATE and item.meta_.fact_events:
+                payload = item.to_dict()
 
                 # Remove state attribute from the payload, as it is not needed for the Fact Event
                 payload.pop("state_", None)
 
                 # Construct and raise the Fact Event
-                fact_event = aggregate._fact_event_cls(**payload)
-                aggregate.raise_(fact_event)
+                fact_event = item._fact_event_cls(**payload)
+                item.raise_(fact_event)
 
         # If we started a UnitOfWork, commit it now
         if own_current_uow:
             own_current_uow.commit()
 
-        return aggregate
+        return item
 
     def _sync_children(self, entity):
         """Recursively sync child entities to the persistence store"""
@@ -232,11 +235,11 @@ class BaseRepository(Element, OptionsMixin):
                     entity._temp_cache[field_name]["change"] = None
                     entity._temp_cache[field_name]["old_value"] = None
 
-    def get(self, identifier) -> BaseAggregate:
+    def get(self, identifier) -> Union[BaseAggregate, BaseView]:
         """This is a utility method to fetch data from the persistence store by its key identifier. All child objects,
         including enclosed entities, are returned as part of this call.
 
-        Returns the fetched aggregate.
+        Returns the fetched object.
 
         All other data filtering capabilities can be implemented by using the underlying DAO's
         :meth:`BaseDAO.filter` method.
@@ -245,16 +248,17 @@ class BaseRepository(Element, OptionsMixin):
         `find_residents_of_area(zipcode)`, etc. It is also possible to make use of more complicated,
         domain-friendly design patterns like the `Specification` pattern.
         """
-        aggregate = self._dao.get(identifier)
+        item = self._dao.get(identifier)
 
-        # Fetch and sync events version
-        last_message = current_domain.event_store.store.read_last_message(
-            f"{aggregate.meta_.stream_category}-{identifier}"
-        )
-        if last_message:
-            aggregate._event_position = last_message.position
+        if item.element_type == DomainObjects.AGGREGATE:
+            # Fetch and sync events version
+            last_message = current_domain.event_store.store.read_last_message(
+                f"{item.meta_.stream_category}-{identifier}"
+            )
+            if last_message:
+                item._event_position = last_message.position
 
-        return aggregate
+        return item
 
 
 def repository_factory(element_cls, domain, **opts):
