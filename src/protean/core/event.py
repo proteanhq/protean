@@ -10,6 +10,7 @@ from protean.exceptions import (
     NotSupportedError,
 )
 from protean.fields import DateTime, Field, Integer, String, ValueObject
+from protean.fields.association import Association, Reference
 from protean.globals import g
 from protean.reflection import _ID_FIELD_NAME, declared_fields, fields
 from protean.utils import DomainObjects, derive_element_class, fqn
@@ -89,6 +90,22 @@ class BaseEvent(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         # Use explicit version if specified, else default to "v1"
         if not hasattr(subclass, "__version__"):
             setattr(subclass, "__version__", "v1")
+
+        subclass.__validate_for_basic_field_types()
+
+    @classmethod
+    def __validate_for_basic_field_types(subclass):
+        for field_name, field_obj in fields(subclass).items():
+            # Value objects can hold all kinds of fields, except associations
+            if isinstance(field_obj, (Reference, Association)):
+                raise IncorrectUsageError(
+                    {
+                        "_event": [
+                            f"Events cannot have associations. "
+                            f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
+                        ]
+                    }
+                )
 
     def __setattr__(self, name, value):
         if not hasattr(self, "_initialized") or not self._initialized:

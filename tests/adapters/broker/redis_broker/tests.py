@@ -60,9 +60,7 @@ class TestPublishingToRedis:
                 "metadata",
             ]
         )
-        assert (
-            json_message["type"] == "Redis Broker Tests.PersonAdded.v1"
-        )  #  FIXME Normalize Domain Name
+        assert json_message["type"] == "RedisBrokerTests.PersonAdded.v1"
         assert json_message["metadata"]["kind"] == "EVENT"
 
 

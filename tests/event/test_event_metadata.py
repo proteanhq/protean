@@ -85,6 +85,41 @@ class TestMetadataVersion:
         event = UserLoggedIn(user_id=str(uuid4()))
         assert event._metadata.version == "v2"
 
+    def test_version_value_in_multiple_event_definitions(self, test_domain):
+        def version1():
+            class DummyEvent(BaseEvent):
+                user_id = Identifier(identifier=True)
+
+            return DummyEvent
+
+        def version2():
+            class DummyEvent(BaseEvent):
+                __version__ = "v2"
+                user_id = Identifier(identifier=True)
+
+            return DummyEvent
+
+        event_cls1 = version1()
+        event_cls2 = version2()
+
+        test_domain.register(event_cls1, part_of=User)
+        test_domain.register(event_cls2, part_of=User)
+        test_domain.init(traverse=False)
+
+        assert event_cls1.__version__ == "v1"
+        assert event_cls2.__version__ == "v2"
+
+        assert len(test_domain.registry.events) == 3  # Includes UserLoggedIn
+
+        assert (
+            test_domain.registry.events[fqn(event_cls1)].cls.__type__
+            == "Test.DummyEvent.v1"
+        )
+        assert (
+            test_domain.registry.events[fqn(event_cls2)].cls.__type__
+            == "Test.DummyEvent.v2"
+        )
+
 
 def test_event_metadata():
     user_id = str(uuid4())

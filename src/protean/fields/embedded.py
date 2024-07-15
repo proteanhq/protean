@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from protean.exceptions import IncorrectUsageError
 from protean.fields import Field
 from protean.reflection import declared_fields
 
@@ -57,16 +58,37 @@ class ValueObject(Field):
 
     def __init__(self, value_object_cls, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        if not isinstance(value_object_cls, str):
+            # Validate the class being passed is a subclass of BaseValueObject
+            self._validate_value_object_cls(value_object_cls)
+
         self._value_object_cls = value_object_cls
 
         self._embedded_fields = {}
+
+    def _validate_value_object_cls(self, value_object_cls):
+        """Validate that the value object class is a subclass of BaseValueObject"""
+        from protean.core.value_object import BaseValueObject
+
+        if not issubclass(value_object_cls, BaseValueObject):
+            raise IncorrectUsageError(
+                {
+                    "_value_object": [
+                        f"`{value_object_cls.__name__}` is not a valid Value Object"
+                    ]
+                }
+            )
 
     @property
     def value_object_cls(self):
         return self._value_object_cls
 
     def _resolve_to_cls(self, domain, value_object_cls, owner_cls):
-        assert isinstance(self.value_object_cls, str)
+        assert isinstance(self._value_object_cls, str)
+
+        # Validate the class being passed is a subclass of BaseValueObject
+        self._validate_value_object_cls(value_object_cls)
 
         self._value_object_cls = value_object_cls
 
