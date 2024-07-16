@@ -110,7 +110,8 @@ class Engine:
                     f"Error handling message {message.stream_name}-{message.id} "
                     f"in {handler_cls.__name__}"
                 )
-                logger.error(f"{str(exc)}")
+                # Print the stack trace
+                logger.error(traceback.format_exc())
                 handler_cls.handle_error(exc, message)
 
                 await self.shutdown(exit_code=1)

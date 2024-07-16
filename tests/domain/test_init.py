@@ -50,10 +50,12 @@ class TestDomainInitMethodCalls:
         mock_generate_fact_event_classes.assert_called_once()
 
     def test_domain_init_sets_event_command_types(self, test_domain):
-        mock_set_event_and_command_type = Mock()
-        test_domain._set_event_and_command_type = mock_set_event_and_command_type
+        mock_set_and_record_event_and_command_type = Mock()
+        test_domain._set_and_record_event_and_command_type = (
+            mock_set_and_record_event_and_command_type
+        )
         test_domain.init(traverse=False)
-        mock_set_event_and_command_type.assert_called_once()
+        mock_set_and_record_event_and_command_type.assert_called_once()
 
     def test_domain_init_sets_up_command_handlers(self, test_domain):
         mock_setup_command_handlers = Mock()

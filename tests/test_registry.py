@@ -32,22 +32,6 @@ def test_element_registration():
     )
 
 
-def test_delisting_element():
-    register = _DomainRegistry()
-    register.register_element(User)
-
-    assert (
-        "tests.test_registry.User" in register._elements[DomainObjects.AGGREGATE.value]
-    )
-
-    register.delist_element(User)
-
-    assert (
-        "tests.test_registry.User"
-        not in register._elements[DomainObjects.AGGREGATE.value]
-    )
-
-
 def test_fetching_elements_from_registry():
     register = _DomainRegistry()
     register.register_element(User)
@@ -87,31 +71,6 @@ def test_that_registering_an_unknown_element_type_triggers_an_error():
 
     with pytest.raises(NotSupportedError):
         register.register_element(FooBar3)
-
-
-def test_that_delisting_an_unknown_element_type_triggers_an_error():
-    class DummyEnum(Enum):
-        UNKNOWN = "UNKNOWN"
-
-    class FooBar1:
-        element_type = "FOOBAR"
-
-    class FooBar2:
-        element_type = DummyEnum.UNKNOWN
-
-    class FooBar3:
-        pass
-
-    register = _DomainRegistry()
-
-    with pytest.raises(NotImplementedError):
-        register.delist_element(FooBar1)
-
-    with pytest.raises(NotImplementedError):
-        register.delist_element(FooBar2)
-
-    with pytest.raises(NotImplementedError):
-        register.delist_element(FooBar3)
 
 
 def test_that_re_registering_an_element_has_no_effect():

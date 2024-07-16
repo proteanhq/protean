@@ -81,17 +81,23 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
 
     def to_object(self) -> Union[BaseEvent, BaseCommand]:
         """Reconstruct the event/command object from the message data."""
-        if self.metadata.kind == MessageType.EVENT.value:
-            element_record = current_domain.registry.events[self.metadata.fqn]
-        elif self.metadata.kind == MessageType.COMMAND.value:
-            element_record = current_domain.registry.commands[self.metadata.fqn]
-        else:
+        if self.metadata.kind not in [
+            MessageType.COMMAND.value,
+            MessageType.EVENT.value,
+        ]:
             # We are dealing with a malformed or unknown message
             raise InvalidDataError(
                 {"_message": ["Message type is not supported for deserialization"]}
             )
 
-        return element_record.cls(_metadata=self.metadata, **self.data)
+        element_cls = current_domain._events_and_commands.get(self.metadata.type, None)
+
+        if element_cls is None:
+            raise ConfigurationError(
+                f"Message type {self.metadata.type} is not registered with the domain."
+            )
+
+        return element_cls(_metadata=self.metadata, **self.data)
 
     @classmethod
     def to_message(cls, message_object: Union[BaseEvent, BaseCommand]) -> Message:

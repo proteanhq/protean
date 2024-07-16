@@ -83,6 +83,7 @@ class _DomainRegistry:
                 f"Element `{element_cls.__name__}` is not a valid element class"
             )
 
+        # Element name is always the fully qualified name of the class
         element_name = fully_qualified_name(element_cls)
 
         element = self._elements[element_cls.element_type.value][element_name]
@@ -110,14 +111,6 @@ class _DomainRegistry:
             logger.debug(
                 f"Registered Element {element_name} with Domain as a {element_cls.element_type.value}"
             )
-
-    def delist_element(self, element_cls):
-        if self._is_invalid_element_cls(element_cls):
-            raise NotImplementedError
-
-        element_name = fully_qualified_name(element_cls)
-
-        self._elements[element_cls.element_type.value].pop(element_name, None)
 
     @property
     def elements(self):

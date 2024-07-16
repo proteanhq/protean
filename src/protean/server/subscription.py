@@ -98,7 +98,12 @@ class Subscription:
         await self.tick()
 
         if self.keep_going and not self.engine.shutting_down:
-            await asyncio.sleep(self.tick_interval)
+            # Keep control of the loop if in test mode
+            #   Otherwise `asyncio.sleep` will give away control and
+            #   the loop will be able to be stopped with `shutdown()`
+            if not self.engine.test_mode:
+                await asyncio.sleep(self.tick_interval)
+
             self.loop.create_task(self.poll())
 
     async def tick(self):

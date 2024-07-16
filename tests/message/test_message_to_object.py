@@ -63,9 +63,11 @@ def test_construct_event_from_message():
     assert reconstructed_event.id == identifier
 
 
-def test_construct_command_from_message():
+def test_construct_command_from_message(test_domain):
     identifier = str(uuid4())
-    command = Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
+    command = test_domain._enrich_command(
+        Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
+    )
     message = Message.to_message(command)
 
     reconstructed_command = message.to_object()
