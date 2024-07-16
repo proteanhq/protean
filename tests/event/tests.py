@@ -3,7 +3,7 @@ import uuid
 import pytest
 
 from protean import BaseAggregate, BaseEvent, BaseValueObject
-from protean.exceptions import NotSupportedError
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import Identifier, String, ValueObject
 from protean.reflection import data_fields, declared_fields, fields
 from protean.utils import fully_qualified_name
@@ -137,6 +137,24 @@ class TestDomainEventRegistration:
         test_domain.init(traverse=False)
 
         assert PersonAdded.__type__ in test_domain._events_and_commands
+
+    def test_registering_external_event(self, test_domain):
+        class ExternalEvent(BaseEvent):
+            foo = String()
+
+        test_domain.register_external_event(ExternalEvent, "Bar.ExternalEvent.v1")
+
+        assert "Bar.ExternalEvent.v1" in test_domain._events_and_commands
+        assert fully_qualified_name(ExternalEvent) not in test_domain.registry.events
+
+    def test_registering_invalid_external_event_class(self, test_domain):
+        class Dummy:
+            pass
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.register_external_event(Dummy, "Bar.ExternalEvent.v1")
+
+        assert exc.value.messages == {"element": ["Class `Dummy` is not an Event"]}
 
 
 class TestDomainEventEquivalence:
