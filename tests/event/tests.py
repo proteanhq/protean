@@ -132,6 +132,12 @@ class TestDomainEventRegistration:
 
         assert fully_qualified_name(AnnotatedDomainEvent) in test_domain.registry.events
 
+    def test_domain_stores_event_type_for_easy_retrieval(self, test_domain):
+        test_domain.register(PersonAdded, part_of=Person)
+        test_domain.init(traverse=False)
+
+        assert PersonAdded.__type__ in test_domain._events_and_commands
+
 
 class TestDomainEventEquivalence:
     @pytest.fixture(autouse=True)

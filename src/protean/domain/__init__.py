@@ -180,6 +180,9 @@ class Domain:
         self._models: Dict[str, BaseModel] = {}
         self._constructed_models: Dict[str, BaseModel] = {}
 
+        # Cache for holding events and commands by their types
+        self._events_and_commands: Dict[str, Union[BaseCommand, BaseEvent]] = {}
+
         #: A list of functions that are called when the domain context
         #: is destroyed.  This is the place to store code that cleans up and
         #: disconnects from databases, for example.
@@ -259,7 +262,7 @@ class Domain:
         self._generate_fact_event_classes()
 
         # Generate and set event/command `__type__` value
-        self._set_event_and_command_type()
+        self._set_and_record_event_and_command_type()
 
         # Parse and setup handler methods in Command Handlers
         self._setup_command_handlers()
@@ -827,19 +830,21 @@ class Domain:
                         element.cls.meta_.aggregate_cluster.meta_.provider,
                     )
 
-    def _set_event_and_command_type(self):
+    def _set_and_record_event_and_command_type(self):
         for element_type in [DomainObjects.EVENT, DomainObjects.COMMAND]:
             for _, element in self.registry._elements[element_type.value].items():
-                setattr(
-                    element.cls,
-                    "__type__",
-                    (
-                        f"{self.camel_case_name}."
-                        # f"{element.cls.meta_.aggregate_cluster.__class__.__name__}."
-                        f"{element.cls.__name__}."
-                        f"{element.cls.__version__}"
-                    ),
+                # Type is <Domain Name>.<Event or Command Name>.<Version>
+                # E.g. `Authentication.UserRegistered.v1`, `Ecommerce.OrderPlaced.v1`
+                type_string = (
+                    f"{self.camel_case_name}."
+                    # f"{element.cls.meta_.aggregate_cluster.__class__.__name__}."
+                    f"{element.cls.__name__}."
+                    f"{element.cls.__version__}"
                 )
+
+                setattr(element.cls, "__type__", type_string)
+
+                self._events_and_commands[type_string] = element.cls
 
     def _setup_command_handlers(self):
         for element_type in [DomainObjects.COMMAND_HANDLER]:

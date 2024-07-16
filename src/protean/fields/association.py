@@ -406,6 +406,12 @@ class HasOne(Association):
 
         # 2. Determine and store the change in the relationship
         current_value = getattr(instance, self.field_name)
+        current_value_id = (
+            getattr(current_value, id_field(current_value).field_name)
+            if current_value
+            else None
+        )
+        value_id = getattr(value, id_field(value).field_name) if value else None
         if current_value is None:
             # Entity was not associated earlier
             instance._temp_cache[self.field_name]["change"] = "ADDED"
@@ -413,11 +419,11 @@ class HasOne(Association):
             # Entity was associated earlier, but now being removed
             instance._temp_cache[self.field_name]["change"] = "DELETED"
             instance._temp_cache[self.field_name]["old_value"] = current_value
-        elif current_value.id != value.id:
+        elif current_value_id != value_id:
             # A New Entity is being associated replacing the old one
             instance._temp_cache[self.field_name]["change"] = "UPDATED"
             instance._temp_cache[self.field_name]["old_value"] = current_value
-        elif current_value.id == value.id and value.state_.is_changed:
+        elif current_value_id == value_id and value.state_.is_changed:
             # Entity was associated earlier, but now being updated
             instance._temp_cache[self.field_name]["change"] = "UPDATED"
         else:
@@ -527,7 +533,9 @@ class HasMany(Association):
                     }
                 )
 
-        current_value_ids = [value.id for value in data]
+        current_value_ids = [
+            getattr(value, id_field(value).field_name) for value in data
+        ]
 
         # Remove items when set to empty
         if len(items) == 0 and len(current_value_ids) > 0:
@@ -535,9 +543,10 @@ class HasMany(Association):
 
         for item in items:
             # Items to add
-            if item.id not in current_value_ids:
+            identity = getattr(item, id_field(item).field_name)
+            if identity not in current_value_ids:
                 # If the same item is added multiple times, the last item added will win
-                instance._temp_cache[self.field_name]["added"][item.id] = item
+                instance._temp_cache[self.field_name]["added"][identity] = item
 
                 setattr(
                     item,
@@ -552,7 +561,7 @@ class HasMany(Association):
                 self.delete_cached_value(instance)
             # Items to update
             elif (
-                item.id in current_value_ids
+                identity in current_value_ids
                 and item.state_.is_persisted
                 and item.state_.is_changed
             ):
@@ -565,7 +574,7 @@ class HasMany(Association):
                 # Temporarily set linkage to parent in child entity
                 setattr(item, self._linked_reference(type(instance)), instance)
 
-                instance._temp_cache[self.field_name]["updated"][item.id] = item
+                instance._temp_cache[self.field_name]["updated"][identity] = item
 
                 # Reset Cache
                 self.delete_cached_value(instance)
@@ -601,12 +610,15 @@ class HasMany(Association):
                     }
                 )
 
-        current_value_ids = [value.id for value in data]
+        current_value_ids = [
+            getattr(value, id_field(value).field_name) for value in data
+        ]
 
         for item in items:
-            if item.id in current_value_ids:
-                if item.id not in instance._temp_cache[self.field_name]["removed"]:
-                    instance._temp_cache[self.field_name]["removed"][item.id] = item
+            identity = getattr(item, id_field(item).field_name)
+            if identity in current_value_ids:
+                if identity not in instance._temp_cache[self.field_name]["removed"]:
+                    instance._temp_cache[self.field_name]["removed"][identity] = item
 
                     # Reset Cache
                     self.delete_cached_value(instance)
@@ -648,9 +660,10 @@ class HasMany(Association):
         # Update objects from temporary cache if present
         updated_objects = []
         for value in data:
-            if value.id in instance._temp_cache[self.field_name]["updated"]:
+            identity = getattr(value, id_field(value).field_name)
+            if identity in instance._temp_cache[self.field_name]["updated"]:
                 updated_objects.append(
-                    instance._temp_cache[self.field_name]["updated"][value.id]
+                    instance._temp_cache[self.field_name]["updated"][identity]
                 )
             else:
                 updated_objects.append(value)
@@ -658,7 +671,13 @@ class HasMany(Association):
 
         # Remove objects marked as removed in temporary cache
         for _, item in instance._temp_cache[self.field_name]["removed"].items():
-            data[:] = [value for value in data if value.id != item.id]
+            # Retain data that is not among deleted items
+            data[:] = [
+                value
+                for value in data
+                if getattr(value, id_field(value).field_name)
+                != getattr(item, id_field(item).field_name)
+            ]
 
         return data
 
