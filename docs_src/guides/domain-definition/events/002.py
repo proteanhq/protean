@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from protean import BaseEvent, Domain
 from protean.fields import DateTime, Identifier, String
 
-domain = Domain(__name__)
+domain = Domain(__name__, name="Authentication", load_toml=False)
 
 
 @domain.aggregate
@@ -45,11 +45,16 @@ with domain.domain_context():
     """ Output:
     {
         "_metadata": {
-            "id": "__main__.User.v1.1.0.1",
-            "timestamp": "2024-06-30 16:29:31.312727+00:00",
+            "id": "authentication::user-1-0.1",
+            "type": "Authentication.UserLoggedIn.v1",
+            "fqn": "__main__.UserLoggedIn",
+            "kind": "EVENT",
+            "stream": "authentication::user-1",
+            "origin_stream": null,
+            "timestamp": "2024-07-18 22:06:10.148226+00:00",
             "version": "v1",
             "sequence_id": "0.1",
-            "payload_hash": -7433283101704735063
+            "payload_hash": 6154717103144054927
         },
         "user_id": "1"
     }
@@ -61,15 +66,18 @@ with domain.domain_context():
     """ Output:
     {
         "_metadata": {
-            "id": "__main__.User.v2.1.0.2",
-            "timestamp": "2024-06-30 16:32:59.703965+00:00",
+            "id": "authentication::user-1-0.2",
+            "type": "Authentication.UserActivated.v2",
+            "fqn": "__main__.UserActivated",
+            "kind": "EVENT",
+            "stream": "authentication::user-1",
+            "origin_stream": null,
+            "timestamp": "2024-07-18 22:06:10.155603+00:00",
             "version": "v2",
             "sequence_id": "0.2",
-            "payload_hash": 7340170219237812824
+            "payload_hash": -3600345200911557224
         },
         "user_id": "1",
-        "activated_at": "2024-06-30 16:32:59.704063+00:00"
+        "activated_at": "2024-07-18 22:06:10.155694+00:00"
     }
     """
-
-    print(json.dumps(user._events[1].payload, indent=4))

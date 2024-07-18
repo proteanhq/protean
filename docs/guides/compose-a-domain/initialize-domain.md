@@ -31,7 +31,7 @@ exposes them in a registry.
 {! docs_src/guides/composing-a-domain/016.py !}
 ```
 
-## 3. Inject dependencies
+## 3. Initialize dependencies
 
 Calling `domain.init()` establishes connectivity with the underlying infra,
 testing access, and making them available for use by the rest of the system. 
@@ -51,3 +51,27 @@ makes it available for domain elements for further use.
 <!-- FIXME Add link to accessing active/configured dependencies -->
 Refer to [Configuration handling](../configuration.md) to understand the different ways to configure
 the domain.
+
+## 4. Validate Domain Model
+
+In the final part of domain initialization, Protean performs additional setup
+tasks on domain elements and also conducts various checks to ensure the domain
+model is specified correctly.
+
+Examples of checks include:
+
+1. Resolving references that were specified as Strings, like:
+```python
+@domain.entity(part_of="User")
+class Account:
+    ...
+```
+
+2. Setting up Aggregate clusters and their shared settings. The object graph
+constructed earlier is used to homogenize settings across all elements under
+an aggregate, like the stream category and database provider.
+
+3. Constructing a map of command and event types to reference when processing
+incoming messages later.
+
+4. Various checks and validations to ensure the domain structure is valid.

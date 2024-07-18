@@ -51,6 +51,31 @@ An event's metadata provides additional context about the event.
 The unique identifier of the event. The event ID is a structured string, of the
 format **<domain>.<aggregate>.<version>.<aggregate-id>.<sequence_id>**.
 
+#### `type`
+
+Type of the event. Format is `<domain-name>.<event-class-name>.<event-version>`.
+For e.g. `Shipping.OrderShipped.v1`.
+
+#### `fqn`
+
+The fully qualified name of the event. This is used internally by Protean
+to resconstruct objects from messages.
+
+#### `kind`
+
+Represents the kind of object enclosed in an event store message. Value is
+`EVENT` for Events. `Metadata` class is shared between Events and Commands, so
+possible values are `EVENT` and `COMMAND`.
+
+#### `stream`
+
+Name of the event stream. E.g. Stream `user-1234` encloses messages related to
+`User` aggregate with identity `1234`.
+
+#### `origin_stream`
+
+Name of the stream that originated this event or command.
+
 #### `timestamp`
 
 The timestamp of event generation.
@@ -82,7 +107,7 @@ The payload is made available as the data in the event. If
 you want to extract just the payload, you can use the `payload` property
 of the event.
 
-```shell hl_lines="17 19-20"
+```shell hl_lines="22 24-25"
 In [1]: user = User(id="1", email="<EMAIL>", name="<NAME>")
 
 In [2]: user.login()
@@ -90,15 +115,20 @@ In [2]: user.login()
 In [3]: event = user._events[0]
 
 In [4]: event
-Out[4]: <UserLoggedIn: UserLoggedIn object ({'_metadata': {'id': '002.User.v1.1.0.1', 'timestamp': '2024-06-30 19:20:53.587542+00:00', 'version': 'v1', 'sequence_id': '0.1', 'payload_hash': 5473995227001335107}, 'user_id': '1'})>
+Out[4]: <UserLoggedIn: UserLoggedIn object ({'_metadata': {'id': '002::user-1-0.1', 'type': '002.UserLoggedIn.v1', 'fqn': '002.UserLoggedIn', 'kind': 'EVENT', 'stream': '002::user-1', 'origin_stream': None, 'timestamp': '2024-07-18 22:02:32.522360+00:00', 'version': 'v1', 'sequence_id': '0.1', 'payload_hash': 2731902408806877088}, 'user_id': '1'})>
 
 In [5]: event.to_dict()
 Out[5]: 
-{'_metadata': {'id': '002.User.v1.1.0.1',
-  'timestamp': '2024-06-30 19:20:53.587542+00:00',
+{'_metadata': {'id': '002::user-1-0.1',
+  'type': '002.UserLoggedIn.v1',
+  'fqn': '002.UserLoggedIn',
+  'kind': 'EVENT',
+  'stream': '002::user-1',
+  'origin_stream': None,
+  'timestamp': '2024-07-18 22:02:32.522360+00:00',
   'version': 'v1',
   'sequence_id': '0.1',
-  'payload_hash': 5473995227001335107},
+  'payload_hash': 2731902408806877088},
  'user_id': '1'}
 
 In [6]: event.payload
@@ -123,10 +153,10 @@ class UserActivated:
     activated_at = DateTime(required=True)
 ```
 
-The configured version is reflected in `version` and `id` attributes of the
-generated event:
+The configured version is reflected in `version` and `type` attributes of the
+generated event's metadata:
 
-```python hl_lines="34 50 52 66 68"
+```python hl_lines="32 49 55 70 76"
 {! docs_src/guides/domain-definition/events/002.py !}
 ```
 

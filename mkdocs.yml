@@ -67,7 +67,6 @@ nav:
   - Protean: index.md
   - Start Here: start-here.md
   - Core Concepts:
-    - core-concepts/index.md
     - core-concepts/philosophy.md
     - core-concepts/whitepaper.md
     - core-concepts/analysis-model.md
@@ -86,9 +85,9 @@ nav:
       - core-concepts/building-blocks/entities.md
       - core-concepts/building-blocks/value-objects.md
       - core-concepts/building-blocks/domain-services.md
-    #   - core-concepts/building-blocks/commands.md
-    #   - core-concepts/building-blocks/command-handlers.md
       - core-concepts/building-blocks/events.md
+      - core-concepts/building-blocks/commands.md
+      - core-concepts/building-blocks/command-handlers.md
     #   - core-concepts/building-blocks/event-handlers.md
     #   - core-concepts/building-blocks/repositories.md
     #   - core-concepts/building-blocks/models.md
@@ -219,7 +218,6 @@ nav:
       - adapters/database/index.md
       - adapters/database/postgresql.md
       - adapters/database/elasticsearch.md
-      - adapters/database/redis.md
     - Brokers:
       - adapters/broker/index.md
       - adapters/broker/redis.md

@@ -77,7 +77,7 @@ crucial for tracking and ordering events chronologically.
 Each event carries a structured unique identifier that indicates the origin of
 the event and the unique identity of the aggregate that generated the event.
 
-### Event Streams
+### Events are written into streams.  { data-toc-label="Event Streams" }
 Events are written to and read from streams. Review the section on
 [Streams](../streams.md) for a deep-dive.
 

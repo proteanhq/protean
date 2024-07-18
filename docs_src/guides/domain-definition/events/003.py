@@ -4,7 +4,7 @@ from protean import Domain
 from protean.fields import HasOne, String
 from protean.utils.mixins import Message
 
-domain = Domain(__file__, load_toml=False)
+domain = Domain(__file__, name="Authentication", load_toml=False)
 
 
 @domain.aggregate(fact_events=True)
@@ -28,7 +28,9 @@ with domain.domain_context():
     # Persist the user
     domain.repository_for(User).add(user)
 
-    event_message = domain.event_store.store.read(f"user-fact-{user.id}")[0]
+    event_message = domain.event_store.store.read(
+        f"authentication::user-fact-{user.id}"
+    )[0]
     event = Message.to_object(event_message)
 
     print(json.dumps(event.to_dict(), indent=4))
@@ -36,21 +38,22 @@ with domain.domain_context():
     """ Output:
     {
         "_metadata": {
-            "id": "user-fact-e97cef08-f11d-43eb-8a69-251a0828bbff-0.1",
-            "type": "User.UserFactEvent.v1",
+            "id": "authentication::user-fact-781c4363-5e7e-4c53-a599-2cb2dc428d96-0.1",
+            "type": "Authentication.UserFactEvent.v1",
+            "fqn": "protean.container.UserFactEvent",
             "kind": "EVENT",
-            "stream_name": "user-fact-e97cef08-f11d-43eb-8a69-251a0828bbff",
-            "origin_stream_name": null,
-            "timestamp": "2024-07-09 17:24:41.800475+00:00",
+            "stream": "authentication::user-fact-781c4363-5e7e-4c53-a599-2cb2dc428d96",
+            "origin_stream": null,
+            "timestamp": "2024-07-18 22:01:02.364078+00:00",
             "version": "v1",
             "sequence_id": "0.1",
-            "payload_hash": -1529271686230030119
+            "payload_hash": 2754382941688457931
         },
         "_version": 0,
         "name": "John Doe",
         "email": "john.doe@example.com",
         "status": null,
         "account": null,
-        "id": "e97cef08-f11d-43eb-8a69-251a0828bbff"
+        "id": "781c4363-5e7e-4c53-a599-2cb2dc428d96"
     }
     """
