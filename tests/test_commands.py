@@ -22,6 +22,12 @@ class UserRegistrationCommand(BaseCommand):
 
 
 class TestCommandInitialization:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(User)
+        test_domain.register(UserRegistrationCommand, part_of=User)
+        test_domain.init(traverse=False)
+
     def test_that_command_object_class_cannot_be_instantiated(self):
         with pytest.raises(NotSupportedError):
             BaseCommand()
@@ -75,6 +81,12 @@ class TestCommandRegistration:
 
 
 class TestCommandProperties:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(User)
+        test_domain.register(UserRegistrationCommand, part_of=User)
+        test_domain.init(traverse=False)
+
     def test_two_commands_with_equal_values_are_considered_equal(self):
         command1 = UserRegistrationCommand(
             email="john.doe@gmail.com", username="john.doe", password="secret1!"
@@ -105,12 +117,18 @@ class TestCommandProperties:
             "age": 21,
         }
 
-    def test_different_commands_are_distinct(self):
-        command1 = UserRegistrationCommand(
-            email="john.doe@gmail.com", username="john.doe", password="secret1!"
+    def test_different_commands_are_distinct(self, test_domain):
+        command1 = test_domain._enrich_command(
+            UserRegistrationCommand(
+                email="john.doe@gmail.com", username="john.doe", password="secret1!"
+            )
         )
-        command2 = UserRegistrationCommand(
-            email="jane.doe@gmail.com", username="jane.doe", password="not-so-secret!"
+        command2 = test_domain._enrich_command(
+            UserRegistrationCommand(
+                email="jane.doe@gmail.com",
+                username="jane.doe",
+                password="not-so-secret!",
+            )
         )
 
         assert command1 != command2

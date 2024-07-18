@@ -54,6 +54,7 @@ class TestMetadataVersion:
             user_id = Identifier(identifier=True)
 
         test_domain.register(Login, part_of=User)
+        test_domain.init(traverse=False)
 
         command = Login(user_id=str(uuid4()))
         assert command._metadata.version == "v2"

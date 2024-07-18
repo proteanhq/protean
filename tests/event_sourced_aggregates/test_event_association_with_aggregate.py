@@ -109,6 +109,4 @@ def test_an_unassociated_event_throws_error(test_domain):
     with pytest.raises(ConfigurationError) as exc:
         user.raise_(UserArchived(user_id=user.user_id))
 
-    assert exc.value.args[0] == (
-        "Event `UserArchived` should be registered with a domain"
-    )
+    assert exc.value.args[0] == ("`UserArchived` should be registered with a domain")

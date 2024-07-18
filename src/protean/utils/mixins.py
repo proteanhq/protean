@@ -9,10 +9,11 @@ from typing import Callable, Dict, Union
 from protean import fields
 from protean.container import BaseContainer, OptionsMixin
 from protean.core.command import BaseCommand
-from protean.core.event import BaseEvent, Metadata
+from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ConfigurationError, InvalidDataError
 from protean.globals import current_domain
+from protean.utils.eventing import Metadata
 
 logger = logging.getLogger(__name__)
 

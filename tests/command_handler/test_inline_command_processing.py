@@ -4,7 +4,7 @@ import pytest
 
 from protean import BaseAggregate, BaseCommand, handle
 from protean.core.command_handler import BaseCommandHandler
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
 from protean.utils import CommandProcessing
 
@@ -42,7 +42,7 @@ def register(test_domain):
 
 
 def test_unregistered_command_raises_error(test_domain):
-    with pytest.raises(IncorrectUsageError):
+    with pytest.raises(ConfigurationError):
         test_domain.process(Login(user_id=str(uuid4())))
 
 

@@ -172,9 +172,7 @@ def test_construct_message_from_either_event_or_command(test_domain):
 
 
 def test_object_is_registered_with_domain():
-    command = Activate(id=str(uuid4()))
-
     with pytest.raises(ConfigurationError) as exc:
-        Message.to_message(command)
+        Message.to_message(Activate(id=str(uuid4())))
 
-    assert exc.value.args[0] == "`Activate` is not associated with an aggregate."
+    assert exc.value.args[0] == "`Activate` should be registered with a domain"
