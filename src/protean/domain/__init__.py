@@ -30,6 +30,7 @@ from protean.exceptions import (
     NotSupportedError,
 )
 from protean.fields import HasMany, HasOne, Reference, ValueObject
+from protean.fields import List as ProteanList
 from protean.globals import g
 from protean.reflection import declared_fields, has_fields, id_field
 from protean.utils import (
@@ -510,6 +511,7 @@ class Domain:
         # 1. Associations
         if has_fields(new_cls):
             for _, field_obj in declared_fields(new_cls).items():
+                # Record Association references to resolve later
                 if isinstance(field_obj, (HasOne, HasMany, Reference)) and isinstance(
                     field_obj.to_cls, str
                 ):
@@ -517,12 +519,23 @@ class Domain:
                         ("Association", (field_obj, new_cls))
                     )
 
+                # Record Value Object references to resolve later
                 if isinstance(field_obj, ValueObject) and isinstance(
                     field_obj.value_object_cls, str
                 ):
                     self._pending_class_resolutions[field_obj.value_object_cls].append(
                         ("ValueObject", (field_obj, new_cls))
                     )
+
+                # Record Value Object references in List fields to resolve later
+                if (
+                    isinstance(field_obj, ProteanList)
+                    and isinstance(field_obj.content_type, ValueObject)
+                    and isinstance(field_obj.content_type.value_object_cls, str)
+                ):
+                    self._pending_class_resolutions[
+                        field_obj.content_type.value_object_cls
+                    ].append(("ValueObject", (field_obj.content_type, new_cls)))
 
         # 2. Meta Linkages
         if element_type in [

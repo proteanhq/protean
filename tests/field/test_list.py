@@ -2,8 +2,8 @@ from datetime import date, datetime
 
 import pytest
 
-from protean import BaseValueObject
-from protean.exceptions import ValidationError
+from protean import BaseAggregate, BaseEntity, BaseValueObject
+from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields.basic import (
     Boolean,
     Date,
@@ -15,6 +15,7 @@ from protean.fields.basic import (
     String,
 )
 from protean.fields.embedded import ValueObject
+from protean.reflection import declared_fields
 
 
 class TestListFieldContentType:
@@ -97,6 +98,33 @@ class TestListFieldContentType:
         field = List(content_type=ValueObject(VO))
         value = [VO(foo="bar"), VO(foo="baz")]
         assert field._cast_to_type(value) == value
+
+    def test_list_field_with_invalid_value_object(self):
+        class VO(BaseEntity):
+            foo = String()
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            List(content_type=ValueObject(VO))
+
+        assert exc.value.messages == {
+            "_value_object": [
+                "`VO` is not a valid Value Object and cannot be embedded in "
+                "a Value Object field"
+            ]
+        }
+
+    def test_list_field_with_value_object_string_is_resolved(self, test_domain):
+        class VO(BaseValueObject):
+            foo = String()
+
+        class Foo(BaseAggregate):
+            foos = List(content_type=ValueObject("VO"))
+
+        test_domain.register(VO)
+        test_domain.register(Foo)
+        test_domain.init(traverse=False)
+
+        assert declared_fields(Foo)["foos"].content_type.value_object_cls == VO
 
 
 class TestListFieldAsDictWithDifferentContentTypes:

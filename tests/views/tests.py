@@ -127,6 +127,7 @@ def register_elements(test_domain):
     test_domain.register(OrderedPerson, order_by="first_name")
     test_domain.register(OrderedPersonSubclass, order_by="last_name")
     test_domain.register(Building)
+    test_domain.init(traverse=False)
 
 
 class TestViewRegistration:

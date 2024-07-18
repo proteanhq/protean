@@ -75,7 +75,10 @@ class ValueObject(Field):
             raise IncorrectUsageError(
                 {
                     "_value_object": [
-                        f"`{value_object_cls.__name__}` is not a valid Value Object"
+                        (
+                            f"`{value_object_cls.__name__}` is not a valid Value Object "
+                            "and cannot be embedded in a Value Object field"
+                        )
                     ]
                 }
             )

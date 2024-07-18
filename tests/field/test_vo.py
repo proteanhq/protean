@@ -28,5 +28,7 @@ def test_value_object_to_cls_is_always_a_base_value_object_subclass(test_domain)
             address = ValueObject(Address)
 
     assert exc.value.messages == {
-        "_value_object": ["`Address` is not a valid Value Object"]
+        "_value_object": [
+            "`Address` is not a valid Value Object and cannot be embedded in a Value Object field"
+        ]
     }
