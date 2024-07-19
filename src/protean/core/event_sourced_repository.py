@@ -1,6 +1,6 @@
 import logging
 
-from protean import BaseEventSourcedAggregate, UnitOfWork
+from protean import BaseAggregate, UnitOfWork
 from protean.container import Element, OptionsMixin
 from protean.exceptions import (
     IncorrectUsageError,
@@ -30,7 +30,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
     def __init__(self, domain) -> None:
         self._domain = domain
 
-    def add(self, aggregate: BaseEventSourcedAggregate) -> None:
+    def add(self, aggregate: BaseAggregate) -> None:
         if aggregate is None:
             raise IncorrectUsageError(
                 {"_entity": ["Aggregate object to persist is invalid"]}
@@ -63,7 +63,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             if own_current_uow:
                 own_current_uow.commit()
 
-    def get(self, identifier: Identifier) -> BaseEventSourcedAggregate:
+    def get(self, identifier: Identifier) -> BaseAggregate:
         """Retrieve a fully-formed Aggregate from a stream of Events.
 
         If the aggregate was already loaded in the current UnitOfWork,

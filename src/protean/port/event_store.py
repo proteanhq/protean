@@ -2,7 +2,7 @@ from abc import ABCMeta, abstractmethod
 from collections import deque
 from typing import Any, Dict, List, Optional, Type, Union
 
-from protean import BaseCommand, BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseCommand, BaseEvent
 from protean.fields import Identifier
 from protean.utils.mixins import Message
 
@@ -104,8 +104,8 @@ class BaseEventStore(metaclass=ABCMeta):
         return position
 
     def load_aggregate(
-        self, part_of: Type[BaseEventSourcedAggregate], identifier: Identifier
-    ) -> Optional[BaseEventSourcedAggregate]:
+        self, part_of: Type[BaseAggregate], identifier: Identifier
+    ) -> Optional[BaseAggregate]:
         """Load an aggregate from underlying events.
 
         The first event is used to initialize the aggregate, after which each event is

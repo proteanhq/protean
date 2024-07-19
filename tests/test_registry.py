@@ -96,7 +96,6 @@ def test_properties_method_returns_a_dictionary_of_all_protean_elements():
         "emails": DomainObjects.EMAIL.value,
         "entities": DomainObjects.ENTITY.value,
         "event_handlers": DomainObjects.EVENT_HANDLER.value,
-        "event_sourced_aggregates": DomainObjects.EVENT_SOURCED_AGGREGATE.value,
         "event_sourced_repositories": DomainObjects.EVENT_SOURCED_REPOSITORY.value,
         "events": DomainObjects.EVENT.value,
         "models": DomainObjects.MODEL.value,

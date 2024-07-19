@@ -4,9 +4,8 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseAggregate, BaseCommandHandler, BaseEvent, handle
+from protean import BaseAggregate, BaseCommandHandler, BaseEvent, apply, handle
 from protean.core.command import BaseCommand
-from protean.core.event_sourced_aggregate import apply
 from protean.fields import Identifier, String
 from protean.globals import current_domain
 
