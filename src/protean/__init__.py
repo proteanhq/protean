@@ -1,6 +1,6 @@
 __version__ = "0.12.1"
 
-from .core.aggregate import BaseAggregate, atomic_change
+from .core.aggregate import BaseAggregate, apply, atomic_change
 from .core.application_service import BaseApplicationService
 from .core.command import BaseCommand
 from .core.command_handler import BaseCommandHandler
@@ -9,7 +9,6 @@ from .core.email import BaseEmail
 from .core.entity import BaseEntity, invariant
 from .core.event import BaseEvent
 from .core.event_handler import BaseEventHandler
-from .core.event_sourced_aggregate import BaseEventSourcedAggregate, apply
 from .core.model import BaseModel
 from .core.queryset import Q, QuerySet
 from .core.repository import BaseRepository
@@ -33,7 +32,6 @@ __all__ = [
     "BaseEntity",
     "BaseEvent",
     "BaseEventHandler",
-    "BaseEventSourcedAggregate",
     "BaseModel",
     "BaseRepository",
     "BaseSerializer",

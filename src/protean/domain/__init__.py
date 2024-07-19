@@ -445,7 +445,6 @@ class Domain:
         from protean.core.entity import entity_factory
         from protean.core.event import domain_event_factory
         from protean.core.event_handler import event_handler_factory
-        from protean.core.event_sourced_aggregate import event_sourced_aggregate_factory
         from protean.core.event_sourced_repository import (
             event_sourced_repository_factory,
         )
@@ -463,7 +462,6 @@ class Domain:
             DomainObjects.COMMAND_HANDLER.value: command_handler_factory,
             DomainObjects.EVENT.value: domain_event_factory,
             DomainObjects.EVENT_HANDLER.value: event_handler_factory,
-            DomainObjects.EVENT_SOURCED_AGGREGATE.value: event_sourced_aggregate_factory,
             DomainObjects.EVENT_SOURCED_REPOSITORY.value: event_sourced_repository_factory,
             DomainObjects.DOMAIN_SERVICE.value: domain_service_factory,
             DomainObjects.EMAIL.value: email_factory,
@@ -568,7 +566,6 @@ class Domain:
                             field_obj.to_cls,
                             (
                                 DomainObjects.AGGREGATE,
-                                DomainObjects.EVENT_SOURCED_AGGREGATE,
                                 DomainObjects.ENTITY,
                             ),
                         )
@@ -584,10 +581,7 @@ class Domain:
                         cls = params
                         to_cls = self.fetch_element_cls_from_registry(
                             cls.meta_.part_of,
-                            (
-                                DomainObjects.AGGREGATE,
-                                DomainObjects.EVENT_SOURCED_AGGREGATE,
-                            ),
+                            (DomainObjects.AGGREGATE,),
                         )
                         cls.meta_.part_of = to_cls
                     case _:
@@ -810,12 +804,10 @@ class Domain:
     def _assign_aggregate_clusters(self):
         """Assign Aggregate Clusters to all relevant elements"""
         from protean.core.aggregate import BaseAggregate
-        from protean.core.event_sourced_aggregate import BaseEventSourcedAggregate
 
         # Assign Aggregates and EventSourcedAggregates to their own cluster
         for element_type in [
             DomainObjects.AGGREGATE,
-            DomainObjects.EVENT_SOURCED_AGGREGATE,
         ]:
             for _, element in self.registry._elements[element_type.value].items():
                 element.cls.meta_.aggregate_cluster = element.cls
@@ -830,9 +822,7 @@ class Domain:
                 part_of = element.cls.meta_.part_of
                 if part_of:
                     # Traverse up the graph tree to find the root aggregate
-                    while not issubclass(
-                        part_of, (BaseAggregate, BaseEventSourcedAggregate)
-                    ):
+                    while not issubclass(part_of, BaseAggregate):
                         part_of = part_of.meta_.part_of
 
                 element.cls.meta_.aggregate_cluster = part_of
@@ -978,10 +968,7 @@ class Domain:
 
     def _generate_fact_event_classes(self):
         """Generate FactEvent classes for all aggregates with `fact_events` enabled"""
-        for element_type in [
-            DomainObjects.AGGREGATE,
-            DomainObjects.EVENT_SOURCED_AGGREGATE,
-        ]:
+        for element_type in [DomainObjects.AGGREGATE]:
             for _, element in self.registry._elements[element_type.value].items():
                 if element.cls.meta_.fact_events:
                     event_cls = element_to_fact_event(element.cls)
@@ -1025,13 +1012,6 @@ class Domain:
     def event_handler(self, _cls=None, **kwargs):
         return self._domain_element(
             DomainObjects.EVENT_HANDLER,
-            _cls=_cls,
-            **kwargs,
-        )
-
-    def event_sourced_aggregate(self, _cls=None, **kwargs):
-        return self._domain_element(
-            DomainObjects.EVENT_SOURCED_AGGREGATE,
             _cls=_cls,
             **kwargs,
         )

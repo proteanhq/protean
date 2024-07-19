@@ -1,14 +1,16 @@
 """Aggregate Functionality and Classes"""
 
+import functools
 import inspect
 import logging
+import typing
 from collections import defaultdict
 from typing import List
 
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
-from protean.exceptions import NotSupportedError
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne, Integer, Reference, ValueObject
 from protean.fields import List as ProteanList
 from protean.reflection import fields
@@ -235,3 +237,43 @@ class atomic_change:
         # Validate on exit to trigger invariant checks
         self.aggregate._disable_invariant_checks = False
         self.aggregate._postcheck()
+
+
+def apply(fn):
+    """Decorator to mark methods in EventHandler classes."""
+
+    if len(typing.get_type_hints(fn)) > 2:
+        raise IncorrectUsageError(
+            {
+                "_entity": [
+                    f"Handler method `{fn.__name__}` has incorrect number of arguments"
+                ]
+            }
+        )
+
+    try:
+        _event_cls = next(
+            iter(
+                {
+                    value
+                    for value in typing.get_type_hints(fn).values()
+                    if inspect.isclass(value) and issubclass(value, BaseEvent)
+                }
+            )
+        )
+    except StopIteration:
+        raise IncorrectUsageError(
+            {
+                "_entity": [
+                    f"Apply method `{fn.__name__}` should accept an argument annotated with the Event class"
+                ]
+            }
+        )
+
+    @functools.wraps(fn)
+    def wrapper(*args):
+        fn(*args)
+
+    setattr(wrapper, "_event_cls", _event_cls)
+
+    return wrapper
