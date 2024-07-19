@@ -377,6 +377,8 @@ class HasOne(Association):
         The `temp_cache` we set up here is eventually used by the `Repository` to determine
         the changes to be persisted.
         """
+        if isinstance(value, dict):
+            value = self.to_cls(**value)
 
         super().__set__(instance, value)
 
@@ -481,10 +483,19 @@ class HasMany(Association):
         """This supports direct assignment of values to HasMany fields, like:
         `order.items = [item1, item2, item3]`
         """
-        super().__set__(instance, value)
+        value = value if isinstance(value, list) else [value]
+
+        values = []
+        for item in value:
+            if isinstance(item, dict):
+                values.append(self.to_cls(**item))
+            else:
+                values.append(item)
+
+        super().__set__(instance, values)
 
         if value is not None:
-            self.add(instance, value)
+            self.add(instance, values)
 
     def add(self, instance, items) -> None:
         """
