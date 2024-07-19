@@ -2,13 +2,13 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseCommand, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseCommand
 from protean.exceptions import IncorrectUsageError
 from protean.fields import String
 from protean.fields.basic import Identifier
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     id = Identifier(identifier=True)
     email = String()
     name = String()
@@ -21,7 +21,7 @@ class Register(BaseCommand):
 
 
 def test_command_definition_without_aggregate_or_stream(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
 
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.register(Register)
@@ -47,7 +47,7 @@ def test_that_abstract_commands_can_be_defined_without_aggregate_or_stream(test_
 
 @pytest.mark.eventstore
 def test_command_associated_with_aggregate(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.init(traverse=False)
 
@@ -60,15 +60,15 @@ def test_command_associated_with_aggregate(test_domain):
         )
     )
 
-    messages = test_domain.event_store.store.read("user:command")
+    messages = test_domain.event_store.store.read("test::user:command")
 
     assert len(messages) == 1
-    messages[0].stream_name == f"user:command-{identifier}"
+    messages[0].stream_name == f"test::user:command-{identifier}"
 
 
 @pytest.mark.eventstore
 def test_command_associated_with_aggregate_with_custom_stream_name(test_domain):
-    test_domain.register(User, stream_category="foo")
+    test_domain.register(User, is_event_sourced=True, stream_category="foo")
     test_domain.register(Register, part_of=User)
     test_domain.init(traverse=False)
 
@@ -81,14 +81,14 @@ def test_command_associated_with_aggregate_with_custom_stream_name(test_domain):
         )
     )
 
-    messages = test_domain.event_store.store.read("foo:command")
+    messages = test_domain.event_store.store.read("test::foo:command")
 
     assert len(messages) == 1
-    messages[0].stream_name == f"foo:command-{identifier}"
+    messages[0].stream_name == f"test::foo:command-{identifier}"
 
 
 def test_aggregate_cluster_of_event(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.init(traverse=False)
 

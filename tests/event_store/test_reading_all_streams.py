@@ -4,12 +4,12 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseEvent
 from protean.fields import DateTime, Identifier, String, Text
 from protean.utils import utcnow_func
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String(max_length=50)
 
@@ -43,7 +43,7 @@ class Renamed(BaseEvent):
     name = String(required=True, max_length=50)
 
 
-class Post(BaseEventSourcedAggregate):
+class Post(BaseAggregate):
     topic = String()
     content = Text()
 
@@ -71,12 +71,12 @@ class Published(BaseEvent):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Activated, part_of=User)
     test_domain.register(Renamed, part_of=User)
 
-    test_domain.register(Post)
+    test_domain.register(Post, is_event_sourced=True)
     test_domain.register(Created, part_of=Post)
     test_domain.register(Published, part_of=Post)
 

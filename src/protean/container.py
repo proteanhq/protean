@@ -382,7 +382,7 @@ class EventedMixin:
         super().__init__(*args, **kwargs)
         self._events = []
 
-    def raise_(self, event, fact_event=False) -> None:
+    def raise_(self, event) -> None:
         """Raise an event in the aggregate cluster.
 
         The version of the aggregate is incremented with every event raised, which is true
@@ -398,7 +398,7 @@ class EventedMixin:
                 f"aggregate `{self.__class__.__name__}`"
             )
 
-        if not fact_event:
+        if not self.meta_.fact_events:
             self._version += 1
 
         identifier = getattr(self, id_field(self).field_name)

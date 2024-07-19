@@ -1,8 +1,8 @@
-from protean import BaseCommand, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseCommand
 from protean.fields import Identifier, String
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     id = Identifier(identifier=True)
     email = String()
     name = String()
@@ -15,6 +15,7 @@ class Register(BaseCommand):
 
 
 def test_domain_stores_command_type_for_easy_retrieval(test_domain):
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.init(traverse=False)
 

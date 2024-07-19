@@ -3,13 +3,13 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
+from protean import BaseAggregate, BaseEvent, BaseEventHandler, handle
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.utils.mixins import Message
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String()
     password_hash = String()
@@ -48,7 +48,7 @@ def auto_set_and_close_loop():
 
 @pytest.mark.asyncio
 async def test_that_exception_is_raised(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.init(traverse=False)
@@ -78,7 +78,7 @@ async def test_that_exception_is_raised(test_domain):
 
 
 def test_exceptions_stop_processing(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
 

@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import pytest
 
-from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
+from protean import BaseAggregate, BaseEvent, BaseEventHandler, handle
 from protean.fields import DateTime, Identifier, String
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String()
     password_hash = String()
 
 
-class Email(BaseEventSourcedAggregate):
+class Email(BaseAggregate):
     email = String()
     sent_at = DateTime()
 
@@ -73,13 +73,13 @@ class AllEventsHandler(BaseEventHandler):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Activated, part_of=User)
     test_domain.register(Renamed, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.register(UserMetrics, part_of=User)
-    test_domain.register(Email)
+    test_domain.register(Email, is_event_sourced=True)
     test_domain.register(Sent, part_of=Email)
     test_domain.register(EmailEventHandler, part_of=Email)
 

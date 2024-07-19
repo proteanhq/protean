@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseCommandHandler, BaseEvent, BaseEventSourcedAggregate, handle
+from protean import BaseAggregate, BaseCommandHandler, BaseEvent, handle
 from protean.core.command import BaseCommand
 from protean.core.event_sourced_aggregate import apply
 from protean.fields import Identifier, String
@@ -25,7 +25,7 @@ class Registered(BaseEvent):
     password_hash = String()
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String()
     password_hash = String()
@@ -64,7 +64,7 @@ class UserCommandHandler(BaseCommandHandler):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserCommandHandler, part_of=User)
@@ -83,14 +83,14 @@ def test_that_events_can_be_raised_from_within_aggregates(test_domain):
         )
     )
 
-    messages = test_domain.event_store.store._read("user")
+    messages = test_domain.event_store.store._read("test::user")
 
     assert len(messages) == 1
-    assert messages[0]["stream_name"] == f"user-{identifier}"
+    assert messages[0]["stream_name"] == f"test::user-{identifier}"
     assert messages[0]["type"] == Registered.__type__
 
-    messages = test_domain.event_store.store._read("user:command")
+    messages = test_domain.event_store.store._read("test::user:command")
 
     assert len(messages) == 1
-    assert messages[0]["stream_name"] == f"user:command-{identifier}"
+    assert messages[0]["stream_name"] == f"test::user:command-{identifier}"
     assert messages[0]["type"] == Register.__type__

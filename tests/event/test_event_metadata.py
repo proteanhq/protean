@@ -3,14 +3,14 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseEvent
 from protean.fields import String, ValueObject
 from protean.fields.basic import Identifier
 from protean.reflection import fields
 from protean.utils import fqn
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     id = Identifier(identifier=True)
     email = String()
     name = String()
@@ -25,7 +25,7 @@ class UserLoggedIn(BaseEvent):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(UserLoggedIn, part_of=User)
     test_domain.init(traverse=False)
 
@@ -133,15 +133,15 @@ def test_event_metadata():
     assert event._metadata is not None
 
     assert isinstance(event._metadata.timestamp, datetime)
-    assert event._metadata.id == f"user-{user.id}-0"
+    assert event._metadata.id == f"test::user-{user.id}-0"
 
     assert event.to_dict() == {
         "_metadata": {
-            "id": f"user-{user.id}-0",
+            "id": f"test::user-{user.id}-0",
             "type": "Test.UserLoggedIn.v1",
             "fqn": fqn(UserLoggedIn),
             "kind": "EVENT",
-            "stream": f"user-{user.id}",
+            "stream": f"test::user-{user.id}",
             "origin_stream": None,
             "timestamp": str(event._metadata.timestamp),
             "version": "v1",

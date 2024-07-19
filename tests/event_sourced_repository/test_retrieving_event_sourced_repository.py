@@ -1,13 +1,13 @@
 import pytest
 
-from protean import BaseAggregate, BaseEventSourcedAggregate
+from protean import BaseAggregate
 from protean.core.event_sourced_repository import BaseEventSourcedRepository
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, String
 from protean.utils import DomainObjects
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     name = String()
     age = Integer()
 
@@ -15,7 +15,7 @@ class User(BaseEventSourcedAggregate):
 def test_that_event_sourced_repository_is_returned_for_event_sourced_aggregate(
     test_domain,
 ):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
 
     assert (
         test_domain.repository_for(User).element_type
@@ -49,6 +49,7 @@ def test_that_an_event_sourced_repository_can_only_be_associated_with_an_event_s
         pass
 
     with pytest.raises(IncorrectUsageError) as exc:
+        test_domain.register(CustomAggregate)
         test_domain.register(CustomRepository, part_of=CustomAggregate)
 
     assert exc.value.messages == {

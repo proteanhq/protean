@@ -2,7 +2,7 @@ from enum import Enum
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate, apply
+from protean import BaseAggregate, BaseEvent, apply
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import Identifier, String
 
@@ -32,7 +32,7 @@ class UserArchived(BaseEvent):
     user_id = Identifier(required=True)
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     user_id = Identifier(identifier=True)
     name = String(max_length=50, required=True)
     email = String(required=True)
@@ -63,7 +63,7 @@ class User(BaseEventSourcedAggregate):
         self.name = event.name
 
 
-class Email(BaseEventSourcedAggregate):
+class Email(BaseAggregate):
     email_id = Identifier(identifier=True)
 
     @apply
@@ -73,11 +73,11 @@ class Email(BaseEventSourcedAggregate):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(UserRegistered, part_of=User)
     test_domain.register(UserActivated, part_of=User)
     test_domain.register(UserRenamed, part_of=User)
-    test_domain.register(Email)
+    test_domain.register(Email, is_event_sourced=True)
 
 
 @pytest.mark.eventstore
@@ -91,7 +91,7 @@ def test_that_event_is_associated_with_aggregate():
 def test_that_trying_to_associate_an_event_with_multiple_aggregates_throws_an_error(
     test_domain,
 ):
-    test_domain.register(Email)
+    test_domain.register(Email, is_event_sourced=True)
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.init(traverse=False)
 

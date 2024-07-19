@@ -1,11 +1,11 @@
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     id = Identifier(identifier=True)
     email = String()
     name = String()
@@ -17,7 +17,7 @@ class UserLoggedIn(BaseEvent):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(UserLoggedIn, part_of="User")
 
 
@@ -29,4 +29,4 @@ def test_event_has_stream_category_after_domain_init(test_domain):
     test_domain.init(traverse=False)
 
     assert UserLoggedIn.meta_.part_of == User
-    assert UserLoggedIn.meta_.part_of.meta_.stream_category == "user"
+    assert UserLoggedIn.meta_.part_of.meta_.stream_category == "test::user"

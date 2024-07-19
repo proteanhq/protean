@@ -5,19 +5,19 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
+from protean import BaseAggregate, BaseEvent, BaseEventHandler, handle
 from protean.fields import DateTime, Identifier, String
 from protean.server import Engine
 from protean.utils import fqn
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String()
     password_hash = String()
 
 
-class Email(BaseEventSourcedAggregate):
+class Email(BaseAggregate):
     email = String()
     sent_at = DateTime()
 
@@ -65,12 +65,12 @@ class EmailEventHandler(BaseEventHandler):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
-    test_domain.register(Email)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Activated, part_of=User)
-    test_domain.register(Sent, part_of=Email)
     test_domain.register(UserEventHandler, part_of=User)
+    test_domain.register(Email, is_event_sourced=True)
+    test_domain.register(Sent, part_of=Email)
     test_domain.register(EmailEventHandler, stream_category="email")
     test_domain.init(traverse=False)
 

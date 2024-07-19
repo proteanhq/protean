@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseCommand, BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseCommand, BaseEvent
 from protean.core.event import Metadata
 from protean.fields import String
 from protean.fields.basic import Identifier
@@ -10,7 +10,7 @@ from protean.globals import g
 from protean.utils.mixins import Message
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     id = Identifier(identifier=True)
     email = String()
     name = String()
@@ -30,7 +30,7 @@ class Registered(BaseEvent):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.register(Registered, part_of=User)
     test_domain.init(traverse=False)
@@ -167,4 +167,4 @@ def test_origin_stream_in_command_from_event(
     enriched_command = test_domain._enrich_command(command)
     command_message = Message.to_message(enriched_command)
 
-    assert command_message.metadata.origin_stream == f"user-{user_id}"
+    assert command_message.metadata.origin_stream == f"test::user-{user_id}"

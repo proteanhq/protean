@@ -1,6 +1,6 @@
 import pytest
 
-from protean import BaseCommand, BaseEventSourcedAggregate, handle
+from protean import BaseAggregate, BaseCommand, handle
 from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.fields import Identifier, String, Text
@@ -10,7 +10,7 @@ class UnknownCommand(BaseCommand):
     foo = String()
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     user_id = Identifier(identifier=True)  # FIXME Auto-associate ID
     email = String()
     name = String()
@@ -38,7 +38,7 @@ class AdminUserCommandHandlers(BaseCommandHandler):
         pass
 
 
-class Post(BaseEventSourcedAggregate):
+class Post(BaseAggregate):
     topic = String()
     content = Text()
 
@@ -56,11 +56,11 @@ class PostCommandHandler(BaseCommandHandler):
 
 
 def test_retrieving_handler_by_command(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.register(ChangeAddress, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
-    test_domain.register(Post)
+    test_domain.register(Post, is_event_sourced=True)
     test_domain.register(Create, part_of=Post)
     test_domain.register(PostCommandHandler, part_of=Post)
     test_domain.init(traverse=False)
@@ -72,7 +72,7 @@ def test_retrieving_handler_by_command(test_domain):
 def test_for_no_errors_when_no_handler_method_has_not_been_defined_for_a_command(
     test_domain,
 ):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.register(ChangeAddress, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
@@ -92,7 +92,7 @@ def test_retrieving_handlers_for_unknown_command(test_domain):
 
 
 def test_error_on_defining_multiple_handlers_for_a_command(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(UserCommandHandlers, part_of=User)
     test_domain.register(AdminUserCommandHandlers, part_of=User)
     test_domain.init(traverse=False)

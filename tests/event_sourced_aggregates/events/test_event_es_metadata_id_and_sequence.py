@@ -2,12 +2,12 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     id = Identifier(identifier=True)
     email = String()
     name = String()
@@ -22,7 +22,7 @@ class UserLoggedIn(BaseEvent):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(UserLoggedIn, part_of=User)
     test_domain.init(traverse=False)
 
@@ -33,5 +33,5 @@ def test_event_is_generated_with_unique_id():
     user.login()
 
     event = user._events[0]
-    assert event._metadata.id == f"user-{identifier}-0"
+    assert event._metadata.id == f"test::user-{identifier}-0"
     assert event._metadata.sequence_id == "0"

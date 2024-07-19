@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseEvent
 from protean.core.event_sourced_aggregate import apply
 from protean.fields import String
 from protean.fields.basic import Identifier
@@ -25,7 +25,7 @@ class Renamed(BaseEvent):
     name = String()
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String()
     status = String(default="INACTIVE")
@@ -59,7 +59,7 @@ class User(BaseEventSourcedAggregate):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Activated, part_of=User)
     test_domain.register(Renamed, part_of=User)
@@ -72,7 +72,7 @@ def test_appending_messages_to_aggregate(test_domain):
     user = User.register(id=identifier, email="john.doe@example.com", name="John Doe")
     test_domain.event_store.store.append(user._events[0])
 
-    messages = test_domain.event_store.store._read("user")
+    messages = test_domain.event_store.store._read("test::user")
 
     assert len(messages) == 1
 
@@ -83,17 +83,17 @@ def test_version_increment_on_new_event(test_domain):
     user = User.register(id=identifier, email="john.doe@example.com", name="John Doe")
     test_domain.event_store.store.append(user._events[0])
 
-    events = test_domain.event_store.store._read(f"user-{identifier}")
+    events = test_domain.event_store.store._read(f"test::user-{identifier}")
     assert events[0]["position"] == 0
 
     user.activate()
     test_domain.event_store.store.append(user._events[1])
 
-    events = test_domain.event_store.store._read(f"user-{identifier}")
+    events = test_domain.event_store.store._read(f"test::user-{identifier}")
     assert events[-1]["position"] == 1
 
     user.rename(name="John Doe 2")
     test_domain.event_store.store.append(user._events[2])
 
-    events = test_domain.event_store.store._read(f"user-{identifier}")
+    events = test_domain.event_store.store._read(f"test::user-{identifier}")
     assert events[-1]["position"] == 2

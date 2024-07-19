@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
+from protean import BaseAggregate, BaseEvent, BaseEventHandler, handle
 from protean.fields import DateTime, Identifier, String
 from protean.server import Engine
 from protean.utils import fqn
@@ -27,7 +27,7 @@ class Sent(BaseEvent):
     sent_on = DateTime()
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String()
     password_hash = String()
@@ -72,41 +72,49 @@ def setup_event_loop():
 
 
 def test_event_subscriptions(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Activated, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
+    test_domain.init(traverse=False)
     engine = Engine(test_domain, test_mode=True)
 
     assert len(engine._subscriptions) == 1
     assert fqn(UserEventHandler) in engine._subscriptions
-    assert engine._subscriptions[fqn(UserEventHandler)].stream_category == "user"
+    assert engine._subscriptions[fqn(UserEventHandler)].stream_category == "test::user"
 
 
 def test_origin_stream_category_in_subscription(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Sent, part_of=User)
-    test_domain.register(EmailEventHandler, part_of=User, source_stream="email")
+    test_domain.register(EmailEventHandler, part_of=User, source_stream="test::email")
+    test_domain.init(traverse=False)
 
     engine = Engine(test_domain, test_mode=True)
 
     assert len(engine._subscriptions) == 1
-    assert engine._subscriptions[fqn(EmailEventHandler)].stream_category == "user"
-    assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream == "email"
+    assert engine._subscriptions[fqn(EmailEventHandler)].stream_category == "test::user"
+    assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream == "test::email"
 
 
 def test_that_stream_name_overrides_the_derived_stream_name_from_owning_aggregate(
     test_domain,
 ):
+    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(Sent, part_of=User)
     test_domain.register(
         EmailEventHandler,
         part_of=User,
-        stream_category="identity",
-        source_stream="email",
+        stream_category="test::identity",
+        source_stream="test::email",
     )
+    test_domain.init(traverse=False)
 
     engine = Engine(test_domain, test_mode=True)
 
     assert len(engine._subscriptions) == 1
-    assert engine._subscriptions[fqn(EmailEventHandler)].stream_category == "identity"
-    assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream == "email"
+    assert (
+        engine._subscriptions[fqn(EmailEventHandler)].stream_category
+        == "test::identity"
+    )
+    assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream == "test::email"

@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate, UnitOfWork, apply
+from protean import BaseAggregate, BaseEvent, UnitOfWork, apply
 from protean.fields import Identifier, String
 
 
@@ -28,7 +28,7 @@ class UserRenamed(BaseEvent):
     name = String(required=True, max_length=50)
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     user_id = Identifier(identifier=True)
     name = String(max_length=50, required=True)
     email = String(required=True)
@@ -61,7 +61,7 @@ class User(BaseEventSourcedAggregate):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(UserRegistered, part_of=User)
     test_domain.register(UserActivated, part_of=User)
     test_domain.register(UserRenamed, part_of=User)
@@ -109,7 +109,7 @@ def test_that_snapshot_is_constructed_after_threshold(test_domain):
             repo.add(user)
 
     snapshot = test_domain.event_store.store._read_last_message(
-        f"user:snapshot-{identifier}"
+        f"test::user:snapshot-{identifier}"
     )
     assert snapshot is not None
     assert User(**snapshot["data"]) == user
@@ -137,7 +137,7 @@ def test_that_a_stream_can_have_multiple_snapshots_but_latest_is_considered(
             repo.add(user)
 
     snapshot = test_domain.event_store.store._read_last_message(
-        f"user:snapshot-{identifier}"
+        f"test::user:snapshot-{identifier}"
     )
     assert snapshot is not None
     assert User(**snapshot["data"]) == user
@@ -165,7 +165,7 @@ def test_that_a_stream_with_a_snapshop_and_no_further_events_is_reconstructed_co
             repo.add(user)
 
     snapshot = test_domain.event_store.store._read_last_message(
-        f"user:snapshot-{identifier}"
+        f"test::user:snapshot-{identifier}"
     )
     assert snapshot is not None
     assert User(**snapshot["data"]) == user

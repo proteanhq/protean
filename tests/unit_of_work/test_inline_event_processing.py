@@ -5,11 +5,11 @@ from uuid import uuid4
 import pytest
 
 from protean import (
+    BaseAggregate,
     BaseCommand,
     BaseCommandHandler,
     BaseEvent,
     BaseEventHandler,
-    BaseEventSourcedAggregate,
     apply,
     handle,
 )
@@ -38,7 +38,7 @@ class Registered(BaseEvent):
     password_hash = String()
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     user_id = Identifier(identifier=True)
     email = String()
     name = String()
@@ -92,7 +92,7 @@ class UserMetrics(BaseEventHandler):
 
 @pytest.mark.eventstore
 def test_inline_event_processing_in_sync_mode(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserCommandHandler, part_of=User)

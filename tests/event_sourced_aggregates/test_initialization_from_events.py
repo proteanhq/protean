@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate, apply
+from protean import BaseAggregate, BaseEvent, apply
 from protean.fields import Identifier, String
 
 
@@ -21,7 +21,7 @@ class UserRenamed(BaseEvent):
     name = String(required=True, max_length=50)
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     user_id = Identifier(identifier=True)
     name = String(max_length=50, required=True)
     email = String(required=True)
@@ -56,7 +56,7 @@ class User(BaseEventSourcedAggregate):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(UserRegistered, part_of=User)
     test_domain.register(UserActivated, part_of=User)
     test_domain.register(UserRenamed, part_of=User)
