@@ -2,14 +2,17 @@
 
 import inspect
 import logging
+from collections import defaultdict
+from typing import List
 
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import NotSupportedError
-from protean.fields import HasMany, HasOne, Integer, List, Reference, ValueObject
+from protean.fields import HasMany, HasOne, Integer, Reference, ValueObject
+from protean.fields import List as ProteanList
 from protean.reflection import fields
-from protean.utils import DomainObjects, derive_element_class, inflection
+from protean.utils import DomainObjects, derive_element_class, fqn, inflection
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +59,19 @@ class BaseAggregate(BaseEntity):
     #   a single aggregate update could have triggered multiple events.
     _event_position = -1
 
+    def __init_subclass__(subclass) -> None:
+        super().__init_subclass__()
+
+        # Associate a `_projections` map with subclasses.
+        #   It needs to be initialized here because if it
+        #   were initialized in __init__, the same collection object
+        #   would be made available across all subclasses,
+        #   defeating its purpose.
+        setattr(subclass, "_projections", defaultdict(set))
+
+        # Store associated events
+        setattr(subclass, "_events_cls_map", {})
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -73,11 +89,45 @@ class BaseAggregate(BaseEntity):
             ("aggregate_cluster", None),
             ("auto_add_id_field", True),
             ("fact_events", False),
+            ("is_event_sourced", False),
             ("model", None),
             ("provider", "default"),
             ("schema_name", inflection.underscore(cls.__name__)),
             ("stream_category", inflection.underscore(cls.__name__)),
         ]
+
+    def _apply(self, event: BaseEvent) -> None:
+        """Apply the event onto the aggregate by calling the appropriate projection.
+
+        Args:
+            event (BaseEvent): Event object to apply
+        """
+        # FIXME Handle case of missing projection
+        event_name = fqn(event.__class__)
+
+        # FIXME Handle case of missing projection method
+        if event_name not in self._projections:
+            raise NotImplementedError(
+                f"No handler registered for event `{event_name}` in `{self.__class__.__name__}`"
+            )
+
+        for fn in self._projections[event_name]:
+            # Call event handler method
+            fn(self, event)
+            self._version += 1
+
+    @classmethod
+    def from_events(cls, events: List[BaseEvent]) -> "BaseAggregate":
+        """Reconstruct an aggregate from a list of events."""
+        # Initialize the aggregate with the first event's payload and apply it
+        aggregate = cls(**events[0].payload)
+        aggregate._apply(events[0])
+
+        # Apply the rest of the events
+        for event in events[1:]:
+            aggregate._apply(event)
+
+        return aggregate
 
 
 def element_to_fact_event(element_cls):
@@ -94,9 +144,7 @@ def element_to_fact_event(element_cls):
     The target class of associations is constructed as the Value Object.
     """
     # Gather all fields defined in the element, except References.
-    #   We ignore references in event payloads. We also ignore
-    #   the `_next_version` field because it is a temporary in-flight
-    #   field used to track the next version of the aggregate.
+    #   We ignore references in event payloads.
     attrs = {
         key: value
         for key, value in fields(element_cls).items()
@@ -108,7 +156,7 @@ def element_to_fact_event(element_cls):
         if isinstance(value, HasOne):
             attrs[key] = element_to_fact_event(value.to_cls)
         elif isinstance(value, HasMany):
-            attrs[key] = List(content_type=element_to_fact_event(value.to_cls))
+            attrs[key] = ProteanList(content_type=element_to_fact_event(value.to_cls))
 
     # If we are dealing with an Entity, we convert it to a Value Object
     #   and return it.
@@ -159,6 +207,15 @@ def aggregate_factory(element_cls, domain, **opts):
     element_cls.meta_.stream_category = (
         f"{domain.normalized_name}::{element_cls.meta_.stream_category}"
     )
+
+    # Iterate through methods marked as `@apply` and construct a projections map
+    methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
+    for method_name, method in methods:
+        if not (
+            method_name.startswith("__") and method_name.endswith("__")
+        ) and hasattr(method, "_event_cls"):
+            element_cls._projections[fqn(method._event_cls)].add(method)
+            element_cls._events_cls_map[fqn(method._event_cls)] = method._event_cls
 
     return element_cls
 

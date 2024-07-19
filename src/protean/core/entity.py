@@ -440,21 +440,6 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                 f" aggregate `{self._root.__class__.__name__}`"
             )
 
-        # Events are sometimes raised from within the aggregate, well-before persistence.
-        #   In that case, the aggregate's next version has to be considered in events,
-        #   because we want to associate the event with the version that will be persisted.
-        #
-        # Other times, an event is generated after persistence, like in the case of
-        #   fact events. In this case, the aggregate's current version and next version
-        #   will be the same.
-        #
-        # So we simply take the latest version, among `_version` and `_next_version`.
-        aggregate_version = max(self._root._version, self._root._next_version)
-
-        # This is just a counter to uniquely gather all events generated
-        #   in the same edit session
-        event_number = len(self._root._events) + 1
-
         identifier = getattr(self._root, id_field(self._root).field_name)
 
         # Set Fact Event stream to be `<aggregate_stream_name>-fact`
@@ -463,11 +448,42 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
         else:
             stream = f"{self._root.meta_.stream_category}-{identifier}"
 
+        if self._root.meta_.is_event_sourced:
+            # The version of the aggregate is incremented with every event raised, which is true
+            # in the case of Event Sourced Aggregates.
+            #
+            # Except for Fact Events. Fact Events are raised after the aggregate has been persisted,
+            if not event.__class__.__name__.endswith("FactEvent"):
+                self._version += 1
+
+            event_identity = f"{stream}-{self._version}"
+            sequence_id = f"{self._version}"
+        else:
+            # Events are sometimes raised from within the aggregate, well-before persistence.
+            #   In that case, the aggregate's next version has to be considered in events,
+            #   because we want to associate the event with the version that will be persisted.
+            #
+            # Other times, an event is generated after persistence, like in the case of
+            #   fact events. In this case, the aggregate's current version and next version
+            #   will be the same.
+            #
+            # So we simply take the latest version, among `_version` and `_next_version`.
+            aggregate_version = max(self._root._version, self._root._next_version)
+
+            # This is just a counter to uniquely gather all events generated
+            #   in the same edit session
+            event_number = len(self._root._events) + 1
+
+            event_identity = f"{stream}-{aggregate_version}.{event_number}"
+            sequence_id = f"{aggregate_version}.{event_number}"
+
+        # Event is immutable, so we clone a new event object from the event raised,
+        # and add the enhanced metadata to it.
         event_with_metadata = event.__class__(
             event.to_dict(),
             _expected_version=self._root._event_position,
             _metadata={
-                "id": (f"{stream}-{aggregate_version}.{event_number}"),
+                "id": event_identity,
                 "type": event._metadata.type,
                 "fqn": event._metadata.fqn,
                 "kind": event._metadata.kind,
@@ -475,7 +491,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                 "origin_stream": event._metadata.origin_stream,
                 "timestamp": event._metadata.timestamp,
                 "version": event._metadata.version,
-                "sequence_id": f"{aggregate_version}.{event_number}",
+                "sequence_id": sequence_id,
                 "payload_hash": hash(
                     json.dumps(
                         event.payload,

@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseCommand, BaseEvent, BaseEventSourcedAggregate, apply
+from protean import BaseAggregate, BaseCommand, BaseEvent, apply
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
 from protean.utils import fqn
@@ -30,7 +30,7 @@ class UserRenamed(BaseEvent):
     name = String(required=True, max_length=50)
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     user_id = Identifier(identifier=True)
     name = String(max_length=50, required=True)
     email = String(required=True)
@@ -63,7 +63,7 @@ class User(BaseEventSourcedAggregate):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(UserRegistered, part_of=User)
     test_domain.register(UserActivated, part_of=User)
     test_domain.register(UserRenamed, part_of=User)
@@ -89,7 +89,7 @@ def test_apply_decorator_method_should_have_exactly_one_argument():
         class Sent(BaseEvent):
             email_id = Identifier()
 
-        class _(BaseEventSourcedAggregate):
+        class _(BaseAggregate):
             email_id = Identifier(identifier=True)
 
             @apply
@@ -108,7 +108,7 @@ def test_that_apply_decorator_without_event_cls_raises_error():
     # Argument should be an event class
     with pytest.raises(IncorrectUsageError) as exc:
 
-        class _(BaseEventSourcedAggregate):
+        class _(BaseAggregate):
             email_id = Identifier(identifier=True)
 
             @apply
@@ -124,7 +124,7 @@ def test_that_apply_decorator_without_event_cls_raises_error():
     # Argument should be annotated
     with pytest.raises(IncorrectUsageError) as exc:
 
-        class _(BaseEventSourcedAggregate):
+        class _(BaseAggregate):
             email_id = Identifier(identifier=True)
 
             @apply
@@ -140,7 +140,7 @@ def test_that_apply_decorator_without_event_cls_raises_error():
     # Argument should be supplied
     with pytest.raises(IncorrectUsageError) as exc:
 
-        class _(BaseEventSourcedAggregate):
+        class _(BaseAggregate):
             email_id = Identifier(identifier=True)
 
             @apply

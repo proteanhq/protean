@@ -4,12 +4,12 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseEvent
 from protean.fields.basic import Identifier
 from protean.utils.mixins import Message
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     user_id = Identifier(identifier=True)
 
 
@@ -19,7 +19,7 @@ class UserLoggedIn(BaseEvent):
 
 @pytest.mark.eventstore
 def test_appending_raw_events(test_domain):
-    test_domain.register(User, stream_category="authentication")
+    test_domain.register(User, is_event_sourced=True, stream_category="authentication")
     test_domain.register(UserLoggedIn, part_of=User)
     test_domain.init(traverse=False)
 
@@ -29,14 +29,14 @@ def test_appending_raw_events(test_domain):
     event = user._events[0]  # Remember event for later comparison
     test_domain.repository_for(User).add(user)
 
-    messages = test_domain.event_store.store.read("authentication")
+    messages = test_domain.event_store.store.read("test::authentication")
 
     assert len(messages) == 1
 
     message = messages[0]
     assert isinstance(message, Message)
 
-    assert message.stream_name == f"authentication-{identifier}"
+    assert message.stream_name == f"test::authentication-{identifier}"
     assert message.metadata.kind == "EVENT"
     assert message.data == event.payload
     assert message.metadata == event._metadata

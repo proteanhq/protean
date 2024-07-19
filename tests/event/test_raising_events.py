@@ -2,12 +2,12 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     id = Identifier(identifier=True)
     email = String()
     name = String()
@@ -19,7 +19,7 @@ class UserLoggedIn(BaseEvent):
 
 @pytest.mark.eventstore
 def test_raising_event(test_domain):
-    test_domain.register(User, stream_category="authentication")
+    test_domain.register(User, is_event_sourced=True, stream_category="authentication")
     test_domain.register(UserLoggedIn, part_of=User)
     test_domain.init(traverse=False)
 
@@ -29,7 +29,7 @@ def test_raising_event(test_domain):
 
     test_domain.repository_for(User).add(user)
 
-    messages = test_domain.event_store.store.read("authentication")
+    messages = test_domain.event_store.store.read("test::authentication")
 
     assert len(messages) == 1
-    assert messages[0].stream_name == f"authentication-{identifier}"
+    assert messages[0].stream_name == f"test::authentication-{identifier}"

@@ -5,7 +5,7 @@ from uuid import uuid4
 import mock
 import pytest
 
-from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
+from protean import BaseAggregate, BaseEvent, BaseEventHandler, handle
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription import Subscription
@@ -22,7 +22,7 @@ class Registered(BaseEvent):
     password_hash = String()
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String()
     password_hash = String()
@@ -54,7 +54,7 @@ class UserEventHandler(BaseEventHandler):
 async def test_that_subscription_invokes_engine_handler_on_message(
     mock_handle_message, test_domain
 ):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.init(traverse=False)
@@ -70,7 +70,7 @@ async def test_that_subscription_invokes_engine_handler_on_message(
 
     engine = Engine(test_domain, test_mode=True)
     subscription = Subscription(
-        engine, fully_qualified_name(UserEventHandler), "user", UserEventHandler
+        engine, fully_qualified_name(UserEventHandler), "test::user", UserEventHandler
     )
     await subscription.poll()
 

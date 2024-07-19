@@ -2,13 +2,13 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseCommand, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseCommand
 from protean.exceptions import IncorrectUsageError
 from protean.fields import String
 from protean.fields.basic import Identifier
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     id = Identifier(identifier=True)
     email = String()
     name = String()
@@ -21,7 +21,7 @@ class Register(BaseCommand):
 
 
 def test_command_submission_without_aggregate(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.init(traverse=False)
 
     with pytest.raises(IncorrectUsageError) as exc:
@@ -36,7 +36,7 @@ def test_command_submission_without_aggregate(test_domain):
 
 @pytest.mark.eventstore
 def test_command_submission(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.init(traverse=False)
 
@@ -49,7 +49,7 @@ def test_command_submission(test_domain):
         )
     )
 
-    messages = test_domain.event_store.store.read("user:command")
+    messages = test_domain.event_store.store.read("test::user:command")
 
     assert len(messages) == 1
-    messages[0].stream_name == f"user:command-{identifier}"
+    messages[0].stream_name == f"test::user:command-{identifier}"

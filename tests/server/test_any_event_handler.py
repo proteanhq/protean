@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
+from protean import BaseAggregate, BaseEvent, BaseEventHandler, handle
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.utils.mixins import Message
@@ -15,7 +15,7 @@ def count_up():
     counter += 1
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String()
     password_hash = String()
@@ -36,7 +36,7 @@ class UserEventHandler(BaseEventHandler):
 
 @pytest.mark.asyncio
 async def test_that_an_event_handler_can_be_associated_with_an_all_stream(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.init(traverse=False)

@@ -5,11 +5,11 @@ from uuid import uuid4
 import pytest
 
 from protean import (
+    BaseAggregate,
     BaseCommand,
     BaseCommandHandler,
     BaseEvent,
     BaseEventHandler,
-    BaseEventSourcedAggregate,
     apply,
     handle,
 )
@@ -38,7 +38,7 @@ class Published(BaseEvent):
     published_time = DateTime(default=utcnow_func)
 
 
-class Post(BaseEventSourcedAggregate):
+class Post(BaseAggregate):
     topic = String()
     content = Text()
     is_published = Boolean(default=False)
@@ -93,12 +93,12 @@ class Metrics(BaseEventHandler):
 
 @pytest.mark.eventstore
 def test_nested_uow_processing(test_domain):
-    test_domain.register(Post)
+    test_domain.register(Post, is_event_sourced=True)
     test_domain.register(Create, part_of=Post)
     test_domain.register(Created, part_of=Post)
     test_domain.register(Published, part_of=Post)
     test_domain.register(PostEventHandler, part_of=Post)
-    test_domain.register(Metrics, stream_category="post")
+    test_domain.register(Metrics, stream_category="test::post")
     test_domain.init(traverse=False)
 
     identifier = str(uuid4())

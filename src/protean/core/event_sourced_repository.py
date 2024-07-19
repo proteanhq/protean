@@ -55,7 +55,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 
                 # Construct and raise the Fact Event
                 fact_event_obj = aggregate._fact_event_cls(**payload)
-                aggregate.raise_(fact_event_obj, fact_event=True)
+                aggregate.raise_(fact_event_obj)
 
             uow._add_to_identity_map(aggregate)
 
@@ -113,7 +113,7 @@ def event_sourced_repository_factory(element_cls, domain, **opts):
             }
         )
 
-    if not issubclass(element_cls.meta_.part_of, BaseEventSourcedAggregate):
+    if not element_cls.meta_.part_of.meta_.is_event_sourced:
         raise IncorrectUsageError(
             {
                 "_entity": [

@@ -4,12 +4,12 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String(max_length=50)
 
@@ -45,7 +45,7 @@ class Renamed(BaseEvent):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Activated, part_of=User)
     test_domain.register(Renamed, part_of=User)
@@ -98,7 +98,7 @@ class TestEventStoreEventsOfType:
 
     @pytest.mark.eventstore
     def test_reading_events_of_type_with_multiple_events_in_stream(self, test_domain):
-        events = test_domain.event_store.events_of_type(Renamed, "user")
+        events = test_domain.event_store.events_of_type(Renamed, "test::user")
         assert len(events) == 10
         assert events[-1].name == "John Doe 9"
 
@@ -106,5 +106,5 @@ class TestEventStoreEventsOfType:
     def test_reading_events_of_type_with_multiple_events_in_different_stream(
         self, test_domain
     ):
-        events = test_domain.event_store.events_of_type(Renamed, "group")
+        events = test_domain.event_store.events_of_type(Renamed, "test::group")
         assert len(events) == 0

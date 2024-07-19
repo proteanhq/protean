@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseCommandHandler, BaseEvent, BaseEventSourcedAggregate, handle
+from protean import BaseAggregate, BaseCommandHandler, BaseEvent, handle
 from protean.core.command import BaseCommand
 from protean.fields import String
 from protean.fields.basic import Identifier
@@ -18,7 +18,7 @@ class Register(BaseCommand):
     password_hash = String()
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String()
     password_hash = String()
@@ -60,7 +60,7 @@ class UserCommandHandler(BaseCommandHandler):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Register, part_of=User)
     test_domain.register(UserCommandHandler, part_of=User)
@@ -79,6 +79,6 @@ def test_persisting_events_on_commit(test_domain):
         )
     )
 
-    events = test_domain.event_store.store._read(f"user-{identifier}")
+    events = test_domain.event_store.store._read(f"test::user-{identifier}")
 
     assert len(events) == 1

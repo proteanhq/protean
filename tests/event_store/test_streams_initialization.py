@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import pytest
 
-from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
+from protean import BaseAggregate, BaseEvent, BaseEventHandler, handle
 from protean.fields import DateTime, Identifier, String
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String()
     password_hash = String()
 
 
-class Email(BaseEventSourcedAggregate):
+class Email(BaseAggregate):
     email = String()
     sent_at = DateTime()
 
@@ -56,10 +56,10 @@ class EmailEventHandler(BaseEventHandler):
 
 @pytest.fixture(autouse=True)
 def register(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Activated, part_of=User)
-    test_domain.register(Email)
+    test_domain.register(Email, is_event_sourced=True)
     test_domain.register(Sent, part_of=Email)
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.register(EmailEventHandler, part_of=Email)
@@ -70,8 +70,8 @@ def test_streams_initialization(test_domain):
     assert len(test_domain.event_store._event_streams) == 2
     assert all(
         stream_category in test_domain.event_store._event_streams
-        for stream_category in ["user", "email"]
+        for stream_category in ["test::user", "test::email"]
     )
 
-    assert test_domain.event_store._event_streams["user"] == {UserEventHandler}
-    assert test_domain.event_store._event_streams["email"] == {EmailEventHandler}
+    assert test_domain.event_store._event_streams["test::user"] == {UserEventHandler}
+    assert test_domain.event_store._event_streams["test::email"] == {EmailEventHandler}

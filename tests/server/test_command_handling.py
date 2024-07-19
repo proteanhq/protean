@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseCommand, BaseCommandHandler, BaseEventSourcedAggregate, handle
+from protean import BaseAggregate, BaseCommand, BaseCommandHandler, handle
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.utils.mixins import Message
@@ -10,7 +10,7 @@ from protean.utils.mixins import Message
 counter = 0
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     id = Identifier(identifier=True)
     email = String()
     name = String()
@@ -42,7 +42,7 @@ class UserCommandHandler(BaseCommandHandler):
 
 @pytest.mark.asyncio
 async def test_handler_invocation(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.register(Activate, part_of=User)
     test_domain.register(UserCommandHandler, part_of=User)

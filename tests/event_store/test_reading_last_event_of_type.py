@@ -4,12 +4,12 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String(max_length=50)
 
@@ -45,7 +45,7 @@ class Renamed(BaseEvent):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Activated, part_of=User)
     test_domain.register(Renamed, part_of=User)
@@ -112,7 +112,7 @@ class TestEventStoreEventsOfType:
             registered_user.rename(name=f"John Doe {i}")
             test_domain.event_store.store.append(registered_user._events[-1])
 
-        event = test_domain.event_store.last_event_of_type(Renamed, "user")
+        event = test_domain.event_store.last_event_of_type(Renamed, "test::user")
         assert event.name == "John Doe 9"
 
     @pytest.mark.eventstore

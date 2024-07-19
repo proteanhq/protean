@@ -2,7 +2,7 @@ from enum import Enum
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate, apply
+from protean import BaseAggregate, BaseEvent, apply
 from protean.fields import Identifier, String
 from protean.utils.mixins import Message
 
@@ -28,7 +28,7 @@ class UserRenamed(BaseEvent):
     name = String(required=True, max_length=50)
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     user_id = Identifier(identifier=True)
     name = String(max_length=50, required=True)
     email = String(required=True)
@@ -61,7 +61,7 @@ class User(BaseEventSourcedAggregate):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(UserRegistered, part_of=User)
     test_domain.register(UserActivated, part_of=User)
     test_domain.register(UserRenamed, part_of=User)
@@ -79,7 +79,7 @@ def test_aggregate_and_event_version_after_first_persistence(test_domain):
     user = User.register(user_id="1", name="John Doe", email="john.doe@example.com")
     test_domain.repository_for(User).add(user)
 
-    event_messages = test_domain.event_store.store.read(f"user-{user.user_id}")
+    event_messages = test_domain.event_store.store.read(f"test::user-{user.user_id}")
     assert len(event_messages) == 1
 
     refreshed_user = test_domain.repository_for(User).get(user.user_id)
@@ -103,7 +103,7 @@ def test_aggregate_and_event_version_after_first_persistence_after_multiple_pers
         refreshed_user.change_name(f"John Doe {i}")
         test_domain.repository_for(User).add(refreshed_user)
 
-    event_messages = test_domain.event_store.store.read(f"user-{user.user_id}")
+    event_messages = test_domain.event_store.store.read(f"test::user-{user.user_id}")
     assert len(event_messages) == 11
 
     refreshed_user = test_domain.repository_for(User).get(user.user_id)
@@ -137,7 +137,7 @@ def test_aggregate_and_event_version_after_multiple_event_generation_in_one_upda
 
     assert refreshed_user._version == 1
 
-    event_messages = test_domain.event_store.store.read(f"user-{user.user_id}")
+    event_messages = test_domain.event_store.store.read(f"test::user-{user.user_id}")
     assert len(event_messages) == 2
 
     event1 = Message.to_object(event_messages[0])

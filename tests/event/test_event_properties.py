@@ -2,13 +2,13 @@ import json
 
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
 from protean.reflection import id_field
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     user_id = Identifier(identifier=True)
     email = String()
     name = String()
@@ -22,7 +22,7 @@ class Registered(BaseEvent):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.init(traverse=False)
 

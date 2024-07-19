@@ -2,27 +2,19 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEventSourcedAggregate
-from protean.exceptions import NotSupportedError
+from protean import BaseAggregate
 from protean.fields import Integer, String
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     name = String()
     age = Integer()
-
-
-def test_event_sourced_aggregate_cannot_be_initialized():
-    with pytest.raises(NotSupportedError) as exc:
-        BaseEventSourcedAggregate()
-
-    assert str(exc.value) == "BaseEventSourcedAggregate cannot be instantiated"
 
 
 class TestEventSourcedAggregateEquivalence:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(User)
+        test_domain.register(User, is_event_sourced=True)
         test_domain.init(traverse=False)
 
     def test_event_sourced_aggregate_are_not_equivalent_based_on_data(test_domain):
@@ -50,7 +42,7 @@ class TestEventSourcedAggregateEquivalence:
 
 
 def test_event_sourced_aggregate_hash(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
 
     user1 = User(name="John Doe", age=25)
     assert hash(user1) == hash(user1.id)

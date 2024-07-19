@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
+from protean import BaseAggregate, BaseEvent, BaseEventHandler, handle
 from protean.fields import Identifier, String, Text
 from protean.server import Engine
 from protean.utils.mixins import Message
@@ -15,7 +15,7 @@ def count_up():
     counter += 1
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String()
     password_hash = String()
@@ -28,7 +28,7 @@ class Registered(BaseEvent):
     password_hash = String()
 
 
-class Post(BaseEventSourcedAggregate):
+class Post(BaseAggregate):
     topic = String()
     content = Text()
 
@@ -48,9 +48,9 @@ class SystemMetrics(BaseEventHandler):
 @pytest.mark.asyncio
 @pytest.mark.eventstore
 async def test_that_any_message_can_be_handled_with_any_handler(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
-    test_domain.register(Post)
+    test_domain.register(Post, is_event_sourced=True)
     test_domain.register(Created, part_of=Post)
     test_domain.register(SystemMetrics, stream_category="$all")
     test_domain.init(traverse=False)

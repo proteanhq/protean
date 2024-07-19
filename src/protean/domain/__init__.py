@@ -763,9 +763,13 @@ class Domain:
 
         # Check that no two event sourced aggregates have the same event class in their
         #   `_events_cls_map`.
-        event_sourced_aggregates = self.registry._elements[
-            DomainObjects.EVENT_SOURCED_AGGREGATE.value
-        ]
+        event_sourced_aggregates = {
+            name: record
+            for (name, record) in self.registry._elements[
+                DomainObjects.AGGREGATE.value
+            ].items()
+            if record.cls.meta_.is_event_sourced is True
+        }
         # Collect all event class names from `_events_cls_map` of all event sourced aggregates
         event_class_names = list()
         for event_sourced_aggregate in event_sourced_aggregates.values():
@@ -1211,20 +1215,23 @@ class Domain:
     ############################
 
     # FIXME Optimize calls to this method with cache, but also with support for Multitenancy
-    def repository_for(self, part_of) -> BaseRepository:
-        if isinstance(part_of, str):
+    def repository_for(self, element_cls) -> BaseRepository:
+        if isinstance(element_cls, str):
             raise IncorrectUsageError(
                 {
                     "element": [
-                        f"Element {part_of} is not registered in domain {self.name}"
+                        f"Element {element_cls} is not registered in domain {self.name}"
                     ]
                 }
             )
 
-        if part_of.element_type == DomainObjects.EVENT_SOURCED_AGGREGATE:
-            return self.event_store.repository_for(part_of)
+        if (
+            element_cls.element_type == DomainObjects.AGGREGATE
+            and element_cls.meta_.is_event_sourced
+        ):
+            return self.event_store.repository_for(element_cls)
         else:
-            return self.providers.repository_for(part_of)
+            return self.providers.repository_for(element_cls)
 
     #######################
     # Cache Functionality #

@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseEvent, BaseEventHandler, BaseEventSourcedAggregate, handle
+from protean import BaseAggregate, BaseEvent, BaseEventHandler, handle
 from protean.fields import Identifier, String
 from protean.globals import current_domain
 
@@ -21,7 +21,7 @@ def count_up():
     counter += 1
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     user_id = Identifier(identifier=True)
     email = String()
     name = String()
@@ -43,9 +43,9 @@ class UserEventHandler(BaseEventHandler):
 
 @pytest.mark.eventstore
 def test_inline_event_processing_on_publish_in_sync_mode(test_domain):
-    test_domain.register(User, stream_category="user")
+    test_domain.register(User, is_event_sourced=True, stream_category="user")
     test_domain.register(Registered, part_of=User)
-    test_domain.register(UserEventHandler, stream_category="user")
+    test_domain.register(UserEventHandler, stream_category="test::user")
     test_domain.init(traverse=False)
 
     user = User(

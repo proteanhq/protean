@@ -1,6 +1,6 @@
 import pytest
 
-from protean import BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseEvent
 from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
 
@@ -24,7 +24,7 @@ class UserArchived(BaseEvent):
     user_id = Identifier(required=True)
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     user_id = Identifier(identifier=True)
     name = String(max_length=50, required=True)
     email = String(required=True)
@@ -53,7 +53,7 @@ class UserUnknownEvent(BaseEvent):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(UserRegistered, part_of=User)
     test_domain.register(UserActivated, part_of=User)
     test_domain.register(UserRenamed, part_of=User)
@@ -69,7 +69,7 @@ def test_an_unassociated_event_throws_error(test_domain):
 
 
 def test_that_event_associated_with_another_aggregate_throws_error(test_domain):
-    test_domain.register(User2)
+    test_domain.register(User2, is_event_sourced=True)
     test_domain.register(UserUnknownEvent, part_of=User2)
     test_domain.init(traverse=False)
 

@@ -2,14 +2,14 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseCommand, BaseEvent, BaseEventSourcedAggregate
+from protean import BaseAggregate, BaseCommand, BaseEvent
 from protean.core.event import Metadata
 from protean.exceptions import InvalidDataError
 from protean.fields import Identifier, String
 from protean.utils.mixins import Message
 
 
-class User(BaseEventSourcedAggregate):
+class User(BaseAggregate):
     email = String()
     name = String()
 
@@ -30,7 +30,7 @@ class Registered(BaseEvent):
     name = String()
 
 
-class SendEmail(BaseEventSourcedAggregate):
+class SendEmail(BaseAggregate):
     to = String()
     subject = String()
     content = String()
@@ -44,10 +44,10 @@ class SendEmailCommand(BaseCommand):
 
 @pytest.fixture(autouse=True)
 def register(test_domain):
-    test_domain.register(User)
+    test_domain.register(User, is_event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.register(Registered, part_of=User)
-    test_domain.register(SendEmail)
+    test_domain.register(SendEmail, is_event_sourced=True)
     test_domain.register(SendEmailCommand, part_of=SendEmail)
     test_domain.init(traverse=False)
 
