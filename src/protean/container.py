@@ -2,19 +2,16 @@ from __future__ import annotations
 
 import copy
 import inspect
-import json
 import logging
 from collections import defaultdict
 from typing import Any, Type, Union
 
 from protean.exceptions import (
-    ConfigurationError,
     InvalidDataError,
     NotSupportedError,
     ValidationError,
 )
 from protean.fields import Auto, Field, FieldBase, ValueObject
-from protean.reflection import id_field
 from protean.utils import generate_identity
 
 from .reflection import (
@@ -364,77 +361,6 @@ class BaseContainer(metaclass=ContainerMeta):
         # FIXME Raise exception
         # raise NotImplementedError
         return []
-
-
-class EventedMixin:
-    def __init__(self, *args, **kwargs) -> None:
-        """Initialize an instance-level variable named `_events` to track events
-        raised in the aggregate cluster.
-
-        This method cannot have a super invocation, because we don't want it to
-        invoke BaseContainer's `__init__` method. But there is a conflict regarding
-        this between BaseAggregate and BaseEventSourcedAggregate. So this Mixin's
-        functionality has been replicated temporarily in BaseAggregate class.
-
-        Other mixins that are inherited by BaseEntity and BaseEventSourcedAggregate
-        work with `__init_subclass__`, and do not have this issue.
-        """
-        super().__init__(*args, **kwargs)
-        self._events = []
-
-    def raise_(self, event) -> None:
-        """Raise an event in the aggregate cluster.
-
-        The version of the aggregate is incremented with every event raised, which is true
-        in the case of Event Sourced Aggregates.
-
-        Event is immutable, so we clone a new event object from the event raised,
-        and add the enhanced metadata to it.
-        """
-        # Verify that event is indeed associated with this aggregate
-        if event.meta_.part_of != self.__class__:
-            raise ConfigurationError(
-                f"Event `{event.__class__.__name__}` is not associated with "
-                f"aggregate `{self.__class__.__name__}`"
-            )
-
-        if not self.meta_.fact_events:
-            self._version += 1
-
-        identifier = getattr(self, id_field(self).field_name)
-
-        # Set Fact Event stream to be `<aggregate_stream>-fact`
-        if event.__class__.__name__.endswith("FactEvent"):
-            stream = f"{self.meta_.stream_category}-fact-{identifier}"
-        else:
-            stream = f"{self.meta_.stream_category}-{identifier}"
-
-        event_with_metadata = event.__class__(
-            event.to_dict(),
-            _expected_version=self._event_position,
-            _metadata={
-                "id": (f"{stream}-{self._version}"),
-                "type": event._metadata.type,
-                "fqn": event._metadata.fqn,
-                "kind": event._metadata.kind,
-                "stream": stream,
-                "origin_stream": event._metadata.origin_stream,
-                "timestamp": event._metadata.timestamp,
-                "version": event._metadata.version,
-                "sequence_id": self._version,
-                "payload_hash": hash(
-                    json.dumps(
-                        event.payload,
-                        sort_keys=True,
-                    )
-                ),
-            },
-        )
-
-        # Increment the event position after generating event
-        self._event_position = self._event_position + 1
-
-        self._events.append(event_with_metadata)
 
 
 class IdentityMixin:
