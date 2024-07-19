@@ -64,6 +64,8 @@ class BaseAggregate(BaseEntity):
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()
 
+        # Event-Sourcing Functionality
+        #
         # Associate a `_projections` map with subclasses.
         #   It needs to be initialized here because if it
         #   were initialized in __init__, the same collection object
@@ -71,6 +73,8 @@ class BaseAggregate(BaseEntity):
         #   defeating its purpose.
         setattr(subclass, "_projections", defaultdict(set))
 
+        # Event-Sourcing Functionality
+        #
         # Store associated events
         setattr(subclass, "_events_cls_map", {})
 
@@ -99,7 +103,9 @@ class BaseAggregate(BaseEntity):
         ]
 
     def _apply(self, event: BaseEvent) -> None:
-        """Apply the event onto the aggregate by calling the appropriate projection.
+        """Event-Sourcing Functionality
+
+        Apply the event onto the aggregate by calling the appropriate projection.
 
         Args:
             event (BaseEvent): Event object to apply
@@ -120,7 +126,10 @@ class BaseAggregate(BaseEntity):
 
     @classmethod
     def from_events(cls, events: List[BaseEvent]) -> "BaseAggregate":
-        """Reconstruct an aggregate from a list of events."""
+        """Event-Sourcing Functionality
+
+        Reconstruct an aggregate from a list of events.
+        """
         # Initialize the aggregate with the first event's payload and apply it
         aggregate = cls(**events[0].payload)
         aggregate._apply(events[0])
@@ -210,6 +219,7 @@ def aggregate_factory(element_cls, domain, **opts):
         f"{domain.normalized_name}::{element_cls.meta_.stream_category}"
     )
 
+    # Event-Sourcing Functionality
     # Iterate through methods marked as `@apply` and construct a projections map
     methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
     for method_name, method in methods:
@@ -240,7 +250,10 @@ class atomic_change:
 
 
 def apply(fn):
-    """Decorator to mark methods in EventHandler classes."""
+    """Event-Sourcing Functionality
+
+    Decorator to mark methods in EventHandler classes.
+    """
 
     if len(typing.get_type_hints(fn)) > 2:
         raise IncorrectUsageError(

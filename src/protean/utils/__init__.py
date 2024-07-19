@@ -4,7 +4,6 @@ Definitions/declaractions in this module should be independent of other modules,
 to the maximum extent possible.
 """
 
-import functools
 import importlib
 import logging
 from datetime import UTC, datetime
@@ -73,33 +72,12 @@ def get_version():
     return importlib.metadata.version("protean")
 
 
-def import_from_full_path(domain, path):
-    spec = importlib.util.spec_from_file_location(domain, path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-
-    return getattr(mod, domain)
-
-
 def fully_qualified_name(cls):
     """Return Fully Qualified name along with module"""
     return ".".join([cls.__module__, cls.__qualname__])
 
 
 fqn = fully_qualified_name
-
-
-def singleton(cls):
-    """Make a class a Singleton class (only one instance)"""
-
-    @functools.wraps(cls)
-    def wrapper_singleton(*args, **kwargs):
-        if not wrapper_singleton.instance:
-            wrapper_singleton.instance = cls(*args, **kwargs)
-        return wrapper_singleton.instance
-
-    wrapper_singleton.instance = None
-    return wrapper_singleton
 
 
 def convert_str_values_to_list(value):
@@ -184,7 +162,7 @@ def generate_identity(
         elif id_type == IdentityType.UUID.value:
             id_value = uuid4()
         else:
-            raise ConfigurationError(f"Unknown Identity Type {id_type}")
+            raise ConfigurationError(f"Unknown Identity Type '{id_type}'")
 
     # Function Strategy
     elif id_strategy == IdentityStrategy.FUNCTION.value:
@@ -214,7 +192,5 @@ __all__ = [
     "fully_qualified_name",
     "generate_identity",
     "get_version",
-    "import_from_full_path",
-    "singleton",
     "utcnow_func",
 ]
