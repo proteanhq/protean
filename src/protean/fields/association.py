@@ -377,6 +377,7 @@ class HasOne(Association):
         The `temp_cache` we set up here is eventually used by the `Repository` to determine
         the changes to be persisted.
         """
+        # Accept dictionary values and convert them to Entity objects
         if isinstance(value, dict):
             value = self.to_cls(**value)
 
@@ -485,6 +486,7 @@ class HasMany(Association):
         """
         value = value if isinstance(value, list) else [value]
 
+        # Accept dictionary values and convert them to Entity objects
         values = []
         for item in value:
             if isinstance(item, dict):

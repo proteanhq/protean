@@ -968,11 +968,12 @@ class Domain:
 
     def _generate_fact_event_classes(self):
         """Generate FactEvent classes for all aggregates with `fact_events` enabled"""
-        for element_type in [DomainObjects.AGGREGATE]:
-            for _, element in self.registry._elements[element_type.value].items():
-                if element.cls.meta_.fact_events:
-                    event_cls = element_to_fact_event(element.cls)
-                    self.register(event_cls, part_of=element.cls)
+        for _, element in self.registry._elements[
+            DomainObjects.AGGREGATE.value
+        ].items():
+            if element.cls.meta_.fact_events:
+                event_cls = element_to_fact_event(element.cls)
+                self.register(event_cls, part_of=element.cls)
 
     ######################
     # Element Decorators #
@@ -1209,8 +1210,10 @@ class Domain:
             element_cls.element_type == DomainObjects.AGGREGATE
             and element_cls.meta_.is_event_sourced
         ):
+            # Return an Event Sourced repository
             return self.event_store.repository_for(element_cls)
         else:
+            # This is a regular aggregate or a view
             return self.providers.repository_for(element_cls)
 
     #######################

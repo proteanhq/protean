@@ -1,7 +1,7 @@
 import pytest
 
 from protean.container import BaseContainer, OptionsMixin
-from protean.exceptions import InvalidDataError
+from protean.exceptions import InvalidDataError, NotSupportedError
 from protean.fields import Integer, String
 from protean.reflection import declared_fields
 
@@ -16,6 +16,11 @@ class CustomContainerMeta(BaseContainer):
 class CustomContainer(CustomContainerMeta, OptionsMixin):
     foo = String()
     bar = String()
+
+
+def test_that_base_container_class_cannot_be_instantiated():
+    with pytest.raises(NotSupportedError):
+        BaseContainer()
 
 
 class TestContainerInitialization:
