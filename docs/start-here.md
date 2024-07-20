@@ -1,8 +1,3 @@
----
-hide:
-  - navigation
----
-
 # Start Here
 
 Welcome to Protean! Whether you're a seasoned developer or new to the framework, this guide will help you navigate the documentation and get started on the right foot.
@@ -15,7 +10,8 @@ Get to know the driving principles and core ideas that shape this framework in [
 
 ## Building with Protean
 
-Everything you need to know to build ambitious applications with Protean.
+Everything you need to know to build ambitious applications with Protean is in
+the [Guides](./guides/getting-started/installation.md) section.
 
 - Craft rich domain models that capture your business concepts and rules in [Domain Model](./guides/compose-a-domain/index.md).
 

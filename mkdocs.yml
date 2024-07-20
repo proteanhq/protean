@@ -6,6 +6,10 @@ copyright: Copyright &copy; 2019 - 2024 Subhash Bhushan
 
 theme:
   name: material
+  custom_dir: docs/overrides
+  logo: assets/logo.png
+  favicon: assets/favicon.png
+  language: custom
   font:
     text: Inter
     code: JetBrains Mono
@@ -64,11 +68,11 @@ markdown_extensions:
       check_paths: true
       base_path: docs_src
 nav:
-  - Protean: index.md
-  - Start Here: start-here.md
-  - Core Concepts:
+  - Protean:
+    - index.md
+    - start-here.md
     - core-concepts/philosophy.md
-    - core-concepts/whitepaper.md
+  - Core Concepts:
     - core-concepts/analysis-model.md
     - core-concepts/streams.md
     # - core-concepts/identity.md
@@ -103,7 +107,6 @@ nav:
     #   - core-concepts/event-sourcing/snapshots.md
     #   - core-concepts/event-sourcing/projections.md
   - Guides:
-    - guides/index.md
     - guides/getting-started/installation.md
     #  - guides/getting-started/quickstart.md
 
