@@ -67,15 +67,23 @@ markdown_extensions:
   - pymdownx.snippets:
       check_paths: true
       base_path: docs_src
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 nav:
   - Protean:
     - index.md
     - start-here.md
+    - features.md
     - core-concepts/philosophy.md
   - Core Concepts:
     - core-concepts/analysis-model.md
     - core-concepts/streams.md
-    # - core-concepts/identity.md
+    - core-concepts/identity.md
+    - Architecture Patterns:
+      - core-concepts/ddd.md
+      - core-concepts/cqrs.md
+      - core-concepts/event-sourcing.md
     # - Domain-Driven Design:
     #   - core-concepts/domain-driven-design/index.md
     #   - core-concepts/domain-driven-design/ubiquitous-language.md

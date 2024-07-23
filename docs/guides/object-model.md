@@ -1,5 +1,7 @@
 # Object Model
 
+DOCUMENTATION IN PROGRESS
+
 A domain model in Protean is composed with various types of domain elements,
 all of which have a common structure and share a few behavioral traits. This
 document outlines generic aspects that apply to every domain element.
@@ -60,3 +62,8 @@ You can also pass options as parameters to the decorator:
 
 
 ### `auto_add_id_field`
+
+
+Abstract elements:
+Most elements can be marked abstract to be subclassed. They cannot be instantiated
+, but their field orders are preserved. Ex. Events.
