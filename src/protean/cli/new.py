@@ -15,7 +15,7 @@ def new(
     output_folder: Annotated[
         str, typer.Option("--output-dir", "-o", show_default=False)
     ] = ".",
-    data: Annotated[List[str], typer.Option("--data", "-d", show_default=False)] = None,
+    data: Annotated[List[str], typer.Option("--data", "-d", show_default=False)] = [],
     pretend: Annotated[Optional[bool], typer.Option("--pretend", "-p")] = False,
     force: Annotated[Optional[bool], typer.Option("--force", "-f")] = False,
     defaults: Annotated[Optional[bool], typer.Option("--defaults")] = False,
