@@ -2,7 +2,9 @@ import uuid
 
 import pytest
 
-from protean import BaseAggregate, BaseEvent, BaseValueObject
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Identifier, String, ValueObject
 from protean.reflection import data_fields, declared_fields, fields

@@ -1,6 +1,7 @@
 import pytest
 
-from protean import BaseAggregate, BaseEntity
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.exceptions import ConfigurationError
 from protean.fields import HasOne, Reference, String
 from protean.reflection import attributes, declared_fields

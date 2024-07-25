@@ -1,5 +1,5 @@
-from protean import BaseSerializer
 from protean.core.aggregate import BaseAggregate
+from protean.core.serializer import BaseSerializer
 from protean.fields import Dict, Integer, List
 
 

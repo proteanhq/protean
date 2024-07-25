@@ -1,6 +1,6 @@
 import pytest
 
-from protean import BaseEntity
+from protean.core.entity import BaseEntity
 from protean.exceptions import ValidationError
 from protean.fields import Boolean, Dict, Integer, List
 from protean.reflection import fields

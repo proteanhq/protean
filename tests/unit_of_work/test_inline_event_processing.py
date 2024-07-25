@@ -4,17 +4,14 @@ from uuid import uuid4
 
 import pytest
 
-from protean import (
-    BaseAggregate,
-    BaseCommand,
-    BaseCommandHandler,
-    BaseEvent,
-    BaseEventHandler,
-    apply,
-    handle,
-)
+from protean.core.aggregate import BaseAggregate, apply
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
+from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
 from protean.fields import Boolean, Identifier, String
 from protean.utils.globals import current_domain
+from protean.utils.mixins import handle
 
 counter = 0
 

@@ -218,10 +218,11 @@ are not applicable to Value Objects.
 For example, trying to mark a Value Object field with `unique = True` or
 `identifier = True` will throw a `IncorrectUsageError` exception.
 
+<!-- FIXME Remove usage of `BaseValueObject` in the below code snippet -->
 ```shell
 In [1]: from protean.fields import Float, String
 
-In [2]: from protean import BaseValueObject
+In [2]: from protean.core.value_object import BaseValueObject
 
 In [3]: class Balance(BaseValueObject):
    ...:     currency = String(max_length=3, unique=True)

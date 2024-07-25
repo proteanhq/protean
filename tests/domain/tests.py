@@ -1,6 +1,8 @@
 import pytest
 
-from protean import BaseAggregate, BaseEntity, Domain
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
+from protean.domain import Domain
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,

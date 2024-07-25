@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 
-from protean import BaseAggregate, BaseEntity, BaseValueObject
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
+from protean.core.value_object import BaseValueObject
 from protean.fields import (
     DateTime,
     HasMany,

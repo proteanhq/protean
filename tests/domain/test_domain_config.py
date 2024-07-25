@@ -1,6 +1,7 @@
 import pytest
 
-from protean import BaseAggregate, Domain
+from protean.core.aggregate import BaseAggregate
+from protean.domain import Domain
 from protean.exceptions import ConfigurationError
 from protean.fields import Auto
 

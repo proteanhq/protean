@@ -1,6 +1,7 @@
 import pytest
 
-from protean import BaseEvent, BaseSubscriber
+from protean.core.event import BaseEvent
+from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import NotSupportedError
 from protean.fields import Identifier, Integer, String
 from protean.utils import fully_qualified_name

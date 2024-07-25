@@ -1,6 +1,6 @@
 import pytest
 
-from protean import BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.core.event_sourced_repository import BaseEventSourcedRepository
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, String

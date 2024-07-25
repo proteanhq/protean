@@ -1,8 +1,12 @@
 import pytest
 
-from protean import BaseAggregate, BaseCommand, BaseCommandHandler, BaseEvent, handle
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
+from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import Identifier, String
+from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):

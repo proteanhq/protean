@@ -2,7 +2,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from protean import BaseAggregate, BaseCommand, BaseEvent
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
 from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
 from protean.utils.mixins import Message

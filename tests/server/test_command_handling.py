@@ -2,10 +2,12 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseAggregate, BaseCommand, BaseCommandHandler, handle
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
-from protean.utils.mixins import Message
+from protean.utils.mixins import Message, handle
 
 counter = 0
 

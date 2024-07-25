@@ -4,13 +4,11 @@ from uuid import uuid4
 
 import pytest
 
-from protean import (
-    BaseAggregate,
-    BaseRepository,
-    BaseValueObject,
-    UnitOfWork,
-    invariant,
-)
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import invariant
+from protean.core.repository import BaseRepository
+from protean.core.unit_of_work import UnitOfWork
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import ExpectedVersionError, ValidationError
 from protean.fields import Integer, String, ValueObject
 from protean.utils.globals import current_domain

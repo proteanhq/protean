@@ -1,4 +1,4 @@
-from protean import BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.fields import Auto, DateTime, Identifier, Integer, String
 from protean.reflection import declared_fields, fields, id_field
 from protean.utils import utcnow_func

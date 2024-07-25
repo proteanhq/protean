@@ -1,8 +1,9 @@
 import mock
 import pytest
 
-from protean import BaseAggregate, BaseDomainService
 from protean.core import domain_service
+from protean.core.aggregate import BaseAggregate
+from protean.core.domain_service import BaseDomainService
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import fully_qualified_name
 

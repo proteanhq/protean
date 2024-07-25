@@ -1,6 +1,7 @@
 import pytest
 
-from protean import BaseEntity, BaseValueObject
+from protean.core.entity import BaseEntity
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Float, HasMany, String
 

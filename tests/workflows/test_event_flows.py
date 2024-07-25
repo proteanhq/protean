@@ -10,18 +10,15 @@ from datetime import datetime, timezone
 
 import pytest
 
-from protean import (
-    BaseAggregate,
-    BaseCommand,
-    BaseCommandHandler,
-    BaseEntity,
-    BaseEvent,
-    BaseEventHandler,
-    BaseValueObject,
-    BaseView,
-    Domain,
-    handle,
-)
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
+from protean.core.entity import BaseEntity
+from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
+from protean.core.value_object import BaseValueObject
+from protean.core.view import BaseView
+from protean.domain import Domain
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import (
     Date,
@@ -37,6 +34,7 @@ from protean.fields import (
 from protean.server import Engine
 from protean.utils import CommandProcessing, EventProcessing
 from protean.utils.globals import current_domain
+from protean.utils.mixins import handle
 
 
 class Order(BaseAggregate):

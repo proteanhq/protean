@@ -1,6 +1,6 @@
 import pytest
 
-from protean import BaseSerializer
+from protean.core.serializer import BaseSerializer
 from protean.exceptions import NotSupportedError
 from protean.fields import Integer, String
 from protean.reflection import declared_fields

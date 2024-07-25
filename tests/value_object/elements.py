@@ -1,7 +1,9 @@
 from collections import defaultdict
 from enum import Enum
 
-from protean import BaseAggregate, BaseValueObject, invariant
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import invariant
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import Float, Identifier, Integer, String, ValueObject
 

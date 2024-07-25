@@ -1,4 +1,4 @@
-from protean import BaseApplicationService
+from protean.core.application_service import BaseApplicationService
 
 
 class DummyApplicationService(BaseApplicationService):

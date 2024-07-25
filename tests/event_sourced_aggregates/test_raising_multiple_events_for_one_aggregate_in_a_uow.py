@@ -4,16 +4,13 @@ import random
 import string
 from uuid import uuid4
 
-from protean import (
-    BaseAggregate,
-    BaseCommand,
-    BaseCommandHandler,
-    BaseEvent,
-    apply,
-    handle,
-)
+from protean.core.aggregate import BaseAggregate, apply
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
+from protean.core.event import BaseEvent
 from protean.fields import Identifier, String
 from protean.utils.globals import current_domain
+from protean.utils.mixins import handle
 
 
 class Register(BaseCommand):

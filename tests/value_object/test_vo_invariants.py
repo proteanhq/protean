@@ -1,6 +1,7 @@
 import pytest
 
-from protean import BaseValueObject, invariant
+from protean.core.entity import invariant
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import Float, String
 

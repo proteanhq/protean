@@ -1,9 +1,12 @@
 import pytest
 
-from protean import BaseAggregate, BaseCommand, BaseCommandHandler, handle
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.utils import fully_qualified_name
+from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):

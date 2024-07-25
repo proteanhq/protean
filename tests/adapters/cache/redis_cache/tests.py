@@ -4,8 +4,8 @@ import time
 import pytest
 from redis import Redis
 
-from protean import BaseView
 from protean.adapters.cache.redis import RedisCache
+from protean.core.view import BaseView
 from protean.fields import Identifier, String
 
 

@@ -1,4 +1,4 @@
-from protean import BaseCommand
+from protean.core.command import BaseCommand
 from protean.fields import Identifier, String
 from protean.reflection import has_id_field, id_field
 

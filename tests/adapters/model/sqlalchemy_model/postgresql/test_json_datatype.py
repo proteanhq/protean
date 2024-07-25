@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import types as sa_types
 
-from protean import BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.fields import DateTime, Dict, String
 from protean.utils import utcnow_func
 from protean.utils.globals import current_domain

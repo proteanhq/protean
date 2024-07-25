@@ -1,9 +1,11 @@
 import pytest
 
-from protean import BaseAggregate, BaseCommand, handle
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.fields import Identifier, String, Text
+from protean.utils.mixins import handle
 
 
 class UnknownCommand(BaseCommand):

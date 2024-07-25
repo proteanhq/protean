@@ -2,7 +2,8 @@ from datetime import datetime
 
 import pytest
 
-from protean import BaseAggregate, BaseEntity
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.exceptions import ObjectNotFoundError, TooManyObjectsError
 from protean.fields import Date, Float, HasMany, Integer, String
 

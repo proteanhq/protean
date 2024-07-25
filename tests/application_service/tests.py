@@ -1,6 +1,6 @@
 import pytest
 
-from protean import BaseApplicationService
+from protean.core.application_service import BaseApplicationService
 from protean.exceptions import NotSupportedError
 from protean.utils import fully_qualified_name
 

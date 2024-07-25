@@ -2,7 +2,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from protean import BaseAggregate, BaseEntity
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.fields import Date, Float, HasMany, Identifier, String
 from protean.reflection import declared_fields
 

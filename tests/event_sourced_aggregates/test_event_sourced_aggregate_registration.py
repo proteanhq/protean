@@ -1,6 +1,6 @@
 import pytest
 
-from protean import BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
 from protean.utils import fully_qualified_name
 

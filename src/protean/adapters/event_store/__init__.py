@@ -5,9 +5,10 @@ import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, DefaultDict, List, Optional, Set, Type
 
-from protean import BaseEvent, BaseEventHandler
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
+from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
 from protean.core.event_sourced_repository import (
     BaseEventSourcedRepository,
     event_sourced_repository_factory,

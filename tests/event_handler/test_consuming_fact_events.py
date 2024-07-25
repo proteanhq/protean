@@ -1,8 +1,10 @@
 import pytest
 
-from protean import BaseAggregate, BaseEventHandler, BaseView, handle
+from protean.core.aggregate import BaseAggregate
+from protean.core.event_handler import BaseEventHandler
+from protean.core.view import BaseView
 from protean.fields import String
-from protean.utils.mixins import Message
+from protean.utils.mixins import Message, handle
 
 
 class User(BaseAggregate):

@@ -3,9 +3,13 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseAggregate, BaseEvent, BaseEventHandler, Engine, handle
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier
+from protean.server.engine import Engine
 from protean.utils import EventProcessing
+from protean.utils.mixins import handle
 
 counter = 0
 

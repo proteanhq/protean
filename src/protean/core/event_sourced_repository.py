@@ -1,6 +1,7 @@
 import logging
 
-from protean import BaseAggregate, UnitOfWork
+from protean.core.aggregate import BaseAggregate
+from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import (
     IncorrectUsageError,
     NotSupportedError,

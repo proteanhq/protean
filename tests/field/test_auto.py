@@ -5,7 +5,8 @@ from uuid import UUID
 
 import pytest
 
-from protean import BaseAggregate, BaseView
+from protean.core.aggregate import BaseAggregate
+from protean.core.view import BaseView
 from protean.fields import Auto
 from tests.shared import assert_int_is_uuid, assert_str_is_uuid
 

@@ -3,7 +3,9 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseAggregate, BaseCommand, BaseEvent, apply
+from protean.core.aggregate import BaseAggregate, apply
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
 from protean.utils import fqn

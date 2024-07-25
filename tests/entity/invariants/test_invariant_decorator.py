@@ -1,7 +1,8 @@
 from datetime import datetime
 from enum import Enum
 
-from protean import BaseAggregate, BaseEntity, invariant
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Date, Float, HasMany, Integer, String
 

@@ -1,7 +1,11 @@
 import re
 from typing import List
 
-from protean import BaseAggregate, BaseModel, BaseRepository, BaseValueObject, invariant
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import invariant
+from protean.core.model import BaseModel
+from protean.core.repository import BaseRepository
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import Integer, String, Text, ValueObject
 from protean.utils.globals import current_domain

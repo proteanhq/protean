@@ -1,7 +1,8 @@
 import mock
 import pytest
 
-from protean import BaseAggregate, BaseEvent
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.fields import Identifier, String
 
 

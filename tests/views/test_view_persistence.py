@@ -1,6 +1,6 @@
 import pytest
 
-from protean import BaseView
+from protean.core.view import BaseView
 from protean.fields import Identifier, Integer, String
 
 

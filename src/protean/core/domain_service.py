@@ -4,7 +4,7 @@ from collections import defaultdict
 from functools import wraps
 from typing import List, Union
 
-from protean import BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin

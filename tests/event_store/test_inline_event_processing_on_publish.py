@@ -9,9 +9,12 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseAggregate, BaseEvent, BaseEventHandler, handle
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.utils.globals import current_domain
+from protean.utils.mixins import handle
 
 counter = 0
 

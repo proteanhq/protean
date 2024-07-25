@@ -1,11 +1,9 @@
 import pytest
 
-from protean import (
-    BaseAggregate,
-    BaseCommand,
-    BaseEntity,
-    BaseEvent,
-)
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.entity import BaseEntity
+from protean.core.event import BaseEvent
 from protean.fields import HasMany, HasOne, Identifier, Integer, String
 
 

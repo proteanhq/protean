@@ -3,7 +3,8 @@ from enum import Enum
 
 import pytest
 
-from protean import BaseAggregate, BaseEntity, atomic_change, invariant
+from protean.core.aggregate import BaseAggregate, atomic_change
+from protean.core.entity import BaseEntity, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Date, Float, HasMany, Identifier, Integer, String
 

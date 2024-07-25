@@ -1,6 +1,6 @@
 import pytest
 
-from protean import BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
 from protean.fields import String
 

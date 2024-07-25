@@ -2,9 +2,11 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from protean import BaseAggregate, Q, QuerySet
+from protean.core.aggregate import BaseAggregate
+from protean.core.queryset import QuerySet
 from protean.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
 from protean.fields import DateTime, Integer, String
+from protean.utils.query import Q
 
 
 class Person(BaseAggregate):

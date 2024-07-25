@@ -1,6 +1,7 @@
 from enum import Enum
 
-from protean import BaseAggregate, BaseValueObject
+from protean.core.aggregate import BaseAggregate
+from protean.core.value_object import BaseValueObject
 from protean.fields import String, ValueObject
 
 

@@ -2,8 +2,9 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseAggregate, BaseCommand, BaseEvent
-from protean.core.event import Metadata
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent, Metadata
 from protean.exceptions import InvalidDataError
 from protean.fields import Identifier, String
 from protean.utils.mixins import Message

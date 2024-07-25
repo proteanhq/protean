@@ -1,6 +1,6 @@
 import pytest
 
-from protean import BaseRepository
+from protean.core.repository import BaseRepository
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import String
 from protean.utils import fully_qualified_name

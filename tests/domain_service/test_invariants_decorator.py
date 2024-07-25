@@ -1,4 +1,6 @@
-from protean import BaseAggregate, BaseDomainService, invariant
+from protean.core.aggregate import BaseAggregate
+from protean.core.domain_service import BaseDomainService
+from protean.core.entity import invariant
 
 
 class Aggregate1(BaseAggregate):

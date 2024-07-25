@@ -3,7 +3,8 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseAggregate, BaseEvent
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.fields import String, ValueObject
 from protean.fields.basic import Identifier
 from protean.reflection import fields

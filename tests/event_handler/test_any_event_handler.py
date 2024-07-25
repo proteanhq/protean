@@ -1,4 +1,6 @@
-from protean import BaseEvent, BaseEventHandler, handle
+from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
+from protean.utils.mixins import handle
 
 
 class AllEventHandler(BaseEventHandler):

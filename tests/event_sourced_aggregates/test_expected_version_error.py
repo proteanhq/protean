@@ -3,7 +3,9 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseAggregate, BaseEvent, UnitOfWork, apply
+from protean.core.aggregate import BaseAggregate, apply
+from protean.core.event import BaseEvent
+from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ExpectedVersionError
 from protean.fields import Identifier, String
 

@@ -1,6 +1,7 @@
 import pytest
 
-from protean import BaseAggregate, BaseEvent, apply
+from protean.core.aggregate import BaseAggregate, apply
+from protean.core.event import BaseEvent
 from protean.fields import Identifier, String
 from protean.utils.mixins import Message
 

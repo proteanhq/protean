@@ -1,12 +1,10 @@
 import pytest
 
-from protean import (
-    BaseAggregate,
-    BaseCommand,
-    BaseEvent,
-    BaseSubscriber,
-)
 from protean.adapters.broker.inline import InlineBroker
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
+from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError
 from protean.fields import Auto, Integer, String
 from protean.port.broker import BaseBroker

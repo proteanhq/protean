@@ -2,7 +2,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from protean import BaseAggregate, BaseEntity, BaseValueObject, UnitOfWork
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
+from protean.core.unit_of_work import UnitOfWork
+from protean.core.value_object import BaseValueObject
 from protean.fields import DateTime, Dict, HasMany, Reference, Text, ValueObject
 
 

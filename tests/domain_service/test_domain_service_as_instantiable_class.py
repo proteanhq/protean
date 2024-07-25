@@ -4,14 +4,11 @@ from uuid import uuid4
 
 import pytest
 
-from protean import (
-    BaseAggregate,
-    BaseDomainService,
-    BaseEntity,
-    BaseEvent,
-    BaseValueObject,
-    invariant,
-)
+from protean.core.aggregate import BaseAggregate
+from protean.core.domain_service import BaseDomainService
+from protean.core.entity import BaseEntity, invariant
+from protean.core.event import BaseEvent
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import (
     DateTime,

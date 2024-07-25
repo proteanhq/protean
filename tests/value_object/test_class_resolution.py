@@ -1,6 +1,7 @@
 """These tests ensure that the Value Object class is resolved correctly when it is specified as a string."""
 
-from protean import BaseAggregate, BaseValueObject
+from protean.core.aggregate import BaseAggregate
+from protean.core.value_object import BaseValueObject
 from protean.fields import Float, String, ValueObject
 from protean.reflection import declared_fields
 

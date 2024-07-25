@@ -1,4 +1,8 @@
-from protean import BaseAggregate, BaseCommand, BaseEvent, BaseValueObject, Domain
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
+from protean.core.value_object import BaseValueObject
+from protean.domain import Domain
 from protean.fields import Float, Identifier, String
 from protean.reflection import declared_fields, id_field
 

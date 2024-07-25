@@ -1,7 +1,8 @@
 import pytest
 
-from protean import BaseAggregate, BaseEntity, BaseEvent
-from protean.core.aggregate import element_to_fact_event
+from protean.core.aggregate import BaseAggregate, element_to_fact_event
+from protean.core.entity import BaseEntity
+from protean.core.event import BaseEvent
 from protean.fields import HasOne, Integer, String, ValueObject
 from protean.reflection import declared_fields
 

@@ -2,7 +2,9 @@ from abc import ABCMeta, abstractmethod
 from collections import deque
 from typing import Any, Dict, List, Optional, Type, Union
 
-from protean import BaseAggregate, BaseCommand, BaseEvent
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
 from protean.fields import Identifier
 from protean.utils.mixins import Message
 

@@ -1,4 +1,4 @@
-from protean import BaseEvent
+from protean.core.event import BaseEvent
 from protean.fields import Identifier, String
 from protean.reflection import has_id_field, id_field
 

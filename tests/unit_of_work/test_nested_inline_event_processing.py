@@ -4,19 +4,16 @@ from uuid import uuid4
 
 import pytest
 
-from protean import (
-    BaseAggregate,
-    BaseCommand,
-    BaseCommandHandler,
-    BaseEvent,
-    BaseEventHandler,
-    apply,
-    handle,
-)
+from protean.core.aggregate import BaseAggregate, apply
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
+from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
 from protean.fields import DateTime, Identifier, String, Text
 from protean.fields.basic import Boolean
 from protean.utils import utcnow_func
 from protean.utils.globals import current_domain
+from protean.utils.mixins import handle
 
 published_count = 0
 

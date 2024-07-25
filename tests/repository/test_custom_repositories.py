@@ -2,7 +2,8 @@ from typing import List
 
 import pytest
 
-from protean import BaseAggregate, BaseRepository
+from protean.core.aggregate import BaseAggregate
+from protean.core.repository import BaseRepository
 from protean.fields import Integer, String
 from protean.utils import fully_qualified_name
 from protean.utils.globals import current_domain
