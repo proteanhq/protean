@@ -13,7 +13,7 @@ class EmailProviders:
 
     def _initialize_email_providers(self):
         """Read config file and initialize email providers"""
-        configured_email_providers = self.domain.config["EMAIL_PROVIDERS"]
+        configured_email_providers = self.domain.config["email_providers"]
         email_provider_objects = {}
 
         if configured_email_providers and isinstance(configured_email_providers, dict):

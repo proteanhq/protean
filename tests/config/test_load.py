@@ -34,19 +34,6 @@ class TestLoadingTOML:
             for key in ["databases", "caches", "brokers", "event_store"]
         )
 
-    def test_domain_config_defaults(self):
-        change_working_directory_to("test14")
-
-        defaults = {
-            "custom": {
-                "qux": "quux",
-            }
-        }
-
-        config = Config2.load_from_path("test14", defaults)
-        assert config["custom"]["FOO"] == "bar"
-        assert config["custom"]["qux"] == "quux"
-
     @pytest.mark.no_test_domain
     def test_domain_detects_config_file(self):
         change_working_directory_to("test14")
@@ -125,7 +112,7 @@ class TestLoadingTOML:
 
 class TestLoadingDefaults:
     def test_that_config_is_loaded_from_dict(self):
-        from protean.domain import _default_config
+        from protean.domain.config import _default_config
 
         config_dict = _default_config()
         config_dict["custom"] = {"FOO": "bar", "qux": "quux"}

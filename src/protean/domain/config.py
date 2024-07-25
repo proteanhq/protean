@@ -5,8 +5,53 @@ import re
 import tomllib
 
 from protean.exceptions import ConfigurationError
+from protean.utils import CommandProcessing, EventProcessing
 
 logger = logging.getLogger(__name__)
+
+
+def _default_config():
+    """Return the default configuration for a Protean application.
+
+    This is placed in a separate function because we want to be absolutely
+    sure that we are using a copy of the defaults when we manipulate config
+    directly in tests. Housing it within the main `Domain` class can
+    potentially lead to issues because the config can be overwritten by accident.
+    """
+    from protean.utils import IdentityStrategy, IdentityType
+
+    return {
+        "env": None,
+        "testing": None,
+        "debug": None,
+        "secret_key": None,
+        "identity_strategy": IdentityStrategy.UUID.value,
+        "identity_type": IdentityType.STRING.value,
+        "databases": {
+            "default": {"provider": "memory"},
+            "memory": {"provider": "memory"},
+        },
+        "event_processing": EventProcessing.ASYNC.value,
+        "command_processing": CommandProcessing.ASYNC.value,
+        "event_store": {
+            "provider": "memory",
+        },
+        "caches": {
+            "default": {
+                "provider": "memory",
+                "TTL": 300,
+            }
+        },
+        "brokers": {"default": {"provider": "inline"}},
+        "email_providers": {
+            "default": {
+                "provider": "protean.adapters.DummyEmailProvider",
+                "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
+            },
+        },
+        "snapshot_threshold": 10,
+        "custom": {},
+    }
 
 
 class ConfigAttribute:
@@ -26,12 +71,12 @@ class Config2(dict):
     ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
     @classmethod
-    def load_from_dict(cls, config: dict):
+    def load_from_dict(cls, config: dict = _default_config()):
         """Load configuration from a dictionary."""
-        return cls(**config)
+        return cls(**cls._normalize_config(config))
 
     @classmethod
-    def load_from_path(cls, path: str, defaults: dict = None):
+    def load_from_path(cls, path: str):
         def find_config_file(directory: str):
             config_files = [".domain.toml", "domain.toml", "pyproject.toml"]
             for config_file in config_files:
@@ -66,13 +111,37 @@ class Config2(dict):
                 if config_file_name.endswith("pyproject.toml"):
                     config = config.get("tool", {}).get("protean", {})
 
-        # Merge with defaults
-        config = cls._deep_merge(defaults, config)
+                config = cls._normalize_config(config)
 
         # Load environment variables
         config = cls._load_env_vars(config)
 
         return cls(**config)
+
+    @classmethod
+    def _normalize_config(cls, config):
+        """Normalize configuration values.
+
+        This method accepts a dictionary and combines the values from the
+        configured environment to create a finalized configuration dictionary.
+        """
+        # Extract the value of PROTEAN_ENV environment variable
+        environment = os.environ.get("PROTEAN_ENV") or None
+
+        # Gather values of known variables
+        keys = _default_config().keys()
+        finalized_config = {key: value for key, value in config.items() if key in keys}
+
+        # Merge with defaults
+        finalized_config = cls._deep_merge(_default_config(), finalized_config)
+
+        # Look for section linked to the specified environment
+        if environment and environment in config:
+            environment_config = config[environment]
+            # Merge the environment section with the base configuration
+            finalized_config = cls._deep_merge(finalized_config, environment_config)
+
+        return finalized_config
 
     @classmethod
     def _deep_merge(cls, dict1: dict, dict2: dict):
