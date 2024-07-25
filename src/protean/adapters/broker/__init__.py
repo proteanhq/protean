@@ -4,7 +4,7 @@ import logging
 
 from protean.core.event import BaseEvent
 from protean.exceptions import ConfigurationError
-from protean.globals import current_uow
+from protean.utils.globals import current_uow
 from protean.utils.mixins import Message
 
 logger = logging.getLogger(__name__)

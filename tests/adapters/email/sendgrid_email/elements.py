@@ -1,7 +1,7 @@
 from protean import BaseAggregate, BaseEmail, BaseEvent, BaseSubscriber
 from protean.exceptions import InsufficientDataError, InvalidDataError
 from protean.fields import Integer, String
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 
 class Person(BaseAggregate):

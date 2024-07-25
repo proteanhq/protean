@@ -3,8 +3,8 @@ from typing import Any, Dict, List
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
-from protean.globals import current_domain
 from protean.port.event_store import BaseEventStore
+from protean.utils.globals import current_domain
 from protean.utils.mixins import MessageRecord
 
 

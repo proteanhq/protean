@@ -1,6 +1,6 @@
 import pytest
 
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 from .child_entities import Comment, Post, PostMeta
 

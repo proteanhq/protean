@@ -31,7 +31,6 @@ from protean.exceptions import (
 )
 from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.fields import List as ProteanList
-from protean.globals import g
 from protean.reflection import declared_fields, has_fields, id_field
 from protean.utils import (
     CommandProcessing,
@@ -39,6 +38,7 @@ from protean.utils import (
     EventProcessing,
     fqn,
 )
+from protean.utils.globals import g
 
 from .config import Config2, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals

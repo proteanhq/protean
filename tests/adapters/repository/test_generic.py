@@ -13,7 +13,7 @@ from protean import (
 )
 from protean.exceptions import ExpectedVersionError, ValidationError
 from protean.fields import Integer, String, ValueObject
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 
 class Person(BaseAggregate):

@@ -2,8 +2,8 @@ from abc import abstractmethod
 
 from protean import exceptions, utils
 from protean.exceptions import ValidationError
-from protean.globals import current_domain
 from protean.reflection import association_fields, has_association_fields, id_field
+from protean.utils.globals import current_domain
 
 from .base import Field, FieldBase
 from .mixins import FieldCacheMixin, FieldDescriptorMixin

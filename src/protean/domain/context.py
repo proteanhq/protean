@@ -3,7 +3,7 @@
 import logging
 import sys
 
-from protean.globals import _domain_context_stack
+from protean.utils.globals import _domain_context_stack
 
 # a singleton sentinel value for parameter defaults
 _sentinel = object()

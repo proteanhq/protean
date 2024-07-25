@@ -10,7 +10,6 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.core.view import BaseView
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne
-from protean.globals import current_domain, current_uow
 from protean.port.dao import BaseDAO
 from protean.port.provider import BaseProvider
 from protean.reflection import association_fields, has_association_fields
@@ -20,6 +19,7 @@ from protean.utils import (
     derive_element_class,
     fully_qualified_name,
 )
+from protean.utils.globals import current_domain, current_uow
 
 if TYPE_CHECKING:
     from protean.domain import Domain

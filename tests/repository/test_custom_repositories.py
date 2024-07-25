@@ -4,8 +4,8 @@ import pytest
 
 from protean import BaseAggregate, BaseRepository
 from protean.fields import Integer, String
-from protean.globals import current_domain
 from protean.utils import fully_qualified_name
+from protean.utils.globals import current_domain
 
 
 class PersonGeneric(BaseAggregate):

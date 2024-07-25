@@ -295,7 +295,7 @@ class TestDomainLevelClassResolution:
             )
 
             # Remove domain context manually, as we lost it when the exception was raised
-            from protean.globals import _domain_context_stack
+            from protean.utils.globals import _domain_context_stack
 
             _domain_context_stack.pop()
 

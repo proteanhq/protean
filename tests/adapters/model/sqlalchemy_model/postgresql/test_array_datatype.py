@@ -16,7 +16,7 @@ from protean.fields import (
     List,
     String,
 )
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 
 class ArrayUser(BaseAggregate):

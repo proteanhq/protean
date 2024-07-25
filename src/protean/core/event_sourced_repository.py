@@ -8,8 +8,8 @@ from protean.exceptions import (
     ObjectNotFoundError,
 )
 from protean.fields import Identifier
-from protean.globals import current_uow
 from protean.utils import DomainObjects, derive_element_class
+from protean.utils.globals import current_uow
 
 logger = logging.getLogger(__name__)
 

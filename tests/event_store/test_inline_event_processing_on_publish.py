@@ -11,7 +11,7 @@ import pytest
 
 from protean import BaseAggregate, BaseEvent, BaseEventHandler, handle
 from protean.fields import Identifier, String
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 counter = 0
 

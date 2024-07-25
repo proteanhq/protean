@@ -4,9 +4,9 @@ from protean.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
 )
-from protean.globals import g
 from protean.utils import DomainObjects, derive_element_class, fqn
 from protean.utils.eventing import BaseMessageType, Metadata
+from protean.utils.globals import g
 
 logger = logging.getLogger(__name__)
 

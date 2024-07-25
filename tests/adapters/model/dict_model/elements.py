@@ -4,7 +4,7 @@ from typing import List
 from protean import BaseAggregate, BaseModel, BaseRepository, BaseValueObject, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Integer, String, Text, ValueObject
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 
 class Person(BaseAggregate):

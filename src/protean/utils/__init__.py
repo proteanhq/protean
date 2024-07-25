@@ -12,7 +12,7 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from protean.exceptions import ConfigurationError
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 logger = logging.getLogger(__name__)
 

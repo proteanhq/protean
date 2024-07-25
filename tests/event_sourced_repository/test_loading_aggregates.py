@@ -15,7 +15,7 @@ from protean.core.command import BaseCommand
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import Identifier, String
 from protean.fields.basic import Boolean
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 
 class Register(BaseCommand):

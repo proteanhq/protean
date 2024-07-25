@@ -8,7 +8,7 @@ from typing import Type, Union
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
-from protean.globals import g
+from protean.utils.globals import g
 from protean.utils.mixins import Message
 
 from .subscription import Subscription

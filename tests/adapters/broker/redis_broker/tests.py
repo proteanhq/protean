@@ -4,7 +4,7 @@ import pytest
 import redis
 
 from protean.adapters.broker.redis import RedisBroker
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 from .elements import Person, PersonAdded
 

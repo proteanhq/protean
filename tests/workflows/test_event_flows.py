@@ -34,9 +34,9 @@ from protean.fields import (
     String,
     ValueObject,
 )
-from protean.globals import current_domain
 from protean.server import Engine
 from protean.utils import CommandProcessing, EventProcessing
+from protean.utils.globals import current_domain
 
 
 class Order(BaseAggregate):

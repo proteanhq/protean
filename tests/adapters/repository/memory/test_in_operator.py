@@ -1,6 +1,6 @@
 from protean import BaseAggregate
 from protean.fields.basic import String
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 
 class User(BaseAggregate):

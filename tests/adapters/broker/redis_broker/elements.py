@@ -1,6 +1,6 @@
 from protean import BaseAggregate, BaseEvent, BaseSubscriber
 from protean.fields import Auto, Integer, String
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 
 class Person(BaseAggregate):

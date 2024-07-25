@@ -8,7 +8,7 @@ from protean import BaseAggregate, BaseCommandHandler, BaseEvent, handle
 from protean.core.command import BaseCommand
 from protean.fields import String
 from protean.fields.basic import Identifier
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 
 class Register(BaseCommand):

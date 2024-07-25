@@ -14,10 +14,10 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.fields import Auto, Field
-from protean.globals import current_uow
 from protean.port.provider import BaseProvider
 from protean.reflection import declared_fields, id_field, unique_fields
 from protean.utils import DomainObjects
+from protean.utils.globals import current_uow
 from protean.utils.query import Q
 
 if TYPE_CHECKING:

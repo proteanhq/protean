@@ -15,8 +15,8 @@ from protean import (
 )
 from protean.fields import DateTime, Identifier, String, Text
 from protean.fields.basic import Boolean
-from protean.globals import current_domain
 from protean.utils import utcnow_func
+from protean.utils.globals import current_domain
 
 published_count = 0
 

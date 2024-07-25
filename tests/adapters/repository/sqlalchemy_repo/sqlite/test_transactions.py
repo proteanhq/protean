@@ -4,7 +4,7 @@ import string
 import pytest
 
 from protean import UnitOfWork
-from protean.globals import current_uow
+from protean.utils.globals import current_uow
 
 from .elements import Person, PersonRepository
 

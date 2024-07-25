@@ -6,7 +6,7 @@ from protean import (
     UnitOfWork,
 )
 from protean.fields import Identifier, Integer, String
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 
 class PersonCommand(BaseCommand):

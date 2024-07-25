@@ -6,7 +6,7 @@ from protean import BaseAggregate, BaseCommand, BaseEvent
 from protean.core.event import Metadata
 from protean.fields import String
 from protean.fields.basic import Identifier
-from protean.globals import g
+from protean.utils.globals import g
 from protean.utils.mixins import Message
 
 

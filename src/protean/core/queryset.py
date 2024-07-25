@@ -6,8 +6,8 @@ import copy
 import logging
 from typing import TYPE_CHECKING, Any, Union
 
-from protean.globals import current_uow
 from protean.utils import DomainObjects
+from protean.utils.globals import current_uow
 from protean.utils.query import Q
 
 if TYPE_CHECKING:

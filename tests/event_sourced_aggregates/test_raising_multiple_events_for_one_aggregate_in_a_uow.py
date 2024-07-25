@@ -13,7 +13,7 @@ from protean import (
     handle,
 )
 from protean.fields import Identifier, String
-from protean.globals import current_domain
+from protean.utils.globals import current_domain
 
 
 class Register(BaseCommand):

@@ -9,8 +9,8 @@ from dateutil.parser import parse as date_parser
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.fields import Field, validators
 from protean.fields.embedded import ValueObject
-from protean.globals import current_domain
 from protean.utils import IdentityType
+from protean.utils.globals import current_domain
 
 
 class String(Field):

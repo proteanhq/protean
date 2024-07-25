@@ -4,10 +4,16 @@ from uuid import uuid4
 
 import pytest
 
-from protean import BaseAggregate, BaseCommandHandler, BaseEvent, apply, handle
+from protean import (
+    BaseAggregate,
+    BaseCommandHandler,
+    BaseEvent,
+    apply,
+    current_domain,
+    handle,
+)
 from protean.core.command import BaseCommand
 from protean.fields import Identifier, String
-from protean.globals import current_domain
 
 
 class Register(BaseCommand):
