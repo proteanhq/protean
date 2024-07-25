@@ -2,7 +2,7 @@ import pytest
 
 from protean.exceptions import NotSupportedError
 from protean.fields import String
-from protean.reflection import declared_fields
+from protean.utils.reflection import declared_fields
 
 from .elements import AbstractRole, ConcreteRole
 

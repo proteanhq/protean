@@ -13,8 +13,8 @@ from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne, Integer, Reference, ValueObject
 from protean.fields import List as ProteanList
-from protean.reflection import fields
 from protean.utils import DomainObjects, derive_element_class, fqn, inflection
+from protean.utils.reflection import fields
 
 logger = logging.getLogger(__name__)
 

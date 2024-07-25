@@ -3,7 +3,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, String
-from protean.reflection import declared_fields
+from protean.utils.reflection import declared_fields
 
 
 class Person(BaseAggregate):

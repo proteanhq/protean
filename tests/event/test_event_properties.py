@@ -6,7 +6,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
-from protean.reflection import id_field
+from protean.utils.reflection import id_field
 
 
 class User(BaseAggregate):

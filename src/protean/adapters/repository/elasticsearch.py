@@ -15,11 +15,11 @@ from protean.exceptions import ObjectNotFoundError
 from protean.fields import Reference
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
-from protean.reflection import attributes, id_field
 from protean.utils import IdentityStrategy, IdentityType
 from protean.utils.container import Options
 from protean.utils.globals import current_domain
 from protean.utils.query import Q
+from protean.utils.reflection import attributes, id_field
 
 logger = logging.getLogger(__name__)
 

@@ -15,10 +15,10 @@ from protean.exceptions import (
 )
 from protean.fields import Auto, Field
 from protean.port.provider import BaseProvider
-from protean.reflection import declared_fields, id_field, unique_fields
 from protean.utils import DomainObjects
 from protean.utils.globals import current_uow
 from protean.utils.query import Q
+from protean.utils.reflection import declared_fields, id_field, unique_fields
 
 if TYPE_CHECKING:
     from protean.domain import Domain

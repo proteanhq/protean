@@ -20,9 +20,9 @@ from protean.fields import (
     String,
     Text,
 )
-from protean.reflection import _FIELDS
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, Options, OptionsMixin
+from protean.utils.reflection import _FIELDS
 
 logger = logging.getLogger(__name__)
 

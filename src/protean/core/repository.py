@@ -11,7 +11,6 @@ from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne
 from protean.port.dao import BaseDAO
 from protean.port.provider import BaseProvider
-from protean.reflection import association_fields, has_association_fields
 from protean.utils import (
     Database,
     DomainObjects,
@@ -20,6 +19,7 @@ from protean.utils import (
 )
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import current_domain, current_uow
+from protean.utils.reflection import association_fields, has_association_fields
 
 if TYPE_CHECKING:
     from protean.domain import Domain

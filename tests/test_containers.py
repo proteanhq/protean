@@ -3,8 +3,8 @@ import pytest
 from protean.core.view import BaseView
 from protean.exceptions import InvalidDataError, NotSupportedError
 from protean.fields import Integer, String
-from protean.reflection import declared_fields
 from protean.utils.container import BaseContainer, OptionsMixin
+from protean.utils.reflection import declared_fields
 
 
 class CustomContainerMeta(BaseContainer):

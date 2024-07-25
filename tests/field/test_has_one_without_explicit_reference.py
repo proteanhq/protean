@@ -9,7 +9,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.fields import HasOne, String
-from protean.reflection import attributes, declared_fields
+from protean.utils.reflection import attributes, declared_fields
 
 
 class Book(BaseAggregate):

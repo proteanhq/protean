@@ -7,8 +7,8 @@ from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Identifier, String, ValueObject
-from protean.reflection import data_fields, declared_fields, fields
 from protean.utils import fully_qualified_name
+from protean.utils.reflection import data_fields, declared_fields, fields
 
 from .elements import Person, PersonAdded
 

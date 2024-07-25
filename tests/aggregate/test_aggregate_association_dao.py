@@ -5,7 +5,7 @@ breakages at the DAO level."""
 
 import pytest
 
-from protean.reflection import attributes
+from protean.utils.reflection import attributes
 
 from .elements import (
     Account,

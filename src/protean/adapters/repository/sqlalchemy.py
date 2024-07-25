@@ -40,11 +40,11 @@ from protean.fields.association import Reference, _ReferenceField
 from protean.fields.embedded import _ShadowField
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
-from protean.reflection import attributes, id_field
 from protean.utils import IdentityType
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import Q
+from protean.utils.reflection import attributes, id_field
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)

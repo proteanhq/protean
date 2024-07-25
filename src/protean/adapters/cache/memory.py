@@ -6,8 +6,8 @@ from typing import Optional, Union
 
 from protean.core.view import BaseView
 from protean.port.cache import BaseCache
-from protean.reflection import id_field
 from protean.utils.inflection import underscore
+from protean.utils.reflection import id_field
 
 
 class TTLDict(collections.abc.MutableMapping):

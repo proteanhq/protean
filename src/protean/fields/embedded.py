@@ -4,7 +4,7 @@ from functools import lru_cache
 
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Field
-from protean.reflection import declared_fields
+from protean.utils.reflection import declared_fields
 
 
 class _ShadowField(Field):

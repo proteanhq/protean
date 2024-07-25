@@ -4,7 +4,12 @@ import pytest
 
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.fields import Auto, String
-from protean.reflection import _ID_FIELD_NAME, attributes, declared_fields, id_field
+from protean.utils.reflection import (
+    _ID_FIELD_NAME,
+    attributes,
+    declared_fields,
+    id_field,
+)
 
 from .elements import Adult, NotAPerson, Person, PersonAutoSSN, PersonExplicitID
 

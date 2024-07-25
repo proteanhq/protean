@@ -15,14 +15,6 @@ from protean.exceptions import (
 )
 from protean.fields import Auto, HasMany, Reference, ValueObject
 from protean.fields.association import Association
-from protean.reflection import (
-    _FIELDS,
-    attributes,
-    data_fields,
-    declared_fields,
-    fields,
-    id_field,
-)
 from protean.utils import (
     DomainObjects,
     derive_element_class,
@@ -30,6 +22,14 @@ from protean.utils import (
     inflection,
 )
 from protean.utils.container import BaseContainer, IdentityMixin, OptionsMixin
+from protean.utils.reflection import (
+    _FIELDS,
+    attributes,
+    data_fields,
+    declared_fields,
+    fields,
+    id_field,
+)
 
 logger = logging.getLogger(__name__)
 

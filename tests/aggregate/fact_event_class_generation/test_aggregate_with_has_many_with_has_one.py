@@ -5,7 +5,7 @@ from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
 from protean.fields import HasMany, HasOne, Integer, List, String, ValueObject
-from protean.reflection import declared_fields
+from protean.utils.reflection import declared_fields
 
 
 class University(BaseAggregate):

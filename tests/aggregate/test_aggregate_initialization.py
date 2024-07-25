@@ -6,8 +6,8 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.exceptions import NotSupportedError, ValidationError
-from protean.reflection import attributes, declared_fields
 from protean.utils import fully_qualified_name
+from protean.utils.reflection import attributes, declared_fields
 
 from .elements import (
     AccountWithId,

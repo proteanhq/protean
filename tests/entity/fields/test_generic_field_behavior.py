@@ -3,7 +3,7 @@ import pytest
 from protean.core.entity import BaseEntity
 from protean.exceptions import ValidationError
 from protean.fields import Boolean, Dict, Integer, List
-from protean.reflection import fields
+from protean.utils.reflection import fields
 
 
 class TestFields:

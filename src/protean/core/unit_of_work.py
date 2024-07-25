@@ -6,9 +6,9 @@ from protean.exceptions import (
     InvalidOperationError,
     ValidationError,
 )
-from protean.reflection import id_field
 from protean.utils import EventProcessing
 from protean.utils.globals import _uow_context_stack, current_domain
+from protean.utils.reflection import id_field
 
 logger = logging.getLogger(__name__)
 

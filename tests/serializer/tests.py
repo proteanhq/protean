@@ -3,8 +3,8 @@ import pytest
 from protean.core.serializer import BaseSerializer
 from protean.exceptions import NotSupportedError
 from protean.fields import Integer, String
-from protean.reflection import declared_fields
 from protean.utils import fully_qualified_name
+from protean.utils.reflection import declared_fields
 
 from .elements import User, UserSchema
 

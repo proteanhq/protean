@@ -1,6 +1,6 @@
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
-from protean.reflection import data_fields
+from protean.utils.reflection import data_fields
 
 
 class Person(BaseAggregate):

@@ -2,7 +2,7 @@ import pytest
 
 from protean.core.value_object import BaseValueObject
 from protean.fields import String, ValueObject
-from protean.reflection import fields
+from protean.utils.reflection import fields
 
 
 class Address(BaseValueObject):

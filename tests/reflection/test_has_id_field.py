@@ -4,7 +4,7 @@ from protean.core.command import BaseCommand
 from protean.core.entity import BaseEntity
 from protean.fields import String
 from protean.fields.basic import Identifier
-from protean.reflection import has_id_field
+from protean.utils.reflection import has_id_field
 
 
 class Aggregate1(BaseAggregate):

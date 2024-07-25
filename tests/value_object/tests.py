@@ -2,7 +2,7 @@ import pytest
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Float
-from protean.reflection import attributes, declared_fields
+from protean.utils.reflection import attributes, declared_fields
 
 from .elements import (
     Account,

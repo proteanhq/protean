@@ -7,8 +7,8 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import String, ValueObject
 from protean.fields.basic import Identifier
-from protean.reflection import fields
 from protean.utils import fqn
+from protean.utils.reflection import fields
 
 
 class User(BaseAggregate):

@@ -4,7 +4,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.fields import HasOne, Integer, String, ValueObject
-from protean.reflection import declared_fields
+from protean.utils.reflection import declared_fields
 
 
 class Department(BaseAggregate):

@@ -13,7 +13,7 @@ from protean.fields import (
     String,
     ValueObject,
 )
-from protean.reflection import declared_fields
+from protean.utils.reflection import declared_fields
 
 
 class Shipment(BaseAggregate):

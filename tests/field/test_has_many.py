@@ -4,7 +4,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.exceptions import IncorrectUsageError
 from protean.fields import HasMany, String
-from protean.reflection import attributes, declared_fields
+from protean.utils.reflection import attributes, declared_fields
 
 
 class Post(BaseAggregate):

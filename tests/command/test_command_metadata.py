@@ -5,8 +5,8 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.fields import Identifier, String
-from protean.reflection import fields
 from protean.utils import fqn
+from protean.utils.reflection import fields
 
 
 class User(BaseAggregate):

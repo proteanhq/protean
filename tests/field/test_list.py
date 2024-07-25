@@ -17,7 +17,7 @@ from protean.fields.basic import (
     String,
 )
 from protean.fields.embedded import ValueObject
-from protean.reflection import declared_fields
+from protean.utils.reflection import declared_fields
 
 
 class TestListFieldContentType:

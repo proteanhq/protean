@@ -3,7 +3,7 @@
 from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
 from protean.fields import Float, String, ValueObject
-from protean.reflection import declared_fields
+from protean.utils.reflection import declared_fields
 
 
 class Account(BaseAggregate):
