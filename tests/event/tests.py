@@ -3,7 +3,7 @@ import uuid
 import pytest
 
 from protean import BaseAggregate, BaseEvent, BaseValueObject
-from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Identifier, String, ValueObject
 from protean.reflection import data_fields, declared_fields, fields
 from protean.utils import fully_qualified_name
@@ -75,6 +75,32 @@ class TestDomainEventDefinition:
                 "id": user.id,
             }
         )
+
+    def test_error_on_invalid_value_object(self, test_domain):
+        class Address(BaseValueObject):
+            street = String(max_length=50, required=True)
+            city = String(max_length=25, required=True)
+
+        class Person(BaseAggregate):
+            name = String(max_length=50)
+            address = ValueObject(Address, required=True)
+
+        class PersonAdded(BaseEvent):
+            id = Identifier(identifier=True)
+            name = String(max_length=50)
+            address = ValueObject(Address)
+
+        test_domain.register(PersonAdded, part_of=Person)
+        test_domain.init(traverse=False)
+
+        with pytest.raises(ValidationError) as exc:
+            PersonAdded(
+                id=uuid.uuid4(),
+                name="John Doe",
+                address={"street": "123 Main St"},
+            )
+
+        assert exc.value.messages == {"city": ["is required"]}
 
     def test_that_domain_event_can_be_reconstructed_from_dict_enclosing_vo(
         self, test_domain

@@ -4,7 +4,7 @@ import copy
 import inspect
 import logging
 from collections import defaultdict
-from typing import Any, Type, Union
+from typing import Any, Union
 
 from protean.exceptions import (
     InvalidDataError,
@@ -37,7 +37,7 @@ class Options:
     - ``abstract``: Indicates that this is an abstract entity (Ignores all other meta options)
     """
 
-    def __init__(self, opts: Union[dict, Type] = None) -> None:
+    def __init__(self, opts: Union[dict, "Options"] = None) -> None:
         self._opts = set()
 
         if opts:
@@ -59,6 +59,10 @@ class Options:
                     setattr(self, opt_name, opt_value)
 
                 self.abstract = opts.get("abstract", None) or False
+            else:
+                raise ValueError(
+                    f"Invalid options `{opts}` passed to Options. Must be a dict or Options instance."
+                )
         else:
             # Common Meta attributes
             self.abstract = getattr(opts, "abstract", None) or False
@@ -84,7 +88,8 @@ class Options:
 
     def __hash__(self) -> int:
         """Overrides the default implementation and bases hashing on values"""
-        return hash(frozenset(self.__dict__.items()))
+        filtered_dict = {k: v for k, v in self.__dict__.items() if k != "_opts"}
+        return hash(frozenset(filtered_dict.items()))
 
     def __add__(self, other: Options) -> None:
         new_options = copy.copy(self)
@@ -208,32 +213,36 @@ class BaseContainer(metaclass=ContainerMeta):
 
         self.errors = defaultdict(list)
 
-        # Load the attributes based on the template
         loaded_fields = []
+
+        # Gather values from template
+        template_values = {}
         for dictionary in template:
             if not isinstance(dictionary, dict):
                 raise AssertionError(
-                    f'Positional argument "{dictionary}" passed must be a dict.'
+                    f"Positional argument '{dictionary}' passed must be a dict. "
                     f"This argument serves as a template for loading common "
                     f"values.",
                 )
             for field_name, val in dictionary.items():
-                loaded_fields.append(field_name)
-                setattr(self, field_name, val)
+                template_values[field_name] = val
+
+        supplied_values = {**template_values, **kwargs}
 
         # Now load against the keyword arguments
-        for field_name, val in kwargs.items():
+        for field_name, val in supplied_values.items():
             # Record that a field was encountered by appending to `loaded_fields`
             #   When it fails validations, we want it's errors to be recorded
             #
             #   Not remembering the field was recorded will result in it being set to `None`
             #   which will raise a ValidationError of its own for the wrong reasons (required field not set)
-            loaded_fields.append(field_name)
             try:
                 setattr(self, field_name, val)
             except ValidationError as err:
                 for field_name in err.messages:
                     self.errors[field_name].extend(err.messages[field_name])
+            finally:
+                loaded_fields.append(field_name)
 
         # Load Value Objects from associated fields
         #   This block will dynamically construct value objects from field values
@@ -245,18 +254,26 @@ class BaseContainer(metaclass=ContainerMeta):
                     (embedded_field.field_name, embedded_field.attribute_name)
                     for embedded_field in field_obj.embedded_fields.values()
                 ]
-                values = {name: kwargs.get(attr) for name, attr in attrs}
-                try:
-                    value_object = field_obj.value_object_cls(**values)
-                    # Set VO value only if the value object is not None/Empty
-                    if value_object:
+                kwargs_values = {
+                    name: supplied_values.get(attr) for name, attr in attrs
+                }
+
+                # Check if any of the values in `values` are not None
+                #   If all values are None, it means that the value object is not being set
+                #   and we should set it to None
+                #
+                #   If any of the values are not None, we should set the value object and its attributes
+                #   to the values provided and let it trigger validations
+                if any(kwargs_values.values()):
+                    try:
+                        value_object = field_obj.value_object_cls(**kwargs_values)
                         setattr(self, field_name, value_object)
                         loaded_fields.append(field_name)
-                except ValidationError as err:
-                    for sub_field_name in err.messages:
-                        self.errors["{}_{}".format(field_name, sub_field_name)].extend(
-                            err.messages[sub_field_name]
-                        )
+                    except ValidationError as err:
+                        for sub_field_name in err.messages:
+                            self.errors[
+                                "{}_{}".format(field_name, sub_field_name)
+                            ].extend(err.messages[sub_field_name])
 
         # Load Identities
         for field_name, field_obj in declared_fields(self).items():

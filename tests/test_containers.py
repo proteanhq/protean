@@ -1,6 +1,7 @@
 import pytest
 
 from protean.container import BaseContainer, OptionsMixin
+from protean.core.view import BaseView
 from protean.exceptions import InvalidDataError, NotSupportedError
 from protean.fields import Integer, String
 from protean.reflection import declared_fields
@@ -19,8 +20,10 @@ class CustomContainer(CustomContainerMeta, OptionsMixin):
 
 
 def test_that_base_container_class_cannot_be_instantiated():
-    with pytest.raises(NotSupportedError):
+    with pytest.raises(NotSupportedError) as exc:
         BaseContainer()
+
+    assert str(exc.value) == "BaseContainer cannot be instantiated"
 
 
 class TestContainerInitialization:
@@ -28,9 +31,32 @@ class TestContainerInitialization:
         with pytest.raises(TypeError):
             CustomContainerMeta()
 
+    def test_abstract_containers_cannot_be_instantiated(self, test_domain):
+        class AbstractView(BaseView):
+            foo = String()
+
+        test_domain.register(AbstractView, abstract=True)
+
+        with pytest.raises(NotSupportedError) as exc:
+            AbstractView(foo="bar")
+
+        assert (
+            str(exc.value)
+            == "AbstractView class has been marked abstract and cannot be instantiated"
+        )
+
     def test_that_a_concrete_custom_container_can_be_instantiated(self):
         custom = CustomContainer(foo="a", bar="b")
         assert custom is not None
+
+    def test_that_init_args_object_needs_to_be_a_dict(self):
+        with pytest.raises(AssertionError) as exc:
+            CustomContainer("a", "b")
+
+        assert str(exc.value) == (
+            "Positional argument 'a' passed must be a dict. "
+            "This argument serves as a template for loading common values."
+        )
 
 
 class TestContainerProperties:
