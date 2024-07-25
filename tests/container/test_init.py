@@ -1,5 +1,5 @@
-from protean.container import BaseContainer, OptionsMixin
 from protean.fields import String
+from protean.utils.container import BaseContainer, OptionsMixin
 
 
 class TestControlledFinalization:

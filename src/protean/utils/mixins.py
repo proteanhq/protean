@@ -7,11 +7,11 @@ from enum import Enum
 from typing import Callable, Dict, Union
 
 from protean import fields
-from protean.container import BaseContainer, OptionsMixin
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ConfigurationError, InvalidDataError
+from protean.utils.container import BaseContainer, OptionsMixin
 from protean.utils.eventing import Metadata
 from protean.utils.globals import current_domain
 

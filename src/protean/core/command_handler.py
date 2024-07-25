@@ -1,6 +1,6 @@
-from protean.container import Element, OptionsMixin
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
+from protean.utils.container import Element, OptionsMixin
 from protean.utils.mixins import HandlerMixin
 
 

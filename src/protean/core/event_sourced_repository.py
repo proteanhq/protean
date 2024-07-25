@@ -1,7 +1,6 @@
 import logging
 
 from protean import BaseAggregate, UnitOfWork
-from protean.container import Element, OptionsMixin
 from protean.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
@@ -9,6 +8,7 @@ from protean.exceptions import (
 )
 from protean.fields import Identifier
 from protean.utils import DomainObjects, derive_element_class
+from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import current_uow
 
 logger = logging.getLogger(__name__)

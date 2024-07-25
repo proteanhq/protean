@@ -4,7 +4,6 @@ import logging
 
 from marshmallow import Schema, fields
 
-from protean.container import Element, Options, OptionsMixin
 from protean.exceptions import NotSupportedError
 from protean.fields import (
     Boolean,
@@ -23,6 +22,7 @@ from protean.fields import (
 )
 from protean.reflection import _FIELDS
 from protean.utils import DomainObjects, derive_element_class
+from protean.utils.container import Element, Options, OptionsMixin
 
 logger = logging.getLogger(__name__)
 

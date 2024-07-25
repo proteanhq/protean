@@ -109,7 +109,7 @@ class DomainObjects(Enum):
 
 
 def derive_element_class(element_cls, base_cls, **opts):
-    from protean.container import Options
+    from protean.utils.container import Options
 
     # Ensure options being passed in are known
     known_options = [name for (name, _) in base_cls._default_options()]

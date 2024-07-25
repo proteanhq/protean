@@ -4,7 +4,6 @@ import logging
 from functools import lru_cache
 from typing import TYPE_CHECKING, Union
 
-from protean.container import Element, OptionsMixin
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
 from protean.core.view import BaseView
@@ -19,6 +18,7 @@ from protean.utils import (
     derive_element_class,
     fully_qualified_name,
 )
+from protean.utils.container import Element, OptionsMixin
 from protean.utils.globals import current_domain, current_uow
 
 if TYPE_CHECKING:

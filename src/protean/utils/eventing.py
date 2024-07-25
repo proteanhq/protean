@@ -1,12 +1,12 @@
 import json
 from datetime import datetime, timezone
 
-from protean.container import BaseContainer, OptionsMixin
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import DateTime, Field, Integer, String, ValueObject
 from protean.fields.association import Association, Reference
 from protean.reflection import _ID_FIELD_NAME, declared_fields, fields
+from protean.utils.container import BaseContainer, OptionsMixin
 
 
 class Metadata(BaseValueObject):

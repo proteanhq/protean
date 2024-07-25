@@ -7,7 +7,6 @@ import logging
 from collections import defaultdict
 from functools import partial
 
-from protean.container import BaseContainer, IdentityMixin, OptionsMixin
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -30,6 +29,7 @@ from protean.utils import (
     generate_identity,
     inflection,
 )
+from protean.utils.container import BaseContainer, IdentityMixin, OptionsMixin
 
 logger = logging.getLogger(__name__)
 

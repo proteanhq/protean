@@ -1,10 +1,10 @@
 import pytest
 
-from protean.container import BaseContainer, OptionsMixin
 from protean.core.view import BaseView
 from protean.exceptions import InvalidDataError, NotSupportedError
 from protean.fields import Integer, String
 from protean.reflection import declared_fields
+from protean.utils.container import BaseContainer, OptionsMixin
 
 
 class CustomContainerMeta(BaseContainer):

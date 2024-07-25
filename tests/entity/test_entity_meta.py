@@ -1,6 +1,6 @@
-from protean.container import Options
 from protean.fields import Auto, Integer, String
 from protean.reflection import attributes, declared_fields
+from protean.utils.container import Options
 
 from .elements import (
     AbstractPerson,

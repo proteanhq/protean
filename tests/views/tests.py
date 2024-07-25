@@ -5,11 +5,11 @@ from uuid import uuid4
 import pytest
 
 from protean import BaseView
-from protean.container import Options
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.fields import Auto, Identifier, Integer, String
 from protean.reflection import _ID_FIELD_NAME, attributes, declared_fields, id_field
 from protean.utils import fully_qualified_name
+from protean.utils.container import Options
 
 
 class AbstractPerson(BaseView):

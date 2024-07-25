@@ -5,9 +5,9 @@ from functools import wraps
 from typing import List, Union
 
 from protean import BaseAggregate
-from protean.container import Element, OptionsMixin
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.utils import DomainObjects, derive_element_class
+from protean.utils.container import Element, OptionsMixin
 
 logger = logging.getLogger(__name__)
 

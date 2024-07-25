@@ -1,4 +1,4 @@
-from protean.container import Options
+from protean.utils.container import Options
 
 
 class Meta:

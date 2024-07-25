@@ -1,6 +1,6 @@
 import pytest
 
-from protean.container import Options
+from protean.utils.container import Options
 
 
 @pytest.fixture

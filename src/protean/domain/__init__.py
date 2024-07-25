@@ -15,7 +15,6 @@ from inflection import parameterize, titleize, transliterate, underscore
 
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
-from protean.container import Element
 from protean.core.aggregate import element_to_fact_event
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
@@ -38,6 +37,7 @@ from protean.utils import (
     EventProcessing,
     fqn,
 )
+from protean.utils.container import Element
 from protean.utils.globals import g
 
 from .config import Config2, ConfigAttribute

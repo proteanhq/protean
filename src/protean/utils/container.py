@@ -14,7 +14,7 @@ from protean.exceptions import (
 from protean.fields import Auto, Field, FieldBase, ValueObject
 from protean.utils import generate_identity
 
-from .reflection import (
+from ..reflection import (
     _FIELDS,
     _ID_FIELD_NAME,
     attributes,
