@@ -42,54 +42,11 @@ from protean.utils import (
 
 from .config import Config2, ConfigAttribute
 from .context import DomainContext, _DomainContextGlobals
-from .helpers import get_debug_flag, get_env
 
 logger = logging.getLogger(__name__)
 
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
-
-
-def _default_config():
-    """Return the default configuration for a Protean application.
-
-    This is placed in a separate function because we want to be absolutely
-    sure that we are using a copy of the defaults when we manipulate config
-    directly in tests. Housing it within the main `Domain` class can
-    potentially lead to issues because the config can be overwritten by accident.
-    """
-    from protean.utils import IdentityStrategy, IdentityType
-
-    return {
-        "env": None,
-        "debug": None,
-        "secret_key": None,
-        "identity_strategy": IdentityStrategy.UUID.value,
-        "identity_type": IdentityType.STRING.value,
-        "databases": {
-            "default": {"provider": "memory"},
-            "memory": {"provider": "memory"},
-        },
-        "event_processing": EventProcessing.ASYNC.value,
-        "command_processing": CommandProcessing.ASYNC.value,
-        "event_store": {
-            "provider": "memory",
-        },
-        "caches": {
-            "default": {
-                "provider": "memory",
-                "TTL": 300,
-            }
-        },
-        "brokers": {"default": {"provider": "inline"}},
-        "EMAIL_PROVIDERS": {
-            "default": {
-                "provider": "protean.adapters.DummyEmailProvider",
-                "DEFAULT_FROM_EMAIL": "admin@team8solutions.com",
-            },
-        },
-        "SNAPSHOT_THRESHOLD": 10,
-    }
 
 
 class Domain:
@@ -121,7 +78,7 @@ class Domain:
     #:
     #: **Do not enable development when deploying in production.**
     #:
-    #: Default: ``'production'``
+    #: Default: ``'development'``
     env = ConfigAttribute("env")
 
     #: The testing flag.  Set this to ``True`` to enable the test mode of
@@ -310,6 +267,7 @@ class Domain:
         directories_to_traverse = [str(root_dir)]  # Include root directory
 
         # Identify subdirectories that have a toml file
+        #   And ignore them from traversal
         files_to_check = ["domain.toml", ".domain.toml", "pyproject.toml"]
         for subdirectory in subdirectories:
             subdirectory_path = os.path.join(root_dir, subdirectory)
@@ -360,13 +318,10 @@ class Domain:
 
     def load_config(self, load_toml=True):
         """Load configuration from dist or a .toml file."""
-        defaults = _default_config()
-        defaults["env"] = get_env()
-        defaults["debug"] = get_debug_flag()
         if load_toml:
-            config = Config2.load_from_path(self.root_path, defaults)
+            config = Config2.load_from_path(self.root_path)
         else:
-            config = Config2.load_from_dict(defaults)
+            config = Config2.load_from_dict()
 
         # Load Constants
         if "custom" in config:

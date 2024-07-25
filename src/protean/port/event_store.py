@@ -169,11 +169,11 @@ class BaseEventStore(metaclass=ABCMeta):
             and len(event_stream) > 1
             and (
                 event_stream[-1]["position"] - position_in_snapshot
-                >= self.domain.config["SNAPSHOT_THRESHOLD"]
+                >= self.domain.config["snapshot_threshold"]
             )
         ) or (
             not snapshot_message
-            and len(event_stream) >= self.domain.config["SNAPSHOT_THRESHOLD"]
+            and len(event_stream) >= self.domain.config["snapshot_threshold"]
         ):
             # Snapshot is of type "SNAPSHOT" and contains only the aggregate's data
             #   (no metadata, so no event type)

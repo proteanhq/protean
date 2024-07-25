@@ -3,6 +3,8 @@ testing = true
 secret_key = "tvTpk3PAfkGr5x9!2sFU%XpW7bR8cwKA"
 identity_strategy = "uuid"
 identity_type = "string"
+event_processing = "sync"
+command_processing = "sync"
 
 [databases.default]
 provider = "memory"
@@ -10,12 +12,50 @@ provider = "memory"
 [databases.memory]
 provider = "memory"
 
-[databases.sqlite]
-provider = "sqlite"
-database_uri = "sqlite:///test.db"
-
 [brokers.default]
 provider = "inline"
 
 [caches.default]
 provider = "memory"
+
+[event_store]
+provider = "memory"
+
+[custom]
+foo = "bar"
+
+[staging]
+event_processing = "async"
+command_processing = "sync"
+
+[staging.databases.default]
+provider = "sqlite"
+database_url = "sqlite:///test.db"
+
+[staging.brokers.default]
+provider = "redis"
+URI = "redis://staging.example.com:6379/2"
+TTL = 300
+
+[staging.custom]
+foo = "qux"
+
+[prod]
+event_processing = "async"
+command_processing = "async"
+
+[prod.databases.default]
+provider = "postgresql"
+database_url = "postgresql://postgres:postgres@localhost:5432/postgres"
+
+[prod.brokers.default]
+provider = "redis"
+URI = "redis://prod.example.com:6379/2"
+TTL = 30
+
+[prod.event_store]
+provider = "message_db"
+database_uri = "postgresql://message_store@localhost:5433/message_store"
+
+[prod.custom]
+foo = "quux"
