@@ -2,6 +2,7 @@ __version__ = "0.12.1"
 
 from .core.aggregate import apply, atomic_change
 from .core.entity import invariant
+from .core.event import BaseEvent
 from .core.model import BaseModel
 from .core.queryset import Q, QuerySet
 from .core.unit_of_work import UnitOfWork
@@ -12,6 +13,7 @@ from .utils.globals import current_domain, current_uow, g
 from .utils.mixins import handle
 
 __all__ = [
+    "BaseEvent",
     "BaseModel",
     "Domain",
     "Engine",

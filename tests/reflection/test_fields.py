@@ -3,7 +3,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, String
-from protean.utils.reflection import declared_fields
+from protean.utils.reflection import fields
 
 
 class Person(BaseAggregate):
@@ -11,9 +11,9 @@ class Person(BaseAggregate):
     age = Integer()
 
 
-def test_declared_fields():
-    assert len(declared_fields(Person)) == 3
-    assert all(key in declared_fields(Person) for key in ["name", "age", "id"])
+def test_fields():
+    assert len(fields(Person)) == 4
+    assert all(key in fields(Person) for key in ["_version", "name", "age", "id"])
 
 
 def test_fields_on_non_element():
@@ -21,7 +21,7 @@ def test_fields_on_non_element():
         pass
 
     with pytest.raises(IncorrectUsageError) as exception:
-        declared_fields(Dummy)
+        fields(Dummy)
 
     assert exception.value.messages == {
         "field": [
