@@ -1,7 +1,7 @@
 import pytest
 
 from protean.exceptions import ConfigurationError
-from protean.utils import convert_str_values_to_list, generate_identity
+from protean.utils import convert_str_values_to_list, generate_identity, get_version
 
 
 def test_convert_str_values_to_list():
@@ -54,3 +54,7 @@ def test_unknown_identity_type_raises_exception():
         generate_identity(identity_type="foo")
 
     assert str(exc.value) == "Unknown Identity Type 'foo'"
+
+
+def test_get_version():
+    assert get_version() == "0.12.1"

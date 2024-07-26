@@ -4,15 +4,20 @@ Definitions/declaractions in this module should be independent of other modules,
 to the maximum extent possible.
 """
 
+from __future__ import annotations
+
 import importlib
 import logging
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Callable
-from uuid import uuid4
+from typing import TYPE_CHECKING, Any, Callable, Optional, Type
+from uuid import UUID, uuid4
 
 from protean.exceptions import ConfigurationError
 from protean.utils.globals import current_domain
+
+if TYPE_CHECKING:
+    from protean.utils.container import Element
 
 logger = logging.getLogger(__name__)
 
@@ -56,23 +61,23 @@ class TypeMatcher:
     Ex. mocked_object.assert_called_once_with(TypeMatcher(TargetCls))
     """
 
-    def __init__(self, expected_type):
+    def __init__(self, expected_type: Type[Any]) -> None:
         self.expected_type = expected_type
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, self.expected_type)
 
 
-def utcnow_func():
+def utcnow_func() -> datetime:
     """Return the current time in UTC with timezone information"""
     return datetime.now(UTC)
 
 
-def get_version():
+def get_version() -> str:
     return importlib.metadata.version("protean")
 
 
-def fully_qualified_name(cls):
+def fully_qualified_name(cls) -> str:
     """Return Fully Qualified name along with module"""
     return ".".join([cls.__module__, cls.__qualname__])
 
@@ -80,7 +85,7 @@ def fully_qualified_name(cls):
 fqn = fully_qualified_name
 
 
-def convert_str_values_to_list(value):
+def convert_str_values_to_list(value) -> list:
     if not value:
         return []
     elif isinstance(value, str):
@@ -108,7 +113,7 @@ class DomainObjects(Enum):
     VIEW = "VIEW"
 
 
-def derive_element_class(element_cls, base_cls, **opts):
+def derive_element_class(element_cls, base_cls, **opts) -> Element:
     from protean.utils.container import Options
 
     # Ensure options being passed in are known
@@ -137,15 +142,15 @@ def derive_element_class(element_cls, base_cls, **opts):
 
 
 def generate_identity(
-    identity_strategy: str = None,
+    identity_strategy: Optional[str] = None,
     identity_function: Callable[[], Any] | None = None,
-    identity_type: str = None,
-):
+    identity_type: Optional[str] = None,
+) -> str | int | UUID:
     """Generate Unique Identifier, based on configured strategy and type.
 
     If an identity type is provided, it will override the domain's configuration.
     """
-    id_value = None
+    id_value: Optional[str | int | UUID] = None
 
     # Consider strategy defined in the Auto field. If not provided, fall back to the
     #   domain's configuration.
@@ -169,11 +174,19 @@ def generate_identity(
         # Run the function configured as part of the Auto field. If not provided, fall back
         #   to the function defined at the domain level.
         id_function = identity_function or current_domain._identity_function
+        id_type = identity_type or current_domain.config["identity_type"]
 
-        id_value = id_function()
+        if callable(id_function):
+            id_value = id_function()
+        else:
+            raise ConfigurationError("Identity function is invalid")
 
     else:
         raise ConfigurationError(f"Unknown Identity Strategy {id_strategy}")
+
+    # This is a fallback, in case the identity generation fails
+    if id_value is None:
+        raise ConfigurationError("Failed to generate identity value")
 
     return id_value
 

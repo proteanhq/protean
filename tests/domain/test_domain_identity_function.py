@@ -2,8 +2,11 @@ import random
 import re
 import time
 
+import pytest
+
 from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
+from protean.exceptions import ConfigurationError
 from protean.fields import Auto
 
 
@@ -46,7 +49,7 @@ def test_domain_identity_function_is_used_to_generate_identity():
         assert bool(re.match(r"^id-\d{13}-\d+$", aggregate.id)) is True
 
 
-def test_domain_identity_function__with_params_is_used_to_generate_identity():
+def test_domain_identity_function_with_params_is_used_to_generate_identity():
     domain = Domain(__file__, identity_function=lambda: gen_ids("foo"))
     domain.config["identity_strategy"] = "function"
 
@@ -80,3 +83,40 @@ def test_domain_identity_function_is_used_with_explicit_auto_field():
         aggregate2 = TestAggregate(aggregate_id="foo")
         assert aggregate2.aggregate_id is not None
         assert aggregate2.aggregate_id == "foo"
+
+
+def test_invalid_identity_function_raises_exception():
+    domain = Domain(__file__, identity_function="foo")
+    domain.config["identity_strategy"] = "function"
+
+    class TestAggregate(BaseAggregate):
+        aggregate_id = Auto(identifier=True)
+
+    domain.register(TestAggregate)
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        with pytest.raises(ConfigurationError) as exc:
+            TestAggregate()
+
+    assert str(exc.value) == "Identity function is invalid"
+
+
+def test_identity_function_returns_no_value():
+    def return_no_value():
+        return None
+
+    domain = Domain(__file__, identity_function=return_no_value)
+    domain.config["identity_strategy"] = "function"
+
+    class TestAggregate(BaseAggregate):
+        aggregate_id = Auto(identifier=True)
+
+    domain.register(TestAggregate)
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        with pytest.raises(ConfigurationError) as exc:
+            TestAggregate()
+
+    assert str(exc.value) == "Failed to generate identity value"
