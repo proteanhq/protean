@@ -91,10 +91,8 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 
         if not aggregate:
             raise ObjectNotFoundError(
-                {
-                    "_entity": f"`{self.meta_.part_of.__name__}` object with identifier {identifier} "
-                    f"does not exist."
-                }
+                f"`{self.meta_.part_of.__name__}` object with identifier {identifier} "
+                f"does not exist."
             )
 
         aggregate._event_position = aggregate._version

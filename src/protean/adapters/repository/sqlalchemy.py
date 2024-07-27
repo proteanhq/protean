@@ -383,10 +383,8 @@ class SADAO(BaseDAO):
             conn.rollback()
             conn.close()
             raise ObjectNotFoundError(
-                {
-                    "_entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                    f"does not exist."
-                }
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
             )
 
         # Sync DB Record with current changes. When the session is committed, changes are automatically synced
@@ -447,10 +445,8 @@ class SADAO(BaseDAO):
             conn.rollback()
             conn.close()
             raise ObjectNotFoundError(
-                {
-                    "_entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                    f"does not exist."
-                }
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
             )
 
         try:

@@ -722,7 +722,7 @@ class HasMany(Association):
 
         if len(data) == 0:
             raise exceptions.ObjectNotFoundError(
-                {"self.field_name": ["No linked entities matching criteria found"]}
+                "No linked entities matching criteria found"
             )
 
         if len(data) > 1:

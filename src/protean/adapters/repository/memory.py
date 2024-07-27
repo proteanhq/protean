@@ -390,10 +390,8 @@ class DictDAO(BaseDAO):
             # Check if object is present
             if identifier not in conn._db["data"][self.schema_name]:
                 raise ObjectNotFoundError(
-                    {
-                        "_entity": f"`{self.__class__.__name__}` object with identifier {identifier} "
-                        f"does not exist."
-                    }
+                    f"`{self.__class__.__name__}` object with identifier {identifier} "
+                    f"does not exist."
                 )
 
             conn._db["data"][self.schema_name][identifier] = model_obj
@@ -434,10 +432,8 @@ class DictDAO(BaseDAO):
             # Check if object is present
             if identifier not in conn._db["data"][self.schema_name]:
                 raise ObjectNotFoundError(
-                    {
-                        "_entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                        f"does not exist."
-                    }
+                    f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                    f"does not exist."
                 )
 
             del conn._db["data"][self.schema_name][identifier]

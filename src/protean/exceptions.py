@@ -3,6 +3,7 @@ Custom Protean exception classes
 """
 
 import logging
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -12,16 +13,20 @@ class ProteanException(Exception):
 
 
 class ProteanExceptionWithMessage(ProteanException):
-    def __init__(self, messages, traceback=None, **kwargs):
+    def __init__(
+        self, messages: dict[str, str], traceback: Optional[str] = None, **kwargs: Any
+    ) -> None:
         logger.debug(f"Exception:: {messages}")
+
         self.messages = messages
         self.traceback = traceback
+
         super().__init__(**kwargs)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{dict(self.messages)}"
 
-    def __reduce__(self):
+    def __reduce__(self) -> tuple[Any, tuple[Any]]:
         return (ProteanExceptionWithMessage, (self.messages,))
 
 
@@ -37,7 +42,7 @@ class ConfigurationError(ProteanException):
     """
 
 
-class ObjectNotFoundError(ProteanExceptionWithMessage):
+class ObjectNotFoundError(ProteanException):
     """Object was not found, can raise 404"""
 
 
