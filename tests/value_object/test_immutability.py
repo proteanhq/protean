@@ -25,12 +25,9 @@ def test_value_objects_are_immutable():
     with pytest.raises(IncorrectUsageError) as exception:
         balance.currency = "INR"
 
-    assert str(exception.value) == str(
-        {
-            "_value_object": [
-                "Value Objects are immutable and cannot be modified once created"
-            ]
-        }
+    assert (
+        str(exception.value)
+        == "Value Objects are immutable and cannot be modified once created"
     )
 
 

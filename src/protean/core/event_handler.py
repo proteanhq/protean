@@ -36,11 +36,7 @@ def event_handler_factory(element_cls, domain, **opts):
 
     if not (element_cls.meta_.part_of or element_cls.meta_.stream_category):
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Event Handler `{element_cls.__name__}` needs to be associated with an aggregate or a stream"
-                ]
-            }
+            f"Event Handler `{element_cls.__name__}` needs to be associated with an aggregate or a stream"
         )
 
     return element_cls

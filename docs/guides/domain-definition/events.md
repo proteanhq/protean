@@ -195,9 +195,5 @@ In [2]: renamed = UserRenamed(user_id=user.id, name="John Doe Jr.")
 
 In [3]: renamed.name = "John Doe Sr."
 ...
-IncorrectUsageError: {
-    '_message': [
-        'Event/Command Objects are immutable and cannot be modified once created'
-    ]
-}
+IncorrectUsageError: 'Event/Command Objects are immutable and cannot be modified once created'
 ```

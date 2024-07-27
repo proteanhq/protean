@@ -621,11 +621,7 @@ def entity_factory(element_cls, domain, **opts):
 
     if not element_cls.meta_.part_of:
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Entity `{element_cls.__name__}` needs to be associated with an Aggregate"
-                ]
-            }
+            f"Entity `{element_cls.__name__}` needs to be associated with an Aggregate"
         )
 
     # Set up reference fields

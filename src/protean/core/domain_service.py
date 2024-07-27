@@ -114,11 +114,7 @@ def domain_service_factory(element_cls, domain, **opts):
 
     if not element_cls.meta_.part_of or len(element_cls.meta_.part_of) < 2:
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Domain Service `{element_cls.__name__}` needs to be associated with two or more Aggregates"
-                ]
-            }
+            f"Domain Service `{element_cls.__name__}` needs to be associated with two or more Aggregates"
         )
 
     # Iterate through methods marked as `@invariant` and record them for later use

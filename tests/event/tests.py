@@ -182,7 +182,7 @@ class TestDomainEventRegistration:
         with pytest.raises(IncorrectUsageError) as exc:
             test_domain.register_external_event(Dummy, "Bar.ExternalEvent.v1")
 
-        assert exc.value.messages == {"element": ["Class `Dummy` is not an Event"]}
+        assert exc.value.args[0] == "Class `Dummy` is not an Event"
 
 
 class TestDomainEventEquivalence:

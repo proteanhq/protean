@@ -96,12 +96,10 @@ def test_that_trying_to_associate_an_event_with_multiple_aggregates_throws_an_er
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.init(traverse=False)
 
-    assert exc.value.messages == {
-        "_event": [
-            "Events are associated with multiple event sourced aggregates: "
-            "tests.event_sourced_aggregates.test_event_association_with_aggregate.UserRegistered"
-        ]
-    }
+    assert exc.value.args[0] == (
+        "Events are associated with multiple event sourced aggregates: "
+        "tests.event_sourced_aggregates.test_event_association_with_aggregate.UserRegistered"
+    )
 
 
 @pytest.mark.eventstore

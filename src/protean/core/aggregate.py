@@ -257,11 +257,7 @@ def apply(fn):
 
     if len(typing.get_type_hints(fn)) > 2:
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Handler method `{fn.__name__}` has incorrect number of arguments"
-                ]
-            }
+            f"Handler method `{fn.__name__}` has incorrect number of arguments"
         )
 
     try:
@@ -276,11 +272,7 @@ def apply(fn):
         )
     except StopIteration:
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Apply method `{fn.__name__}` should accept an argument annotated with the Event class"
-                ]
-            }
+            f"Apply method `{fn.__name__}` should accept an argument annotated with the Event class"
         )
 
     @functools.wraps(fn)

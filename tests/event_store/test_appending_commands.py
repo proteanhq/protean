@@ -28,11 +28,10 @@ def test_command_submission_without_aggregate(test_domain):
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.register(Register)
 
-    assert exc.value.messages == {
-        "_command": [
-            "Command `Register` needs to be associated with an aggregate or a stream"
-        ]
-    }
+    assert (
+        exc.value.args[0]
+        == "Command `Register` needs to be associated with an aggregate or a stream"
+    )
 
 
 @pytest.mark.eventstore

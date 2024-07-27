@@ -83,12 +83,8 @@ class BaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             # Value objects can hold all kinds of fields, except associations
             if isinstance(field_obj, (Reference, Association)):
                 raise IncorrectUsageError(
-                    {
-                        "_message": [
-                            f"Events/Commands cannot have associations. "
-                            f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
-                        ]
-                    }
+                    f"Events/Commands cannot have associations. "
+                    f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
                 )
 
     def __setattr__(self, name, value):
@@ -96,11 +92,7 @@ class BaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             return super().__setattr__(name, value)
         else:
             raise IncorrectUsageError(
-                {
-                    "_message": [
-                        "Event/Command Objects are immutable and cannot be modified once created"
-                    ]
-                }
+                "Event/Command Objects are immutable and cannot be modified once created"
             )
 
     @classmethod

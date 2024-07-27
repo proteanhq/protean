@@ -235,10 +235,8 @@ class ElasticsearchDAO(BaseDAO):
         except NotFoundError as exc:
             logger.error(f"Database Record not found: {exc}")
             raise ObjectNotFoundError(
-                {
-                    "_entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                    f"does not exist."
-                }
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
             )
 
         try:

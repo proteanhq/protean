@@ -88,7 +88,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
         ]:
             # We are dealing with a malformed or unknown message
             raise InvalidDataError(
-                {"_message": ["Message type is not supported for deserialization"]}
+                {"kind": ["Message type is not supported for deserialization"]}
             )
 
         element_cls = current_domain._events_and_commands.get(self.metadata.type, None)

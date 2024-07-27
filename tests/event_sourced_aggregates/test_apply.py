@@ -98,9 +98,9 @@ def test_apply_decorator_method_should_have_exactly_one_argument():
             def sent(self, event: Sent, _: str) -> None:
                 pass
 
-    assert exc.value.messages == {
-        "_entity": ["Handler method `sent` has incorrect number of arguments"]
-    }
+    assert (
+        exc.value.args[0] == "Handler method `sent` has incorrect number of arguments"
+    )
 
 
 def test_that_apply_decorator_without_event_cls_raises_error():
@@ -117,11 +117,10 @@ def test_that_apply_decorator_without_event_cls_raises_error():
             def sent(self, _: Send) -> None:
                 pass
 
-    assert exc.value.messages == {
-        "_entity": [
-            "Apply method `sent` should accept an argument annotated with the Event class"
-        ]
-    }
+    assert (
+        exc.value.args[0]
+        == "Apply method `sent` should accept an argument annotated with the Event class"
+    )
 
     # Argument should be annotated
     with pytest.raises(IncorrectUsageError) as exc:
@@ -133,11 +132,10 @@ def test_that_apply_decorator_without_event_cls_raises_error():
             def sent(self, _) -> None:
                 pass
 
-    assert exc.value.messages == {
-        "_entity": [
-            "Apply method `sent` should accept an argument annotated with the Event class"
-        ]
-    }
+    assert (
+        exc.value.args[0]
+        == "Apply method `sent` should accept an argument annotated with the Event class"
+    )
 
     # Argument should be supplied
     with pytest.raises(IncorrectUsageError) as exc:
@@ -149,11 +147,10 @@ def test_that_apply_decorator_without_event_cls_raises_error():
             def sent(self) -> None:
                 pass
 
-    assert exc.value.messages == {
-        "_entity": [
-            "Apply method `sent` should accept an argument annotated with the Event class"
-        ]
-    }
+    assert (
+        exc.value.args[0]
+        == "Apply method `sent` should accept an argument annotated with the Event class"
+    )
 
 
 def test_event_to_be_applied_should_have_a_projection(test_domain):

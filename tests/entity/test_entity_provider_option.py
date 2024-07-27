@@ -52,6 +52,7 @@ class TestWhenEntityDoesNotHaveSameProviderAsAggregate:
         with pytest.raises(IncorrectUsageError) as exc:
             test_domain.init(traverse=False)
 
-        assert exc.value.messages == {
-            "element": "Entity `Dean` has a different provider than its aggregate `Department`"
-        }
+        assert (
+            exc.value.args[0]
+            == "Entity `Dean` has a different provider than its aggregate `Department`"
+        )

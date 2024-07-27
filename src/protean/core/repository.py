@@ -266,11 +266,7 @@ def repository_factory(element_cls, domain, **opts):
 
     if not element_cls.meta_.part_of:
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Repository `{element_cls.__name__}` should be associated with an Aggregate"
-                ]
-            }
+            f"Repository `{element_cls.__name__}` should be associated with an Aggregate"
         )
 
     # FIXME Uncomment
@@ -284,11 +280,7 @@ def repository_factory(element_cls, domain, **opts):
         database.value for database in Database
     ]:
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Repository `{element_cls.__name__}` should be associated with a valid Database"
-                ]
-            }
+            f"Repository `{element_cls.__name__}` should be associated with a valid Database"
         )
 
     return element_cls

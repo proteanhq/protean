@@ -43,11 +43,9 @@ def test_only_commands_can_be_associated_with_command_handlers(test_domain):
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.init(traverse=False)
 
-    assert exc.value.messages == {
-        "_command_handler": [
-            "Method `something` in Command Handler `UserCommandHandlers` is not associated with a command"
-        ]
-    }
+    assert exc.value.args[0] == (
+        "Method `something` in Command Handler `UserCommandHandlers` is not associated with a command"
+    )
 
 
 def test_commands_have_to_be_registered_with_an_aggregate(test_domain):
@@ -62,11 +60,9 @@ def test_commands_have_to_be_registered_with_an_aggregate(test_domain):
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.init(traverse=False)
 
-    assert exc.value.messages == {
-        "_command_handler": [
-            "Command `Register` in Command Handler `UserCommandHandlers` is not associated with an aggregate"
-        ]
-    }
+    assert exc.value.args[0] == (
+        "Command `Register` in Command Handler `UserCommandHandlers` is not associated with an aggregate"
+    )
 
 
 def test_command_and_command_handler_have_to_be_associated_with_same_aggregate(
@@ -89,10 +85,9 @@ def test_command_and_command_handler_have_to_be_associated_with_same_aggregate(
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.init(traverse=False)
 
-    assert exc.value.messages == {
-        "_command_handler": [
-            "Command `Register` in Command Handler `UserCommandHandlers` is not associated with the same aggregate as the Command Handler"
-        ]
-    }
+    assert exc.value.args[0] == (
+        "Command `Register` in Command Handler `UserCommandHandlers` is not "
+        "associated with the same aggregate as the Command Handler"
+    )
 
     test_domain.register(UserCommandHandlers, part_of=User)

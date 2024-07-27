@@ -147,8 +147,6 @@ class TestRepositoryRegistration:
                 def special_method(self):
                     pass
 
-        assert exc.value.messages == {
-            "_entity": [
-                "Repository `CustomUserRepository` should be associated with a valid Database"
-            ]
-        }
+        assert exc.value.args[0] == (
+            "Repository `CustomUserRepository` should be associated with a valid Database"
+        )

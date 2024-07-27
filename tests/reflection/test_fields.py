@@ -23,9 +23,7 @@ def test_fields_on_non_element():
     with pytest.raises(IncorrectUsageError) as exception:
         fields(Dummy)
 
-    assert exception.value.messages == {
-        "field": [
-            "<class 'test_fields.test_fields_on_non_element.<locals>.Dummy'> "
-            "does not have fields"
-        ]
-    }
+    assert exception.value.args[0] == (
+        "<class 'test_fields.test_fields_on_non_element.<locals>.Dummy'> "
+        "does not have fields"
+    )

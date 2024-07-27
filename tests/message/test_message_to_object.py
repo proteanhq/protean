@@ -83,5 +83,5 @@ def test_invalid_message_throws_exception():
         message.to_object()
 
     assert exc.value.messages == {
-        "_message": ["Message type is not supported for deserialization"]
+        "kind": ["Message type is not supported for deserialization"]
     }

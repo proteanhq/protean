@@ -115,9 +115,7 @@ def test_fetching_non_existing_aggregates(test_domain):
 
     assert exc is not None
     # FIXME errors should be a list
-    assert exc.value.messages == {
-        "_entity": "`User` object with identifier foobar does not exist."
-    }
+    assert exc.value.args[0] == "`User` object with identifier foobar does not exist."
 
 
 @pytest.mark.eventstore

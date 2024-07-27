@@ -81,9 +81,6 @@ Out[3]: <PublishArticle: PublishArticle object ({'article_id': '1', 'published_a
 
 In [4]: publish_article_command.published_at = datetime.now() - timedelta(hours=24)
 ...
-IncorrectUsageError: {
-    '_command': [
-        'Command Objects are immutable and cannot be modified once created'
-    ]
+IncorrectUsageError: 'Command Objects are immutable and cannot be modified once created'
 }
 ```

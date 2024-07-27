@@ -65,12 +65,8 @@ class BaseView(BaseContainer, OptionsMixin):
         for field_name, field_obj in declared_fields(subclass).items():
             if isinstance(field_obj, (Reference, Association, ValueObject)):
                 raise IncorrectUsageError(
-                    {
-                        "_entity": [
-                            f"Views can only contain basic field types. "
-                            f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
-                        ]
-                    }
+                    f"Views can only contain basic field types. "
+                    f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
                 )
 
     def __init__(self, *template, **kwargs):
@@ -110,11 +106,7 @@ def view_factory(element_cls, domain, **opts):
 
     if not element_cls.meta_.abstract and not hasattr(element_cls, _ID_FIELD_NAME):
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"View `{element_cls.__name__}` needs to have at least one identifier"
-                ]
-            }
+            f"View `{element_cls.__name__}` needs to have at least one identifier"
         )
 
     element_cls.meta_.provider = (

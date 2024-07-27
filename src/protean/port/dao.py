@@ -234,10 +234,8 @@ class BaseDAO(metaclass=ABCMeta):
         results = self.query.filter(**filters).all()
         if not results:
             raise ObjectNotFoundError(
-                {
-                    "_entity": f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                    f"does not exist."
-                }
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
             )
 
         if len(results) > 1:
@@ -269,10 +267,8 @@ class BaseDAO(metaclass=ABCMeta):
 
         if not results:
             raise ObjectNotFoundError(
-                {
-                    "_entity": f"`{self.entity_cls.__name__}` object with values {[item for item in kwargs.items()]} "
-                    f"does not exist."
-                }
+                f"`{self.entity_cls.__name__}` object with values {[item for item in kwargs.items()]} "
+                f"does not exist."
             )
 
         if len(results) > 1:

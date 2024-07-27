@@ -60,9 +60,7 @@ def find_domain_by_string(module, domain_name):
         expr = ast.parse(domain_name.strip(), mode="eval").body
     except SyntaxError:
         raise NoDomainException(
-            {
-                "invalid": f"Failed to parse {domain_name!r} as an attribute name or function call."
-            }
+            f"Failed to parse {domain_name!r} as an attribute name or function call."
         )
 
     if isinstance(expr, ast.Name):
@@ -72,9 +70,7 @@ def find_domain_by_string(module, domain_name):
             domain = getattr(module, name)
         except AttributeError:
             raise NoDomainException(
-                {
-                    "invalid": f"Failed to find attribute {name!r} in {module.__name__!r}."
-                }
+                f"Failed to find attribute {name!r} in {module.__name__!r}."
             )
     elif isinstance(expr, ast.Call) and isinstance(expr.func, ast.Name):
         # Handle function call, ensuring it's a simple function call without arguments
@@ -88,33 +84,24 @@ def find_domain_by_string(module, domain_name):
                     domain = domain_function()  # Call the function to get the domain
                 else:
                     raise NoDomainException(
-                        {
-                            "invalid": f"{function_name!r} is not callable in {module.__name__!r}."
-                        }
+                        f"{function_name!r} is not callable in {module.__name__!r}."
                     )
             except AttributeError:
                 raise NoDomainException(
-                    {
-                        "invalid": f"Failed to find function {function_name!r} in {module.__name__!r}."
-                    }
+                    f"Failed to find function {function_name!r} in {module.__name__!r}."
                 )
         else:
             raise NoDomainException(
-                {
-                    "invalid": f"Function calls with arguments are not supported: {domain_name!r}."
-                }
+                f"Function calls with arguments are not supported: {domain_name!r}."
             )
     else:
         raise NoDomainException(
-            {"invalid": f"Failed to parse {domain_name!r} as an attribute name."}
+            f"Failed to parse {domain_name!r} as an attribute name."
         )
 
     if not isinstance(domain, Domain):
         raise NoDomainException(
-            {
-                "invalid": f"A valid Protean domain was not obtained from"
-                f" '{module.__name__}:{domain_name}'."
-            }
+            f"A valid Protean domain was not obtained from '{module.__name__}:{domain_name}'."
         )
 
     return domain

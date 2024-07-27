@@ -28,8 +28,7 @@ def test_that_views_should_have_at_least_one_identifier_field(test_domain):
         test_domain.register(User)
 
     assert (
-        exception.value.messages["_entity"][0]
-        == "View `User` needs to have at least one identifier"
+        exception.value.args[0] == "View `User` needs to have at least one identifier"
     )
 
 
@@ -41,7 +40,7 @@ def test_that_views_cannot_have_value_object_fields():
             email = ValueObject(Email)
 
     assert (
-        exception.value.messages["_entity"][0]
+        exception.value.args[0]
         == "Views can only contain basic field types. Remove email (ValueObject) from class User"
     )
 
@@ -54,7 +53,7 @@ def test_that_views_cannot_have_references():
             role = Reference(Role)
 
     assert (
-        exception.value.messages["_entity"][0]
+        exception.value.args[0]
         == "Views can only contain basic field types. Remove role (Reference) from class User"
     )
 
@@ -67,6 +66,6 @@ def test_that_views_cannot_have_associations():
             role = HasOne(Role)
 
     assert (
-        exception.value.messages["_entity"][0]
+        exception.value.args[0]
         == "Views can only contain basic field types. Remove role (HasOne) from class User"
     )
