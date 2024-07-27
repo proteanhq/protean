@@ -41,11 +41,7 @@ def model_factory(element_cls, domain, **opts):
 
     if not element_cls.meta_.part_of:
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Model `{element_cls.__name__}` should be associated with an Entity or Aggregate"
-                ]
-            }
+            f"Model `{element_cls.__name__}` should be associated with an Entity or Aggregate"
         )
 
     return element_cls

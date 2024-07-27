@@ -72,7 +72,7 @@ class NotSupportedError(ProteanException):
     """Object does not support the operation being performed"""
 
 
-class IncorrectUsageError(ProteanExceptionWithMessage):
+class IncorrectUsageError(ProteanException):
     """Usage of a Domain Element violates principles"""
 
 

@@ -58,11 +58,7 @@ def domain_event_factory(element_cls, domain, **opts):
 
     if not element_cls.meta_.part_of and not element_cls.meta_.abstract:
         raise IncorrectUsageError(
-            {
-                "_event": [
-                    f"Event `{element_cls.__name__}` needs to be associated with an aggregate or a stream"
-                ]
-            }
+            f"Event `{element_cls.__name__}` needs to be associated with an aggregate or a stream"
         )
 
     return element_cls

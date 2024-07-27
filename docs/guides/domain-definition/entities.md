@@ -33,7 +33,7 @@ specified while defining the identity, you will see an `IncorrectUsageError`:
 ... class Comment:
 ...     content = String(max_length=500)
 ... 
-IncorrectUsageError: {'_entity': ['Entity `Comment` needs to be associated with an Aggregate']}
+IncorrectUsageError: 'Entity `Comment` needs to be associated with an Aggregate'
 ```
 
 An Entity cannot enclose another Entity (or Aggregate). Trying to do so will
@@ -44,7 +44,7 @@ throw `IncorrectUsageError`.
 ... class SubComment:
 ...     parent = Comment()
 ... 
-IncorrectUsageError: {'_entity': ['Entity `Comment` needs to be associated with an Aggregate']}
+IncorrectUsageError: 'Entity `Comment` needs to be associated with an Aggregate'
 ```
 <!-- FIXME Ensure entities cannot enclose other entities. When entities
 enclose something other than permitted fields, through an error-->

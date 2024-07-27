@@ -28,11 +28,10 @@ def test_event_definition_without_aggregate_or_stream(test_domain):
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.register(UserLoggedIn)
 
-    assert exc.value.messages == {
-        "_event": [
-            "Event `UserLoggedIn` needs to be associated with an aggregate or a stream"
-        ]
-    }
+    assert (
+        exc.value.args[0]
+        == "Event `UserLoggedIn` needs to be associated with an aggregate or a stream"
+    )
 
 
 def test_that_abstract_events_can_be_defined_without_aggregate_or_stream(test_domain):

@@ -39,20 +39,12 @@ def subscriber_factory(element_cls, domain, **opts):
 
     if not element_cls.meta_.event:
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Subscriber `{element_cls.__name__}` needs to be associated with an Event"
-                ]
-            }
+            f"Subscriber `{element_cls.__name__}` needs to be associated with an Event"
         )
 
     if not element_cls.meta_.broker:
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Subscriber `{element_cls.__name__}` needs to be associated with a Broker"
-                ]
-            }
+            f"Subscriber `{element_cls.__name__}` needs to be associated with a Broker"
         )
 
     return element_cls

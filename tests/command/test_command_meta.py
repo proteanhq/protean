@@ -27,11 +27,10 @@ def test_command_definition_without_aggregate_or_stream(test_domain):
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.register(Register)
 
-    assert exc.value.messages == {
-        "_command": [
-            "Command `Register` needs to be associated with an aggregate or a stream"
-        ]
-    }
+    assert (
+        exc.value.args[0]
+        == "Command `Register` needs to be associated with an aggregate or a stream"
+    )
 
 
 def test_that_abstract_commands_can_be_defined_without_aggregate_or_stream(test_domain):

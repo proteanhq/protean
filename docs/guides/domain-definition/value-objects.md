@@ -228,7 +228,7 @@ In [3]: class Balance(BaseValueObject):
    ...:     currency = String(max_length=3, unique=True)
    ...:     amount = Float()
 ...
-IncorrectUsageError: {'_value_object': ["Value Objects cannot contain fields marked 'unique' (field 'currency')"]}
+IncorrectUsageError: "Value Objects cannot contain fields marked 'unique' (field 'currency')"
 ```
 
 Same case if you try to find a Value Object's `id_field`:
@@ -238,7 +238,7 @@ In [4]: from protean.reflection import id_field
 
 In [5]: id_field(Balance)
 ...
-IncorrectUsageError: {"identity": ["<class '__main__.Balance'> does not have identity fields"]}
+IncorrectUsageError: "<class '__main__.Balance'> does not have identity fields"
 ```
 
 ## Immutability
@@ -250,5 +250,5 @@ In [1]: bal1 = Balance(currency='USD', amount=100.0)
 
 In [2]: bal1.currency = "CAD"
 ...
-IncorrectUsageError: {'_value_object': ["Value Objects are immutable and cannot be modified once created"]}
+IncorrectUsageError: "Value Objects are immutable and cannot be modified once created"
 ```

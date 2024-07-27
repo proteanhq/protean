@@ -33,8 +33,6 @@ def test_events_cannot_hold_associations():
             name = String()
             account = HasOne(Account)
 
-    assert exc.value.messages == {
-        "_message": [
-            "Events/Commands cannot have associations. Remove account (HasOne) from class UserRegistered"
-        ]
-    }
+    assert exc.value.args[0] == (
+        "Events/Commands cannot have associations. Remove account (HasOne) from class UserRegistered"
+    )

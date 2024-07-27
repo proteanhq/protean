@@ -108,12 +108,10 @@ class TestListFieldContentType:
         with pytest.raises(IncorrectUsageError) as exc:
             List(content_type=ValueObject(VO))
 
-        assert exc.value.messages == {
-            "_value_object": [
-                "`VO` is not a valid Value Object and cannot be embedded in "
-                "a Value Object field"
-            ]
-        }
+        assert exc.value.args[0] == (
+            "`VO` is not a valid Value Object and cannot be embedded in "
+            "a Value Object field"
+        )
 
     def test_list_field_with_value_object_string_is_resolved(self, test_domain):
         class VO(BaseValueObject):

@@ -727,11 +727,7 @@ class HasMany(Association):
 
         if len(data) > 1:
             raise exceptions.TooManyObjectsError(
-                {
-                    "self.field_name": [
-                        "Multiple linked entities matching criteria found"
-                    ]
-                }
+                "Multiple linked entities matching criteria found"
             )
 
         return data[0]

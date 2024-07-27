@@ -431,7 +431,7 @@ class Domain:
 
         if domain_object_type.value not in factories:
             raise IncorrectUsageError(
-                {"_entity": [f"Unknown Element Type `{domain_object_type.value}`"]}
+                f"Unknown Element Type `{domain_object_type.value}`"
             )
 
         return factories[domain_object_type.value]
@@ -693,21 +693,13 @@ class Domain:
                 if isinstance(field_obj, (HasOne, HasMany)):
                     if isinstance(field_obj.to_cls, str):
                         raise IncorrectUsageError(
-                            {
-                                "element": (
-                                    f"Unresolved target `{field_obj.to_cls}` for field "
-                                    f"`{aggregate.__name__}:{field_obj.name}`"
-                                )
-                            }
+                            f"Unresolved target `{field_obj.to_cls}` for field "
+                            f"`{aggregate.__name__}:{field_obj.name}`"
                         )
                     if field_obj.to_cls.element_type != DomainObjects.ENTITY:
                         raise IncorrectUsageError(
-                            {
-                                "element": (
-                                    f"Field `{field_obj.field_name}` in `{aggregate.cls.__name__}` "
-                                    "is not linked to an Entity class"
-                                )
-                            }
+                            f"Field `{field_obj.field_name}` in `{aggregate.cls.__name__}` "
+                            "is not linked to an Entity class"
                         )
 
         # Check that no two event sourced aggregates have the same event class in their
@@ -733,12 +725,8 @@ class Domain:
         )
         if len(duplicate_event_class_names) != 0:
             raise IncorrectUsageError(
-                {
-                    "_event": [
-                        f"Events are associated with multiple event sourced aggregates: "
-                        f"{', '.join(duplicate_event_class_names)}"
-                    ]
-                }
+                f"Events are associated with multiple event sourced aggregates: "
+                f"{', '.join(duplicate_event_class_names)}"
             )
 
         # Check that entities have the same provider as the aggregate
@@ -748,12 +736,8 @@ class Domain:
                 != entity.cls.meta_.provider
             ):
                 raise IncorrectUsageError(
-                    {
-                        "element": (
-                            f"Entity `{entity.cls.__name__}` has a different provider "
-                            f"than its aggregate `{entity.cls.meta_.aggregate_cluster.__name__}`"
-                        )
-                    }
+                    f"Entity `{entity.cls.__name__}` has a different provider "
+                    f"than its aggregate `{entity.cls.meta_.aggregate_cluster.__name__}`"
                 )
 
     def _assign_aggregate_clusters(self):
@@ -822,9 +806,7 @@ class Domain:
             not issubclass(event_cls, BaseEvent)
             or event_cls.element_type != DomainObjects.EVENT
         ):
-            raise IncorrectUsageError(
-                {"element": [f"Class `{event_cls.__name__}` is not an Event"]}
-            )
+            raise IncorrectUsageError(f"Class `{event_cls.__name__}` is not an Event")
 
         self._events_and_commands[type_string] = event_cls
 
@@ -845,23 +827,15 @@ class Domain:
                                 method._target_cls
                             ) or not issubclass(method._target_cls, BaseCommand):
                                 raise IncorrectUsageError(
-                                    {
-                                        "_command_handler": [
-                                            f"Method `{method_name}` in Command Handler `{element.cls.__name__}` "
-                                            "is not associated with a command"
-                                        ]
-                                    }
+                                    f"Method `{method_name}` in Command Handler `{element.cls.__name__}` "
+                                    "is not associated with a command"
                                 )
 
                             # Throw error if target_cls is not associated with an aggregate
                             if not method._target_cls.meta_.part_of:
                                 raise IncorrectUsageError(
-                                    {
-                                        "_command_handler": [
-                                            f"Command `{method._target_cls.__name__}` in Command Handler `{element.cls.__name__}` "
-                                            "is not associated with an aggregate"
-                                        ]
-                                    }
+                                    f"Command `{method._target_cls.__name__}` in Command Handler `{element.cls.__name__}` "
+                                    "is not associated with an aggregate"
                                 )
 
                             if (
@@ -869,12 +843,8 @@ class Domain:
                                 != element.cls.meta_.part_of
                             ):
                                 raise IncorrectUsageError(
-                                    {
-                                        "_command_handler": [
-                                            f"Command `{method._target_cls.__name__}` in Command Handler `{element.cls.__name__}` "
-                                            "is not associated with the same aggregate as the Command Handler"
-                                        ]
-                                    }
+                                    f"Command `{method._target_cls.__name__}` in Command Handler `{element.cls.__name__}` "
+                                    "is not associated with the same aggregate as the Command Handler"
                                 )
 
                             command_type = (
@@ -1101,11 +1071,7 @@ class Domain:
             not in self.registry._elements[DomainObjects.COMMAND.value]
         ):
             raise IncorrectUsageError(
-                {
-                    "element": [
-                        f"Element {command.__class__.__name__} is not registered in domain {self.name}"
-                    ]
-                }
+                f"Element {command.__class__.__name__} is not registered in domain {self.name}"
             )
 
         command_with_metadata = self._enrich_command(command)
@@ -1154,11 +1120,7 @@ class Domain:
     def repository_for(self, element_cls) -> BaseRepository:
         if isinstance(element_cls, str):
             raise IncorrectUsageError(
-                {
-                    "element": [
-                        f"Element {element_cls} is not registered in domain {self.name}"
-                    ]
-                }
+                f"Element {element_cls} is not registered in domain {self.name}"
             )
 
         if (

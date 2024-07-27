@@ -28,11 +28,7 @@ def command_handler_factory(element_cls, domain, **opts):
 
     if not element_cls.meta_.part_of:
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Command Handler `{element_cls.__name__}` needs to be associated with an Aggregate"
-                ]
-            }
+            f"Command Handler `{element_cls.__name__}` needs to be associated with an Aggregate"
         )
 
     return element_cls

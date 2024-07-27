@@ -44,12 +44,8 @@ class BaseValueObject(BaseContainer, OptionsMixin):
             # Value objects can hold all kinds of fields, except associations
             if isinstance(field_obj, (Reference, Association)):
                 raise IncorrectUsageError(
-                    {
-                        "_value_object": [
-                            f"Value Objects cannot have associations. "
-                            f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
-                        ]
-                    }
+                    f"Value Objects cannot have associations. "
+                    f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
                 )
 
     @classmethod
@@ -57,11 +53,7 @@ class BaseValueObject(BaseContainer, OptionsMixin):
         for field_name, field_obj in fields(subclass).items():
             if field_obj.identifier:
                 raise IncorrectUsageError(
-                    {
-                        "_value_object": [
-                            f"Value Objects cannot contain fields marked 'identifier' (field '{field_name}')"
-                        ]
-                    }
+                    f"Value Objects cannot contain fields marked 'identifier' (field '{field_name}')"
                 )
 
     @classmethod
@@ -69,11 +61,7 @@ class BaseValueObject(BaseContainer, OptionsMixin):
         for field_name, field_obj in fields(subclass).items():
             if field_obj.unique:
                 raise IncorrectUsageError(
-                    {
-                        "_value_object": [
-                            f"Value Objects cannot contain fields marked 'unique' (field '{field_name}')"
-                        ]
-                    }
+                    f"Value Objects cannot contain fields marked 'unique' (field '{field_name}')"
                 )
 
     def __init__(self, *template, **kwargs):  # noqa: C901
@@ -176,11 +164,7 @@ class BaseValueObject(BaseContainer, OptionsMixin):
             return super().__setattr__(name, value)
         else:
             raise IncorrectUsageError(
-                {
-                    "_value_object": [
-                        "Value Objects are immutable and cannot be modified once created"
-                    ]
-                }
+                "Value Objects are immutable and cannot be modified once created"
             )
 
     def _postcheck(self, return_errors=False):

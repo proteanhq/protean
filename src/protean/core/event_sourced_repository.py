@@ -33,9 +33,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 
     def add(self, aggregate: BaseAggregate) -> None:
         if aggregate is None:
-            raise IncorrectUsageError(
-                {"_entity": ["Aggregate object to persist is invalid"]}
-            )
+            raise IncorrectUsageError("Aggregate object to persist is invalid")
 
         # Proceed only if aggregate has events
         if len(aggregate._events) > 0:
@@ -105,20 +103,12 @@ def event_sourced_repository_factory(element_cls, domain, **opts):
 
     if not element_cls.meta_.part_of:
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Repository `{element_cls.__name__}` should be associated with an Aggregate"
-                ]
-            }
+            f"Repository `{element_cls.__name__}` should be associated with an Aggregate"
         )
 
     if not element_cls.meta_.part_of.meta_.is_event_sourced:
         raise IncorrectUsageError(
-            {
-                "_entity": [
-                    f"Repository `{element_cls.__name__}` can only be associated with an Event Sourced Aggregate"
-                ]
-            }
+            f"Repository `{element_cls.__name__}` can only be associated with an Event Sourced Aggregate"
         )
 
     return element_cls

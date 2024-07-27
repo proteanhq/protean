@@ -24,11 +24,10 @@ def test_part_of_is_mandatory(test_domain):
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.register(UserCommandHandlers)
 
-    assert exc.value.messages == {
-        "_entity": [
-            "Command Handler `UserCommandHandlers` needs to be associated with an Aggregate"
-        ]
-    }
+    assert (
+        exc.value.args[0]
+        == "Command Handler `UserCommandHandlers` needs to be associated with an Aggregate"
+    )
 
 
 def test_part_of_specified_as_a_meta_attribute(test_domain):

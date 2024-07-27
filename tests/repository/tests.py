@@ -37,6 +37,4 @@ def test_that_incorrectusageerror_is_raised_when_retrieving_nonexistent_aggregat
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.repository_for("Invalid")
 
-    assert exc.value.messages == {
-        "element": ["Element Invalid is not registered in domain Test"]
-    }
+    assert exc.value.args[0] == ("Element Invalid is not registered in domain Test")

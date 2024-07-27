@@ -73,14 +73,8 @@ class ValueObject(Field):
 
         if not issubclass(value_object_cls, BaseValueObject):
             raise IncorrectUsageError(
-                {
-                    "_value_object": [
-                        (
-                            f"`{value_object_cls.__name__}` is not a valid Value Object "
-                            "and cannot be embedded in a Value Object field"
-                        )
-                    ]
-                }
+                f"`{value_object_cls.__name__}` is not a valid Value Object "
+                "and cannot be embedded in a Value Object field"
             )
 
     @property

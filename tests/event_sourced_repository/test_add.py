@@ -37,9 +37,7 @@ def test_exception_on_empty_aggregate_object(test_domain):
     with pytest.raises(IncorrectUsageError) as exception:
         test_domain.repository_for(User).add(None)
 
-    assert exception.value.messages == {
-        "_entity": ["Aggregate object to persist is invalid"]
-    }
+    assert exception.value.args[0] == "Aggregate object to persist is invalid"
 
 
 def test_successful_persistence_of_aggregate(test_domain):

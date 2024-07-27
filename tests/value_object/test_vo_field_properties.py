@@ -13,12 +13,9 @@ def test_vo_cannot_contain_fields_marked_unique():
             currency = String(max_length=3, required=True, unique=True)
             amount = Float(required=True)
 
-    assert str(exception.value) == str(
-        {
-            "_value_object": [
-                "Value Objects cannot contain fields marked 'unique' (field 'currency')"
-            ]
-        }
+    assert (
+        str(exception.value)
+        == "Value Objects cannot contain fields marked 'unique' (field 'currency')"
     )
 
 
@@ -29,12 +26,9 @@ def test_vo_cannot_contain_fields_marked_as_identifiers():
             currency = String(max_length=3, required=True, identifier=True)
             amount = Float(required=True)
 
-    assert str(exception.value) == str(
-        {
-            "_value_object": [
-                "Value Objects cannot contain fields marked 'identifier' (field 'currency')"
-            ]
-        }
+    assert (
+        str(exception.value)
+        == "Value Objects cannot contain fields marked 'identifier' (field 'currency')"
     )
 
 
@@ -47,10 +41,6 @@ def test_vo_cannot_have_association_fields():
         class Office(BaseValueObject):
             addresses = HasMany(Address)
 
-    assert str(exception.value) == str(
-        {
-            "_value_object": [
-                "Value Objects cannot have associations. Remove addresses (HasMany) from class Office"
-            ]
-        }
+    assert str(exception.value) == (
+        "Value Objects cannot have associations. Remove addresses (HasMany) from class Office"
     )

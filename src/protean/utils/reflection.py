@@ -23,9 +23,7 @@ def fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
     try:
         fields_dict = getattr(class_or_instance, _FIELDS)
     except AttributeError:
-        raise IncorrectUsageError(
-            {"field": [f"{class_or_instance} does not have fields"]}
-        )
+        raise IncorrectUsageError(f"{class_or_instance} does not have fields")
 
     return fields_dict
 
@@ -42,9 +40,7 @@ def data_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
         # Remove internal fields
         fields_dict.pop("_metadata", None)
     except AttributeError:
-        raise IncorrectUsageError(
-            {"field": [f"{class_or_instance} does not have fields"]}
-        )
+        raise IncorrectUsageError(f"{class_or_instance} does not have fields")
 
     return fields_dict
 
@@ -125,9 +121,7 @@ def declared_fields(class_or_instance: Type[Element] | Element) -> dict[str, Fie
         fields_dict.pop("_version", None)
         fields_dict.pop("_metadata", None)
     except AttributeError:
-        raise IncorrectUsageError(
-            {"field": [f"{class_or_instance} does not have fields"]}
-        )
+        raise IncorrectUsageError(f"{class_or_instance} does not have fields")
 
     return fields_dict
 

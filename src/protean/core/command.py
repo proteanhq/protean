@@ -59,11 +59,7 @@ def command_factory(element_cls, domain, **opts):
 
     if not element_cls.meta_.part_of and not element_cls.meta_.abstract:
         raise IncorrectUsageError(
-            {
-                "_command": [
-                    f"Command `{element_cls.__name__}` needs to be associated with an aggregate or a stream"
-                ]
-            }
+            f"Command `{element_cls.__name__}` needs to be associated with an aggregate or a stream"
         )
 
     return element_cls
