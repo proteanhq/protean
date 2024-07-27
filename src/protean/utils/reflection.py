@@ -1,12 +1,18 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Type
 
 from protean.exceptions import IncorrectUsageError
+
+if TYPE_CHECKING:
+    from protean.fields.base import Field
+    from protean.utils.container import Element
 
 _FIELDS = "__container_fields__"
 _ID_FIELD_NAME = "__container_id_field_name__"
 
 
-def fields(class_or_instance):
+def fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
     """Return a tuple describing the fields of this dataclass.
 
     Accepts a dataclass or an instance of one. Tuple elements are of
@@ -24,7 +30,7 @@ def fields(class_or_instance):
     return fields_dict
 
 
-def data_fields(class_or_instance):
+def data_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
     """Return a tuple describing the data fields of this dataclass.
 
     Accepts a dataclass or an instance of one. Tuple elements are of
@@ -43,7 +49,7 @@ def data_fields(class_or_instance):
     return fields_dict
 
 
-def id_field(class_or_instance):
+def id_field(class_or_instance: Type[Element] | Element) -> Field | None:
     try:
         field_name = getattr(class_or_instance, _ID_FIELD_NAME)
     except AttributeError:
@@ -52,7 +58,7 @@ def id_field(class_or_instance):
     return fields(class_or_instance)[field_name]
 
 
-def has_id_field(class_or_instance: Any) -> bool:
+def has_id_field(class_or_instance: Type[Element] | Element) -> bool:
     """Check if class/instance has an identity attribute.
 
     Args:
@@ -64,12 +70,12 @@ def has_id_field(class_or_instance: Any) -> bool:
     return hasattr(class_or_instance, _ID_FIELD_NAME)
 
 
-def has_fields(class_or_instance):
+def has_fields(class_or_instance: Type[Element] | Element) -> bool:
     """Check if Protean element encloses fields"""
     return hasattr(class_or_instance, _FIELDS)
 
 
-def attributes(class_or_instance):
+def attributes(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
     attributes_dict = {}
 
     for _, field_obj in fields(class_or_instance).items():
@@ -92,7 +98,7 @@ def attributes(class_or_instance):
     return attributes_dict
 
 
-def unique_fields(class_or_instance):
+def unique_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
     """Return fields marked as unique for this class or instance"""
     return {
         field_name: field_obj
@@ -101,7 +107,7 @@ def unique_fields(class_or_instance):
     }
 
 
-def declared_fields(class_or_instance):
+def declared_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
     """Return a tuple describing the declared fields of this dataclass.
 
     Accepts a dataclass or an instance of one. Tuple elements are of
@@ -126,7 +132,7 @@ def declared_fields(class_or_instance):
     return fields_dict
 
 
-def association_fields(class_or_instance):
+def association_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
     """Return a tuple describing the association fields of this dataclass.
 
     Accepts an Entity. Tuple elements are of type Field.
@@ -140,6 +146,6 @@ def association_fields(class_or_instance):
     }
 
 
-def has_association_fields(class_or_instance):
+def has_association_fields(class_or_instance: Type[Element] | Element) -> bool:
     """Check if Protean element encloses association fields"""
     return bool(association_fields(class_or_instance))

@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 class ProteanException(Exception):
     """Base class for all Exceptions raised within Protean"""
 
+
+class ProteanExceptionWithMessage(ProteanException):
     def __init__(self, messages, traceback=None, **kwargs):
         logger.debug(f"Exception:: {messages}")
         self.messages = messages
@@ -20,14 +22,14 @@ class ProteanException(Exception):
         return f"{dict(self.messages)}"
 
     def __reduce__(self):
-        return (ProteanException, (self.messages,))
+        return (ProteanExceptionWithMessage, (self.messages,))
 
 
 class NoDomainException(ProteanException):
     """Raised if a domain cannot be found or loaded in a module"""
 
 
-class ConfigurationError(Exception):
+class ConfigurationError(ProteanException):
     """Improper Configuration encountered like:
     * An important configuration variable is missing
     * Re-registration of Models
@@ -35,41 +37,41 @@ class ConfigurationError(Exception):
     """
 
 
-class ObjectNotFoundError(ProteanException):
+class ObjectNotFoundError(ProteanExceptionWithMessage):
     """Object was not found, can raise 404"""
 
 
-class TooManyObjectsError(Exception):
+class TooManyObjectsError(ProteanException):
     """Expected one object, but found many"""
 
 
-class InsufficientDataError(Exception):
+class InsufficientDataError(ProteanException):
     """Object was not supplied with sufficient data"""
 
 
-class InvalidDataError(ProteanException):
+class InvalidDataError(ProteanExceptionWithMessage):
     """Data (type, value) is invalid"""
 
 
-class InvalidStateError(Exception):
+class InvalidStateError(ProteanException):
     """Object is in invalid state for the given operation
 
     Equivalent to 409 (Conflict)"""
 
 
-class InvalidOperationError(Exception):
+class InvalidOperationError(ProteanException):
     """Operation being performed is not permitted"""
 
 
-class NotSupportedError(Exception):
+class NotSupportedError(ProteanException):
     """Object does not support the operation being performed"""
 
 
-class IncorrectUsageError(ProteanException):
+class IncorrectUsageError(ProteanExceptionWithMessage):
     """Usage of a Domain Element violates principles"""
 
 
-class ValidationError(ProteanException):
+class ValidationError(ProteanExceptionWithMessage):
     """Raised when validation fails on a field. Validators and custom fields should
     raise this exception.
 
@@ -79,9 +81,9 @@ class ValidationError(ProteanException):
     """
 
 
-class SendError(Exception):
+class SendError(ProteanException):
     """Raised on email dispatch failure."""
 
 
-class ExpectedVersionError(Exception):
+class ExpectedVersionError(ProteanException):
     """Raised on expected version conflicts in EventSourcing"""
