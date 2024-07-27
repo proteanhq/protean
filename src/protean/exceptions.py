@@ -11,6 +11,14 @@ logger = logging.getLogger(__name__)
 class ProteanException(Exception):
     """Base class for all Exceptions raised within Protean"""
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args)
+
+        self.extra_info = kwargs.get("extra_info", None)
+
+    def __reduce__(self) -> tuple[Any, tuple[Any]]:
+        return (self.__class__, (self.args[0],))
+
 
 class ProteanExceptionWithMessage(ProteanException):
     def __init__(

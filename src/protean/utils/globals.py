@@ -18,7 +18,7 @@ documentation for more information.\
 """
 
 
-def _lookup_domain_object(name) -> Any:
+def _lookup_domain_object(name) -> Any | None:
     top = _domain_context_stack.top
     if top is None:
         warnings.warn(
@@ -29,7 +29,7 @@ def _lookup_domain_object(name) -> Any:
     return getattr(top, name)
 
 
-def _find_domain() -> Domain:
+def _find_domain() -> Domain | None:
     top = _domain_context_stack.top
     if top is None:
         warnings.warn(
