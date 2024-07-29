@@ -1,4 +1,4 @@
-# Code Enhancements
+# Set up Protean locally
 
 Thank you for considering contributing to Protean!
 
