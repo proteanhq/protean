@@ -33,12 +33,7 @@ class IdentityType(Enum):
     UUID = "uuid"
 
 
-class EventProcessing(Enum):
-    SYNC = "sync"
-    ASYNC = "async"
-
-
-class CommandProcessing(Enum):
+class Processing(Enum):
     SYNC = "sync"
     ASYNC = "async"
 
@@ -113,7 +108,11 @@ class DomainObjects(Enum):
     VIEW = "VIEW"
 
 
-def derive_element_class(element_cls, base_cls, **opts) -> Element:
+def derive_element_class(
+    element_cls: Type[Element] | Type[Any],
+    base_cls: Type[Element],
+    **opts: dict[str, str | bool],
+) -> Type[Element]:
     from protean.utils.container import Options
 
     # Ensure options being passed in are known
@@ -193,17 +192,16 @@ def generate_identity(
 
 __all__ = [
     "Cache",
-    "CommandProcessing",
-    "Database",
-    "DomainObjects",
-    "EventProcessing",
-    "IdentityStrategy",
-    "IdentityType",
-    "TypeMatcher",
     "convert_str_values_to_list",
+    "Database",
     "derive_element_class",
+    "DomainObjects",
     "fully_qualified_name",
     "generate_identity",
     "get_version",
+    "IdentityStrategy",
+    "IdentityType",
+    "Processing",
+    "TypeMatcher",
     "utcnow_func",
 ]

@@ -7,7 +7,7 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
-from protean.utils import CommandProcessing
+from protean.utils import Processing
 from protean.utils.mixins import handle
 
 counter = 0
@@ -20,7 +20,7 @@ class User(BaseAggregate):
 
 
 class Register(BaseCommand):
-    user_id = Identifier()
+    user_id = Identifier(identifier=True)
     email = String()
 
 
@@ -54,7 +54,7 @@ def test_that_command_can_be_processed_inline(test_domain):
     test_domain.register(UserCommandHandlers, part_of=User)
     test_domain.init(traverse=False)
 
-    assert test_domain.config["command_processing"] == CommandProcessing.SYNC.value
+    assert test_domain.config["command_processing"] == Processing.SYNC.value
 
     test_domain.process(Register(user_id=str(uuid4()), email="john.doe@gmail.com"))
     assert counter == 1
@@ -67,4 +67,4 @@ def test_that_command_is_persisted_in_message_store(test_domain):
     messages = test_domain.event_store.store.read("user:command")
 
     assert len(messages) == 1
-    messages[0].stream_name == f"user:command-{identifier}"
+    assert messages[0].stream_name == f"test::user:command-{identifier}"

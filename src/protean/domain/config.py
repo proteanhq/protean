@@ -5,7 +5,7 @@ import re
 import tomllib
 
 from protean.exceptions import ConfigurationError
-from protean.utils import CommandProcessing, EventProcessing
+from protean.utils import Processing
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,9 @@ def _default_config():
             "default": {"provider": "memory"},
             "memory": {"provider": "memory"},
         },
-        "event_processing": EventProcessing.ASYNC.value,
-        "command_processing": CommandProcessing.ASYNC.value,
+        "event_processing": Processing.ASYNC.value,
+        "command_processing": Processing.ASYNC.value,
+        "message_processing": Processing.ASYNC.value,
         "event_store": {
             "provider": "memory",
         },

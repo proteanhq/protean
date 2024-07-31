@@ -6,7 +6,7 @@ from protean.exceptions import (
     InvalidOperationError,
     ValidationError,
 )
-from protean.utils import EventProcessing
+from protean.utils import Processing
 from protean.utils.globals import _uow_context_stack, current_domain
 from protean.utils.reflection import id_field
 
@@ -84,7 +84,7 @@ class UnitOfWork:
                 item._events = []
 
             # Iteratively consume all events produced in this session
-            if current_domain.config["event_processing"] == EventProcessing.SYNC.value:
+            if current_domain.config["event_processing"] == Processing.SYNC.value:
                 # Handover events to process instantly
                 for _, event in events:
                     handler_classes = current_domain.handlers_for(event)

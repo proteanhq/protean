@@ -1,31 +1,34 @@
+from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
 from protean.port.broker import BaseBroker
-from protean.utils import fully_qualified_name
-from protean.utils.mixins import Message
 
 if TYPE_CHECKING:
     from protean.domain import Domain
 
 
 class InlineBroker(BaseBroker):
-    def __init__(self, name: str, domain: "Domain", conn_info: Dict[str, str]) -> None:
+    def __init__(
+        self, name: str, domain: "Domain", conn_info: Dict[str, str | bool]
+    ) -> None:
         super().__init__(name, domain, conn_info)
 
         # In case of `InlineBroker`, the `IS_ASYNC` value will always be `False`.
         conn_info["IS_ASYNC"] = False
 
-    def publish(self, message: Message) -> None:
-        initiator_obj = message.to_object()
+        # Initialize storage for messages
+        self._messages = defaultdict(list)
 
-        for subscriber in self._subscribers[
-            fully_qualified_name(initiator_obj.__class__)
-        ]:
-            subscriber()(message.data)
+    def _publish(self, channel: str, message: dict) -> None:
+        """Publish a message dict to the channel"""
+        self._messages[channel].append(message)
 
-    def get_next(self) -> Dict:
-        """No-Op"""
-        return None
+    def _get_next(self, channel: str) -> dict | None:
+        """Get next message in channel"""
+        if self._messages[channel]:
+            return self._messages[channel].pop(0)
+        return {}
 
     def _data_reset(self) -> None:
-        """No-Op"""
+        """Flush all data in broker instance"""
+        self._messages.clear()

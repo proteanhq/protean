@@ -36,7 +36,6 @@ broker:
   choices:
     Memory: memory
     Redis: redis
-    Celery: celery
   default: memory
 
 cache:

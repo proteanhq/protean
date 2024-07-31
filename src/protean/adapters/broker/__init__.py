@@ -1,11 +1,9 @@
-import collections
+import collections.abc
 import importlib
 import logging
 
-from protean.core.event import BaseEvent
 from protean.exceptions import ConfigurationError
 from protean.utils.globals import current_uow
-from protean.utils.mixins import Message
 
 logger = logging.getLogger(__name__)
 
@@ -13,14 +11,13 @@ logger = logging.getLogger(__name__)
 BROKER_PROVIDERS = {
     "inline": "protean.adapters.InlineBroker",
     "redis": "protean.adapters.broker.redis.RedisBroker",
-    "celery": "protean.adapters.broker.celery.CeleryBroker",
 }
 
 
 class Brokers(collections.abc.MutableMapping):
     def __init__(self, domain):
         self.domain = domain
-        self._brokers = None
+        self._brokers = {}
 
     def __getitem__(self, key):
         return self._brokers[key] if self._brokers else None
@@ -58,7 +55,9 @@ class Brokers(collections.abc.MutableMapping):
                 broker_cls = getattr(
                     importlib.import_module(broker_module), broker_class
                 )
-                broker_objects[broker_name] = broker_cls(broker_name, self, conn_info)
+                broker_objects[broker_name] = broker_cls(
+                    broker_name, self.domain, conn_info
+                )
         else:
             raise ConfigurationError("Configure at least one broker in the domain")
 
@@ -66,32 +65,29 @@ class Brokers(collections.abc.MutableMapping):
 
         # Initialize subscribers for Brokers
         for _, subscriber_record in self.domain.registry.subscribers.items():
-            subscriber = subscriber_record.cls
-            broker_name = subscriber.meta_.broker
+            subscriber_cls = subscriber_record.cls
+            broker_name = subscriber_cls.meta_.broker
 
             if broker_name not in self._brokers:
                 raise ConfigurationError(
                     f"Broker `{broker_name}` has not been configured."
                 )
 
-            self._brokers[broker_name].register(subscriber.meta_.event, subscriber)
+            self._brokers[broker_name].register(subscriber_cls)
 
-    def publish(self, object: BaseEvent) -> None:
-        """Publish an object to all registered brokers"""
-        message = Message.to_message(object)
-
-        # Follow a naive strategy and dispatch event directly to message broker
+    def publish(self, channel: str, message: dict) -> None:
+        """Publish a message payload to all registered brokers"""
+        # Follow a naive strategy and dispatch message directly to message broker
         #   If the operation is enclosed in a Unit of Work, delegate the responsibility
         #   of publishing the message to the UoW
         if current_uow:
-            logger.debug(
-                f"Recording {object.__class__.__name__} "
-                f"with values {object.to_dict()} in {current_uow}"
-            )
+            logger.debug(f"Recording message {message} in {current_uow} for dispatch")
+
             current_uow.register_message(message)
         else:
             logger.debug(
-                f"Publishing {object.__class__.__name__} with values {object.to_dict()}"
+                f"Publishing message {message} to all brokers registered for channel {channel}"
             )
+
             for _, broker in self._brokers.items():
-                broker.publish(message)
+                broker.publish(channel, message)
