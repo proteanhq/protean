@@ -2629,7 +2629,6 @@ doc = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "rst.linke
 test = ["big-O", "jaraco.functools", "jaraco.itertools", "jaraco.test", "more-itertools", "pytest (>=6,!=8.1.*)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=2.2)", "pytest-ignore-flaky", "pytest-mypy", "pytest-ruff (>=0.2.1)"]
 
 [extras]
-celery = ["celery"]
 elasticsearch = ["elasticsearch", "elasticsearch-dsl"]
 flask = ["flask"]
 message-db = ["message-db-py"]
@@ -2641,4 +2640,4 @@ sqlite = ["sqlalchemy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "bfab80fa32c42a6048b2fa5d7046d004091040b09788f07c71278a2aa814b3c3"
+content-hash = "b7649bf7876f1d0ed6c8cf9a8c531e0a9c59beb63a7dd845ae68aecbdcfa87cf"
