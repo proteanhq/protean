@@ -26,7 +26,7 @@ def test_get_next_message(test_domain):
 
     # No more messages, should return an empty dict
     retrieved_message = test_domain.brokers["default"].get_next(channel)
-    assert retrieved_message == {}
+    assert retrieved_message is None
 
 
 def test_data_reset(test_domain):

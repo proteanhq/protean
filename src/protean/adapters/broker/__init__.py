@@ -83,7 +83,7 @@ class Brokers(collections.abc.MutableMapping):
         if current_uow:
             logger.debug(f"Recording message {message} in {current_uow} for dispatch")
 
-            current_uow.register_message(message)
+            current_uow.register_message(channel, message)
         else:
             logger.debug(
                 f"Publishing message {message} to all brokers registered for channel {channel}"

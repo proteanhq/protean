@@ -4,7 +4,7 @@ import functools
 import logging
 from collections import defaultdict
 from enum import Enum
-from typing import Callable, Dict, Union
+from typing import Callable, Dict, Type, Union
 
 from protean import fields
 from protean.core.command import BaseCommand
@@ -128,7 +128,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
 class handle:
     """Class decorator to mark handler methods in EventHandler and CommandHandler classes."""
 
-    def __init__(self, target_cls: Union[BaseEvent, BaseCommand]) -> None:
+    def __init__(self, target_cls: Type[BaseEvent] | Type[BaseCommand]) -> None:
         self._target_cls = target_cls
 
     def __call__(self, fn: Callable) -> Callable:

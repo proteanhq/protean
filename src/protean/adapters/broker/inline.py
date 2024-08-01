@@ -27,7 +27,7 @@ class InlineBroker(BaseBroker):
         """Get next message in channel"""
         if self._messages[channel]:
             return self._messages[channel].pop(0)
-        return {}
+        return None
 
     def _data_reset(self) -> None:
         """Flush all data in broker instance"""
