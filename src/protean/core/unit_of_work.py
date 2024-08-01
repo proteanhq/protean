@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from protean.exceptions import (
     ConfigurationError,
@@ -161,5 +162,5 @@ class UnitOfWork:
         else:
             return self._initialize_session(provider_name)
 
-    def register_message(self, channel, message):  # FIXME Add annotations
+    def register_message(self, channel: str, message: dict[str, Any]):
         self._messages_to_dispatch.append((channel, message))

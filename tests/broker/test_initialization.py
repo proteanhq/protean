@@ -1,6 +1,7 @@
 import pytest
 
 from protean.adapters.broker.inline import InlineBroker
+from protean.exceptions import ConfigurationError
 from protean.port.broker import BaseBroker
 
 
@@ -58,3 +59,27 @@ class TestBrokerInitialization:
 
         test_domain.brokers["duplicate"] = duplicate_broker
         assert len(test_domain.brokers) == 2
+
+    def test_default_broker_is_mandatory(self, test_domain):
+        test_domain.config["brokers"]["secondary"] = {"provider": "inline"}
+        del test_domain.config["brokers"]["default"]
+
+        with pytest.raises(ConfigurationError) as exc:
+            test_domain.init(traverse=False)
+
+        assert str(exc.value) == "You must define a 'default' broker"
+
+    def test_at_least_one_broker_must_be_configured(self, test_domain):
+        del test_domain.config["brokers"]["default"]
+
+        with pytest.raises(ConfigurationError) as exc:
+            test_domain.init(traverse=False)
+
+        assert str(exc.value) == "Configure at least one broker in the domain"
+
+    def test_deleting_unknown_brokers_is_safe(self, test_domain):
+        try:
+            del test_domain.brokers["imaginary"]
+        except Exception:
+            pytest.fail("Deleting an unknown broker should not raise an exception")
+        assert len(test_domain.brokers) == 1

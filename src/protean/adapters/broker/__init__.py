@@ -1,9 +1,16 @@
+from __future__ import annotations
+
 import collections.abc
 import importlib
 import logging
+from typing import TYPE_CHECKING, Any, Iterator
 
 from protean.exceptions import ConfigurationError
+from protean.port.broker import BaseBroker
 from protean.utils.globals import current_uow
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
 
@@ -14,31 +21,28 @@ BROKER_PROVIDERS = {
 }
 
 
-class Brokers(collections.abc.MutableMapping):
-    def __init__(self, domain):
+class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
+    def __init__(self, domain: "Domain"):
         self.domain = domain
-        self._brokers = {}
+        self._brokers: dict[str, BaseBroker] = {}
 
-    def __getitem__(self, key):
-        return self._brokers[key] if self._brokers else None
+    def __getitem__(self, key: str) -> BaseBroker:
+        return self._brokers[key]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(self._brokers) if self._brokers else iter({})
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._brokers) if self._brokers else 0
 
-    def __setitem__(self, key, value):
-        if self._brokers is None:
-            self._brokers = {}
-
+    def __setitem__(self, key: str, value: BaseBroker) -> None:
         self._brokers[key] = value
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: str) -> None:
         if key in self._brokers:
             del self._brokers[key]
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         """Read config file and initialize brokers"""
         configured_brokers = self.domain.config["brokers"]
         broker_objects = {}
@@ -75,7 +79,7 @@ class Brokers(collections.abc.MutableMapping):
 
             self._brokers[broker_name].register(subscriber_cls)
 
-    def publish(self, channel: str, message: dict) -> None:
+    def publish(self, channel: str, message: dict[str, Any]) -> None:
         """Publish a message payload to all registered brokers"""
         # Follow a naive strategy and dispatch message directly to message broker
         #   If the operation is enclosed in a Unit of Work, delegate the responsibility
