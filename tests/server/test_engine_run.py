@@ -8,7 +8,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier
 from protean.server.engine import Engine
-from protean.utils import EventProcessing
+from protean.utils import Processing
 from protean.utils.mixins import handle
 
 counter = 0
@@ -49,7 +49,7 @@ def auto_set_and_close_loop():
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.config["event_processing"] = EventProcessing.ASYNC.value
+    test_domain.config["event_processing"] = Processing.ASYNC.value
     test_domain.register(User, stream_category="authentication")
     test_domain.register(UserLoggedIn, part_of=User)
     test_domain.register(UserEventHandler, stream_category="authentication")

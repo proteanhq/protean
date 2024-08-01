@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from protean.exceptions import (
     ConfigurationError,
@@ -6,7 +7,7 @@ from protean.exceptions import (
     InvalidOperationError,
     ValidationError,
 )
-from protean.utils import EventProcessing
+from protean.utils import Processing
 from protean.utils.globals import _uow_context_stack, current_domain
 from protean.utils.reflection import id_field
 
@@ -70,9 +71,9 @@ class UnitOfWork:
             # Push messages to all brokers
             # FIXME Send message to its designated broker?
             # FIXME Send messages through domain.brokers.publish?
-            for message in self._messages_to_dispatch:
+            for channel, message in self._messages_to_dispatch:
                 for _, broker in self.domain.brokers.items():
-                    broker.publish(message)
+                    broker.publish(channel, message)
             self._messages_to_dispatch = []  # Empty after dispatch
 
             events = []
@@ -84,7 +85,7 @@ class UnitOfWork:
                 item._events = []
 
             # Iteratively consume all events produced in this session
-            if current_domain.config["event_processing"] == EventProcessing.SYNC.value:
+            if current_domain.config["event_processing"] == Processing.SYNC.value:
                 # Handover events to process instantly
                 for _, event in events:
                     handler_classes = current_domain.handlers_for(event)
@@ -161,5 +162,5 @@ class UnitOfWork:
         else:
             return self._initialize_session(provider_name)
 
-    def register_message(self, message):  # FIXME Add annotations
-        self._messages_to_dispatch.append(message)
+    def register_message(self, channel: str, message: dict[str, Any]):
+        self._messages_to_dispatch.append((channel, message))

@@ -32,7 +32,7 @@ from protean.fields import (
     ValueObject,
 )
 from protean.server import Engine
-from protean.utils import CommandProcessing, EventProcessing
+from protean.utils import Processing
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 
@@ -169,8 +169,8 @@ def test_domain():
         "provider": "message_db",
         "database_uri": "postgresql://message_store@localhost:5433/message_store",
     }
-    test_domain.config["command_processing"] = CommandProcessing.ASYNC.value
-    test_domain.config["event_processing"] = EventProcessing.ASYNC.value
+    test_domain.config["command_processing"] = Processing.ASYNC.value
+    test_domain.config["event_processing"] = Processing.ASYNC.value
 
     test_domain.register(Order)
     test_domain.register(OrderItem, part_of=Order)
@@ -198,8 +198,8 @@ def shipment_domain():
         "provider": "message_db",
         "database_uri": "postgresql://message_store@localhost:5433/message_store",
     }
-    shipment_domain.config["command_processing"] = CommandProcessing.ASYNC.value
-    shipment_domain.config["event_processing"] = EventProcessing.ASYNC.value
+    shipment_domain.config["command_processing"] = Processing.ASYNC.value
+    shipment_domain.config["event_processing"] = Processing.ASYNC.value
 
     shipment_domain.register(Shipment)
     shipment_domain.register(

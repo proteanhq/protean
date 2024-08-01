@@ -31,9 +31,8 @@ from protean.exceptions import (
 from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.fields import List as ProteanList
 from protean.utils import (
-    CommandProcessing,
     DomainObjects,
-    EventProcessing,
+    Processing,
     fqn,
 )
 from protean.utils.container import Element
@@ -989,25 +988,9 @@ class Domain:
     # Broker Functionality #
     ########################
 
-    def publish(self, events: Union[BaseEvent, List[BaseEvent]]) -> None:
-        """Publish Events to all configured brokers.
-        Args:
-            events (BaseEvent): The Event object containing data to be pushed
-        """
-        if not isinstance(events, list):
-            events = [events]
-
-        for event in events:
-            # Persist event in Message Store
-            self.event_store.store.append(event)
-
-            self.brokers.publish(event)
-
-            if self.config["event_processing"] == EventProcessing.SYNC.value:
-                # Consume events right-away
-                handler_classes = self.handlers_for(event)
-                for handler_cls in handler_classes:
-                    handler_cls._handle(event)
+    def publish(self, channel: str, message: dict) -> None:
+        """Publish messages to all configured brokers."""
+        self.brokers.publish(channel, message)
 
     #####################
     # Handling Commands #
@@ -1079,7 +1062,7 @@ class Domain:
 
         if (
             not asynchronous
-            or self.config["command_processing"] == CommandProcessing.SYNC.value
+            or self.config["command_processing"] == Processing.SYNC.value
         ):
             handler_class = self.command_handler_for(command)
             if handler_class:

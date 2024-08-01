@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Dict
 import redis
 
 from protean.port.broker import BaseBroker
-from protean.utils.mixins import Message
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -21,14 +20,14 @@ class RedisBroker(BaseBroker):
 
         self.redis_instance = redis.Redis.from_url(conn_info["URI"])
 
-    def publish(self, message: Message) -> None:
+    def _publish(self, channel: str, message: dict) -> None:
         # FIXME Accept configuration for database and list name
-        self.redis_instance.rpush("messages", json.dumps(message.to_dict()))
+        self.redis_instance.rpush(channel, json.dumps(message))
 
-    def get_next(self) -> Message:
-        bytes_message = self.redis_instance.lpop("messages")
+    def _get_next(self, channel: str) -> dict | None:
+        bytes_message = self.redis_instance.lpop(channel)
         if bytes_message:
-            return Message(json.loads(bytes_message))
+            return json.loads(bytes_message)
 
         return None
 

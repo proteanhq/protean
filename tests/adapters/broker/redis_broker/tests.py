@@ -4,23 +4,18 @@ import pytest
 import redis
 
 from protean.adapters.broker.redis import RedisBroker
-from protean.utils.globals import current_domain
-
-from .elements import Person, PersonAdded
 
 
 @pytest.fixture(autouse=True)
-def register_elements(test_domain):
-    test_domain.register(Person)
-    test_domain.register(PersonAdded, part_of=Person)
+def init_domain(test_domain):
     test_domain.init(traverse=False)
 
 
 @pytest.mark.redis
 class TestRedisConnection:
-    def test_that_redis_is_the_configured_broker(self):
-        assert "default" in current_domain.brokers
-        broker = current_domain.brokers["default"]
+    def test_that_redis_is_the_configured_broker(self, test_domain):
+        assert "default" in test_domain.brokers
+        broker = test_domain.brokers["default"]
 
         assert isinstance(broker, RedisBroker)
         assert broker.conn_info["URI"] == "redis://127.0.0.1:6379/0"
@@ -31,75 +26,36 @@ class TestRedisConnection:
 @pytest.mark.redis
 class TestPublishingToRedis:
     def test_event_message_structure(self, test_domain):
-        # Publish event
-        event = PersonAdded(
-            id="1234",
-            first_name="John",
-            last_name="Doe",
-            age=24,
-        )
-        test_domain.publish(event)
+        channel = "test_channel"
+        message = {"key": "value"}
+
+        test_domain.brokers["default"].publish(channel, message)
 
         # Retrieve with an independent Redis instance
         r = redis.Redis.from_url(test_domain.config["brokers"]["default"]["URI"])
-        message = r.lpop("messages")
+        message = r.lpop(channel)
         assert message is not None
 
         # Verify Structure
         json_message = json.loads(message)
-        assert all(
-            key in json_message
-            for key in [
-                "global_position",
-                "position",
-                "time",
-                "id",
-                "stream_name",
-                "type",
-                "data",
-                "metadata",
-            ]
-        )
-        assert json_message["type"] == "RedisBrokerTests.PersonAdded.v1"
-        assert json_message["metadata"]["kind"] == "EVENT"
+        assert json_message == {"key": "value"}
 
 
 @pytest.mark.redis
 class TestReceivingFromRedis:
     def test_for_no_error_on_no_message(self, test_domain):
-        message = test_domain.brokers["default"].get_next()
+        message = test_domain.brokers["default"].get_next("test_channel")
         assert message is None
 
     def test_retrieving_an_event_message(self, test_domain):
-        # Publish event
-        event = PersonAdded(
-            id="1234",
-            first_name="John",
-            last_name="Doe",
-            age=24,
-        )
-        test_domain.publish(event)
+        channel = "test_channel"
+        message = {"key": "value"}
 
-        # Retrieve event
-        message = test_domain.brokers["default"].get_next()
+        test_domain.brokers["default"].publish(channel, message)
+
+        # Retrieve message
+        message = test_domain.brokers["default"].get_next(channel)
 
         # Verify Payload
         assert message is not None
-        assert message.data["id"] == event.id
-
-    def test_reconstructing_an_event_object_from_message(self, test_domain):
-        # Publish event
-        event = PersonAdded(
-            id="1234",
-            first_name="John",
-            last_name="Doe",
-            age=24,
-        )
-        test_domain.publish(event)
-
-        # Retrieve message
-        message = test_domain.brokers["default"].get_next()
-
-        # Verify reconstructed event object
-        retrieved_event = message.to_object()
-        assert retrieved_event == event
+        assert message == {"key": "value"}

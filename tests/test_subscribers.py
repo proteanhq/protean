@@ -1,17 +1,8 @@
 import pytest
 
-from protean.core.event import BaseEvent
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import NotSupportedError
-from protean.fields import Identifier, Integer, String
 from protean.utils import fully_qualified_name
-
-
-class PersonAdded(BaseEvent):
-    id = Identifier(required=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
 
 
 class NotifySSOSubscriber(BaseSubscriber):
@@ -19,8 +10,8 @@ class NotifySSOSubscriber(BaseSubscriber):
     that a new person was added into the system
     """
 
-    def notify(self, event):
-        print("Received Event: ", event)
+    def notify(self, data: dict):
+        print("Received data: ", data)
 
 
 class TestSubscriberInitialization:
@@ -35,7 +26,7 @@ class TestSubscriberInitialization:
 
 class TestSubscriberRegistration:
     def test_that_domain_event_can_be_registered_with_domain(self, test_domain):
-        test_domain.register(NotifySSOSubscriber, event=PersonAdded)
+        test_domain.register(NotifySSOSubscriber, channel="person_added")
 
         assert (
             fully_qualified_name(NotifySSOSubscriber)
@@ -43,7 +34,7 @@ class TestSubscriberRegistration:
         )
 
     def test_that_domain_event_can_be_registered_via_annotations(self, test_domain):
-        @test_domain.subscriber(event=PersonAdded)
+        @test_domain.subscriber(channel="person_added")
         class AnnotatedSubscriber:
             def special_method(self):
                 pass
