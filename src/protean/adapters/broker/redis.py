@@ -31,5 +31,14 @@ class RedisBroker(BaseBroker):
 
         return None
 
+    def read(self, channel: str, no_of_messages: int) -> list[dict]:
+        messages = []
+        for _ in range(no_of_messages):
+            bytes_message = self.redis_instance.lpop(channel)
+            if bytes_message:
+                messages.append(json.loads(bytes_message))
+
+        return messages
+
     def _data_reset(self) -> None:
         self.redis_instance.flushall()

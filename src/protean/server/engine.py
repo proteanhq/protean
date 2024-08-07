@@ -8,9 +8,11 @@ from typing import Type, Union
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
+from protean.core.subscriber import BaseSubscriber
 from protean.utils.globals import g
 from protean.utils.mixins import Message
 
+from .broker_subscription import BrokerSubscription
 from .subscription import Subscription
 
 logging.basicConfig(
@@ -50,7 +52,7 @@ class Engine:
 
         self.loop = asyncio.get_event_loop()
 
-        # FIXME Gather all handlers
+        # Gather all handlers
         self._subscriptions = {}
         for handler_name, record in self.domain.registry.event_handlers.items():
             # Create a subscription for each event handler
@@ -72,6 +74,54 @@ class Engine:
                 record.cls,
             )
 
+        # Gather broker subscriptions
+        self._broker_subscriptions = {}
+
+        for (
+            subscriber_name,
+            subscriber_record,
+        ) in self.domain.registry.subscribers.items():
+            subscriber_cls = subscriber_record.cls
+            broker_name = subscriber_cls.meta_.broker
+            broker = self.domain.brokers[broker_name]
+            channel = subscriber_cls.meta_.channel
+            self._broker_subscriptions[subscriber_name] = BrokerSubscription(
+                self,
+                broker,
+                subscriber_name,
+                channel,
+                subscriber_cls,
+            )
+
+    async def handle_broker_message(
+        self, subscriber_cls: Type[BaseSubscriber], message: dict
+    ) -> None:
+        """
+        Handle a message received from the broker.
+        """
+
+        if self.shutting_down:
+            return
+
+        with self.domain.domain_context():
+            try:
+                subscriber = subscriber_cls()
+                subscriber(message)
+
+                logger.info(
+                    f"{subscriber_cls.__name__} processed message successfully."
+                )
+            except Exception as exc:
+                logger.error(
+                    f"Error handling message in {subscriber_cls.__name__}: {str(exc)}"
+                )
+                # Print the stack trace
+                logger.error(traceback.format_exc())
+                # subscriber_cls.handle_error(exc, message)
+
+                await self.shutdown(exit_code=1)
+                return
+
     async def handle_message(
         self,
         handler_cls: Type[Union[BaseCommandHandler, BaseEventHandler]],
@@ -81,7 +131,7 @@ class Engine:
         Handle a message by invoking the appropriate handler class.
 
         Args:
-            handler_cls (Type[Union[BaseCommandHandler, BaseEventHandler]]): The handler class to invoke.
+            handler_cls (Type[Union[BaseCommandHandler, BaseEventHandler]]): The handler class
             message (Message): The message to be handled.
 
         Returns:
@@ -184,19 +234,25 @@ class Engine:
 
         self.loop.set_exception_handler(handle_exception)
 
-        if len(self._subscriptions) == 0:
+        if len(self._subscriptions) == 0 and len(self._broker_subscriptions) == 0:
             logger.info("No subscriptions to start. Exiting...")
 
-        # Start consumption, one per subscription
-        try:
-            tasks = [
-                self.loop.create_task(subscription.start())
-                for _, subscription in self._subscriptions.items()
-            ]
+        subscription_tasks = [
+            self.loop.create_task(subscription.start())
+            for _, subscription in self._subscriptions.items()
+        ]
 
+        broker_subscription_tasks = [
+            self.loop.create_task(subscription.start())
+            for _, subscription in self._broker_subscriptions.items()
+        ]
+
+        try:
             if self.test_mode:
                 # If in test mode, run until all tasks complete
-                self.loop.run_until_complete(asyncio.gather(*tasks))
+                self.loop.run_until_complete(
+                    asyncio.gather(*subscription_tasks, *broker_subscription_tasks)
+                )
                 # Then immediately call and await the shutdown directly
                 self.loop.run_until_complete(self.shutdown())
             else:

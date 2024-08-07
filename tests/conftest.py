@@ -64,6 +64,20 @@ def pytest_addoption(parser):
         help="Run tests against a Eventstore type",
     )
 
+    # Options to run Broker tests
+    parser.addoption(
+        "--broker_common",
+        action="store_true",
+        default=False,
+        help="Broker test marker",
+    )
+    parser.addoption(
+        "--broker",
+        action="store",
+        default="INLINE",
+        help="Run tests against a Eventstore type",
+    )
+
 
 def pytest_collection_modifyitems(config, items):
     """Configure special markers on tests, so as to control execution"""

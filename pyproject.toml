@@ -155,6 +155,7 @@ markers = [
     "message_db",
     "sendgrid",
     "database",
+    "broker_common",
     "eventstore",
     "no_test_domain",
 ]

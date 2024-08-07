@@ -73,6 +73,18 @@ class BaseBroker(metaclass=ABCMeta):
         """Overridden method to retrieve the next message to process from broker."""
 
     @abstractmethod
+    def read(self, channel: str, no_of_messages: int) -> list[dict]:
+        """Read messages from the broker.
+
+        Args:
+            channel (str): The channel from which to read messages
+            no_of_messages (int): The number of messages to read
+
+        Returns:
+            list[dict]: The list of messages
+        """
+
+    @abstractmethod
     def _data_reset(self) -> None:
         """Flush all data in broker instance.
 
