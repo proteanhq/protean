@@ -101,7 +101,7 @@ class Engine:
         """
 
         if self.shutting_down:
-            return
+            return  # Skip handling if shutdown is in progress
 
         with self.domain.domain_context():
             try:
@@ -181,8 +181,12 @@ class Engine:
         self.shutting_down = True  # Set shutdown flag
 
         try:
-            if signal:
-                logger.info(f"Received exit signal {signal.name}...")
+            msg = (
+                "Received exit signal {signal.name}. Shutting down..."
+                if signal
+                else "Shutting down..."
+            )
+            logger.info(msg)
 
             # Store the exit code
             self.exit_code = exit_code
@@ -204,8 +208,7 @@ class Engine:
             await asyncio.gather(*subscription_shutdown_tasks, return_exceptions=True)
             logger.info("All subscriptions have been shut down.")
         finally:
-            if self.loop.is_running():
-                self.loop.stop()
+            self.loop.stop()
 
     def run(self):
         """
@@ -236,6 +239,7 @@ class Engine:
 
         if len(self._subscriptions) == 0 and len(self._broker_subscriptions) == 0:
             logger.info("No subscriptions to start. Exiting...")
+            return
 
         subscription_tasks = [
             self.loop.create_task(subscription.start())
