@@ -29,6 +29,15 @@ class InlineBroker(BaseBroker):
             return self._messages[channel].pop(0)
         return None
 
+    def read(self, channel: str, no_of_messages: int) -> list[dict]:
+        """Read messages from the broker"""
+        messages = []
+        while no_of_messages > 0 and self._messages[channel]:
+            messages.append(self._messages[channel].pop(0))
+            no_of_messages -= 1
+
+        return messages
+
     def _data_reset(self) -> None:
         """Flush all data in broker instance"""
         self._messages.clear()

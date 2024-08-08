@@ -42,24 +42,13 @@ class TestServerCommand:
         # Assertions
         assert result.exit_code == 0
 
-    def test_server_start_failure(self):
-        pass
-
     def test_that_server_processes_messages_on_start(self):
         # Start in non-test mode
         # Ensure messages are processed
         # Manually shutdown with `asyncio.create_task(engine.shutdown())`
         pass
 
+    @pytest.mark.skip(reason="Not implemented")
     def test_debug_mode(self):
         # Test debug mode is saved and correct logger level is set
-        pass
-
-    def test_that_server_processes_messages_in_test_mode(self):
-        pass
-
-    def test_that_server_handles_exceptions_elegantly(self):
-        pass
-
-    def test_that_last_read_positions_are_saved(self):
         pass
