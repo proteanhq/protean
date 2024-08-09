@@ -157,7 +157,7 @@ def element_to_fact_event(element_cls):
     # Gather all fields defined in the element, except References.
     #   We ignore references in event payloads.
     attrs = {
-        key: value
+        key: value._clone()
         for key, value in fields(element_cls).items()
         if not isinstance(value, Reference)
     }
