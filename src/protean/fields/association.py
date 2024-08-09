@@ -354,6 +354,14 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
     def has_changed(self):
         return self.change is not None
 
+    def _clone(self) -> "Association":
+        """
+        Clone the field with all its attributes.
+
+        :return: Cloned Field object
+        """
+        return self
+
 
 class HasOne(Association):
     """

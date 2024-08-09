@@ -216,6 +216,24 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         if errors:
             raise exceptions.ValidationError(errors)
 
+    def _clone(self) -> "Field":
+        """
+        Clone the field with all its attributes.
+
+        :return: Cloned Field object
+        """
+        return self.__class__(
+            referenced_as=self.referenced_as,
+            description=self.description,
+            identifier=self.identifier,
+            default=self.default,
+            required=self.required,
+            unique=self.unique,
+            choices=self.choices,
+            validators=self._validators,
+            error_messages=self.error_messages,
+        )
+
     def _load(self, value: Any):
         """
         Load the value for the field, run validators and return the value.
