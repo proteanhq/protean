@@ -29,6 +29,7 @@ from protean.cli.generate import app as generate_app
 from protean.cli.new import new
 from protean.cli.shell import shell
 from protean.exceptions import NoDomainException
+from protean.server.engine import Engine
 from protean.utils.domain_discovery import derive_domain
 
 logger = logging.getLogger(__name__)
@@ -155,7 +156,11 @@ def server(
         logger.error(f"Error loading Protean domain: {exc.args[0]}")
         raise typer.Abort()
 
-    from protean.server import Engine
+    # Traverse and initialize domain
+    #   This will load all aggregates, entities, services, and other domain elements.
+    #
+    # By the time the handlers are invoked, the domain is fully initialized and ready to serve requests.
+    domain.init()
 
     engine = Engine(domain, test_mode=test_mode, debug=debug)
     engine.run()

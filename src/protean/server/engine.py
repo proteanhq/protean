@@ -182,7 +182,7 @@ class Engine:
 
         try:
             msg = (
-                "Received exit signal {signal.name}. Shutting down..."
+                f"Received exit signal {signal.name}. Shutting down..."
                 if signal
                 else "Shutting down..."
             )
