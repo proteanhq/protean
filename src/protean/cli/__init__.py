@@ -153,7 +153,10 @@ def server(
     try:
         domain = derive_domain(domain)
     except NoDomainException as exc:
-        logger.error(f"Error loading Protean domain: {exc.args[0]}")
+        msg = f"Error loading Protean domain: {exc.args[0]}"
+        print(msg)  # Required for tests to capture output
+        logger.error(msg)
+
         raise typer.Abort()
 
     # Traverse and initialize domain
