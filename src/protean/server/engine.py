@@ -50,6 +50,9 @@ class Engine:
         self.exit_code = 0
         self.shutting_down = False  # Flag to indicate the engine is shutting down
 
+        if self.debug:
+            logger.setLevel(logging.DEBUG)
+
         self.loop = asyncio.get_event_loop()
 
         # Gather all handlers
@@ -182,7 +185,7 @@ class Engine:
 
         try:
             msg = (
-                "Received exit signal {signal.name}. Shutting down..."
+                f"Received exit signal {signal.name}. Shutting down..."
                 if signal
                 else "Shutting down..."
             )
@@ -224,16 +227,23 @@ class Engine:
 
         # Handle Exceptions
         def handle_exception(loop, context):
-            # context["message"] will always be there; but context["exception"] may not
             msg = context.get("exception", context["message"])
 
-            # Print the stack trace
-            traceback.print_stack(context.get("exception"))
+            print(
+                f"Exception caught: {msg}"
+            )  # Debugging line to ensure this code path runs
 
-            logger.error(f"Caught exception: {msg}")
-            logger.info("Shutting down...")
-            if loop.is_running():
-                asyncio.create_task(self.shutdown(exit_code=1))
+            # Print the stack trace
+            if "exception" in context and context["exception"]:
+                traceback.print_stack(context["exception"])
+                logger.error(f"Caught exception: {msg}")
+                logger.info("Shutting down...")
+                if loop.is_running():
+                    asyncio.create_task(self.shutdown(exit_code=1))
+
+                raise context["exception"]  # Raise the exception to stop the loop
+            else:
+                logger.error(f"Caught exception: {msg}")
 
         self.loop.set_exception_handler(handle_exception)
 
