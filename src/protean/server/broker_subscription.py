@@ -114,7 +114,7 @@ class BrokerSubscription:
             None
         """
         self.keep_going = False  # Signal to stop polling
-        logger.info(f"Shutting down subscription {self.subscriber_id}")
+        logger.debug(f"Shutting down subscription {self.subscriber_id}")
 
     async def get_next_batch_of_messages(self):
         """

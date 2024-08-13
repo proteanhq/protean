@@ -120,7 +120,6 @@ nav:
 
     - Domain Model:
       - Compose a Domain:
-        - guides/compose-a-domain/index.md
         - guides/compose-a-domain/register-elements.md
         - guides/compose-a-domain/initialize-domain.md
         - guides/compose-a-domain/activate-domain.md

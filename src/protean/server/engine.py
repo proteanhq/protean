@@ -217,7 +217,7 @@ class Engine:
         """
         Start the Protean Engine and run the subscriptions.
         """
-        logger.info("Starting Protean Engine...")
+        logger.debug("Starting Protean Engine...")
         # Handle Signals
         signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
         for s in signals:
@@ -270,7 +270,8 @@ class Engine:
                 # Then immediately call and await the shutdown directly
                 self.loop.run_until_complete(self.shutdown())
             else:
+                logger.info("Protean Engine is running...")
                 self.loop.run_forever()
         finally:
             self.loop.close()
-            logger.debug("Successfully shutdown Protean Engine.")
+            logger.info("Protean Engine has stopped.")

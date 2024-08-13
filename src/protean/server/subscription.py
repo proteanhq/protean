@@ -131,7 +131,7 @@ class Subscription:
         """
         self.keep_going = False  # Signal to stop polling
         await self.update_current_position_to_store()
-        logger.info(f"Shutting down subscription {self.subscriber_id}")
+        logger.debug(f"Shutting down subscription {self.subscriber_id}")
 
     async def fetch_last_position(self):
         """
