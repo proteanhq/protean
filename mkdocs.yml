@@ -144,10 +144,13 @@ nav:
         - guides/domain-behavior/aggregate-mutation.md
         - guides/domain-behavior/raising-events.md
         - guides/domain-behavior/domain-services.md
+
+    - Foundation:
       - guides/object-model.md
       - guides/identity.md
-    - App Layer:
       - guides/configuration.md
+
+    - App Layer:
       - Changing State:
         - guides/change-state/index.md
         - guides/change-state/commands.md

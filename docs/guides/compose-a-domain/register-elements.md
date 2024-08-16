@@ -34,7 +34,7 @@ documentation to understand the additional options supported by that element.
 
 You can also choose to register elements manually.
 
-```python hl_lines="7-10 13"
+```python hl_lines="8-11 14"
 {! docs_src/guides/composing-a-domain/014.py !}
 ```
 

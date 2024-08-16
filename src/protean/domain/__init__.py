@@ -404,7 +404,6 @@ class Domain:
         )
         from protean.core.model import model_factory
         from protean.core.repository import repository_factory
-        from protean.core.serializer import serializer_factory
         from protean.core.subscriber import subscriber_factory
         from protean.core.value_object import value_object_factory
         from protean.core.view import view_factory
@@ -423,7 +422,6 @@ class Domain:
             DomainObjects.MODEL.value: model_factory,
             DomainObjects.REPOSITORY.value: repository_factory,
             DomainObjects.SUBSCRIBER.value: subscriber_factory,
-            DomainObjects.SERIALIZER.value: serializer_factory,
             DomainObjects.VALUE_OBJECT.value: value_object_factory,
             DomainObjects.VIEW.value: view_factory,
         }
@@ -959,9 +957,6 @@ class Domain:
 
     def repository(self, _cls=None, **kwargs):
         return self._domain_element(DomainObjects.REPOSITORY, _cls=_cls, **kwargs)
-
-    def serializer(self, _cls=None, **kwargs):
-        return self._domain_element(DomainObjects.SERIALIZER, _cls=_cls, **kwargs)
 
     def subscriber(self, _cls=None, **kwargs):
         return self._domain_element(

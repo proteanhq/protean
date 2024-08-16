@@ -39,7 +39,7 @@ class Inventory:
     in_stock = Integer(required=True)
 
 
-@domain.event_handler(part_of=Inventory, stream_name="order")
+@domain.event_handler(part_of=Inventory, stream_category="order")
 class ManageInventory:
     @handle(OrderShipped)
     def reduce_stock_level(self, event: OrderShipped):

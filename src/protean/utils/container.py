@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import copy
-import inspect
 import logging
 from collections import defaultdict
-from typing import Any, Union
+from typing import Any
 
 from protean.exceptions import (
     InvalidDataError,
@@ -30,87 +28,60 @@ class Element:
     """Base class for all Protean elements"""
 
 
-class Options:
+class Options(dict):
     """Metadata info for the Container.
 
     Common options:
     - ``abstract``: Indicates that this is an abstract entity (Ignores all other meta options)
     """
 
-    def __init__(self, opts: Union[dict, "Options"] = None) -> None:
-        self._opts = set()
+    def __init__(self, opts: dict[str, str | bool | None] | None = {}) -> None:
+        super().__init__()
 
-        if opts:
-            # FIXME Remove support passing a class as opts after revamping BaseSerializer
-            #   The `inspect.isclass` check will not be necessary
-            if isinstance(opts, (self.__class__)) or inspect.isclass(opts):
-                attributes = inspect.getmembers(
-                    opts, lambda a: not (inspect.isroutine(a))
-                )
-                for attr in attributes:
-                    if not (
-                        attr[0].startswith("__") and attr[0].endswith("__")
-                    ) and attr[0] not in ["_opts"]:
-                        setattr(self, attr[0], attr[1])
-
-                self.abstract = getattr(opts, "abstract", None) or False
-            elif isinstance(opts, dict):
-                for opt_name, opt_value in opts.items():
-                    setattr(self, opt_name, opt_value)
-
-                self.abstract = opts.get("abstract", None) or False
-            else:
-                raise ValueError(
-                    f"Invalid options `{opts}` passed to Options. Must be a dict or Options instance."
-                )
+        if opts is None:
+            opts = {}
         else:
-            # Common Meta attributes
-            self.abstract = getattr(opts, "abstract", None) or False
+            try:
+                opts = dict(opts)
+            except (TypeError, ValueError):
+                raise ValueError(f"Invalid options `{opts}`. Must be a dict.")
 
-    def __setattr__(self, __name: str, __value: Any) -> None:
-        # Ignore if `_opts` is being set
-        if __name != "_opts":
-            self._opts.add(__name)
+        self.update(opts)
+        self["abstract"] = opts.get("abstract", None) or False
 
-        super().__setattr__(__name, __value)
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(f"'Options' object has no attribute '{name}'")
 
-    def __delattr__(self, __name: str) -> None:
-        self._opts.discard(__name)
+    def __setattr__(self, name: str, value: Any) -> None:
+        self[name] = value
 
-        super().__delattr__(__name)
+    def __delattr__(self, name: str) -> None:
+        try:
+            del self[name]
+        except KeyError:
+            raise AttributeError(f"'Options' object has no attribute '{name}'")
 
-    def __eq__(self, other) -> bool:
-        """Equivalence check based only on data."""
-        if type(other) is not type(self):
-            return False
-
-        return self.__dict__ == other.__dict__
-
-    def __hash__(self) -> int:
-        """Overrides the default implementation and bases hashing on values"""
-        filtered_dict = {k: v for k, v in self.__dict__.items() if k != "_opts"}
-        return hash(frozenset(filtered_dict.items()))
-
-    def __add__(self, other: Options) -> None:
-        new_options = copy.copy(self)
-        for opt in other._opts:
-            setattr(new_options, opt, getattr(other, opt))
-
+    def __add__(self, other: "Options") -> "Options":
+        new_options = self.__class__(self)
+        new_options.update(other)
         return new_options
 
 
 class OptionsMixin:
-    def __init_subclass__(subclass) -> None:
+    def __init_subclass__(cls) -> None:
         """Setup Options metadata on elements
 
         Args:
-            subclass (Protean Element): Subclass to initialize with metadata
+            cls (Protean Element): Subclass to initialize with metadata
         """
-        if not hasattr(subclass, "meta_"):
-            setattr(subclass, "meta_", Options())
+        if not hasattr(cls, "meta_"):
+            setattr(cls, "meta_", Options())
 
         # Assign default options
-        subclass._set_defaults()
+        cls._set_defaults()
 
         super().__init_subclass__()
 
@@ -125,58 +96,7 @@ class OptionsMixin:
                 setattr(cls.meta_, key, default)
 
 
-class ContainerMeta(type):
-    """
-    This base metaclass processes the class declaration and
-    constructs a meta object that can be used to introspect
-    the concrete Container class later.
-
-    It also sets up a `meta_` attribute on the concrete class
-    to an instance of Meta, either the default of one that is
-    defined in the concrete class.
-    """
-
-    def __new__(mcs, name, bases, attrs, **kwargs):
-        """Initialize Container MetaClass and load attributes"""
-
-        # Ensure initialization is only performed for subclasses of Container
-        # (excluding Container class itself).
-        parents = [b for b in bases if isinstance(b, ContainerMeta)]
-        if not parents:
-            return super().__new__(mcs, name, bases, attrs)
-
-        # Gather fields in the order specified, starting with base classes
-        fields_dict = {}
-
-        # ... from base classes first
-        for base in reversed(bases):
-            if hasattr(base, _FIELDS):
-                for field_name, field_obj in fields(base).items():
-                    fields_dict[field_name] = field_obj
-
-        # ... Apply own fields next
-        for attr_name, attr_obj in attrs.items():
-            if isinstance(attr_obj, FieldBase):
-                fields_dict[attr_name] = attr_obj
-
-        # Gather all non-field attributes
-        dup_attrs = {
-            attr_name: attr_obj
-            for attr_name, attr_obj in attrs.items()
-            if attr_name not in fields_dict
-        }
-
-        # Insert fields in the order in which they were specified
-        #   When field names overlap, the last specified field wins
-        dup_attrs.update(fields_dict)
-
-        # Store fields in a special field for later reference
-        dup_attrs[_FIELDS] = fields_dict
-
-        return super().__new__(mcs, name, bases, dup_attrs, **kwargs)
-
-
-class BaseContainer(metaclass=ContainerMeta):
+class BaseContainer:
     """The Base class for Protean-Compliant Data Containers.
 
     Provides helper methods to custom define attributes, and find attribute names
@@ -187,6 +107,26 @@ class BaseContainer(metaclass=ContainerMeta):
         if cls is BaseContainer:
             raise NotSupportedError("BaseContainer cannot be instantiated")
         return super().__new__(cls)
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+
+        # Gather fields in the order specified, starting with base classes
+        fields_dict = {}
+
+        # ... from base classes first
+        for base in reversed(cls.__bases__):
+            if hasattr(base, _FIELDS):
+                for field_name, field_obj in fields(base).items():
+                    fields_dict[field_name] = field_obj
+
+        # ... Apply own fields next
+        for attr_name, attr_obj in cls.__dict__.items():
+            if isinstance(attr_obj, FieldBase):
+                fields_dict[attr_name] = attr_obj
+
+        # Store fields in a special field for later reference
+        setattr(cls, _FIELDS, fields_dict)
 
     def __init__(self, *template, **kwargs):  # noqa: C901
         """

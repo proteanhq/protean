@@ -21,7 +21,7 @@ def test_fields_on_non_element():
         pass
 
     with pytest.raises(IncorrectUsageError) as exception:
-        fields(Dummy)
+        fields(Dummy)  # type: ignore - This is expected to raise an exception.
 
     assert exception.value.args[0] == (
         "<class 'test_fields.test_fields_on_non_element.<locals>.Dummy'> "
