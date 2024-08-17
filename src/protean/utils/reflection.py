@@ -13,10 +13,9 @@ _ID_FIELD_NAME = "__container_id_field_name__"
 
 
 def fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
-    """Return a tuple describing the fields of this dataclass.
+    """Return a dictionary of fields in this element.
 
-    Accepts a dataclass or an instance of one. Tuple elements are of
-    type Field.
+    Accepts an element or an instance of one.
     """
 
     # Might it be worth caching this, per class?
@@ -29,10 +28,9 @@ def fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
 
 
 def data_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
-    """Return a tuple describing the data fields of this dataclass.
+    """Return a dictionary of data fields in this element.
 
-    Accepts a dataclass or an instance of one. Tuple elements are of
-    type Field.
+    Accepts an element or an instance of one.
     """
     try:
         fields_dict = dict(getattr(class_or_instance, _FIELDS))
@@ -46,6 +44,7 @@ def data_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
 
 
 def id_field(class_or_instance: Type[Element] | Element) -> Field | None:
+    """Return the identity field in this element."""
     try:
         field_name = getattr(class_or_instance, _ID_FIELD_NAME)
     except AttributeError:
@@ -55,7 +54,7 @@ def id_field(class_or_instance: Type[Element] | Element) -> Field | None:
 
 
 def has_id_field(class_or_instance: Type[Element] | Element) -> bool:
-    """Check if class/instance has an identity attribute.
+    """Check if Element class/instance has an identity field.
 
     Args:
         class_or_instance (Any): Domain Element to check.
@@ -67,11 +66,15 @@ def has_id_field(class_or_instance: Type[Element] | Element) -> bool:
 
 
 def has_fields(class_or_instance: Type[Element] | Element) -> bool:
-    """Check if Protean element encloses fields"""
+    """Check if the element encloses fields"""
     return hasattr(class_or_instance, _FIELDS)
 
 
 def attributes(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
+    """Return a dictionary of attributes of this element.
+
+    Accepts a element or an instance of one.
+    """
     attributes_dict = {}
 
     for _, field_obj in fields(class_or_instance).items():
@@ -95,7 +98,7 @@ def attributes(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
 
 
 def unique_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
-    """Return fields marked as unique for this class or instance"""
+    """Return a dictionary of fields marked `unique` in this class or instance"""
     return {
         field_name: field_obj
         for field_name, field_obj in attributes(class_or_instance).items()
@@ -104,12 +107,11 @@ def unique_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field
 
 
 def declared_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
-    """Return a tuple describing the declared fields of this dataclass.
+    """Return a dictionary of declared fields in this element.
 
-    Accepts a dataclass or an instance of one. Tuple elements are of
-    type Field.
+    Accepts a dataclass or an instance of one.
 
-    `_version` is a auto-controlled, internal field, so is not returned
+    `_version` is an auto-controlled, internal field, so is not returned
     among declared fields.
     """
 
@@ -127,9 +129,9 @@ def declared_fields(class_or_instance: Type[Element] | Element) -> dict[str, Fie
 
 
 def association_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
-    """Return a tuple describing the association fields of this dataclass.
+    """Return a dictionary of association fields in this elment.
 
-    Accepts an Entity. Tuple elements are of type Field.
+    Accepts an Element or an instance of one.
     """
     from protean.fields.association import Association
 
@@ -141,5 +143,5 @@ def association_fields(class_or_instance: Type[Element] | Element) -> dict[str, 
 
 
 def has_association_fields(class_or_instance: Type[Element] | Element) -> bool:
-    """Check if Protean element encloses association fields"""
+    """Check if Element has association fields."""
     return bool(association_fields(class_or_instance))

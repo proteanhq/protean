@@ -1,62 +1,92 @@
+import pytest
+
 from protean.utils.container import Options
 
 
-class Meta:
-    foo = "bar"
+@pytest.fixture
+def opts_dict():
+    return {"opt1": "value1", "opt2": "value2", "abstract": True}
 
 
-def test_options_construction_from_meta_class():
-    opts = Options(Meta)
-
-    assert opts is not None
-    assert opts.foo == "bar"
+@pytest.fixture
+def opts_object():
+    return Options({"opt1": "value1", "opt2": "value2", "abstract": True})
 
 
-def test_options_construction_from_dict():
-    opts = Options({"foo": "bar"})
+def test_options_initialization(opts_dict, opts_object):
+    # Test initialization with a dictionary
+    options = Options(opts_dict)
+    assert options.opt1 == "value1"
+    assert options.opt2 == "value2"
+    assert options.abstract is True
 
-    assert opts is not None
-    assert opts.foo == "bar"
+    # Test initialization with an Options object
+    options = Options(opts_object)
+    assert options.opt1 == "value1"
+    assert options.opt2 == "value2"
+    assert options.abstract is True
 
+    # Test initialization with None
+    options = Options()
+    assert options.abstract is False
 
-def test_tracking_currently_active_attributes():
-    opts = Options({"foo": "bar"})
-    assert opts._opts == {"abstract", "foo"}
-
-    setattr(opts, "baz", "qux")
-    assert opts._opts == {"abstract", "foo", "baz"}
-
-    opts.waldo = "fred"
-    assert opts._opts == {"abstract", "foo", "baz", "waldo"}
-
-    del opts.baz
-    assert opts._opts == {"abstract", "foo", "waldo"}
-
-
-def test_option_objects_equality():
-    assert Options() == Options()
-    assert Options(Meta) == Options({"foo": "bar"})
-
-    assert Options({"foo": "bar"}) == Options({"foo": "bar"})
-    assert Options({"foo": "bar"}) != Options({"foo": "baz"})
-
-    class Meta2:
-        foo = "bar"
-
-    assert Options(Meta) == Options(Meta2)
-
-    class Meta3:
-        foo = "baz"
-
-    assert Options(Meta) != Options(Meta3)
+    # Test initialization with an invalid type
+    with pytest.raises(ValueError):
+        Options("invalid")  # type: ignore  - This is expected to raise an exception
 
 
-def test_merging_two_option_objects():
-    opt1 = Options({"foo": "bar", "baz": "qux"})
-    opt2 = Options({"baz": "quz"})
+def test_attribute_access_and_modification(opts_dict):
+    options = Options(opts_dict)
 
-    merged1 = opt1 + opt2
-    assert merged1.baz == "quz"
+    # Test getattr
+    assert options.opt1 == "value1"
 
-    merged2 = opt2 + opt1
-    assert merged2.baz == "qux"
+    # Test setattr
+    options.opt3 = "value3"
+    assert options.opt3 == "value3"
+    assert "opt3" in options
+
+    # Test delattr
+    del options.opt1
+    assert not hasattr(options, "opt1")
+    assert "opt1" not in options
+
+
+def test_options_equality(opts_dict):
+    # Test equality
+    options1 = Options(opts_dict)
+    options2 = Options(opts_dict)
+    assert options1 == options2
+
+    # Test inequality with different values
+    options2 = Options({"opt1": "value1", "opt2": "different_value", "abstract": True})
+    assert options1 != options2
+
+
+def test_merging_options(opts_dict):
+    options1 = Options(opts_dict)
+    options2 = Options({"opt3": "value3"})
+
+    # Test merging options
+    merged_options = options1 + options2
+    assert merged_options.opt1 == "value1"
+    assert merged_options.opt2 == "value2"
+    assert merged_options.opt3 == "value3"
+    assert merged_options.abstract is False
+
+    # Test that original options are not modified
+    assert not hasattr(options1, "opt3")
+
+
+def test_tracking_keys(opts_dict):
+    options = Options({"foo": "bar"})
+    assert set(options.keys()) == {"abstract", "foo"}
+
+    setattr(options, "baz", "qux")
+    assert set(options.keys()) == {"abstract", "foo", "baz"}
+
+    options.waldo = "fred"
+    assert set(options.keys()) == {"abstract", "foo", "baz", "waldo"}
+
+    del options.baz
+    assert set(options.keys()) == {"abstract", "foo", "waldo"}

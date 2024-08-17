@@ -187,7 +187,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         return [*self.default_validators, *self._validators]
 
     @abstractmethod
-    def _cast_to_type(self, value: Any):
+    def _cast_to_type(self, value: Any) -> Any:
         """
         Abstract method to validate and convert the value passed to native type.
         All subclasses must implement this method.
@@ -195,7 +195,7 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def as_dict(self):
+    def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of field"""
 
     def _run_validators(self, value):

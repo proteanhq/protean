@@ -110,7 +110,7 @@ class ManageProducts:
         repository.add(product)
 
 
-@domain.event_handler(stream_name="product")
+@domain.event_handler(stream_category="product")
 class SyncInventory:
     @handle(ProductAdded)
     def on_product_added(self, event: ProductAdded):

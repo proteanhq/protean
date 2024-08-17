@@ -101,7 +101,6 @@ def test_properties_method_returns_a_dictionary_of_all_protean_elements():
         "events": DomainObjects.EVENT.value,
         "models": DomainObjects.MODEL.value,
         "repositories": DomainObjects.REPOSITORY.value,
-        "serializers": DomainObjects.SERIALIZER.value,
         "subscribers": DomainObjects.SUBSCRIBER.value,
         "value_objects": DomainObjects.VALUE_OBJECT.value,
         "views": DomainObjects.VIEW.value,
