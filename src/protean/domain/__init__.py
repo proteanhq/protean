@@ -489,6 +489,7 @@ class Domain:
 
         # 2. Meta Linkages
         if element_type in [
+            DomainObjects.APPLICATION_SERVICE,
             DomainObjects.ENTITY,
             DomainObjects.EVENT,
             DomainObjects.EVENT_HANDLER,

@@ -1,6 +1,7 @@
 __version__ = "0.12.1"
 
 from .core.aggregate import apply, atomic_change
+from .core.application_service import use_case
 from .core.entity import invariant
 from .core.event import BaseEvent
 from .core.model import BaseModel
@@ -13,19 +14,20 @@ from .utils.globals import current_domain, current_uow, g
 from .utils.mixins import handle
 
 __all__ = [
+    "apply",
+    "atomic_change",
     "BaseEvent",
     "BaseModel",
+    "current_domain",
+    "current_uow",
     "Domain",
     "Engine",
-    "Q",
-    "QuerySet",
-    "UnitOfWork",
-    "apply",
+    "g",
     "get_version",
     "handle",
     "invariant",
-    "atomic_change",
-    "current_domain",
-    "current_uow",
-    "g",
+    "Q",
+    "QuerySet",
+    "UnitOfWork",
+    "use_case",
 ]
