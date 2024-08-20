@@ -28,37 +28,37 @@ class BaseValueObject(BaseContainer, OptionsMixin):
             ("part_of", None),
         ]
 
-    def __init_subclass__(subclass) -> None:
+    def __init_subclass__(cls) -> None:
         super().__init_subclass__()
 
         # Record invariant methods
-        setattr(subclass, "_invariants", defaultdict(dict))
+        setattr(cls, "_invariants", defaultdict(dict))
 
-        subclass.__validate_for_basic_field_types()
-        subclass.__validate_for_non_identifier_fields()
-        subclass.__validate_for_non_unique_fields()
+        cls.__validate_for_basic_field_types()
+        cls.__validate_for_non_identifier_fields()
+        cls.__validate_for_non_unique_fields()
 
     @classmethod
-    def __validate_for_basic_field_types(subclass):
-        for field_name, field_obj in fields(subclass).items():
+    def __validate_for_basic_field_types(cls):
+        for field_name, field_obj in fields(cls).items():
             # Value objects can hold all kinds of fields, except associations
             if isinstance(field_obj, (Reference, Association)):
                 raise IncorrectUsageError(
                     f"Value Objects cannot have associations. "
-                    f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
+                    f"Remove {field_name} ({field_obj.__class__.__name__}) from class {cls.__name__}"
                 )
 
     @classmethod
-    def __validate_for_non_identifier_fields(subclass):
-        for field_name, field_obj in fields(subclass).items():
+    def __validate_for_non_identifier_fields(cls):
+        for field_name, field_obj in fields(cls).items():
             if field_obj.identifier:
                 raise IncorrectUsageError(
                     f"Value Objects cannot contain fields marked 'identifier' (field '{field_name}')"
                 )
 
     @classmethod
-    def __validate_for_non_unique_fields(subclass):
-        for field_name, field_obj in fields(subclass).items():
+    def __validate_for_non_unique_fields(cls):
+        for field_name, field_obj in fields(cls).items():
             if field_obj.unique:
                 raise IncorrectUsageError(
                     f"Value Objects cannot contain fields marked 'unique' (field '{field_name}')"

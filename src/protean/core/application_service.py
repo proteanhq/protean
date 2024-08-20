@@ -1,6 +1,8 @@
+import functools
 import logging
 
-from protean.exceptions import NotSupportedError
+from protean.core.unit_of_work import UnitOfWork
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
 
@@ -28,8 +30,37 @@ class BaseApplicationService(Element, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return []
+        return [("part_of", None)]
 
 
 def application_service_factory(element_cls, domain, **opts):
-    return derive_element_class(element_cls, BaseApplicationService, **opts)
+    element_cls = derive_element_class(element_cls, BaseApplicationService, **opts)
+
+    if not element_cls.meta_.part_of:
+        raise IncorrectUsageError(
+            f"Application Service `{element_cls.__name__}` needs to be associated with an aggregate"
+        )
+
+    return element_cls
+
+
+def use_case(func):
+    """Decorator to mark a method as a use case in an Application Service.
+
+    Args:
+        func (Callable): The method to be decorated.
+
+    Returns:
+        Callable: The decorated method.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        logger.info(f"Executing use case: {func.__name__}")
+
+        # Wrap in a Unit of Work context
+        with UnitOfWork():
+            return func(*args, **kwargs)
+
+    setattr(wrapper, "_use_case", True)  # Mark the method as a use case
+    return wrapper
