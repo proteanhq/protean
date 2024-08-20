@@ -56,6 +56,7 @@ plugins:
 markdown_extensions:
   - admonition
   - attr_list
+  - tables
   - md_in_html
   - mdx_include
   - pymdownx.details
