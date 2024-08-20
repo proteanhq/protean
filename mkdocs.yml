@@ -81,6 +81,7 @@ nav:
     - core-concepts/analysis-model.md
     - core-concepts/streams.md
     - core-concepts/identity.md
+    - core-concepts/changing-state.md
     - Architecture Patterns:
       - core-concepts/ddd.md
       - core-concepts/cqrs.md
@@ -154,6 +155,7 @@ nav:
     - App Layer:
       - Changing State:
         - guides/change-state/index.md
+        - guides/change-state/application-services.md
         - guides/change-state/commands.md
         - guides/change-state/command-handlers.md
       - Persisting State:
