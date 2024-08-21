@@ -42,3 +42,9 @@ class UserApplicationServices:
         user = current_domain.repository_for(User).get(user_id)
         user.activate()
         current_domain.repository_for(User).add(user)
+
+
+auth.register(User)
+auth.register(UserApplicationServices, part_of=User)
+auth.register(Registered, part_of=User)
+auth.init(traverse=False)

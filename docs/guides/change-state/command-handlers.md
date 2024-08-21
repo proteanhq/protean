@@ -20,7 +20,7 @@ domain events.
 Command Handlers are defined with the `Domain.command_handler` decorator:
 
 ```python hl_lines="20-23 47-53"
-{! docs_src/guides/change-state/007.py !}
+{! docs_src/guides/change_state_007.py !}
 ```
 
 ## Workflow

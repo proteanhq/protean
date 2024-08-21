@@ -28,5 +28,5 @@ Application Services are defined with the `Domain.application_service`
 decorator:
 
 ```python hl_lines="32 34 41"
-{! docs_src/guides/change-state/008.py !}
+{! docs_src/guides/change_state_008.py !}
 ```

@@ -1,9 +1,18 @@
-"""Module to setup Factories and other required artifacts for tests
+"""Module to setup Factories and other required artifacts for tests"""
 
-isort:skip_file
-"""
+import os
+import sys
 
 import pytest
+
+
+def pytest_configure(config):
+    # Insert the docs_src path into sys.path so that we can import elements from there
+    #   in our tests
+    docs_src_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../docs_src")
+    )
+    sys.path.insert(0, docs_src_path)
 
 
 def pytest_addoption(parser):

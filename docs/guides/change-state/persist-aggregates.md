@@ -4,7 +4,7 @@ Aggregates are saved into the configured database using `add` method of the
 repository.
 
 ```python hl_lines="20"
-{! docs_src/guides/change-state/001.py !}
+{! docs_src/guides/change_state_001.py !}
 ```
 
 1.  Identity, by default, is a string.
@@ -44,7 +44,7 @@ This means changes across the aggregate cluster are committed as a single
 transaction (assuming the underlying database supports transactions, of course).
 
 ```python hl_lines="22-30 33"
-{! docs_src/guides/change-state/002.py !}
+{! docs_src/guides/change_state_002.py !}
 ```
 
 !!!note
@@ -57,7 +57,7 @@ The `add` method also publishes events to configured brokers upon successfully
 persisting to the database.
 
 ```python hl_lines="15"
-{! docs_src/guides/change-state/003.py !}
+{! docs_src/guides/change_state_003.py !}
 ```
 
 ```shell hl_lines="12-16 21-22"
