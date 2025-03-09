@@ -310,8 +310,12 @@ class ESProvider(BaseProvider):
     def __init__(self, name, domain, conn_info: dict):
         """Initialize Provider with Connection/Adapter details"""
 
-        # In case of `ESProvider`, the `database` value will always be `ELASTICSEARCH`.
-        conn_info["database_uri"] = json.loads(conn_info["database_uri"])
+        # Use database_uri as is if it's a json, otherwise convert it to json
+        if isinstance(conn_info["database_uri"], str):
+            conn_info["database_uri"] = json.loads(conn_info["database_uri"])
+        else:
+            conn_info["database_uri"] = conn_info["database_uri"]
+
         super().__init__(name, domain, conn_info)
 
         # A temporary cache of already constructed model classes
