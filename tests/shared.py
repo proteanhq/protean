@@ -14,6 +14,11 @@ def initialize_domain(file_path, name="Tests"):
     """Initialize a Protean Domain with configuration from a file"""
     domain = Domain(file_path, name=name)
 
+    # We initialize and load default configuration into the domain here
+    #   so that test cases that don't need explicit domain setup can
+    #   still function.
+    domain._initialize()
+
     return domain
 
 

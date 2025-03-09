@@ -25,13 +25,7 @@ class BaseEmailProvider:
 
     @abstractmethod
     def send_email(self, email_message):
-        """
-        Send EmailMessage object via registered email provider.
-        """
-        raise NotImplementedError(
-            "Concrete implementations of BaseEmailBackend "
-            "must override send_email() method"
-        )
+        """Send EmailMessage object via registered email provider."""
 
 
 class BaseEmail(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin

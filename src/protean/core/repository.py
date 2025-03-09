@@ -5,6 +5,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING, Union
 
 from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.core.unit_of_work import UnitOfWork
 from protean.core.view import BaseView
 from protean.exceptions import IncorrectUsageError, NotSupportedError
@@ -18,7 +19,7 @@ from protean.utils import (
     fully_qualified_name,
 )
 from protean.utils.container import Element, OptionsMixin
-from protean.utils.globals import current_domain, current_uow
+from protean.utils.globals import current_uow
 from protean.utils.reflection import association_fields, has_association_fields
 
 if TYPE_CHECKING:
@@ -235,7 +236,7 @@ class BaseRepository(Element, OptionsMixin):
                     entity._temp_cache[field_name]["change"] = None
                     entity._temp_cache[field_name]["old_value"] = None
 
-    def get(self, identifier) -> Union[BaseAggregate, BaseView]:
+    def get(self, identifier) -> Union[BaseAggregate, BaseEntity, BaseView]:
         """This is a utility method to fetch data from the persistence store by its key identifier. All child objects,
         including enclosed entities, are returned as part of this call.
 
@@ -249,15 +250,6 @@ class BaseRepository(Element, OptionsMixin):
         domain-friendly design patterns like the `Specification` pattern.
         """
         item = self._dao.get(identifier)
-
-        if item.element_type == DomainObjects.AGGREGATE:
-            # Fetch and sync events version
-            last_message = current_domain.event_store.store.read_last_message(
-                f"{item.meta_.stream_category}-{identifier}"
-            )
-            if last_message:
-                item._event_position = last_message.position
-
         return item
 
 
