@@ -322,12 +322,10 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
     @abstractmethod
     def _fetch_objects(self, instance, key, value):
         """Placeholder method for customized Association query methods"""
-        raise NotImplementedError
 
     @abstractmethod
     def as_dict(self):
         """Return JSON-compatible value of field"""
-        raise NotImplementedError
 
     def __set__(self, instance, value):
         """Set the value of the association field"""

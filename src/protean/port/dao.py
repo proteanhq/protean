@@ -571,4 +571,3 @@ class BaseLookup(metaclass=ABCMeta):
 
         Concrete implementation for this method varies from database to database.
         """
-        raise NotImplementedError

@@ -35,7 +35,6 @@ class BaseSubscriber(Element, OptionsMixin):
     @abstractmethod
     def __call__(self, payload: dict) -> None:
         """Placeholder method for receiving notifications on event"""
-        raise NotImplementedError
 
 
 def subscriber_factory(element_cls: Type[Element], domain: "Domain", **opts):
