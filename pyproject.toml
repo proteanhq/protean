@@ -55,6 +55,7 @@ inflection = ">=0.5.1"
 ipython = "^8.23.0"
 marshmallow = ">=3.15.0"  # FIXME Remove core dependency
 python-dateutil = ">=2.8.2"
+ray = {extras = ["default"], version = "^2.9.3"}  # Ray with dashboard
 typer = ">=0.12.3"
 werkzeug = ">=2.0.0"
 
@@ -74,7 +75,7 @@ message-db-py = {version = ">=0.2.0", optional = true}
 [tool.poetry.extras]
 elasticsearch = ["elasticsearch", "elasticsearch-dsl"]
 redis = ["redis"]
-postgresql = ["sqlalchemy", "psycopg2"]
+postgresql = ["sqlalchemy", "psycopg2-binary"]
 sqlite = ["sqlalchemy"]
 message-db = ["message-db-py"]
 flask = ["flask"]

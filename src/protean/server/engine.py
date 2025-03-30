@@ -1,277 +1,292 @@
-from __future__ import annotations
+"""
+Ray-based Engine for Protean event processing.
 
-import asyncio
+This module provides a simple implementation of the Protean Engine
+that uses Ray for distributed event and command processing.
+"""
+
 import logging
 import signal
-import traceback
-from typing import Type, Union
+import sys
+import time
+from typing import Dict, List, Optional, Type
+
+import ray
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
-from protean.utils.globals import g
-from protean.utils.mixins import Message
-
-from .broker_subscription import BrokerSubscription
-from .subscription import Subscription
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s,%(msecs)d %(levelname)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
+from protean.utils import fqn
 
 logger = logging.getLogger(__name__)
 
 
 class Engine:
     """
-    The Engine class represents the Protean Engine that handles message processing and subscription management.
+    Ray-based Engine for Protean event processing.
+    
+    This class manages Ray actors for processing events and commands in a distributed manner.
+    It is designed to be simple and robust, with good error handling.
     """
-
-    def __init__(self, domain, test_mode: bool = False, debug: bool = False) -> None:
+    
+    def __init__(self, domain, debug: bool = False, test_mode: bool = False) -> None:
         """
-        Initialize the Engine.
-
-        Modes:
-        - Test Mode: If set to True, the engine will run in test mode and will exit after all tasks are completed.
-        - Debug Mode: If set to True, the engine will run in debug mode and will log additional information.
-
+        Initialize the Ray Engine.
+        
         Args:
-            domain (Domain): The domain object associated with the engine.
-            test_mode (bool, optional): Flag to indicate if the engine is running in test mode. Defaults to False.
-            debug (bool, optional): Flag to indicate if debug mode is enabled. Defaults to False.
+            domain: The domain object associated with the engine
+            debug: Flag to enable debug logging
+            test_mode: Flag to run in test mode, which processes events/commands once and shuts down
         """
         self.domain = domain
-        self.test_mode = (
-            test_mode  # Flag to indicate if the engine is running in test mode
-        )
-        self.debug = debug  # Flag to indicate if debug mode is enabled
-        self.exit_code = 0
-        self.shutting_down = False  # Flag to indicate the engine is shutting down
-
+        self.debug = debug
+        self.test_mode = test_mode
+        self.running = False
+        self.shutting_down = False
+        
+        # Configure logging
         if self.debug:
-            logger.setLevel(logging.DEBUG)
-
-        self.loop = asyncio.get_event_loop()
-
-        # Gather all handlers
-        self._subscriptions = {}
+            logging.basicConfig(level=logging.DEBUG)
+        else:
+            logging.basicConfig(level=logging.INFO)
+            
+        # Initialize actors
+        self._subscription_actors = {}
+        self._handler_actors = {}
+        self._broker_subscription_actors = {}
+        
+        # Initialize Ray if not already initialized
+        if not ray.is_initialized():
+            ray_config = self.domain.config.get("ray", {})
+            ray.init(
+                ignore_reinit_error=True,
+                **ray_config.get("init_args", {})
+            )
+            logger.info("Ray initialized")
+            
+        # Import Ray actor implementations
+        from protean.server.ray_actors import (
+            SubscriptionActor,
+            HandlerActor,
+            BrokerSubscriptionActor
+        )
+        
+        # Create serializable config dictionary
+        # Only include the essential keys needed by actors to avoid serialization issues
+        serializable_config = {
+            "databases": self.domain.config.get("databases", {}),
+            "event_store": self.domain.config.get("event_store", {}),
+            "brokers": self.domain.config.get("brokers", {})
+        }
+        
+        # Create handler actors for event handlers
         for handler_name, record in self.domain.registry.event_handlers.items():
-            # Create a subscription for each event handler
-            self._subscriptions[handler_name] = Subscription(
-                self,
-                handler_name,
-                record.cls.meta_.stream_category
-                or record.cls.meta_.part_of.meta_.stream_category,
-                record.cls,
-                origin_stream=record.cls.meta_.source_stream,
-            )
-
+            handler_cls = record.cls
+            logger.debug(f"Creating handler actor for {handler_name}")
+            
+            try:
+                # Create handler actor with serializable config
+                handler_actor = HandlerActor.remote(
+                    serializable_config,
+                    handler_name
+                )
+                self._handler_actors[handler_name] = handler_actor
+            except Exception as e:
+                logger.error(f"Error creating handler actor for {handler_name}: {str(e)}")
+                if self.debug:
+                    import traceback
+                    logger.error(traceback.format_exc())
+        
+        # Create handler actors for command handlers
         for handler_name, record in self.domain.registry.command_handlers.items():
-            # Create a subscription for each command handler
-            self._subscriptions[handler_name] = Subscription(
-                self,
-                handler_name,
-                f"{record.cls.meta_.part_of.meta_.stream_category}:command",
-                record.cls,
+            handler_cls = record.cls
+            logger.debug(f"Creating handler actor for {handler_name}")
+            
+            try:
+                # Create handler actor with serializable config
+                handler_actor = HandlerActor.remote(
+                    serializable_config,
+                    handler_name
+                )
+                self._handler_actors[handler_name] = handler_actor
+            except Exception as e:
+                logger.error(f"Error creating handler actor for {handler_name}: {str(e)}")
+                if self.debug:
+                    import traceback
+                    logger.error(traceback.format_exc())
+            
+        # Create subscription actors for event handlers
+        for handler_name, record in self.domain.registry.event_handlers.items():
+            handler_cls = record.cls
+            stream_category = (
+                handler_cls.meta_.stream_category
+                or handler_cls.meta_.part_of.meta_.stream_category
             )
-
-        # Gather broker subscriptions
-        self._broker_subscriptions = {}
-
-        for (
-            subscriber_name,
-            subscriber_record,
-        ) in self.domain.registry.subscribers.items():
+            
+            logger.debug(f"Creating subscription actor for {handler_name}")
+            
+            try:
+                # Create subscription actor with serializable config
+                subscription_actor = SubscriptionActor.remote(
+                    serializable_config,
+                    handler_name,
+                    stream_category,
+                    handler_name,
+                    origin_stream=handler_cls.meta_.source_stream
+                )
+                self._subscription_actors[handler_name] = subscription_actor
+            except Exception as e:
+                logger.error(f"Error creating subscription actor for {handler_name}: {str(e)}")
+                if self.debug:
+                    import traceback
+                    logger.error(traceback.format_exc())
+            
+        # Create subscription actors for command handlers
+        for handler_name, record in self.domain.registry.command_handlers.items():
+            handler_cls = record.cls
+            stream_category = f"{handler_cls.meta_.part_of.meta_.stream_category}:command"
+            
+            logger.debug(f"Creating subscription actor for {handler_name}")
+            
+            try:
+                # Create subscription actor with serializable config
+                subscription_actor = SubscriptionActor.remote(
+                    serializable_config,
+                    handler_name,
+                    stream_category,
+                    handler_name
+                )
+                self._subscription_actors[handler_name] = subscription_actor
+            except Exception as e:
+                logger.error(f"Error creating subscription actor for {handler_name}: {str(e)}")
+                if self.debug:
+                    import traceback
+                    logger.error(traceback.format_exc())
+            
+        # Create broker subscription actors
+        for subscriber_name, subscriber_record in self.domain.registry.subscribers.items():
             subscriber_cls = subscriber_record.cls
             broker_name = subscriber_cls.meta_.broker
             broker = self.domain.brokers[broker_name]
             channel = subscriber_cls.meta_.channel
-            self._broker_subscriptions[subscriber_name] = BrokerSubscription(
-                self,
-                broker,
-                subscriber_name,
-                channel,
-                subscriber_cls,
-            )
-
-    async def handle_broker_message(
-        self, subscriber_cls: Type[BaseSubscriber], message: dict
-    ) -> None:
-        """
-        Handle a message received from the broker.
-        """
-
-        if self.shutting_down:
-            return  # Skip handling if shutdown is in progress
-
-        with self.domain.domain_context():
+            
+            logger.debug(f"Creating broker subscription actor for {subscriber_name}")
+            
             try:
-                subscriber = subscriber_cls()
-                subscriber(message)
-
-                logger.info(
-                    f"{subscriber_cls.__name__} processed message successfully."
+                # Create broker subscription actor with serializable config
+                broker_subscription_actor = BrokerSubscriptionActor.remote(
+                    serializable_config,
+                    broker_name,
+                    subscriber_name,
+                    channel,
+                    subscriber_name
                 )
-            except Exception as exc:
-                logger.error(
-                    f"Error handling message in {subscriber_cls.__name__}: {str(exc)}"
-                )
-                # Print the stack trace
-                logger.error(traceback.format_exc())
-                # subscriber_cls.handle_error(exc, message)
-
-                await self.shutdown(exit_code=1)
-                return
-
-    async def handle_message(
-        self,
-        handler_cls: Type[Union[BaseCommandHandler, BaseEventHandler]],
-        message: Message,
-    ) -> None:
+                self._broker_subscription_actors[subscriber_name] = broker_subscription_actor
+            except Exception as e:
+                logger.error(f"Error creating broker subscription actor for {subscriber_name}: {str(e)}")
+                if self.debug:
+                    import traceback
+                    logger.error(traceback.format_exc())
+    
+    def run(self) -> None:
         """
-        Handle a message by invoking the appropriate handler class.
-
-        Args:
-            handler_cls (Type[Union[BaseCommandHandler, BaseEventHandler]]): The handler class
-            message (Message): The message to be handled.
-
-        Returns:
-            None
-
-        Raises:
-            Exception: If an error occurs while handling the message.
-
+        Run the engine.
+        
+        This method starts all subscription actors and sets up signal handlers for graceful shutdown.
+        It blocks until interrupted.
+        
+        In test mode, it processes all subscriptions once and then shuts down automatically.
         """
-        if self.shutting_down:
-            return  # Skip handling if shutdown is in progress
-
-        with self.domain.domain_context():
-            # Set context from current message, so that further processes
-            #   carry the metadata forward.
-            g.message_in_context = message
-
-            try:
-                handler_cls._handle(message)
-
-                logger.info(
-                    f"{handler_cls.__name__} processed {message.type}-{message.id} successfully."
-                )
-            except Exception as exc:  # Includes handling `ConfigurationError`
-                logger.error(
-                    f"Error handling message {message.stream_name}-{message.id} "
-                    f"in {handler_cls.__name__}"
-                )
-                # Print the stack trace
-                logger.error(traceback.format_exc())
-                handler_cls.handle_error(exc, message)
-
-                await self.shutdown(exit_code=1)
-                return
-
-            # Reset message context
-            g.pop("message_in_context")
-
-    async def shutdown(self, signal=None, exit_code=0):
-        """
-        Cleanup tasks tied to the service's shutdown.
-
-        Args:
-            signal (Optional[signal]): The exit signal received. Defaults to None.
-            exit_code (int): The exit code to be stored. Defaults to 0.
-        """
-        self.shutting_down = True  # Set shutdown flag
-
-        try:
-            msg = (
-                f"Received exit signal {signal.name}. Shutting down..."
-                if signal
-                else "Shutting down..."
-            )
-            logger.info(msg)
-
-            # Store the exit code
-            self.exit_code = exit_code
-
-            tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-
-            # Shutdown subscriptions
-            subscription_shutdown_tasks = [
-                subscription.shutdown()
-                for _, subscription in self._subscriptions.items()
-            ]
-
-            # Cancel outstanding tasks
-            [task.cancel() for task in tasks]
-            logger.info(f"Cancelling {len(tasks)} outstanding tasks")
-            await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Wait for subscriptions to shut down
-            await asyncio.gather(*subscription_shutdown_tasks, return_exceptions=True)
-            logger.info("All subscriptions have been shut down.")
-        finally:
-            self.loop.stop()
-
-    def run(self):
-        """
-        Start the Protean Engine and run the subscriptions.
-        """
-        logger.debug("Starting Protean Engine...")
-        # Handle Signals
-        signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
-        for s in signals:
-            self.loop.add_signal_handler(
-                s, lambda s=s: asyncio.create_task(self.shutdown(signal=s))
-            )
-
-        # Handle Exceptions
-        def handle_exception(loop, context):
-            msg = context.get("exception", context["message"])
-
-            print(
-                f"Exception caught: {msg}"
-            )  # Debugging line to ensure this code path runs
-
-            # Print the stack trace
-            if "exception" in context and context["exception"]:
-                traceback.print_stack(context["exception"])
-                logger.error(f"Caught exception: {msg}")
-                logger.info("Shutting down...")
-                if loop.is_running():
-                    asyncio.create_task(self.shutdown(exit_code=1))
-
-                raise context["exception"]  # Raise the exception to stop the loop
-            else:
-                logger.error(f"Caught exception: {msg}")
-
-        self.loop.set_exception_handler(handle_exception)
-
-        if len(self._subscriptions) == 0 and len(self._broker_subscriptions) == 0:
-            logger.info("No subscriptions to start. Exiting...")
+        if self.running:
+            logger.warning("Engine is already running")
             return
-
-        subscription_tasks = [
-            self.loop.create_task(subscription.start())
-            for _, subscription in self._subscriptions.items()
-        ]
-
-        broker_subscription_tasks = [
-            self.loop.create_task(subscription.start())
-            for _, subscription in self._broker_subscriptions.items()
-        ]
-
+            
+        self.running = True
+        self.shutting_down = False
+        
+        # Set up signal handlers
+        self._setup_signal_handlers()
+        
         try:
+            logger.info("Starting Protean Engine...")
+            
+            # Start all subscription actors
+            self._start_subscription_actors()
+            
             if self.test_mode:
-                # If in test mode, run until all tasks complete
-                self.loop.run_until_complete(
-                    asyncio.gather(*subscription_tasks, *broker_subscription_tasks)
-                )
-                # Then immediately call and await the shutdown directly
-                self.loop.run_until_complete(self.shutdown())
+                logger.info("Running in test mode - will process events and exit")
+                # In test mode, we just allow the engine to process what's available and shut down
+                time.sleep(2)  # Give actors time to process messages
+                logger.info("Test mode processing complete, shutting down")
+                self.shutdown()
             else:
-                logger.info("Protean Engine is running...")
-                self.loop.run_forever()
+                # Keep the process alive until shutdown
+                while not self.shutting_down:
+                    time.sleep(1)
+                
+        except KeyboardInterrupt:
+            logger.info("Received keyboard interrupt, shutting down...")
+            self.shutdown()
+            
+        except Exception as e:
+            logger.error(f"Error running engine: {str(e)}", exc_info=True)
+            self.shutdown(exit_code=1)
+            
         finally:
-            self.loop.close()
-            logger.info("Protean Engine has stopped.")
+            logger.info("Engine stopped")
+    
+    def _setup_signal_handlers(self) -> None:
+        """Set up signal handlers for graceful shutdown."""
+        signal.signal(signal.SIGINT, self._handle_signal)
+        signal.signal(signal.SIGTERM, self._handle_signal)
+        if hasattr(signal, 'SIGHUP'):
+            signal.signal(signal.SIGHUP, self._handle_signal)
+    
+    def _handle_signal(self, sig, frame) -> None:
+        """Handle termination signals."""
+        logger.info(f"Received signal {sig}, shutting down...")
+        self.shutdown()
+    
+    def _start_subscription_actors(self) -> None:
+        """Start all subscription actors."""
+        # Start event and command subscription actors
+        for name, actor in self._subscription_actors.items():
+            logger.debug(f"Starting subscription actor {name}")
+            ray.get(actor.start.remote())
+            
+        # Start broker subscription actors
+        for name, actor in self._broker_subscription_actors.items():
+            logger.debug(f"Starting broker subscription actor {name}")
+            ray.get(actor.start.remote())
+    
+    def shutdown(self, exit_code: int = 0) -> None:
+        """
+        Shutdown the engine gracefully.
+        
+        Args:
+            exit_code: Exit code to return to the system
+        """
+        if self.shutting_down:
+            return
+            
+        self.shutting_down = True
+        self.running = False
+        
+        logger.info("Shutting down engine...")
+        
+        # Terminate all actors
+        for name, actor in self._subscription_actors.items():
+            logger.debug(f"Stopping subscription actor {name}")
+            ray.get(actor.stop.remote())
+            
+        for name, actor in self._broker_subscription_actors.items():
+            logger.debug(f"Stopping broker subscription actor {name}")
+            ray.get(actor.stop.remote())
+            
+        # Shutdown Ray
+        if ray.is_initialized():
+            ray.shutdown()
+            logger.info("Ray shutdown complete")
+        
+        if exit_code != 0:
+            sys.exit(exit_code) 

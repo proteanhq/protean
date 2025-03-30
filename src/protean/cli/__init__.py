@@ -145,28 +145,69 @@ def test(
 @app.command()
 def server(
     domain: Annotated[str, typer.Option()] = ".",
-    test_mode: Annotated[Optional[bool], typer.Option()] = False,
-    debug: Annotated[Optional[bool], typer.Option()] = False,
+    debug: Annotated[Optional[bool], typer.Option(help="Enable debug logging")] = False,
+    test_mode: Annotated[Optional[bool], typer.Option(help="Run in test mode (process once and shut down)")] = False,
+    ray_dashboard: Annotated[Optional[bool], typer.Option(help="Enable Ray dashboard")] = True,
+    ray_dashboard_port: Annotated[Optional[int], typer.Option(help="Ray dashboard port")] = 8265,
+    ray_num_cpus: Annotated[Optional[int], typer.Option(help="Number of CPUs for Ray workers")] = None,
+    ray_num_gpus: Annotated[Optional[int], typer.Option(help="Number of GPUs for Ray workers")] = None,
+    ray_memory: Annotated[Optional[str], typer.Option(help="Memory limit for Ray (e.g., '4GB')")] = None,
+    ray_object_store_memory: Annotated[Optional[str], typer.Option(help="Object store memory limit (e.g., '1GB')")] = None,
+    ray_address: Annotated[Optional[str], typer.Option(help="Ray cluster address to connect to")] = None,
 ):
-    """Run Async Background Server"""
-    # FIXME Accept MAX_WORKERS as command-line input as well
+    """Run Protean Server with Ray for event processing"""
     try:
         domain = derive_domain(domain)
     except NoDomainException as exc:
         msg = f"Error loading Protean domain: {exc.args[0]}"
         print(msg)  # Required for tests to capture output
         logger.error(msg)
-
         raise typer.Abort()
 
-    # Traverse and initialize domain
-    #   This will load all aggregates, entities, services, and other domain elements.
-    #
-    # By the time the handlers are invoked, the domain is fully initialized and ready to serve requests.
+    # Configure Ray in domain
+    # Gather Ray configuration from CLI options
+    ray_init_args = {
+        "dashboard_port": ray_dashboard_port,
+        "include_dashboard": ray_dashboard,
+    }
+    
+    # Add optional arguments if provided
+    if ray_num_cpus is not None:
+        ray_init_args["num_cpus"] = ray_num_cpus
+    if ray_num_gpus is not None:
+        ray_init_args["num_gpus"] = ray_num_gpus
+    if ray_memory is not None:
+        ray_init_args["memory"] = ray_memory
+    if ray_object_store_memory is not None:
+        ray_init_args["object_store_memory"] = ray_object_store_memory
+    if ray_address is not None:
+        ray_init_args["address"] = ray_address
+        
+    ray_config = {
+        "init_args": ray_init_args
+    }
+    
+    # Update domain configuration
+    domain.config["ray"] = ray_config
+    
+    # Print Ray configuration
+    dashboard_info = f"Ray dashboard enabled at port {ray_dashboard_port}" if ray_dashboard else "Ray dashboard disabled"
+    print(f"Ray enabled: {dashboard_info}")
+    if ray_address:
+        print(f"Connecting to Ray cluster at: {ray_address}")
+
+    # Initialize the domain
     domain.init()
 
-    engine = Engine(domain, test_mode=test_mode, debug=debug)
-    engine.run()
-
-    if engine.exit_code != 0:
-        raise typer.Exit(code=engine.exit_code)
+    # Initialize the engine
+    from protean.server.engine import Engine
+    engine = Engine(domain, debug=debug, test_mode=test_mode)
+    
+    try:
+        print("Starting Protean server...")
+        engine.run()
+    except KeyboardInterrupt:
+        print("Server stopped by user")
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        raise typer.Exit(code=1)

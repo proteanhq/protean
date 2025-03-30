@@ -52,6 +52,15 @@ def _default_config():
         },
         "snapshot_threshold": 10,
         "custom": {},
+        
+        # Ray distributed processing settings
+        "ray": {
+            "include_dashboard": True,  # Whether to include the Ray dashboard
+            "init_args": {
+                "dashboard_port": 8265,  # Dashboard port
+                # Other Ray init arguments can be added here
+            }
+        },
     }
 
 
