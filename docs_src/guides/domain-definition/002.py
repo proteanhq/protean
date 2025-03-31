@@ -3,7 +3,7 @@ import json
 from protean.domain import Domain
 from protean.fields import Date, String
 
-publishing = Domain(__file__, name="Publishing", load_toml=False)
+publishing = Domain(__file__, name="Publishing")
 
 
 @publishing.aggregate

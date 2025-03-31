@@ -3,7 +3,7 @@ import sqlalchemy
 from protean import Domain
 from protean.fields import String
 
-domain = Domain(__file__, load_toml=False)
+domain = Domain(__file__)
 domain.config["DATABASES"] = {
     "default": {
         "PROVIDER": "protean.adapters.repository.sqlalchemy.SAProvider",

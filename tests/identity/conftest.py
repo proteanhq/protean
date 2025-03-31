@@ -6,7 +6,7 @@ from protean.utils import IdentityType
 
 @pytest.fixture
 def domain():
-    return Domain(__file__, "Test", load_toml=False)
+    return Domain(__file__, "Test")
 
 
 @pytest.fixture

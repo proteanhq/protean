@@ -2,7 +2,7 @@ from protean import Domain
 from protean.fields import Boolean, Identifier, String
 from protean.utils import IdentityType
 
-domain = Domain(__file__, load_toml=False)
+domain = Domain(__file__)
 
 # Customize Identity Strategy and Type and activate
 domain.config["IDENTITY_TYPE"] = IdentityType.INTEGER.value

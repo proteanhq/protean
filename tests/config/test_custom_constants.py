@@ -30,6 +30,6 @@ class TestConstantsOnDomain:
         domain.FOO == "bar"
 
     def test_when_no_constants_are_defined(self):
-        domain = Domain(__file__, load_toml=False)
+        domain = Domain(__file__)
         assert domain is not None
         assert hasattr(domain, "FOO") is False

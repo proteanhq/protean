@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import warnings
 
 import tomllib
 
@@ -98,9 +99,12 @@ class Config2(dict):
             current_dir = os.path.dirname(current_dir)  # Move to the parent directory
 
         if not config_file_name:
-            raise ConfigurationError(
+            warnings.warn(
                 f"No configuration file found in {os.path.dirname(path)}"
+                f" or its immediate 2 parent directories. Using default configuration."
             )
+            # Return default config when no config file is found
+            return cls(**_default_config())
 
         config = {}
         if config_file_name:

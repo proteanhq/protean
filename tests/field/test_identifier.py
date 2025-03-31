@@ -109,7 +109,7 @@ class TestIdentityType:
         identifier._load(42) == "42"
 
     def test_invalid_identity_type_in_domain_config(self):
-        domain = Domain(__file__, load_toml=False)
+        domain = Domain(__file__)
         domain.config["identity_type"] = "invalid"
 
         with domain.domain_context():
@@ -122,7 +122,7 @@ class TestIdentityType:
             }
 
     def test_that_default_is_picked_from_domain_config(self):
-        domain = Domain(__file__, load_toml=False)
+        domain = Domain(__file__)
 
         # By default, IdentityType is UUID
         with domain.domain_context():
