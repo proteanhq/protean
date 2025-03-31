@@ -1,12 +1,19 @@
 # Configuration
 
-Protean's configuration is specified in a `toml` file. A `domain.toml` file is
-generated when you initialize a protean application with the
-[`new`](./cli/new.md) command.
+Protean's configuration is managed through the Domain object, which can be configured in multiple ways:
 
-The configuration can be placed in a file named `.domain.toml` or `domain.toml`,
-or can even leverage existing `pyproject.toml`. Protean looks for these files
-- in that order - when the domain object is initialized.
+1. **Direct Configuration**: Pass a configuration dictionary when initializing the Domain object:
+   ```python
+   domain = Domain(config={'debug': True, 'testing': True})
+   ```
+
+2. **Configuration Files**: Place configuration in a TOML file in your project directory or up to two levels of parent directories. Protean searches for configuration files in the following order:
+
+   - `.domain.toml`
+   - `domain.toml` 
+   - `pyproject.toml` (under the `[tool.protean]` section)
+
+When initializing a new Protean application using the [`new`](./cli/new.md) command, a `domain.toml` configuration file is automatically generated with sensible defaults.
 
 A sample configuration file is below:
 
@@ -18,6 +25,7 @@ identity_strategy = "uuid"
 identity_type = "string"
 event_processing = "sync"
 command_processing = "sync"
+message_processing = "sync"
 
 [databases.default]
 provider = "memory"
