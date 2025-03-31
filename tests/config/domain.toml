@@ -5,6 +5,7 @@ identity_strategy = "uuid"
 identity_type = "string"
 event_processing = "sync"
 command_processing = "sync"
+message_processing = "sync"
 
 [databases.default]
 provider = "memory"
