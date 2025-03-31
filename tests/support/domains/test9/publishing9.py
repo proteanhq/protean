@@ -5,7 +5,7 @@ from datetime import datetime
 from protean.domain import Domain
 from protean.fields import DateTime, HasMany, Reference, String
 
-domain = Domain(__file__, "TEST9", load_toml=False)
+domain = Domain(__file__, "TEST9")
 
 
 @domain.aggregate

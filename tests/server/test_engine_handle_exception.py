@@ -8,7 +8,7 @@ from protean.server.engine import Engine
 
 @pytest.fixture
 def engine():
-    domain = Domain(__file__, load_toml=False)
+    domain = Domain(__file__)
     return Engine(domain, test_mode=True, debug=True)
 
 

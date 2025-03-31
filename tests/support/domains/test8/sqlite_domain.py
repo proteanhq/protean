@@ -4,7 +4,7 @@ for further testing, like docker file generation
 
 from protean.domain import Domain
 
-domain = Domain(__file__, "SQLite-Domain", load_toml=False)
+domain = Domain(__file__, "SQLite-Domain")
 
 
 domain.config["databases"] = {

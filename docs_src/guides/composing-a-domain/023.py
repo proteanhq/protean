@@ -1,7 +1,7 @@
 from protean import Domain
 from protean.fields import Auto, String
 
-domain = Domain(__file__, load_toml=False)
+domain = Domain(__file__)
 
 
 @domain.aggregate

@@ -16,13 +16,13 @@ from .elements import UserAggregate, UserEntity, UserFoo, UserVO
 
 
 def test_domain_name():
-    domain = Domain(__file__, "Foo", load_toml=False)
+    domain = Domain(__file__, "Foo")
 
     assert domain.name == "Foo"
 
 
 def test_domain_name_string():
-    domain = Domain(__file__, "Foo", load_toml=False)
+    domain = Domain(__file__, "Foo")
 
     assert str(domain) == "Domain: Foo"
 
@@ -48,7 +48,7 @@ def test_normalized_domain_name():
         ("My Domain 1.0", "my_domain_1_0"),
     ]
     for name, result in data:
-        domain = Domain(__file__, name, load_toml=False)
+        domain = Domain(__file__, name)
         assert domain.normalized_name == result, f"Failed for {name}"
 
 
@@ -73,7 +73,7 @@ def test_camel_case_domain_name():
         ("My Domain 1.0", "MyDomain10"),
     ]
     for name, result in data:
-        domain = Domain(__file__, name, load_toml=False)
+        domain = Domain(__file__, name)
         assert domain.camel_case_name == result, f"Failed for {name}"
 
 
@@ -206,12 +206,12 @@ class TestDomainLevelClassResolution:
         def test_domain(self):
             from protean.domain import Domain
 
-            domain = Domain(__file__, "Test", load_toml=False)
+            domain = Domain(__file__, "Test")
             domain.config["databases"]["memory"] = {"provider": "memory"}
             yield domain
 
         def test_that_class_reference_is_tracked_at_the_domain_level(self):
-            domain = Domain(__file__, load_toml=False)
+            domain = Domain(__file__)
 
             class Post(BaseAggregate):
                 content = Text(required=True)
@@ -237,7 +237,7 @@ class TestDomainLevelClassResolution:
             )
 
         def test_that_class_reference_is_resolved_on_domain_initialization(self):
-            domain = Domain(__file__, "Inline Domain", load_toml=False)
+            domain = Domain(__file__, "Inline Domain")
 
             class Post(BaseAggregate):
                 content = Text(required=True)
@@ -268,7 +268,7 @@ class TestDomainLevelClassResolution:
         def test_that_domain_throws_exception_on_unknown_class_references_during_activation(
             self,
         ):
-            domain = Domain(__file__, "Inline Domain", load_toml=False)
+            domain = Domain(__file__, "Inline Domain")
 
             class Post(BaseAggregate):
                 content = Text(required=True)

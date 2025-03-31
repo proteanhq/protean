@@ -4,7 +4,7 @@ from protean import Domain
 from protean.adapters.repository.sqlalchemy import SqlalchemyModel
 from protean.fields import Integer, String
 
-domain = Domain(__file__, load_toml=False)
+domain = Domain(__file__)
 domain.config["databases"]["default"] = {
     "provider": "postgresql",
     "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",

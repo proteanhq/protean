@@ -2,7 +2,7 @@ from protean import Domain, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Float, String
 
-domain = Domain(__name__, load_toml=False)
+domain = Domain(__name__)
 
 
 @domain.value_object

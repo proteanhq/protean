@@ -14,17 +14,17 @@ from tests.shared import change_working_directory_to
 
 def test_find_domain_in_module():
     class Module:
-        domain = Domain(__file__, "name", load_toml=False)
+        domain = Domain(__file__, "name")
 
     assert find_domain_in_module(Module) == Module.domain
 
     class Module:
-        subdomain = Domain(__file__, "name", load_toml=False)
+        subdomain = Domain(__file__, "name")
 
     assert find_domain_in_module(Module) == Module.subdomain
 
     class Module:
-        my_domain = Domain(__file__, "name", load_toml=False)
+        my_domain = Domain(__file__, "name")
 
     assert find_domain_in_module(Module) == Module.my_domain
 
@@ -34,8 +34,8 @@ def test_find_domain_in_module():
     pytest.raises(NoDomainException, find_domain_in_module, Module)
 
     class Module:
-        my_domain1 = Domain(__file__, "name1", load_toml=False)
-        my_domain2 = Domain(__file__, "name2", load_toml=False)
+        my_domain1 = Domain(__file__, "name1")
+        my_domain2 = Domain(__file__, "name2")
 
     pytest.raises(NoDomainException, find_domain_in_module, Module)
 

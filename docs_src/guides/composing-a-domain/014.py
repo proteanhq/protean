@@ -2,7 +2,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
 from protean.fields import Integer, String
 
-domain = Domain(__file__, load_toml=False)
+domain = Domain(__file__)
 
 
 class User(BaseAggregate):

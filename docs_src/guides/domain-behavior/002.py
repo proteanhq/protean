@@ -1,7 +1,7 @@
 from protean import Domain, invariant
 from protean.fields import Float, Identifier
 
-banking = Domain(__file__, load_toml=False)
+banking = Domain(__file__)
 
 
 class InsufficientFundsException(Exception):

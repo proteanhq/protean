@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from protean import BaseEvent, Domain
 from protean.fields import DateTime, Identifier, String
 
-domain = Domain(__name__, name="Authentication", load_toml=False)
+domain = Domain(__name__, name="Authentication")
 
 
 @domain.aggregate

@@ -1,7 +1,7 @@
 from protean import Domain
 from protean.fields import HasOne, List, String, ValueObject
 
-domain = Domain(__file__, load_toml=False)
+domain = Domain(__file__)
 
 
 @domain.value_object

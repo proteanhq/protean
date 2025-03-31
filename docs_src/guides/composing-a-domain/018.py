@@ -2,7 +2,7 @@ from protean import Domain
 from protean.fields import Integer, String
 from protean.utils.globals import current_domain
 
-domain = Domain(__file__, load_toml=False)
+domain = Domain(__file__)
 
 
 @domain.aggregate

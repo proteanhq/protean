@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from protean import Domain
 from protean.fields import Identifier, String
 
-domain = Domain(__file__, load_toml=False)
+domain = Domain(__file__)
 
 
 @domain.aggregate

@@ -3,7 +3,7 @@ from uuid import uuid4
 from protean import Domain, handle, invariant
 from protean.fields import Float, Identifier, Integer, String, Text
 
-domain = Domain("__file__", load_toml=False)
+domain = Domain("__file__")
 
 # Process events and commands synchronously
 domain.config["command_processing"] = "sync"

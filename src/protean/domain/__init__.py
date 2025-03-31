@@ -101,7 +101,7 @@ class Domain:
         self,
         root_path: str,
         name: str = "",
-        load_toml: bool = True,
+        config: Optional[Dict] = None,
         identity_function: Optional[Callable] = None,
     ):
         self.root_path = root_path
@@ -122,7 +122,7 @@ class Domain:
         #: The configuration dictionary as :class:`Config`.  This behaves
         #: exactly like a regular dictionary but supports additional methods
         #: to load a config from files.
-        self.config = self.load_config(load_toml)
+        self.config = self.load_config(config)
 
         # The function to invoke to generate identity
         self._identity_function = identity_function
@@ -315,19 +315,19 @@ class Domain:
         self.brokers._initialize()
         self.event_store._initialize()
 
-    def load_config(self, load_toml=True):
-        """Load configuration from dist or a .toml file."""
-        if load_toml:
-            config = Config2.load_from_path(self.root_path)
+    def load_config(self, config=None):
+        """Load configuration from a dict or a .toml file."""
+        if config is not None:
+            config_obj = Config2.load_from_dict(config)
         else:
-            config = Config2.load_from_dict()
+            config_obj = Config2.load_from_path(self.root_path)
 
         # Load Constants
-        if "custom" in config:
-            for constant, value in config["custom"].items():
+        if "custom" in config_obj:
+            for constant, value in config_obj["custom"].items():
                 setattr(self, constant, value)
 
-        return config
+        return config_obj
 
     def domain_context(self, **kwargs):
         """Create an :class:`~protean.context.DomainContext`. Use as a ``with``

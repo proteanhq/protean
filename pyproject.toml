@@ -137,7 +137,8 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 filterwarnings = [
     "ignore::sqlalchemy.exc.SAWarning",
-    "ignore::sqlalchemy.exc.SADeprecationWarning"
+    "ignore::sqlalchemy.exc.SADeprecationWarning",
+    "ignore:No configuration file found.*Using default configuration.*:UserWarning"
 ]
 python_files = [
     "test_*.py",
