@@ -106,22 +106,21 @@ class Config2(dict):
             # Return default config when no config file is found
             return cls(**_default_config())
 
-        config = {}
-        if config_file_name:
-            with open(config_file_name, "rb") as f:
-                config = tomllib.load(f)
+        config_dict = {}
+        with open(config_file_name, "rb") as f:
+            config_dict = tomllib.load(f)
 
-                # If pyproject.toml, extract protean configuration
-                #   from the 'tool.protean' section
-                if config_file_name.endswith("pyproject.toml"):
-                    config = config.get("tool", {}).get("protean", {})
+            # If pyproject.toml, extract protean configuration
+            #   from the 'tool.protean' section
+            if config_file_name.endswith("pyproject.toml"):
+                config_dict = config_dict.get("tool", {}).get("protean", {})
 
-                config = cls._normalize_config(config)
+            config_dict = cls._normalize_config(config_dict)
 
         # Load environment variables
-        config = cls._load_env_vars(config)
+        config_dict = cls._load_env_vars(config_dict)
 
-        return cls(**config)
+        return cls(**config_dict)
 
     @classmethod
     def _normalize_config(cls, config):
@@ -163,18 +162,26 @@ class Config2(dict):
         return result
 
     @classmethod
-    def _load_env_vars(cls, config):
-        if isinstance(config, dict):
-            for key, value in config.items():
-                if isinstance(value, str):
-                    config[key] = cls._replace_env_var(value)
-                elif isinstance(value, dict):
-                    config[key] = cls._load_env_vars(value)
-                elif isinstance(value, list):
-                    config[key] = [
-                        cls._replace_env_var(item) if isinstance(item, str) else item
-                        for item in value
-                    ]
+    def _load_env_vars(cls, config: dict) -> dict:
+        """Replace environment variables in configuration dictionary.
+
+        Args:
+            config: Dictionary containing configuration values
+
+        Returns:
+            Dictionary with environment variables replaced
+        """
+        for key, value in config.items():
+            if isinstance(value, str):
+                config[key] = cls._replace_env_var(value)
+            elif isinstance(value, dict):
+                config[key] = cls._load_env_vars(value)
+            elif isinstance(value, list):
+                config[key] = [
+                    cls._replace_env_var(item) if isinstance(item, str) else item
+                    for item in value
+                ]
+
         return config
 
     @classmethod

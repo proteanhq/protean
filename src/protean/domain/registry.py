@@ -127,7 +127,7 @@ class _DomainRegistry:
         return elems
 
     def __repr__(self):
-        return f"<DomainRegistry: {self._elements}>"
+        return f"<DomainRegistry: {self.elements}>"
 
 
 # Set up access to all elements as properties

@@ -12,8 +12,7 @@ from protean.core.subscriber import BaseSubscriber
 from protean.utils.globals import g
 from protean.utils.mixins import Message
 
-from .broker_subscription import BrokerSubscription
-from .subscription import Subscription
+from .subscription import BrokerSubscription, Subscription
 
 logging.basicConfig(
     level=logging.INFO,
