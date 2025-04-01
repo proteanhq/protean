@@ -107,6 +107,18 @@ def test_properties_method_returns_a_dictionary_of_all_protean_elements():
     }
 
 
+def test_domain_registry_repr():
+    register = _DomainRegistry()
+    register.register_element(User)
+    register.register_element(Role)
+
+    assert repr(register) == (
+        "<DomainRegistry: "
+        "{'aggregates': [<class 'tests.test_registry.User'>], "
+        "'entities': [<class 'tests.test_registry.Role'>]}>"
+    )
+
+
 def test_domain_record_repr():
     record = _DomainRegistry.DomainRecord(
         name="User",
@@ -140,3 +152,29 @@ def test_domain_registry_elements_repr():
         "{'aggregates': [<class 'tests.test_registry.User'>], "
         "'entities': [<class 'tests.test_registry.Role'>]}"
     )
+
+
+def test_domain_registry_is_serializable():
+    """Test that _DomainRegistry and its instances can be serialized"""
+    import pickle
+
+    # Test empty registry serialization
+    register = _DomainRegistry()
+    serialized = pickle.dumps(register)
+    deserialized = pickle.loads(serialized)
+    assert isinstance(deserialized, _DomainRegistry)
+    assert deserialized.elements == {}
+
+    # Test registry with elements
+    register.register_element(User)
+    register.register_element(Role)
+
+    serialized = pickle.dumps(register)
+    deserialized = pickle.loads(serialized)
+
+    assert isinstance(deserialized, _DomainRegistry)
+    assert len(deserialized.elements) == 2
+    assert deserialized.elements == {
+        "aggregates": [User],
+        "entities": [Role],
+    }
