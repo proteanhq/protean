@@ -30,6 +30,7 @@ class BaseView(BaseContainer, OptionsMixin):
             ("order_by", ()),
             ("provider", "default"),
             ("schema_name", inflection.underscore(cls.__name__)),
+            ("limit", 100),
         ]
 
     def __init_subclass__(subclass) -> None:
@@ -102,28 +103,21 @@ class BaseView(BaseContainer, OptionsMixin):
 
 
 def view_factory(element_cls, domain, **opts):
+    """Factory method to create a view class.
+
+    This method is used to create a view class. It is called during domain registration.
+    """
+    # If opts has a `limit` key and it is negative, set it to None
+    if "limit" in opts and opts["limit"] is not None and opts["limit"] < 0:
+        opts["limit"] = None
+
+    # Derive the view class from the base view class
     element_cls = derive_element_class(element_cls, BaseView, **opts)
 
     if not element_cls.meta_.abstract and not hasattr(element_cls, _ID_FIELD_NAME):
         raise IncorrectUsageError(
             f"View `{element_cls.__name__}` needs to have at least one identifier"
         )
-
-    element_cls.meta_.provider = (
-        opts.pop("provider", None)
-        or (hasattr(element_cls, "meta_") and element_cls.meta_.provider)
-        or "default"
-    )
-    element_cls.meta_.cache = (
-        opts.pop("cache", None)
-        or (hasattr(element_cls, "meta_") and element_cls.meta_.cache)
-        or None
-    )
-    element_cls.meta_.model = (
-        opts.pop("model", None)
-        or (hasattr(element_cls, "meta_") and element_cls.meta_.model)
-        or None
-    )
 
     if element_cls.meta_.provider and element_cls.meta_.cache:
         raise NotSupportedError(

@@ -90,9 +90,10 @@ class OptionsMixin:
         # Assign default options for remaining items
         #   with the help of `_default_options()` method defined in the Element's Root.
         #   Element Roots are `Event`, `Subscriber`, `Repository`, and so on.
+        #
+        # Explicit `None` is a valid value set for an option, so we don't discard it.
         for key, default in cls._default_options():
-            # FIXME Should the `None` check be replaced with a SENTINEL check?
-            if not (hasattr(cls.meta_, key) and getattr(cls.meta_, key) is not None):
+            if not hasattr(cls.meta_, key):
                 setattr(cls.meta_, key, default)
 
 

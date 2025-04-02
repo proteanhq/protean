@@ -645,8 +645,15 @@ class SAProvider(BaseProvider):
             current_uow.rollback()
 
     def _create_database_artifacts(self):
-        for _, aggregate_record in self.domain.registry.aggregates.items():
-            self.domain.repository_for(aggregate_record.cls)._dao
+        # Create tables for all registered aggregates, entities, and views
+        elements = {
+            **self.domain.registry.aggregates,
+            **self.domain.registry.entities,
+            **self.domain.registry.views,
+        }
+
+        for _, element_record in elements.items():
+            self.domain.repository_for(element_record.cls)._dao
 
         self._metadata.create_all(self._engine)
 

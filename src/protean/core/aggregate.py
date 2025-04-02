@@ -100,6 +100,7 @@ class BaseAggregate(BaseEntity):
             ("provider", "default"),
             ("schema_name", inflection.underscore(cls.__name__)),
             ("stream_category", inflection.underscore(cls.__name__)),
+            ("limit", 100),
         ]
 
     def _apply(self, event: BaseEvent) -> None:
@@ -203,6 +204,15 @@ def element_to_fact_event(element_cls):
 
 
 def aggregate_factory(element_cls, domain, **opts):
+    """Factory method to create an aggregate class.
+
+    This method is used to create an aggregate class. It is called during domain registration.
+    """
+    # If opts has a `limit` key and it is negative, set it to None
+    if "limit" in opts and opts["limit"] is not None and opts["limit"] < 0:
+        opts["limit"] = None
+
+    # Derive the aggregate class from the base aggregate class
     element_cls = derive_element_class(element_cls, BaseAggregate, **opts)
 
     # Iterate through methods marked as `@invariant` and record them for later use
