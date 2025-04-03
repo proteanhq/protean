@@ -21,6 +21,27 @@ class BaseView(BaseContainer, OptionsMixin):
             raise NotSupportedError("BaseView cannot be instantiated")
         return super().__new__(cls)
 
+    """
+    View Options:
+    
+    Views support the following options to configure their behavior:
+    
+    These options are specified directly in the @domain.view decorator:
+    
+    @domain.view(
+        abstract=False,         # If True, this view is an abstract base class and won't be registered as a concrete view
+        cache="redis",          # Name of the cache provider to use for storing view data
+        model="custom_model",   # Custom model name to use for storage
+        order_by=("field_name",), # Default ordering for query results
+        provider="default",     # Name of the database provider to use for storing view data
+        schema_name="custom_name", # Name of the schema/table to use in the database
+        limit=100               # Default query result limit
+    )
+    
+    Important note: When both `cache` and `provider` are specified, the `cache` option takes precedence
+    and the `provider` option is ignored, as views can only connect to one data source at a time.
+    """
+
     @classmethod
     def _default_options(cls):
         return [
@@ -30,6 +51,7 @@ class BaseView(BaseContainer, OptionsMixin):
             ("order_by", ()),
             ("provider", "default"),
             ("schema_name", inflection.underscore(cls.__name__)),
+            ("limit", 100),
         ]
 
     def __init_subclass__(subclass) -> None:
@@ -102,6 +124,15 @@ class BaseView(BaseContainer, OptionsMixin):
 
 
 def view_factory(element_cls, domain, **opts):
+    """Factory method to create a view class.
+
+    This method is used to create a view class. It is called during domain registration.
+    """
+    # If opts has a `limit` key and it is negative, set it to None
+    if "limit" in opts and opts["limit"] is not None and opts["limit"] < 0:
+        opts["limit"] = None
+
+    # Derive the view class from the base view class
     element_cls = derive_element_class(element_cls, BaseView, **opts)
 
     if not element_cls.meta_.abstract and not hasattr(element_cls, _ID_FIELD_NAME):
@@ -109,26 +140,14 @@ def view_factory(element_cls, domain, **opts):
             f"View `{element_cls.__name__}` needs to have at least one identifier"
         )
 
-    element_cls.meta_.provider = (
-        opts.pop("provider", None)
-        or (hasattr(element_cls, "meta_") and element_cls.meta_.provider)
-        or "default"
-    )
-    element_cls.meta_.cache = (
-        opts.pop("cache", None)
-        or (hasattr(element_cls, "meta_") and element_cls.meta_.cache)
-        or None
-    )
-    element_cls.meta_.model = (
-        opts.pop("model", None)
-        or (hasattr(element_cls, "meta_") and element_cls.meta_.model)
-        or None
-    )
-
-    if element_cls.meta_.provider and element_cls.meta_.cache:
+    # If the view has neither database nor cache provider, raise an error
+    if not (element_cls.meta_.provider or element_cls.meta_.cache):
         raise NotSupportedError(
-            f"{element_cls.__name__} view can be persisted in"
-            f"either a database or a cache, but not both"
+            f"{element_cls.__name__} view needs to have either a database or a cache provider"
         )
+
+    # A cache, when specified, overrides the provider
+    if element_cls.meta_.cache:
+        element_cls.meta_.provider = None
 
     return element_cls

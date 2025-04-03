@@ -136,6 +136,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
             ("part_of", None),
             ("provider", "default"),
             ("schema_name", inflection.underscore(cls.__name__)),
+            ("limit", 100),
         ]
 
     def __init__(self, *template, **kwargs):  # noqa: C901
@@ -617,6 +618,15 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
 
 
 def entity_factory(element_cls, domain, **opts):
+    """Factory method to create an entity class.
+
+    This method is used to create an entity class. It is called during domain registration.
+    """
+    # If opts has a `limit` key and it is negative, set it to None
+    if "limit" in opts and opts["limit"] is not None and opts["limit"] < 0:
+        opts["limit"] = None
+
+    # Derive the entity class from the base entity class
     element_cls = derive_element_class(element_cls, BaseEntity, **opts)
 
     if not element_cls.meta_.part_of:

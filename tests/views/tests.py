@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 
 from protean.core.view import BaseView
-from protean.exceptions import InvalidOperationError, ValidationError
+from protean.exceptions import InvalidOperationError, NotSupportedError, ValidationError
 from protean.fields import Auto, Identifier, Integer, String
 from protean.utils import fully_qualified_name
 from protean.utils.container import Options
@@ -248,6 +248,32 @@ class TestViewMeta:
     def test_that_schema_is_not_inherited(self):
         assert Person.meta_.schema_name != Adult.meta_.schema_name
 
+    def test_error_when_neither_database_nor_cache_provider_is_specified(
+        self, test_domain
+    ):
+        with pytest.raises(NotSupportedError):
+
+            class PersonWithNoDatabaseAndCache(BaseView):
+                person_id = Identifier(identifier=True)
+                first_name = String(max_length=50, required=True)
+                last_name = String(max_length=50)
+                age = Integer(default=21)
+
+            test_domain.register(
+                PersonWithNoDatabaseAndCache, provider=None, cache=None
+            )
+
+    def test_that_specifying_cache_overrides_database_provider(self, test_domain):
+        class PersonWithCache(BaseView):
+            person_id = Identifier(identifier=True)
+            first_name = String(max_length=50, required=True)
+            last_name = String(max_length=50)
+            age = Integer(default=21)
+
+        test_domain.register(PersonWithCache, cache="default")
+
+        assert PersonWithCache.meta_.provider is None
+
 
 class TestIdentity:
     """Grouping of Identity related test cases"""
@@ -370,7 +396,7 @@ class TestEquivalence:
         assert hash(person1) == hash(person2)
 
 
-class TestView:
+class TestViewState:
     def test_that_views_have_state(self):
         person = Person(person_id=12, first_name="John", last_name="Doe")
         assert person.state_ is not None

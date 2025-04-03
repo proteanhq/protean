@@ -50,9 +50,7 @@ class QuerySet:
         entity_cls: BaseEntity,
         criteria: Q = None,
         offset: int = 0,
-        # Aggregates should be loaded in entirety
-        # FIXME Should this limit be removed entirely?
-        limit: int = 1000,
+        limit: int = None,  # No limit by default
         order_by: list = None,
     ):
         """Initialize either with empty preferences (when invoked on an Entity)
@@ -64,7 +62,9 @@ class QuerySet:
         self._criteria = criteria or Q()
         self._result_cache = None
         self._offset = offset or 0
-        self._limit = limit or 10
+
+        # If an explicit limit is not provided, use the limit from the entity class
+        self._limit = limit or entity_cls.meta_.limit
 
         # `order_by` could be empty, or a string or a list.
         #   Initialize empty list if `order_by` is None
@@ -124,7 +124,8 @@ class QuerySet:
         """Limit number of records"""
         clone = self._clone()
 
-        if isinstance(limit, int):
+        # Assign limit if it is an integer or None
+        if isinstance(limit, int) or limit is None:
             clone._limit = limit
 
         return clone

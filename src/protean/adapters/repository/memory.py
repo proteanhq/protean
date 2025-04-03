@@ -376,7 +376,8 @@ class DictDAO(BaseDAO):
             offset=offset,
             limit=limit,
             total=len(items),
-            items=items[offset : offset + limit],
+            # When limit is not set, we return all items
+            items=items[offset : offset + limit] if limit else items,
         )
 
         return result
