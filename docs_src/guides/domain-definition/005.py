@@ -19,7 +19,7 @@ class Person:
     last_name = String(max_length=30)
 
 
-@domain.model(entity_cls=Person)
+@domain.database_model(entity_cls=Person)
 class PersonModel:
     first_name = sqlalchemy.Column(sqlalchemy.Text)
     last_name = sqlalchemy.Column(sqlalchemy.Text)

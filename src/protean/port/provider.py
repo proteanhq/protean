@@ -53,15 +53,15 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """Check if the connection is alive"""
 
     @abstractmethod
-    def get_dao(self, entity_cls, model_cls):
+    def get_dao(self, entity_cls, database_model_cls):
         """Return a DAO object configured with a live connection"""
 
     @abstractmethod
-    def decorate_model_class(self, entity_cls, model_cls):
+    def decorate_database_model_class(self, entity_cls, database_model_cls):
         """Return decorated Model Class for custom-defined models"""
 
     @abstractmethod
-    def construct_model_class(self, entity_cls):
+    def construct_database_model_class(self, entity_cls):
         """Return dynamically constructed Model Class"""
 
     @abstractmethod

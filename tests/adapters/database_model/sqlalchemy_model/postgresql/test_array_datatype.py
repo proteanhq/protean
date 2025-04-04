@@ -34,22 +34,22 @@ class IntegerArrayUser(BaseAggregate):
 def test_array_data_type_association(test_domain):
     test_domain.register(ArrayUser)
 
-    model_cls = test_domain.repository_for(ArrayUser)._model
-    type(model_cls.roles.property.columns[0].type) is sa_types.ARRAY
+    database_model_cls = test_domain.repository_for(ArrayUser)._database_model
+    type(database_model_cls.roles.property.columns[0].type) is sa_types.ARRAY
 
 
 @pytest.mark.postgresql
 def test_basic_array_data_type_operations(test_domain):
     test_domain.register(ArrayUser)
 
-    model_cls = test_domain.repository_for(ArrayUser)._model
+    database_model_cls = test_domain.repository_for(ArrayUser)._database_model
 
     user = ArrayUser(
         email="john.doe@gmail.com", roles=["ADMIN", "USER"], integers=[9, 10]
     )
-    user_model_obj = model_cls.from_entity(user)
+    user_model_obj = database_model_cls.from_entity(user)
 
-    user_copy = model_cls.to_entity(user_model_obj)
+    user_copy = database_model_cls.to_entity(user_model_obj)
     assert user_copy is not None
     assert user_copy.roles == ["ADMIN", "USER"]
 
@@ -116,11 +116,11 @@ def test_array_content_type_validation(test_domain):
         except ValidationError:
             pytest.fail("Failed to convert integers into strings in List field type")
 
-    model_cls = test_domain.repository_for(IntegerArrayUser)._model
+    database_model_cls = test_domain.repository_for(IntegerArrayUser)._database_model
     user = IntegerArrayUser(email="john.doe@gmail.com", roles=[1, 2])
-    user_model_obj = model_cls.from_entity(user)
+    user_model_obj = database_model_cls.from_entity(user)
 
-    user_copy = model_cls.to_entity(user_model_obj)
+    user_copy = database_model_cls.to_entity(user_model_obj)
     assert user_copy is not None
     assert user_copy.roles == [1, 2]
 

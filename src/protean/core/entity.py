@@ -132,7 +132,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
         return [
             ("aggregate_cluster", None),
             ("auto_add_id_field", True),
-            ("model", None),
+            ("database_model", None),
             ("part_of", None),
             ("provider", "default"),
             ("schema_name", inflection.underscore(cls.__name__)),

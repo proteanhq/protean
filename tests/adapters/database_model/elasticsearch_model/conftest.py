@@ -30,7 +30,7 @@ def setup_db():
         domain.register(User)
         domain.register(ComplexUser)
         domain.register(Provider)
-        domain.register_model(
+        domain.register_database_model(
             ProviderCustomModel, part_of=Provider, schema_name="providers"
         )
         domain.init(traverse=False)

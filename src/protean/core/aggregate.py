@@ -96,7 +96,7 @@ class BaseAggregate(BaseEntity):
             ("auto_add_id_field", True),
             ("fact_events", False),
             ("is_event_sourced", False),
-            ("model", None),
+            ("database_model", None),
             ("provider", "default"),
             ("schema_name", inflection.underscore(cls.__name__)),
             ("stream_category", inflection.underscore(cls.__name__)),

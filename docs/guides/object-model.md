@@ -17,7 +17,7 @@ Options are passed as parameters to the element decorator:
 ```python
 In [1]: User.meta_
 Out[1]: 
-{'model': None,
+{'database_model': None,
  'stream_category': 'user',
  'auto_add_id_field': True,
  'fact_events': False,

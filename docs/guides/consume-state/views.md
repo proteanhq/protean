@@ -61,7 +61,7 @@ All options are passed directly to the view decorator:
 ```python
 @domain.view(
     abstract=False,          # If True, indicates this view is an abstract base class
-    model="custom_model",    # Custom model name for storage
+    database_model="custom_model",    # Custom model name for storage
     order_by=("name",),      # Default ordering for query results
     schema_name="inventory", # Custom schema/table name
     limit=100                # Default query result limit (set to None for no limit)

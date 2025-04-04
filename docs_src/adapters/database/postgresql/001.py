@@ -17,7 +17,7 @@ class Provider:
     age = Integer()
 
 
-@domain.model(part_of=Provider)
+@domain.database_model(part_of=Provider)
 class ProviderCustomModel:
     name = sa.Column(sa.Text)
     age = sa.Column(sa.Integer)
@@ -25,5 +25,5 @@ class ProviderCustomModel:
 
 domain.init()
 with domain.domain_context():
-    model_cls = domain.repository_for(Provider)._model
-    assert issubclass(model_cls, SqlalchemyModel)
+    database_model_cls = domain.repository_for(Provider)._database_model
+    assert issubclass(database_model_cls, SqlalchemyModel)
