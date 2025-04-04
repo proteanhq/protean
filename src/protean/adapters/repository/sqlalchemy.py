@@ -571,7 +571,6 @@ class SAProvider(BaseProvider):
 
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
         """
-        pass
 
     @abstractmethod
     def _get_database_specific_session_args(self):
@@ -582,7 +581,6 @@ class SAProvider(BaseProvider):
 
         Return: a dictionary with additional arguments and values.
         """
-        pass
 
     def get_session(self):
         """Establish a session to the Database"""
@@ -608,7 +606,6 @@ class SAProvider(BaseProvider):
 
         Return: None
         """
-        pass
 
     def get_connection(self, session_cls=None):
         """Create the connection to the Database instance"""
