@@ -1,6 +1,7 @@
 import pytest
 
 from protean.adapters.repository.memory import MemoryModel
+from protean.fields import Text
 
 from .elements import Email, Person, Provider, ProviderCustomModel, Receiver, User
 
@@ -110,28 +111,16 @@ class TestCustomModel:
         #   when models are validated for fields to be present in corresponding entities/aggregates
         assert hasattr(database_model_cls, "about")
 
+    def test_explicit_model_is_returned_if_provided(self, test_domain):
+        class ProviderCustomMemoryModel(MemoryModel):
+            name = Text()
 
-class TestSchemaNameDerivation:
-    def test_that_explicit_schema_name_is_used_if_provided(self, test_domain):
         test_domain.register(Provider)
         test_domain.register(
-            ProviderCustomModel, part_of=Provider, schema_name="adults"
+            ProviderCustomMemoryModel, part_of=Provider, schema_name="adults"
         )
 
-        assert ProviderCustomModel.derive_schema_name() == "adults"
-
-    def test_that_schema_name_is_derived_from_entity_name_if_not_provided(
-        self, test_domain
-    ):
-        test_domain.register(Provider)
-        test_domain.register(ProviderCustomModel, part_of=Provider)
-
-        assert ProviderCustomModel.derive_schema_name() == "provider"
-
-    def test_that_overridden_schema_name_in_entity_is_used_if_provided(
-        self, test_domain
-    ):
-        test_domain.register(Provider, schema_name="adults")
-        test_domain.register(ProviderCustomModel, part_of=Provider)
-
-        assert ProviderCustomModel.derive_schema_name() == "adults"
+        assert (
+            test_domain.repository_for(Provider)._database_model
+            is ProviderCustomMemoryModel
+        )
