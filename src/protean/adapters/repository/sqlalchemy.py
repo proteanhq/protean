@@ -4,6 +4,7 @@ import copy
 import json
 import logging
 import uuid
+from abc import abstractmethod
 from enum import Enum
 from typing import Any
 
@@ -521,16 +522,29 @@ class SAProvider(BaseProvider):
         postgresql = "postgresql"
         sqlite = "sqlite"
 
-    def __init__(self, *args, **kwargs):
-        """Initialize and maintain Engine"""
-        super().__init__(*args, **kwargs)
+    def _additional_engine_args(self):
+        """Construct additional arguments for the engine"""
+        extra_args = self._get_database_specific_engine_args()
 
-        kwargs = self._get_database_specific_engine_args()
+        # Explicit database-specific arguments can override defaults
+        extra_args.update(
+            {
+                key: value
+                for key, value in self.conn_info.items()
+                if key not in ["provider", "database_uri", "SCHEMA"]
+            }
+        )
+
+        return extra_args
+
+    def __init__(self, name, domain, conn_info: dict):
+        """Initialize and maintain Engine"""
+        super().__init__(name, domain, conn_info)
 
         self._engine = create_engine(
             make_url(self.conn_info["database_uri"]),
             json_serializer=_custom_json_dumps,
-            **kwargs,
+            **self._additional_engine_args(),
         )
 
         if self.__database__ == self.databases.postgresql.value:
@@ -551,16 +565,15 @@ class SAProvider(BaseProvider):
         # A temporary cache of already constructed model classes
         self._model_classes = {}
 
+    @abstractmethod
     def _get_database_specific_engine_args(self):
         """Supplies additional database-specific arguments to SQLAlchemy Engine.
 
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
         """
-        if self.__database__ == self.databases.postgresql.value:
-            return {"isolation_level": "AUTOCOMMIT"}
+        pass
 
-        return {}
-
+    @abstractmethod
     def _get_database_specific_session_args(self):
         """Set Database specific session parameters.
 
@@ -569,10 +582,7 @@ class SAProvider(BaseProvider):
 
         Return: a dictionary with additional arguments and values.
         """
-        if self.__database__ == self.databases.postgresql.value:
-            return {"autoflush": False}
-
-        return {}
+        pass
 
     def get_session(self):
         """Establish a session to the Database"""
@@ -585,6 +595,7 @@ class SAProvider(BaseProvider):
 
         return session_cls
 
+    @abstractmethod
     def _execute_database_specific_connection_statements(self, conn):
         """Execute connection statements depending on the database in use.
 
@@ -597,10 +608,7 @@ class SAProvider(BaseProvider):
 
         Return: None
         """
-        if self.__database__ == self.databases.sqlite.value:
-            conn.execute(text("PRAGMA case_sensitive_like = ON;"))
-
-        return conn
+        pass
 
     def get_connection(self, session_cls=None):
         """Create the connection to the Database instance"""
@@ -761,9 +769,66 @@ class SAProvider(BaseProvider):
 class PostgresqlProvider(SAProvider):
     __database__ = SAProvider.databases.postgresql.value
 
+    def _get_database_specific_engine_args(self) -> dict:
+        """Supplies additional database-specific arguments to SQLAlchemy Engine.
+
+        Return: a dictionary with database-specific SQLAlchemy Engine arguments.
+        """
+        return {"isolation_level": "AUTOCOMMIT"}
+
+    def _get_database_specific_session_args(self) -> dict:
+        """Set Database specific session parameters.
+
+        Depending on the database in use, this method supplies
+        additional arguments while constructing sessions.
+
+        Return: a dictionary with additional arguments and values.
+        """
+        return {"autoflush": False}
+
+    def _execute_database_specific_connection_statements(self, conn):
+        """Execute connection statements depending on the database in use.
+        Overridden implementation for PostgreSQL.
+        Arguments:
+        * conn: An active connection object to the database
+
+        Return: Updated connection object
+        """
+        return conn
+
 
 class SqliteProvider(SAProvider):
     __database__ = SAProvider.databases.sqlite.value
+
+    def _get_database_specific_engine_args(self) -> dict:
+        """Supplies additional database-specific arguments to SQLAlchemy Engine.
+
+        Return: a dictionary with database-specific SQLAlchemy Engine arguments.
+        """
+        return {}
+
+    def _get_database_specific_session_args(self) -> dict:
+        """Set Database specific session parameters.
+
+        Depending on the database in use, this method supplies
+        additional arguments while constructing sessions.
+
+        Return: a dictionary with additional arguments and values.
+        """
+        return {}
+
+    def _execute_database_specific_connection_statements(self, conn):
+        """Execute connection statements depending on the database in use.
+        Overridden implementation for SQLite.
+
+        Arguments:
+        * conn: An active connection object to the database
+
+        Return: Updated connection object
+        """
+        conn.execute(text("PRAGMA case_sensitive_like = ON;"))
+
+        return conn
 
 
 operators = {
