@@ -26,6 +26,14 @@ class BaseDatabaseModel(Element, OptionsMixin):
         ]
 
     @classmethod
+    def derive_schema_name(cls):
+        """Derive schema name from database model class"""
+        if hasattr(cls.meta_, "schema_name") and cls.meta_.schema_name:
+            return cls.meta_.schema_name
+        else:
+            return cls.meta_.part_of.meta_.schema_name
+
+    @classmethod
     @abstractmethod
     def from_entity(cls, entity):
         """Initialize DatabaseModel object from Entity object"""

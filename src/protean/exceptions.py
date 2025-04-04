@@ -45,7 +45,7 @@ class NoDomainException(ProteanException):
 class ConfigurationError(ProteanException):
     """Improper Configuration encountered like:
     * An important configuration variable is missing
-    * Re-registration of Models
+    * Re-registration of Database Models
     * Incorrect associations
     """
 

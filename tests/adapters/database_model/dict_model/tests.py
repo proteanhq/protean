@@ -5,13 +5,13 @@ from protean.adapters.repository.memory import MemoryModel
 from .elements import Email, Person, Provider, ProviderCustomModel, Receiver, User
 
 
-class TestModel:
+class TestDatabaseModel:
     @pytest.fixture(autouse=True)
     def register_person_aggregate(self, test_domain):
         test_domain.register(Person)
         test_domain.init(traverse=False)
 
-    def test_that_model_class_is_created_automatically(self, test_domain):
+    def test_that_db_model_class_is_created_automatically(self, test_domain):
         database_model_cls = test_domain.repository_for(Person)._database_model
         assert issubclass(database_model_cls, MemoryModel)
         assert database_model_cls.__name__ == "PersonModel"
@@ -43,7 +43,7 @@ class TestModelWithVO:
     def register_user_aggregate(self, test_domain):
         test_domain.register(User)
 
-    def test_that_model_class_is_created_automatically(self, test_domain):
+    def test_that_db_model_class_is_created_automatically(self, test_domain):
         database_model_cls = test_domain.repository_for(User)._database_model
         assert issubclass(database_model_cls, MemoryModel)
         assert database_model_cls.__name__ == "UserModel"
@@ -93,7 +93,7 @@ class TestCustomModel:
             == "ProviderCustomModel"
         )
 
-    def test_that_model_can_be_registered_with_domain_annotation(self, test_domain):
+    def test_that_db_model_can_be_registered_with_domain_annotation(self, test_domain):
         from protean.fields import Text
 
         test_domain.register(Receiver)
@@ -109,3 +109,29 @@ class TestCustomModel:
         # FIXME This test will fail in the future
         #   when models are validated for fields to be present in corresponding entities/aggregates
         assert hasattr(database_model_cls, "about")
+
+
+class TestSchemaNameDerivation:
+    def test_that_explicit_schema_name_is_used_if_provided(self, test_domain):
+        test_domain.register(Provider)
+        test_domain.register(
+            ProviderCustomModel, part_of=Provider, schema_name="adults"
+        )
+
+        assert ProviderCustomModel.derive_schema_name() == "adults"
+
+    def test_that_schema_name_is_derived_from_entity_name_if_not_provided(
+        self, test_domain
+    ):
+        test_domain.register(Provider)
+        test_domain.register(ProviderCustomModel, part_of=Provider)
+
+        assert ProviderCustomModel.derive_schema_name() == "provider"
+
+    def test_that_overridden_schema_name_in_entity_is_used_if_provided(
+        self, test_domain
+    ):
+        test_domain.register(Provider, schema_name="adults")
+        test_domain.register(ProviderCustomModel, part_of=Provider)
+
+        assert ProviderCustomModel.derive_schema_name() == "adults"

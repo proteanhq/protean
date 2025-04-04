@@ -22,13 +22,6 @@ from protean.utils.query import Q
 from protean.utils.reflection import attributes, fields, id_field
 
 
-def derive_schema_name(database_model_cls):
-    if hasattr(database_model_cls.meta_, "schema_name"):
-        return database_model_cls.meta_.schema_name
-    else:
-        return database_model_cls.meta_.part_of.meta_.schema_name
-
-
 class MemoryModel(BaseDatabaseModel):
     """A model for the dictionary repository"""
 
@@ -134,7 +127,7 @@ class MemoryProvider(BaseProvider):
             current_uow.rollback()
 
     def decorate_database_model_class(self, entity_cls, database_model_cls):
-        schema_name = derive_schema_name(database_model_cls)
+        schema_name = database_model_cls.derive_schema_name()
 
         # Return the model class if it was already seen/decorated
         if schema_name in self._database_model_classes:

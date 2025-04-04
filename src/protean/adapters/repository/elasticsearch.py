@@ -321,9 +321,7 @@ class ESProvider(BaseProvider):
         # A temporary cache of already constructed model classes
         self._database_model_classes = {}
 
-    def derive_schema_name(self, entity_cls):
-        schema_name = entity_cls.meta_.schema_name
-
+    def namespaced_schema_name(self, schema_name):
         # Prepend Namespace prefix if one has been provided
         if "NAMESPACE_PREFIX" in self.conn_info and self.conn_info["NAMESPACE_PREFIX"]:
             # Use custom separator if provided
@@ -334,7 +332,9 @@ class ESProvider(BaseProvider):
             ):
                 separator = self.conn_info["NAMESPACE_SEPARATOR"]
 
-            schema_name = f"{self.conn_info['NAMESPACE_PREFIX']}{separator}{entity_cls.meta_.schema_name}"
+            schema_name = (
+                f"{self.conn_info['NAMESPACE_PREFIX']}{separator}{schema_name}"
+            )
 
         return schema_name
 
@@ -388,7 +388,9 @@ class ESProvider(BaseProvider):
         return ElasticsearchDAO(self.domain, self, entity_cls, database_model_cls)
 
     def decorate_database_model_class(self, entity_cls, database_model_cls):
-        schema_name = self.derive_schema_name(entity_cls)
+        schema_name = self.namespaced_schema_name(
+            database_model_cls.derive_schema_name()
+        )
 
         # Return the model class if it was already seen/decorated
         if schema_name in self._database_model_classes:
@@ -448,19 +450,18 @@ class ESProvider(BaseProvider):
     def construct_database_model_class(self, entity_cls):
         """Return a fully-baked Model class for a given Entity class"""
         database_model_cls = None
+        schema_name = self.namespaced_schema_name(entity_cls.meta_.schema_name)
 
         # Return the model class if it was already seen/decorated
-        if entity_cls.meta_.schema_name in self._database_model_classes:
-            database_model_cls = self._database_model_classes[
-                entity_cls.meta_.schema_name
-            ]
+        if schema_name in self._database_model_classes:
+            database_model_cls = self._database_model_classes[schema_name]
         else:
             meta_ = Options()
             meta_.part_of = entity_cls
 
             # Construct Inner Index class with options
             options = {}
-            options["name"] = self.derive_schema_name(entity_cls)
+            options["name"] = schema_name
             if "SETTINGS" in self.conn_info and self.conn_info["SETTINGS"]:
                 options["settings"] = self.conn_info["SETTINGS"]
 
@@ -482,9 +483,7 @@ class ESProvider(BaseProvider):
             database_model_cls._index.mapping(m)
 
             # Memoize the constructed model class
-            self._database_model_classes[entity_cls.meta_.schema_name] = (
-                database_model_cls
-            )
+            self._database_model_classes[schema_name] = database_model_cls
 
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
         return database_model_cls
