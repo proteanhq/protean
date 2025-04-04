@@ -101,10 +101,10 @@ optional = true
 [tool.poetry.group.test.dependencies]
 mock = "5.1.0"
 pytest-asyncio = ">=0.21.1"
-pytest-cov = ">=4.1.0"
 pytest-mock = "3.12.0"
 pytest = "^8.2.1"
 mypy = "^1.11.0"
+coverage = "^7.8.0"
 
 [tool.poetry.group.docs]
 optional = true
@@ -163,3 +163,28 @@ markers = [
 
 [tool.mypy]
 exclude = [".venv", "src/protean/template", "docs_src"]
+
+[tool.coverage.paths]
+source = [
+    "src/protean",
+    "*/site-packages/protean"
+]
+
+[tool.coverage.run]
+branch = true
+parallel = true
+source = ["protean", "src/protean"]
+omit = [
+    "*/__main__.py",
+    "src/protean/utils/inflection.py",
+    "src/protean/utils/local.py"
+]
+
+[tool.coverage.report]
+show_missing = true
+precision = 2
+omit = ["*migrations*"]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:"
+]
