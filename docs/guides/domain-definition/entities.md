@@ -5,10 +5,10 @@ They are usually composed of two kinds of elements - those with unique
 identities (**Entities**) and those without (**Value Objects**).
 
 Entities represent unique objects in the domain model just like Aggregates, but
-they don’t manage other objects. Just like Aggregates, Entities are identified
+they don't manage other objects. Just like Aggregates, Entities are identified
 by unique identities that remain the same throughout its life - they are not
 defined by their attributes or values. For example, a passenger in the airline
-domain is an Entity. The passenger’s identity remains the same across multiple
+domain is an Entity. The passenger's identity remains the same across multiple
 seat bookings, even if her profile information (name, address, etc.) changes
 over time.
 
@@ -72,7 +72,7 @@ create entities that are meant to be subclassed by other aggregates.
 The name to store and retrieve the entity from the persistence store. By
 default, `schema_name` is the snake case version of the Entity's name.
 
-### `model`
+### `database_model`
 
 Similar to an aggregate, Protean automatically constructs a representation
 of the entity that is compatible with the configured database. While the

@@ -10,7 +10,7 @@ from threading import Lock
 from typing import Any
 from uuid import UUID
 
-from protean.core.model import BaseModel
+from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import ResultSet
 from protean.exceptions import ObjectNotFoundError, ValidationError
 from protean.fields.basic import Auto
@@ -22,14 +22,14 @@ from protean.utils.query import Q
 from protean.utils.reflection import attributes, fields, id_field
 
 
-def derive_schema_name(model_cls):
-    if hasattr(model_cls.meta_, "schema_name"):
-        return model_cls.meta_.schema_name
+def derive_schema_name(database_model_cls):
+    if hasattr(database_model_cls.meta_, "schema_name"):
+        return database_model_cls.meta_.schema_name
     else:
-        return model_cls.meta_.part_of.meta_.schema_name
+        return database_model_cls.meta_.part_of.meta_.schema_name
 
 
-class MemoryModel(BaseModel):
+class MemoryModel(BaseDatabaseModel):
     """A model for the dictionary repository"""
 
     @classmethod
@@ -104,7 +104,7 @@ class MemoryProvider(BaseProvider):
         self._counters = defaultdict(count)
 
         # A temporary cache of already constructed model classes
-        self._model_classes = {}
+        self._database_model_classes = {}
 
     def get_session(self):
         """Return a session object
@@ -133,21 +133,21 @@ class MemoryProvider(BaseProvider):
         if current_uow and current_uow.in_progress:
             current_uow.rollback()
 
-    def decorate_model_class(self, entity_cls, model_cls):
-        schema_name = derive_schema_name(model_cls)
+    def decorate_database_model_class(self, entity_cls, database_model_cls):
+        schema_name = derive_schema_name(database_model_cls)
 
         # Return the model class if it was already seen/decorated
-        if schema_name in self._model_classes:
-            return self._model_classes[schema_name]
+        if schema_name in self._database_model_classes:
+            return self._database_model_classes[schema_name]
 
-        # If `model_cls` is already subclassed from MemoryModel,
+        # If `database_model_cls` is already subclassed from MemoryModel,
         #   this method call is a no-op
-        if issubclass(model_cls, MemoryModel):
-            return model_cls
+        if issubclass(database_model_cls, MemoryModel):
+            return database_model_cls
         else:
             custom_attrs = {
                 key: value
-                for (key, value) in vars(model_cls).items()
+                for (key, value) in vars(database_model_cls).items()
                 if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
             }
 
@@ -156,22 +156,28 @@ class MemoryProvider(BaseProvider):
 
             custom_attrs.update({"meta_": meta_})
             # FIXME Ensure the custom model attributes are constructed properly
-            decorated_model_cls = type(
-                model_cls.__name__, (MemoryModel, model_cls), custom_attrs
+            decorated_database_database_model_cls = type(
+                database_model_cls.__name__,
+                (MemoryModel, database_model_cls),
+                custom_attrs,
             )
 
             # Memoize the constructed model class
-            self._model_classes[schema_name] = decorated_model_cls
+            self._database_model_classes[schema_name] = (
+                decorated_database_database_model_cls
+            )
 
-            return decorated_model_cls
+            return decorated_database_database_model_cls
 
-    def construct_model_class(self, entity_cls):
+    def construct_database_model_class(self, entity_cls):
         """Return associated, fully-baked Model class"""
-        model_cls = None
+        database_model_cls = None
 
         # Return the model class if it was already seen/decorated
-        if entity_cls.meta_.schema_name in self._model_classes:
-            model_cls = self._model_classes[entity_cls.meta_.schema_name]
+        if entity_cls.meta_.schema_name in self._database_model_classes:
+            database_model_cls = self._database_model_classes[
+                entity_cls.meta_.schema_name
+            ]
         else:
             meta_ = Options()
             meta_.part_of = entity_cls
@@ -180,17 +186,21 @@ class MemoryProvider(BaseProvider):
                 "meta_": meta_,
             }
             # FIXME Ensure the custom model attributes are constructed properly
-            model_cls = type(entity_cls.__name__ + "Model", (MemoryModel,), attrs)
+            database_model_cls = type(
+                entity_cls.__name__ + "Model", (MemoryModel,), attrs
+            )
 
             # Memoize the constructed model class
-            self._model_classes[entity_cls.meta_.schema_name] = model_cls
+            self._database_model_classes[entity_cls.meta_.schema_name] = (
+                database_model_cls
+            )
 
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
-        return model_cls
+        return database_model_cls
 
-    def get_dao(self, entity_cls, model_cls):
+    def get_dao(self, entity_cls, database_model_cls):
         """Return a DAO object configured with a live connection"""
-        return DictDAO(self.domain, self, entity_cls, model_cls)
+        return DictDAO(self.domain, self, entity_cls, database_model_cls)
 
     def _evaluate_lookup(self, key, value, negated, db):
         """Extract values from DB that match the given criteria"""

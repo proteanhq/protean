@@ -69,7 +69,7 @@ object provided by `SQLAlchemy`.
 
 ### Model
 
-**Base Class**: `protean.core.model.BaseModel`
+**Base Class**: `protean.core.database_model.BaseDatabaseModel`
 
 The Model represents the domain entities that are persisted in the database.
 It defines the structure of the data, including fields, relationships, and

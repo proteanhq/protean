@@ -15,7 +15,7 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.types import CHAR, TypeDecorator
 
-from protean.core.model import BaseModel
+from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import ResultSet
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import (
@@ -126,18 +126,18 @@ def _custom_json_dumps(value):
     return json.dumps(value, default=_default)
 
 
-def derive_schema_name(model_cls):
+def derive_schema_name(database_model_cls):
     # Retain schema name if already present, otherwise derive from entity class
     if (
-        hasattr(model_cls.meta_, "schema_name")
-        and model_cls.meta_.schema_name is not None
+        hasattr(database_model_cls.meta_, "schema_name")
+        and database_model_cls.meta_.schema_name is not None
     ):
-        return model_cls.meta_.schema_name
+        return database_model_cls.meta_.schema_name
     else:
-        return model_cls.meta_.part_of.meta_.schema_name
+        return database_model_cls.meta_.part_of.meta_.schema_name
 
 
-class SqlalchemyModel(orm.DeclarativeBase, BaseModel):
+class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
     """Model representation for the Sqlalchemy Database"""
 
     def __init_subclass__(subclass, **kwargs):  # noqa: C901
@@ -302,7 +302,7 @@ class SADAO(BaseDAO):
                 stripped_key, lookup_class = self.provider._extract_lookup(child[0])
 
                 # Instantiate the lookup class and get the expression
-                lookup = lookup_class(stripped_key, child[1], self.model_cls)
+                lookup = lookup_class(stripped_key, child[1], self.database_model_cls)
                 if criteria.negated:
                     params.append(~lookup.as_expression())
                 else:
@@ -315,7 +315,7 @@ class SADAO(BaseDAO):
     ) -> ResultSet:
         """Filter objects from the sqlalchemy database"""
         conn = self._get_session()
-        qs = conn.query(self.model_cls)
+        qs = conn.query(self.database_model_cls)
 
         # Build the filters from the criteria
         if criteria.children:
@@ -324,7 +324,7 @@ class SADAO(BaseDAO):
         # Apply the order by clause if present
         order_cols = []
         for order_col in order_by:
-            col = getattr(self.model_cls, order_col.lstrip("-"))
+            col = getattr(self.database_model_cls, order_col.lstrip("-"))
             if order_col.startswith("-"):
                 order_cols.append(col.desc())
             else:
@@ -373,7 +373,7 @@ class SADAO(BaseDAO):
         # Fetch the record from database
         try:
             identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
-            db_item = conn.query(self.model_cls).get(
+            db_item = conn.query(self.database_model_cls).get(
                 identifier
             )  # This will raise exception if object was not found
         except DatabaseError as exc:
@@ -408,7 +408,7 @@ class SADAO(BaseDAO):
     def _update_all(self, criteria: Q, *args, **kwargs):
         """Update all objects satisfying the criteria"""
         conn = self._get_session()
-        qs = conn.query(self.model_cls).filter(self._build_filters(criteria))
+        qs = conn.query(self.database_model_cls).filter(self._build_filters(criteria))
         try:
             values = {}
             if args:
@@ -435,7 +435,7 @@ class SADAO(BaseDAO):
         # Fetch the record from database
         try:
             identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
-            db_item = conn.query(self.model_cls).get(
+            db_item = conn.query(self.database_model_cls).get(
                 identifier
             )  # This will raise exception if object was not found
         except DatabaseError as exc:
@@ -468,9 +468,11 @@ class SADAO(BaseDAO):
 
         del_count = 0
         if criteria:
-            qs = conn.query(self.model_cls).filter(self._build_filters(criteria))
+            qs = conn.query(self.database_model_cls).filter(
+                self._build_filters(criteria)
+            )
         else:
-            qs = conn.query(self.model_cls)
+            qs = conn.query(self.database_model_cls)
 
         try:
             del_count = qs.delete()
@@ -494,7 +496,7 @@ class SADAO(BaseDAO):
 
             entity_items = []
             for item in results:
-                entity = self.model_cls.to_entity(item)
+                entity = self.database_model_cls.to_entity(item)
                 entity.state_.mark_retrieved()
                 entity_items.append(entity)
 
@@ -563,7 +565,7 @@ class SAProvider(BaseProvider):
             self._metadata = MetaData()
 
         # A temporary cache of already constructed model classes
-        self._model_classes = {}
+        self._database_model_classes = {}
 
     @abstractmethod
     def _get_database_specific_engine_args(self):
@@ -666,17 +668,17 @@ class SAProvider(BaseProvider):
         self._metadata.drop_all(self._engine)
         self._metadata.clear()
 
-    def decorate_model_class(self, entity_cls, model_cls):
-        schema_name = derive_schema_name(model_cls)
+    def decorate_database_model_class(self, entity_cls, database_model_cls):
+        schema_name = derive_schema_name(database_model_cls)
 
         # Return the model class if it was already seen/decorated
-        if schema_name in self._model_classes:
-            return self._model_classes[schema_name]
+        if schema_name in self._database_model_classes:
+            return self._database_model_classes[schema_name]
 
-        # If `model_cls` is already subclassed from SqlAlchemyModel,
+        # If `database_model_cls` is already subclassed from SqlAlchemyModel,
         #   this method call is a no-op
-        if issubclass(model_cls, SqlalchemyModel):
-            return model_cls
+        if issubclass(database_model_cls, SqlalchemyModel):
+            return database_model_cls
         else:
             # Strip out `Column` attributes from the model class
             # Create a deep copy to make this work
@@ -684,14 +686,14 @@ class SAProvider(BaseProvider):
             columns = copy.deepcopy(
                 {
                     key: value
-                    for key, value in vars(model_cls).items()
+                    for key, value in vars(database_model_cls).items()
                     if isinstance(value, Column)
                 }
             )
 
             custom_attrs = {
                 key: value
-                for (key, value) in vars(model_cls).items()
+                for (key, value) in vars(database_model_cls).items()
                 if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
                 and not isinstance(value, Column)
             }
@@ -699,7 +701,7 @@ class SAProvider(BaseProvider):
             # Add the earlier copied columns to the custom attributes
             custom_attrs = {**custom_attrs, **columns}
 
-            meta_ = Options(model_cls.meta_)
+            meta_ = Options(database_model_cls.meta_)
             meta_.part_of = entity_cls
             meta_.schema_name = (
                 schema_name if meta_.schema_name is None else meta_.schema_name
@@ -709,22 +711,28 @@ class SAProvider(BaseProvider):
                 {"meta_": meta_, "engine": self._engine, "metadata": self._metadata}
             )
             # FIXME Ensure the custom model attributes are constructed properly
-            decorated_model_cls = type(
-                model_cls.__name__, (SqlalchemyModel, model_cls), custom_attrs
+            decorated_database_database_model_cls = type(
+                database_model_cls.__name__,
+                (SqlalchemyModel, database_model_cls),
+                custom_attrs,
             )
 
             # Memoize the constructed model class
-            self._model_classes[schema_name] = decorated_model_cls
+            self._database_model_classes[schema_name] = (
+                decorated_database_database_model_cls
+            )
 
-            return decorated_model_cls
+            return decorated_database_database_model_cls
 
-    def construct_model_class(self, entity_cls):
+    def construct_database_model_class(self, entity_cls):
         """Return a fully-baked Model class for a given Entity class"""
-        model_cls = None
+        database_model_cls = None
 
         # Return the model class if it was already seen/decorated
-        if entity_cls.meta_.schema_name in self._model_classes:
-            model_cls = self._model_classes[entity_cls.meta_.schema_name]
+        if entity_cls.meta_.schema_name in self._database_model_classes:
+            database_model_cls = self._database_model_classes[
+                entity_cls.meta_.schema_name
+            ]
         else:
             # Construct a new Meta object with existing values
             meta_ = Options()
@@ -741,17 +749,21 @@ class SAProvider(BaseProvider):
                 "metadata": self._metadata,
             }
             # FIXME Ensure the custom model attributes are constructed properly
-            model_cls = type(entity_cls.__name__ + "Model", (SqlalchemyModel,), attrs)
+            database_model_cls = type(
+                entity_cls.__name__ + "Model", (SqlalchemyModel,), attrs
+            )
 
             # Memoize the constructed model class
-            self._model_classes[entity_cls.meta_.schema_name] = model_cls
+            self._database_model_classes[entity_cls.meta_.schema_name] = (
+                database_model_cls
+            )
 
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
-        return model_cls
+        return database_model_cls
 
-    def get_dao(self, entity_cls, model_cls):
+    def get_dao(self, entity_cls, database_model_cls):
         """Return a DAO object configured with a live connection"""
-        return SADAO(self.domain, self, entity_cls, model_cls)
+        return SADAO(self.domain, self, entity_cls, database_model_cls)
 
     def raw(self, query: Any, data: Any = None):
         """Run raw query on Provider"""
@@ -848,14 +860,14 @@ operators = {
 class DefaultLookup(BaseLookup):
     """Base class with default implementation of expression construction"""
 
-    def __init__(self, source, target, model_cls):
+    def __init__(self, source, target, database_model_cls):
         """Source is LHS and Target is RHS of a comparsion"""
-        self.model_cls = model_cls
+        self.database_model_cls = database_model_cls
         super().__init__(source, target)
 
     def process_source(self):
         """Return source with transformations, if any"""
-        source_col = getattr(self.model_cls, self.source)
+        source_col = getattr(self.database_model_cls, self.source)
         return source_col
 
     def process_target(self):

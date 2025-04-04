@@ -5,16 +5,16 @@ from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import Element, OptionsMixin
 
 
-class BaseModel(Element, OptionsMixin):
+class BaseDatabaseModel(Element, OptionsMixin):
     """This is a Model representing a data schema in the persistence store. A concrete implementation of this
     model has to be provided by each persistence store plugin.
     """
 
-    element_type = DomainObjects.MODEL
+    element_type = DomainObjects.DATABASE_MODEL
 
     def __new__(cls, *args, **kwargs):
-        if cls is BaseModel:
-            raise NotSupportedError("BaseModel cannot be instantiated")
+        if cls is BaseDatabaseModel:
+            raise NotSupportedError("BaseDatabaseModel cannot be instantiated")
         return super().__new__(cls)
 
     @classmethod
@@ -28,20 +28,20 @@ class BaseModel(Element, OptionsMixin):
     @classmethod
     @abstractmethod
     def from_entity(cls, entity):
-        """Initialize Model object from Entity object"""
+        """Initialize DatabaseModel object from Entity object"""
 
     @classmethod
     @abstractmethod
     def to_entity(cls, *args, **kwargs):
-        """Convert Model Object to Entity Object"""
+        """Convert Database Model Object to Entity Object"""
 
 
-def model_factory(element_cls, domain, **opts):
-    element_cls = derive_element_class(element_cls, BaseModel, **opts)
+def database_model_factory(element_cls, domain, **opts):
+    element_cls = derive_element_class(element_cls, BaseDatabaseModel, **opts)
 
     if not element_cls.meta_.part_of:
         raise IncorrectUsageError(
-            f"Model `{element_cls.__name__}` should be associated with an Entity or Aggregate"
+            f"Database Model `{element_cls.__name__}` should be associated with an Entity or Aggregate"
         )
 
     return element_cls

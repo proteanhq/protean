@@ -1,15 +1,14 @@
 import re
 from datetime import datetime
 
-from elasticsearch_dsl import Keyword, Text
+from sqlalchemy import Column, Text
 
 from protean.core.aggregate import BaseAggregate
+from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import invariant
-from protean.core.model import BaseModel
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import DateTime, Integer, String, ValueObject
-from protean.fields import Text as ProteanText
 
 
 class Person(BaseAggregate):
@@ -17,12 +16,6 @@ class Person(BaseAggregate):
     last_name = String(max_length=50, required=True)
     age = Integer(default=21)
     created_at = DateTime(default=datetime.now())
-
-
-class Alien(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
 
 
 class User(BaseAggregate):
@@ -49,14 +42,12 @@ class ComplexUser(BaseAggregate):
 
 
 class Provider(BaseAggregate):
-    name = ProteanText()
-    about = ProteanText()
+    name = String()
+    age = Integer()
 
 
-class ProviderCustomModel(BaseModel):
-    id = Keyword()
-    name = Text(fields={"raw": Keyword()})
-    about = Text()
+class ProviderCustomModel(BaseDatabaseModel):
+    name = Column(Text)
 
 
 class Receiver(BaseAggregate):

@@ -31,7 +31,7 @@ class BaseView(BaseContainer, OptionsMixin):
     @domain.view(
         abstract=False,         # If True, this view is an abstract base class and won't be registered as a concrete view
         cache="redis",          # Name of the cache provider to use for storing view data
-        model="custom_model",   # Custom model name to use for storage
+        database_model="custom_model",   # Custom model name to use for storage
         order_by=("field_name",), # Default ordering for query results
         provider="default",     # Name of the database provider to use for storing view data
         schema_name="custom_name", # Name of the schema/table to use in the database
@@ -47,7 +47,7 @@ class BaseView(BaseContainer, OptionsMixin):
         return [
             ("abstract", False),
             ("cache", None),
-            ("model", None),
+            ("database_model", None),
             ("order_by", ()),
             ("provider", "default"),
             ("schema_name", inflection.underscore(cls.__name__)),
