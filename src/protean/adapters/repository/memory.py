@@ -289,15 +289,6 @@ class DictDAO(BaseDAO):
         # Add the entity to the repository
         identifier = model_obj[id_field(self.entity_cls).field_name]
         with conn._db["lock"]:
-            # Check if object is present
-            if identifier in conn._db["data"][self.schema_name]:
-                raise ValidationError(
-                    {
-                        "_entity": f"`{self.__class__.__name__}` object with identifier {identifier} "
-                        f"is already present."
-                    }
-                )
-
             conn._db["data"][self.schema_name][identifier] = model_obj
 
         if not current_uow:
