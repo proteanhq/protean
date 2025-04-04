@@ -126,17 +126,6 @@ def _custom_json_dumps(value):
     return json.dumps(value, default=_default)
 
 
-def derive_schema_name(database_model_cls):
-    # Retain schema name if already present, otherwise derive from entity class
-    if (
-        hasattr(database_model_cls.meta_, "schema_name")
-        and database_model_cls.meta_.schema_name is not None
-    ):
-        return database_model_cls.meta_.schema_name
-    else:
-        return database_model_cls.meta_.part_of.meta_.schema_name
-
-
 class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
     """Model representation for the Sqlalchemy Database"""
 
@@ -238,7 +227,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
 
     @orm.declared_attr
     def __tablename__(cls):
-        return derive_schema_name(cls)
+        return cls.derive_schema_name()
 
     @classmethod
     def from_entity(cls, entity):
@@ -669,7 +658,7 @@ class SAProvider(BaseProvider):
         self._metadata.clear()
 
     def decorate_database_model_class(self, entity_cls, database_model_cls):
-        schema_name = derive_schema_name(database_model_cls)
+        schema_name = database_model_cls.derive_schema_name()
 
         # Return the model class if it was already seen/decorated
         if schema_name in self._database_model_classes:
