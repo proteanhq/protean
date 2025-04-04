@@ -14,7 +14,7 @@ def mock_subprocess_call(mocker):
 
 
 @pytest.mark.parametrize(
-    "category,expected_calls",
+    "category,expected_calls,call_count",
     [
         (
             Category.EVENTSTORE,
@@ -40,6 +40,7 @@ def mock_subprocess_call(mocker):
                     ]
                 ),
             ],
+            2,
         ),
         (
             Category.DATABASE,
@@ -51,6 +52,16 @@ def mock_subprocess_call(mocker):
                         "--ignore=tests/support/",
                         "-m",
                         "database",
+                        "--db=MEMORY",
+                    ]
+                ),
+                call(
+                    [
+                        "pytest",
+                        "--cache-clear",
+                        "--ignore=tests/support/",
+                        "-m",
+                        "database",
                         "--db=POSTGRESQL",
                     ]
                 ),
@@ -65,12 +76,16 @@ def mock_subprocess_call(mocker):
                     ]
                 ),
             ],
+            3,
         ),
         (
             Category.FULL,
             [
                 call(
                     [
+                        "coverage",
+                        "run",
+                        "-m",
                         "pytest",
                         "--cache-clear",
                         "--ignore=tests/support/",
@@ -80,14 +95,27 @@ def mock_subprocess_call(mocker):
                         "--elasticsearch",
                         "--redis",
                         "--message_db",
-                        "--cov=protean",
-                        "--cov-config",
-                        ".coveragerc",
                         "tests",
                     ]
                 ),
                 call(
                     [
+                        "coverage",
+                        "run",
+                        "-m",
+                        "pytest",
+                        "--cache-clear",
+                        "--ignore=tests/support/",
+                        "-m",
+                        "database",
+                        "--db=MEMORY",
+                    ]
+                ),
+                call(
+                    [
+                        "coverage",
+                        "run",
+                        "-m",
                         "pytest",
                         "--cache-clear",
                         "--ignore=tests/support/",
@@ -98,6 +126,9 @@ def mock_subprocess_call(mocker):
                 ),
                 call(
                     [
+                        "coverage",
+                        "run",
+                        "-m",
                         "pytest",
                         "--cache-clear",
                         "--ignore=tests/support/",
@@ -108,6 +139,9 @@ def mock_subprocess_call(mocker):
                 ),
                 call(
                     [
+                        "coverage",
+                        "run",
+                        "-m",
                         "pytest",
                         "--cache-clear",
                         "--ignore=tests/support/",
@@ -117,42 +151,22 @@ def mock_subprocess_call(mocker):
                     ]
                 ),
             ],
-        ),
-        (
-            Category.COVERAGE,
-            [
-                call(
-                    [
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "--slow",
-                        "--sqlite",
-                        "--postgresql",
-                        "--elasticsearch",
-                        "--redis",
-                        "--message_db",
-                        "--cov=protean",
-                        "--cov-config",
-                        ".coveragerc",
-                        "tests",
-                    ]
-                ),
-            ],
+            7,  # 5 calls + 2 for coverage
         ),
         (
             Category.CORE,
             [
                 call(["pytest", "--cache-clear", "--ignore=tests/support/"]),
             ],
+            1,
         ),
     ],
 )
-def test_command(mock_subprocess_call, category, expected_calls):
+def test_command(mock_subprocess_call, category, expected_calls, call_count):
     result = runner.invoke(app, ["test", "--category", category.value])
 
     assert result.exit_code == 0
-    assert mock_subprocess_call.call_count == len(expected_calls)
+    assert mock_subprocess_call.call_count == call_count
     mock_subprocess_call.assert_has_calls(expected_calls, any_order=True)
 
 

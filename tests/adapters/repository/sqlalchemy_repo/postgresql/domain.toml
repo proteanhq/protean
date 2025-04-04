@@ -3,3 +3,4 @@ identity_type = "uuid"
 [databases.default]
 provider = "postgresql"
 database_uri = "postgresql://postgres:postgres@localhost:5432/postgres"
+pool_recycle = 1800

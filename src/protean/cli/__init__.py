@@ -90,14 +90,15 @@ def test(
         case "DATABASE":
             # Run tests for database adapters
             # FIXME: Add support for auto-fetching supported databases
-            for db in ["POSTGRESQL", "SQLITE"]:
+            for db in ["MEMORY", "POSTGRESQL", "SQLITE"]:
                 print(f"Running tests for DATABASE: {db}...")
                 subprocess.call(commands + ["-m", "database", f"--db={db}"])
         case "FULL":
             # Run full suite of tests with coverage
             # FIXME: Add support for auto-fetching supported adapters
             subprocess.call(
-                commands
+                ["coverage", "run", "-m"]
+                + commands
                 + [
                     "--slow",
                     "--sqlite",
@@ -105,38 +106,30 @@ def test(
                     "--elasticsearch",
                     "--redis",
                     "--message_db",
-                    "--cov=protean",
-                    "--cov-config",
-                    ".coveragerc",
                     "tests",
                 ]
             )
 
             # Test against each supported database
-            for db in ["POSTGRESQL", "SQLITE"]:
+            for db in ["MEMORY", "POSTGRESQL", "SQLITE"]:
                 print(f"Running tests for DB: {db}...")
-
-                subprocess.call(commands + ["-m", "database", f"--db={db}"])
+                subprocess.call(
+                    ["coverage", "run", "-m"]
+                    + commands
+                    + ["-m", "database", f"--db={db}"]
+                )
 
             for store in ["MESSAGE_DB"]:
                 print(f"Running tests for EVENTSTORE: {store}...")
-                subprocess.call(commands + ["-m", "eventstore", f"--store={store}"])
-        case "COVERAGE":
-            subprocess.call(
-                commands
-                + [
-                    "--slow",
-                    "--sqlite",
-                    "--postgresql",
-                    "--elasticsearch",
-                    "--redis",
-                    "--message_db",
-                    "--cov=protean",
-                    "--cov-config",
-                    ".coveragerc",
-                    "tests",
-                ]
-            )
+                subprocess.call(
+                    ["coverage", "run", "-m"]
+                    + commands
+                    + ["-m", "eventstore", f"--store={store}"]
+                )
+
+            # Run coverage report
+            subprocess.call(["coverage", "combine"])
+            subprocess.call(["coverage", "report"])
         case _:
             print("Running core tests...")
             subprocess.call(commands)
