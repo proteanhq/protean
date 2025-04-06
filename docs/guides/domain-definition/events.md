@@ -27,6 +27,112 @@ Events are always connected to an Aggregate class, specified with the
 `part_of` param in the decorator. An exception to this rule is when the
 Event class has been marked _Abstract_.
 
+## Synchronous vs Asynchronous Processing
+
+Events in Protean can be processed either synchronously or asynchronously:
+
+- **Synchronous processing**: The event is processed immediately when raised. Event handlers are called in the same execution flow, and the operation is blocked until all event handlers have completed.
+- **Asynchronous processing**: The event is stored in the event store and processed later by a background worker. The operation continues without waiting for event handlers to complete.
+
+### Domain Configuration
+
+You can configure the event processing mode through the domain configuration:
+
+```python
+# Configure events to be processed synchronously
+domain.config["event_processing"] = "sync"  # or "async"
+```
+
+In domain.toml:
+
+```
+event_processing = "sync"  # or "async"
+```
+
+By default, Protean sets `event_processing` to `async` in the domain configuration.
+
+### Event Processing Workflows
+
+The workflow for event processing differs based on whether synchronous or asynchronous mode is used:
+
+#### Synchronous Event Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    Aggregate->>Aggregate: Raise event
+    Aggregate->>Event Store: Store event (asynchronous=False)
+    Aggregate->>Domain: Process event immediately
+    Domain->>Event Handler: Process event
+    Event Handler->>Event Handler: Handle event
+    Event Handler-->>Domain: Return result
+    Domain-->>Aggregate: Continue execution
+```
+
+#### Asynchronous Event Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    Aggregate->>Aggregate: Raise event 
+    Aggregate->>Event Store: Store event (asynchronous=True)
+    Aggregate-->>Client: Continue execution immediately
+    
+    Note over Protean Server: Later, asynchronously...
+    
+    Protean Server->>Event Store: Poll for unprocessed events
+    Event Store-->>Protean Server: Return event
+    Protean Server->>Event Handler: Process event
+    Event Handler->>Event Handler: Handle event
+    Protean Server->>Event Store: Update processed position
+```
+
+### How Asynchronous Processing Works
+
+Asynchronous event processing in Protean uses the server/engine component that:
+
+1. Creates subscriptions for event handlers to listen to their respective event streams
+2. Polls the event store for new events that haven't been processed yet
+3. Dispatches those events to the appropriate handlers
+
+To run the Protean server for processing asynchronous events, use the CLI:
+
+```shell
+protean server --domain path/to/domain.py
+```
+
+See [CLI documentation](../cli/index.md) for more details about the server command and other available CLI options.
+
+The server continually polls the event store for new events that have the `asynchronous` flag set to `True` in their metadata. When found, it dispatches them to the appropriate handlers, keeping track of processed events to avoid duplicate processing.
+
+### When to use each mode
+
+- **Synchronous processing** is useful when:
+  - You need immediate consistency between different parts of your system
+  - Event handlers perform essential operations that must complete before continuing
+  - The operation is part of a transaction that needs to complete atomically
+
+- **Asynchronous processing** is beneficial when:
+  - You want to improve system responsiveness by not blocking the execution flow
+  - Event handlers might take a long time to process
+  - You want to distribute load across background workers
+  - You're implementing event-driven or reactive architectures
+
+### Relationship with Command Processing
+
+Protean offers similar configuration options for commands through:
+- The `command_processing` domain configuration setting
+- The ability to specify the `asynchronous` parameter when processing commands
+
+Both events and commands in Protean follow similar processing patterns, enabling you to build consistent, predictable workflows. You can configure both to suit your specific domain needs:
+
+```python
+# Domain-wide configuration
+domain.config["event_processing"] = "async"   # or "sync"
+domain.config["command_processing"] = "sync"  # or "async"
+```
+
+This flexibility allows you to implement various architectural patterns like CQRS, Event Sourcing, and Event-Driven Architecture within your Protean applications.
 
 ## Event Structure
 
