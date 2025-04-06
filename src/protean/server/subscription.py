@@ -291,8 +291,12 @@ class Subscription:
         logging.debug(f"Processing {len(messages)} messages...")
         for message in messages:
             logging.info(f"{message.type}-{message.id} : {message.to_dict()}")
-            await self.engine.handle_message(self.handler, message)
-            await self.update_read_position(message.global_position)
+
+            # Handle only if the message is asynchronous
+            #   Synchronous messages are handled by the domain as soon as they are received
+            if message.metadata.asynchronous:
+                await self.engine.handle_message(self.handler, message)
+                await self.update_read_position(message.global_position)
 
         return len(messages)
 

@@ -7,7 +7,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import String, ValueObject
 from protean.fields.basic import Identifier
-from protean.utils import fqn
+from protean.utils import Processing, fqn
 from protean.utils.reflection import fields
 
 
@@ -122,6 +122,32 @@ class TestMetadataVersion:
         )
 
 
+class TestMetadataAsynchronous:
+    def test_metadata_has_asynchronous_field(self):
+        metadata_field = fields(UserLoggedIn)["_metadata"]
+        assert hasattr(metadata_field.value_object_cls, "asynchronous")
+
+    def test_event_metadata_asynchronous_default(self):
+        event = UserLoggedIn(user_id=str(uuid4()))
+        assert event._metadata.asynchronous is True
+
+    def test_event_metadata_asynchronous_override(self, test_domain):
+        user = User(id=str(uuid4()), email="john.doe@gmail.com", name="John Doe")
+        user.raise_(UserLoggedIn(user_id=user.id))
+
+        # Test Domain event_processing is SYNC by default
+        assert user._events[0]._metadata.asynchronous is False
+
+    def test_event_metadata_asynchronous_default_from_domain(self, test_domain):
+        # Test Domain event_processing is SYNC by default
+        test_domain.config["event_processing"] = Processing.ASYNC.value
+
+        user = User(id=str(uuid4()), email="john.doe@gmail.com", name="John Doe")
+        user.raise_(UserLoggedIn(user_id=user.id))
+
+        assert user._events[0]._metadata.asynchronous is True
+
+
 def test_event_metadata():
     user_id = str(uuid4())
     user = User(id=user_id, email="<EMAIL>", name="<NAME>")
@@ -148,6 +174,7 @@ def test_event_metadata():
             "version": "v1",
             "sequence_id": "0",
             "payload_hash": event._metadata.payload_hash,
+            "asynchronous": False,  # Test Domain event_processing is SYNC by default
         },
         "user_id": event.user_id,
     }

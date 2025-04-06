@@ -11,7 +11,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription import Subscription
-from protean.utils import TypeMatcher, fully_qualified_name
+from protean.utils import Processing, TypeMatcher, fully_qualified_name
 from protean.utils.mixins import Message, handle
 
 counter = 0
@@ -56,6 +56,8 @@ class UserEventHandler(BaseEventHandler):
 async def test_that_subscription_invokes_engine_handler_on_message(
     mock_handle_message, test_domain
 ):
+    test_domain.config["event_processing"] = Processing.ASYNC.value
+
     test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)

@@ -48,6 +48,7 @@ def test_event_payload():
             "version": "v1",
             "sequence_id": "0",
             "payload_hash": event._metadata.payload_hash,
+            "asynchronous": False,  # Test Domain event_processing is SYNC by default
         },
         "user_id": event.user_id,
     }

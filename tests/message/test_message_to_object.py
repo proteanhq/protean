@@ -67,7 +67,7 @@ def test_construct_event_from_message():
 def test_construct_command_from_message(test_domain):
     identifier = str(uuid4())
     command = test_domain._enrich_command(
-        Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
+        Register(id=identifier, email="john.doe@gmail.com", name="John Doe"), True
     )
     message = Message.to_message(command)
 

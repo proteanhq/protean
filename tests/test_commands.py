@@ -122,14 +122,16 @@ class TestCommandProperties:
         command1 = test_domain._enrich_command(
             UserRegistrationCommand(
                 email="john.doe@gmail.com", username="john.doe", password="secret1!"
-            )
+            ),
+            asynchronous=True,
         )
         command2 = test_domain._enrich_command(
             UserRegistrationCommand(
                 email="jane.doe@gmail.com",
                 username="jane.doe",
                 password="not-so-secret!",
-            )
+            ),
+            asynchronous=True,
         )
 
         assert command1 != command2
