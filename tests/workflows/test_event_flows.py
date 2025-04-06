@@ -217,6 +217,10 @@ def shipment_domain():
 
 @pytest.mark.message_db
 def test_workflow_among_protean_domains(test_domain, shipment_domain):
+    # Create and set a new loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     with test_domain.domain_context():
         customer = Customer(id="1", name="John Doe")
         test_domain.repository_for(Customer).add(customer)
@@ -246,17 +250,22 @@ def test_workflow_among_protean_domains(test_domain, shipment_domain):
         refreshed_customer = test_domain.repository_for(Customer).get(customer.id)
         assert len(refreshed_customer.order_history) == 1
 
+    # Close the loop after the test, before the next domain test
+    if not loop.is_closed():
+        loop.close()
+    asyncio.set_event_loop(None)  # Explicitly unset the loop
+
+    # Create and set a new loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     # Event Handler on different domain creates a new aggregate.
     # Simulate Engine running in another domain
     with shipment_domain.domain_context():
-        # Create a new event loop
-        new_loop = asyncio.new_event_loop()
-
-        # Set the new event loop as the current event loop
-        asyncio.set_event_loop(new_loop)
-
         engine = Engine(domain=shipment_domain, test_mode=True)
         engine.run()
+
+        # Check effects
 
         shipments = (
             shipment_domain.repository_for(Shipment)
@@ -270,3 +279,8 @@ def test_workflow_among_protean_domains(test_domain, shipment_domain):
         assert shipments[0].items == command.items
         assert shipments[0].status == "PENDING"
         assert shipments[0].shipped_at is None
+
+    # Close the loop after the test
+    if not loop.is_closed():
+        loop.close()
+    asyncio.set_event_loop(None)  # Explicitly unset the loop

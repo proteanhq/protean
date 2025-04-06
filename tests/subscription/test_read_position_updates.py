@@ -10,7 +10,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import DateTime, Identifier, String
 from protean.server import Engine
-from protean.utils import fqn
+from protean.utils import Processing, fqn
 from protean.utils.mixins import handle
 
 
@@ -68,6 +68,8 @@ class EmailEventHandler(BaseEventHandler):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
+    test_domain.config["event_processing"] = Processing.ASYNC.value
+
     test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Activated, part_of=User)

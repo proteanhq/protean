@@ -231,6 +231,7 @@ class TestDAOCreateFunctionality:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Person)
+        test_domain.register(User)
 
     def test_create_a_new_object(self, test_domain):
         person = test_domain.repository_for(Person)._dao.create(

@@ -8,6 +8,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
+from protean.utils import Processing
 from protean.utils.mixins import Message, handle
 
 
@@ -48,13 +49,18 @@ def auto_set_and_close_loop():
     asyncio.set_event_loop(None)  # Explicitly unset the loop
 
 
-@pytest.mark.asyncio
-async def test_that_exception_is_raised(test_domain):
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.config["event_processing"] = Processing.ASYNC.value
+
     test_domain.register(User, is_event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.init(traverse=False)
 
+
+@pytest.mark.asyncio
+async def test_that_exception_is_raised(test_domain):
     identifier = str(uuid4())
     user = User(
         id=identifier,
@@ -80,10 +86,6 @@ async def test_that_exception_is_raised(test_domain):
 
 
 def test_exceptions_stop_processing(test_domain):
-    test_domain.register(User, is_event_sourced=True)
-    test_domain.register(Registered, part_of=User)
-    test_domain.register(UserEventHandler, part_of=User)
-
     identifier = str(uuid4())
     user = User(
         id=identifier,
@@ -99,7 +101,7 @@ def test_exceptions_stop_processing(test_domain):
             password_hash="hash",
         )
     )
-    test_domain.event_store.store.append(user._events[0])
+    test_domain.repository_for(User).add(user)
 
     engine = Engine(domain=test_domain)
     engine.run()

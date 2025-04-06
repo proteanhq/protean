@@ -5,7 +5,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.fields import Identifier, String
-from protean.utils import fqn
+from protean.utils import Processing, fqn
 from protean.utils.reflection import fields
 
 
@@ -36,7 +36,7 @@ class TestMetadataType:
         assert Login.__type__ == "Test.Login.v1"
 
     def test_type_value_in_metadata(self, test_domain):
-        command = test_domain._enrich_command(Login(user_id=str(uuid4())))
+        command = test_domain._enrich_command(Login(user_id=str(uuid4())), True)
         assert command._metadata.type == "Test.Login.v1"
 
 
@@ -61,9 +61,43 @@ class TestMetadataVersion:
         assert command._metadata.version == "v2"
 
 
+class TestMetadataAsynchronous:
+    def test_metadata_has_asynchronous_field(self):
+        metadata_field = fields(Login)["_metadata"]
+        assert hasattr(metadata_field.value_object_cls, "asynchronous")
+
+    def test_command_metadata_asynchronous_default(self):
+        command = Login(user_id=str(uuid4()))
+        assert command._metadata.asynchronous is True
+
+    def test_command_metadata_asynchronous_override(self, test_domain):
+        identifier = str(uuid4())
+        command = Login(user_id=identifier)
+        test_domain.process(command, asynchronous=False)
+
+        last_command = test_domain.event_store.store.read_last_message(
+            f"test::user:command-{identifier}"
+        )
+        assert last_command is not None
+        assert last_command.metadata.asynchronous is False
+
+    def test_command_metadata_asynchronous_default_from_domain(self, test_domain):
+        test_domain.config["command_processing"] = Processing.SYNC.value
+
+        identifier = str(uuid4())
+        command = Login(user_id=identifier)
+        test_domain.process(command)
+
+        last_command = test_domain.event_store.store.read_last_message(
+            f"test::user:command-{identifier}"
+        )
+        assert last_command is not None
+        assert last_command.metadata.asynchronous is False
+
+
 def test_command_metadata(test_domain):
     identifier = str(uuid4())
-    command = test_domain._enrich_command(Login(user_id=identifier))
+    command = test_domain._enrich_command(Login(user_id=identifier), True)
 
     assert (
         command.to_dict()
@@ -79,6 +113,7 @@ def test_command_metadata(test_domain):
                 "version": "v1",
                 "sequence_id": None,
                 "payload_hash": command._metadata.payload_hash,
+                "asynchronous": True,
             },
             "user_id": command.user_id,
         }

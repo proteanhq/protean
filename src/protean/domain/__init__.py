@@ -993,7 +993,7 @@ class Domain:
     #####################
     # Handling Commands #
     #####################
-    def _enrich_command(self, command: BaseCommand) -> BaseCommand:
+    def _enrich_command(self, command: BaseCommand, asynchronous: bool) -> BaseCommand:
         # Enrich Command
         identifier = None
         identity_field = id_field(command)
@@ -1027,12 +1027,15 @@ class Domain:
                         sort_keys=True,
                     )
                 ),
+                "asynchronous": asynchronous,
             },
         )
 
         return command_with_metadata
 
-    def process(self, command: BaseCommand, asynchronous: bool = True) -> Optional[Any]:
+    def process(
+        self, command: BaseCommand, asynchronous: Optional[bool] = None
+    ) -> Optional[Any]:
         """Process command and return results based on specified preference.
 
         By default, Protean does not return values after processing commands. This behavior
@@ -1047,6 +1050,10 @@ class Domain:
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
         """
+        # If asynchronous is not specified, use the command_processing setting from config
+        if asynchronous is None:
+            asynchronous = self.config["command_processing"] == Processing.ASYNC.value
+
         if (
             fqn(command.__class__)
             not in self.registry._elements[DomainObjects.COMMAND.value]
@@ -1055,7 +1062,7 @@ class Domain:
                 f"Element {command.__class__.__name__} is not registered in domain {self.name}"
             )
 
-        command_with_metadata = self._enrich_command(command)
+        command_with_metadata = self._enrich_command(command, asynchronous)
         position = self.event_store.store.append(command_with_metadata)
 
         if (
