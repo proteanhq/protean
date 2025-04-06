@@ -55,18 +55,6 @@ class MemorySession:
                 "counters": self._provider._counters,
             }
 
-    def add(self, element):
-        if element.state_.is_persisted:
-            dao = self._provider.get_dao(element.__class__)
-            dao.update(element, element.to_dict())
-        else:
-            dao = self._provider.get_dao(element.__class__)
-            dao.create(element.to_dict())
-
-    def delete(self, element):
-        dao = self._provider.get_dao(element.__class__)
-        dao.delete(element)
-
     def commit(self):
         if current_uow and self._provider.name in current_uow._sessions:
             current_uow._sessions[self._provider.name]._db["data"] = self._db["data"]
@@ -217,11 +205,17 @@ class MemoryProvider(BaseProvider):
 
         return results
 
-    def raw(self, query: Any, data: Any = None):
-        """Run raw queries on the database
+    def raw(self, query: Any, data: Any = None) -> list:
+        """Run raw queries on the memory database.
 
         As an example of running ``raw`` queries on a Dict repository, we will run the query
         on all possible schemas, and return all results.
+
+        For this stand-in repository, the query string is a json string that contains kwargs
+        criteria with straight-forward equality checks. Individual criteria are always AND-ed
+        and the result is always a subset of the full repository.
+
+        We will ignore the `data` parameter for this kind of repository.
         """
         assert isinstance(query, str)
 
@@ -463,7 +457,7 @@ class DictDAO(BaseDAO):
 
         return len(items)
 
-    def _raw(self, query: Any, data: Any = None):
+    def _raw(self, query: Any, data: Any = None) -> ResultSet:
         """Run raw query on Repository.
 
         For this stand-in repository, the query string is a json string that contains kwargs
@@ -472,35 +466,8 @@ class DictDAO(BaseDAO):
 
         We will ignore the `data` parameter for this kind of repository.
         """
-        # Ensure that we are dealing with a string, for this repository
-        assert isinstance(query, str)
-
-        conn = self._get_session()
-        input_db = conn._db["data"][self.schema_name]
-        result = None
-
-        try:
-            # Ensures that the string contains double quotes around keys and values
-            query = query.replace("'", '"')
-            criteria = json.loads(query)
-
-            for key, value in criteria.items():
-                input_db = self.provider._evaluate_lookup(key, value, False, input_db)
-
-            items = list(input_db.values())
-            result = ResultSet(
-                offset=1, limit=len(items), total=len(items), items=items
-            )
-
-        except json.JSONDecodeError:
-            # FIXME Log Exception
-            raise Exception("Query Malformed")
-
-        if not current_uow:
-            conn.commit()
-            conn.close()
-
-        return result
+        items = self.provider.raw(query, data)
+        return ResultSet(offset=1, limit=len(items), total=len(items), items=items)
 
 
 operators = {
