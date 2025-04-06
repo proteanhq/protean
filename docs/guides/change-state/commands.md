@@ -45,6 +45,77 @@ In [1]: command = PublishArticle(article_id="1")
 In [2]: publishing.process(command)
 ```
 
+## Synchronous vs Asynchronous Processing
+
+Commands in Protean can be processed either synchronously or asynchronously:
+
+- **Synchronous processing**: The command is processed immediately by the command handler when `domain.process()` is called. The execution flow is blocked until the command is fully processed.
+- **Asynchronous processing**: The command is stored in the event store and later processed by a background worker. The `domain.process()` call returns immediately without waiting for the command to be fully processed.
+
+You can control the processing mode in two ways:
+
+### 1. Using the `asynchronous` parameter
+
+When submitting a command, you can explicitly specify whether it should be processed synchronously or asynchronously:
+
+```python
+# Process synchronously (default is based on domain configuration)
+domain.process(command, asynchronous=False)
+
+# Process asynchronously
+domain.process(command, asynchronous=True)
+```
+
+### 2. Domain Configuration
+
+You can set the default processing mode for all commands in the domain configuration:
+
+In domain.toml:
+
+```
+command_processing = "sync"  # or "async"
+```
+
+In code:
+
+```python
+# Configure default command processing as synchronous
+domain.config["command_processing"] = "sync"  # or "async"
+```
+
+By default, Protean sets `command_processing` to `async` in the domain configuration.
+
+### When to use each mode
+
+- **Synchronous processing** is useful when:
+  - You need immediate feedback from the command execution
+  - You want to ensure the command was processed successfully before continuing
+  - The operation is part of a transaction that needs to be completed atomically
+
+- **Asynchronous processing** is beneficial when:
+  - You want to improve UI responsiveness by not blocking the execution flow
+  - The command processing might take a long time
+  - You want to distribute load across background workers
+  - You're implementing CQRS with event sourcing patterns
+
+### How Asynchronous Processing Works
+
+Asynchronous commands processing in Protean uses a server/engine component that:
+
+1. Creates subscriptions for command handlers to listen to their respective command streams
+2. Polls the event store for new commands that haven't been processed yet
+3. Dispatches those commands to the appropriate handlers
+
+To run the Protean server for processing asynchronous commands, use the CLI:
+
+```shell
+protean server --domain path/to/domain.py
+```
+
+See [CLI documentation](../cli/index.md) for more details about the server command and other available CLI options.
+
+The server continually polls the event store for new commands that have the `asynchronous` flag set to `True` in their metadata. When found, it dispatches them to the appropriate handlers, keeping track of processed commands to avoid duplicate processing.
+
 ## Workflow
 
 Command objects are often instantiated by the API controller, which acts as the
@@ -57,13 +128,37 @@ which then dispatches the command to the appropriate command handler. We will
 explore how the domain identifies the command handler in the
 [Command Handlers](./command-handlers.md) section.
 
+The workflow differs slightly depending on whether synchronous or asynchronous processing is used:
+
+### Synchronous Command Flow
+
 ```mermaid
 sequenceDiagram
   autonumber
-  API Controller->>Domain: command object
-  Domain-->>API Controller: acknowledge reciept
-  Domain->>Command Handler: command object
+  API Controller->>Domain: command object (asynchronous=False)
+  Domain->>Event Store: Store command
+  Domain->>Command Handler: Process command immediately
   Command Handler->>Command Handler: Process command
+  Command Handler-->>Domain: Return result (if any)
+  Domain-->>API Controller: Return result
+```
+
+### Asynchronous Command Flow
+
+```mermaid
+sequenceDiagram
+  autonumber
+  API Controller->>Domain: command object (asynchronous=True)
+  Domain->>Event Store: Store command with asynchronous=True
+  Domain-->>API Controller: Acknowledge receipt (return immediately)
+  
+  Note over Protean Server: Later, asynchronously...
+  
+  Protean Server->>Event Store: Poll for unprocessed commands
+  Event Store-->>Protean Server: Return command
+  Protean Server->>Command Handler: Process command
+  Command Handler->>Command Handler: Process command
+  Protean Server->>Event Store: Update processed position
 ```
 
 ## Immutability
@@ -84,3 +179,23 @@ In [4]: publish_article_command.published_at = datetime.now() - timedelta(hours=
 IncorrectUsageError: 'Command Objects are immutable and cannot be modified once created'
 }
 ```
+
+## Relationship with Event Processing
+
+Protean offers similar configuration options for events through:
+- The `event_processing` domain configuration setting 
+- The ability to raise events with specific `asynchronous` flags
+
+Events and commands in Protean follow the same processing patterns, enabling you to build consistent, predictable workflows. You can configure both to suit your specific domain needs:
+
+```python
+# Domain-wide configuration
+domain.config["command_processing"] = "sync"  # or "async"
+domain.config["event_processing"] = "async"   # or "sync"
+
+# Per-instance control
+domain.process(command, asynchronous=False)   # Override domain setting for a specific command
+aggregate.raise_(event, asynchronous=True)    # Override domain setting for a specific event
+```
+
+This flexibility allows you to implement various architectural patterns like CQRS, Event Sourcing, and Workflow-driven architectures within your Protean applications.

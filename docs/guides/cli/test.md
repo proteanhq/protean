@@ -20,8 +20,8 @@ protean test [OPTIONS]
 Category Options:
 
 - `CORE`: Runs core framework tests. This is the default category if none is specified.
-- `EVENTSTORE`: Runs tests related to the event store functionalities.
 - `DATABASE`: Runs database-related tests.
+- `EVENTSTORE`: Runs tests related to the event store functionalities.
 - `FULL`: Runs all available tests, including core, event store, and database tests.
 
 ## Examples
@@ -36,6 +36,12 @@ protean test
 
 ```shell
 protean test --category DATABASE
+```
+
+### Run eventstore related tests
+
+```shell
+protean test --category EVENTSTORE
 ```
 
 ### Run all tests with coverage
