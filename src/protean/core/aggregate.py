@@ -126,13 +126,34 @@ class BaseAggregate(BaseEntity):
             self._version += 1
 
     @classmethod
+    def _initialize_from_event(cls, event: BaseEvent) -> "BaseAggregate":
+        """Initialize an aggregate instance from the first event.
+        
+        This method can be overridden by aggregates to customize how they initialize
+        their state from the first event, especially when the event payload structure
+        differs from the aggregate's attributes.
+        
+        By default, it initializes the aggregate with the event's payload directly.
+        
+        Args:
+            event (BaseEvent): The first event to initialize from
+            
+        Returns:
+            BaseAggregate: An initialized instance of the aggregate
+        """
+        return cls(**event.payload)
+
+    @classmethod
     def from_events(cls, events: List[BaseEvent]) -> "BaseAggregate":
         """Event-Sourcing Functionality
 
         Reconstruct an aggregate from a list of events.
         """
-        # Initialize the aggregate with the first event's payload and apply it
-        aggregate = cls(**events[0].payload)
+        if not events:
+            raise ValueError("Cannot reconstruct aggregate from empty event list")
+
+        # Initialize the aggregate using the special initialization method
+        aggregate = cls._initialize_from_event(events[0])
         aggregate._apply(events[0])
 
         # Apply the rest of the events
