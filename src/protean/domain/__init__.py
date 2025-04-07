@@ -1062,7 +1062,7 @@ class Domain:
         ):
             handler_class = self.command_handler_for(command)
             if handler_class:
-                handler_class._handle(command_with_metadata)
+                return handler_class._handle(command_with_metadata)
 
         return position
 

@@ -168,8 +168,12 @@ class HandlerMixin:
         setattr(subclass, "_handlers", defaultdict(set))
 
     @classmethod
-    def _handle(cls, item: Union[Message, BaseCommand, BaseEvent]) -> None:
-        """Handle a message or command/event."""
+    def _handle(cls, item: Union[Message, BaseCommand, BaseEvent]) -> Any:
+        """Handle a message or command/event.
+        
+        Returns:
+            Any: The return value from the handler method, if any.
+        """
 
         # Convert Message to object if necessary
         item = item.to_object() if isinstance(item, Message) else item
@@ -177,8 +181,16 @@ class HandlerMixin:
         # Use specific handlers if available, or fallback on `$any` if defined
         handlers = cls._handlers[item.__class__.__type__] or cls._handlers["$any"]
 
+        # For command handlers, we expect only one handler per command
+        # and we want to return its value
+        if len(handlers) == 1:
+            return next(iter(handlers))(cls(), item)
+        
+        # For multiple handlers (event handlers), execute all but don't return values
         for handler_method in handlers:
             handler_method(cls(), item)
+        
+        return None
 
     @classmethod
     def handle_error(cls, exc: Exception, message: Message) -> None:
