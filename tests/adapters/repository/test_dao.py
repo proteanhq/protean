@@ -70,6 +70,22 @@ class TestDAODeleteFunctionality:
     def register_elements(self, test_domain):
         test_domain.register(Person)
 
+    def test_delete_a_non_existing_object_in_repository_by_id(self, test_domain):
+        """Delete a non-existing object in the repository by ID"""
+        person = test_domain.repository_for(Person)._dao.create(
+            id="3", first_name="John", last_name="Doe", age=22
+        )
+
+        # Keep a copy of the object to be deleted
+        reloaded_person = test_domain.repository_for(Person)._dao.get(person.id)
+
+        test_domain.repository_for(Person)._dao.delete(person)
+
+        # This situation would occur if the same object was loaded in different requests.
+        #   The first delete request would succeed, but the second one would fail
+        with pytest.raises(ObjectNotFoundError):
+            test_domain.repository_for(Person)._dao.delete(reloaded_person)
+
     def test_delete_an_object_in_repository_by_id(self, test_domain):
         """Delete an object in the repository by ID"""
         person = test_domain.repository_for(Person)._dao.create(
@@ -208,6 +224,49 @@ class TestDAODeleteFunctionality:
 
         with pytest.raises(ObjectNotFoundError):
             test_domain.repository_for(Person)._dao.get(person4.id)
+
+
+@pytest.mark.database
+class TestDAOCreateFunctionality:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Person)
+        test_domain.register(User)
+
+    def test_create_a_new_object(self, test_domain):
+        person = test_domain.repository_for(Person)._dao.create(
+            first_name="John", last_name="Doe"
+        )
+
+        assert person is not None
+
+        persisted_person = test_domain.repository_for(Person)._dao.get(person.id)
+        assert persisted_person is not None
+        assert persisted_person == person
+
+        assert persisted_person.first_name == "John"
+        assert persisted_person.last_name == "Doe"
+
+    def test_creation_throws_error_on_missing_fields(self, test_domain):
+        """Add an entity to the repository missing a required attribute"""
+        with pytest.raises(ValidationError) as err:
+            test_domain.repository_for(Person)._dao.create(last_name="Doe")
+
+        assert err.value.messages == {"first_name": ["is required"]}
+
+    def test_error_on_attempt_to_create_duplicate_entity(self, test_domain):
+        """Error on attempt to create a duplicate entity"""
+        test_domain.repository_for(User)._dao.create(
+            email="john.doe@example.com", password="password"
+        )
+        with pytest.raises(ValidationError) as err:
+            test_domain.repository_for(User)._dao.create(
+                email="john.doe@example.com", password="password"
+            )
+
+        assert err.value.messages == {
+            "email": ["User with email 'john.doe@example.com' is already present."]
+        }
 
 
 @pytest.mark.database

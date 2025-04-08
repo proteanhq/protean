@@ -2,9 +2,9 @@ __version__ = "0.12.1"
 
 from .core.aggregate import apply, atomic_change
 from .core.application_service import use_case
+from .core.database_model import BaseDatabaseModel
 from .core.entity import invariant
 from .core.event import BaseEvent
-from .core.model import BaseModel
 from .core.queryset import Q, QuerySet
 from .core.unit_of_work import UnitOfWork
 from .domain import Domain
@@ -17,7 +17,7 @@ __all__ = [
     "apply",
     "atomic_change",
     "BaseEvent",
-    "BaseModel",
+    "BaseDatabaseModel",
     "current_domain",
     "current_uow",
     "Domain",

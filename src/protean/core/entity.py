@@ -17,11 +17,13 @@ from protean.fields import Auto, HasMany, Reference, ValueObject
 from protean.fields.association import Association
 from protean.utils import (
     DomainObjects,
+    Processing,
     derive_element_class,
     generate_identity,
     inflection,
 )
 from protean.utils.container import BaseContainer, IdentityMixin, OptionsMixin
+from protean.utils.globals import current_domain
 from protean.utils.reflection import (
     _FIELDS,
     attributes,
@@ -132,7 +134,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
         return [
             ("aggregate_cluster", None),
             ("auto_add_id_field", True),
-            ("model", None),
+            ("database_model", None),
             ("part_of", None),
             ("provider", "default"),
             ("schema_name", inflection.underscore(cls.__name__)),
@@ -499,6 +501,8 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                         sort_keys=True,
                     )
                 ),
+                "asynchronous": current_domain.config["event_processing"]
+                == Processing.ASYNC.value,
             },
         )
 

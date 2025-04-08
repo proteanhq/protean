@@ -41,7 +41,7 @@ operators = {
 
 
 class ElasticsearchModel(Document):
-    """A model for the Elasticsearch index"""
+    """A database model for the Elasticsearch index"""
 
     @classmethod
     def from_entity(cls, entity) -> "ElasticsearchModel":
@@ -179,7 +179,7 @@ class ElasticsearchDAO(BaseDAO):
             q = self._build_filters(criteria)
 
         s = (
-            Search(using=conn, index=self.model_cls._index._name)
+            Search(using=conn, index=self.database_model_cls._index._name)
             .query(q)
             .params(version=True)
         )
@@ -205,13 +205,13 @@ class ElasticsearchDAO(BaseDAO):
         return result
 
     def _create(self, model_obj: Any):
-        """Create a new model object from the entity"""
+        """Create a new database model object from the entity"""
         conn = self.provider.get_connection()
 
         try:
             model_obj.save(
                 refresh=True,
-                index=self.model_cls._index._name,
+                index=self.database_model_cls._index._name,
                 using=conn,
             )
         except Exception as exc:
@@ -221,7 +221,7 @@ class ElasticsearchDAO(BaseDAO):
         return model_obj
 
     def _update(self, model_obj: Any):
-        """Update a model object in the data store and return it"""
+        """Update a database model object in the data store and return it"""
         conn = self.provider.get_connection()
 
         identifier = model_obj.meta.id
@@ -229,8 +229,8 @@ class ElasticsearchDAO(BaseDAO):
         # Fetch the record from database
         try:
             # Calling `get` will raise `NotFoundError` if record was not found
-            self.model_cls.get(
-                id=identifier, using=conn, index=self.model_cls._index._name
+            self.database_model_cls.get(
+                id=identifier, using=conn, index=self.database_model_cls._index._name
             )
         except NotFoundError as exc:
             logger.error(f"Database Record not found: {exc}")
@@ -242,7 +242,7 @@ class ElasticsearchDAO(BaseDAO):
         try:
             model_obj.save(
                 refresh=True,
-                index=self.model_cls._index._name,
+                index=self.database_model_cls._index._name,
                 using=conn,
             )
         except Exception as exc:
@@ -261,7 +261,7 @@ class ElasticsearchDAO(BaseDAO):
 
         try:
             model_obj.delete(
-                index=self.model_cls._index._name,
+                index=self.database_model_cls._index._name,
                 using=conn,
                 refresh=True,
             )
@@ -280,7 +280,7 @@ class ElasticsearchDAO(BaseDAO):
         if criteria and criteria.children:
             q = self._build_filters(criteria)
 
-        s = Search(using=conn, index=self.model_cls._index._name).query(q)
+        s = Search(using=conn, index=self.database_model_cls._index._name).query(q)
 
         # Return the results
         try:
@@ -319,11 +319,9 @@ class ESProvider(BaseProvider):
         super().__init__(name, domain, conn_info)
 
         # A temporary cache of already constructed model classes
-        self._model_classes = {}
+        self._database_model_classes = {}
 
-    def derive_schema_name(self, entity_cls):
-        schema_name = entity_cls.meta_.schema_name
-
+    def namespaced_schema_name(self, schema_name):
         # Prepend Namespace prefix if one has been provided
         if "NAMESPACE_PREFIX" in self.conn_info and self.conn_info["NAMESPACE_PREFIX"]:
             # Use custom separator if provided
@@ -334,7 +332,9 @@ class ESProvider(BaseProvider):
             ):
                 separator = self.conn_info["NAMESPACE_SEPARATOR"]
 
-            schema_name = f"{self.conn_info['NAMESPACE_PREFIX']}{separator}{entity_cls.meta_.schema_name}"
+            schema_name = (
+                f"{self.conn_info['NAMESPACE_PREFIX']}{separator}{schema_name}"
+            )
 
         return schema_name
 
@@ -383,25 +383,27 @@ class ESProvider(BaseProvider):
         conn = self.get_connection()
         return conn.ping()
 
-    def get_dao(self, entity_cls, model_cls):
+    def get_dao(self, entity_cls, database_model_cls):
         """Return a DAO object configured with a live connection"""
-        return ElasticsearchDAO(self.domain, self, entity_cls, model_cls)
+        return ElasticsearchDAO(self.domain, self, entity_cls, database_model_cls)
 
-    def decorate_model_class(self, entity_cls, model_cls):
-        schema_name = self.derive_schema_name(entity_cls)
+    def decorate_database_model_class(self, entity_cls, database_model_cls):
+        schema_name = self.namespaced_schema_name(
+            database_model_cls.derive_schema_name()
+        )
 
         # Return the model class if it was already seen/decorated
-        if schema_name in self._model_classes:
-            return self._model_classes[schema_name]
+        if schema_name in self._database_model_classes:
+            return self._database_model_classes[schema_name]
 
-        # If `model_cls` is already subclassed from ElasticsearchModel,
+        # If `database_model_cls` is already subclassed from ElasticsearchModel,
         #   this method call is a no-op
-        if issubclass(model_cls, ElasticsearchModel):
-            return model_cls
+        if issubclass(database_model_cls, ElasticsearchModel):
+            return database_model_cls
         else:
             custom_attrs = {
                 key: value
-                for (key, value) in vars(model_cls).items()
+                for (key, value) in vars(database_model_cls).items()
                 if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
             }
 
@@ -409,13 +411,17 @@ class ESProvider(BaseProvider):
             options = {}
 
             # Set schema name intelligently
-            #   model_cls.meta_.schema_name - would come from custom model's options
-            #   model_cls._index._name - would come from custom model's `Index` inner class
+            #   database_model_cls.meta_.schema_name - would come from custom model's options
+            #   database_model_cls._index._name - would come from custom model's `Index` inner class
             #   schema_name - is derived
             index_name = (
-                model_cls._index._name if hasattr(model_cls, "_index") else None
+                database_model_cls._index._name
+                if hasattr(database_model_cls, "_index")
+                else None
             )
-            options["name"] = model_cls.meta_.schema_name or index_name or schema_name
+            options["name"] = (
+                database_model_cls.meta_.schema_name or index_name or schema_name
+            )
 
             # Gather adapter settings
             if "SETTINGS" in self.conn_info and self.conn_info["SETTINGS"]:
@@ -428,29 +434,34 @@ class ESProvider(BaseProvider):
             custom_attrs.update({"Index": index_cls})
 
             # FIXME Ensure the custom model attributes are constructed properly
-            decorated_model_cls = type(
-                model_cls.__name__, (ElasticsearchModel, model_cls), custom_attrs
+            decorated_database_database_model_cls = type(
+                database_model_cls.__name__,
+                (ElasticsearchModel, database_model_cls),
+                custom_attrs,
             )
 
             # Memoize the constructed model class
-            self._model_classes[schema_name] = decorated_model_cls
+            self._database_model_classes[schema_name] = (
+                decorated_database_database_model_cls
+            )
 
-            return decorated_model_cls
+            return decorated_database_database_model_cls
 
-    def construct_model_class(self, entity_cls):
+    def construct_database_model_class(self, entity_cls):
         """Return a fully-baked Model class for a given Entity class"""
-        model_cls = None
+        database_model_cls = None
+        schema_name = self.namespaced_schema_name(entity_cls.meta_.schema_name)
 
         # Return the model class if it was already seen/decorated
-        if entity_cls.meta_.schema_name in self._model_classes:
-            model_cls = self._model_classes[entity_cls.meta_.schema_name]
+        if schema_name in self._database_model_classes:
+            database_model_cls = self._database_model_classes[schema_name]
         else:
             meta_ = Options()
             meta_.part_of = entity_cls
 
             # Construct Inner Index class with options
             options = {}
-            options["name"] = self.derive_schema_name(entity_cls)
+            options["name"] = schema_name
             if "SETTINGS" in self.conn_info and self.conn_info["SETTINGS"]:
                 options["settings"] = self.conn_info["SETTINGS"]
 
@@ -459,7 +470,7 @@ class ESProvider(BaseProvider):
             attrs = {"meta_": meta_, "Index": index_cls}
 
             # FIXME Ensure the custom model attributes are constructed properly
-            model_cls = type(
+            database_model_cls = type(
                 entity_cls.__name__ + "Model", (ElasticsearchModel,), attrs
             )
 
@@ -469,13 +480,13 @@ class ESProvider(BaseProvider):
             m = Mapping()
             m.field(id_field_name, Keyword())
 
-            model_cls._index.mapping(m)
+            database_model_cls._index.mapping(m)
 
             # Memoize the constructed model class
-            self._model_classes[entity_cls.meta_.schema_name] = model_cls
+            self._database_model_classes[schema_name] = database_model_cls
 
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
-        return model_cls
+        return database_model_cls
 
     def raw(self, query: Any, data: Any = None):
         """Run raw query directly on the database
@@ -500,14 +511,14 @@ class ESProvider(BaseProvider):
             provider = current_domain.providers[element_record.cls.meta_.provider]
             repo = self.domain.repository_for(element_record.cls)
 
-            model_cls = repo._model
+            database_model_cls = repo._database_model
             if (
                 provider.__class__.__database__ == "elasticsearch"
-                and conn.indices.exists(index=model_cls._index._name)
+                and conn.indices.exists(index=database_model_cls._index._name)
             ):
                 conn.delete_by_query(
                     refresh=True,
-                    index=model_cls._index._name,
+                    index=database_model_cls._index._name,
                     body={"query": {"match_all": {}}},
                 )
 
@@ -521,13 +532,15 @@ class ESProvider(BaseProvider):
         }
         for _, element_record in elements.items():
             provider = current_domain.providers[element_record.cls.meta_.provider]
-            model_cls = current_domain.repository_for(element_record.cls)._model
+            database_model_cls = current_domain.repository_for(
+                element_record.cls
+            )._database_model
             if (
                 provider.__class__.__database__ == "elasticsearch"
-                and not model_cls._index.exists(using=conn)
+                and not database_model_cls._index.exists(using=conn)
             ):
-                # We use model_cls here to ensure the index is created along with mappings
-                model_cls.init(using=conn)
+                # We use database_model_cls here to ensure the index is created along with mappings
+                database_model_cls.init(using=conn)
 
     def _drop_database_artifacts(self):
         conn = self.get_connection()
@@ -538,13 +551,15 @@ class ESProvider(BaseProvider):
             **self.domain.registry.views,
         }
         for _, element_record in elements.items():
-            model_cls = self.domain.repository_for(element_record.cls)._model
+            database_model_cls = self.domain.repository_for(
+                element_record.cls
+            )._database_model
             provider = self.domain.providers[element_record.cls.meta_.provider]
             if (
                 provider.__class__.__database__ == "elasticsearch"
-                and model_cls._index.exists(using=conn)
+                and database_model_cls._index.exists(using=conn)
             ):
-                conn.indices.delete(index=model_cls._index._name)
+                conn.indices.delete(index=database_model_cls._index._name)
 
 
 class DefaultLookup(BaseLookup):

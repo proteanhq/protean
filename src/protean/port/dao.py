@@ -4,8 +4,8 @@ import logging
 from abc import ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, Any
 
+from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
-from protean.core.model import BaseModel
 from protean.core.queryset import QuerySet, ResultSet
 from protean.exceptions import (
     ExpectedVersionError,
@@ -40,7 +40,7 @@ class BaseDAO(metaclass=ABCMeta):
     :param domain: the domain of the application this DAO is associated with.
     :param provider: the corresponding provider object of the database implementation, from whom the DAO can
                      request and fetch sessions and connections.
-    :param model_cls: the concrete model class associated with the DAO. The model class is a direct representation
+    :param database_model_cls: the concrete model class associated with the DAO. The model class is a direct representation
                       of an object in ORM/ODM terms or as represented by a python driver.
     :param entity_cls: the domain entity class associated with the DAO.
     """
@@ -50,7 +50,7 @@ class BaseDAO(metaclass=ABCMeta):
         domain: Domain,
         provider: BaseProvider,
         entity_cls: BaseEntity,
-        model_cls: BaseModel,
+        database_model_cls: BaseDatabaseModel,
     ):
         #: Holds a reference to the domain to which the DAO belongs to.
         self.domain = domain
@@ -59,7 +59,7 @@ class BaseDAO(metaclass=ABCMeta):
         self.provider = provider
 
         #: Holds a reference to the model class representation required by the ORM/ODM or the python database driver.
-        self.model_cls = model_cls
+        self.database_model_cls = database_model_cls
 
         #: Holds a reference to the entity class associated with this DAO.
         self.entity_cls = entity_cls
@@ -319,7 +319,7 @@ class BaseDAO(metaclass=ABCMeta):
             self._validate_unique(entity_obj)
 
             # Build the model object and persist into data store
-            model_obj = self._create(self.model_cls.from_entity(entity_obj))
+            model_obj = self._create(self.database_model_cls.from_entity(entity_obj))
 
             # Reverse update auto fields into entity
             for field_name, field_obj in declared_fields(entity_obj).items():
@@ -383,12 +383,12 @@ class BaseDAO(metaclass=ABCMeta):
         try:
             # Build the model object and create it
             if entity_obj.state_.is_persisted:
-                self._update(self.model_cls.from_entity(entity_obj))
+                self._update(self.database_model_cls.from_entity(entity_obj))
             else:
                 # Perform unique checks. Raises validation errors if unique constraints are violated.
                 self._validate_unique(entity_obj)
 
-                self._create(self.model_cls.from_entity(entity_obj))
+                self._create(self.database_model_cls.from_entity(entity_obj))
 
             # Set Entity status to saved to let everybody know it has been persisted
             entity_obj.state_.mark_saved()
@@ -434,7 +434,7 @@ class BaseDAO(metaclass=ABCMeta):
             # Do unique checks
             self._validate_unique(entity_obj, create=False)
 
-            self._update(self.model_cls.from_entity(entity_obj))
+            self._update(self.database_model_cls.from_entity(entity_obj))
 
             # Set Entity status to saved to let everybody know it has been persisted
             entity_obj.state_.mark_saved()
@@ -499,7 +499,7 @@ class BaseDAO(metaclass=ABCMeta):
         """
         try:
             if not entity_obj.state_.is_destroyed:
-                self._delete(self.model_cls.from_entity(entity_obj))
+                self._delete(self.database_model_cls.from_entity(entity_obj))
 
                 # Set Entity status to destroyed to let everybody know the object is no longer referable
                 entity_obj.state_.mark_destroyed()

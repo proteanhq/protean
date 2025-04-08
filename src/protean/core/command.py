@@ -47,7 +47,7 @@ class BaseCommand(BaseMessageType):
                 version=version,
             )
 
-            # Finally lock the event and make it immutable
+            # Finally lock the command and make it immutable
             self._initialized = True
 
         except ValidationError as exception:

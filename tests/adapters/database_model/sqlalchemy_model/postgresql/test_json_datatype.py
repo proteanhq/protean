@@ -21,27 +21,27 @@ def register_elements(test_domain):
 
 @pytest.mark.postgresql
 def test_json_data_type_association(test_domain):
-    model_cls = test_domain.repository_for(Event)._model
-    type(model_cls.payload.property.columns[0].type) is sa_types.JSON
+    database_model_cls = test_domain.repository_for(Event)._database_model
+    type(database_model_cls.payload.property.columns[0].type) is sa_types.JSON
 
 
 @pytest.mark.postgresql
 def test_basic_dict_data_type_operations(test_domain):
-    model_cls = test_domain.repository_for(Event)._model
+    database_model_cls = test_domain.repository_for(Event)._database_model
 
     event = Event(
         name="UserCreated", payload={"email": "john.doe@gmail.com", "password": "*****"}
     )
-    event_model_obj = model_cls.from_entity(event)
+    event_model_obj = database_model_cls.from_entity(event)
 
-    event_copy = model_cls.to_entity(event_model_obj)
+    event_copy = database_model_cls.to_entity(event_model_obj)
     assert event_copy is not None
     assert event_copy.payload == {"email": "john.doe@gmail.com", "password": "*****"}
 
 
 @pytest.mark.postgresql
 def test_json_with_array_data(test_domain):
-    model_cls = test_domain.repository_for(Event)._model
+    database_model_cls = test_domain.repository_for(Event)._database_model
 
     event = Event(
         name="UserCreated",
@@ -50,9 +50,9 @@ def test_json_with_array_data(test_domain):
             {"email": "john.doe1234@gmail.com", "password": "*****"},
         ],
     )
-    event_model_obj = model_cls.from_entity(event)
+    event_model_obj = database_model_cls.from_entity(event)
 
-    event_copy = model_cls.to_entity(event_model_obj)
+    event_copy = database_model_cls.to_entity(event_model_obj)
     assert event_copy is not None
     assert event_copy.payload == [
         {"email": "john.doe@gmail.com", "password": "*****"},

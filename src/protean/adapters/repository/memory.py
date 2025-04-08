@@ -10,7 +10,7 @@ from threading import Lock
 from typing import Any
 from uuid import UUID
 
-from protean.core.model import BaseModel
+from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import ResultSet
 from protean.exceptions import ObjectNotFoundError, ValidationError
 from protean.fields.basic import Auto
@@ -22,14 +22,7 @@ from protean.utils.query import Q
 from protean.utils.reflection import attributes, fields, id_field
 
 
-def derive_schema_name(model_cls):
-    if hasattr(model_cls.meta_, "schema_name"):
-        return model_cls.meta_.schema_name
-    else:
-        return model_cls.meta_.part_of.meta_.schema_name
-
-
-class MemoryModel(BaseModel):
+class MemoryModel(BaseDatabaseModel):
     """A model for the dictionary repository"""
 
     @classmethod
@@ -62,18 +55,6 @@ class MemorySession:
                 "counters": self._provider._counters,
             }
 
-    def add(self, element):
-        if element.state_.is_persisted:
-            dao = self._provider.get_dao(element.__class__)
-            dao.update(element, element.to_dict())
-        else:
-            dao = self._provider.get_dao(element.__class__)
-            dao.create(element.to_dict())
-
-    def delete(self, element):
-        dao = self._provider.get_dao(element.__class__)
-        dao.delete(element)
-
     def commit(self):
         if current_uow and self._provider.name in current_uow._sessions:
             current_uow._sessions[self._provider.name]._db["data"] = self._db["data"]
@@ -104,7 +85,7 @@ class MemoryProvider(BaseProvider):
         self._counters = defaultdict(count)
 
         # A temporary cache of already constructed model classes
-        self._model_classes = {}
+        self._database_model_classes = {}
 
     def get_session(self):
         """Return a session object
@@ -133,21 +114,21 @@ class MemoryProvider(BaseProvider):
         if current_uow and current_uow.in_progress:
             current_uow.rollback()
 
-    def decorate_model_class(self, entity_cls, model_cls):
-        schema_name = derive_schema_name(model_cls)
+    def decorate_database_model_class(self, entity_cls, database_model_cls):
+        schema_name = database_model_cls.derive_schema_name()
 
         # Return the model class if it was already seen/decorated
-        if schema_name in self._model_classes:
-            return self._model_classes[schema_name]
+        if schema_name in self._database_model_classes:
+            return self._database_model_classes[schema_name]
 
-        # If `model_cls` is already subclassed from MemoryModel,
+        # If `database_model_cls` is already subclassed from MemoryModel,
         #   this method call is a no-op
-        if issubclass(model_cls, MemoryModel):
-            return model_cls
+        if issubclass(database_model_cls, MemoryModel):
+            return database_model_cls
         else:
             custom_attrs = {
                 key: value
-                for (key, value) in vars(model_cls).items()
+                for (key, value) in vars(database_model_cls).items()
                 if key not in ["Meta", "__module__", "__doc__", "__weakref__"]
             }
 
@@ -156,22 +137,28 @@ class MemoryProvider(BaseProvider):
 
             custom_attrs.update({"meta_": meta_})
             # FIXME Ensure the custom model attributes are constructed properly
-            decorated_model_cls = type(
-                model_cls.__name__, (MemoryModel, model_cls), custom_attrs
+            decorated_database_database_model_cls = type(
+                database_model_cls.__name__,
+                (MemoryModel, database_model_cls),
+                custom_attrs,
             )
 
             # Memoize the constructed model class
-            self._model_classes[schema_name] = decorated_model_cls
+            self._database_model_classes[schema_name] = (
+                decorated_database_database_model_cls
+            )
 
-            return decorated_model_cls
+            return decorated_database_database_model_cls
 
-    def construct_model_class(self, entity_cls):
+    def construct_database_model_class(self, entity_cls):
         """Return associated, fully-baked Model class"""
-        model_cls = None
+        database_model_cls = None
 
         # Return the model class if it was already seen/decorated
-        if entity_cls.meta_.schema_name in self._model_classes:
-            model_cls = self._model_classes[entity_cls.meta_.schema_name]
+        if entity_cls.meta_.schema_name in self._database_model_classes:
+            database_model_cls = self._database_model_classes[
+                entity_cls.meta_.schema_name
+            ]
         else:
             meta_ = Options()
             meta_.part_of = entity_cls
@@ -180,17 +167,21 @@ class MemoryProvider(BaseProvider):
                 "meta_": meta_,
             }
             # FIXME Ensure the custom model attributes are constructed properly
-            model_cls = type(entity_cls.__name__ + "Model", (MemoryModel,), attrs)
+            database_model_cls = type(
+                entity_cls.__name__ + "Model", (MemoryModel,), attrs
+            )
 
             # Memoize the constructed model class
-            self._model_classes[entity_cls.meta_.schema_name] = model_cls
+            self._database_model_classes[entity_cls.meta_.schema_name] = (
+                database_model_cls
+            )
 
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
-        return model_cls
+        return database_model_cls
 
-    def get_dao(self, entity_cls, model_cls):
+    def get_dao(self, entity_cls, database_model_cls):
         """Return a DAO object configured with a live connection"""
-        return DictDAO(self.domain, self, entity_cls, model_cls)
+        return DictDAO(self.domain, self, entity_cls, database_model_cls)
 
     def _evaluate_lookup(self, key, value, negated, db):
         """Extract values from DB that match the given criteria"""
@@ -214,11 +205,17 @@ class MemoryProvider(BaseProvider):
 
         return results
 
-    def raw(self, query: Any, data: Any = None):
-        """Run raw queries on the database
+    def raw(self, query: Any, data: Any = None) -> list:
+        """Run raw queries on the memory database.
 
         As an example of running ``raw`` queries on a Dict repository, we will run the query
         on all possible schemas, and return all results.
+
+        For this stand-in repository, the query string is a json string that contains kwargs
+        criteria with straight-forward equality checks. Individual criteria are always AND-ed
+        and the result is always a subset of the full repository.
+
+        We will ignore the `data` parameter for this kind of repository.
         """
         assert isinstance(query, str)
 
@@ -286,15 +283,6 @@ class DictDAO(BaseDAO):
         # Add the entity to the repository
         identifier = model_obj[id_field(self.entity_cls).field_name]
         with conn._db["lock"]:
-            # Check if object is present
-            if identifier in conn._db["data"][self.schema_name]:
-                raise ValidationError(
-                    {
-                        "_entity": f"`{self.__class__.__name__}` object with identifier {identifier} "
-                        f"is already present."
-                    }
-                )
-
             conn._db["data"][self.schema_name][identifier] = model_obj
 
         if not current_uow:
@@ -469,7 +457,7 @@ class DictDAO(BaseDAO):
 
         return len(items)
 
-    def _raw(self, query: Any, data: Any = None):
+    def _raw(self, query: Any, data: Any = None) -> ResultSet:
         """Run raw query on Repository.
 
         For this stand-in repository, the query string is a json string that contains kwargs
@@ -478,35 +466,8 @@ class DictDAO(BaseDAO):
 
         We will ignore the `data` parameter for this kind of repository.
         """
-        # Ensure that we are dealing with a string, for this repository
-        assert isinstance(query, str)
-
-        conn = self._get_session()
-        input_db = conn._db["data"][self.schema_name]
-        result = None
-
-        try:
-            # Ensures that the string contains double quotes around keys and values
-            query = query.replace("'", '"')
-            criteria = json.loads(query)
-
-            for key, value in criteria.items():
-                input_db = self.provider._evaluate_lookup(key, value, False, input_db)
-
-            items = list(input_db.values())
-            result = ResultSet(
-                offset=1, limit=len(items), total=len(items), items=items
-            )
-
-        except json.JSONDecodeError:
-            # FIXME Log Exception
-            raise Exception("Query Malformed")
-
-        if not current_uow:
-            conn.commit()
-            conn.close()
-
-        return result
+        items = self.provider.raw(query, data)
+        return ResultSet(offset=1, limit=len(items), total=len(items), items=items)
 
 
 operators = {

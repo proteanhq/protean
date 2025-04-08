@@ -172,7 +172,7 @@ class QuerySet:
         # Convert the returned results to entity and return it
         entity_items = []
         for item in results.items:
-            entity = self._owner_dao.model_cls.to_entity(item)
+            entity = self._owner_dao.database_model_cls.to_entity(item)
             entity.state_.mark_retrieved()
 
             # If we are dealing with an aggregate, we should also update the last event position
@@ -251,7 +251,7 @@ class QuerySet:
             # Convert the returned results to entity and return it
             entity_items = []
             for item in results.items:
-                entity = self._owner_dao.model_cls.to_entity(item)
+                entity = self._owner_dao.database_model_cls.to_entity(item)
                 entity.state_.mark_retrieved()
                 entity_items.append(entity)
             results.items = entity_items

@@ -49,7 +49,8 @@ def register_command_message(user_id, test_domain):
             user_id=user_id,
             email="john.doe@gmail.com",
             name="John Doe",
-        )
+        ),
+        True,
     )
     return Message.to_message(enriched_command)
 
@@ -165,7 +166,7 @@ def test_origin_stream_in_command_from_event(
         name="John Doe",
     )
 
-    enriched_command = test_domain._enrich_command(command)
+    enriched_command = test_domain._enrich_command(command, True)
     command_message = Message.to_message(enriched_command)
 
     assert command_message.metadata.origin_stream == f"test::user-{user_id}"

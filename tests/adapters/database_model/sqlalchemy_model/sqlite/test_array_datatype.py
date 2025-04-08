@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import types as sa_types
 
+from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ValidationError
 from protean.fields import (
     Auto,
@@ -15,26 +17,43 @@ from protean.fields import (
     String,
 )
 
-from .elements import IntegerListUser, ListUser
+
+class ArrayUser(BaseAggregate):
+    email = String(max_length=255, required=True, unique=True)
+    roles = List()  # Defaulted to String Content Type
 
 
-@pytest.mark.postgresql
-def test_basic_array_data_type_support(test_domain):
-    test_domain.register(ListUser)
+class IntegerArrayUser(BaseAggregate):
+    email = String(max_length=255, required=True, unique=True)
+    roles = List(content_type=Integer)
 
-    model_cls = test_domain.repository_for(ListUser)._model
-    user = ListUser(email="john.doe@gmail.com", roles=["ADMIN", "USER"])
-    user_model_obj = model_cls.from_entity(user)
 
-    user_copy = model_cls.to_entity(user_model_obj)
+@pytest.mark.sqlite
+def test_array_data_type_association(test_domain):
+    test_domain.register(ArrayUser)
+
+    database_model_cls = test_domain.repository_for(ArrayUser)._database_model
+    type(database_model_cls.roles.property.columns[0].type) is sa_types.ARRAY
+
+
+@pytest.mark.sqlite
+def test_basic_array_data_type_operations(test_domain):
+    test_domain.register(ArrayUser)
+
+    database_model_cls = test_domain.repository_for(ArrayUser)._database_model
+
+    user = ArrayUser(email="john.doe@gmail.com", roles=["ADMIN", "USER"])
+    user_model_obj = database_model_cls.from_entity(user)
+
+    user_copy = database_model_cls.to_entity(user_model_obj)
     assert user_copy is not None
     assert user_copy.roles == ["ADMIN", "USER"]
 
 
-@pytest.mark.postgresql
+@pytest.mark.sqlite
 def test_array_content_type_validation(test_domain):
-    test_domain.register(ListUser)
-    test_domain.register(IntegerListUser)
+    test_domain.register(ArrayUser)
+    test_domain.register(IntegerArrayUser)
 
     for kwargs in [
         {"email": "john.doe@gmail.com", "roles": [1, 2]},
@@ -43,15 +62,15 @@ def test_array_content_type_validation(test_domain):
         {"email": "john.doe@gmail.com", "roles": [datetime.now(UTC)]},
     ]:
         try:
-            ListUser(**kwargs)
+            ArrayUser(**kwargs)
         except ValidationError:
             pytest.fail("Failed to convert integers into strings in List field type")
 
-    model_cls = test_domain.repository_for(IntegerListUser)._model
-    user = IntegerListUser(email="john.doe@gmail.com", roles=[1, 2])
-    user_model_obj = model_cls.from_entity(user)
+    database_model_cls = test_domain.repository_for(IntegerArrayUser)._database_model
+    user = IntegerArrayUser(email="john.doe@gmail.com", roles=[1, 2])
+    user_model_obj = database_model_cls.from_entity(user)
 
-    user_copy = model_cls.to_entity(user_model_obj)
+    user_copy = database_model_cls.to_entity(user_model_obj)
     assert user_copy is not None
     assert user_copy.roles == [1, 2]
 
@@ -60,11 +79,11 @@ def test_array_content_type_validation(test_domain):
         {"email": "john.doe@gmail.com", "roles": [datetime.now(UTC)]},
     ]:
         with pytest.raises(ValidationError) as exception:
-            IntegerListUser(**kwargs)
+            IntegerArrayUser(**kwargs)
         assert exception.value.messages["roles"][0].startswith("Invalid value")
 
 
-@pytest.mark.postgresql
+@pytest.mark.sqlite
 def test_that_only_specific_primitive_types_are_allowed_as_content_types(test_domain):
     List(content_type=String)
     List(content_type=Identifier)

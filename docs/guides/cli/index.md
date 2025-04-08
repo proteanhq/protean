@@ -10,6 +10,7 @@ load the domain.
 | :----------------------------- | :----------------------------------|
 | [`protean new`](new.md)        | Creating a domain                  |
 | [`protean shell`](shell.md)    | Working with the shell             |
+| [`protean server`](server.md)  | Running an async background server |
 
 !!! note
 

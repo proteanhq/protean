@@ -41,6 +41,7 @@ class TestDomainEventDefinition:
             email = ValueObject(Email, required=True)
             name = String(max_length=50)
 
+        test_domain.register(User)
         test_domain.register(UserAdded, part_of=User)
         test_domain.init(traverse=False)
 
@@ -49,14 +50,20 @@ class TestDomainEventDefinition:
             email=Email(address="john.doe@gmail.com"),
             name="John Doe",
         )
-        event = UserAdded(id=user.id, email_address=user.email_address, name=user.name)
+        raw_event = UserAdded(
+            id=user.id, email_address=user.email_address, name=user.name
+        )
+        user.raise_(
+            UserAdded(id=user.id, email_address=user.email_address, name=user.name)
+        )
+        raised_event = user._events[0]
 
-        assert event is not None
-        assert event.email == Email(address="john.doe@gmail.com")
-        assert event.email_address == "john.doe@gmail.com"
+        assert raw_event is not None
+        assert raw_event.email == Email(address="john.doe@gmail.com")
+        assert raw_event.email_address == "john.doe@gmail.com"
 
         assert (
-            event.to_dict()
+            raw_event.to_dict()
             == {
                 "_metadata": {
                     "id": None,  # ID is none because the event is not being raised in the proper way (with `_raise`)
@@ -65,10 +72,11 @@ class TestDomainEventDefinition:
                     "kind": "EVENT",
                     "stream": None,  # Stream is none here because of the same reason as above
                     "origin_stream": None,
-                    "timestamp": str(event._metadata.timestamp),
+                    "timestamp": str(raw_event._metadata.timestamp),
                     "version": "v1",
                     "sequence_id": None,  # Sequence is unknown as event is not being raised as part of an aggregate
-                    "payload_hash": event._metadata.payload_hash,
+                    "payload_hash": raw_event._metadata.payload_hash,
+                    "asynchronous": True,  # Asynchronous is True by default
                 },
                 "email": {
                     "address": "john.doe@gmail.com",
@@ -77,6 +85,27 @@ class TestDomainEventDefinition:
                 "id": user.id,
             }
         )
+
+        assert raised_event.to_dict() == {
+            "_metadata": {
+                "id": f"test::user-{user.id}-0.1",
+                "type": "Test.UserAdded.v1",
+                "fqn": fully_qualified_name(UserAdded),
+                "kind": "EVENT",
+                "stream": f"test::user-{user.id}",
+                "origin_stream": None,
+                "timestamp": str(raised_event._metadata.timestamp),
+                "version": "v1",
+                "sequence_id": "0.1",
+                "payload_hash": raised_event._metadata.payload_hash,
+                "asynchronous": False,  # Test Domain event_processing is SYNC by default
+            },
+            "email": {
+                "address": "john.doe@gmail.com",
+            },
+            "name": "John Doe",
+            "id": user.id,
+        }
 
     def test_error_on_invalid_value_object(self, test_domain):
         class Address(BaseValueObject):

@@ -58,44 +58,47 @@ class BaseRepository(Element, OptionsMixin):
 
     @property
     @lru_cache()
-    def _model(self):
-        """Retrieve Model class connected to Entity"""
+    def _database_model(self):
+        """Retrieve Database Model class connected to Entity"""
         # If a model was associated with the aggregate record, give it a higher priority
         #   and do not bake a new model class from aggregate/entity attributes
-        custom_model_cls = None
-        if fully_qualified_name(self.meta_.part_of) in self._domain._models:
-            custom_model_cls = self._domain._models[
+        custom_database_database_model_cls = None
+        if fully_qualified_name(self.meta_.part_of) in self._domain._database_models:
+            custom_database_database_model_cls = self._domain._database_models[
                 fully_qualified_name(self.meta_.part_of)
             ]
 
         # FIXME This is the provide support for activating database specific models
-        #   This needs to be enhanced to allow Protean to hold multiple models per Aggregate/Entity
+        #   This needs to be enhanced to allow Protean to hold multiple database models per Aggregate/Entity
         #   per database.
         #
         #   If no database is specified, model can be used for all databases
-        if custom_model_cls and (
-            custom_model_cls.meta_.database is None
-            or custom_model_cls.meta_.database == self._provider.__class__.__database__
+        if custom_database_database_model_cls and (
+            custom_database_database_model_cls.meta_.database is None
+            or custom_database_database_model_cls.meta_.database
+            == self._provider.__class__.__database__
         ):
             # Get the decorated model class.
             #   This is a no-op if the provider decides that the model is fully-baked
-            model_cls = self._provider.decorate_model_class(
-                self.meta_.part_of, custom_model_cls
+            database_model_cls = self._provider.decorate_database_model_class(
+                self.meta_.part_of, custom_database_database_model_cls
             )
         else:
             # No model was associated with the aggregate/entity explicitly.
             #   So ask the Provider to bake a new model, initialized properly for this aggregate
             #   and return it
-            model_cls = self._provider.construct_model_class(self.meta_.part_of)
+            database_model_cls = self._provider.construct_database_model_class(
+                self.meta_.part_of
+            )
 
-        return model_cls
+        return database_model_cls
 
     @property
     @lru_cache()
     def _dao(self) -> BaseDAO:
         """Retrieve a DAO registered for the Aggregate with a live connection"""
         # Fixate on Model class at the domain level because an explicit model may have been registered
-        return self._provider.get_dao(self.meta_.part_of, self._model)
+        return self._provider.get_dao(self.meta_.part_of, self._database_model)
 
     def add(
         self, item: Union[BaseAggregate, BaseView]
@@ -111,7 +114,7 @@ class BaseRepository(Element, OptionsMixin):
 
         To be specific, a Repository mimics a `set` collection. Whatever the implementation, the repository
         will not allow instances of the same object to be added twice. Also, when retrieving objects from
-        a Repository and modifying them, you don’t need to “re-save” them to the Repository.
+        a Repository and modifying them, you don't need to "re-save" them to the Repository.
 
         If there is a :ref:`Unit of Work <unit-of-work>` in progress, then the changes are performed on the
         UoW's active session. They are committed whenever the entire UoW is committed. If there is no

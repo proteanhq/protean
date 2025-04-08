@@ -2,8 +2,8 @@ import re
 from typing import List
 
 from protean.core.aggregate import BaseAggregate
+from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import invariant
-from protean.core.model import BaseModel
 from protean.core.repository import BaseRepository
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
@@ -45,7 +45,7 @@ class Provider(BaseAggregate):
     age = Integer()
 
 
-class ProviderCustomModel(BaseModel):
+class ProviderCustomModel(BaseDatabaseModel):
     name = Text()
 
 

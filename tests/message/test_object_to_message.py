@@ -88,7 +88,7 @@ def test_construct_message_from_event(test_domain):
 def test_construct_message_from_command(test_domain):
     identifier = str(uuid4())
     command = Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
-    command_with_metadata = test_domain._enrich_command(command)
+    command_with_metadata = test_domain._enrich_command(command, True)
     test_domain.process(command)
 
     messages = test_domain.event_store.store.read("user:command")
@@ -142,7 +142,7 @@ def test_construct_message_from_command_without_identifier(test_domain):
 def test_construct_message_from_either_event_or_command(test_domain):
     identifier = str(uuid4())
     command = Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
-    command = test_domain._enrich_command(command)
+    command = test_domain._enrich_command(command, True)
 
     message = Message.to_message(command)
 

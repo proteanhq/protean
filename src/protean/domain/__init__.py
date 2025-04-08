@@ -18,9 +18,9 @@ from protean.adapters.event_store import EventStore
 from protean.core.aggregate import element_to_fact_event
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
+from protean.core.database_model import BaseDatabaseModel
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
-from protean.core.model import BaseModel
 from protean.core.repository import BaseRepository
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import (
@@ -134,8 +134,8 @@ class Domain:
         self.email_providers = EmailProviders(self)
 
         # Cache for holding Model to Entity/Aggregate associations
-        self._models: Dict[str, BaseModel] = {}
-        self._constructed_models: Dict[str, BaseModel] = {}
+        self._database_models: Dict[str, BaseDatabaseModel] = {}
+        self._constructed_models: Dict[str, BaseDatabaseModel] = {}
 
         # Cache for holding events and commands by their types
         self._events_and_commands: Dict[str, Union[BaseCommand, BaseEvent]] = {}
@@ -394,6 +394,7 @@ class Domain:
         from protean.core.application_service import application_service_factory
         from protean.core.command import command_factory
         from protean.core.command_handler import command_handler_factory
+        from protean.core.database_model import database_model_factory
         from protean.core.domain_service import domain_service_factory
         from protean.core.email import email_factory
         from protean.core.entity import entity_factory
@@ -402,7 +403,6 @@ class Domain:
         from protean.core.event_sourced_repository import (
             event_sourced_repository_factory,
         )
-        from protean.core.model import model_factory
         from protean.core.repository import repository_factory
         from protean.core.subscriber import subscriber_factory
         from protean.core.value_object import value_object_factory
@@ -419,7 +419,7 @@ class Domain:
             DomainObjects.DOMAIN_SERVICE.value: domain_service_factory,
             DomainObjects.EMAIL.value: email_factory,
             DomainObjects.ENTITY.value: entity_factory,
-            DomainObjects.MODEL.value: model_factory,
+            DomainObjects.DATABASE_MODEL.value: database_model_factory,
             DomainObjects.REPOSITORY.value: repository_factory,
             DomainObjects.SUBSCRIBER.value: subscriber_factory,
             DomainObjects.VALUE_OBJECT.value: value_object_factory,
@@ -449,9 +449,9 @@ class Domain:
         factory = self.factory_for(element_type)
         new_cls = factory(element_cls, self, **opts)
 
-        if element_type == DomainObjects.MODEL:
+        if element_type == DomainObjects.DATABASE_MODEL:
             # Remember model association with aggregate/entity class, for easy fetching
-            self._models[fqn(new_cls.meta_.part_of)] = new_cls
+            self._database_models[fqn(new_cls.meta_.part_of)] = new_cls
 
         # Register element with domain
         self._domain_registry.register_element(new_cls)
@@ -567,9 +567,11 @@ class Domain:
         # We're called as @dataclass without parens.
         return wrap(_cls)
 
-    def register_model(self, model_cls, **kwargs):
+    def register_database_model(self, database_model_cls, **kwargs):
         """Register a model class"""
-        return self._register_element(DomainObjects.MODEL, model_cls, **kwargs)
+        return self._register_element(
+            DomainObjects.DATABASE_MODEL, database_model_cls, **kwargs
+        )
 
     def register(self, element_cls: Any, **kwargs: dict) -> Any:
         """Register an element with the domain.
@@ -953,8 +955,8 @@ class Domain:
     def email(self, _cls=None, **kwargs):
         return self._domain_element(DomainObjects.EMAIL, _cls=_cls, **kwargs)
 
-    def model(self, _cls=None, **kwargs):
-        return self._domain_element(DomainObjects.MODEL, _cls=_cls, **kwargs)
+    def database_model(self, _cls=None, **kwargs):
+        return self._domain_element(DomainObjects.DATABASE_MODEL, _cls=_cls, **kwargs)
 
     def repository(self, _cls=None, **kwargs):
         return self._domain_element(DomainObjects.REPOSITORY, _cls=_cls, **kwargs)
@@ -991,7 +993,7 @@ class Domain:
     #####################
     # Handling Commands #
     #####################
-    def _enrich_command(self, command: BaseCommand) -> BaseCommand:
+    def _enrich_command(self, command: BaseCommand, asynchronous: bool) -> BaseCommand:
         # Enrich Command
         identifier = None
         identity_field = id_field(command)
@@ -1025,12 +1027,15 @@ class Domain:
                         sort_keys=True,
                     )
                 ),
+                "asynchronous": asynchronous,
             },
         )
 
         return command_with_metadata
 
-    def process(self, command: BaseCommand, asynchronous: bool = True) -> Optional[Any]:
+    def process(
+        self, command: BaseCommand, asynchronous: Optional[bool] = None
+    ) -> Optional[Any]:
         """Process command and return results based on specified preference.
 
         By default, Protean does not return values after processing commands. This behavior
@@ -1045,6 +1050,10 @@ class Domain:
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
         """
+        # If asynchronous is not specified, use the command_processing setting from config
+        if asynchronous is None:
+            asynchronous = self.config["command_processing"] == Processing.ASYNC.value
+
         if (
             fqn(command.__class__)
             not in self.registry._elements[DomainObjects.COMMAND.value]
