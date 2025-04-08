@@ -131,7 +131,6 @@ The `db` fixture handles database setup and teardown:
 - Creates all database artifacts (tables, collections, etc.) before tests
 - Drops all artifacts after tests complete
 - Resets the registry to ensure a clean state for subsequent tests
-```
 
 ### `run_around_tests`
 
@@ -224,7 +223,7 @@ This will run database tests against multiple adapters (MEMORY, POSTGRESQL, SQLI
 
 ### Fixtures
 
-The `protean test` command leverages fixtures to target different adapters:
+The `protean test` command leverages fixtures to target different adapters. The below fixtures are present in `tests/conftest.py`:
 
 #### `db_config`
 

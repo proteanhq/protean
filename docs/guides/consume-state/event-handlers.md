@@ -90,11 +90,10 @@ Event handlers in Protean follow the standard CQRS pattern where event handlers 
 3. **Multiple Consumers**: Multiple event handlers can process the same event independently.
 
 If an event handler needs to communicate information as part of its processing, it should:
+
 - Emit new events 
 - Update relevant aggregates that can be queried later
 - Log information for monitoring purposes
-
-This approach maintains a clean separation between the command and query sides of a system.
 
 ## Configuration Options
 

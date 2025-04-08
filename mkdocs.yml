@@ -250,4 +250,5 @@ nav:
   - Community: 
     - community/index.md
     - community/contributing/setup.md
+    - community/contributing/testing.md
     - community/contributing/adapters.md
