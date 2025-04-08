@@ -1054,7 +1054,7 @@ class Domain:
             )
 
         command_with_metadata = self._enrich_command(command)
-        position = self.event_store.store.append(command_with_metadata)
+        result = self.event_store.store.append(command_with_metadata)
 
         if (
             not asynchronous
@@ -1062,9 +1062,9 @@ class Domain:
         ):
             handler_class = self.command_handler_for(command)
             if handler_class:
-                return handler_class._handle(command_with_metadata)
+                result=handler_class._handle(command_with_metadata)
 
-        return position
+        return result
 
     def command_handler_for(self, command: BaseCommand) -> Optional[BaseCommandHandler]:
         """Return Command Handler for a specific command.
