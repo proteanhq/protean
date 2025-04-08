@@ -66,6 +66,65 @@ persists the modified aggregate back to the repository or data store. This
 ensures that the changes made to the aggregate's state are saved and reflected
 in the system's state.
 
+## Return Values from Command Handlers
+
+Command handlers can optionally return values to the caller when processed synchronously. This behavior is determined by how the command is processed by the domain.
+
+### Synchronous Processing
+
+When commands are processed synchronously, the command handler's return value is passed back to the caller. This is useful for:
+
+- Returning newly created resource identifiers
+- Providing validation or processing results
+- Returning calculated values or status information
+
+To process a command synchronously and receive its return value:
+
+```python
+# Process command synchronously and get the return value
+result = domain.process(command, asynchronous=False)
+```
+
+Example of a command handler that returns a value:
+
+```python
+@domain.command_handler(part_of=Account)
+class AccountCommandHandler:
+    @handle(RegisterCommand)
+    def register(self, command: RegisterCommand):
+        account = Account(
+            email=command.email,
+            name=command.name
+        )
+        self.repository_for(Account).add(account)
+        
+        # Return the account ID for immediate use
+        return account.id
+```
+
+### Asynchronous Processing
+
+When commands are processed asynchronously (the default behavior), the command handler's return value is not passed back to the caller. Instead, the domain's `process` method returns the position of the command in the event store:
+
+```python
+# Process command asynchronously (default)
+position = domain.process(command)  # or domain.process(command, asynchronous=True)
+```
+
+In asynchronous processing, commands are handled in the background by the Protean Engine, and any return values from the command handler are ignored.
+
+### Configuring Default Processing Behavior
+
+The default command processing behavior can be configured in the domain's configuration:
+
+```toml
+# ...
+command_processing = "sync"  # or "async"
+# ...
+```
+
+When set to "sync", all commands will be processed synchronously by default unless explicitly specified as asynchronous, and vice versa.
+
 ## Unit of Work
 
 Command handler methods always execute within a `UnitOfWork` context by

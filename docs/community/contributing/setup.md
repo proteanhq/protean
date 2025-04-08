@@ -34,13 +34,19 @@ $ python3 -m venv .venv
 $ source .venv/bin/activate
 ```
 
-- Install the development dependencies.
+- Install Poetry
+
+```sh
+$ pip install poetry
+```
+
+- Install development dependencies.
 
 ```sh
 $ poetry install --with dev,test,docs,types --all-extras
 ```
 
--   Install the pre-commit hooks.
+-   Install pre-commit hooks.
 
 ```sh
 $ pre-commit install --install-hooks
@@ -86,15 +92,25 @@ Run the basic test suite with:
 $ protean test
 ```
 
-This runs the basic tests for the current environment, which is usually
-sufficient. If you want to run  the full test suite, you can sep up
+This runs the basic tests for the current environment. To run  the full test suite, you can set up
 dependent services locally with docker:
 
 ```sh
 $ make up
+...
+docker-compose up -d redis elasticsearch postgres message-db
+[+] Running 4/4
+ ✔ Container protean-postgres-1       Running
+ ✔ Container protean-elasticsearch-1  Running
+ ✔ Container protean-message-db-1     Running
+ ✔ Container protean-redis-1          Running       
+...
 $ protean test -c FULL
+...
 ```
 
 Running a full test will also generate a coverage report as part of test
 output. Writing tests for lines that do not have coverage is a great way to
 start contributing.
+
+For more detailed information about testing, please refer to the [Testing Guide](testing.md).
