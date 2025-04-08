@@ -77,48 +77,15 @@ nav:
     - start-here.md
     - features.md
     - core-concepts/philosophy.md
-  - Core Concepts:
-    - core-concepts/analysis-model.md
-    - core-concepts/streams.md
-    - core-concepts/identity.md
-    - core-concepts/changing-state.md
-    - Architecture Patterns:
-      - core-concepts/ddd.md
-      - core-concepts/cqrs.md
-      - core-concepts/event-sourcing.md
-    # - Domain-Driven Design:
-    #   - core-concepts/domain-driven-design/index.md
-    #   - core-concepts/domain-driven-design/ubiquitous-language.md
-    #   - core-concepts/domain-driven-design/bounded-contexts.md
-    #   - core-concepts/domain-driven-design/contexts-and-subdomains.md
-    #   - core-concepts/domain-driven-design/strategic-design.md
-    #   - core-concepts/domain-driven-design/tactical-design.md
-    - Building Blocks:
-      - core-concepts/building-blocks/index.md
-      - core-concepts/building-blocks/aggregates.md
-      - core-concepts/building-blocks/entities.md
-      - core-concepts/building-blocks/value-objects.md
-      - core-concepts/building-blocks/domain-services.md
-      - core-concepts/building-blocks/events.md
-      - core-concepts/building-blocks/commands.md
-      - core-concepts/building-blocks/command-handlers.md
-    #   - core-concepts/building-blocks/event-handlers.md
-    #   - core-concepts/building-blocks/repositories.md
-    #   - core-concepts/building-blocks/models.md
-    #   - core-concepts/building-blocks/view-models.md
-    # - Command-Query Responsibility Segregation:
-    #   - core-concepts/command-query-responsibility-segregation/index.md
-    #   - core-concepts/command-query-responsibility-segregation/commands.md
-    #   - core-concepts/command-query-responsibility-segregation/queries.md
-    #   - core-concepts/command-query-responsibility-segregation/events.md
-    # - Event Sourcing:
-    #   - core-concepts/event-sourcing/index.md
-    #   - core-concepts/event-sourcing/events.md
-    #   - core-concepts/event-sourcing/snapshots.md
-    #   - core-concepts/event-sourcing/projections.md
+
   - Guides:
     - guides/getting-started/installation.md
     #  - guides/getting-started/quickstart.md
+
+    - Essentials:
+      - guides/object-model.md
+      - guides/identity.md
+      - guides/configuration.md
 
     - Domain Model:
       - Compose a Domain:
@@ -146,11 +113,6 @@ nav:
         - guides/domain-behavior/aggregate-mutation.md
         - guides/domain-behavior/raising-events.md
         - guides/domain-behavior/domain-services.md
-
-    - Foundation:
-      - guides/object-model.md
-      - guides/identity.md
-      - guides/configuration.md
 
     - App Layer:
       - Changing State:
@@ -227,6 +189,47 @@ nav:
   #   - examples/index.md
   #   - examples/quickstart.md
   # - faq.md
+
+  - Core Concepts:
+    # - core-concepts/analysis-model.md
+    # - core-concepts/streams.md
+    # - core-concepts/identity.md
+    # - core-concepts/changing-state.md
+    - Architecture Patterns:
+      - core-concepts/ddd.md
+      - core-concepts/cqrs.md
+      - core-concepts/event-sourcing.md
+    # - Domain-Driven Design:
+    #   - core-concepts/domain-driven-design/index.md
+    #   - core-concepts/domain-driven-design/ubiquitous-language.md
+    #   - core-concepts/domain-driven-design/bounded-contexts.md
+    #   - core-concepts/domain-driven-design/contexts-and-subdomains.md
+    #   - core-concepts/domain-driven-design/strategic-design.md
+    #   - core-concepts/domain-driven-design/tactical-design.md
+    - Building Blocks:
+      - core-concepts/domain-elements/index.md
+      - core-concepts/domain-elements/aggregates.md
+      - core-concepts/domain-elements/entities.md
+      - core-concepts/domain-elements/value-objects.md
+      - core-concepts/domain-elements/domain-services.md
+      - core-concepts/domain-elements/events.md
+      - core-concepts/domain-elements/commands.md
+      - core-concepts/domain-elements/command-handlers.md
+    #   - core-concepts/domain-elements/event-handlers.md
+    #   - core-concepts/domain-elements/repositories.md
+    #   - core-concepts/domain-elements/models.md
+    #   - core-concepts/domain-elements/view-models.md
+    # - Command-Query Responsibility Segregation:
+    #   - core-concepts/command-query-responsibility-segregation/index.md
+    #   - core-concepts/command-query-responsibility-segregation/commands.md
+    #   - core-concepts/command-query-responsibility-segregation/queries.md
+    #   - core-concepts/command-query-responsibility-segregation/events.md
+    # - Event Sourcing:
+    #   - core-concepts/event-sourcing/index.md
+    #   - core-concepts/event-sourcing/events.md
+    #   - core-concepts/event-sourcing/snapshots.md
+    #   - core-concepts/event-sourcing/projections.md
+
   - Adapters:
     - adapters/index.md
     - adapters/internals.md

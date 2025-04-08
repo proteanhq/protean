@@ -4,7 +4,77 @@ Protean places a high emphasis on testing to ensure the framework's stability, c
 
 Protean uses `pytest` as the testing tool, because it allows for simple unit tests as well as complex functional testing. Protean leverages `pytest` fixtures to manage test setup and teardown, ensuring tests are isolated and repeatable. The use of `pytest` also enables easy integration with other tools and plugins, such as coverage reporting and parallel test execution.
 
-## Tests
+## `protean test` Command and Options
+
+Protean provides a built-in command for running tests:
+
+```
+protean test [OPTIONS]
+```
+
+Options:
+
+- `-c, --category [CORE|EVENTSTORE|DATABASE|COVERAGE|FULL]`: Specifies which category of tests to run
+
+Categories:
+
+- `CORE`: Runs core tests without external dependencies (default)
+- `EVENTSTORE`: Runs tests for all configured event store adapters
+- `DATABASE`: Runs tests for all configured database adapters
+- `FULL`: Runs the complete test suite with coverage
+
+Example:
+```
+protean test -c DATABASE
+```
+
+> **Note**: Ensure that the underlying database services are running within Docker before executing tests in the `DATABASE`, `EVENTSTORE`, or `FULL` categories. Use the `make up` command to start the necessary services.
+
+
+This will run database tests against multiple adapters (MEMORY, POSTGRESQL, SQLITE).
+
+## Docker Containers
+
+Protean uses Docker Compose to provide a consistent development and testing environment. The included `docker-compose.yml` file defines services for all supported adapters:
+
+```yaml
+services:
+  elasticsearch:
+    image: elasticsearch:8.7.0
+    # configuration...
+
+  redis:
+    image: redis:7.0.11
+    # configuration...
+
+  postgres:
+    image: postgres:15.2
+    # configuration...
+
+  message-db:
+    image: ethangarofolo/message-db:1.2.6
+    # configuration...
+
+  ...
+```
+
+The development environment includes:
+- PostgreSQL for relational database testing
+- Elasticsearch for document store testing
+- Redis for caching and simple key-value storage
+- Message-DB for event sourcing and messaging
+
+To start the development environment, Protean provides easy `make` commands:
+
+```
+make up
+```
+
+Refer to `Makefile` for a full list of supported `make` commands.
+
+These containers are also used in CI pipelines to ensure consistent testing across environments.
+
+## Tests Organization
 
 Protean follows a systematic approach to test organization and naming:
 
@@ -58,7 +128,7 @@ The root `conftest.py` file provides common test fixtures and configuration for 
 - The `db` fixture that creates and drops database artifacts for tests
 - The `run_around_tests` fixture that resets data after tests complete
 
-### Tests Distribution
+### Distribution
 
 The Protean test suite is organized into specialized directories matching the framework's architecture:
 
@@ -76,7 +146,7 @@ For example, in the `tests/domain/` directory, different aspects of domain funct
 - `test_domain_traversal.py`
 - `test_domain_shell_context.py`
 
-### Local `conftest.py`
+### Local Fixtures
 
 For specialized test requirements, you can create local `conftest.py` files within test subdirectories. These local configurations:
 
@@ -87,7 +157,7 @@ For specialized test requirements, you can create local `conftest.py` files with
 
 Local `domain.toml` files can also be created to customize domain configuration for specific test directories. The resolution order follows pytest's fixture resolution, with more specific configurations (closer to the test) taking precedence.
 
-### Markers
+### Pytest Markers
 
 Pytest markers are used to categorize tests and control their execution. Protean uses the following markers:
 
@@ -156,84 +226,19 @@ For asynchronous tests, this fixture:
 - Ensures the loop is properly closed after tests
 - Works with pytest-asyncio to simplify async testing
 
-## Docker Containers
-
-Protean uses Docker Compose to provide a consistent development and testing environment. The included `docker-compose.yml` file defines services for all supported adapters:
-
-```yaml
-services:
-  elasticsearch:
-    image: elasticsearch:8.7.0
-    # configuration...
-
-  redis:
-    image: redis:7.0.11
-    # configuration...
-    
-  postgres:
-    image: postgres:15.2
-    # configuration...
-    
-  message-db:
-    image: ethangarofolo/message-db:1.2.6
-    # configuration...
-
-  ...
-```
-
-The development environment includes:
-- PostgreSQL for relational database testing
-- Elasticsearch for document store testing
-- Redis for caching and simple key-value storage
-- Message-DB for event sourcing and messaging
-
-To start the development environment, Protean provides easy `make` commands:
-
-```
-make up
-```
-
-Refer to `Makefile` for a full list of supported `make` commands.
-
-These containers are also used in CI pipelines to ensure consistent testing across environments.
-
-## `protean test` Command and Options
-
-Protean provides a built-in command for running tests:
-
-```
-protean test [OPTIONS]
-```
-
-Options:
-- `-c, --category [CORE|EVENTSTORE|DATABASE|COVERAGE|FULL]`: Specifies which category of tests to run
-
-Categories:
-- `CORE`: Runs core tests without external dependencies (default)
-- `EVENTSTORE`: Runs tests for all configured event store adapters
-- `DATABASE`: Runs tests for all configured database adapters
-- `FULL`: Runs the complete test suite with coverage
-
-Example:
-```
-protean test -c DATABASE
-```
-
-This will run database tests against multiple adapters (MEMORY, POSTGRESQL, SQLITE).
-
-### Fixtures
+### `db_config`
 
 The `protean test` command leverages fixtures to target different adapters. The below fixtures are present in `tests/conftest.py`:
 
-#### `db_config`
-
-The `db_config` fixture configures database adapters based on command-line options:
+The `db_config` fixture is used by `protean test` command and configures database adapters based on command-line options:
 
 - Returns configuration for MEMORY, POSTGRESQL, ELASTICSEARCH, or SQLITE
 - Used to dynamically select the database to test against
 - Works with the `--db` option to specify the database type
 
-#### `store_config`
+If you want to configure Protean to use a local database on your system, this is the place to edit connection settings.
+
+### `store_config`
 
 The `store_config` fixture does the same for event stores:
 

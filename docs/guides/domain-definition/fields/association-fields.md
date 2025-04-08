@@ -8,7 +8,7 @@ data.
 Note that while Aggregates and Entities can manage associations, they can
 never link to another Aggregate directly. Aggregates are transaction boundaries
 and no transaction should span across aggregates. Read more in
-[Aggregate concepts](../../../core-concepts/building-blocks/aggregates.md).
+[Aggregate concepts](../../../core-concepts/domain-elements/aggregates.md).
 
 ## `HasOne`
 
