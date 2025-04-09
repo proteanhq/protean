@@ -2569,14 +2569,14 @@ typing-extensions = ">=3.7.4.3"
 
 [[package]]
 name = "types-mock"
-version = "5.1.0.20240311"
+version = "5.2.0.20250306"
 description = "Typing stubs for mock"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 groups = ["types"]
 files = [
-    {file = "types-mock-5.1.0.20240311.tar.gz", hash = "sha256:7472797986d83016f96fde7f73577d129b0cd8a8d0b783487a7be330d57ba431"},
-    {file = "types_mock-5.1.0.20240311-py3-none-any.whl", hash = "sha256:0769cb376dfc75b45215619f17a9fd6333d771cc29ce4a38937f060b1e45530f"},
+    {file = "types_mock-5.2.0.20250306-py3-none-any.whl", hash = "sha256:eb69fec98b8de26be1d7121623d05a2f117d1ea2e01dd30c123d07d204a15c95"},
+    {file = "types_mock-5.2.0.20250306.tar.gz", hash = "sha256:15882cb5cf9980587a7607e31890801223801d7997f559686805ce09b6536087"},
 ]
 
 [[package]]
