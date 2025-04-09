@@ -52,7 +52,7 @@ python = "^3.11"
 bleach = ">=4.1.0"
 copier = "^9.1.1"
 inflection = ">=0.5.1"
-ipython = "^8.23.0"
+ipython = ">=8.23,<10.0"
 marshmallow = ">=3.15.0"  # FIXME Remove core dependency
 python-dateutil = ">=2.8.2"
 typer = ">=0.12.3"
