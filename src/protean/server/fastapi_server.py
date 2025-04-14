@@ -1,15 +1,16 @@
 """
 FastAPI Server for Protean
 """
+
 from __future__ import annotations
 
-import logging
 import importlib
-from typing import Optional, Dict, Any
+import logging
+from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, Request, Depends
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
@@ -109,4 +110,4 @@ class FastAPIServer:
         Returns:
             FastAPI: The FastAPI application instance
         """
-        return self.app 
+        return self.app

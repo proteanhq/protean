@@ -164,6 +164,7 @@ def server(
     if engine.exit_code != 0:
         raise typer.Exit(code=engine.exit_code)
 
+
 @app.command()
 def server2(
     domain: Annotated[str, typer.Option()] = ".",
@@ -180,7 +181,7 @@ def server2(
         print(msg)
         logger.error(msg)
         raise typer.Abort()
-    
+
     try:
         server = FastAPIServer(domain_path=domain, debug=debug)
         server.run(host=host, port=port)
