@@ -163,3 +163,34 @@ def server(
 
     if engine.exit_code != 0:
         raise typer.Exit(code=engine.exit_code)
+
+@app.command()
+def server2(
+    domain: Annotated[str, typer.Option()] = ".",
+    host: Annotated[str, typer.Option("--host")] = "0.0.0.0",
+    port: Annotated[int, typer.Option("--port")] = 8000,
+    debug: Annotated[Optional[bool], typer.Option()] = False,
+):
+    """Run FastAPI Server"""
+    try:
+        # Import here to avoid errors if FastAPI is not installed
+        from protean.server.fastapi_server import FastAPIServer
+    except ImportError:
+        msg = "FastAPI is not installed. Install it with 'pip install \"protean[fastapi]\"'"
+        print(msg)
+        logger.error(msg)
+        raise typer.Abort()
+    
+    try:
+        server = FastAPIServer(domain_path=domain, debug=debug)
+        server.run(host=host, port=port)
+    except NoDomainException as exc:
+        msg = f"Error loading Protean domain: {exc.args[0]}"
+        print(msg)  # Required for tests to capture output
+        logger.error(msg)
+        raise typer.Abort()
+    except Exception as exc:
+        msg = f"Error starting FastAPI server: {str(exc)}"
+        print(msg)
+        logger.error(msg)
+        raise typer.Abort()
