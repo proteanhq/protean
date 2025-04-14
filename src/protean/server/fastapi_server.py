@@ -62,14 +62,11 @@ class FastAPIServer:
         Initialize the FastAPI Server
 
         Args:
-            domain_path (str): Path to the domain module. Can be a Python module
-                path or a file path. Defaults to the current directory.
-            debug (bool): Flag to indicate if debug mode is enabled. When
-                enabled, more verbose logging will be shown. Defaults to False.
+            domain_path: Path to the domain module. Defaults to current directory.
+            debug: Flag to indicate if debug mode is enabled. Defaults to False.
 
         Raises:
-            NoDomainException: If the domain could not be loaded from the
-                specified path.
+            NoDomainException: If the domain could not be loaded.
         """
         self.debug = debug
         self.domain_path = domain_path
@@ -98,13 +95,8 @@ class FastAPIServer:
         """
         Initialize the domain and setup routes
 
-        This method loads the domain from the specified path, initializes it,
-        and sets up the API routes. It's called automatically during
-        initialization.
-
         Raises:
-            NoDomainException: If the domain could not be loaded from the
-                specified path.
+            NoDomainException: If the domain could not be loaded.
         """
         try:
             self.domain = derive_domain(self.domain_path)
@@ -118,28 +110,14 @@ class FastAPIServer:
 
         # Setup the dependency for domain context
         async def get_domain_context():
-            """
-            Dependency for domain context
-
-            This function is used as a FastAPI dependency to ensure that a
-            domain context is set up for each request. The context is
-            automatically cleaned up after the request is processed.
-            """
+            """Dependency for domain context"""
             with self.domain.domain_context():
                 yield
 
         # Add routes
         @self.app.get("/")
         async def root(domain_ctx=Depends(get_domain_context)):
-            """
-            Root endpoint that returns basic information about the domain
-
-            This endpoint provides basic information about the Protean domain
-            including the domain name and Protean version.
-
-            Returns:
-                dict: A dictionary containing domain information
-            """
+            """Root endpoint that returns basic information about the domain"""
             return {
                 "message": "Protean API Server",
                 "domain": self.domain.__class__.__name__,
@@ -150,12 +128,9 @@ class FastAPIServer:
         """
         Run the FastAPI server using Uvicorn
 
-        This method starts the FastAPI server using Uvicorn as the ASGI server.
-
         Args:
-            host (str): Host to bind the server to. Defaults to "0.0.0.0"
-                which binds to all network interfaces.
-            port (int): Port to bind the server to. Defaults to 8000.
+            host: Host to bind the server to. Defaults to "0.0.0.0".
+            port: Port to bind the server to. Defaults to 8000.
         """
         import uvicorn
 
@@ -166,10 +141,7 @@ class FastAPIServer:
         """
         Get the FastAPI application instance
 
-        This method returns the FastAPI application instance which can be used
-        for integration with existing FastAPI applications or ASGI servers.
-
         Returns:
-            FastAPI: The FastAPI application instance
+            The FastAPI application instance
         """
         return self.app
