@@ -9,6 +9,7 @@ Release History
 * Optimize fetching handlers for domain events
 * Remove clone method from Entity/Aggregate
 * Remove `provider`` meta option from Entities
+* Add out-of-the-box FastAPI server with `protean server2` command
 
 0.12.0
 ------

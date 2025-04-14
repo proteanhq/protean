@@ -172,7 +172,23 @@ def server2(
     port: Annotated[int, typer.Option("--port")] = 8000,
     debug: Annotated[Optional[bool], typer.Option()] = False,
 ):
-    """Run FastAPI Server"""
+    """Run FastAPI Server
+
+    This command starts a FastAPI server that serves your Protean domain.
+    It automatically loads the domain, initializes it, and sets up routes
+    for interacting with the domain via a RESTful API.
+
+    Features:
+    - Root endpoint (/) with domain information
+    - Domain context management for all requests
+    - Automatic OpenAPI documentation at /docs
+
+    FastAPI and Uvicorn must be installed. You can install them with:
+    `pip install "protean[fastapi]"`
+
+    .. versionadded:: 0.12.1
+       Added the server2 command.
+    """
     try:
         # Import here to avoid errors if FastAPI is not installed
         from protean.server.fastapi_server import FastAPIServer
