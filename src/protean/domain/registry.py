@@ -147,3 +147,4 @@ for name, element_type in properties().items():
 
     # Set the property on the class
     setattr(_DomainRegistry, name, prop)
+registry = _DomainRegistry()
