@@ -1,7 +1,8 @@
 import logging
-from unittest.mock import patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
+from click.exceptions import Abort
 from fastapi.testclient import TestClient
 
 from protean.server.fastapi_server import ProteanFastAPIServer, create_app, logger
@@ -131,3 +132,56 @@ class TestServerStartup:
         )
         server.run()
         mock_uvicorn_run.assert_called_once_with(server.app, host="0.0.0.0", port=8000)
+
+    @pytest.mark.fastapi
+    @patch("protean.cli.server2.derive_domain")
+    @patch("protean.cli.server2.ProteanFastAPIServer")
+    def test_server_command_with_subcommand(self, mock_server, mock_derive_domain):
+        """Test that the server command exits early when a subcommand is invoked."""
+        from protean.cli.server2 import main
+
+        # Create a mock context with an invoked subcommand
+        mock_ctx = MagicMock()
+        mock_ctx.invoked_subcommand = "subcommand"
+
+        # Call the main function with the mock context
+        main(mock_ctx)
+
+        # Verify that neither derive_domain nor ProteanFastAPIServer were called
+        mock_derive_domain.assert_not_called()
+        mock_server.assert_not_called()
+
+    @pytest.mark.fastapi
+    @patch("protean.cli.server2.derive_domain")
+    @patch("protean.cli.server2.ProteanFastAPIServer")
+    @patch("protean.cli.server2.typer.echo")
+    @patch("protean.cli.server2.logger.error")
+    def test_server_command_exception_handling(
+        self, mock_logger_error, mock_echo, mock_server, mock_derive_domain
+    ):
+        """Test that the server command properly handles and reports exceptions."""
+        from protean.cli.server2 import main
+
+        # Set up the mock server to raise an exception
+        mock_server_instance = mock_server.return_value
+        mock_server_instance.run.side_effect = Exception("Test error")
+
+        # Create a mock context
+        mock_ctx = MagicMock()
+        mock_ctx.invoked_subcommand = None
+
+        # Call the main function and expect it to raise click.exceptions.Abort
+        with pytest.raises(Abort):
+            main(mock_ctx)
+
+        # Verify that the error was logged
+        mock_logger_error.assert_called_once_with("Error starting server: Test error")
+
+        # Verify both echo messages in the correct order
+        assert mock_echo.call_count == 2
+        mock_echo.assert_has_calls(
+            [
+                call("Starting Protean FastAPI server at 0.0.0.0:8000..."),
+                call("Error starting server: Test error", err=True),
+            ]
+        )
