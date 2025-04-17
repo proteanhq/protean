@@ -52,7 +52,7 @@ python = "^3.11"
 bleach = ">=4.1.0"
 copier = "^9.1.1"
 inflection = ">=0.5.1"
-ipython = "^8.23.0"
+ipython = ">=8.23,<10.0"
 marshmallow = ">=3.15.0"  # FIXME Remove core dependency
 python-dateutil = ">=2.8.2"
 typer = ">=0.12.3"
@@ -64,7 +64,7 @@ werkzeug = ">=2.0.0"
 
 elasticsearch = {version = "~7.17.9", optional = true}
 elasticsearch-dsl = {version = "~7.4.1", optional = true}
-redis = {version = "~5.0.7", optional = true}
+redis = {version = ">=5.0.7,<5.3.0", optional = true}
 sqlalchemy = {version = "~2.0.30", optional = true}
 psycopg2 = {version = ">=2.9.9", optional = true}
 flask = {version = ">=1.1.1", optional = true}
@@ -95,16 +95,16 @@ check-manifest = ">=0.49"
 coverage = ">=7.3.2"
 docutils = ">=0.20.1"
 pre-commit = ">=2.16.0"
-ruff = "^0.4.3"
+ruff = ">=0.4.3,<0.12.0"
 twine = ">=4.0.2"
 
 [tool.poetry.group.test]
 optional = true
 
 [tool.poetry.group.test.dependencies]
-mock = "5.1.0"
+mock = "5.2.0"
 pytest-asyncio = ">=0.21.1"
-pytest-mock = "3.12.0"
+pytest-mock = "3.14.0"
 pytest = "^8.2.1"
 mypy = "^1.11.0"
 coverage = "^7.8.0"
