@@ -27,6 +27,7 @@ from typing_extensions import Annotated
 from protean.cli.docs import app as docs_app
 from protean.cli.generate import app as generate_app
 from protean.cli.new import new
+from protean.cli.server2 import app as server2_app
 from protean.cli.shell import shell
 from protean.exceptions import NoDomainException
 from protean.server.engine import Engine
@@ -42,6 +43,7 @@ app.command()(new)
 app.command()(shell)
 app.add_typer(generate_app, name="generate")
 app.add_typer(docs_app, name="docs")
+app.add_typer(server2_app, name="server2")
 
 
 class Category(str, Enum):
