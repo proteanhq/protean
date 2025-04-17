@@ -1,3 +1,9 @@
-from .engine import Engine
+"""Server module for Protean."""
 
-__all__ = ["Engine"]
+from .engine import Engine
+from .fastapi_server import create_app
+
+__all__ = [
+    "Engine",
+    "create_app",
+]
