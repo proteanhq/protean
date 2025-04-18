@@ -168,17 +168,32 @@ class HandlerMixin:
         setattr(subclass, "_handlers", defaultdict(set))
 
     @classmethod
-    def _handle(cls, item: Union[Message, BaseCommand, BaseEvent]) -> None:
-        """Handle a message or command/event."""
+def _handle(cls, item: Union[Message, BaseCommand, BaseEvent]) -> Optional[Any]:
+    """Handle a message or command/event.
+    
+    Returns:
+        Optional[Any]: 
+            - The return value if handling a Command (exactly one handler).
+            - None if handling an Event (zero or more handlers).
+    """
+    #Message to object (if necessary)
+    item = item.to_object() if isinstance(item, Message) else item
 
-        # Convert Message to object if necessary
-        item = item.to_object() if isinstance(item, Message) else item
+    #specific handlers if available, or fallback on `$any` if defined
+    handlers = cls._handlers[item.__class__.__type__] or cls._handlers["$any"]
 
-        # Use specific handlers if available, or fallback on `$any` if defined
-        handlers = cls._handlers[item.__class__.__type__] or cls._handlers["$any"]
+    # Handling the  Commands (must have exactly one handler, return its value)
+    if isinstance(item, BaseCommand):
+        if len(handlers) != 1:
+            raise ValueError(
+                f"Command {item.__class__.__name__} must have exactly one handler."
+            )
+        return next(iter(handlers))(cls(), item)
 
-        for handler_method in handlers:
-            handler_method(cls(), item)
+    # Handling Events (execute all handlers, return None)
+    for handler_method in handlers:
+        handler_method(cls(), item)
+    return None
 
     @classmethod
     def handle_error(cls, exc: Exception, message: Message) -> None:

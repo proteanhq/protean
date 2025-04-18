@@ -1062,8 +1062,8 @@ class Domain:
                 f"Element {command.__class__.__name__} is not registered in domain {self.name}"
             )
 
-        command_with_metadata = self._enrich_command(command, asynchronous)
-        position = self.event_store.store.append(command_with_metadata)
+        command_with_metadata = self._enrich_command(command)
+        result = self.event_store.store.append(command_with_metadata)
 
         if (
             not asynchronous
@@ -1071,9 +1071,9 @@ class Domain:
         ):
             handler_class = self.command_handler_for(command)
             if handler_class:
-                handler_class._handle(command_with_metadata)
+                result=handler_class._handle(command_with_metadata)
 
-        return position
+        return result
 
     def command_handler_for(self, command: BaseCommand) -> Optional[BaseCommandHandler]:
         """Return Command Handler for a specific command.
