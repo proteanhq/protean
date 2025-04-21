@@ -89,12 +89,13 @@ nav:
 
     - Domain Model:
       - Compose a Domain:
+        - guides/compose-a-domain/index.md
         - guides/compose-a-domain/register-elements.md
         - guides/compose-a-domain/initialize-domain.md
         - guides/compose-a-domain/activate-domain.md
         - guides/compose-a-domain/when-to-compose.md
         - guides/compose-a-domain/element-decorators.md
-      - Defining Concepts:
+      - Define Concepts:
         - guides/domain-definition/index.md
         - Fields:
           - guides/domain-definition/fields/index.md
@@ -106,7 +107,7 @@ nav:
         - guides/domain-definition/entities.md
         - guides/domain-definition/value-objects.md
         - guides/domain-definition/events.md
-      - Adding Behavior:
+      - Add Behavior:
         - guides/domain-behavior/index.md
         - guides/domain-behavior/validations.md
         - guides/domain-behavior/invariants.md
@@ -115,16 +116,16 @@ nav:
         - guides/domain-behavior/domain-services.md
 
     - App Layer:
-      - Changing State:
+      - Change State:
         - guides/change-state/index.md
         - guides/change-state/application-services.md
         - guides/change-state/commands.md
         - guides/change-state/command-handlers.md
-      - Persisting State:
+      - Persist State:
         - guides/change-state/persist-aggregates.md
         - guides/change-state/unit-of-work.md
         - guides/change-state/retrieve-aggregates.md
-      - Consuming State Changes:
+      - Consume State Changes:
         - guides/consume-state/index.md
         - guides/consume-state/event-handlers.md
         - guides/consume-state/views.md

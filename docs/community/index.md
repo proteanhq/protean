@@ -1,13 +1,9 @@
 # Community
 
-## Discord
+!!! note
 
-If you want to chat with other Protean users and maintainers in real-time,
-check out our Discord server. There is (almost) always somebody online
-answering each other's questions, getting feedback on their projects, and
-sharing what they've built.
+    **Disclaimer**: Protean framework is not associated with, or related to, [Protean eGov Technologies](https://www.proteantech.in/) or [Code for Gov Tech](https://codeforgovtech.in/) initiatives.
 
-[Chat about Protean on Discord →](https://discord.gg/AZvDCWYV)
 
 ## Forum
 
