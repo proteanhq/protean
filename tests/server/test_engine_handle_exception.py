@@ -1,4 +1,3 @@
-import asyncio
 from unittest import mock
 
 import pytest
@@ -6,20 +5,6 @@ import pytest
 from protean.domain import Domain
 from protean.server.engine import Engine, logger
 from protean.utils import Processing
-
-
-@pytest.fixture(autouse=True)
-def auto_set_and_close_loop():
-    # Create and set a new loop
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    yield
-
-    # Close the loop after the test
-    if not loop.is_closed():
-        loop.close()
-    asyncio.set_event_loop(None)  # Explicitly unset the loop
 
 
 @pytest.fixture
