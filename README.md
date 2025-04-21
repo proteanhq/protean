@@ -13,6 +13,11 @@ Protean is available on PyPI:
 
 ```console
 $ python -m pip install protean
+Collecting protean
+  Downloading protean-0.13.0-py3-none-any.whl.metadata (5.9 kB)
+...
+Installing collected packages: ...
+Successfully installed ...
 ```
 
 Protean officially supports Python 3.11+.
@@ -44,21 +49,23 @@ with domain.domain_context():
 
 ## Documentation
 
-Online docs are available at https://docs.proteanhq.com.
+Online docs are available at [https://docs.proteanhq.com](https://docs.proteanhq.com).
 
 ## Contributing
 
-1.  Check for open issues or open a fresh issue to start a discussion
+> **Note**: Protean framework is not associated or related to [Protean eGov Technologies](https://www.proteantech.in/) or [Code for Gov Tech](https://codeforgovtech.in/) initiatives.
+
+1. Check for open issues or open a fresh issue to start a discussion
     around a feature idea or a bug.
-2.  Fork [the repository](https://github.com/proteanhq/protean) on
+2. Fork [the repository](https://github.com/proteanhq/protean) on
     GitHub, branch off `main` and start making your changes.
-3.  Write a test which shows that the bug was fixed or that the feature
+3. Write a test which shows that the bug was fixed or that the feature
     works as expected.
-4.  Send a pull request and bug the maintainer until it gets merged and
+4. Send a pull request and bug the maintainer until it gets merged and
     published.
 
 For more information, please check out the
-[contributing guidelines](https://docs.proteanhq.com/community/contributing/).
+[community](https://docs.proteanhq.com/community/) section.
 
 ## License
 

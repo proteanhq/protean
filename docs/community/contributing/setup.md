@@ -1,4 +1,4 @@
-# Set up Protean locally
+# Setting up Protean locally
 
 Thank you for considering contributing to Protean!
 
@@ -51,6 +51,8 @@ $ poetry install --with dev,test,docs,types --all-extras
 ```sh
 $ pre-commit install --install-hooks
 ```
+
+- If you encounter errors installing `psycopg2`, you are missing dependencies. For example, if you are using macOS and have installed PostgreSQL via Homebrew, you may need to set compilation flags. Follow instructions listed for MacOSX on [Postgresql.org](https://www.postgresql.org/download/macosx/). Once installed, `brew install` will list further settings required in your environment.
 
 ## Start coding
 
