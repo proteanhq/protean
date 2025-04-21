@@ -1,7 +1,7 @@
 from protean import Domain, handle
 from protean.fields import Identifier, Integer, String
 
-domain = Domain(__file__)
+domain = Domain()
 domain.config["event_processing"] = "sync"
 
 

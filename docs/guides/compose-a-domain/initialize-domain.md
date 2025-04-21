@@ -6,9 +6,11 @@ The domain is initialized by calling the `init` method.
 domain.init()
 ```
 
+## `Domain.init()`
+
 A call to `init` does the following:
 
-## 1. Traverse the domain model
+### 1. Traverse the domain model
 
 By default, Protean traverses the directory structure under the domain file
 to discover domain elements. You can control this behavior with the `traverse`
@@ -22,7 +24,7 @@ If you choose to not traverse, Protean will not be able to detect domain
 elements automatically. ***You are responsible for registering each element
 with the domain explicitly***.
 
-## 2. Construct the object graph
+### 2. Construct the object graph
 
 Protean constructs a graph of all elements registered with a domain and
 exposes them in a registry.
@@ -31,7 +33,7 @@ exposes them in a registry.
 {! docs_src/guides/composing-a-domain/016.py !}
 ```
 
-## 3. Initialize dependencies
+### 3. Initialize dependencies
 
 Calling `domain.init()` establishes connectivity with the underlying infra,
 testing access, and making them available for use by the rest of the system. 
@@ -52,7 +54,7 @@ makes it available for domain elements for further use.
 Refer to [Configuration handling](../configuration.md) to understand the different ways to configure
 the domain.
 
-## 4. Validate Domain Model
+### 4. Validate Domain Model
 
 In the final part of domain initialization, Protean performs additional setup
 tasks on domain elements and also conducts various checks to ensure the domain
@@ -61,17 +63,18 @@ model is specified correctly.
 Examples of checks include:
 
 1. Resolving references that were specified as Strings, like:
+
 ```python
 @domain.entity(part_of="User")
 class Account:
     ...
 ```
 
-2. Setting up Aggregate clusters and their shared settings. The object graph
+1. Setting up Aggregate clusters and their shared settings. The object graph
 constructed earlier is used to homogenize settings across all elements under
 an aggregate, like the stream category and database provider.
 
-3. Constructing a map of command and event types to reference when processing
+1. Constructing a map of command and event types to reference when processing
 incoming messages later.
 
-4. Various checks and validations to ensure the domain structure is valid.
+1. Various checks and validations to ensure the domain structure is valid.

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from protean import Domain
 from protean.fields import DateTime, Identifier
 
-publishing = Domain(__file__, "Publishing")
+publishing = Domain(name="Publishing")
 
 
 def utc_now():

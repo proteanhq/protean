@@ -9,7 +9,7 @@ def gen_ids(prefix="id"):
     return f"{prefix}-{timestamp}-{random.randint(0, 1000)}"
 
 
-domain = Domain(__file__, identity_function=gen_ids)
+domain = Domain(identity_function=gen_ids)
 
 # or you can pass parameters too
-# domain = Domain(__file__, identity_function=lambda: gen_ids("foo"))
+# domain = Domain(identity_function=lambda: gen_ids("foo"))

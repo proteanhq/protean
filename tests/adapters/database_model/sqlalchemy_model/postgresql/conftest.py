@@ -5,7 +5,7 @@ from tests.shared import initialize_domain
 
 @pytest.fixture(autouse=True)
 def test_domain():
-    domain = initialize_domain(__file__, "PostgreSQL Model Tests")
+    domain = initialize_domain(name="PostgreSQL Model Tests", root_path=__file__)
 
     with domain.domain_context():
         yield domain
@@ -13,7 +13,7 @@ def test_domain():
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_db():
-    domain = initialize_domain(__file__, "PostgreSQL Model DB Setup")
+    domain = initialize_domain(name="PostgreSQL Model DB Setup", root_path=__file__)
     with domain.domain_context():
         # Create all associated tables
         from .elements import (

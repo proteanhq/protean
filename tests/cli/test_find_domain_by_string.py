@@ -16,7 +16,7 @@ def mock_module():
     module = MagicMockWithName()
 
     # Configure the module for different test scenarios
-    module.valid_domain = Domain(__file__)
+    module.valid_domain = Domain()
     module.not_a_domain = "not a domain instance"
     return module
 
@@ -30,7 +30,7 @@ def test_find_domain_by_string_with_empty_domain_name(mock_module):
 
 
 def test_find_domain_by_string_with_whitespace_domain_name(mock_module):
-    mock_module.valid_domain = Domain(__file__)
+    mock_module.valid_domain = Domain()
     domain = find_domain_by_string(mock_module, " valid_domain ")
     assert isinstance(
         domain, Domain
@@ -70,7 +70,7 @@ def test_find_domain_by_string_with_nonexistent_attribute(mock_module):
 
 
 def test_find_domain_by_string_with_function_call(mock_module):
-    mock_module.domain_function = MagicMock(return_value=Domain(__file__))
+    mock_module.domain_function = MagicMock(return_value=Domain())
     domain = find_domain_by_string(mock_module, "domain_function()")
     assert isinstance(domain, Domain), "Should handle function calls correctly"
 
@@ -84,7 +84,7 @@ def test_find_domain_by_string_with_function_call_with_arguments(mock_module):
 
 
 def test_find_domain_by_string_returns_correct_domain_instance(mock_module):
-    expected_domain = Domain(__file__)
+    expected_domain = Domain()
     mock_module.specific_domain = expected_domain
     actual_domain = find_domain_by_string(mock_module, "specific_domain")
     assert (

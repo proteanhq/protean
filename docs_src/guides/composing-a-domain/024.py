@@ -3,7 +3,7 @@ import time
 from protean import Domain
 from protean.fields import Auto, String
 
-domain = Domain(__file__)
+domain = Domain()
 
 
 def gen_id():  # (1)

@@ -49,7 +49,7 @@ class TestProviders:
     @pytest.mark.no_test_domain
     def test_exception_on_invalid_provider(self):
         """Test exception on invalid provider"""
-        domain = Domain(__file__)
+        domain = Domain()
         domain.config["databases"]["default"] = {
             "provider": "sqlite",
             "database_uri": "sqlite:////C:/Users/username/foobar.db",

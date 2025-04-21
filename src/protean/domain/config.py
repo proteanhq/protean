@@ -88,7 +88,7 @@ class Config2(dict):
             return None
 
         # Start checking from the provided path up to 2 parent directories
-        current_dir = os.path.abspath(os.path.dirname(path))
+        current_dir = path
         config_file_name = None
 
         for _ in range(3):  # Check the current directory and up to 2 parent directories

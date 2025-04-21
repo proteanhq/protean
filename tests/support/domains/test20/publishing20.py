@@ -1,4 +1,4 @@
 from protean import Domain
 
-publishing = Domain(__file__, "Publishing20")
+publishing = Domain(name="Publishing20")
 print(id(publishing))

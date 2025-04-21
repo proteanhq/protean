@@ -13,7 +13,7 @@ from protean.fields import (
     ValueObject,
 )
 
-domain = Domain(__file__)
+domain = Domain()
 
 
 class OrderStatus(Enum):

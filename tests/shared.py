@@ -10,9 +10,9 @@ import pytest
 from protean.domain import Domain
 
 
-def initialize_domain(file_path, name="Tests"):
+def initialize_domain(name="Tests", root_path=None):
     """Initialize a Protean Domain with configuration from a file"""
-    domain = Domain(file_path, name=name)
+    domain = Domain(name=name, root_path=root_path)
 
     # We initialize and load default configuration into the domain here
     #   so that test cases that don't need explicit domain setup can

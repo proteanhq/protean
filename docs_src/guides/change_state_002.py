@@ -1,7 +1,7 @@
 from protean import Domain
 from protean.fields import Float, HasMany, String, Text
 
-domain = Domain(__file__)
+domain = Domain()
 
 
 @domain.aggregate

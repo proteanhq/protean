@@ -163,7 +163,7 @@ class ShipmentEventHandler(BaseEventHandler):
 
 @pytest.fixture
 def test_domain():
-    test_domain = Domain(__file__, "Test")
+    test_domain = Domain(name="Test")
 
     test_domain.config["event_store"] = {
         "provider": "message_db",
@@ -192,7 +192,7 @@ def test_domain():
 
 @pytest.fixture
 def shipment_domain():
-    shipment_domain = Domain(__file__, "Shipment")
+    shipment_domain = Domain(name="Shipment")
 
     shipment_domain.config["event_store"] = {
         "provider": "message_db",

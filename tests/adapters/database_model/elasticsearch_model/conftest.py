@@ -5,7 +5,7 @@ from tests.shared import initialize_domain
 
 @pytest.fixture
 def test_domain():
-    domain = initialize_domain(__file__, "Elasticsearch Model Tests")
+    domain = initialize_domain(name="Elasticsearch Model Tests", root_path=__file__)
 
     with domain.domain_context():
         yield domain
@@ -13,7 +13,7 @@ def test_domain():
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_db():
-    domain = initialize_domain(__file__, "Elasticsearch Model DB Setup")
+    domain = initialize_domain(name="Elasticsearch Model DB Setup", root_path=__file__)
     with domain.domain_context():
         # Create all indexes
         from .elements import (

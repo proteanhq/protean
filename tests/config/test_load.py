@@ -27,7 +27,7 @@ class TestLoadingTOML:
         assert test_domain is not None
         assert test_domain.config["databases"]["default"]["provider"] == "memory"
         assert all(
-            key in test_domain.config["databases"] for key in ["memory", "sqlite"]
+            key in test_domain.config["databases"] for key in ["default", "memory"]
         )
         assert all(
             key in test_domain.config

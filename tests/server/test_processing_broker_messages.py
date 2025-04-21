@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from protean.core.subscriber import BaseSubscriber
+from protean.domain import Processing
 from protean.server import Engine
 
 terms = []
@@ -24,6 +25,11 @@ def clear_terms():
 
     global terms
     terms = []
+
+
+@pytest.fixture(autouse=True)
+def set_message_processing_async(test_domain):
+    test_domain.config["message_processing"] = Processing.ASYNC.value
 
 
 @pytest.mark.broker_common

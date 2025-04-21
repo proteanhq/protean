@@ -9,7 +9,7 @@ from protean.utils import Processing
 
 @pytest.fixture
 def engine():
-    domain = Domain(__file__)
+    domain = Domain()
     domain.config["event_processing"] = Processing.ASYNC.value
     return Engine(domain, test_mode=True, debug=True)
 

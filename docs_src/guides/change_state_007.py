@@ -5,7 +5,7 @@ from protean import Domain, handle
 from protean.fields import DateTime, Identifier, String
 from protean.utils.globals import current_domain
 
-publishing = Domain(__file__, "Publishing")
+publishing = Domain(name="Publishing")
 
 
 def utc_now():

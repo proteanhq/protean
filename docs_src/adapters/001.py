@@ -1,6 +1,6 @@
 from protean import Domain
 
-domain = Domain(__file__)
+domain = Domain()
 
 # Non-existent database
 domain.config["databases"]["default"] = {

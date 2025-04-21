@@ -17,7 +17,7 @@ class TestMessageDBEventStore:
         assert isinstance(test_domain.event_store.store, MessageDBStore)
 
     def test_error_on_message_db_initialization(self):
-        domain = Domain(__file__)
+        domain = Domain()
         domain.config["event_store"]["provider"] = "message_db"
         domain.config["event_store"]["database_uri"] = (
             "postgresql://message_store@localhost:5433/dummy"

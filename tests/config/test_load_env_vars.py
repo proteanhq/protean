@@ -1,4 +1,6 @@
 import os
+import sys
+from pathlib import Path
 
 import pytest
 from mock import patch
@@ -15,6 +17,17 @@ def env_vars():
         os.environ, {"ENV_VAR1": "value1", "ENV_VAR2": "value2", "ENV_VAR3": "value3"}
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def reset_path():
+    """Reset sys.path after every test run"""
+    original_path = sys.path[:]
+    cwd = Path.cwd()
+    yield
+
+    sys.path[:] = original_path
+    os.chdir(cwd)
 
 
 def test_load_env_vars_single_string(env_vars):
