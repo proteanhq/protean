@@ -114,6 +114,19 @@ class Domain:
     #: :data:`secret_key` configuration key. Defaults to ``None``.
     secret_key = ConfigAttribute("secret_key")
 
+    def _is_interactive_context(self, filename):
+        """Check if the given filename indicates an interactive context like shell or notebook.
+
+        Args:
+            filename: The code filename to check
+
+        Returns:
+            bool: True if filename indicates interactive context, False otherwise
+        """
+        if filename is None:
+            return False
+        return filename in {"<stdin>", "<ipython-input>", "<string>", "<console>"}
+
     def _guess_caller_path(self) -> str:
         """Attempts to determine the path of the caller script or module.
 
@@ -132,7 +145,7 @@ class Domain:
             filename = frame.f_code.co_filename
 
             # Handle special cases
-            if filename in {"<stdin>", "<ipython-input>", "<string>", "<console>"}:
+            if self._is_interactive_context(filename):
                 # Interactive shell or Jupyter notebook
                 return str(Path.cwd())
 

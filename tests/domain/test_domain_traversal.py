@@ -69,3 +69,50 @@ class TestMultiFolderStructureTraversal:
 
         domain.init()
         assert len(domain.registry.aggregates) == 2  # Includes MemoryMessage Aggregate
+
+
+@pytest.mark.no_test_domain
+def test_is_domain_file_nonexistent_path():
+    """Test that _is_domain_file returns False for non-existent paths."""
+    from protean import Domain
+
+    domain = Domain()
+
+    # Test with a non-existent file path
+    non_existent_path = "/path/that/definitely/does/not/exist.py"
+
+    # This should return False since the path doesn't exist
+    result = domain._is_domain_file(non_existent_path)
+    assert result is False
+
+
+@pytest.mark.no_test_domain
+def test_traverse_with_file_path():
+    """Test that _traverse correctly handles when root_path is a file path."""
+    import tempfile
+    from unittest.mock import MagicMock, patch
+
+    from protean import Domain
+
+    # Create a temporary file to use as the root_path
+    with tempfile.NamedTemporaryFile(suffix=".py") as temp_file:
+        # Create a Domain with the temporary file path as root_path
+        domain = Domain(root_path=temp_file.name)
+
+        # Verify the root_path is a file
+        assert Path(domain.root_path).is_file()
+
+        # We'll patch the actual traversal logic to avoid side effects
+        with patch("os.listdir") as mock_listdir, patch(
+            "importlib.util.spec_from_file_location"
+        ) as mock_spec:
+            # Configure mocks to prevent actual traversal
+            mock_listdir.return_value = []
+
+            # Call _traverse directly
+            domain._traverse()
+
+            # The key assertion: verify that mock_listdir was called with the parent directory
+            # This confirms that when root_path is a file, the code correctly uses the parent dir
+            parent_dir = str(Path(temp_file.name).parent)
+            mock_listdir.assert_called_with(parent_dir)
