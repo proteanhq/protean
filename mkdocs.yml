@@ -175,6 +175,8 @@ nav:
         - guides/cli/shell.md
         - guides/cli/docs.md
         - guides/cli/test.md
+      - Server:
+        - guides/server/index.md
   # - Advanced:
   #   - advanced/index.md
   #   - advanced/multi-domain.md
