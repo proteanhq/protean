@@ -5,9 +5,11 @@ to register Domain Elements.
 import inspect
 import json
 import logging
+import os
 import sys
 from collections import defaultdict
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 from uuid import uuid4
 
@@ -59,9 +61,24 @@ class Domain:
     in the :file:`__init__.py` file of your package like this::
 
         from protean import Domain
-        domain = Domain(__name__)
+        domain = Domain()
 
-    :param domain_name: the name of the domain
+    The Domain will automatically detect the root path of the calling module.
+    You can also specify the root path explicitly::
+
+        domain = Domain(root_path="/path/to/domain")
+
+    The root path resolution follows this priority:
+    1. Explicit `root_path` parameter if provided
+    2. `DOMAIN_ROOT_PATH` environment variable if set
+    3. Auto-detection of caller's file location
+    4. Current working directory as last resort
+
+    :param root_path: the path to the folder containing the domain file
+                      (optional, will auto-detect if not provided)
+    :param name: the name of the domain (optional, will use the module name if not provided)
+    :param config: optional configuration dictionary
+    :param identity_function: optional function to generate identities for domain objects
     """
 
     from protean.utils import IdentityStrategy, IdentityType
@@ -97,14 +114,74 @@ class Domain:
     #: :data:`secret_key` configuration key. Defaults to ``None``.
     secret_key = ConfigAttribute("secret_key")
 
+    def _is_interactive_context(self, filename):
+        """Check if the given filename indicates an interactive context like shell or notebook.
+
+        Args:
+            filename: The code filename to check
+
+        Returns:
+            bool: True if filename indicates interactive context, False otherwise
+        """
+        if filename is None:
+            return False
+        return filename in {"<stdin>", "<ipython-input>", "<string>", "<console>"}
+
+    def _guess_caller_path(self) -> str:
+        """Attempts to determine the path of the caller script or module.
+
+        Returns the path of the file that called the Domain constructor.
+        Falls back to current working directory if no file path can be determined.
+
+        This handles various execution contexts:
+        - Standard Python scripts
+        - Jupyter/IPython notebooks
+        - REPL/interactive shell
+        - Frozen/PyInstaller applications
+        """
+        try:
+            # Get the frame of the caller of the Domain constructor (2 frames up)
+            frame = sys._getframe(2)
+            filename = frame.f_code.co_filename
+
+            # Handle special cases
+            if self._is_interactive_context(filename):
+                # Interactive shell or Jupyter notebook
+                return str(Path.cwd())
+
+            # Handle frozen applications (PyInstaller, etc.)
+            if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+                # PyInstaller creates a temp folder and stores path in _MEIPASS
+                return getattr(sys, "_MEIPASS")
+
+            # Regular Python script
+            try:
+                return str(Path(filename).resolve().parent)
+            except (TypeError, ValueError):
+                # Fallback to CWD if unable to determine path
+                return str(Path.cwd())
+        except Exception:
+            # Final fallback for any other unexpected errors
+            return str(Path.cwd())
+
     def __init__(
         self,
-        root_path: str,
+        root_path: str = None,
         name: str = "",
         config: Optional[Dict] = None,
         identity_function: Optional[Callable] = None,
     ):
-        self.root_path = root_path
+        # Determine root_path based on resolution priority
+        if root_path is None:
+            # Try to get from environment variable
+            env_root_path = os.environ.get("DOMAIN_ROOT_PATH")
+            if env_root_path:
+                self.root_path = env_root_path
+            else:
+                # Auto-detect
+                self.root_path = self._guess_caller_path()
+        else:
+            self.root_path = root_path
 
         # Initialize the domain with the name of the module if not provided
         # Get the stack frame of the caller of the __init__ method
@@ -239,8 +316,14 @@ class Domain:
         import os
         import pathlib
 
-        # Directory containing the domain file
-        root_dir = pathlib.PurePath(pathlib.Path(self.root_path).resolve()).parent
+        # Ensure root_path is a directory path
+        root_path = Path(self.root_path)
+        if root_path.is_file():
+            # If it's a file path (e.g. from __file__), get the parent directory
+            root_dir = root_path.parent
+        else:
+            # It's already a directory
+            root_dir = root_path
 
         # Parent Directory of the directory containing the domain file
         #
@@ -287,7 +370,7 @@ class Domain:
                 if (
                     os.path.isfile(full_file_path)
                     and os.path.splitext(filename)[1] == ".py"
-                    and full_file_path != self.root_path
+                    and not self._is_domain_file(full_file_path)
                 ):
                     # Construct the module path to import from
                     if filename != "__init__.py":
@@ -307,6 +390,23 @@ class Domain:
                         spec.loader.exec_module(module)
 
                     logger.debug(f"Loaded {filename}")
+
+    def _is_domain_file(self, file_path):
+        """Check if this is the domain file itself, to avoid self-import.
+
+        This replaces the direct path comparison that was used before.
+        """
+        if not Path(file_path).is_file():
+            return False
+
+        # Get the frame where the Domain was instantiated
+        frame = sys._getframe(0)
+        while frame:
+            if frame.f_code.co_filename == file_path:
+                return True
+            frame = frame.f_back
+
+        return False
 
     def _initialize(self):
         """Initialize domain dependencies and adapters."""

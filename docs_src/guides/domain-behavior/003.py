@@ -4,7 +4,7 @@ from enum import Enum
 from protean import Domain
 from protean.fields import DateTime, Float, Integer, String
 
-domain = Domain(__file__)
+domain = Domain()
 
 
 def utc_now():

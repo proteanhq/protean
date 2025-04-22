@@ -2,16 +2,25 @@
 
 Protean's configuration is managed through the Domain object, which can be configured in multiple ways:
 
-1. **Direct Configuration**: Pass a configuration dictionary when initializing the Domain object:
+## Direct Configuration
+
+Pass a configuration dictionary when initializing the Domain object:
+
    ```python
    domain = Domain(config={'debug': True, 'testing': True})
    ```
 
-2. **Configuration Files**: Place configuration in a TOML file in your project directory or up to two levels of parent directories. Protean searches for configuration files in the following order:
+## Configuration Files
 
-   - `.domain.toml`
-   - `domain.toml` 
-   - `pyproject.toml` (under the `[tool.protean]` section)
+Place configuration can be supplied in a TOML file in your project directory or up to two levels of parent directories.
+
+Protean searches for configuration files in the following order:
+
+1. `.domain.toml`
+1. `domain.toml`
+1. `pyproject.toml` (under the `[tool.protean]` section)
+
+### Generating a new configuration file
 
 When initializing a new Protean application using the [`new`](./cli/new.md) command, a `domain.toml` configuration file is automatically generated with sensible defaults.
 
@@ -88,7 +97,7 @@ foo = "quux"
 
 Specifies if the application is running in debug mode.
 
-***Do not enable debug mode when deploying in production.***
+*Do not enable debug mode when deploying in production.*
 
 Default: `False`
 
@@ -112,7 +121,7 @@ You can generate a secret key with the following command:
 c4bf0121035265bf44657217c33a7d041fe9e505961fc7da5d976aa0eaf5cf94
 ```
 
-***Do not reveal the secret key when posting questions or committing code.***
+*Do not reveal your secret key when posting questions or committing code.*
 
 ### `identity_strategy`
 
@@ -272,7 +281,7 @@ FOO = "bar"
 ```
 
 ```shell hl_lines="3-4 6-7"
-In [1]: domain = Domain(__file__)
+In [1]: domain = Domain()
 
 In [2]: domain.config["custom"]["FOO"]
 Out[2]: 'bar'

@@ -1,7 +1,7 @@
 from protean import Domain, handle
 from protean.fields import Identifier, String
 
-domain = Domain(__file__)
+domain = Domain()
 
 
 @domain.event_sourced_aggregate

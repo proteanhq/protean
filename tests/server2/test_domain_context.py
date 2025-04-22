@@ -12,7 +12,7 @@ class TestDomainContext:
 
     @pytest.fixture
     def custom_domain(self):
-        domain = Domain(__file__, "Custom Domain Context Test")
+        domain = Domain(name="Custom Domain Context Test")
         domain._initialize()
 
         yield domain

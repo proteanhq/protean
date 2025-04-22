@@ -12,7 +12,7 @@ def test_engine_exits_if_no_subscriptions(caplog):
     logger = logging.getLogger("protean.server.engine")
     logger.setLevel(logging.INFO)
 
-    domain = Domain(__file__, "dummy")
+    domain = Domain(name="dummy")
     engine = Engine(domain, test_mode=True)
     engine.run()
 

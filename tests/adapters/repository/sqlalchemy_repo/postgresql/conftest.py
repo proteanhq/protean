@@ -5,7 +5,9 @@ from tests.shared import initialize_domain
 
 @pytest.fixture
 def test_domain():
-    domain = initialize_domain(__file__, "SQLAlchemy Postgres Repository Tests")
+    domain = initialize_domain(
+        name="SQLAlchemy Postgres Repository Tests", root_path=__file__
+    )
 
     with domain.domain_context():
         yield domain
@@ -13,7 +15,9 @@ def test_domain():
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_db():
-    domain = initialize_domain(__file__, "SQLAlchemy Postgres Repository DB Setup")
+    domain = initialize_domain(
+        name="SQLAlchemy Postgres Repository DB Setup", root_path=__file__
+    )
     with domain.domain_context():
         # Create all associated tables
         from .elements import Alien, ComplexUser, Person, User

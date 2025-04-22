@@ -5,4 +5,4 @@ The test is to check if the name is initialized to the module containing the dom
 
 from protean.domain import Domain
 
-domain = Domain(__file__)
+domain = Domain()

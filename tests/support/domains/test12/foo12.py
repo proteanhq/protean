@@ -2,5 +2,5 @@
 
 from protean.domain import Domain
 
-subdomain = Domain(__file__, "TEST12")
-specific = Domain(__file__, "TEST12_SPECIFIC")
+subdomain = Domain(name="TEST12")
+specific = Domain(name="TEST12_SPECIFIC")

@@ -7,7 +7,7 @@ from protean.fields import Auto
 
 
 def test_invalid_identity_strategy():
-    domain = Domain(__file__)
+    domain = Domain()
     domain.config["identity_strategy"] = "invalid"
 
     class AutoTest(BaseAggregate):
@@ -23,7 +23,7 @@ def test_invalid_identity_strategy():
 
 
 def test_error_on_no_identity_function_if_strategy_is_function():
-    domain = Domain(__file__)
+    domain = Domain()
     domain.config["identity_strategy"] = "function"
 
     class AutoTest(BaseAggregate):

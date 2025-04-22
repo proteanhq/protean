@@ -1,7 +1,7 @@
 from protean import Domain
 from protean.fields import Float, String, ValueObject
 
-domain = Domain(__file__)
+domain = Domain()
 
 
 @domain.value_object

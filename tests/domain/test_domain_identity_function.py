@@ -16,7 +16,7 @@ def gen_ids(prefix="id"):
 
 
 def test_domain_accepts_custom_identity_function():
-    domain = Domain(__file__, identity_function=gen_ids)
+    domain = Domain(identity_function=gen_ids)
 
     assert domain._identity_function == gen_ids
 
@@ -26,7 +26,7 @@ def test_domain_accepts_custom_identity_function():
 
 
 def test_domain_identity_function_can_be_specified_with_lambda():
-    domain = Domain(__file__, identity_function=lambda: gen_ids("foo"))
+    domain = Domain(identity_function=lambda: gen_ids("foo"))
 
     pattern = r"^foo-\d{13}-\d+$"
     id_value = domain._identity_function()
@@ -34,7 +34,7 @@ def test_domain_identity_function_can_be_specified_with_lambda():
 
 
 def test_domain_identity_function_is_used_to_generate_identity():
-    domain = Domain(__file__, identity_function=gen_ids)
+    domain = Domain(identity_function=gen_ids)
     domain.config["identity_strategy"] = "function"
 
     class TestAggregate(BaseAggregate):
@@ -50,7 +50,7 @@ def test_domain_identity_function_is_used_to_generate_identity():
 
 
 def test_domain_identity_function_with_params_is_used_to_generate_identity():
-    domain = Domain(__file__, identity_function=lambda: gen_ids("foo"))
+    domain = Domain(identity_function=lambda: gen_ids("foo"))
     domain.config["identity_strategy"] = "function"
 
     class TestAggregate(BaseAggregate):
@@ -66,7 +66,7 @@ def test_domain_identity_function_with_params_is_used_to_generate_identity():
 
 
 def test_domain_identity_function_is_used_with_explicit_auto_field():
-    domain = Domain(__file__, identity_function=gen_ids)
+    domain = Domain(identity_function=gen_ids)
     domain.config["identity_strategy"] = "function"
 
     class TestAggregate(BaseAggregate):
@@ -86,7 +86,7 @@ def test_domain_identity_function_is_used_with_explicit_auto_field():
 
 
 def test_invalid_identity_function_raises_exception():
-    domain = Domain(__file__, identity_function="foo")
+    domain = Domain(identity_function="foo")
     domain.config["identity_strategy"] = "function"
 
     class TestAggregate(BaseAggregate):
@@ -106,7 +106,7 @@ def test_identity_function_returns_no_value():
     def return_no_value():
         return None
 
-    domain = Domain(__file__, identity_function=return_no_value)
+    domain = Domain(identity_function=return_no_value)
     domain.config["identity_strategy"] = "function"
 
     class TestAggregate(BaseAggregate):

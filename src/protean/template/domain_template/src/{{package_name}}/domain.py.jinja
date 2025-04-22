@@ -1,7 +1,7 @@
 from protean.domain import Domain
 
 # Domain Composition Root
-{{ package_name }} = Domain(__file__, "{{ project_name }}")
+{{ package_name }} = Domain(name="{{ project_name }}")
 
 # Initialize and load all domain elements under the composition root
 {{ package_name }}.init()

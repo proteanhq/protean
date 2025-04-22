@@ -4,7 +4,7 @@ from protean import Domain
 from protean.exceptions import ValidationError
 from protean.fields import String
 
-domain = Domain(__file__)
+domain = Domain()
 
 
 class EmailDomainValidator:

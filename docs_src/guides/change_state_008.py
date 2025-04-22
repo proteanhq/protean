@@ -1,7 +1,7 @@
 from protean import Domain, current_domain, use_case
 from protean.fields import Identifier, String
 
-auth = Domain(__file__, "Auth")
+auth = Domain(name="Auth")
 
 
 @auth.aggregate

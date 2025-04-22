@@ -4,7 +4,7 @@ from protean import Domain
 from protean.fields import HasOne, String
 from protean.utils.mixins import Message
 
-domain = Domain(__file__, name="Authentication")
+domain = Domain(name="Authentication")
 
 
 @domain.aggregate(fact_events=True)

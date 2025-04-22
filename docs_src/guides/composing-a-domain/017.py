@@ -1,6 +1,6 @@
 from protean import Domain
 
-domain = Domain(__file__)
+domain = Domain()
 
 domain.config["databases"]["default"] = {
     "provider": "sqlalchemy",

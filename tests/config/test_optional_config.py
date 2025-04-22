@@ -4,7 +4,7 @@ from protean.domain import Domain
 
 
 def test_domain_loads_config_from_toml_file():
-    domain = Domain(__file__, "dummy")
+    domain = Domain(name="dummy")
     config = domain.load_config()
     assert config["debug"] is True
     assert config["testing"] is True
@@ -18,7 +18,7 @@ def test_domain_loads_config_from_dict():
         "testing": False,
         "custom": {"test_key": "test_value"},
     }
-    domain = Domain(__file__, "dummy")
+    domain = Domain(name="dummy")
     config = domain.load_config(test_config)
     assert config["debug"] is False
     assert config["testing"] is False

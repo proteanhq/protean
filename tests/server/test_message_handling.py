@@ -1,6 +1,7 @@
 import pytest
 
 from protean.core.subscriber import BaseSubscriber
+from protean.domain import Processing
 from protean.server import Engine
 
 counter = 0
@@ -19,6 +20,11 @@ class DummySubscriber(BaseSubscriber):
 class ExceptionSubscriber(BaseSubscriber):
     def __call__(self, data: dict):
         raise Exception("This is a dummy exception")
+
+
+@pytest.fixture(autouse=True)
+def set_message_processing_async(test_domain):
+    test_domain.config["message_processing"] = Processing.ASYNC.value
 
 
 @pytest.mark.asyncio

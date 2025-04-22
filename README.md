@@ -28,7 +28,7 @@ Protean officially supports Python 3.11+.
 from protean import Domain
 from protean.fields import String, Text
 
-domain = Domain(__file__, "Publishing")
+domain = Domain(name="Publishing")
 
 @domain.aggregate
 class Post:

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from protean import Domain, fields, invariant
 from protean.exceptions import ValidationError
 
-domain = Domain(__file__)
+domain = Domain()
 
 
 @domain.event(part_of="Order")

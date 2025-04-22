@@ -1,3 +1,3 @@
 from protean import Domain
 
-publishing = Domain(__file__, "Publishing21")
+publishing = Domain(name="Publishing21")
