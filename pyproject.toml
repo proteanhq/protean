@@ -161,7 +161,8 @@ markers = [
     "broker_common",
     "eventstore",
     "no_test_domain",
-    "asyncio",
+    "fastapi",
+    "asyncio"
 ]
 
 [tool.mypy]
