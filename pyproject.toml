@@ -41,6 +41,7 @@ classifiers=[
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Software Development :: Libraries",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
@@ -134,6 +135,7 @@ known-first-party = ["protean"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 filterwarnings = [
     "ignore::sqlalchemy.exc.SAWarning",
@@ -159,6 +161,7 @@ markers = [
     "broker_common",
     "eventstore",
     "no_test_domain",
+    "asyncio",
 ]
 
 [tool.mypy]

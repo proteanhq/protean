@@ -15,7 +15,7 @@ Protean is available on PyPI:
 $ python -m pip install protean
 ```
 
-Protean officially supports Python 3.11+.
+Protean officially supports Python 3.11+, including Python 3.12 and 3.13.
 
 ## Quick Start
 
