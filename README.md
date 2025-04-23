@@ -20,7 +20,7 @@ Installing collected packages: ...
 Successfully installed ...
 ```
 
-Protean officially supports Python 3.11+.
+Protean officially supports Python 3.11+, including Python 3.12 and 3.13.
 
 ## Quick Start
 
