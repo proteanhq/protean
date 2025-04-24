@@ -101,7 +101,6 @@ def test(
 
             # Run full suite of tests with coverage
             # Run main tests with all markers
-            print("Running main test suite with coverage...")
             subprocess.call(
                 ["coverage", "run", "--parallel-mode", "-m"]
                 + commands

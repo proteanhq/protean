@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, fix-coverage-reporting]  # Add your branch name here
+    branches: [main]
   pull_request:
     branches: [main]
 
