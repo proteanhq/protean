@@ -5,6 +5,7 @@ Unreleased
 ----------
 
 * Add support for Python 3.13
+* Enable PyO3 ABI3 forward compatibility for Python 3.13 support
 
 0.12.1
 ------

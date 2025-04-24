@@ -84,11 +84,18 @@ jobs:
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
           poetry config virtualenvs.create false
+          if [ "${{ matrix.python-version }}" == "3.13" ]; then
+            export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+          fi
           poetry install --with dev,test,docs,types --all-extras
         if: steps.cache.outputs.cache-hit != 'true'
 
       - name: Tests
-        run: protean test -c FULL
+        run: |
+          if [ "${{ matrix.python-version }}" == "3.13" ]; then
+            export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+          fi
+          protean test -c FULL
         env:
           TEST_CMD: pre-commit run --all-files
           POSTGRES_PASSWORD: postgres
