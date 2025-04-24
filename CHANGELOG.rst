@@ -1,6 +1,15 @@
 Release History
 ===============
 
+0.12.2 (unreleased)
+-------------------
+
+* Added support for Python 3.13
+* Updated dependencies to support Python 3.13:
+* `cffi` to `>=1.16.5`
+* `pydantic-core` to `^2.19.1`
+* `greenlet` to `^3.0.3`
+
 0.12.1
 ------
 
