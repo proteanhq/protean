@@ -1,8 +1,10 @@
 """Module with repository implementation for SQLAlchemy"""
 
 import copy
+import importlib.util
 import json
 import logging
+import platform
 import uuid
 from abc import abstractmethod
 from enum import Enum
@@ -49,6 +51,61 @@ from protean.utils.reflection import attributes, id_field
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
+
+
+def detect_psycopg2_variant():
+    """
+    Detects the installed variant of psycopg2: 'psycopg2', 'psycopg2-binary', or None.
+    """
+    if importlib.util.find_spec("psycopg2") is not None:
+        return "psycopg2"
+    elif importlib.util.find_spec("psycopg2_binary") is not None:
+        return "psycopg2-binary"
+    else:
+        return None
+
+
+def provide_installation_guidance():
+    """
+    Provides guidance on installing psycopg2 or psycopg2-binary based on the user's environment.
+    """
+    os_name = platform.system()
+    python_version = platform.python_version()
+    logger.warning("Neither 'psycopg2' nor 'psycopg2-binary' is installed.")
+    logger.info(f"Detected OS: {os_name}, Python version: {python_version}")
+    logger.info("You can install one of the following packages based on your needs:")
+    logger.info("For development or testing environments:")
+    logger.info("    pip install psycopg2-binary")
+    logger.info("For production environments (requires build tools):")
+    logger.info("    pip install psycopg2")
+    logger.info(
+        "Note: Installing 'psycopg2' may require additional system dependencies."
+    )
+    if os_name == "Linux":
+        logger.info("For Debian/Ubuntu:")
+        logger.info("    sudo apt-get install libpq-dev python3-dev")
+    elif os_name == "Darwin":
+        logger.info("For macOS:")
+        logger.info("    brew install postgresql")
+    elif os_name == "Windows":
+        logger.info("For Windows:")
+        logger.info("    Ensure you have Visual C++ Build Tools installed.")
+        logger.info(
+            "    Alternatively, use 'psycopg2-binary' to avoid build dependencies."
+        )
+
+
+def check_postgresql_driver():
+    """
+    Checks for the presence of psycopg2 or psycopg2-binary and provides guidance if not found.
+    """
+    variant = detect_psycopg2_variant()
+    if variant == "psycopg2":
+        logger.info("Using 'psycopg2' for PostgreSQL connections.")
+    elif variant == "psycopg2-binary":
+        logger.info("Using 'psycopg2-binary' for PostgreSQL connections.")
+    else:
+        provide_installation_guidance()
 
 
 class GUID(TypeDecorator):
@@ -766,6 +823,10 @@ class SAProvider(BaseProvider):
 
 class PostgresqlProvider(SAProvider):
     __database__ = SAProvider.databases.postgresql.value
+
+    def __init__(self, name, domain, conn_info: dict):
+        check_postgresql_driver()
+        super().__init__(name, domain, conn_info)
 
     def _get_database_specific_engine_args(self) -> dict:
         """Supplies additional database-specific arguments to SQLAlchemy Engine.
