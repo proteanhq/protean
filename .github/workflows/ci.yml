@@ -50,7 +50,7 @@ jobs:
       message-db:
         image: ethangarofolo/message-db:1.2.6
         ports:
-          - 5433:5432z
+          - 5433:5432
 
     steps:
       - uses: actions/checkout@v4
