@@ -81,10 +81,12 @@ def mock_subprocess_call(mocker):
         (
             Category.FULL,
             [
+                call(["coverage", "erase"]),
                 call(
                     [
                         "coverage",
                         "run",
+                        "--parallel-mode",
                         "-m",
                         "pytest",
                         "--cache-clear",
@@ -102,6 +104,7 @@ def mock_subprocess_call(mocker):
                     [
                         "coverage",
                         "run",
+                        "--parallel-mode",
                         "-m",
                         "pytest",
                         "--cache-clear",
@@ -115,6 +118,7 @@ def mock_subprocess_call(mocker):
                     [
                         "coverage",
                         "run",
+                        "--parallel-mode",
                         "-m",
                         "pytest",
                         "--cache-clear",
@@ -128,6 +132,7 @@ def mock_subprocess_call(mocker):
                     [
                         "coverage",
                         "run",
+                        "--parallel-mode",
                         "-m",
                         "pytest",
                         "--cache-clear",
@@ -141,6 +146,7 @@ def mock_subprocess_call(mocker):
                     [
                         "coverage",
                         "run",
+                        "--parallel-mode",
                         "-m",
                         "pytest",
                         "--cache-clear",
@@ -150,8 +156,10 @@ def mock_subprocess_call(mocker):
                         "--store=MESSAGE_DB",
                     ]
                 ),
+                call(["coverage", "combine"]),
+                call(["coverage", "report"]),
             ],
-            7,  # 5 calls + 2 for coverage
+            8,  # 5 calls + 3 for coverage operations (erase, combine, report)
         ),
         (
             Category.CORE,

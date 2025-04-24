@@ -96,10 +96,14 @@ def test(
                 print(f"Running tests for DATABASE: {db}...")
                 subprocess.call(commands + ["-m", "database", f"--db={db}"])
         case "FULL":
+            # First, ensure any existing coverage data is removed to avoid mixing previous runs
+            subprocess.call(["coverage", "erase"])
+
             # Run full suite of tests with coverage
-            # FIXME: Add support for auto-fetching supported adapters
+            # Run main tests with all markers
+            print("Running main test suite with coverage...")
             subprocess.call(
-                ["coverage", "run", "-m"]
+                ["coverage", "run", "--parallel-mode", "-m"]
                 + commands
                 + [
                     "--slow",
@@ -116,7 +120,7 @@ def test(
             for db in ["MEMORY", "POSTGRESQL", "SQLITE"]:
                 print(f"Running tests for DB: {db}...")
                 subprocess.call(
-                    ["coverage", "run", "-m"]
+                    ["coverage", "run", "--parallel-mode", "-m"]
                     + commands
                     + ["-m", "database", f"--db={db}"]
                 )
@@ -124,12 +128,13 @@ def test(
             for store in ["MESSAGE_DB"]:
                 print(f"Running tests for EVENTSTORE: {store}...")
                 subprocess.call(
-                    ["coverage", "run", "-m"]
+                    ["coverage", "run", "--parallel-mode", "-m"]
                     + commands
                     + ["-m", "eventstore", f"--store={store}"]
                 )
 
-            # Run coverage report
+            # Combine all coverage data files and generate report
+            print("\nCombining coverage data and generating report...")
             subprocess.call(["coverage", "combine"])
             subprocess.call(["coverage", "report"])
         case _:

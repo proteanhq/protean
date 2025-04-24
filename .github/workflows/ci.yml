@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix-coverage-reporting]  # Add your branch name here
   pull_request:
     branches: [main]
 
@@ -50,7 +50,7 @@ jobs:
       message-db:
         image: ethangarofolo/message-db:1.2.6
         ports:
-          - 5433:5432
+          - 5433:5432z
 
     steps:
       - uses: actions/checkout@v4
