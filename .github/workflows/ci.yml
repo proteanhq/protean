@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix-coverage-reporting]
   pull_request:
     branches: [main]
 
@@ -100,10 +100,16 @@ jobs:
           # The default Redis port
           REDIS_PORT: ${{ job.services.redis.ports[6379] }}
 
+      - name: Generate Coverage XML
+        run: |
+          coverage xml
+
       - name: CodeCOV
         uses: codecov/codecov-action@v5.4.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
+          fail_ci_if_error: true
 
   docs-deploy:
     runs-on: ubuntu-latest
