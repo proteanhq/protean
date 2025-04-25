@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, fix-coverage-reporting]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -108,8 +108,6 @@ jobs:
         uses: codecov/codecov-action@v5.4.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          verbose: true
-          fail_ci_if_error: true
 
   docs-deploy:
     runs-on: ubuntu-latest
