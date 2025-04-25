@@ -101,7 +101,7 @@ jobs:
           REDIS_PORT: ${{ job.services.redis.ports[6379] }}
 
       - name: CodeCOV
-        uses: codecov/codecov-action@v4.0.1
+        uses: codecov/codecov-action@v5.4.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
