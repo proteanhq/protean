@@ -1,14 +1,29 @@
 Release History
 ===============
 
-0.12.2 (unreleased)
+0.14.0 (unreleased)
 -------------------
 
 * Added support for Python 3.13
-* Updated dependencies to support Python 3.13:
-* `cffi` to `>=1.16.5`
-* `pydantic-core` to `^2.19.1`
-* `greenlet` to `^3.0.3`
+
+0.13.0
+------
+
+* Major **Event-sourcing overhaul**
+  * Unified event-sourced and “regular” Aggregates, making them interchangeable in client code.
+  * Cleaner event-stream handling and automatic version synchronisation on DAO fetch.
+* **Stream subsystem** refinements that reduce boilerplate and improve performance.
+* Domain start-up hardening  
+  * Domain is now initialised *before* the Engine starts.  
+  * Explicit check that a compatible database provider is registered at initialisation.
+* **Multi-environment configuration** support (e.g., `dev`, `staging`, `prod`) driven by TOML.
+* Simplified **Broker** and **Subscriber** APIs; subscribers now run inside the Engine event-loop.
+* New `Field.clone()` helper for programmatically copying Field definitions.
+* Internal clean-ups  
+  * Exceptions hierarchy streamlined.  
+  * `Options` refactored to subclass `dict` for easier introspection.
+* **Application-service enhancements**: stricter invariants and clearer lifecycle hooks.
+* Dependency maintenance (virtualenv 20.26, etc.) and documentation polish.
 
 0.12.1
 ------
