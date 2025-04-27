@@ -14,32 +14,29 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
     name: Python ${{ matrix.python-version }} Tests
+
+    # one place to set the PyO3 flag; every step inherits it automatically
+    env:
+      PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ matrix.python-version == '3.13' && '1' || '' }}
 
     services:
       postgres:
-        # Docker Hub image
         image: postgres:11
-        # Provide the password for postgres
         env:
           POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
-        # Set health checks to wait until postgres has started
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
 
-      # Label used to access the service container
       redis:
-        # Docker Hub image
         image: redis
-        # Set health checks to wait until redis has started
         ports:
-          # Maps port 6379 on service container to the host
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
@@ -76,28 +73,25 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
 
       - name: Install dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
           poetry config virtualenvs.create false
           poetry install --with dev,test,docs,types --all-extras
-        if: steps.cache.outputs.cache-hit != 'true'
 
       - name: Tests
         run: protean test -c FULL
         env:
-          TEST_CMD: pre-commit run --all-files
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
           POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
           PGPASSWORD: postgres
-          # The hostname used to communicate with the Redis service container
           REDIS_HOST: localhost
-          # The default Redis port
           REDIS_PORT: ${{ job.services.redis.ports[6379] }}
 
       - name: CodeCOV
@@ -120,6 +114,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
+
       - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV 
 
       - uses: actions/cache@v4
@@ -130,10 +125,10 @@ jobs:
             mkdocs-material-
 
       - name: Install dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
           poetry config virtualenvs.create false
           poetry install --only docs
-        if: steps.cache.outputs.cache-hit != 'true'
 
       - run: mkdocs gh-deploy --force
