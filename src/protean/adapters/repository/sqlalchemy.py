@@ -785,7 +785,7 @@ class PostgresqlProvider(SAProvider):
         psycopg2_package = check_psycopg2_availability()
         if not psycopg2_package:
             logger.warning(
-                "PostgreSQL provider requires psycopg2 or psycopg2-binary. Please install one of them."
+                "PostgreSQL provider requires psycopg2 or psycopg2-binary. Please refer https://www.psycopg.org/docs/install.html#install-from-source for installation"
             )
         else:
             logger.info(f"Using {psycopg2_package} for PostgreSQL connection.")
