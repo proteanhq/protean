@@ -94,11 +94,6 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: ${{ job.services.redis.ports[6379] }}
 
-      - name: Generate Coverage XML
-        run: |
-          coverage combine
-          coverage xml
-
       - name: CodeCOV
         uses: codecov/codecov-action@v5.4.2
         with:
