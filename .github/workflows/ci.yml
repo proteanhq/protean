@@ -102,11 +102,13 @@ jobs:
 
       - name: Generate Coverage XML
         run: |
+          coverage combine
           coverage xml
 
       - name: CodeCOV
         uses: codecov/codecov-action@v5.4.2
         with:
+          files: coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}
 
   docs-deploy:
