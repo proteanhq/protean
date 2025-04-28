@@ -131,6 +131,7 @@ output/*/index.html
 *.bak
 .testmondata
 *.rdb
+diff_coverage_report.html
 
 # TODOs
 TODO
