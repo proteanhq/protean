@@ -1171,7 +1171,8 @@ class Domain:
         ):
             handler_class = self.command_handler_for(command)
             if handler_class:
-                handler_class._handle(command_with_metadata)
+                result = handler_class._handle(command_with_metadata)
+                return result
 
         return position
 

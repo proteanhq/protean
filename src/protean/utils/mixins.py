@@ -4,13 +4,14 @@ import functools
 import logging
 from collections import defaultdict
 from enum import Enum
-from typing import Callable, Dict, Type, Union
+from typing import Any, Callable, Dict, Type, Union
 
 from protean import fields
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ConfigurationError, InvalidDataError
+from protean.utils import DomainObjects
 from protean.utils.container import BaseContainer, OptionsMixin
 from protean.utils.eventing import Metadata
 from protean.utils.globals import current_domain
@@ -146,7 +147,7 @@ class handle:
         def wrapper(instance, target_obj):
             # Wrap function call within a UoW
             with UnitOfWork():
-                fn(instance, target_obj)
+                return fn(instance, target_obj)
 
         setattr(wrapper, "_target_cls", self._target_cls)
         return wrapper
@@ -168,8 +169,12 @@ class HandlerMixin:
         setattr(subclass, "_handlers", defaultdict(set))
 
     @classmethod
-    def _handle(cls, item: Union[Message, BaseCommand, BaseEvent]) -> None:
-        """Handle a message or command/event."""
+    def _handle(cls, item: Union[Message, BaseCommand, BaseEvent]) -> Any:
+        """Handle a message or command/event.
+
+        Returns:
+            Any: Return value from the handler method (only applicable for command handlers)
+        """
 
         # Convert Message to object if necessary
         item = item.to_object() if isinstance(item, Message) else item
@@ -177,8 +182,17 @@ class HandlerMixin:
         # Use specific handlers if available, or fallback on `$any` if defined
         handlers = cls._handlers[item.__class__.__type__] or cls._handlers["$any"]
 
-        for handler_method in handlers:
-            handler_method(cls(), item)
+        if cls.element_type == DomainObjects.COMMAND_HANDLER:
+            # Command handlers only have one handler method per command
+            handler_method = next(iter(handlers))
+            return handler_method(cls(), item)
+        else:
+            # Event handlers can have multiple handlers per event
+            # Execute all handlers but don't return anything
+            for handler_method in handlers:
+                handler_method(cls(), item)
+
+        return None
 
     @classmethod
     def handle_error(cls, exc: Exception, message: Message) -> None:
