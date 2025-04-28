@@ -8,7 +8,7 @@ Protean uses `pytest` as the testing tool, because it allows for simple unit tes
 
 Protean provides a built-in command for running tests:
 
-```
+```shell
 protean test [OPTIONS]
 ```
 
@@ -21,15 +21,16 @@ Categories:
 - `CORE`: Runs core tests without external dependencies (default)
 - `EVENTSTORE`: Runs tests for all configured event store adapters
 - `DATABASE`: Runs tests for all configured database adapters
-- `FULL`: Runs the complete test suite with coverage
+- `FULL`: Runs the complete test suite for all adapters
+- `COVERAGE`: Runs the complete test suite with all adapters and generates coverage report
 
 Example:
-```
+
+```shell
 protean test -c DATABASE
 ```
 
 > **Note**: Ensure that the underlying database services are running within Docker before executing tests in the `DATABASE`, `EVENTSTORE`, or `FULL` categories. Use the `make up` command to start the necessary services.
-
 
 This will run database tests against multiple adapters (MEMORY, POSTGRESQL, SQLITE).
 
@@ -59,6 +60,7 @@ services:
 ```
 
 The development environment includes:
+
 - PostgreSQL for relational database testing
 - Elasticsearch for document store testing
 - Redis for caching and simple key-value storage
@@ -66,7 +68,7 @@ The development environment includes:
 
 To start the development environment, Protean provides easy `make` commands:
 
-```
+```shell
 make up
 ```
 
@@ -114,6 +116,7 @@ provider = "memory"
 ```
 
 This configuration establishes a consistent testing environment, setting key parameters like:
+
 - Enabling debug and test modes
 - Setting up default database providers (memory and SQLite)
 - Configuring default brokers and caches
@@ -137,11 +140,13 @@ The Protean test suite is organized into specialized directories matching the fr
 - Integration tests that span multiple components are organized by functionality
 
 Within each core element's test directory, the tests are further divided:
+
 - Each aspect of functionality is tested separately
 - Complex components are tested in dedicated files for better organization
 - Tests progressively build complexity, starting with simple unit tests and progressing to more complex integration scenarios
 
 For example, in the `tests/domain/` directory, different aspects of domain functionality are split into individual files:
+
 - `test_domain_config.py`
 - `test_domain_traversal.py`
 - `test_domain_shell_context.py`
@@ -187,6 +192,7 @@ The `test_domain` fixture creates a fresh Protean domain for each test. It:
 - Is automatically used in all tests unless the `no_test_domain` marker is applied
 
 Example usage:
+
 ```python
 def test_domain_initialization(test_domain):
     assert test_domain.name == "Test"
@@ -248,15 +254,17 @@ The `store_config` fixture does the same for event stores:
 
 ## Code Coverage
 
-<!-- Talk about coveragepy and its options in use (like coverage combine) -->
-
 Protean uses Coverage.py to track test coverage. `coverage` configuration is maintained in `pyproject.toml`.
 
-When running the full test suite with `protean test -c FULL`, coverage data is automatically collected and combined:
+When running the full test suite with `protean test -c FULL`, coverage data is automatically collected and combined from tests across multiple adapters:
 
 1. Each test run generates a `.coverage` file
 2. The `coverage combine` command merges these files
 3. The `coverage report` command generates a summary
+
+You can also view coverage diffs and look for lines missing coverage with the `protean test -c COVERAGE`. The command generates an HTML report that visually represents the coverage data, making it easy to identify untested code paths.
+
+It compares the current branch's coverage against the main branch to highlight changes in coverage, which is especially useful for pull request reviews. Unless tests completely cover all changes, CodeCov will fail the PR.
 
 ### Constraints
 
@@ -267,11 +275,13 @@ Protean enforces coverage constraints to ensure code quality:
 - Coverage is checked as part of the CI pipeline
 
 If a PR introduces code that lacks sufficient test coverage:
+
 1. The CI pipeline will fail
 2. A coverage report will show which lines need tests
 3. The PR author should add tests to cover the new code
 
 To avoid coverage failures:
+
 - Write tests alongside new code
 - Test all code paths, including error cases
 - Use pytest parametrization to test multiple scenarios efficiently
@@ -303,6 +313,7 @@ jobs:
 ```
 
 The CI pipeline:
+
 - Runs on each pull request and push to main
 - Tests against multiple Python versions (3.11, 3.12, ...)
 - Sets up all required services (PostgreSQL, Redis, Elasticsearch, Message-DB, ...)
@@ -310,6 +321,7 @@ The CI pipeline:
 - Reports coverage to Codecov
 
 Pull requests cannot be merged until tests pass. This ensures:
+
 - All features work as expected
 - No regressions are introduced
 - Code coverage remains high

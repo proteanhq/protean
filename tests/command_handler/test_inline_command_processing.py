@@ -33,6 +33,7 @@ class UserCommandHandlers(BaseCommandHandler):
     def register(self, event: Register) -> None:
         global counter
         counter += 1
+        return {"counter": counter}
 
 
 @pytest.fixture(autouse=True)
@@ -41,6 +42,15 @@ def register(test_domain):
     test_domain.register(Register, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
     test_domain.init(traverse=False)
+
+
+@pytest.fixture(autouse=True)
+def reset_counter():
+    """Reset the counter before each test."""
+    global counter
+    counter = 0
+
+    yield
 
 
 def test_unregistered_command_raises_error(test_domain):
@@ -68,3 +78,20 @@ def test_that_command_is_persisted_in_message_store(test_domain):
 
     assert len(messages) == 1
     assert messages[0].stream_name == f"test::user:command-{identifier}"
+
+
+def test_command_handler_returns_value_when_processed_synchronously(test_domain):
+    test_domain.register(User)
+    test_domain.register(Register, part_of=User)
+    test_domain.register(UserCommandHandlers, part_of=User)
+    test_domain.init(traverse=False)
+
+    user_id = str(uuid4())
+    email = "jane.doe@gmail.com"
+
+    result = test_domain.process(
+        Register(user_id=user_id, email=email), asynchronous=False
+    )
+
+    # Verify the handler's return value is correctly returned by domain.process
+    assert result == {"counter": 1}
