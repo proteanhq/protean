@@ -184,16 +184,15 @@ class HandlerMixin:
 
         if cls.element_type == DomainObjects.COMMAND_HANDLER:
             # Command handlers only have one handler method per command
-            if handlers:
-                handler_method = next(iter(handlers))
-                return handler_method(cls(), item)
+            handler_method = next(iter(handlers))
+            return handler_method(cls(), item)
         else:
             # Event handlers can have multiple handlers per event
             # Execute all handlers but don't return anything
             for handler_method in handlers:
                 handler_method(cls(), item)
 
-            return None
+        return None
 
     @classmethod
     def handle_error(cls, exc: Exception, message: Message) -> None:

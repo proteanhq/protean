@@ -54,8 +54,10 @@ def reset_counter():
 
 
 def test_unregistered_command_raises_error(test_domain):
-    with pytest.raises(ConfigurationError):
+    with pytest.raises(ConfigurationError) as exc:
         test_domain.process(Login(user_id=str(uuid4())))
+
+    assert str(exc.value) == "`Login` should be registered with a domain"
 
 
 def test_that_command_can_be_processed_inline(test_domain):
