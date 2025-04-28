@@ -16,8 +16,6 @@ Why does this file exist, and why not put this in __main__?
 """
 
 import logging
-import subprocess
-from enum import Enum
 from typing import Optional
 
 import typer
@@ -29,6 +27,7 @@ from protean.cli.generate import app as generate_app
 from protean.cli.new import new
 from protean.cli.server2 import app as server2_app
 from protean.cli.shell import shell
+from protean.cli.test import app as test_app
 from protean.exceptions import NoDomainException
 from protean.server.engine import Engine
 from protean.utils.domain_discovery import derive_domain
@@ -44,14 +43,7 @@ app.command()(shell)
 app.add_typer(generate_app, name="generate")
 app.add_typer(docs_app, name="docs")
 app.add_typer(server2_app, name="server2")
-
-
-class Category(str, Enum):
-    CORE = "CORE"
-    EVENTSTORE = "EVENTSTORE"
-    DATABASE = "DATABASE"
-    COVERAGE = "COVERAGE"
-    FULL = "FULL"
+app.add_typer(test_app, name="test")
 
 
 def version_callback(value: bool):
@@ -72,69 +64,6 @@ def main(
     """
     Protean CLI
     """
-
-
-@app.command()
-def test(
-    category: Annotated[
-        Category, typer.Option("-c", "--category", case_sensitive=False)
-    ] = Category.CORE,
-):
-    commands = ["pytest", "--cache-clear", "--ignore=tests/support/"]
-
-    match category.value:
-        case "EVENTSTORE":
-            # Run tests for EventStore adapters
-            # FIXME: Add support for auto-fetching supported event stores
-            for store in ["MEMORY", "MESSAGE_DB"]:
-                print(f"Running tests for EVENTSTORE: {store}...")
-                subprocess.call(commands + ["-m", "eventstore", f"--store={store}"])
-        case "DATABASE":
-            # Run tests for database adapters
-            # FIXME: Add support for auto-fetching supported databases
-            for db in ["MEMORY", "POSTGRESQL", "SQLITE"]:
-                print(f"Running tests for DATABASE: {db}...")
-                subprocess.call(commands + ["-m", "database", f"--db={db}"])
-        case "FULL":
-            # Run full suite of tests with coverage
-            # FIXME: Add support for auto-fetching supported adapters
-            subprocess.call(
-                ["coverage", "run", "-m"]
-                + commands
-                + [
-                    "--slow",
-                    "--sqlite",
-                    "--postgresql",
-                    "--elasticsearch",
-                    "--redis",
-                    "--message_db",
-                    "tests",
-                ]
-            )
-
-            # Test against each supported database
-            for db in ["MEMORY", "POSTGRESQL", "SQLITE"]:
-                print(f"Running tests for DB: {db}...")
-                subprocess.call(
-                    ["coverage", "run", "-m"]
-                    + commands
-                    + ["-m", "database", f"--db={db}"]
-                )
-
-            for store in ["MESSAGE_DB"]:
-                print(f"Running tests for EVENTSTORE: {store}...")
-                subprocess.call(
-                    ["coverage", "run", "-m"]
-                    + commands
-                    + ["-m", "eventstore", f"--store={store}"]
-                )
-
-            # Run coverage report
-            subprocess.call(["coverage", "combine"])
-            subprocess.call(["coverage", "report"])
-        case _:
-            print("Running core tests...")
-            subprocess.call(commands)
 
 
 @app.command()

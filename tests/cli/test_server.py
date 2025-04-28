@@ -2,9 +2,10 @@ import logging
 import os
 import sys
 from pathlib import Path
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import ANY, MagicMock, PropertyMock, patch
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from protean.cli import app
@@ -115,6 +116,37 @@ class TestServerCommand:
 
             assert result.exit_code == 0
             mock_logger.setLevel.assert_called_once_with(logging.DEBUG)
+
+    def test_server_raises_system_exit_on_error_in_run(self):
+        """Test that the server command raises a TyperExit with the correct exit code on error in run"""
+        change_working_directory_to("test7")
+
+        with patch("protean.cli.Engine.run", side_effect=SystemExit(1)):
+            args = ["server", "--domain", "publishing7.py"]
+            result = runner.invoke(app, args)
+
+            assert result.exit_code == 1
+            assert isinstance(result.exception, SystemExit)
+
+    def test_server_raises_typer_exit_on_non_zero_exit_code_in_run(self):
+        """Test that the server command raises a TyperExit with the correct exit code on non-zero exit code in run"""
+        change_working_directory_to("test7")
+
+        # Use a specific non-zero exit code to verify it's passed correctly to typer.Exit
+        expected_exit_code = 42
+
+        # Create a mock engine instance with the exit_code property
+        mock_engine = MagicMock()
+        mock_engine.exit_code = expected_exit_code
+
+        # Patch the Engine class to return our mock instance
+        with patch("protean.cli.Engine", return_value=mock_engine):
+            args = ["server", "--domain", "publishing7.py"]
+            result = runner.invoke(app, args)
+
+            # Verify that the exit code matches exactly what was set in Engine.exit_code
+            assert result.exit_code == expected_exit_code
+            assert isinstance(result.exception, SystemExit)
 
     @pytest.mark.skip(reason="Not implemented")
     def test_that_server_processes_messages_on_start(self):

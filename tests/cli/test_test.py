@@ -3,21 +3,24 @@ from unittest.mock import call
 import pytest
 from typer.testing import CliRunner
 
-from protean.cli import Category, app
+from protean.cli import app
+from protean.cli.test import TestCategory
 
-runner = CliRunner()
+runner = CliRunner(mix_stderr=True)
 
 
 @pytest.fixture
 def mock_subprocess_call(mocker):
-    return mocker.patch("protean.cli.subprocess.call")
+    mock_call = mocker.patch("protean.cli.test.subprocess.call")
+    mock_call.return_value = 0
+    return mock_call
 
 
 @pytest.mark.parametrize(
     "category,expected_calls,call_count",
     [
         (
-            Category.EVENTSTORE,
+            TestCategory.EVENTSTORE,
             [
                 call(
                     [
@@ -43,7 +46,7 @@ def mock_subprocess_call(mocker):
             2,
         ),
         (
-            Category.DATABASE,
+            TestCategory.DATABASE,
             [
                 call(
                     [
@@ -79,12 +82,14 @@ def mock_subprocess_call(mocker):
             3,
         ),
         (
-            Category.FULL,
+            TestCategory.FULL,
             [
+                call(["coverage", "erase"]),
                 call(
                     [
                         "coverage",
                         "run",
+                        "--parallel-mode",
                         "-m",
                         "pytest",
                         "--cache-clear",
@@ -102,6 +107,7 @@ def mock_subprocess_call(mocker):
                     [
                         "coverage",
                         "run",
+                        "--parallel-mode",
                         "-m",
                         "pytest",
                         "--cache-clear",
@@ -115,6 +121,7 @@ def mock_subprocess_call(mocker):
                     [
                         "coverage",
                         "run",
+                        "--parallel-mode",
                         "-m",
                         "pytest",
                         "--cache-clear",
@@ -128,6 +135,7 @@ def mock_subprocess_call(mocker):
                     [
                         "coverage",
                         "run",
+                        "--parallel-mode",
                         "-m",
                         "pytest",
                         "--cache-clear",
@@ -141,6 +149,7 @@ def mock_subprocess_call(mocker):
                     [
                         "coverage",
                         "run",
+                        "--parallel-mode",
                         "-m",
                         "pytest",
                         "--cache-clear",
@@ -150,11 +159,108 @@ def mock_subprocess_call(mocker):
                         "--store=MESSAGE_DB",
                     ]
                 ),
+                call(["coverage", "combine"]),
+                call(["coverage", "xml"]),
+                call(["coverage", "report"]),
             ],
-            7,  # 5 calls + 2 for coverage
+            9,  # 5 calls + 4 for coverage operations (erase, combine, report)
         ),
         (
-            Category.CORE,
+            TestCategory.COVERAGE,
+            [
+                call(["coverage", "erase"]),
+                call(
+                    [
+                        "coverage",
+                        "run",
+                        "--parallel-mode",
+                        "-m",
+                        "pytest",
+                        "--cache-clear",
+                        "--ignore=tests/support/",
+                        "--slow",
+                        "--sqlite",
+                        "--postgresql",
+                        "--elasticsearch",
+                        "--redis",
+                        "--message_db",
+                        "tests",
+                    ]
+                ),
+                call(
+                    [
+                        "coverage",
+                        "run",
+                        "--parallel-mode",
+                        "-m",
+                        "pytest",
+                        "--cache-clear",
+                        "--ignore=tests/support/",
+                        "-m",
+                        "database",
+                        "--db=MEMORY",
+                    ]
+                ),
+                call(
+                    [
+                        "coverage",
+                        "run",
+                        "--parallel-mode",
+                        "-m",
+                        "pytest",
+                        "--cache-clear",
+                        "--ignore=tests/support/",
+                        "-m",
+                        "database",
+                        "--db=POSTGRESQL",
+                    ]
+                ),
+                call(
+                    [
+                        "coverage",
+                        "run",
+                        "--parallel-mode",
+                        "-m",
+                        "pytest",
+                        "--cache-clear",
+                        "--ignore=tests/support/",
+                        "-m",
+                        "database",
+                        "--db=SQLITE",
+                    ]
+                ),
+                call(
+                    [
+                        "coverage",
+                        "run",
+                        "--parallel-mode",
+                        "-m",
+                        "pytest",
+                        "--cache-clear",
+                        "--ignore=tests/support/",
+                        "-m",
+                        "eventstore",
+                        "--store=MESSAGE_DB",
+                    ]
+                ),
+                call(["coverage", "combine"]),
+                call(["coverage", "xml"]),
+                call(["coverage", "report"]),
+                call(
+                    [
+                        "diff-cover",
+                        "coverage.xml",
+                        "--compare-branch=main",
+                        "--html-report",
+                        "diff_coverage_report.html",
+                    ]
+                ),
+                call(["open", "diff_coverage_report.html"]),
+            ],
+            11,  # 5 calls + 6 for coverage operations (erase, combine, report)
+        ),
+        (
+            TestCategory.CORE,
             [
                 call(["pytest", "--cache-clear", "--ignore=tests/support/"]),
             ],
@@ -163,7 +269,9 @@ def mock_subprocess_call(mocker):
     ],
 )
 def test_command(mock_subprocess_call, category, expected_calls, call_count):
-    result = runner.invoke(app, ["test", "--category", category.value])
+    result = runner.invoke(
+        app, ["test", "--category", category.value], standalone_mode=False
+    )
 
     assert result.exit_code == 0
     assert mock_subprocess_call.call_count == call_count
@@ -172,7 +280,7 @@ def test_command(mock_subprocess_call, category, expected_calls, call_count):
 
 def test_default_category(mock_subprocess_call):
     # Test the command with the default category (CORE)
-    result = runner.invoke(app, ["test"])
+    result = runner.invoke(app, ["test"], standalone_mode=False)
 
     assert result.exit_code == 0
     mock_subprocess_call.assert_called_once_with(
@@ -182,10 +290,12 @@ def test_default_category(mock_subprocess_call):
 
 def test_invalid_category(mock_subprocess_call):
     # Test the command with an invalid category (should raise error)
-    result = runner.invoke(app, ["test", "--category", "INVALID"])
+    result = runner.invoke(
+        app, ["test", "--category", "INVALID"], standalone_mode=False
+    )
 
-    assert result.exit_code == 2
+    assert result.exit_code == 1
     assert (
-        "Invalid value for '-c' / '--category': 'INVALID' is not one of "
-        in result.output
+        str(result.exception)
+        == "'INVALID' is not one of 'CORE', 'EVENTSTORE', 'DATABASE', 'COVERAGE', 'FULL'."
     )

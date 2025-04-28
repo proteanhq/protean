@@ -107,6 +107,7 @@ twine = ">=4.0.2"
 optional = true
 
 [tool.poetry.group.test.dependencies]
+diff-cover = ">=9.2.4"
 mock = "5.2.0"
 pytest-asyncio = ">=0.21.1"
 pytest-mock = "3.14.0"
@@ -183,7 +184,7 @@ source = [
 [tool.coverage.run]
 branch = true
 parallel = true
-source = ["protean", "src/protean"]
+source = ["src/protean"]
 omit = [
     "*/__main__.py",
     "src/protean/utils/inflection.py",
