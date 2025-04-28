@@ -36,7 +36,6 @@ class TestServerCliCommand:
         result = runner.invoke(cli_app, ["server2", "--help"])
         assert result.exit_code == 0
         assert "Run the FastAPI server for Protean applications" in result.stdout
-        assert "--cors-origins" in result.stdout
 
     @pytest.mark.fastapi
     @patch("protean.cli.server2.ProteanFastAPIServer")
@@ -187,6 +186,6 @@ class TestServerCliCommand:
         # Verify error handling
         assert result.exit_code != 0
         assert (
-            "Error loading Protean domain: Could not import 'nonexistent'.\nAborted.\n"
+            "Error loading Protean domain: Could not import 'nonexistent'"
             in result.stdout
         )

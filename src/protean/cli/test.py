@@ -67,7 +67,7 @@ def _run(cmd: list[str]) -> int:
 
 
 def _inject_style(path: Path, style_block: str = STYLE_BLOCK) -> None:
-    """Insert the Source Sans Pro font + style block before </head>."""
+    """Insert the style block before </head>."""
     with suppress(FileNotFoundError):
         html = path.read_text(encoding="utf-8")
         if "</head>" in html and style_block not in html:
@@ -165,7 +165,7 @@ def test(
             rc = run_full(subprocess, coverage_command, pytest_command)
 
             # ------------------------------------------------------------------
-            # ✅ Only generate & style diff-cover report if *everything* passed
+            # Only generate & style diff-cover report if *everything* passed
             # ------------------------------------------------------------------
             if rc == 0:
                 rc |= _run(
@@ -177,7 +177,7 @@ def test(
                         REPORT_PATH.name,
                     ]
                 )
-                _inject_style(REPORT_PATH)  # 👈 inject Source Sans Pro
+                _inject_style(REPORT_PATH)
                 _run(["open", REPORT_PATH.name])
             else:
                 print("\n❌ Tests failed – skipping diff-cover report.")
