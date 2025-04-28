@@ -1,5 +1,5 @@
 import subprocess
-from unittest.mock import call
+from unittest.mock import Mock, call
 
 import pytest
 import typer
@@ -257,9 +257,8 @@ def mock_subprocess_call(mocker):
                         "diff_coverage_report.html",
                     ]
                 ),
-                call(["open", "diff_coverage_report.html"]),
             ],
-            11,  # 5 calls + 6 for coverage operations (erase, combine, report)
+            10,  # Updated count: 9 calls from run_full + 1 for diff-cover
         ),
         (
             TestCategory.CORE,
@@ -449,6 +448,10 @@ class TestExitHandling:
         # Setup mocks
         mock_subprocess_call.return_value = 0
 
+        # Mock webbrowser.open instead of subprocess.call for opening the report
+        mock_webbrowser_open = Mock()
+        monkeypatch.setattr("webbrowser.open", mock_webbrowser_open)
+
         # Mock _inject_style to avoid file operations
         monkeypatch.setattr("protean.cli.test._inject_style", lambda *args: None)
 
@@ -460,7 +463,7 @@ class TestExitHandling:
         # Verify exit code is 0
         assert result.exit_code == 0
 
-        # Verify diff-cover was called and report was opened
+        # Verify diff-cover was called
         mock_subprocess_call.assert_any_call(
             [
                 "diff-cover",
@@ -470,7 +473,9 @@ class TestExitHandling:
                 REPORT_PATH.name,
             ]
         )
-        mock_subprocess_call.assert_any_call(["open", REPORT_PATH.name])
+
+        # Verify webbrowser.open was called instead of subprocess.call
+        mock_webbrowser_open.assert_called_with(REPORT_PATH.name)
 
     def test_category_coverage_with_failure(self, mock_subprocess_call, monkeypatch):
         """Test COVERAGE category with failure (line 183 where rc != 0)."""

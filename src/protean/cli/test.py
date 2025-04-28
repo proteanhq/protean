@@ -1,4 +1,5 @@
 import subprocess
+import webbrowser
 from contextlib import suppress
 from enum import Enum
 from pathlib import Path
@@ -178,7 +179,7 @@ def test(
                     ]
                 )
                 _inject_style(REPORT_PATH)
-                _run(["open", REPORT_PATH.name])
+                webbrowser.open(REPORT_PATH.name)
             else:
                 print("\n❌ Tests failed – skipping diff-cover report.")
         case _:
