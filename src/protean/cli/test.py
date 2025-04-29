@@ -181,10 +181,9 @@ def test(
                 )
                 _inject_style(REPORT_PATH)
 
-                if os.path.exists(REPORT_PATH.name):
-                    path = os.path.abspath(REPORT_PATH.name)
-                    url = f"file://{path}"
-                    webbrowser.open(url)
+                path = os.path.abspath(REPORT_PATH.name)
+                url = f"file://{path}"
+                webbrowser.open(url)
             else:
                 print("\n❌ Tests failed – skipping diff-cover report.")
         case _:
