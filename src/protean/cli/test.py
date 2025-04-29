@@ -1,3 +1,4 @@
+import os
 import subprocess
 import webbrowser
 from contextlib import suppress
@@ -179,7 +180,11 @@ def test(
                     ]
                 )
                 _inject_style(REPORT_PATH)
-                webbrowser.open(REPORT_PATH.name)
+
+                if os.path.exists(REPORT_PATH.name):
+                    path = os.path.abspath(REPORT_PATH.name)
+                    url = f"file://{path}"
+                    webbrowser.open(url)
             else:
                 print("\n❌ Tests failed – skipping diff-cover report.")
         case _:

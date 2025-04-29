@@ -97,13 +97,20 @@ class Engine:
 
     async def handle_broker_message(
         self, subscriber_cls: Type[BaseSubscriber], message: dict
-    ) -> None:
+    ) -> bool:
         """
         Handle a message received from the broker.
+
+        Args:
+            subscriber_cls (Type[BaseSubscriber]): The subscriber class to handle the message
+            message (dict): The message to be handled
+
+        Returns:
+            bool: True if the message was processed successfully, False otherwise
         """
 
         if self.shutting_down:
-            return  # Skip handling if shutdown is in progress
+            return False  # Skip handling if shutdown is in progress
 
         with self.domain.domain_context():
             try:
@@ -113,22 +120,30 @@ class Engine:
                 logger.info(
                     f"{subscriber_cls.__name__} processed message successfully."
                 )
+                return True
             except Exception as exc:
                 logger.error(
                     f"Error handling message in {subscriber_cls.__name__}: {str(exc)}"
                 )
                 # Print the stack trace
                 logger.error(traceback.format_exc())
-                # subscriber_cls.handle_error(exc, message)
-
-                await self.shutdown(exit_code=1)
-                return
+                try:
+                    # Attempt to call error handler if it exists
+                    if hasattr(subscriber_cls, "handle_error") and callable(
+                        subscriber_cls.handle_error
+                    ):
+                        subscriber_cls.handle_error(exc, message)
+                except Exception as error_exc:
+                    logger.error(f"Error in error handler: {str(error_exc)}")
+                    logger.error(traceback.format_exc())
+                # Continue processing instead of shutting down
+                return False
 
     async def handle_message(
         self,
         handler_cls: Type[Union[BaseCommandHandler, BaseEventHandler]],
         message: Message,
-    ) -> None:
+    ) -> bool:
         """
         Handle a message by invoking the appropriate handler class.
 
@@ -137,14 +152,10 @@ class Engine:
             message (Message): The message to be handled.
 
         Returns:
-            None
-
-        Raises:
-            Exception: If an error occurs while handling the message.
-
+            bool: True if the message was processed successfully, False otherwise
         """
         if self.shutting_down:
-            return  # Skip handling if shutdown is in progress
+            return False  # Skip handling if shutdown is in progress
 
         with self.domain.domain_context():
             # Set context from current message, so that further processes
@@ -157,20 +168,27 @@ class Engine:
                 logger.info(
                     f"{handler_cls.__name__} processed {message.type}-{message.id} successfully."
                 )
+                return True
             except Exception as exc:  # Includes handling `ConfigurationError`
                 logger.error(
                     f"Error handling message {message.stream_name}-{message.id} "
-                    f"in {handler_cls.__name__}"
+                    f"in {handler_cls.__name__}: {str(exc)}"
                 )
                 # Print the stack trace
                 logger.error(traceback.format_exc())
-                handler_cls.handle_error(exc, message)
-
-                await self.shutdown(exit_code=1)
-                return
+                try:
+                    # Call the error handler if it exists
+                    handler_cls.handle_error(exc, message)
+                except Exception as error_exc:
+                    logger.error(f"Error in error handler: {str(error_exc)}")
+                    logger.error(traceback.format_exc())
+                # Continue processing instead of shutting down
+                # Reset message context
+                g.pop("message_in_context", None)
+                return False
 
             # Reset message context
-            g.pop("message_in_context")
+            g.pop("message_in_context", None)
 
     async def shutdown(self, signal=None, exit_code=0):
         """
