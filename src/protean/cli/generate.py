@@ -79,7 +79,7 @@ def docker_compose(
         # Prevent overwriting existing file
         if os.path.exists("docker-compose.yml"):
             typer.echo("docker-compose.yml already exists. Aborting.")
-            raise typer.Exit()
+            return  
 
         with open("docker-compose.yml", "w") as f:
             yaml.dump(compose, f, default_flow_style=False)
