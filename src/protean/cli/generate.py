@@ -29,7 +29,7 @@ def callback():
     pass
 
 
-@app.command()
+@app.command(name="docker-compose")
 def docker_compose(
     domain: Annotated[str, typer.Option()] = ".",
 ):
