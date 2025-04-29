@@ -12,7 +12,8 @@ domain.config.update({
     },
     "caches": {
         "default": {
-            "provider": "redis"
+            "provider": "redis",
+            "URI": "redis://localhost:6379/0"
         }
     }
 })
