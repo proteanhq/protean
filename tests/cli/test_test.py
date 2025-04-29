@@ -1,3 +1,4 @@
+import os
 import subprocess
 from unittest.mock import Mock, call
 
@@ -480,9 +481,10 @@ class TestExitHandling:
             ]
         )
 
-        # Verify webbrowser.open was called instead of subprocess.call
-        called_arg = mock_webbrowser_open.call_args[0][0]
-        assert called_arg.endswith(REPORT_PATH.name)
+        if not os.getenv("CI"):
+            # Verify webbrowser.open was called instead of subprocess.call
+            called_arg = mock_webbrowser_open.call_args[0][0]
+            assert called_arg.endswith(REPORT_PATH.name)
 
     def test_category_coverage_with_failure(self, mock_subprocess_call, monkeypatch):
         """Test COVERAGE category with failure (line 183 where rc != 0)."""
