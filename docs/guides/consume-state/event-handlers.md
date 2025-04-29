@@ -103,12 +103,64 @@ category. The stream category defaults to
 [the category of the aggregate](../domain-definition/aggregates.md#stream_category)
 associated with the handler.
 
-An Event Handler can be part of an aggregate, and have the stream category of
-a different aggregate. This is the mechanism for an aggregate to listen to
-another aggregate's events to sync its own state.
+  An Event Handler can be part of an aggregate, and have the stream category of
+  a different aggregate. This is the mechanism for an aggregate to listen to
+  another aggregate's events to sync its own state.
 - **`source_stream`**: When specified, the event handler only consumes events
 generated in response to events or commands from this original stream.
 For example, `EmailNotifications` event handler listening to `OrderShipped`
 events can be configured to generate a `NotificationSent` event only when the
 `OrderShipped` event (in stream `orders`) is generated in response to a
 `ShipOrder` (in stream `manage_order`) command.
+
+## Error Handling
+
+Protean provides a robust error handling mechanism for event handlers through the optional `handle_error` method. This method allows event handlers to gracefully recover from exceptions without disrupting the overall event processing pipeline.
+
+### The `handle_error` Method
+
+You can add a `handle_error` class method to your event handler to implement custom error handling:
+
+```python
+@domain.event_handler(part_of=Inventory)
+class InventoryEventHandler:
+    @handle(OrderShipped)
+    def update_inventory(self, event):
+        # Event handling logic that might raise exceptions
+        ...
+    
+    @classmethod
+    def handle_error(cls, exc: Exception, message):
+        """Custom error handling for event processing failures"""
+        # Log the error
+        logger.error(f"Failed to process event {message.type}: {exc}")
+        
+        # Perform recovery operations
+        # Example: store failed events for retry, trigger compensating actions, etc.
+        ...
+```
+
+### How It Works
+
+1. When an exception occurs during event processing, the Protean Engine catches it.
+2. The engine logs detailed error information including stack traces.
+3. The engine calls the event handler's `handle_error` method, passing:
+   - The original exception that was raised
+   - The event message being processed when the exception occurred
+4. After `handle_error` completes, processing continues with subsequent events.
+
+### Error Handler Failures
+
+If an exception occurs within the `handle_error` method itself, the Protean Engine will catch and log that exception as well, ensuring that the event processing pipeline continues to function. This provides an additional layer of resilience:
+
+```python
+@classmethod
+def handle_error(cls, exc: Exception, message):
+    try:
+        # Error handling logic that might itself fail
+        ...
+    except Exception as error_exc:
+        # The engine will catch and log this secondary exception
+        logger.error(f"Error handler failed: {error_exc}")
+        # Processing continues regardless
+```

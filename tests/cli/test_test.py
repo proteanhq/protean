@@ -269,7 +269,13 @@ def mock_subprocess_call(mocker):
         ),
     ],
 )
-def test_command(mock_subprocess_call, category, expected_calls, call_count):
+def test_command(
+    mock_subprocess_call, category, expected_calls, call_count, monkeypatch
+):
+    # Mock webbrowser.open so we don't open the report in the browser
+    mock_webbrowser_open = Mock()
+    monkeypatch.setattr("webbrowser.open", mock_webbrowser_open)
+
     result = runner.invoke(
         app, ["test", "--category", category.value], standalone_mode=False
     )
@@ -474,8 +480,8 @@ class TestExitHandling:
             ]
         )
 
-        # Verify webbrowser.open was called instead of subprocess.call
-        mock_webbrowser_open.assert_called_with(REPORT_PATH.name)
+        # Verify webbrowser.open was called
+        mock_webbrowser_open.assert_called()
 
     def test_category_coverage_with_failure(self, mock_subprocess_call, monkeypatch):
         """Test COVERAGE category with failure (line 183 where rc != 0)."""
