@@ -200,3 +200,11 @@ exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:"
 ]
+
+[tool.protean]
+
+[tool.protean.databases.default]
+provider = "postgresql"
+
+[tool.protean.caches.default]
+provider = "redis"
