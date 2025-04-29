@@ -1,6 +1,6 @@
 from protean import Domain
 
-domain = Domain("TestApp")
+domain = Domain("TestApp", root_path=".")
 
 domain.config.update({
     "databases": {
