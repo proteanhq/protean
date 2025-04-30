@@ -1,5 +1,8 @@
 import logging
 
+import yaml
+import os
+
 import typer
 from typing_extensions import Annotated
 
@@ -26,7 +29,7 @@ def callback():
     pass
 
 
-@app.command()
+@app.command(name="docker-compose")
 def docker_compose(
     domain: Annotated[str, typer.Option()] = ".",
 ):
@@ -34,7 +37,7 @@ def docker_compose(
     try:
         domain_instance = derive_domain(domain)
     except NoDomainException as exc:
-        logger.error(f"Error loading Protean domain: {exc.messages}")
+        logger.error(f"Error loading Protean domain: {exc.args[0]}")
         raise typer.Abort()
 
     print(f"Generating docker-compose.yml for domain at {domain}")
@@ -43,3 +46,42 @@ def docker_compose(
         domain_instance.init()
 
         # FIXME Generate docker-compose.yml from domain config
+        config = domain_instance.config
+
+        services = {}
+
+        # Add PostgreSQL if specified
+        if config.get("databases", {}).get("default", {}).get("provider") == "postgresql":
+            services["postgres"] = {
+                "image": "postgres:13",
+                "ports": ["5432:5432"]
+            }
+
+        # Add Redis if specified
+        if config.get("caches", {}).get("default", {}).get("provider") == "redis":
+            services["redis"] = {
+                "image": "redis:latest",
+                "ports": ["6379:6379"]
+            }
+
+        # Add the main app container
+        services["app"] = {
+            "build": ".",
+            "ports": ["5000:5000"],
+            "depends_on": list(services.keys())[:-1]  # depends on everything else
+        }
+
+        compose = {
+            "version": "3",
+            "services": services
+        }
+
+        # Prevent overwriting existing file
+        if os.path.exists("docker-compose.yml"):
+            typer.echo("docker-compose.yml already exists. Aborting.")
+            return  
+
+        with open("docker-compose.yml", "w") as f:
+            yaml.dump(compose, f, default_flow_style=False)
+
+        typer.echo("docker-compose.yml generated successfully.")
