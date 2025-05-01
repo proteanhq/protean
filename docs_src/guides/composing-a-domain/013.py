@@ -17,7 +17,7 @@ class Credentials:
     password_hash = String(max_length=128)
 
 
-@domain.view(part_of=User)
+@domain.projection(part_of=User)
 class Token:
     key = Identifier(identifier=True)
     id = Identifier(required=True)

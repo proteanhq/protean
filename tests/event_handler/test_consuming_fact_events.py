@@ -2,7 +2,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event_handler import BaseEventHandler
-from protean.core.view import BaseView
+from protean.core.projection import BaseProjection
 from protean.fields import String
 from protean.utils.mixins import Message, handle
 
@@ -13,14 +13,14 @@ class User(BaseAggregate):
     status = String(choices=["ACTIVE", "ARCHIVED"])
 
 
-class UserView(BaseView):
+class UserProjection(BaseProjection):
     id = String(identifier=True)
     name = String(max_length=50, required=True)
     email = String(required=True)
     status = String(required=True)
 
 
-class ManageUserView(BaseEventHandler):
+class ManageUserProjection(BaseEventHandler):
     @handle("Test.UserFact.v1")
     def record_user_fact_event(self, message: Message) -> None:
         pass

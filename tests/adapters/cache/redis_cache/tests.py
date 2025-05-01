@@ -5,11 +5,11 @@ import pytest
 from redis import Redis
 
 from protean.adapters.cache.redis import RedisCache
-from protean.core.view import BaseView
+from protean.core.projection import BaseProjection
 from protean.fields import Identifier, String
 
 
-class Token(BaseView):
+class Token(BaseProjection):
     key = Identifier(identifier=True)
     user_id = Identifier(required=True)
     email = String(required=True)
@@ -129,7 +129,7 @@ class TestCachePersistenceFlows:
         value = cache.get("token:::qux")
         assert value is None
 
-    def test_removal_by_view_from_cache(self, test_domain):
+    def test_removal_by_projection_from_cache(self, test_domain):
         cache = test_domain.cache_for(Token)
 
         token = Token(key="qux", user_id="foo", email="bar@baz.com")
@@ -216,7 +216,7 @@ class TestCachePersistenceFlows:
 
 @pytest.mark.redis
 class TestCacheSerialization:
-    def test_serializing_view_object_data(self, test_domain):
+    def test_serializing_projection_object_data(self, test_domain):
         cache = test_domain.cache_for(Token)
 
         token = Token(key="qux", user_id="foo", email="bar@baz.com")
@@ -232,7 +232,7 @@ class TestCacheSerialization:
             "email": "bar@baz.com",
         }
 
-    def test_deserializing_view_object_data(self, test_domain):
+    def test_deserializing_projection_object_data(self, test_domain):
         cache = test_domain.cache_for(Token)
 
         token = Token(key="qux", user_id="foo", email="bar@baz.com")

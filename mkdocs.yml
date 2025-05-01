@@ -128,7 +128,7 @@ nav:
       - Consume State Changes:
         - guides/consume-state/index.md
         - guides/consume-state/event-handlers.md
-        - guides/consume-state/views.md
+        - guides/consume-state/projections.md
 
     #   - guides/consume-state/events-across-contexts.md
     # - Application Layer:
@@ -138,7 +138,7 @@ nav:
     # - Infrastructure:
     #   - guides/app-layer/index.md (ports-and-adapters)
     #   - guides/app-layer/persisting-data.md (unit-of-work)
-    #   - guides/app-layer/views.md
+    #   - guides/app-layer/projections.md
     #   - guides/app-layer/providers.md
     #   - guides/app-layer/models.md
     #   - guides/app-layer/brokers.md
@@ -221,7 +221,7 @@ nav:
     #   - core-concepts/domain-elements/event-handlers.md
     #   - core-concepts/domain-elements/repositories.md
     #   - core-concepts/domain-elements/models.md
-    #   - core-concepts/domain-elements/view-models.md
+    #   - core-concepts/domain-elements/projection-models.md
     # - Command-Query Responsibility Segregation:
     #   - core-concepts/command-query-responsibility-segregation/index.md
     #   - core-concepts/command-query-responsibility-segregation/commands.md

@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.view import BaseView
+from protean.core.projection import BaseProjection
 from protean.exceptions import InvalidOperationError, NotSupportedError, ValidationError
 from protean.fields import Auto, Identifier, Integer, String
 from protean.utils import fully_qualified_name
@@ -17,31 +17,31 @@ from protean.utils.reflection import (
 )
 
 
-class AbstractPerson(BaseView):
+class AbstractPerson(BaseProjection):
     age = Integer(default=5)
 
 
-class ConcretePerson(BaseView):
+class ConcretePerson(BaseProjection):
     person_id = Identifier(identifier=True)
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
 
 
-class Person(BaseView):
+class Person(BaseProjection):
     person_id = Identifier(identifier=True)
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
     age = Integer(default=21)
 
 
-class PersonAutoSSN(BaseView):
+class PersonAutoSSN(BaseProjection):
     ssn = Auto(identifier=True)
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
     age = Integer(default=21)
 
 
-class PersonExplicitID(BaseView):
+class PersonExplicitID(BaseProjection):
     ssn = String(max_length=36, identifier=True)
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
@@ -52,7 +52,7 @@ class Adult(Person):
     pass
 
 
-class NotAPerson(BaseView):
+class NotAPerson(BaseProjection):
     identifier = Identifier(identifier=True)
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
@@ -60,7 +60,7 @@ class NotAPerson(BaseView):
 
 
 # Entities to test Meta Info overriding # START #
-class DbPerson(BaseView):
+class DbPerson(BaseProjection):
     person_id = Identifier(identifier=True)
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
@@ -79,7 +79,7 @@ class SqlDifferentDbPerson(Person):
     pass
 
 
-class OrderedPerson(BaseView):
+class OrderedPerson(BaseProjection):
     person_id = Identifier(identifier=True)
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
@@ -95,7 +95,7 @@ class BuildingStatus(Enum):
     DONE = "DONE"
 
 
-class Building(BaseView):
+class Building(BaseProjection):
     building_id = Identifier(identifier=True)
     name = String(max_length=50)
     floors = Integer()
@@ -135,27 +135,27 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
-class TestViewRegistration:
-    def test_manual_registration_of_view(self, test_domain):
-        class Comment(BaseView):
+class TestProjectionRegistration:
+    def test_manual_registration_of_projection(self, test_domain):
+        class Comment(BaseProjection):
             comment_id = Identifier(identifier=True)
             content = String(max_length=500)
 
         test_domain.register(Comment)
 
-        assert fully_qualified_name(Comment) in test_domain.registry.views
+        assert fully_qualified_name(Comment) in test_domain.registry.projections
 
     def test_setting_provider_in_decorator_based_registration(self, test_domain):
-        @test_domain.view
+        @test_domain.projection
         class Comment:
             comment_id = Identifier(identifier=True)
             content = String(max_length=500)
 
-        assert fully_qualified_name(Comment) in test_domain.registry.views
+        assert fully_qualified_name(Comment) in test_domain.registry.projections
 
 
 class TestProperties:
-    def test_conversion_of_view_values_to_dict(self):
+    def test_conversion_of_projection_values_to_dict(self):
         person = Person(person_id=12, first_name="John", last_name="Doe")
         assert person.to_dict() == {
             "person_id": "12",
@@ -164,7 +164,7 @@ class TestProperties:
             "age": 21,
         }
 
-    def test_repr_output_of_view(self):
+    def test_repr_output_of_projection(self):
         person = Person(person_id=12, first_name="John")
 
         assert (
@@ -177,13 +177,13 @@ class TestProperties:
         )
 
 
-class TestViewMeta:
-    def test_view_meta_attributes(self):
+class TestProjectionMeta:
+    def test_projection_meta_attributes(self):
         assert hasattr(Person, "meta_")
         assert type(Person.meta_) is Options
 
         # Persistence attributes
-        # FIXME Should these be present as part of Views, or a separate Model?
+        # FIXME Should these be present as part of Projections, or a separate Model?
         assert hasattr(Person.meta_, "abstract")
         assert hasattr(Person.meta_, "schema_name")
         assert hasattr(Person.meta_, "provider")
@@ -195,14 +195,14 @@ class TestViewMeta:
     def test_absence_of_entity_specific_attributes(self):
         assert hasattr(Person.meta_, "part_of") is False
 
-    def test_view_meta_has_declared_fields_on_construction(self):
+    def test_projection_meta_has_declared_fields_on_construction(self):
         assert declared_fields(Person) is not None
         assert all(
             key in declared_fields(Person).keys()
             for key in ["age", "first_name", "person_id", "last_name"]
         )
 
-    def test_view_declared_fields_hold_correct_field_types(self):
+    def test_projection_declared_fields_hold_correct_field_types(self):
         assert type(declared_fields(Person)["first_name"]) is String
         assert type(declared_fields(Person)["last_name"]) is String
         assert type(declared_fields(Person)["age"]) is Integer
@@ -212,7 +212,7 @@ class TestViewMeta:
         assert getattr(Person.meta_, "abstract") is False
         assert getattr(AbstractPerson.meta_, "abstract") is True
 
-    def test_abstract_can_be_overridden_from_view_abstract_class(self):
+    def test_abstract_can_be_overridden_from_projection_abstract_class(self):
         """Test that `abstract` flag can be overridden"""
 
         assert hasattr(ConcretePerson.meta_, "abstract")
@@ -222,7 +222,7 @@ class TestViewMeta:
         assert getattr(Person.meta_, "schema_name") == "person"
         assert getattr(DbPerson.meta_, "schema_name") == "peoples"
 
-    def test_schema_name_can_be_overridden_in_view_subclass(self):
+    def test_schema_name_can_be_overridden_in_projection_subclass(self):
         """Test that `schema_name` can be overridden"""
         assert hasattr(SqlPerson.meta_, "schema_name")
         assert getattr(SqlPerson.meta_, "schema_name") == "people"
@@ -231,7 +231,7 @@ class TestViewMeta:
         assert getattr(Person.meta_, "provider") == "default"
         assert getattr(DifferentDbPerson.meta_, "provider") == "non-default"
 
-    def test_provider_can_be_overridden_in_view_subclass(self):
+    def test_provider_can_be_overridden_in_projection_subclass(self):
         """Test that `provider` can be overridden"""
         assert hasattr(SqlDifferentDbPerson.meta_, "provider")
         assert getattr(SqlDifferentDbPerson.meta_, "provider") == "non-default-sql"
@@ -240,7 +240,7 @@ class TestViewMeta:
         assert getattr(Person.meta_, "order_by") == ()
         assert getattr(OrderedPerson.meta_, "order_by") == "first_name"
 
-    def test_order_by_can_be_overridden_in_view_subclass(self):
+    def test_order_by_can_be_overridden_in_projection_subclass(self):
         """Test that `order_by` can be overridden"""
         assert hasattr(OrderedPersonSubclass.meta_, "order_by")
         assert getattr(OrderedPersonSubclass.meta_, "order_by") == "last_name"
@@ -253,7 +253,7 @@ class TestViewMeta:
     ):
         with pytest.raises(NotSupportedError):
 
-            class PersonWithNoDatabaseAndCache(BaseView):
+            class PersonWithNoDatabaseAndCache(BaseProjection):
                 person_id = Identifier(identifier=True)
                 first_name = String(max_length=50, required=True)
                 last_name = String(max_length=50)
@@ -264,7 +264,7 @@ class TestViewMeta:
             )
 
     def test_that_specifying_cache_overrides_database_provider(self, test_domain):
-        class PersonWithCache(BaseView):
+        class PersonWithCache(BaseProjection):
             person_id = Identifier(identifier=True)
             first_name = String(max_length=50, required=True)
             last_name = String(max_length=50)
@@ -396,8 +396,8 @@ class TestEquivalence:
         assert hash(person1) == hash(person2)
 
 
-class TestViewState:
-    def test_that_views_have_state(self):
+class TestProjectionState:
+    def test_that_projections_have_state(self):
         person = Person(person_id=12, first_name="John", last_name="Doe")
         assert person.state_ is not None
         assert person.state_.is_new is True

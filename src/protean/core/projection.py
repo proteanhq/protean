@@ -1,4 +1,4 @@
-"""View Functionality and Classes"""
+"""Projection Functionality and Classes"""
 
 import logging
 
@@ -13,33 +13,33 @@ from protean.utils.reflection import _ID_FIELD_NAME, declared_fields, id_field
 logger = logging.getLogger(__name__)
 
 
-class BaseView(BaseContainer, OptionsMixin):
-    element_type = DomainObjects.VIEW
+class BaseProjection(BaseContainer, OptionsMixin):
+    element_type = DomainObjects.PROJECTION
 
     def __new__(cls, *args, **kwargs):
-        if cls is BaseView:
-            raise NotSupportedError("BaseView cannot be instantiated")
+        if cls is BaseProjection:
+            raise NotSupportedError("BaseProjection cannot be instantiated")
         return super().__new__(cls)
 
     """
-    View Options:
+    Projection Options:
     
-    Views support the following options to configure their behavior:
+    Projections support the following options to configure their behavior:
     
-    These options are specified directly in the @domain.view decorator:
+    These options are specified directly in the @domain.projection decorator:
     
-    @domain.view(
-        abstract=False,         # If True, this view is an abstract base class and won't be registered as a concrete view
-        cache="redis",          # Name of the cache provider to use for storing view data
+    @domain.projection(
+        abstract=False,         # If True, this projection is an abstract base class and won't be registered as a concrete projection
+        cache="redis",          # Name of the cache provider to use for storing projection data
         database_model="custom_model",   # Custom model name to use for storage
         order_by=("field_name",), # Default ordering for query results
-        provider="default",     # Name of the database provider to use for storing view data
+        provider="default",     # Name of the database provider to use for storing projection data
         schema_name="custom_name", # Name of the schema/table to use in the database
         limit=100               # Default query result limit
     )
     
     Important note: When both `cache` and `provider` are specified, the `cache` option takes precedence
-    and the `provider` option is ignored, as views can only connect to one data source at a time.
+    and the `provider` option is ignored, as projections can only connect to one data source at a time.
     """
 
     @classmethod
@@ -64,9 +64,9 @@ class BaseView(BaseContainer, OptionsMixin):
 
     @classmethod
     def __validate_id_field(subclass):
-        """Lookup the id field for this view and assign"""
+        """Lookup the id field for this projection and assign"""
         # FIXME What does it mean when there are no declared fields?
-        #   Does it translate to an abstract view?
+        #   Does it translate to an abstract projection?
         if declared_fields(subclass):
             try:
                 id_field = next(
@@ -78,8 +78,8 @@ class BaseView(BaseContainer, OptionsMixin):
                 setattr(subclass, _ID_FIELD_NAME, id_field.field_name)
 
             except StopIteration:
-                # View does not have an ID field. An error will be thrown
-                #   on registering the view, in the factory method.
+                # Projection does not have an ID field. An error will be thrown
+                #   on registering the projection, in the factory method.
                 pass
 
     @classmethod
@@ -87,7 +87,7 @@ class BaseView(BaseContainer, OptionsMixin):
         for field_name, field_obj in declared_fields(subclass).items():
             if isinstance(field_obj, (Reference, Association, ValueObject)):
                 raise IncorrectUsageError(
-                    f"Views can only contain basic field types. "
+                    f"Projections can only contain basic field types. "
                     f"Remove {field_name} ({field_obj.__class__.__name__}) from class {subclass.__name__}"
                 )
 
@@ -123,27 +123,27 @@ class BaseView(BaseContainer, OptionsMixin):
         return hash(getattr(self, id_field(self).field_name))
 
 
-def view_factory(element_cls, domain, **opts):
-    """Factory method to create a view class.
+def projection_factory(element_cls, domain, **opts):
+    """Factory method to create a projection class.
 
-    This method is used to create a view class. It is called during domain registration.
+    This method is used to create a projection class. It is called during domain registration.
     """
     # If opts has a `limit` key and it is negative, set it to None
     if "limit" in opts and opts["limit"] is not None and opts["limit"] < 0:
         opts["limit"] = None
 
-    # Derive the view class from the base view class
-    element_cls = derive_element_class(element_cls, BaseView, **opts)
+    # Derive the projection class from the base projection class
+    element_cls = derive_element_class(element_cls, BaseProjection, **opts)
 
     if not element_cls.meta_.abstract and not hasattr(element_cls, _ID_FIELD_NAME):
         raise IncorrectUsageError(
-            f"View `{element_cls.__name__}` needs to have at least one identifier"
+            f"Projection `{element_cls.__name__}` needs to have at least one identifier"
         )
 
-    # If the view has neither database nor cache provider, raise an error
+    # If the projection has neither database nor cache provider, raise an error
     if not (element_cls.meta_.provider or element_cls.meta_.cache):
         raise NotSupportedError(
-            f"{element_cls.__name__} view needs to have either a database or a cache provider"
+            f"{element_cls.__name__} projection needs to have either a database or a cache provider"
         )
 
     # A cache, when specified, overrides the provider

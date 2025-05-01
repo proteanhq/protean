@@ -3,7 +3,7 @@ from typing import Optional, Union
 
 import redis
 
-from protean.core.view import BaseView
+from protean.core.projection import BaseProjection
 from protean.port.cache import BaseCache
 from protean.utils.inflection import underscore
 from protean.utils.reflection import id_field
@@ -26,51 +26,53 @@ class RedisCache(BaseCache):
     def get_connection(self):
         return self.r
 
-    def add(self, view: BaseView, ttl: Optional[Union[int, float]] = None) -> None:
-        """Add view record to cache
+    def add(
+        self, projection: BaseProjection, ttl: Optional[Union[int, float]] = None
+    ) -> None:
+        """Add projection record to cache
 
-        KEY: View ID
-        Value: View Data (derived from `to_dict()`)
+        KEY: Projection ID
+        Value: Projection Data (derived from `to_dict()`)
 
         TTL is in seconds. If not specified explicitly in method call,
         it is picked up from Redis broker configuration. In the absence of
         configuration, it is set to 300 seconds.
 
         Args:
-            view (BaseView): View Instance containing data
+            projection (BaseProjection): Projection Instance containing data
             ttl (int, float, optional): Timeout in seconds. Defaults to None.
         """
-        identifier = getattr(view, id_field(view).field_name)
-        key = f"{underscore(view.__class__.__name__)}:::{identifier}"
+        identifier = getattr(projection, id_field(projection).field_name)
+        key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
 
         ttl = ttl or self.conn_info.get("TTL") or 300
 
-        self.r.psetex(key, int(ttl * 1000), json.dumps(view.to_dict()))
+        self.r.psetex(key, int(ttl * 1000), json.dumps(projection.to_dict()))
 
     def get(self, key):
-        view_name = key.split(":::")[0]
-        view_cls = self._views[view_name]
+        projection_name = key.split(":::")[0]
+        projection_cls = self._projections[projection_name]
 
         value = self.r.get(key)
-        return view_cls(json.loads(value)) if value else None
+        return projection_cls(json.loads(value)) if value else None
 
     def get_all(self, key_pattern, last_position=0, count=25):
         # FIXME Validate count
-        view_name = key_pattern.split(":::")[0]
-        view_cls = self._views[view_name]
+        projection_name = key_pattern.split(":::")[0]
+        projection_cls = self._projections[projection_name]
 
         cursor, values = self.r.scan(
             cursor=last_position, match=key_pattern, count=count
         )
-        return [view_cls(json.loads(self.r.get(value))) for value in values]
+        return [projection_cls(json.loads(self.r.get(value))) for value in values]
 
     def count(self, key_pattern, count=25):
         values = self.r.scan_iter(match=key_pattern, count=count)
         return len(list(values))
 
-    def remove(self, view):
-        identifier = getattr(view, id_field(view).field_name)
-        key = f"{underscore(view.__class__.__name__)}:::{identifier}"
+    def remove(self, projection):
+        identifier = getattr(projection, id_field(projection).field_name)
+        key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
         self.r.delete(key)
 
     def remove_by_key(self, key):

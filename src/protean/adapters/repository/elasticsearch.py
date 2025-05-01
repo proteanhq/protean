@@ -505,7 +505,7 @@ class ESProvider(BaseProvider):
         elements = {
             **self.domain.registry.aggregates,
             **self.domain.registry.entities,
-            **self.domain.registry.views,
+            **self.domain.registry.projections,
         }
         for _, element_record in elements.items():
             provider = current_domain.providers[element_record.cls.meta_.provider]
@@ -528,7 +528,7 @@ class ESProvider(BaseProvider):
         elements = {
             **self.domain.registry.aggregates,
             **self.domain.registry.entities,
-            **self.domain.registry.views,
+            **self.domain.registry.projections,
         }
         for _, element_record in elements.items():
             provider = current_domain.providers[element_record.cls.meta_.provider]
@@ -548,7 +548,7 @@ class ESProvider(BaseProvider):
         elements = {
             **self.domain.registry.aggregates,
             **self.domain.registry.entities,
-            **self.domain.registry.views,
+            **self.domain.registry.projections,
         }
         for _, element_record in elements.items():
             database_model_cls = self.domain.repository_for(
