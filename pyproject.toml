@@ -62,6 +62,12 @@ werkzeug = ">=2.0.0"
 cffi = ">=1.16.5"
 pydantic-core = "^2.19.1"
 greenlet = "^3.0.3"
+# Added for PostgreSQL support (dev-friendly, use 'psycopg2' in production)
+psycopg2-binary = "^2.9"
+
+
+
+
 
 ##########
 # Extras *

@@ -1,8 +1,15 @@
 # PostgreSQL
 
-The PostgreSQL adapter uses (`SQLAlchemy`)[https://www.sqlalchemy.org/] under
-the covers as the ORM to communicate with the database.
+## 🛠️ PostgreSQL Setup Guide
 
+### 1. Install PostgreSQL
+
+Ubuntu/Debian:
+```bash
+sudo apt update
+sudo apt install postgresql postgresql-contrib```
+
+The PostgreSQL adapter uses [SQLAlchemy](https://www.sqlalchemy.org/) under the hood as the ORM to communicate with the database.
 ## Configuration
 
 ```toml
