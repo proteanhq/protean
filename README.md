@@ -22,6 +22,16 @@ Successfully installed ...
 
 Protean officially supports Python 3.11+.
 
+##  PostgreSQL Setup Guide
+
+### 1. Install PostgreSQL
+
+Ubuntu/Debian:
+```bash
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+
+
 ## Quick Start
 
 ```python

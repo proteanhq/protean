@@ -1,4 +1,7 @@
-import sqlalchemy as sa
+try:
+    import sqlalchemy as sa
+except ImportError:
+    print("Warning: SQLAlchemy is not installed. You can install it by running 'pip install sqlalchemy'.")
 
 from protean import Domain
 from protean.adapters.repository.sqlalchemy import SqlalchemyModel
