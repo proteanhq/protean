@@ -644,11 +644,11 @@ class SAProvider(BaseProvider):
             current_uow.rollback()
 
     def _create_database_artifacts(self):
-        # Create tables for all registered aggregates, entities, and views
+        # Create tables for all registered aggregates, entities, and projections
         elements = {
             **self.domain.registry.aggregates,
             **self.domain.registry.entities,
-            **self.domain.registry.views,
+            **self.domain.registry.projections,
         }
 
         for _, element_record in elements.items():

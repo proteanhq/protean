@@ -140,7 +140,7 @@ Release History
 * Make views stateful to allow persistence and retrieval
 * Auto-generate Event's `message_id`
 * Support pickling of Protean exceptions
-* Bugfix - Fetch view objects instead of simply IDs in `cache.get_all()`
+* Bugfix - Fetch projection objects instead of simply IDs in `cache.get_all()`
 * Bugfix - Generate embedded ValueObject's data properly in `to_dict()`
 * Bugfix - Derive SQLAlchemy field types correctly for embedded value object fields
 

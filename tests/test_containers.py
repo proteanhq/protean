@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.view import BaseView
+from protean.core.projection import BaseProjection
 from protean.exceptions import InvalidDataError, NotSupportedError
 from protean.fields import Integer, String
 from protean.utils.container import BaseContainer, OptionsMixin
@@ -32,17 +32,17 @@ class TestContainerInitialization:
             CustomContainerMeta()
 
     def test_abstract_containers_cannot_be_instantiated(self, test_domain):
-        class AbstractView(BaseView):
+        class AbstractProjection(BaseProjection):
             foo = String()
 
-        test_domain.register(AbstractView, abstract=True)
+        test_domain.register(AbstractProjection, abstract=True)
 
         with pytest.raises(NotSupportedError) as exc:
-            AbstractView(foo="bar")
+            AbstractProjection(foo="bar")
 
         assert (
             str(exc.value)
-            == "AbstractView class has been marked abstract and cannot be instantiated"
+            == "AbstractProjection class has been marked abstract and cannot be instantiated"
         )
 
     def test_that_a_concrete_custom_container_can_be_instantiated(self):

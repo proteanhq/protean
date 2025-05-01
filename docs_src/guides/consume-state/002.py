@@ -65,7 +65,7 @@ class StockAdjusted:
     new_stock_quantity = Integer(required=True)
 
 
-@domain.view
+@domain.projection
 class ProductInventory:
     product_id = Identifier(identifier=True, required=True)
     name = String(max_length=100, required=True)
@@ -148,7 +148,7 @@ with domain.domain_context():
     )
     domain.process(command)
 
-    # Confirm that Inventory View has the correct stock quantity
+    # Confirm that Inventory Projection has the correct stock quantity
     repository = domain.repository_for(ProductInventory)
     inventory_record = repository.get(command.product_id)
     assert inventory_record.stock_quantity == 100
@@ -157,6 +157,6 @@ with domain.domain_context():
     adjust_command = AdjustStock(product_id=command.product_id, quantity=-50)
     domain.process(adjust_command)
 
-    # Confirm that Inventory View has the correct stock quantity
+    # Confirm that Inventory Projection has the correct stock quantity
     inventory_record = repository.get(command.product_id)
     assert inventory_record.stock_quantity == 50

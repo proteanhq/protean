@@ -230,7 +230,7 @@ def db(test_domain):
     method.
 
     It helps create and drop db structures of registered
-    aggregates, entities, and views.
+    aggregates, entities, and projections.
     """
     # Call provider to create structures
     test_domain.providers["default"]._create_database_artifacts()

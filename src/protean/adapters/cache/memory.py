@@ -4,7 +4,7 @@ import time
 from threading import RLock
 from typing import Optional, Union
 
-from protean.core.view import BaseView
+from protean.core.projection import BaseProjection
 from protean.port.cache import BaseCache
 from protean.utils.inflection import underscore
 from protean.utils.reflection import id_field
@@ -110,53 +110,55 @@ class MemoryCache(BaseCache):
         """Get the connection object for the repository"""
         return self._db._values
 
-    def add(self, view: BaseView, ttl: Optional[Union[int, float]] = None) -> None:
-        """Add view record to cache
+    def add(
+        self, projection: BaseProjection, ttl: Optional[Union[int, float]] = None
+    ) -> None:
+        """Add projection record to cache
 
-        KEY: View ID
-        Value: View Data (derived from `to_dict()`)
+        KEY: Projection ID
+        Value: Projection Data (derived from `to_dict()`)
 
         TTL is in seconds.
 
         Args:
-            view (BaseView): View Instance containing data
+            projection (BaseProjection): Projection Instance containing data
             ttl (int, float, optional): Timeout in seconds. Defaults to None.
         """
-        identifier = getattr(view, id_field(view).field_name)
-        key = f"{underscore(view.__class__.__name__)}:::{identifier}"
+        identifier = getattr(projection, id_field(projection).field_name)
+        key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
 
-        self._db[key] = view.to_dict()
+        self._db[key] = projection.to_dict()
 
         if ttl:
             self._db.set_ttl(key, ttl)
 
     def get(self, key):
-        view_name = key.split(":::")[0]
-        view_cls = self._views[view_name]
+        projection_name = key.split(":::")[0]
+        projection_cls = self._projections[projection_name]
 
         value = self._db.get(key)
-        return view_cls(value) if value else None
+        return projection_cls(value) if value else None
 
     def get_all(self, key_pattern, last_position=0, size=25):
         # FIXME Handle Pagination with Last Position
         # FIXME Handle Pagination with Size
-        view_name = key_pattern.split(":::")[0]
-        view_cls = self._views[view_name]
+        projection_name = key_pattern.split(":::")[0]
+        projection_cls = self._projections[projection_name]
 
         key_list = self._db.keys()
         regex = re.compile(key_pattern)
         results = list(filter(regex.match, key_list))
 
-        return [view_cls(self._db.get(key)) for key in results]
+        return [projection_cls(self._db.get(key)) for key in results]
 
     def count(self, key_pattern):
         key_list = self._db.keys()
         regex = re.compile(key_pattern)
         return len(list(filter(regex.match, key_list)))
 
-    def remove(self, view):
-        identifier = getattr(view, id_field(view).field_name)
-        key = f"{underscore(view.__class__.__name__)}:::{identifier}"
+    def remove(self, projection):
+        identifier = getattr(projection, id_field(projection).field_name)
+        key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
         del self._db[key]
 
     def remove_by_key(self, key):

@@ -104,7 +104,7 @@ class DomainObjects(Enum):
     REPOSITORY = "REPOSITORY"
     SUBSCRIBER = "SUBSCRIBER"
     VALUE_OBJECT = "VALUE_OBJECT"
-    VIEW = "VIEW"
+    PROJECTION = "PROJECTION"
 
 
 def derive_element_class(

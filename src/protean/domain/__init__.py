@@ -503,10 +503,10 @@ class Domain:
         from protean.core.event_sourced_repository import (
             event_sourced_repository_factory,
         )
+        from protean.core.projection import projection_factory
         from protean.core.repository import repository_factory
         from protean.core.subscriber import subscriber_factory
         from protean.core.value_object import value_object_factory
-        from protean.core.view import view_factory
 
         factories = {
             DomainObjects.AGGREGATE.value: aggregate_factory,
@@ -523,7 +523,7 @@ class Domain:
             DomainObjects.REPOSITORY.value: repository_factory,
             DomainObjects.SUBSCRIBER.value: subscriber_factory,
             DomainObjects.VALUE_OBJECT.value: value_object_factory,
-            DomainObjects.VIEW.value: view_factory,
+            DomainObjects.PROJECTION.value: projection_factory,
         }
 
         if domain_object_type.value not in factories:
@@ -1075,9 +1075,9 @@ class Domain:
             **kwargs,
         )
 
-    def view(self, _cls=None, **kwargs):
+    def projection(self, _cls=None, **kwargs):
         return self._domain_element(
-            DomainObjects.VIEW,
+            DomainObjects.PROJECTION,
             _cls=_cls,
             **kwargs,
         )
@@ -1219,15 +1219,15 @@ class Domain:
             # Return an Event Sourced repository
             return self.event_store.repository_for(element_cls)
         else:
-            # This is a regular aggregate or a view
+            # This is a regular aggregate or a projection
             return self.providers.repository_for(element_cls)
 
     #######################
     # Cache Functionality #
     #######################
 
-    def cache_for(self, view_cls):
-        return self.caches.cache_for(view_cls)
+    def cache_for(self, projection_cls):
+        return self.caches.cache_for(projection_cls)
 
     #######################
     # Email Functionality #

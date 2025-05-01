@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Union
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
+from protean.core.projection import BaseProjection
 from protean.core.unit_of_work import UnitOfWork
-from protean.core.view import BaseView
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne
 from protean.port.dao import BaseDAO
@@ -101,9 +101,9 @@ class BaseRepository(Element, OptionsMixin):
         return self._provider.get_dao(self.meta_.part_of, self._database_model)
 
     def add(
-        self, item: Union[BaseAggregate, BaseView]
-    ) -> Union[BaseAggregate, BaseView]:  # noqa: C901
-        """This method helps persist or update aggregates or views into the persistence store.
+        self, item: Union[BaseAggregate, BaseProjection]
+    ) -> Union[BaseAggregate, BaseProjection]:  # noqa: C901
+        """This method helps persist or update aggregates or projections into the persistence store.
 
         Returns the persisted item.
 
@@ -239,7 +239,7 @@ class BaseRepository(Element, OptionsMixin):
                     entity._temp_cache[field_name]["change"] = None
                     entity._temp_cache[field_name]["old_value"] = None
 
-    def get(self, identifier) -> Union[BaseAggregate, BaseEntity, BaseView]:
+    def get(self, identifier) -> Union[BaseAggregate, BaseEntity, BaseProjection]:
         """This is a utility method to fetch data from the persistence store by its key identifier. All child objects,
         including enclosed entities, are returned as part of this call.
 

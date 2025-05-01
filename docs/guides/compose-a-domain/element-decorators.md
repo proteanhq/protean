@@ -103,11 +103,11 @@ Read more at Models.
 <!-- FIXME Add link-->
 Read more at Repositories.
 
-## `Domain.view`
+## `Domain.projection`
 
 ```python hl_lines="20-24"
 {! docs_src/guides/composing-a-domain/013.py !}
 ```
 
 <!-- FIXME Add link-->
-Read more at Views.
+Read more at Projections.

@@ -16,8 +16,8 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.projection import BaseProjection
 from protean.core.value_object import BaseValueObject
-from protean.core.view import BaseView
 from protean.domain import Domain
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import (
@@ -97,7 +97,7 @@ class OrdersCommandHandler(BaseCommandHandler):
         current_domain.repository_for(Order).add(order)
 
 
-class DailyOrders(BaseView):
+class DailyOrders(BaseProjection):
     date = Date(identifier=True)
     total = Integer(required=True)
 
@@ -106,12 +106,12 @@ class OrdersEventHandler(BaseEventHandler):
     @handle(OrderPlaced)
     def order_placed(self, event: OrderPlaced):
         try:
-            view = current_domain.repository_for(DailyOrders).get(
+            projection = current_domain.repository_for(DailyOrders).get(
                 event.ordered_at.date()
             )
         except ObjectNotFoundError:
-            view = DailyOrders(date=event.ordered_at.date(), total=1)
-            current_domain.repository_for(DailyOrders).add(view)
+            projection = DailyOrders(date=event.ordered_at.date(), total=1)
+            current_domain.repository_for(DailyOrders).add(projection)
 
 
 class Customer(BaseAggregate):
@@ -241,10 +241,12 @@ def test_workflow_among_protean_domains(test_domain, shipment_domain):
 
         # Check effects
 
-        # Event Handler on same aggregate updates view.
-        view = test_domain.repository_for(DailyOrders).get(command.ordered_at.date())
-        assert view.total == 1
-        assert view.date == command.ordered_at.date()
+        # Event Handler on same aggregate updates projection.
+        projection = test_domain.repository_for(DailyOrders).get(
+            command.ordered_at.date()
+        )
+        assert projection.total == 1
+        assert projection.date == command.ordered_at.date()
 
         # Event Handler on different aggregate updates history.
         refreshed_customer = test_domain.repository_for(Customer).get(customer.id)

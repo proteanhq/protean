@@ -6,7 +6,7 @@ from uuid import UUID
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.view import BaseView
+from protean.core.projection import BaseProjection
 from protean.fields import Auto
 from tests.shared import assert_int_is_uuid, assert_str_is_uuid
 
@@ -79,8 +79,10 @@ class TestValueGeneration:
         refreshed_auto2 = test_domain.repository_for(AutoTest)._dao.query.all().items[1]
         assert refreshed_auto2.auto_field == 2
 
-    def test_automatic_uuid_generation_of_identifier_fields_in_views(self, test_domain):
-        class AutoTest(BaseView):
+    def test_automatic_uuid_generation_of_identifier_fields_in_projections(
+        self, test_domain
+    ):
+        class AutoTest(BaseProjection):
             auto_field1 = Auto(identifier=True)
 
         test_domain.register(AutoTest)
@@ -93,10 +95,10 @@ class TestValueGeneration:
             "auto_field1": str(auto.auto_field1),
         }
 
-    def test_automatic_uuid_generation_of_non_identifier_fields_in_views(
+    def test_automatic_uuid_generation_of_non_identifier_fields_in_projections(
         self, test_domain
     ):
-        class AutoTest(BaseView):
+        class AutoTest(BaseProjection):
             identifier = Auto(identifier=True)
             auto_field1 = Auto()
 
