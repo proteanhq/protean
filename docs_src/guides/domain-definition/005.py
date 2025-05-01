@@ -1,4 +1,7 @@
-import sqlalchemy
+try:
+    import sqlalchemy
+except ImportError:
+    print("Warning: SQLAlchemy is not installed. You can install it by running 'pip install sqlalchemy'.")
 
 from protean import Domain
 from protean.fields import String
