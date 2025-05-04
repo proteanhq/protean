@@ -47,20 +47,17 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     - `choices`: An Enum class that defines the valid choices for this field.
     - `validators`: A list of callables that validate the field value.
     - `error_messages`: A dictionary of error messages for validation errors.
+    - `deprecated`: A boolean indicating whether this field is deprecated.
     """
 
     default_error_messages = {
         "invalid": "Value is not a valid type for this field.",
         "unique": "{entity_name} with {field_name} '{value}' is already present.",
         "required": "is required",
-        "invalid_choice": "Value `{value!r}` is not a valid choice. "
-        "Must be among {choices!r}",
+        "invalid_choice": "Value `{value!r}` is not a valid choice. Must be among {choices!r}",
     }
 
-    # Default validators for a Field
     default_validators: List[Callable] = []
-
-    # These values will trigger the self.required check.
     empty_values: tuple = (None, "", [], (), {})
 
     def __init__(
@@ -74,26 +71,18 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         choices: enum.Enum = None,
         validators: Iterable = (),
         error_messages: dict = None,
+        deprecated: bool = False,  # ✅ New parameter
     ):
-        # Pass to FieldDescriptorMixin for initialization
         super().__init__(referenced_as=referenced_as, description=description)
 
         self.identifier = identifier
         self.default = default
-
-        # Indicates if field values need to be unique within the repository
-        # always True for identifier field
         self.unique = True if self.identifier else unique
-
-        # Indicates if this field is required, always True for identifier field
         self.required = True if self.identifier else required
-
-        # Set the choices for this field
         self.choices = choices
-
         self._validators = validators
+        self.deprecated = deprecated  # ✅ Store the flag
 
-        # Collect default error message from self and parent classes
         messages = {}
         for cls in reversed(self.__class__.__mro__):
             messages.update(getattr(cls, "default_error_messages", {}))
@@ -101,7 +90,6 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         self.error_messages = messages
 
     def _generic_param_values_for_repr(self) -> list[str]:
-        """Return the generic parameter values for the Field's repr"""
         values = []
         if self.description:
             values.append(f"description='{self.description}'")
@@ -112,22 +100,16 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         if self.referenced_as:
             values.append(f"referenced_as='{self.referenced_as}'")
         if self.default is not None:
-            # If default is a callable, use its name
             if callable(self.default):
                 values.append(f"default={self.default.__name__}")
             else:
-                if isinstance(self.default, str):
-                    values.append(f"default='{self.default}'")
-                else:
-                    values.append(f"default={self.default}")
+                values.append(f"default='{self.default}'" if isinstance(self.default, str) else f"default={self.default}")
+        if self.deprecated:  # ✅ Include deprecated in repr
+            values.append("deprecated=True")
         return values
 
     def __repr__(self):
-        return (
-            f"{self.__class__.__name__}("
-            + ", ".join(self._generic_param_values_for_repr())
-            + ")"
-        )
+        return f"{self.__class__.__name__}(" + ", ".join(self._generic_param_values_for_repr()) + ")"
 
     def __get__(self, instance, owner):
         if hasattr(instance, "__dict__"):
@@ -135,26 +117,11 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
 
     def __set__(self, instance, value):
         value = self._load(value)
-
-        # The hasattr check is necessary to avoid running invariant checks on unrelated elements
-        if (
-            instance._initialized
-            and hasattr(instance, "_root")
-            and instance._root is not None
-        ):
-            instance._root._precheck()  # Trigger validations from the top
-
+        if instance._initialized and hasattr(instance, "_root") and instance._root is not None:
+            instance._root._precheck()
         instance.__dict__[self.field_name] = value
-
-        # The hasattr check is necessary to avoid running invariant checks on unrelated elements
-        if (
-            instance._initialized
-            and hasattr(instance, "_root")
-            and instance._root is not None
-        ):
-            instance._root._postcheck()  # Trigger validations from the top
-
-        # Mark Entity as Dirty
+        if instance._initialized and hasattr(instance, "_root") and instance._root is not None:
+            instance._root._postcheck()
         if hasattr(instance, "state_"):
             instance.state_.mark_changed()
 
@@ -162,49 +129,31 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         instance.__dict__.pop(self.field_name, None)
 
     def fail(self, key, **kwargs):
-        """A helper method that simply raises a `ValidationError`."""
         try:
             msg = self.error_messages[key]
         except KeyError:
             class_name = self.__class__.__name__
             msg = MISSING_ERROR_MESSAGE.format(class_name=class_name, key=key)
             raise exceptions.ValidationError({key: [msg]})
-
-        # Format message with supplied arguments
         msg = msg.format(**kwargs)
-
-        # If a field is being used by itself (not owned by an entity/aggregate),
-        #   it's field_name will be blank.
         field_name = self.field_name or "unlinked"
         raise exceptions.ValidationError({field_name: [msg]})
 
     @property
     def validators(self):
-        """
-        Some validators can't be created at field initialization time.
-        This method provides a way to handle such default validators.
-        """
         return [*self.default_validators, *self._validators]
 
     @abstractmethod
     def _cast_to_type(self, value: Any) -> Any:
-        """
-        Abstract method to validate and convert the value passed to native type.
-        All subclasses must implement this method.
-        Raise a :exc:`ValidationError` if validation does not succeed.
-        """
+        pass
 
     @abstractmethod
     def as_dict(self, value: Any) -> Any:
-        """Return JSON-compatible value of field"""
+        pass
 
     def _run_validators(self, value):
-        """Perform validation on ``value``. Raise a :exc:`ValidationError` if
-        validation does not succeed.
-        """
         if value in self.empty_values:
             return
-
         errors = defaultdict(list)
         for validator in self.validators:
             try:
@@ -212,16 +161,10 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
             except exceptions.ValidationError as err:
                 field_name = self.field_name or "unlinked"
                 errors[field_name].append(err.messages)
-
         if errors:
             raise exceptions.ValidationError(errors)
 
     def _clone(self) -> "Field":
-        """
-        Clone the field with all its attributes.
-
-        :return: Cloned Field object
-        """
         return self.__class__(
             referenced_as=self.referenced_as,
             description=self.description,
@@ -232,60 +175,28 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
             choices=self.choices,
             validators=self._validators,
             error_messages=self.error_messages,
+            deprecated=self.deprecated,  # ✅ Include in clone
         )
 
     def _load(self, value: Any):
-        """
-        Load the value for the field, run validators and return the value.
-        Subclasses can override this to provide custom load logic.
-
-        :param value: value of the field
-
-        """
-
-        # Check if value is one among recognized empty values, or is False (for complex objects)
         if value in self.empty_values:
-            # If a default has been set for the field return it
             if self.default is not None:
-                default = self.default
-                value = default() if callable(default) else default
-                return value
-
-            # If no default is set and this field is required
+                return self.default() if callable(self.default) else self.default
             elif self.required:
                 self.fail("required")
-
-            # In all other cases just return the passed value, as we do not want to
-            # run validations against an empty value
-            # Because of this behavior, we preserve the data sanctity for int and float objects,
-            # and return 0 or 0.0, as need be.
             elif value is None:
                 return value
-
-        # If choices exist then validate that value is be one of the choices
         if self.choices:
-            # Check if self.choices is an Enum
-            if type(self.choices) not in [list, tuple] and issubclass(
-                self.choices, enum.Enum
-            ):
+            if type(self.choices) not in [list, tuple] and issubclass(self.choices, enum.Enum):
                 choices = [item.value for item in self.choices]
-
-                # Check if value is an Enum instance
                 if isinstance(value, self.choices):
                     value = value.value
             else:
                 choices = self.choices
-
             value_list = [value] if not isinstance(value, (list, tuple)) else value
-
             for v in value_list:
                 if v not in choices:
                     self.fail("invalid_choice", value=v, choices=choices)
-
-        # Cast and Validate the value for this Field
         value = self._cast_to_type(value)
-
-        # Call the rest of the validators defined for this Field
         self._run_validators(value)
-
         return value
