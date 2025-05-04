@@ -78,6 +78,9 @@ class BaseAggregate(BaseEntity):
         # Store associated events
         setattr(subclass, "_events_cls_map", {})
 
+        # log the event in which structure of this class was changed
+        setattr(subclass, "_meta_events_log", [])
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -131,14 +134,35 @@ class BaseAggregate(BaseEntity):
 
         Reconstruct an aggregate from a list of events.
         """
-        # Initialize the aggregate with the first event's payload and apply it
-        aggregate = cls(**events[0].payload)
-        aggregate._apply(events[0])
+        cls._meta_events_log = []
+        event_length = len(events)
 
-        # Apply the rest of the events
-        for event in events[1:]:
-            aggregate._apply(event)
+        base_item = 0
+        while base_item < event_length:
+            try:
+                """
+                try to initialize the current architecture of aggregate from first
+                event and if not possible move a step forward until an event with
+                same architecture is found and make it new base
+                eventually will reach the event that mirrors aggregate
+                """
+                aggregate = cls(**events[base_item].payload)
+                aggregate._apply(events[base_item])
 
+                # a log of these structure changes
+                cls._meta_events_log.append(
+                    {"start_index": base_item, "end_index": event_length}
+                )
+
+                for event_item in range(base_item + 1, event_length):
+                    # apply later events in order to same base
+                    aggregate._apply(events[event_item])
+
+                break
+            except:
+                # skip the older event that doesn't mirror latest aggregate anymore
+                base_item += 1
+                cls._meta_events_log[-1]["end_index"] = event_item
         return aggregate
 
 
