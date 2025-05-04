@@ -163,6 +163,9 @@ class BaseAggregate(BaseEntity):
                 # skip the older event that doesn't mirror latest aggregate anymore
                 base_item += 1
                 cls._meta_events_log[-1]["end_index"] = event_item
+        if aggregate is None:
+            raise ValueError("No valid base event found for aggregate reconstruction")
+
         return aggregate
 
 
