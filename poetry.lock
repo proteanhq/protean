@@ -2424,20 +2424,21 @@ jeepney = ">=0.6"
 
 [[package]]
 name = "sendgrid"
-version = "6.11.0"
+version = "6.12.0"
 description = "Twilio SendGrid library for Python"
 optional = true
-python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
+python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 groups = ["main"]
 markers = "extra == \"sendgrid\""
 files = [
-    {file = "sendgrid-6.11.0-py3-none-any.whl", hash = "sha256:43ecf5bb742ea5850c7cfe68f5e7d9948772352306d4e83e119899959538b884"},
-    {file = "sendgrid-6.11.0.tar.gz", hash = "sha256:71424b2a97f5a034121ea3b2666c653ba0ed315982f0d57b7851c0c9503dc5ab"},
+    {file = "sendgrid-6.12.0-py3-none-any.whl", hash = "sha256:8b55622d6d2085b9b989a405eba2db9cf3278b8ff6ccbd9d709c98e2a6fab704"},
+    {file = "sendgrid-6.12.0.tar.gz", hash = "sha256:09f647192e6f7fcfc41eba8131b930d61cef6754162e2ca917dc93f4289b18b1"},
 ]
 
 [package.dependencies]
 python-http-client = ">=3.2.1"
 starkbank-ecdsa = ">=2.0.1"
+werkzeug = {version = ">=3.0.0", markers = "python_version >= \"3.11\""}
 
 [[package]]
 name = "setuptools"
