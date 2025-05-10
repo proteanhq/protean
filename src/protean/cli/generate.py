@@ -1,5 +1,6 @@
 import logging
-
+import os
+from jinja2 import Environment, FileSystemLoader
 import typer
 from typing_extensions import Annotated
 
@@ -43,3 +44,48 @@ def docker_compose(
         domain_instance.init()
 
         # FIXME Generate docker-compose.yml from domain config
+        output_file = os.path.join(os.getcwd(), 'docker-compose.yml')
+        if os.path.exists(output_file):
+            typer.secho("❌ docker-compose.yml already exists. Aborting.", fg="red")
+            raise typer.Exit(code=1)
+
+        # Extract services from domain config
+        cfg = domain_instance.config
+        services_cfg = getattr(cfg, 'docker', {}).get('services', {})
+        services = []
+        for name, svc in services_cfg.items():
+            services.append({
+                'name': name,
+                'image': svc.get('image'),
+                'ports': svc.get('ports', []),
+                'environment': svc.get('environment', {}),
+            })
+
+        # Fallback: if no services defined, infer a SQLite service entry
+        if not services:
+            for provider in getattr(domain_instance, 'providers', {}).values():
+                engine = getattr(provider, '_engine', None)
+                if engine and engine.url.drivername == 'sqlite':
+                    services.append({
+                        'name': 'sqlite',
+                        'image': 'sqlite',
+                        'ports': [],
+                        'environment': {},
+                    })
+                    break
+
+        # Load and render Jinja2 template
+        template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+        env = Environment(
+            loader=FileSystemLoader(template_dir),
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        template = env.get_template('docker-compose.yml.j2')
+        rendered = template.render(services=services)
+
+        # Write rendered output to file
+        with open(output_file, 'w') as f:
+            f.write(rendered)
+
+        typer.secho(f'✅ docker-compose.yml generated at {output_file}', fg='green')

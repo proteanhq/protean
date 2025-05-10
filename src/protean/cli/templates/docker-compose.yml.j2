@@ -1,0 +1,18 @@
+version: '3'
+services:
+{% for svc in services %}
+  {{ svc.name }}:
+    image: {{ svc.image }}
+    {% if svc.environment %}
+    environment:
+      {% for key, val in svc.environment.items() %}
+      - {{ key }}={{ val }}
+      {% endfor %}
+    {% endif %}
+    {% if svc.ports %}
+    ports:
+      {% for port in svc.ports %}
+      - "{{ port }}"
+      {% endfor %}
+    {% endif %}
+{% endfor %}

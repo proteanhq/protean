@@ -1,6 +1,10 @@
 Release History
 ===============
 
+0.15.0 (unreleased)
+-------------------
+* Added `protean generate docker-compose` command to auto-generate docker-compose.yml from domain config.
+
 0.14.0 (unreleased)
 -------------------
 
