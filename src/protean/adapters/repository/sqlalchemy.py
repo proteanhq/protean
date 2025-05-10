@@ -538,6 +538,17 @@ class SAProvider(BaseProvider):
             **self._additional_engine_args(),
         )
 
+        # Warn if psycopg2 driver is missing when using PostgreSQL
+        if self.__database__ == self.databases.postgresql.value:
+            try:
+                import psycopg2  # noqa: F401
+            except ImportError:
+                logger.warning(
+                    "Missing psycopg2 driver. "
+                    "Run 'pip install psycopg2-binary' for development or "
+                    "'pip install psycopg2' for production."
+                )
+
         if self.__database__ == self.databases.postgresql.value:
             # Nest database tables under a schema, so that we have complete control
             #   on creating/dropping db structures. We cannot control structures in the
