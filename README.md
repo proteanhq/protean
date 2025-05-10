@@ -20,7 +20,33 @@ Installing collected packages: ...
 Successfully installed ...
 ```
 
+
 Protean officially supports Python 3.11+.
+
+## PostgreSQL Setup
+
+Protean does not include a PostgreSQL driver by default. To use PostgreSQL as a provider, you must install the appropriate driver:
+
+- **Development (precompiled wheels)**:
+```console
+pip install psycopg2-binary
+```
+- **Production (source install)**:
+```console
+pip install psycopg2
+```
+
+Alternatively, install Protean with one of the PostgreSQL extras:
+
+- **Development** (precompiled wheels):
+```console
+pip install protean[postgresql-binary]
+```
+
+- **Production** (source build):
+```console
+pip install protean[postgresql]
+```
 
 ## Quick Start
 
