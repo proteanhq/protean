@@ -603,14 +603,14 @@ files = [
 
 [[package]]
 name = "diff-cover"
-version = "9.2.4"
+version = "9.3.1"
 description = "Run coverage and linting reports on diffs"
 optional = false
-python-versions = "<4.0.0,>=3.9.17"
+python-versions = ">=3.9"
 groups = ["test"]
 files = [
-    {file = "diff_cover-9.2.4-py3-none-any.whl", hash = "sha256:c68b34e368b13888cb04a14aeb509821aab594c171a621e8bd3248435c9dd0c9"},
-    {file = "diff_cover-9.2.4.tar.gz", hash = "sha256:6ea44711f09199a1b8bcaa2eae002e1f337dd22f2d798fcfd62a6a1554bb2a86"},
+    {file = "diff_cover-9.3.1-py3-none-any.whl", hash = "sha256:693a5429151ab18cb81c56530bb8d46599f76270b256528a1d450dba208227dd"},
+    {file = "diff_cover-9.3.1.tar.gz", hash = "sha256:391a37361aa9b4272c9b4301032b74e9cadc2acc1d6291d266b69e6f678996b1"},
 ]
 
 [package.dependencies]
