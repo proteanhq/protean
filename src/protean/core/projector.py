@@ -38,8 +38,9 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
 
         # If aggregates are specified and stream categories are not, gather stream categories from each aggregate
         if aggregates and not stream_categories:
-            for aggregate in aggregates:
-                stream_categories.append(aggregate.meta_.stream_category)
+            stream_categories = [
+                aggregate.meta_.stream_category for aggregate in aggregates
+            ]
 
         return [
             ("projector_for", projector_for),

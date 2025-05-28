@@ -1038,13 +1038,13 @@ class Domain:
                         if not (
                             method_name.startswith("__") and method_name.endswith("__")
                         ) and hasattr(method, "_target_cls"):
-                            # Throw error if target_cls is not a Projection
+                            # Throw error if target_cls is not an Event
                             if not inspect.isclass(
                                 method._target_cls
                             ) or not issubclass(method._target_cls, BaseEvent):
                                 raise IncorrectUsageError(
-                                    f"Projector `{element.cls.__name__}` "
-                                    "is not associated with a projection"
+                                    f"Projector method `{method_name}` in `{element.cls.__name__}` "
+                                    "is not associated with an event"
                                 )
 
                             event_type = (

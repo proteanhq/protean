@@ -19,7 +19,7 @@ def test_that_a_handler_is_recorded_against_projector(test_domain):
 
 
 def test_that_multiple_handlers_can_be_recorded_against_the_same_event(test_domain):
-    """This test is to ensure that multiple handlers can be recorded against diffrent events
+    """This test is to ensure that multiple handlers can be recorded against different events
     and against the same event"""
     test_domain.register(User)
     test_domain.register(LoggedIn, part_of=User)
