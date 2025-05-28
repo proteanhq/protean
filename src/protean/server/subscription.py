@@ -64,7 +64,7 @@ class Subscription:
         self.origin_stream = origin_stream
         self.tick_interval = tick_interval
 
-        self.subscriber_stream_name = f"position-${subscriber_id}"
+        self.subscriber_stream_name = f"position-{subscriber_id}-{stream_category}"
 
         self.current_position: int = -1
         self.messages_since_last_position_write: int = 0

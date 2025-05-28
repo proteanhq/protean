@@ -76,6 +76,16 @@ class Engine:
                 record.cls,
             )
 
+        for handler_name, record in self.domain.registry.projectors.items():
+            # Create a subscription for each projector
+            for stream_category in record.cls.meta_.stream_categories:
+                self._subscriptions[f"{handler_name}-{stream_category}"] = Subscription(
+                    self,
+                    handler_name,
+                    stream_category,
+                    record.cls,
+                )
+
         # Gather broker subscriptions
         self._broker_subscriptions = {}
 

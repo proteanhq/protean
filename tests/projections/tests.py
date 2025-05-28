@@ -5,7 +5,12 @@ from uuid import uuid4
 import pytest
 
 from protean.core.projection import BaseProjection
-from protean.exceptions import InvalidOperationError, NotSupportedError, ValidationError
+from protean.exceptions import (
+    IncorrectUsageError,
+    InvalidOperationError,
+    NotSupportedError,
+    ValidationError,
+)
 from protean.fields import Auto, Identifier, Integer, String
 from protean.utils import fully_qualified_name
 from protean.utils.container import Options
@@ -43,6 +48,12 @@ class PersonAutoSSN(BaseProjection):
 
 class PersonExplicitID(BaseProjection):
     ssn = String(max_length=36, identifier=True)
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50)
+    age = Integer(default=21)
+
+
+class PersonWithoutIdField(BaseProjection):
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
     age = Integer(default=21)
@@ -135,6 +146,13 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
+def test_projection_cannot_be_instantiated(test_domain):
+    with pytest.raises(NotSupportedError) as excinfo:
+        BaseProjection()
+
+    assert "BaseProjection cannot be instantiated" in str(excinfo.value)
+
+
 class TestProjectionRegistration:
     def test_manual_registration_of_projection(self, test_domain):
         class Comment(BaseProjection):
@@ -152,6 +170,12 @@ class TestProjectionRegistration:
             content = String(max_length=500)
 
         assert fully_qualified_name(Comment) in test_domain.registry.projections
+
+    def test_id_field_mandatory_in_projections(self, test_domain):
+        with pytest.raises(IncorrectUsageError) as excinfo:
+            test_domain.register(PersonWithoutIdField)
+
+        assert "needs to have at least one identifier" in str(excinfo.value)
 
 
 class TestProperties:
@@ -311,6 +335,9 @@ class TestIdentity:
         assert id_field(PersonExplicitID).field_name == "ssn"
         assert id_field(PersonExplicitID) == declared_fields(PersonExplicitID)["ssn"]
 
+    def test_id_field_not_required_for_abstract_projections(self):
+        assert id_field(AbstractPerson) is None
+
 
 class TestIdentityValues:
     """Grouping of Identity value related test cases"""
@@ -344,6 +371,15 @@ class TestIdentityValues:
         person = PersonExplicitID(ssn=new_uuid, first_name="John")
         assert person.ssn is not None
         assert person.ssn == str(new_uuid)
+
+    def test_that_abstract_projections_can_be_instantiated_without_id_field(self):
+        with pytest.raises(NotSupportedError) as excinfo:
+            AbstractPerson(first_name="John", last_name="Doe")
+
+        assert (
+            "AbstractPerson class has been marked abstract and cannot be instantiated"
+            in str(excinfo.value)
+        )
 
 
 class TestEquivalence:

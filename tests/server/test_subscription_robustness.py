@@ -223,7 +223,7 @@ async def test_subscription_process_batch_with_asynchronous_flag(test_domain, ca
 
         # Check if position updates were written
         position_messages = test_domain.event_store.store.read(
-            "position-$test_subscription"
+            "position-test_subscription-test"
         )
         assert len(position_messages) > 0
 
@@ -273,7 +273,7 @@ async def test_subscription_process_batch_exception_handling(test_domain, caplog
 
         # Check if position was still updated in the event store despite the error
         position_messages = test_domain.event_store.store.read(
-            "position-$test_subscription"
+            "position-test_subscription-test"
         )
         assert len(position_messages) > 0
 
@@ -381,6 +381,6 @@ async def test_subscription_with_mixed_success_and_failure(test_domain, caplog):
 
         # Check if position was updated for both messages
         position_messages = test_domain.event_store.store.read(
-            "position-$test_subscription"
+            "position-test_subscription-test"
         )
         assert len(position_messages) > 0  # At least one position update
