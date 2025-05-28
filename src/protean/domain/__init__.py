@@ -2,6 +2,8 @@
 to register Domain Elements.
 """
 
+from __future__ import annotations
+
 import inspect
 import json
 import logging
@@ -23,6 +25,8 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector
 from protean.core.repository import BaseRepository
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import (
@@ -304,6 +308,9 @@ class Domain:
         # Parse and setup handler methods in Event Handlers
         self._setup_event_handlers()
 
+        # Parse and setup handler methods in Projectors
+        self._setup_projectors()
+
         # Run Validations
         self._validate_domain()
 
@@ -504,6 +511,7 @@ class Domain:
             event_sourced_repository_factory,
         )
         from protean.core.projection import projection_factory
+        from protean.core.projector import projector_factory
         from protean.core.repository import repository_factory
         from protean.core.subscriber import subscriber_factory
         from protean.core.value_object import value_object_factory
@@ -524,6 +532,7 @@ class Domain:
             DomainObjects.SUBSCRIBER.value: subscriber_factory,
             DomainObjects.VALUE_OBJECT.value: value_object_factory,
             DomainObjects.PROJECTION.value: projection_factory,
+            DomainObjects.PROJECTOR.value: projector_factory,
         }
 
         if domain_object_type.value not in factories:
@@ -603,6 +612,12 @@ class Domain:
                     ("AggregateCls", (new_cls))
                 )
 
+        if element_type == DomainObjects.PROJECTOR:
+            if isinstance(new_cls.meta_.projector_for, str):
+                self._pending_class_resolutions[new_cls.meta_.projector_for].append(
+                    ("ProjectionCls", (new_cls))
+                )
+
         return new_cls
 
     def _resolve_references(self):
@@ -637,6 +652,13 @@ class Domain:
                             (DomainObjects.AGGREGATE,),
                         )
                         cls.meta_.part_of = to_cls
+                    case "ProjectionCls":
+                        cls = params
+                        to_cls = self.fetch_element_cls_from_registry(
+                            cls.meta_.projector_for,
+                            (DomainObjects.PROJECTION,),
+                        )
+                        cls.meta_.projector_for = to_cls
                     case _:
                         raise NotSupportedError(
                             f"Resolution Type {resolution_type} not supported"
@@ -840,6 +862,19 @@ class Domain:
                     f"than its aggregate `{entity.cls.meta_.aggregate_cluster.__name__}`"
                 )
 
+        # Check that projections associated with projectors are registered
+        for _, projector in self.registry._elements[
+            DomainObjects.PROJECTOR.value
+        ].items():
+            if projector.cls.meta_.projector_for:
+                if (
+                    fqn(projector.cls.meta_.projector_for)
+                    not in self.registry._elements[DomainObjects.PROJECTION.value]
+                ):
+                    raise IncorrectUsageError(
+                        f"`{projector.cls.meta_.projector_for.__name__}` is not a Projection, or is not registered in domain {self.name}"
+                    )
+
     def _assign_aggregate_clusters(self):
         """Assign Aggregate Clusters to all relevant elements"""
         from protean.core.aggregate import BaseAggregate
@@ -991,6 +1026,36 @@ class Domain:
                             )
                             element.cls._handlers[event_type].add(method)
 
+    def _setup_projectors(self):
+        for element_type in [DomainObjects.PROJECTOR]:
+            for _, element in self.registry._elements[element_type.value].items():
+                # Iterate through methods marked as `@handle` and construct a handler map
+                if not element.cls._handlers:  # Protect against re-registration
+                    methods = inspect.getmembers(
+                        element.cls, predicate=inspect.isroutine
+                    )
+                    for method_name, method in methods:
+                        if not (
+                            method_name.startswith("__") and method_name.endswith("__")
+                        ) and hasattr(method, "_target_cls"):
+                            # Throw error if target_cls is not an Event
+                            if not inspect.isclass(
+                                method._target_cls
+                            ) or not issubclass(method._target_cls, BaseEvent):
+                                raise IncorrectUsageError(
+                                    f"Projector method `{method_name}` in `{element.cls.__name__}` "
+                                    "is not associated with an event"
+                                )
+
+                            event_type = (
+                                method._target_cls.__type__
+                                if issubclass(method._target_cls, BaseEvent)
+                                else method._target_cls
+                            )
+
+                            # `_handlers` maps the command to its handler method
+                            element.cls._handlers[event_type].add(method)
+
     def _generate_fact_event_classes(self):
         """Generate FactEvent classes for all aggregates with `fact_events` enabled"""
         for _, element in self.registry._elements[
@@ -1078,6 +1143,13 @@ class Domain:
     def projection(self, _cls=None, **kwargs):
         return self._domain_element(
             DomainObjects.PROJECTION,
+            _cls=_cls,
+            **kwargs,
+        )
+
+    def projector(self, _cls=None, **kwargs):
+        return self._domain_element(
+            DomainObjects.PROJECTOR,
             _cls=_cls,
             **kwargs,
         )
@@ -1200,6 +1272,20 @@ class Domain:
             List[BaseEventHandler]: Event Handlers that have registered to consume the event
         """
         return self.event_store.handlers_for(event)
+
+    ############################
+    # Projector Functionality  #
+    ############################
+    def projectors_for(self, projection_cls: BaseProjection) -> List[BaseProjector]:
+        """Return Projectors listening to a specific projection
+
+        Args:
+            projection_cls (BaseProjection): Projection to be consumed
+
+        Returns:
+            List[BaseProjector]: Projectors that have registered to consume the projection
+        """
+        return self.event_store.projectors_for(projection_cls)
 
     ############################
     # Repository Functionality #

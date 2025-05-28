@@ -57,13 +57,12 @@ class BaseProjection(BaseContainer, OptionsMixin):
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()
 
-        if not subclass.meta_.abstract:
-            subclass.__validate_id_field()
+        subclass.__assign_id_field()
 
         subclass.__validate_for_basic_field_types()
 
     @classmethod
-    def __validate_id_field(subclass):
+    def __assign_id_field(subclass):
         """Lookup the id field for this projection and assign"""
         # FIXME What does it mean when there are no declared fields?
         #   Does it translate to an abstract projection?
