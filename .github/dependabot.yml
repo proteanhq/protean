@@ -8,4 +8,44 @@ updates:
   - package-ecosystem: "pip" # See documentation for possible values
     directory: "/" # Location of package manifests
     schedule:
-      interval: "daily"
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    versioning-strategy: auto
+    labels:
+      - "dependencies"
+      - "minor"
+    groups:
+      dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    versioning-strategy: auto
+    labels:
+      - "dependencies"
+      - "major"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "daily"  # Required for security updates to run promptly
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "security"
+    allow:
+      - dependency-type: "all"
+    security-updates-only: true
+  
