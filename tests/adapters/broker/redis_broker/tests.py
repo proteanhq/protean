@@ -3,7 +3,7 @@ import json
 import pytest
 import redis
 
-from protean.adapters.broker.redis import RedisBroker
+from protean.adapters.broker import RedisPubSubBroker
 
 
 @pytest.fixture(autouse=True)
@@ -17,7 +17,7 @@ class TestRedisConnection:
         assert "default" in test_domain.brokers
         broker = test_domain.brokers["default"]
 
-        assert isinstance(broker, RedisBroker)
+        assert isinstance(broker, RedisPubSubBroker)
         assert broker.conn_info["URI"] == "redis://127.0.0.1:6379/0"
         assert broker.redis_instance is not None
         assert isinstance(broker.redis_instance, redis.Redis)
