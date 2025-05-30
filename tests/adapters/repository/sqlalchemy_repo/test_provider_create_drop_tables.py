@@ -26,6 +26,8 @@ def test_create_database_artifacts_creates_tables(
     # Setup
     provider.domain = test_domain
     mock_engine = Mock()
+    mock_connection = Mock()
+    mock_engine.connect.return_value = mock_connection
     mock_create_engine.return_value = mock_engine
     provider._engine = mock_engine
 
@@ -36,8 +38,12 @@ def test_create_database_artifacts_creates_tables(
     provider._create_database_artifacts()
 
     # Assert
-    # Verify metadata.create_all was called with engine
-    provider._metadata.create_all.assert_called_with(mock_engine)
+    # Verify engine.connect was called
+    mock_engine.connect.assert_called()
+    # Verify metadata.create_all was called with connection
+    provider._metadata.create_all.assert_called_with(mock_connection)
+    # Verify connection.close was called
+    mock_connection.close.assert_called()
 
 
 @patch("protean.adapters.repository.sqlalchemy.create_engine")
@@ -47,6 +53,8 @@ def test_drop_database_artifacts_drops_tables(
     # Setup
     provider.domain = test_domain
     mock_engine = Mock()
+    mock_connection = Mock()
+    mock_engine.connect.return_value = mock_connection
     mock_create_engine.return_value = mock_engine
     provider._engine = mock_engine
 
@@ -57,7 +65,11 @@ def test_drop_database_artifacts_drops_tables(
     provider._drop_database_artifacts()
 
     # Assert
-    # Verify metadata.drop_all was called with engine
-    provider._metadata.drop_all.assert_called_with(mock_engine)
+    # Verify engine.connect was called
+    mock_engine.connect.assert_called()
+    # Verify metadata.drop_all was called with connection
+    provider._metadata.drop_all.assert_called_with(mock_connection)
+    # Verify connection.close was called
+    mock_connection.close.assert_called()
     # Verify metadata was cleared
     provider._metadata.clear.assert_called()

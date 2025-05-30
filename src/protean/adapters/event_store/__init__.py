@@ -13,7 +13,9 @@ from protean.core.event_sourced_repository import (
     BaseEventSourcedRepository,
     event_sourced_repository_factory,
 )
+from protean.core.projector import BaseProjector
 from protean.exceptions import ConfigurationError, NotSupportedError
+from protean.utils import fqn
 from protean.utils.mixins import Message
 
 if TYPE_CHECKING:
@@ -36,6 +38,7 @@ class EventStore:
         self._command_streams: DefaultDict[str, Set[BaseCommandHandler]] = defaultdict(
             set
         )
+        self._projectors: DefaultDict[str, Set[BaseProjector]] = defaultdict(set)
 
     @property
     def store(self):
@@ -78,6 +81,11 @@ class EventStore:
             )
             self._event_streams[stream_category].add(record.cls)
 
+        for _, record in self.domain.registry.projectors.items():
+            for stream_category in record.cls.meta_.stream_categories:
+                self._event_streams[stream_category].add(record.cls)
+                self._projectors[fqn(record.cls.meta_.projector_for)].add(record.cls)
+
     def _initialize_command_streams(self):
         for _, record in self.domain.registry.command_handlers.items():
             self._command_streams[record.cls.meta_.part_of.meta_.stream_category].add(
@@ -108,6 +116,17 @@ class EventStore:
                 configured_stream_handlers.add(stream_handler)
 
         return set.union(configured_stream_handlers, all_stream_handlers)
+
+    def projectors_for(self, projection_cls) -> List[BaseProjector]:
+        """Return Projectors listening to a specific projection
+
+        Args:
+            projection_cls (BaseProjection): Projection to be consumed
+
+        Returns:
+            List[BaseProjector]: Projectors that have registered to consume the projection
+        """
+        return self._projectors.get(fqn(projection_cls), set())
 
     def command_handler_for(self, command: BaseCommand) -> Optional[BaseCommandHandler]:
         if not command.meta_.part_of:

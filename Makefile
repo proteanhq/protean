@@ -17,7 +17,10 @@ html:
 	@cd docs-sphinx; $(MAKE) html
 
 test-full: up
-	protean test
+	protean test -c FULL
+
+test-coverage: up
+	protean test -c COVERAGE
 
 cov: up
 	pytest --slow --sqlite --postgresql --elasticsearch --redis --message_db --cov=protean --cov-config .coveragerc tests

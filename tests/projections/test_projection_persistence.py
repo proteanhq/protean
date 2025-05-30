@@ -1,10 +1,10 @@
 import pytest
 
-from protean.core.view import BaseView
+from protean.core.projection import BaseProjection
 from protean.fields import Identifier, Integer, String
 
 
-class Person(BaseView):
+class Person(BaseProjection):
     person_id = Identifier(identifier=True)
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)
@@ -17,8 +17,8 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
-class TestViewPersistence:
-    def test_view_can_be_persisted(self, test_domain):
+class TestProjectionPersistence:
+    def test_projection_can_be_persisted(self, test_domain):
         person = Person(person_id="1", first_name="John", last_name="Doe", age=25)
         test_domain.repository_for(Person).add(person)
 
@@ -29,7 +29,7 @@ class TestViewPersistence:
         assert refreshed_person.last_name == "Doe"
         assert refreshed_person.age == 25
 
-    def test_view_can_be_updated(self, test_domain):
+    def test_projection_can_be_updated(self, test_domain):
         person = Person(person_id="1", first_name="John", last_name="Doe", age=25)
         test_domain.repository_for(Person).add(person)
 

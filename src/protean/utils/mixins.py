@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import functools
 import logging
+from abc import abstractmethod
 from collections import defaultdict
 from enum import Enum
-from typing import Callable, Dict, Type, Union
+from typing import Any, Callable, Dict, Type, Union
 
 from protean import fields
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ConfigurationError, InvalidDataError
+from protean.utils import DomainObjects
 from protean.utils.container import BaseContainer, OptionsMixin
 from protean.utils.eventing import Metadata
 from protean.utils.globals import current_domain
@@ -146,7 +148,7 @@ class handle:
         def wrapper(instance, target_obj):
             # Wrap function call within a UoW
             with UnitOfWork():
-                fn(instance, target_obj)
+                return fn(instance, target_obj)
 
         setattr(wrapper, "_target_cls", self._target_cls)
         return wrapper
@@ -168,8 +170,12 @@ class HandlerMixin:
         setattr(subclass, "_handlers", defaultdict(set))
 
     @classmethod
-    def _handle(cls, item: Union[Message, BaseCommand, BaseEvent]) -> None:
-        """Handle a message or command/event."""
+    def _handle(cls, item: Union[Message, BaseCommand, BaseEvent]) -> Any:
+        """Handle a message or command/event.
+
+        Returns:
+            Any: Return value from the handler method (only applicable for command handlers)
+        """
 
         # Convert Message to object if necessary
         item = item.to_object() if isinstance(item, Message) else item
@@ -177,12 +183,44 @@ class HandlerMixin:
         # Use specific handlers if available, or fallback on `$any` if defined
         handlers = cls._handlers[item.__class__.__type__] or cls._handlers["$any"]
 
-        for handler_method in handlers:
-            handler_method(cls(), item)
+        if cls.element_type == DomainObjects.COMMAND_HANDLER:
+            # Command handlers only have one handler method per command
+            handler_method = next(iter(handlers))
+            return handler_method(cls(), item)
+        else:
+            # Event handlers can have multiple handlers per event
+            # Execute all handlers but don't return anything
+            for handler_method in handlers:
+                handler_method(cls(), item)
+
+        return None
 
     @classmethod
     def handle_error(cls, exc: Exception, message: Message) -> None:
-        """Default error handler for messages. Can be overridden in subclasses.
+        """Error handler method called when exceptions occur during message handling.
 
-        By default, this method logs the error and raises it.
+        This method can be overridden in subclasses to provide custom error handling
+        for exceptions that occur during message processing. It allows handlers to
+        recover from errors, log additional information, or perform cleanup operations.
+
+        When an exception occurs in a handler method:
+        1. The exception is caught in Engine.handle_message or Engine.handle_broker_message
+        2. Details are logged with traceback information
+        3. This handle_error method is called with the exception and original message
+        4. Processing continues with the next message (the engine does not shut down)
+
+        If this method raises an exception itself, that exception is also caught and logged,
+        but not propagated further.
+
+        Args:
+            exc (Exception): The exception that was raised during message handling
+            message (Message): The original message being processed when the exception occurred
+
+        Returns:
+            None
+
+        Note:
+            - The default implementation does nothing, allowing processing to continue
+            - Subclasses can override this method to implement custom error handling strategies
+            - This method is called from a try/except block, so exceptions raised here won't crash the engine
         """

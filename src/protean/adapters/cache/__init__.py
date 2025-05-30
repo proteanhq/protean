@@ -73,17 +73,17 @@ class Caches(collections.abc.MutableMapping):
         except KeyError:
             raise AssertionError(f"No Provider registered with name {provider_name}")
 
-    def cache_for(self, view_cls):
-        """Retrieve cache associated with the View"""
+    def cache_for(self, projection_cls):
+        """Retrieve cache associated with the Projection"""
         if self._caches is None:
             self._initialize()
 
-        view_provider = view_cls.meta_.provider
+        projection_provider = projection_cls.meta_.provider
 
-        cache = self.get(view_provider)
+        cache = self.get(projection_provider)
 
-        view_name = underscore(view_cls.__name__)
-        if view_name not in cache._views:
-            cache.register_view(view_cls)
+        projection_name = underscore(projection_cls.__name__)
+        if projection_name not in cache._projections:
+            cache.register_projection(projection_cls)
 
         return cache

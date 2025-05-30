@@ -122,7 +122,7 @@ def _get_identity_type():
 
 
 def _default(value):
-    """A function that gets called for objects that can’t otherwise be serialized.
+    """A function that gets called for objects that can't otherwise be serialized.
     We handle the special case of Value Objects here.
 
     `TypeError` is raised for unknown types.
@@ -630,6 +630,8 @@ class SAProvider(BaseProvider):
         try:
             conn = self.get_connection()
             conn.execute(text("SELECT 1"))
+            if not current_uow:  # If not in a UoW, we need to close the connection
+                conn.close()
             return True
         except DatabaseError:
             return False
@@ -649,26 +651,42 @@ class SAProvider(BaseProvider):
             conn.execute(text("PRAGMA foreign_keys = ON;"))
 
         transaction.commit()
+        conn.close()  # Explicitly close the connection to avoid connection leaks
 
         # Discard any active Unit of Work
         if current_uow and current_uow.in_progress:
             current_uow.rollback()
 
     def _create_database_artifacts(self):
-        # Create tables for all registered aggregates, entities, and views
+        # Create tables for all registered aggregates, entities, and projections
         elements = {
             **self.domain.registry.aggregates,
             **self.domain.registry.entities,
-            **self.domain.registry.views,
+            **self.domain.registry.projections,
         }
 
         for _, element_record in elements.items():
             self.domain.repository_for(element_record.cls)._dao
 
-        self._metadata.create_all(self._engine)
+        # Create all tables in a single transaction
+        conn = self._engine.connect()
+        try:
+            transaction = conn.begin()
+            self._metadata.create_all(conn)
+            transaction.commit()
+        finally:
+            conn.close()
 
     def _drop_database_artifacts(self):
-        self._metadata.drop_all(self._engine)
+        # Drop all tables in a single transaction
+        conn = self._engine.connect()
+        try:
+            transaction = conn.begin()
+            self._metadata.drop_all(conn)
+            transaction.commit()
+        finally:
+            conn.close()
+
         self._metadata.clear()
 
     def decorate_database_model_class(self, entity_cls, database_model_cls):
@@ -775,7 +793,13 @@ class SAProvider(BaseProvider):
         assert isinstance(query, str)
         assert isinstance(data, (dict, None))
 
-        return self.get_connection().execute(text(query), data)
+        conn = self.get_connection()
+        try:
+            result = conn.execute(text(query), data)
+            return result
+        finally:
+            if not current_uow:  # If not in a UoW, we need to close the connection
+                conn.close()
 
 
 class PostgresqlProvider(SAProvider):

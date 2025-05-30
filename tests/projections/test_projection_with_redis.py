@@ -1,8 +1,8 @@
-from protean.core.view import BaseView
+from protean.core.projection import BaseProjection
 from protean.fields import Identifier, Integer, String
 
 
-class Person(BaseView):
+class Person(BaseProjection):
     person_id = Identifier(identifier=True)
     first_name = String(max_length=50, required=True)
     last_name = String(max_length=50)

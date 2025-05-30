@@ -25,7 +25,7 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
         )
 
         return [
-            ("part_of", None),
+            ("part_of", part_of),
             ("source_stream", None),
             ("stream_category", part_of.meta_.stream_category if part_of else None),
         ]

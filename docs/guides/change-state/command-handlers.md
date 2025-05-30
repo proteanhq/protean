@@ -159,3 +159,62 @@ class AccountCommandHandler:
     aggregates to perform the business process, but should never persist more
     than one at a time. Other aggregates should be synced eventually through
     domain events.
+
+## Error Handling
+
+Command handlers support custom error handling through the optional `handle_error` method. This method is called when an exception occurs during command processing, allowing you to implement specialized error handling strategies.
+
+### The `handle_error` Method
+
+You can define a `handle_error` class method in your command handler to handle exceptions:
+
+```python
+@domain.command_handler(part_of=Account)
+class AccountCommandHandler:
+    @handle(RegisterCommand)
+    def register(self, command: RegisterCommand):
+        # Command handling logic that might raise exceptions
+        ...
+    
+    @classmethod
+    def handle_error(cls, exc: Exception, message):
+        """Custom error handling logic for command processing failures"""
+        # Log the error
+        logger.error(f"Failed to process command: {exc}")
+        
+        # Perform recovery operations
+        # Example: notify monitoring systems, attempt retry, etc.
+        ...
+```
+
+### How It Works
+
+1. When an exception occurs in a command handler method, the Protean Engine catches it.
+2. The engine logs detailed error information including stack traces.
+3. The engine calls the command handler's `handle_error` method, passing:
+   - The original exception that was raised
+   - The command message being processed when the exception occurred
+4. After `handle_error` returns, processing continues with the next command.
+
+### Handling Errors in the Error Handler
+
+If an exception occurs within the `handle_error` method itself, the Protean Engine will catch that exception too, log it, and continue processing. This ensures that even failures in error handling don't crash the system.
+
+```python
+@classmethod
+def handle_error(cls, exc: Exception, message):
+    try:
+        # Potentially risky error handling logic
+        ...
+    except Exception as error_exc:
+        # This secondary exception will be caught by the engine
+        logger.error(f"Error in error handler: {error_exc}")
+        # The engine will continue processing regardless
+```
+
+### Best Practices
+
+1. Make error handlers robust and avoid complex logic that might fail.
+2. Use error handlers for logging, notification, and simple recovery.
+3. Don't throw exceptions from error handlers unless absolutely necessary.
+4. Consider implementing retry logic for transient failures.

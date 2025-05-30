@@ -76,7 +76,7 @@ A unique identifier for an entity or aggregate, ensuring its distinctness within
 A piece of data sent between components, often used for communication and triggering actions in event-driven architectures.
 
 ### Projection
-A read-only view of data that is constructed by processing one or more event streams, used to support query operations.
+A read-only projection of data that is constructed by processing one or more event streams, used to support query operations.
 
 ### Repository
 A mechanism for encapsulating storage, retrieval, and search behavior for aggregates or entities, typically abstracting the underlying data store.
