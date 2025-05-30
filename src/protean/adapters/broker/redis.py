@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from protean.domain import Domain
 
 
-class RedisBroker(BaseBroker):
+class RedisPubSubBroker(BaseBroker):
     """Redis as the Message Broker.
 
     FIXME: Convert to be a Context Manager, and release connection after use

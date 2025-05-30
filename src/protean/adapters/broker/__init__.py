@@ -9,6 +9,9 @@ from protean.exceptions import ConfigurationError
 from protean.port.broker import BaseBroker
 from protean.utils.globals import current_uow
 
+from .inline import InlineBroker
+from .redis import RedisPubSubBroker
+
 if TYPE_CHECKING:
     from protean.domain import Domain
 
@@ -17,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 BROKER_PROVIDERS = {
     "inline": "protean.adapters.InlineBroker",
-    "redis": "protean.adapters.broker.redis.RedisBroker",
+    "redis": "protean.adapters.broker.RedisPubSubBroker",
 }
 
 
@@ -95,3 +98,6 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
 
             for _, broker in self._brokers.items():
                 broker.publish(channel, message)
+
+
+__all__ = ["InlineBroker", "RedisPubSubBroker"]
