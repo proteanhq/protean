@@ -46,6 +46,7 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
+@pytest.mark.broker
 def test_message_push_after_uow_exit(test_domain):
     with UnitOfWork():
         person = Person.add_newcomer(

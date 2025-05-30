@@ -32,7 +32,7 @@ def set_message_processing_async(test_domain):
     test_domain.config["message_processing"] = Processing.ASYNC.value
 
 
-@pytest.mark.broker_common
+@pytest.mark.broker
 def test_processing_broker_messages(test_domain):
     test_domain.register(DummySubscriber, channel="test_channel")
     test_domain.init(traverse=False)
@@ -52,7 +52,7 @@ def test_processing_broker_messages(test_domain):
     assert terms[1] == "baz"
 
 
-@pytest.mark.broker_common
+@pytest.mark.broker
 def test_no_processing_when_shutting_down(test_domain):
     test_domain.register(DummySubscriber, channel="test_channel")
     test_domain.init(traverse=False)

@@ -31,7 +31,7 @@ class BaseBroker(metaclass=ABCMeta):
 
         self._subscribers = defaultdict(set)
 
-    def publish(self, channel: str, message: dict) -> None:
+    def publish(self, channel: str, message: dict) -> str:
         """Publish a message to the broker.
 
         Args:
