@@ -53,6 +53,7 @@ class TestCategory(str, Enum):
     CORE = "CORE"
     EVENTSTORE = "EVENTSTORE"
     DATABASE = "DATABASE"
+    BROKER = "BROKER"
     COVERAGE = "COVERAGE"
     FULL = "FULL"
 
@@ -161,6 +162,11 @@ def test(
             for db in ["MEMORY", "POSTGRESQL", "SQLITE"]:
                 print(f"Running tests for DATABASE: {db}…")
                 rc |= _run(pytest_command + ["-m", "database", f"--db={db}"])
+        case "BROKER":
+            rc = 0
+            for broker in ["INLINE"]:
+                print(f"Running tests for BROKER: {broker}…")
+                rc |= _run(pytest_command + ["-m", "broker", f"--broker={broker}"])
         case "FULL":
             rc = run_full(subprocess, coverage_command, pytest_command)
         case "COVERAGE":

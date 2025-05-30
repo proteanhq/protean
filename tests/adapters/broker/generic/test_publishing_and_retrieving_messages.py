@@ -1,13 +1,7 @@
-def test_publish_to_channel(test_domain):
-    channel = "test_channel"
-    message = {"foo": "bar"}
-
-    test_domain.brokers["default"].publish(channel, message)
-
-    # Verify message is stored
-    assert test_domain.brokers["default"]._messages[channel] == [message]
+import pytest
 
 
+@pytest.mark.broker
 def test_get_next_message(test_domain):
     channel = "test_channel"
     message1 = {"key1": "value1"}
@@ -29,6 +23,7 @@ def test_get_next_message(test_domain):
     assert retrieved_message is None
 
 
+@pytest.mark.broker
 def test_data_reset(test_domain):
     channel1 = "test_channel1"
     channel2 = "test_channel2"
@@ -48,8 +43,3 @@ def test_data_reset(test_domain):
         "test_channel1": [],
         "test_channel2": [],
     }
-
-
-def test_is_async_flag(test_domain):
-    # Verify that the IS_ASYNC flag is set to False
-    assert test_domain.brokers["default"].conn_info["IS_ASYNC"] is False

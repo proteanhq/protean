@@ -84,6 +84,22 @@ def mock_subprocess_call(mocker):
             3,
         ),
         (
+            TestCategory.BROKER,
+            [
+                call(
+                    [
+                        "pytest",
+                        "--cache-clear",
+                        "--ignore=tests/support/",
+                        "-m",
+                        "broker",
+                        "--broker=INLINE",
+                    ]
+                ),
+            ],
+            1,
+        ),
+        (
             TestCategory.FULL,
             [
                 call(["coverage", "erase"]),
@@ -304,7 +320,7 @@ def test_invalid_category(mock_subprocess_call):
     assert result.exit_code == 1
     assert (
         str(result.exception)
-        == "'INVALID' is not one of 'CORE', 'EVENTSTORE', 'DATABASE', 'COVERAGE', 'FULL'."
+        == "'INVALID' is not one of 'CORE', 'EVENTSTORE', 'DATABASE', 'BROKER', 'COVERAGE', 'FULL'."
     )
 
 
