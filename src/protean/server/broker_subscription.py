@@ -137,18 +137,26 @@ class BrokerSubscription:
         """
         Process a batch of messages.
 
-        This method takes a batch of messages and processes each message by calling the `handle_message` method
-        of the engine. It also updates the read position after processing each message. If an exception occurs
-        during message processing, it logs the error using the `log_error` method.
+        This method takes a batch of messages and processes each message by calling the `handle_broker_message` method
+        of the engine. If an exception occurs during message processing, it logs the error.
 
         Args:
-            messages (List[Message]): The batch of messages to process.
+            messages (List[dict]): The batch of messages to process.
 
         Returns:
-            int: The number of messages processed.
+            int: The number of messages processed successfully.
         """
         logging.debug(f"Processing {len(messages)} messages...")
-        for message in messages:
-            await self.engine.handle_broker_message(self.handler, message)
+        successful_count = 0
 
-        return len(messages)
+        for message in messages:
+            # Process the message and get a success/failure result
+            is_successful = await self.engine.handle_broker_message(
+                self.handler, message
+            )
+
+            # Increment counter only for successful messages
+            if is_successful:
+                successful_count += 1
+
+        return successful_count

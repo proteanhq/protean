@@ -26,20 +26,6 @@ def clear_terms():
     terms = []
 
 
-@pytest.fixture(autouse=True)
-def auto_set_and_close_loop():
-    # Create and set a new loop
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    yield
-
-    # Close the loop after the test
-    if not loop.is_closed():
-        loop.close()
-    asyncio.set_event_loop(None)  # Explicitly unset the loop
-
-
 @pytest.mark.redis
 @pytest.mark.asyncio
 async def test_handler_invocation(test_domain):

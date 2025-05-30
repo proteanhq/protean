@@ -1,5 +1,6 @@
 """Module to setup Factories and other required artifacts for tests"""
 
+import asyncio
 import os
 import sys
 
@@ -258,3 +259,17 @@ def run_around_tests(test_domain):
 
         if test_domain.event_store.store:
             test_domain.event_store.store._data_reset()
+
+
+@pytest.fixture(autouse=True)
+def auto_set_and_close_loop():
+    # Create and set a new loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    yield
+
+    # Close the loop after the test
+    if not loop.is_closed():
+        loop.close()
+    asyncio.set_event_loop(None)  # Explicitly unset the loop

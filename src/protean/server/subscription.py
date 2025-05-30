@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import traceback
 from typing import List, Union
 
 from protean.core.command_handler import BaseCommandHandler
@@ -278,18 +279,27 @@ class Subscription:
 
         This method takes a batch of messages and processes each message by calling the `handle_message` method
         of the engine. It also updates the read position after processing each message. If an exception occurs
-        during message processing, it logs the error using the `log_error` method.
+        during message processing, it logs the error.
 
         Args:
             messages (List[Message]): The batch of messages to process.
 
         Returns:
-            int: The number of messages processed.
+            int: The number of messages processed successfully.
         """
         logging.debug(f"Processing {len(messages)} messages...")
+        successful_count = 0
+
         for message in messages:
             logging.info(f"{message.type}-{message.id} : {message.to_dict()}")
-            await self.engine.handle_message(self.handler, message)
+            # Process the message and get a success/failure result
+            is_successful = await self.engine.handle_message(self.handler, message)
+
+            # Always update position to avoid reprocessing the message
             await self.update_read_position(message.global_position)
 
-        return len(messages)
+            # Increment counter only for successful messages
+            if is_successful:
+                successful_count += 1
+
+        return successful_count

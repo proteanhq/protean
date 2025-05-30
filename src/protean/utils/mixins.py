@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import logging
+from abc import abstractmethod
 from collections import defaultdict
 from enum import Enum
 from typing import Callable, Dict, Type, Union
@@ -182,7 +183,24 @@ class HandlerMixin:
 
     @classmethod
     def handle_error(cls, exc: Exception, message: Message) -> None:
-        """Default error handler for messages. Can be overridden in subclasses.
-
-        By default, this method logs the error and raises it.
+        """Error handler method called when exceptions occur during message handling.
+        This method can be overridden in subclasses to provide custom error handling
+        for exceptions that occur during message processing. It allows handlers to
+        recover from errors, log additional information, or perform cleanup operations.
+        When an exception occurs in a handler method:
+        1. The exception is caught in Engine.handle_message or Engine.handle_broker_message
+        2. Details are logged with traceback information
+        3. This handle_error method is called with the exception and original message
+        4. Processing continues with the next message (the engine does not shut down)
+        If this method raises an exception itself, that exception is also caught and logged,
+        but not propagated further.
+        Args:
+            exc (Exception): The exception that was raised during message handling
+            message (Message): The original message being processed when the exception occurred
+        Returns:
+            None
+        Note:
+            - The default implementation does nothing, allowing processing to continue
+            - Subclasses can override this method to implement custom error handling strategies
+            - This method is called from a try/except block, so exceptions raised here won't crash the engine
         """

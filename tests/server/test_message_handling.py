@@ -57,4 +57,5 @@ async def test_handling_exception_raised_in_handler(test_domain, caplog):
         for record in caplog.records
     )
 
-    assert engine.shutting_down is True
+    assert not engine.shutting_down
+    assert engine.exit_code == 0

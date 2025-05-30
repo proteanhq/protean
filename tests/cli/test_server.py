@@ -28,19 +28,6 @@ class TestServerCommand:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    @pytest.fixture(autouse=True)
-    def auto_set_and_close_loop(self):
-        # Create and set a new loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        yield
-
-        # Close the loop after the test
-        if not loop.is_closed():
-            loop.close()
-        asyncio.set_event_loop(None)  # Explicitly unset the loop
-
     def test_server_with_invalid_domain(self):
         """Test that the server command fails when domain is not provided"""
         args = ["server", "--domain", "foobar"]
