@@ -31,14 +31,18 @@ class BaseBroker(metaclass=ABCMeta):
 
         self._subscribers = defaultdict(set)
 
-    def publish(self, channel: str, message: dict) -> str:
+    def publish(self, channel: str, message: dict) -> str | None:
         """Publish a message to the broker.
 
         Args:
             channel (str): The channel to which the message should be published
             message (dict): The message payload to be published
+
+        Returns:
+            str | None: The identifier of the message. The content of the identifier is broker-specific.
+            Some brokers may return None if they don't provide message identifiers.
         """
-        self._publish(channel, message)
+        identifier = self._publish(channel, message)
 
         if (
             self.domain.config["message_processing"] == Processing.SYNC.value
@@ -48,13 +52,19 @@ class BaseBroker(metaclass=ABCMeta):
                 subscriber = subscriber_cls()
                 subscriber(message)
 
+        return identifier
+
     @abstractmethod
-    def _publish(self, channel: str, message: dict) -> None:
+    def _publish(self, channel: str, message: dict) -> str | None:
         """Overidden method to publish a message with payload to the configured broker.
 
         Args:
             channel (str): The channel to which the message should be published
             message (dict): The message payload to be published
+
+        Returns:
+            str | None: The identifier of the message. The content of the identifier is broker-specific.
+            Some brokers may return None if they don't provide message identifiers.
         """
 
     def get_next(self, channel: str) -> dict | None:

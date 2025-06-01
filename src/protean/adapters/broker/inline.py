@@ -8,6 +8,8 @@ if TYPE_CHECKING:
 
 
 class InlineBroker(BaseBroker):
+    __broker__ = "inline"
+
     def __init__(
         self, name: str, domain: "Domain", conn_info: Dict[str, str | bool]
     ) -> None:
@@ -19,21 +21,27 @@ class InlineBroker(BaseBroker):
         # Initialize storage for messages
         self._messages = defaultdict(list)
 
-    def _publish(self, channel: str, message: dict) -> None:
-        """Publish a message dict to the channel"""
-        self._messages[channel].append(message)
+    def _publish(self, stream: str, message: dict) -> str:
+        """Publish a message dict to the stream"""
+        identifier = None
+        if "_metadata" in message and "id" in message["_metadata"]:
+            identifier = message["_metadata"]["id"]
 
-    def _get_next(self, channel: str) -> dict | None:
-        """Get next message in channel"""
-        if self._messages[channel]:
-            return self._messages[channel].pop(0)
+        self._messages[stream].append(message)
+
+        return identifier
+
+    def _get_next(self, stream: str) -> dict | None:
+        """Get next message in stream"""
+        if self._messages[stream]:
+            return self._messages[stream].pop(0)
         return None
 
-    def read(self, channel: str, no_of_messages: int) -> list[dict]:
+    def read(self, stream: str, no_of_messages: int) -> list[dict]:
         """Read messages from the broker"""
         messages = []
-        while no_of_messages > 0 and self._messages[channel]:
-            messages.append(self._messages[channel].pop(0))
+        while no_of_messages > 0 and self._messages[stream]:
+            messages.append(self._messages[stream].pop(0))
             no_of_messages -= 1
 
         return messages

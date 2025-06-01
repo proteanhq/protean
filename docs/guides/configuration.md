@@ -63,7 +63,7 @@ provider = "sqlite"
 database_url = "sqlite:///test.db"
 
 [staging.brokers.default]
-provider = "redis"
+provider = "redis_pubsub"
 URI = "redis://staging.example.com:6379/2"
 TTL = 300
 
@@ -79,7 +79,7 @@ provider = "postgresql"
 database_url = "postgresql://postgres:postgres@localhost:5432/postgres"
 
 [prod.brokers.default]
-provider = "redis"
+provider = "redis_pubsub"
 URI = "redis://prod.example.com:6379/2"
 TTL = 30
 
@@ -239,7 +239,7 @@ This section holds configurations for message brokers.
 provider = "memory"
 
 [brokers.redis]
-provider = "redis"
+provider = "redis_pubsub"
 URI = "redis://127.0.0.1:6379/0"
 IS_ASYNC = true
 ```

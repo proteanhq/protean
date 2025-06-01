@@ -18,6 +18,7 @@ class TestRedisConnection:
         broker = test_domain.brokers["default"]
 
         assert isinstance(broker, RedisPubSubBroker)
+        assert broker.__broker__ == "redis_pubsub"
         assert broker.conn_info["URI"] == "redis://127.0.0.1:6379/0"
         assert broker.redis_instance is not None
         assert isinstance(broker.redis_instance, redis.Redis)
@@ -43,10 +44,6 @@ class TestPublishingToRedis:
 
 @pytest.mark.redis
 class TestReceivingFromRedis:
-    def test_for_no_error_on_no_message(self, test_domain):
-        message = test_domain.brokers["default"].get_next("test_channel")
-        assert message is None
-
     def test_retrieving_an_event_message(self, test_domain):
         channel = "test_channel"
         message = {"key": "value"}

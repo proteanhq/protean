@@ -149,7 +149,8 @@ testpaths = ["tests"]
 filterwarnings = [
     "ignore::sqlalchemy.exc.SAWarning",
     "ignore::sqlalchemy.exc.SADeprecationWarning",
-    "ignore:No configuration file found.*Using default configuration.*:UserWarning"
+    "ignore:No configuration file found.*Using default configuration.*:UserWarning",
+    "ignore:Working outside of domain context"
 ]
 python_files = [
     "test_*.py",
