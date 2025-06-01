@@ -1,5 +1,8 @@
 import asyncio
 import logging
+import os
+import secrets
+import socket
 import traceback
 from typing import List, Type, Union
 
@@ -30,7 +33,7 @@ class Subscription:
     def __init__(
         self,
         engine,
-        subscriber_id: str,
+        subscriber_name: str,
         stream_category: str,
         handler: Union[BaseEventHandler, BaseCommandHandler],
         messages_per_tick: int = 10,
@@ -43,7 +46,7 @@ class Subscription:
 
         Args:
             engine: The Protean engine instance.
-            subscriber_id (str): The unique identifier for the subscriber.
+            subscriber_name (str): FQN of the subscriber.
             stream_category (str): The name of the stream to subscribe to.
             handler (Union[BaseEventHandler, BaseCommandHandler]): The event or command handler.
             messages_per_tick (int, optional): The number of messages to process per tick. Defaults to 10.
@@ -56,7 +59,8 @@ class Subscription:
         self.store: BaseEventStore = engine.domain.event_store.store
         self.loop = engine.loop
 
-        self.subscriber_id = subscriber_id
+        self.subscriber_name = subscriber_name
+        self.subscriber_class_name = handler.__name__
         self.stream_category = stream_category
         self.handler = handler
         self.messages_per_tick = messages_per_tick
@@ -64,7 +68,15 @@ class Subscription:
         self.origin_stream = origin_stream
         self.tick_interval = tick_interval
 
-        self.subscriber_stream_name = f"position-{subscriber_id}-{stream_category}"
+        # Generate unique subscription ID
+        hostname = socket.gethostname()
+        pid = os.getpid()
+        random_hex = secrets.token_hex(3)  # 3 bytes = 6 hex digits
+        self.subscription_id = (
+            f"{self.subscriber_class_name}-{hostname}-{pid}-{random_hex}"
+        )
+
+        self.subscriber_stream_name = f"position-{subscriber_name}-{stream_category}"
 
         self.current_position: int = -1
         self.messages_since_last_position_write: int = 0
@@ -81,7 +93,7 @@ class Subscription:
         Returns:
             None
         """
-        logger.debug(f"Starting {self.subscriber_id}")
+        logger.debug(f"Starting {self.subscriber_name}")
 
         # Load own position from Event store
         await self.load_position_on_start()
@@ -134,7 +146,7 @@ class Subscription:
         """
         self.keep_going = False  # Signal to stop polling
         await self.update_current_position_to_store()
-        logger.debug(f"Shutting down subscription {self.subscriber_id}")
+        logger.debug(f"Shutting down subscription {self.subscriber_name}")
 
     async def fetch_last_position(self):
         """
@@ -217,7 +229,7 @@ class Subscription:
         Returns:
             int: The position that was written.
         """
-        logger.debug(f"Updating Read Position of {self.subscriber_id} to {position}")
+        logger.debug(f"Updating Read Position of {self.subscriber_name} to {position}")
 
         self.messages_since_last_position_write = 0  # Reset counter
 
@@ -323,7 +335,7 @@ class BrokerSubscription:
         self,
         engine,
         broker,
-        subscriber_id: str,
+        subscriber_name: str,
         channel: str,
         handler: Type[BaseSubscriber],
         messages_per_tick: int = 10,
@@ -334,7 +346,7 @@ class BrokerSubscription:
 
         Args:
             engine: The Protean engine instance.
-            subscriber_id (str): The unique identifier for the subscriber.
+            subscriber_name (str): FQN of the subscriber.
             channel (str): The name of the stream to subscribe to.
             handler (Union[BaseEventHandler, BaseCommandHandler]): The event or command handler.
             messages_per_tick (int, optional): The number of messages to process per tick. Defaults to 10.
@@ -344,11 +356,20 @@ class BrokerSubscription:
         self.broker: BaseBroker = broker
         self.loop = engine.loop
 
-        self.subscriber_id = subscriber_id
+        self.subscriber_name = subscriber_name
+        self.subscriber_class_name = handler.__name__
         self.channel = channel
         self.handler = handler
         self.messages_per_tick = messages_per_tick
         self.tick_interval = tick_interval
+
+        # Generate unique subscription ID
+        hostname = socket.gethostname()
+        pid = os.getpid()
+        random_hex = secrets.token_hex(3)  # 3 bytes = 6 hex digits
+        self.subscription_id = (
+            f"{self.subscriber_class_name}-{hostname}-{pid}-{random_hex}"
+        )
 
         self.keep_going = True  # Initially set to keep going
 
@@ -362,7 +383,7 @@ class BrokerSubscription:
         Returns:
             None
         """
-        logger.debug(f"Starting {self.subscriber_id}")
+        logger.debug(f"Starting {self.subscriber_name}")
 
         # Start the polling loop
         self.loop.create_task(self.poll())
@@ -411,7 +432,7 @@ class BrokerSubscription:
             None
         """
         self.keep_going = False  # Signal to stop polling
-        logger.debug(f"Shutting down subscription {self.subscriber_id}")
+        logger.debug(f"Shutting down subscription {self.subscriber_name}")
 
     async def get_next_batch_of_messages(self):
         """
