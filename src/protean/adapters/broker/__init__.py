@@ -10,7 +10,7 @@ from protean.port.broker import BaseBroker
 from protean.utils.globals import current_uow
 
 from .inline import InlineBroker
-from .redis import RedisPubSubBroker
+from .redis_pubsub import RedisPubSubBroker
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 BROKER_PROVIDERS = {
     "inline": "protean.adapters.InlineBroker",
-    "redis": "protean.adapters.broker.RedisPubSubBroker",
+    "redis_pubsub": "protean.adapters.broker.RedisPubSubBroker",
 }
 
 

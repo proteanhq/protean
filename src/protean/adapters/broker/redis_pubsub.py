@@ -15,14 +15,21 @@ class RedisPubSubBroker(BaseBroker):
     FIXME: Convert to be a Context Manager, and release connection after use
     """
 
+    __broker__ = "redis_pubsub"
+
     def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
         super().__init__(name, domain, conn_info)
 
         self.redis_instance = redis.Redis.from_url(conn_info["URI"])
 
-    def _publish(self, channel: str, message: dict) -> None:
+    def _publish(self, channel: str, message: dict) -> str | None:
         # FIXME Accept configuration for database and list name
+        identifier = None
+        if "_metadata" in message and "id" in message["_metadata"]:
+            identifier = message["_metadata"]["id"]
+
         self.redis_instance.rpush(channel, json.dumps(message))
+        return identifier
 
     def _get_next(self, channel: str) -> dict | None:
         bytes_message = self.redis_instance.lpop(channel)

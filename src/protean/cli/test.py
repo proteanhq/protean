@@ -49,7 +49,7 @@ STYLE_BLOCK = f"""
 """
 
 
-class TestCategory(str, Enum):
+class RunCategory(str, Enum):
     CORE = "CORE"
     EVENTSTORE = "EVENTSTORE"
     DATABASE = "DATABASE"
@@ -78,9 +78,6 @@ def _inject_style(path: Path, style_block: str = STYLE_BLOCK) -> None:
             path.write_text(html, encoding="utf-8")
 
 
-# ------------------------------------------------------------------------ #
-# Existing helpers (only small change: return accumulated status)
-# ------------------------------------------------------------------------ #
 def run_full(subprocess, coverage_command, pytest_command) -> int:
     """Run all test combos under coverage.
     Returns the _highest_ exit code seen (0 == success)."""
@@ -117,6 +114,17 @@ def run_full(subprocess, coverage_command, pytest_command) -> int:
             _run(coverage_command + pytest_command + ["-m", "database", f"--db={db}"])
         )
 
+    # broker permutations
+    for broker in ["INLINE", "REDIS_PUBSUB"]:
+        print(f"Running tests for BROKER: {broker}…")
+        track(
+            _run(
+                coverage_command
+                + pytest_command
+                + ["-m", "broker", f"--broker={broker}"]
+            )
+        )
+
     # event-store permutations
     for store in ["MESSAGE_DB"]:
         print(f"Running tests for EVENTSTORE: {store}…")
@@ -143,8 +151,8 @@ def run_full(subprocess, coverage_command, pytest_command) -> int:
 @app.callback(invoke_without_command=True)
 def test(
     category: Annotated[
-        TestCategory, typer.Option("-c", "--category", case_sensitive=False)
-    ] = TestCategory.CORE,
+        RunCategory, typer.Option("-c", "--category", case_sensitive=False)
+    ] = RunCategory.CORE,
 ):
     coverage_command = ["coverage", "run", "--parallel-mode", "-m"]
     pytest_command = ["pytest", "--cache-clear", "--ignore=tests/support/"]
@@ -164,7 +172,7 @@ def test(
                 rc |= _run(pytest_command + ["-m", "database", f"--db={db}"])
         case "BROKER":
             rc = 0
-            for broker in ["INLINE"]:
+            for broker in ["INLINE", "REDIS_PUBSUB"]:
                 print(f"Running tests for BROKER: {broker}…")
                 rc |= _run(pytest_command + ["-m", "broker", f"--broker={broker}"])
         case "FULL":

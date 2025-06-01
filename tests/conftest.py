@@ -198,8 +198,20 @@ def db_config(request):
         ) from e
 
 
+@pytest.fixture(scope="session")
+def broker_config(request):
+    return {
+        "INLINE": {"provider": "inline"},
+        "REDIS_PUBSUB": {
+            "provider": "redis_pubsub",
+            "URI": "redis://localhost:6379/2",
+            "TTL": 300,
+        },
+    }[request.config.getoption("--broker", "INLINE")]
+
+
 @pytest.fixture(autouse=True)
-def test_domain(db_config, store_config, request):
+def test_domain(db_config, store_config, broker_config, request):
     if "no_test_domain" in request.keywords:
         yield
     else:
@@ -209,6 +221,7 @@ def test_domain(db_config, store_config, request):
 
         domain.config["databases"]["default"] = db_config
         domain.config["event_store"] = store_config
+        domain.config["brokers"]["default"] = broker_config
 
         domain.config["command_processing"] = Processing.SYNC.value
         domain.config["event_processing"] = Processing.SYNC.value

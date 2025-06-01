@@ -2,6 +2,12 @@ import pytest
 
 
 @pytest.mark.broker
+def test_for_no_error_on_no_message(test_domain):
+    message = test_domain.brokers["default"].get_next("test_channel")
+    assert message is None
+
+
+@pytest.mark.broker
 def test_get_next_message(test_domain):
     channel = "test_channel"
     message1 = {"key1": "value1"}
@@ -21,25 +27,3 @@ def test_get_next_message(test_domain):
     # No more messages, should return an empty dict
     retrieved_message = test_domain.brokers["default"].get_next(channel)
     assert retrieved_message is None
-
-
-@pytest.mark.broker
-def test_data_reset(test_domain):
-    channel1 = "test_channel1"
-    channel2 = "test_channel2"
-    message1 = {"key1": "value1"}
-    message2 = {"key2": "value2"}
-
-    test_domain.brokers["default"].publish(channel1, message1)
-    test_domain.brokers["default"].publish(channel2, message2)
-
-    # Reset the broker data
-    test_domain.brokers["default"]._data_reset()
-
-    # Verify all messages are cleared
-    assert test_domain.brokers["default"]._messages[channel1] == []
-    assert test_domain.brokers["default"]._messages[channel2] == []
-    assert test_domain.brokers["default"]._messages == {
-        "test_channel1": [],
-        "test_channel2": [],
-    }

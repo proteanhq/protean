@@ -6,7 +6,7 @@ import typer
 from typer.testing import CliRunner
 
 from protean.cli import app
-from protean.cli.test import TestCategory
+from protean.cli.test import RunCategory
 
 runner = CliRunner(mix_stderr=True)
 
@@ -22,7 +22,7 @@ def mock_subprocess_call(mocker):
     "category,expected_calls,call_count",
     [
         (
-            TestCategory.EVENTSTORE,
+            RunCategory.EVENTSTORE,
             [
                 call(
                     [
@@ -48,7 +48,7 @@ def mock_subprocess_call(mocker):
             2,
         ),
         (
-            TestCategory.DATABASE,
+            RunCategory.DATABASE,
             [
                 call(
                     [
@@ -84,7 +84,7 @@ def mock_subprocess_call(mocker):
             3,
         ),
         (
-            TestCategory.BROKER,
+            RunCategory.BROKER,
             [
                 call(
                     [
@@ -96,11 +96,21 @@ def mock_subprocess_call(mocker):
                         "--broker=INLINE",
                     ]
                 ),
+                call(
+                    [
+                        "pytest",
+                        "--cache-clear",
+                        "--ignore=tests/support/",
+                        "-m",
+                        "broker",
+                        "--broker=REDIS_PUBSUB",
+                    ]
+                ),
             ],
-            1,
+            2,
         ),
         (
-            TestCategory.FULL,
+            RunCategory.FULL,
             [
                 call(["coverage", "erase"]),
                 call(
@@ -181,10 +191,10 @@ def mock_subprocess_call(mocker):
                 call(["coverage", "xml"]),
                 call(["coverage", "report"]),
             ],
-            9,  # 5 calls + 4 for coverage operations (erase, combine, report)
+            11,  # 7 calls + 4 for coverage operations (erase, combine, report)
         ),
         (
-            TestCategory.COVERAGE,
+            RunCategory.COVERAGE,
             [
                 call(["coverage", "erase"]),
                 call(
@@ -274,10 +284,10 @@ def mock_subprocess_call(mocker):
                     ]
                 ),
             ],
-            10,  # Updated count: 9 calls from run_full + 1 for diff-cover
+            12,  # Updated count: 11 calls from run_full + 1 for diff-cover
         ),
         (
-            TestCategory.CORE,
+            RunCategory.CORE,
             [
                 call(["pytest", "--cache-clear", "--ignore=tests/support/"]),
             ],
@@ -426,7 +436,7 @@ class TestRunFull:
         )
 
         # Verify all expected commands were called
-        assert mock_subprocess_call.call_count == 9
+        assert mock_subprocess_call.call_count == 11
         assert exit_status == 0
 
         # Verify coverage combine commands were called (happens when exit_status == 0)
@@ -519,7 +529,7 @@ class TestExitHandling:
 
         # Running with failures should raise typer.Exit
         with pytest.raises(typer.Exit) as excinfo:
-            test(category=TestCategory.COVERAGE)
+            test(category=RunCategory.COVERAGE)
 
         # Verify exit code is non-zero (line 190)
         assert excinfo.value.exit_code != 0
@@ -542,7 +552,7 @@ class TestExitHandling:
         with pytest.raises(typer.Exit) as excinfo:
             from protean.cli.test import test
 
-            test(category=TestCategory.CORE)
+            test(category=RunCategory.CORE)
 
         # Verify the exit code matches what the subprocess returned
         assert excinfo.value.exit_code == 1
