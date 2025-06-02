@@ -47,5 +47,54 @@ class RedisPubSubBroker(BaseBroker):
 
         return messages
 
+    def _ensure_group(self, group_name: str) -> None:
+        """Bootstrap/create consumer group for Redis PubSub.
+
+        Note: Redis PubSub doesn't have native consumer groups like Redis Streams.
+        This implementation creates a Redis key to track the group existence.
+        """
+        group_key = f"consumer_group:{group_name}"
+        if not self.redis_instance.exists(group_key):
+            import time
+
+            self.redis_instance.hset(
+                group_key,
+                mapping={"created_at": str(time.time()), "consumer_count": "0"},
+            )
+
+    def _info(self) -> dict:
+        """Provide information about consumer groups and consumers for Redis PubSub.
+
+        Returns information about consumer groups stored as Redis keys.
+        """
+        consumer_groups = {}
+
+        # Get all consumer group keys
+        group_keys = self.redis_instance.keys("consumer_group:*")
+
+        for key in group_keys:
+            if isinstance(key, bytes):
+                key = key.decode("utf-8")
+
+            group_name = key.replace("consumer_group:", "")
+            group_info = self.redis_instance.hgetall(key)
+
+            # Convert bytes to strings if needed
+            if group_info:
+                group_info = {
+                    k.decode() if isinstance(k, bytes) else k: v.decode()
+                    if isinstance(v, bytes)
+                    else v
+                    for k, v in group_info.items()
+                }
+
+                consumer_groups[group_name] = {
+                    "consumers": [],  # Redis PubSub doesn't track individual consumers
+                    "created_at": float(group_info.get("created_at", 0)),
+                    "consumer_count": int(group_info.get("consumer_count", 0)),
+                }
+
+        return {"consumer_groups": consumer_groups}
+
     def _data_reset(self) -> None:
         self.redis_instance.flushall()

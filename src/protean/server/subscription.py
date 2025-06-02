@@ -371,6 +371,8 @@ class BrokerSubscription:
             f"{self.subscriber_class_name}-{hostname}-{pid}-{random_hex}"
         )
 
+        self.broker._ensure_group(self.subscriber_name)
+
         self.keep_going = True  # Initially set to keep going
 
     async def start(self) -> None:

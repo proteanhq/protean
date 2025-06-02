@@ -21,6 +21,10 @@ class InlineBroker(BaseBroker):
         # Initialize storage for messages
         self._messages = defaultdict(list)
 
+        # Initialize storage for consumer groups
+        # Structure: {group_name: {consumers: set(), created_at: timestamp}}
+        self._consumer_groups = {}
+
     def _publish(self, stream: str, message: dict) -> str:
         """Publish a message dict to the stream"""
         identifier = None
@@ -46,6 +50,30 @@ class InlineBroker(BaseBroker):
 
         return messages
 
+    def _ensure_group(self, group_name: str) -> None:
+        """Bootstrap/create consumer group."""
+        if group_name not in self._consumer_groups:
+            import time
+
+            self._consumer_groups[group_name] = {
+                "consumers": set(),
+                "created_at": time.time(),
+            }
+
+    def _info(self) -> dict:
+        """Provide information about consumer groups and consumers."""
+        return {
+            "consumer_groups": {
+                group_name: {
+                    "consumers": list(group_info["consumers"]),
+                    "created_at": group_info["created_at"],
+                    "consumer_count": len(group_info["consumers"]),
+                }
+                for group_name, group_info in self._consumer_groups.items()
+            }
+        }
+
     def _data_reset(self) -> None:
         """Flush all data in broker instance"""
         self._messages.clear()
+        self._consumer_groups.clear()
