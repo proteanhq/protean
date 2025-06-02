@@ -101,6 +101,30 @@ class BaseBroker(metaclass=ABCMeta):
         Useful for clearing cache and running tests.
         """
 
+    @abstractmethod
+    def _ensure_group(self, group_name: str) -> None:
+        """Bootstrap/create consumer group.
+
+        Args:
+            group_name (str): The name of the consumer group to create
+        """
+
+    def info(self) -> dict:
+        """Get information about consumer groups and consumers in each group.
+
+        Returns:
+            dict: Information about consumer groups and their consumers
+        """
+        return self._info()
+
+    @abstractmethod
+    def _info(self) -> dict:
+        """Overridden method to provide information about consumer groups and consumers.
+
+        Returns:
+            dict: Information about consumer groups and their consumers
+        """
+
     def register(self, subscriber_cls: Type[BaseSubscriber]) -> None:
         """Registers subscribers to brokers against their channels.
 
