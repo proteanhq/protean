@@ -57,4 +57,4 @@ def test_unknown_identity_type_raises_exception():
 
 
 def test_get_version():
-    assert get_version() == "0.13.0"
+    assert get_version() == "0.13.1"
