@@ -31,7 +31,7 @@ class BaseBroker(metaclass=ABCMeta):
 
         self._subscribers = defaultdict(set)
 
-    def publish(self, channel: str, message: dict) -> str | None:
+    def publish(self, channel: str, message: dict) -> str:
         """Publish a message to the broker.
 
         Args:
@@ -39,8 +39,8 @@ class BaseBroker(metaclass=ABCMeta):
             message (dict): The message payload to be published
 
         Returns:
-            str | None: The identifier of the message. The content of the identifier is broker-specific.
-            Some brokers may return None if they don't provide message identifiers.
+            str: The identifier of the message. The content of the identifier is broker-specific.
+            All brokers are guaranteed to provide message identifiers.
         """
         identifier = self._publish(channel, message)
 
@@ -55,7 +55,7 @@ class BaseBroker(metaclass=ABCMeta):
         return identifier
 
     @abstractmethod
-    def _publish(self, channel: str, message: dict) -> str | None:
+    def _publish(self, channel: str, message: dict) -> str:
         """Overidden method to publish a message with payload to the configured broker.
 
         Args:
@@ -63,8 +63,8 @@ class BaseBroker(metaclass=ABCMeta):
             message (dict): The message payload to be published
 
         Returns:
-            str | None: The identifier of the message. The content of the identifier is broker-specific.
-            Some brokers may return None if they don't provide message identifiers.
+            str: The identifier of the message. The content of the identifier is broker-specific.
+            All brokers are guaranteed to provide message identifiers.
         """
 
     def get_next(self, channel: str) -> dict | None:

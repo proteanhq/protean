@@ -30,16 +30,26 @@ class TestPublishingToRedis:
         channel = "test_channel"
         message = {"key": "value"}
 
-        test_domain.brokers["default"].publish(channel, message)
+        identifier = test_domain.brokers["default"].publish(channel, message)
+
+        # Verify identifier is returned
+        assert identifier is not None
+        assert isinstance(identifier, str)
+        assert len(identifier) > 0
 
         # Retrieve with an independent Redis instance
         r = redis.Redis.from_url(test_domain.config["brokers"]["default"]["URI"])
-        message = r.lpop(channel)
-        assert message is not None
+        stored_message = r.lpop(channel)
+        assert stored_message is not None
 
-        # Verify Structure
-        json_message = json.loads(message)
-        assert json_message == {"key": "value"}
+        # Verify Structure - should be stored as tuple (identifier, message)
+        json_tuple = json.loads(stored_message)
+        assert isinstance(json_tuple, list)  # JSON loads tuples as lists
+        assert len(json_tuple) == 2
+        assert json_tuple[0] == identifier  # First element is the identifier
+        assert json_tuple[1] == {
+            "key": "value"
+        }  # Second element is the original message
 
 
 @pytest.mark.redis
@@ -51,8 +61,8 @@ class TestReceivingFromRedis:
         test_domain.brokers["default"].publish(channel, message)
 
         # Retrieve message
-        message = test_domain.brokers["default"].get_next(channel)
+        retrieved_message = test_domain.brokers["default"].get_next(channel)
 
-        # Verify Payload
-        assert message is not None
-        assert message == {"key": "value"}
+        assert retrieved_message is not None
+        assert retrieved_message[0] is not None
+        assert retrieved_message[1] == {"key": "value"}

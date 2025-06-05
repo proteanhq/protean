@@ -325,9 +325,9 @@ class Subscription:
 
 class BrokerSubscription:
     """
-    Represents a subscription to a broker channel.
+    Represents a subscription to a broker stream.
 
-    A broker subscription allows a subscriber to receive and process messages from a specific channel.
+    A broker subscription allows a subscriber to receive and process messages from a specific stream.
     It provides methods to start and stop the subscription, as well as process messages in batches.
     """
 
@@ -336,7 +336,7 @@ class BrokerSubscription:
         engine,
         broker,
         subscriber_name: str,
-        channel: str,
+        stream_name: str,
         handler: Type[BaseSubscriber],
         messages_per_tick: int = 10,
         tick_interval: int = 1,
@@ -347,7 +347,7 @@ class BrokerSubscription:
         Args:
             engine: The Protean engine instance.
             subscriber_name (str): FQN of the subscriber.
-            channel (str): The name of the stream to subscribe to.
+            stream_name (str): The name of the stream to subscribe to.
             handler (Union[BaseEventHandler, BaseCommandHandler]): The event or command handler.
             messages_per_tick (int, optional): The number of messages to process per tick. Defaults to 10.
             tick_interval (int, optional): The interval between ticks. Defaults to 1.
@@ -358,7 +358,7 @@ class BrokerSubscription:
 
         self.subscriber_name = subscriber_name
         self.subscriber_class_name = handler.__name__
-        self.channel = channel
+        self.stream_name = stream_name
         self.handler = handler
         self.messages_per_tick = messages_per_tick
         self.tick_interval = tick_interval
@@ -447,7 +447,7 @@ class BrokerSubscription:
             List[Message]: The next batch of messages to process.
         """
         messages = self.broker.read(
-            self.channel,
+            self.stream_name,
             no_of_messages=self.messages_per_tick,
         )  # FIXME Implement filtering
 
@@ -470,9 +470,10 @@ class BrokerSubscription:
         successful_count = 0
 
         for message in messages:
+            identifier, payload = message
             # Process the message and get a success/failure result
             is_successful = await self.engine.handle_broker_message(
-                self.handler, message
+                self.handler, payload
             )
 
             # Increment counter only for successful messages

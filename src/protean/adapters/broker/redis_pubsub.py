@@ -1,4 +1,5 @@
 import json
+import uuid
 from typing import TYPE_CHECKING, Dict
 
 import redis
@@ -22,28 +23,33 @@ class RedisPubSubBroker(BaseBroker):
 
         self.redis_instance = redis.Redis.from_url(conn_info["URI"])
 
-    def _publish(self, channel: str, message: dict) -> str | None:
-        # FIXME Accept configuration for database and list name
-        identifier = None
-        if "_metadata" in message and "id" in message["_metadata"]:
-            identifier = message["_metadata"]["id"]
+    def _publish(self, channel: str, message: dict) -> str:
+        # Always generate a new identifier
+        identifier = str(uuid.uuid4())
 
-        self.redis_instance.rpush(channel, json.dumps(message))
+        message_tuple = (identifier, message)
+        self.redis_instance.rpush(channel, json.dumps(message_tuple))
+
         return identifier
 
     def _get_next(self, channel: str) -> dict | None:
         bytes_message = self.redis_instance.lpop(channel)
         if bytes_message:
-            return json.loads(bytes_message)
+            identifier, message = json.loads(bytes_message)
+            return (identifier, message)
 
+        # There is no message in the channel
         return None
 
     def read(self, channel: str, no_of_messages: int) -> list[dict]:
         messages = []
         for _ in range(no_of_messages):
-            bytes_message = self.redis_instance.lpop(channel)
-            if bytes_message:
-                messages.append(json.loads(bytes_message))
+            message = self._get_next(channel)
+            if message:
+                messages.append(message)
+            else:
+                # There are no more messages in the channel
+                break
 
         return messages
 
