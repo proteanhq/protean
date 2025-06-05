@@ -16,9 +16,18 @@ def test_publish_generic_message_to_stream(test_domain):
 
     identifier = test_domain.brokers["default"].publish(stream, message)
 
-    # Verify message is stored
-    assert identifier is None
-    assert test_domain.brokers["default"]._messages[stream] == [message]
+    # Verify identifier is always returned as string
+    assert identifier is not None
+    assert isinstance(identifier, str)
+    assert len(identifier) > 0
+
+    # Verify message is stored as tuple (identifier, message)
+    assert len(test_domain.brokers["default"]._messages[stream]) == 1
+    stored_tuple = test_domain.brokers["default"]._messages[stream][0]
+    assert isinstance(stored_tuple, tuple)
+    assert len(stored_tuple) == 2
+    assert stored_tuple[0] == identifier
+    assert stored_tuple[1] == message
 
 
 def test_event_message_to_stream(test_domain):
@@ -29,6 +38,15 @@ def test_event_message_to_stream(test_domain):
 
     identifier = test_domain.brokers["default"].publish("test_stream", event.to_dict())
 
-    # Verify message is stored
+    # Verify identifier is always returned as string
     assert identifier is not None
-    assert event._metadata.id == identifier
+    assert isinstance(identifier, str)
+    assert len(identifier) > 0
+
+    # Verify message is stored as tuple (identifier, message)
+    assert len(test_domain.brokers["default"]._messages["test_stream"]) == 1
+    stored_tuple = test_domain.brokers["default"]._messages["test_stream"][0]
+    assert isinstance(stored_tuple, tuple)
+    assert len(stored_tuple) == 2
+    assert stored_tuple[0] == identifier
+    assert stored_tuple[1] == event.to_dict()

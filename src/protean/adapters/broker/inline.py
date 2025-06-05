@@ -1,3 +1,4 @@
+import uuid
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
@@ -27,11 +28,11 @@ class InlineBroker(BaseBroker):
 
     def _publish(self, stream: str, message: dict) -> str:
         """Publish a message dict to the stream"""
-        identifier = None
-        if "_metadata" in message and "id" in message["_metadata"]:
-            identifier = message["_metadata"]["id"]
+        # Always generate a new identifier
+        identifier = str(uuid.uuid4())
 
-        self._messages[stream].append(message)
+        # Store message as tuple (identifier, message)
+        self._messages[stream].append((identifier, message))
 
         return identifier
 
@@ -39,13 +40,15 @@ class InlineBroker(BaseBroker):
         """Get next message in stream"""
         if self._messages[stream]:
             return self._messages[stream].pop(0)
+
+        # There is no message in the stream
         return None
 
     def read(self, stream: str, no_of_messages: int) -> list[dict]:
-        """Read messages from the broker"""
+        """Read messages from the broker. Returns tuples of (identifier, message)."""
         messages = []
         while no_of_messages > 0 and self._messages[stream]:
-            messages.append(self._messages[stream].pop(0))
+            messages.append(self._get_next(stream))
             no_of_messages -= 1
 
         return messages

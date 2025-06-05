@@ -300,7 +300,10 @@ async def test_broker_subscription_process_batch_exception_handling(
     )
 
     # Create test broker messages - don't publish to the broker
-    messages = [{"message": "Test message 1"}, {"message": "Test message 2"}]
+    messages = [
+        (str(uuid4()), {"message": "Test message 1"}),
+        (str(uuid4()), {"message": "Test message 2"}),
+    ]
 
     # Set up logging to capture errors
     with caplog.at_level(logging.ERROR):
