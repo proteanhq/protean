@@ -10,7 +10,7 @@ class DummySubscriber(BaseSubscriber):
 
 
 def test_that_registered_subscribers_are_initialized(test_domain):
-    test_domain.register(DummySubscriber, channel="person_added")
+    test_domain.register(DummySubscriber, stream="person_added")
     test_domain.init(traverse=False)
 
     assert "person_added" in test_domain.brokers["default"]._subscribers
@@ -20,7 +20,7 @@ def test_that_registered_subscribers_are_initialized(test_domain):
 
 
 def test_that_subscribers_with_unknown_brokers_cannot_be_initialized(test_domain):
-    test_domain.register(DummySubscriber, channel="person_added", broker="unknown")
+    test_domain.register(DummySubscriber, stream="person_added", broker="unknown")
 
     with pytest.raises(ConfigurationError) as exc:
         test_domain.init(traverse=False)

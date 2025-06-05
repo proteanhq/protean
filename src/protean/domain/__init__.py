@@ -1158,9 +1158,9 @@ class Domain:
     # Broker Functionality #
     ########################
 
-    def publish(self, channel: str, message: dict) -> None:
+    def publish(self, stream: str, message: dict) -> None:
         """Publish messages to all configured brokers."""
-        self.brokers.publish(channel, message)
+        self.brokers.publish(stream, message)
 
     #####################
     # Handling Commands #

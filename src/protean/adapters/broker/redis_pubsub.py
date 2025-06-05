@@ -23,32 +23,32 @@ class RedisPubSubBroker(BaseBroker):
 
         self.redis_instance = redis.Redis.from_url(conn_info["URI"])
 
-    def _publish(self, channel: str, message: dict) -> str:
+    def _publish(self, stream: str, message: dict) -> str:
         # Always generate a new identifier
         identifier = str(uuid.uuid4())
 
         message_tuple = (identifier, message)
-        self.redis_instance.rpush(channel, json.dumps(message_tuple))
+        self.redis_instance.rpush(stream, json.dumps(message_tuple))
 
         return identifier
 
-    def _get_next(self, channel: str) -> dict | None:
-        bytes_message = self.redis_instance.lpop(channel)
+    def _get_next(self, stream: str) -> dict | None:
+        bytes_message = self.redis_instance.lpop(stream)
         if bytes_message:
             identifier, message = json.loads(bytes_message)
             return (identifier, message)
 
-        # There is no message in the channel
+        # There is no message in the stream
         return None
 
-    def read(self, channel: str, no_of_messages: int) -> list[dict]:
+    def read(self, stream: str, no_of_messages: int) -> list[dict]:
         messages = []
         for _ in range(no_of_messages):
-            message = self._get_next(channel)
+            message = self._get_next(stream)
             if message:
                 messages.append(message)
             else:
-                # There are no more messages in the channel
+                # There are no more messages in the stream
                 break
 
         return messages

@@ -12,7 +12,7 @@ class DummySubscriber(BaseSubscriber):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(DummySubscriber, channel="test_channel")
+    test_domain.register(DummySubscriber, stream="test_stream")
     test_domain.init(traverse=False)
 
 

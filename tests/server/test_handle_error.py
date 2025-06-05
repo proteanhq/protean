@@ -192,10 +192,10 @@ def register(test_domain):
     test_domain.register(ErrorInErrorHandlerCommandHandler, part_of=User)
 
     # Register subscribers
-    test_domain.register(NormalSubscriber, channel="normal_channel")
-    test_domain.register(ErrorSubscriber, channel="error_channel")
+    test_domain.register(NormalSubscriber, stream="normal_stream")
+    test_domain.register(ErrorSubscriber, stream="error_stream")
     test_domain.register(
-        ErrorInErrorHandlerSubscriber, channel="error_in_error_handler_channel"
+        ErrorInErrorHandlerSubscriber, stream="error_in_error_handler_stream"
     )
 
     test_domain.init(traverse=False)

@@ -29,13 +29,13 @@ def set_message_processing_async(test_domain):
 
 @pytest.mark.asyncio
 async def test_handler_invocation(test_domain):
-    test_domain.register(DummySubscriber, channel="test_channel")
+    test_domain.register(DummySubscriber, stream="test_stream")
     test_domain.init(traverse=False)
 
-    channel = "test_channel"
+    stream = "test_stream"
     message = {"foo": "bar"}
 
-    test_domain.brokers["default"].publish(channel, message)
+    test_domain.brokers["default"].publish(stream, message)
 
     engine = Engine(domain=test_domain, test_mode=True)
     await engine.handle_broker_message(DummySubscriber, message)
@@ -46,13 +46,13 @@ async def test_handler_invocation(test_domain):
 
 @pytest.mark.asyncio
 async def test_handling_exception_raised_in_handler(test_domain, caplog):
-    test_domain.register(ExceptionSubscriber, channel="test_channel")
+    test_domain.register(ExceptionSubscriber, stream="test_stream")
     test_domain.init(traverse=False)
 
-    channel = "test_channel"
+    stream = "test_stream"
     message = {"foo": "bar"}
 
-    test_domain.brokers["default"].publish(channel, message)
+    test_domain.brokers["default"].publish(stream, message)
 
     engine = Engine(domain=test_domain, test_mode=True)
 

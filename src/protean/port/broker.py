@@ -31,35 +31,35 @@ class BaseBroker(metaclass=ABCMeta):
 
         self._subscribers = defaultdict(set)
 
-    def publish(self, channel: str, message: dict) -> str:
+    def publish(self, stream: str, message: dict) -> str:
         """Publish a message to the broker.
 
         Args:
-            channel (str): The channel to which the message should be published
+            stream (str): The stream to which the message should be published
             message (dict): The message payload to be published
 
         Returns:
             str: The identifier of the message. The content of the identifier is broker-specific.
             All brokers are guaranteed to provide message identifiers.
         """
-        identifier = self._publish(channel, message)
+        identifier = self._publish(stream, message)
 
         if (
             self.domain.config["message_processing"] == Processing.SYNC.value
-            and self._subscribers[channel]
+            and self._subscribers[stream]
         ):
-            for subscriber_cls in self._subscribers[channel]:
+            for subscriber_cls in self._subscribers[stream]:
                 subscriber = subscriber_cls()
                 subscriber(message)
 
         return identifier
 
     @abstractmethod
-    def _publish(self, channel: str, message: dict) -> str:
+    def _publish(self, stream: str, message: dict) -> str:
         """Overidden method to publish a message with payload to the configured broker.
 
         Args:
-            channel (str): The channel to which the message should be published
+            stream (str): The stream to which the message should be published
             message (dict): The message payload to be published
 
         Returns:
@@ -67,27 +67,27 @@ class BaseBroker(metaclass=ABCMeta):
             All brokers are guaranteed to provide message identifiers.
         """
 
-    def get_next(self, channel: str) -> dict | None:
+    def get_next(self, stream: str) -> dict | None:
         """Retrieve the next message to process from broker.
 
         Args:
-            channel (str): The channel from which to retrieve the message
+            stream (str): The stream from which to retrieve the message
 
         Returns:
             dict: The message payload
         """
-        return self._get_next(channel)
+        return self._get_next(stream)
 
     @abstractmethod
-    def _get_next(self, channel: str) -> dict | None:
+    def _get_next(self, stream: str) -> dict | None:
         """Overridden method to retrieve the next message to process from broker."""
 
     @abstractmethod
-    def read(self, channel: str, no_of_messages: int) -> list[dict]:
+    def read(self, stream: str, no_of_messages: int) -> list[dict]:
         """Read messages from the broker.
 
         Args:
-            channel (str): The channel from which to read messages
+            stream (str): The stream from which to read messages
             no_of_messages (int): The number of messages to read
 
         Returns:
@@ -126,15 +126,15 @@ class BaseBroker(metaclass=ABCMeta):
         """
 
     def register(self, subscriber_cls: Type[BaseSubscriber]) -> None:
-        """Registers subscribers to brokers against their channels.
+        """Registers subscribers to brokers against their streams.
 
         Arguments:
-            subscriber_cls {Subscriber} -- The subscriber class connected to the channel
+            subscriber_cls {Subscriber} -- The subscriber class connected to the stream
         """
-        channel = subscriber_cls.meta_.channel
+        stream = subscriber_cls.meta_.stream
 
-        self._subscribers[channel].add(subscriber_cls)
+        self._subscribers[stream].add(subscriber_cls)
 
         logger.debug(
-            f"Broker {self.name}: Registered Subscriber {subscriber_cls.__name__} for channel {channel}"
+            f"Broker {self.name}: Registered Subscriber {subscriber_cls.__name__} for stream {stream}"
         )
