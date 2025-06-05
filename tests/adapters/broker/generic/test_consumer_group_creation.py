@@ -53,8 +53,8 @@ def register_elements(test_domain):
     test_domain.register(Order)
     test_domain.register(UserRegistered, part_of=User)
     test_domain.register(OrderPlaced, part_of=Order)
-    test_domain.register(UserSubscriber, channel="user")
-    test_domain.register(OrderSubscriber, channel="order")
+    test_domain.register(UserSubscriber, stream="user")
+    test_domain.register(OrderSubscriber, stream="order")
     test_domain.init(traverse=False)
 
 

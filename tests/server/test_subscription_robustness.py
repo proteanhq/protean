@@ -148,8 +148,8 @@ def register(test_domain):
     test_domain.register(FailingEventHandler, part_of=User)
     test_domain.register(UnhandledExceptionEventHandler, part_of=User)
 
-    test_domain.register(CountingSubscriber, channel="success_channel")
-    test_domain.register(FailingSubscriber, channel="failure_channel")
+    test_domain.register(CountingSubscriber, stream="success_stream")
+    test_domain.register(FailingSubscriber, stream="failure_stream")
 
     test_domain.init(traverse=False)
 
@@ -294,7 +294,7 @@ async def test_broker_subscription_process_batch_exception_handling(
         engine,
         broker,
         "test_broker_subscription",
-        "failure_channel",  # This channel has our failing subscriber
+        "failure_stream",  # This stream has our failing subscriber
         FailingSubscriber,
         messages_per_tick=10,
     )

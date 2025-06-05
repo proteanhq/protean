@@ -30,7 +30,7 @@ class BaseSubscriber(Element, OptionsMixin):
 
     @classmethod
     def _default_options(cls):
-        return [("broker", "default"), ("channel", None)]
+        return [("broker", "default"), ("stream", None)]
 
     @abstractmethod
     def __call__(self, payload: dict) -> None:
@@ -70,7 +70,7 @@ class BaseSubscriber(Element, OptionsMixin):
 def subscriber_factory(element_cls: Type[Element], domain: "Domain", **opts):
     element_cls = derive_element_class(element_cls, BaseSubscriber, **opts)
 
-    if not element_cls.meta_.channel:
+    if not element_cls.meta_.stream:
         raise IncorrectUsageError(
             f"Subscriber `{element_cls.__name__}` needs to be associated with an Event"
         )

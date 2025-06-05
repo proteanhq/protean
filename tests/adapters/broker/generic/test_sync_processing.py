@@ -20,13 +20,13 @@ class DummySubscriber(BaseSubscriber):
 def test_subscriber_sync_invocation(test_domain):
     test_domain.config["message_processing"] = Processing.SYNC.value
 
-    test_domain.register(DummySubscriber, channel="test_channel")
+    test_domain.register(DummySubscriber, stream="test_stream")
     test_domain.init(traverse=False)
 
-    channel = "test_channel"
+    stream = "test_stream"
     message = {"foo": "bar"}
 
-    test_domain.brokers["default"].publish(channel, message)
+    test_domain.brokers["default"].publish(stream, message)
 
     global counter
     assert counter == 1

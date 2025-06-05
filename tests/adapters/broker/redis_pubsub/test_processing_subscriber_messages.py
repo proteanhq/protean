@@ -27,14 +27,14 @@ def clear_terms():
 @pytest.mark.redis
 @pytest.mark.asyncio
 async def test_handler_invocation(test_domain):
-    test_domain.register(DummySubscriber, channel="test_channel")
+    test_domain.register(DummySubscriber, stream="test_stream")
     test_domain.init(traverse=False)
 
     with test_domain.domain_context():
-        channel = "test_channel"
+        stream = "test_stream"
         message = {"foo": "bar"}
 
-        test_domain.brokers["default"].publish(channel, message)
+        test_domain.brokers["default"].publish(stream, message)
 
         engine = Engine(domain=test_domain, test_mode=True)
         await engine.handle_broker_message(DummySubscriber, message)
@@ -46,15 +46,15 @@ async def test_handler_invocation(test_domain):
 
 @pytest.mark.redis
 def test_processing_broker_messages(test_domain):
-    test_domain.register(DummySubscriber, channel="test_channel")
+    test_domain.register(DummySubscriber, stream="test_stream")
     test_domain.init(traverse=False)
 
     with test_domain.domain_context():
-        channel = "test_channel"
+        stream = "test_stream"
         message1 = {"foo": "bar"}
         message2 = {"foo": "baz"}
-        test_domain.brokers["default"].publish(channel, message1)
-        test_domain.brokers["default"].publish(channel, message2)
+        test_domain.brokers["default"].publish(stream, message1)
+        test_domain.brokers["default"].publish(stream, message2)
 
         engine = Engine(domain=test_domain, test_mode=True)
         engine.run()

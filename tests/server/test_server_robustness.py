@@ -197,10 +197,10 @@ def robust_test_domain(test_domain):
     test_domain.register(FailingErrorHandlerCommandHandler, part_of=User)
 
     # Register broker subscribers
-    test_domain.register(SuccessfulSubscriber, channel="success_channel")
-    test_domain.register(FailingSubscriber, channel="failure_channel")
+    test_domain.register(SuccessfulSubscriber, stream="success_stream")
+    test_domain.register(FailingSubscriber, stream="failure_stream")
     test_domain.register(
-        FailingErrorHandlerSubscriber, channel="failing_error_handler_channel"
+        FailingErrorHandlerSubscriber, stream="failing_error_handler_stream"
     )
 
     test_domain.init(traverse=False)
@@ -329,13 +329,13 @@ def test_broker_messages_continue_processing_after_exceptions(robust_test_domain
     """Test that broker message processing continues even after exceptions"""
     # Publish messages to broker
     robust_test_domain.brokers["default"].publish(
-        "failure_channel", {"message": "This will fail"}
+        "failure_stream", {"message": "This will fail"}
     )
     robust_test_domain.brokers["default"].publish(
-        "success_channel", {"message": "This will succeed"}
+        "success_stream", {"message": "This will succeed"}
     )
     robust_test_domain.brokers["default"].publish(
-        "failing_error_handler_channel",
+        "failing_error_handler_stream",
         {"message": "This will fail with error in error handler"},
     )
 
@@ -350,7 +350,7 @@ def test_broker_messages_continue_processing_after_exceptions(robust_test_domain
     global broker_message_counter, error_counter, error_handler_error_counter
     assert (
         broker_message_counter == 1
-    )  # Successfully processed the success channel message
+    )  # Successfully processed the success stream message
     assert error_counter >= 2  # Processed both the error and error handler
     assert (
         error_handler_error_counter >= 2
@@ -450,13 +450,13 @@ def test_mixed_error_scenarios(robust_test_domain):
 
     # Add broker messages
     robust_test_domain.brokers["default"].publish(
-        "failure_channel", {"message": "This will fail"}
+        "failure_stream", {"message": "This will fail"}
     )
     robust_test_domain.brokers["default"].publish(
-        "success_channel", {"message": "This will succeed"}
+        "success_stream", {"message": "This will succeed"}
     )
     robust_test_domain.brokers["default"].publish(
-        "failing_error_handler_channel",
+        "failing_error_handler_stream",
         {"message": "This will fail with error handler failure"},
     )
 

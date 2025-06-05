@@ -26,7 +26,7 @@ class TestSubscriberInitialization:
 
 class TestSubscriberRegistration:
     def test_that_domain_event_can_be_registered_with_domain(self, test_domain):
-        test_domain.register(NotifySSOSubscriber, channel="person_added")
+        test_domain.register(NotifySSOSubscriber, stream="person_added")
 
         assert (
             fully_qualified_name(NotifySSOSubscriber)
@@ -34,7 +34,7 @@ class TestSubscriberRegistration:
         )
 
     def test_that_domain_event_can_be_registered_via_annotations(self, test_domain):
-        @test_domain.subscriber(channel="person_added")
+        @test_domain.subscriber(stream="person_added")
         class AnnotatedSubscriber:
             def special_method(self):
                 pass

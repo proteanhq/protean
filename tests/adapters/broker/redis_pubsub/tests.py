@@ -27,10 +27,10 @@ class TestRedisConnection:
 @pytest.mark.redis
 class TestPublishingToRedis:
     def test_event_message_structure(self, test_domain):
-        channel = "test_channel"
+        stream = "test_stream"
         message = {"key": "value"}
 
-        identifier = test_domain.brokers["default"].publish(channel, message)
+        identifier = test_domain.brokers["default"].publish(stream, message)
 
         # Verify identifier is returned
         assert identifier is not None
@@ -39,7 +39,7 @@ class TestPublishingToRedis:
 
         # Retrieve with an independent Redis instance
         r = redis.Redis.from_url(test_domain.config["brokers"]["default"]["URI"])
-        stored_message = r.lpop(channel)
+        stored_message = r.lpop(stream)
         assert stored_message is not None
 
         # Verify Structure - should be stored as tuple (identifier, message)
@@ -55,13 +55,13 @@ class TestPublishingToRedis:
 @pytest.mark.redis
 class TestReceivingFromRedis:
     def test_retrieving_an_event_message(self, test_domain):
-        channel = "test_channel"
+        stream = "test_stream"
         message = {"key": "value"}
 
-        test_domain.brokers["default"].publish(channel, message)
+        test_domain.brokers["default"].publish(stream, message)
 
         # Retrieve message
-        retrieved_message = test_domain.brokers["default"].get_next(channel)
+        retrieved_message = test_domain.brokers["default"].get_next(stream)
 
         assert retrieved_message is not None
         assert retrieved_message[0] is not None

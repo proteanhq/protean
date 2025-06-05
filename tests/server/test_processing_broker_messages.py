@@ -34,14 +34,14 @@ def set_message_processing_async(test_domain):
 
 @pytest.mark.broker
 def test_processing_broker_messages(test_domain):
-    test_domain.register(DummySubscriber, channel="test_channel")
+    test_domain.register(DummySubscriber, stream="test_stream")
     test_domain.init(traverse=False)
 
-    channel = "test_channel"
+    stream = "test_stream"
     message1 = {"foo": "bar"}
     message2 = {"foo": "baz"}
-    test_domain.brokers["default"].publish(channel, message1)
-    test_domain.brokers["default"].publish(channel, message2)
+    test_domain.brokers["default"].publish(stream, message1)
+    test_domain.brokers["default"].publish(stream, message2)
 
     engine = Engine(domain=test_domain, test_mode=True)
     engine.run()
@@ -54,12 +54,12 @@ def test_processing_broker_messages(test_domain):
 
 @pytest.mark.broker
 def test_no_processing_when_shutting_down(test_domain):
-    test_domain.register(DummySubscriber, channel="test_channel")
+    test_domain.register(DummySubscriber, stream="test_stream")
     test_domain.init(traverse=False)
 
-    channel = "test_channel"
+    stream = "test_stream"
     message = {"foo": "bar"}
-    test_domain.brokers["default"].publish(channel, message)
+    test_domain.brokers["default"].publish(stream, message)
 
     engine = Engine(domain=test_domain, test_mode=True)
     engine.shutting_down = True

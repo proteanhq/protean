@@ -82,7 +82,7 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
 
             self._brokers[broker_name].register(subscriber_cls)
 
-    def publish(self, channel: str, message: dict[str, Any]) -> None:
+    def publish(self, stream: str, message: dict[str, Any]) -> None:
         """Publish a message payload to all registered brokers"""
         # Follow a naive strategy and dispatch message directly to message broker
         #   If the operation is enclosed in a Unit of Work, delegate the responsibility
@@ -90,14 +90,14 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
         if current_uow:
             logger.debug(f"Recording message {message} in {current_uow} for dispatch")
 
-            current_uow.register_message(channel, message)
+            current_uow.register_message(stream, message)
         else:
             logger.debug(
-                f"Publishing message {message} to all brokers registered for channel {channel}"
+                f"Publishing message {message} to all brokers registered for stream {stream}"
             )
 
             for _, broker in self._brokers.items():
-                broker.publish(channel, message)
+                broker.publish(stream, message)
 
 
 __all__ = ["InlineBroker", "RedisPubSubBroker"]

@@ -71,9 +71,9 @@ class UnitOfWork:
             # Push messages to all brokers
             # FIXME Send message to its designated broker?
             # FIXME Send messages through domain.brokers.publish?
-            for channel, message in self._messages_to_dispatch:
+            for stream, message in self._messages_to_dispatch:
                 for _, broker in self.domain.brokers.items():
-                    broker.publish(channel, message)
+                    broker.publish(stream, message)
             self._messages_to_dispatch = []  # Empty after dispatch
 
             events = []
@@ -162,5 +162,5 @@ class UnitOfWork:
         else:
             return self._initialize_session(provider_name)
 
-    def register_message(self, channel: str, message: dict[str, Any]):
-        self._messages_to_dispatch.append((channel, message))
+    def register_message(self, stream: str, message: dict[str, Any]):
+        self._messages_to_dispatch.append((stream, message))

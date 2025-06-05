@@ -102,8 +102,8 @@ def test_domain_setup(test_domain):
     test_domain.register(Registered, part_of=User)
     test_domain.register(ErrorHandlerEventHandler, part_of=User)
     test_domain.register(ErrorInErrorHandlerEventHandler, part_of=User)
-    test_domain.register(ErrorHandlerSubscriber, channel="test_channel")
-    test_domain.register(ErrorInErrorHandlerSubscriber, channel="error_channel")
+    test_domain.register(ErrorHandlerSubscriber, stream="test_stream")
+    test_domain.register(ErrorInErrorHandlerSubscriber, stream="error_stream")
 
     test_domain.init(traverse=False)
     return test_domain

@@ -96,12 +96,12 @@ class Engine:
             subscriber_cls = subscriber_record.cls
             broker_name = subscriber_cls.meta_.broker
             broker = self.domain.brokers[broker_name]
-            channel = subscriber_cls.meta_.channel
+            stream = subscriber_cls.meta_.stream
             self._broker_subscriptions[subscriber_name] = BrokerSubscription(
                 self,
                 broker,
                 subscriber_name,
-                channel,
+                stream,
                 subscriber_cls,
             )
 
