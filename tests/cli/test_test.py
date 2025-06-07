@@ -1,558 +1,488 @@
 import subprocess
-from unittest.mock import Mock, call
+import time
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 import pytest
-import typer
 from typer.testing import CliRunner
 
 from protean.cli import app
-from protean.cli.test import RunCategory
-
-runner = CliRunner(mix_stderr=True)
+from protean.cli.test import TEST_CONFIGS, RunCategory, TestRunner, TestSuite
 
 
 @pytest.fixture
-def mock_subprocess_call(mocker):
-    mock_call = mocker.patch("protean.cli.test.subprocess.call")
-    mock_call.return_value = 0
-    return mock_call
+def mock_runner():
+    """Fixture providing a TestRunner with mocked subprocess calls."""
+    runner = TestRunner()
+    with patch.object(runner, "run_command", return_value=0):
+        yield runner
 
 
-@pytest.mark.parametrize(
-    "category,expected_calls,call_count",
-    [
-        (
-            RunCategory.EVENTSTORE,
-            [
-                call(
-                    [
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "eventstore",
-                        "--store=MEMORY",
-                    ]
-                ),
-                call(
-                    [
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "eventstore",
-                        "--store=MESSAGE_DB",
-                    ]
-                ),
-            ],
-            2,
-        ),
-        (
-            RunCategory.DATABASE,
-            [
-                call(
-                    [
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "database",
-                        "--db=MEMORY",
-                    ]
-                ),
-                call(
-                    [
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "database",
-                        "--db=POSTGRESQL",
-                    ]
-                ),
-                call(
-                    [
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "database",
-                        "--db=SQLITE",
-                    ]
-                ),
-            ],
-            3,
-        ),
-        (
-            RunCategory.BROKER,
-            [
-                call(
-                    [
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "broker",
-                        "--broker=INLINE",
-                    ]
-                ),
-                call(
-                    [
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "broker",
-                        "--broker=REDIS_PUBSUB",
-                    ]
-                ),
-            ],
-            2,
-        ),
-        (
-            RunCategory.FULL,
-            [
-                call(["coverage", "erase"]),
-                call(
-                    [
-                        "coverage",
-                        "run",
-                        "--parallel-mode",
-                        "-m",
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "--slow",
-                        "--sqlite",
-                        "--postgresql",
-                        "--elasticsearch",
-                        "--redis",
-                        "--message_db",
-                        "tests",
-                    ]
-                ),
-                call(
-                    [
-                        "coverage",
-                        "run",
-                        "--parallel-mode",
-                        "-m",
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "database",
-                        "--db=MEMORY",
-                    ]
-                ),
-                call(
-                    [
-                        "coverage",
-                        "run",
-                        "--parallel-mode",
-                        "-m",
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "database",
-                        "--db=POSTGRESQL",
-                    ]
-                ),
-                call(
-                    [
-                        "coverage",
-                        "run",
-                        "--parallel-mode",
-                        "-m",
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "database",
-                        "--db=SQLITE",
-                    ]
-                ),
-                call(
-                    [
-                        "coverage",
-                        "run",
-                        "--parallel-mode",
-                        "-m",
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "eventstore",
-                        "--store=MESSAGE_DB",
-                    ]
-                ),
-                call(["coverage", "combine"]),
-                call(["coverage", "xml"]),
-                call(["coverage", "report"]),
-            ],
-            11,  # 7 calls + 4 for coverage operations (erase, combine, report)
-        ),
-        (
-            RunCategory.COVERAGE,
-            [
-                call(["coverage", "erase"]),
-                call(
-                    [
-                        "coverage",
-                        "run",
-                        "--parallel-mode",
-                        "-m",
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "--slow",
-                        "--sqlite",
-                        "--postgresql",
-                        "--elasticsearch",
-                        "--redis",
-                        "--message_db",
-                        "tests",
-                    ]
-                ),
-                call(
-                    [
-                        "coverage",
-                        "run",
-                        "--parallel-mode",
-                        "-m",
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "database",
-                        "--db=MEMORY",
-                    ]
-                ),
-                call(
-                    [
-                        "coverage",
-                        "run",
-                        "--parallel-mode",
-                        "-m",
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "database",
-                        "--db=POSTGRESQL",
-                    ]
-                ),
-                call(
-                    [
-                        "coverage",
-                        "run",
-                        "--parallel-mode",
-                        "-m",
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "database",
-                        "--db=SQLITE",
-                    ]
-                ),
-                call(
-                    [
-                        "coverage",
-                        "run",
-                        "--parallel-mode",
-                        "-m",
-                        "pytest",
-                        "--cache-clear",
-                        "--ignore=tests/support/",
-                        "-m",
-                        "eventstore",
-                        "--store=MESSAGE_DB",
-                    ]
-                ),
-                call(["coverage", "combine"]),
-                call(["coverage", "xml"]),
-                call(["coverage", "report"]),
-                call(
-                    [
-                        "diff-cover",
-                        "coverage.xml",
-                        "--compare-branch=main",
-                        "--html-report",
-                        "diff_coverage_report.html",
-                    ]
-                ),
-            ],
-            12,  # Updated count: 11 calls from run_full + 1 for diff-cover
-        ),
-        (
-            RunCategory.CORE,
-            [
-                call(["pytest", "--cache-clear", "--ignore=tests/support/"]),
-            ],
-            1,
-        ),
-    ],
-)
-def test_command(
-    mock_subprocess_call, category, expected_calls, call_count, monkeypatch
-):
-    # Mock webbrowser.open so we don't open the report in the browser
-    mock_webbrowser_open = Mock()
-    monkeypatch.setattr("webbrowser.open", mock_webbrowser_open)
+@pytest.fixture
+def cli_runner():
+    """Fixture for Typer CLI testing."""
+    return CliRunner(mix_stderr=True)
 
-    result = runner.invoke(
-        app, ["test", "--category", category.value], standalone_mode=False
+
+@pytest.fixture
+def html_file(tmp_path):
+    """Fixture providing a temporary HTML file for testing."""
+    html = tmp_path / "test.html"
+    html.write_text("<html><head></head><body>content</body></html>")
+    return html
+
+
+class TestTestRunner:
+    """Test the core TestRunner functionality."""
+
+    def test_initialization(self):
+        """Test TestRunner initializes correctly."""
+        runner = TestRunner()
+        assert runner.exit_status == 0
+
+    def test_track_exit_code(self, mock_runner):
+        """Test exit code tracking with bitwise OR."""
+        mock_runner.track_exit_code(1)
+        assert mock_runner.exit_status == 1
+
+        mock_runner.track_exit_code(2)
+        assert mock_runner.exit_status == 3  # 1 | 2 = 3
+
+        mock_runner.track_exit_code(0)
+        assert mock_runner.exit_status == 3  # No change on success
+
+    def test_run_command_actual_subprocess(self):
+        """Test run_command calls actual subprocess.call."""
+        runner = TestRunner()
+        with patch("subprocess.call", return_value=42) as mock_call:
+            result = runner.run_command(["echo", "test"])
+            assert result == 42
+            mock_call.assert_called_once_with(["echo", "test"])
+
+    @pytest.mark.parametrize(
+        "marker,config_flag,extra_flags,expected",
+        [
+            (None, None, None, ["pytest", "--cache-clear", "--ignore=tests/support/"]),
+            (
+                "database",
+                "--db=MEMORY",
+                None,
+                [
+                    "pytest",
+                    "--cache-clear",
+                    "--ignore=tests/support/",
+                    "-m",
+                    "database",
+                    "--db=MEMORY",
+                ],
+            ),
+            (
+                None,
+                None,
+                ["--verbose"],
+                ["pytest", "--cache-clear", "--ignore=tests/support/", "--verbose"],
+            ),
+            (
+                "broker",
+                "--broker=REDIS",
+                ["--slow"],
+                [
+                    "pytest",
+                    "--cache-clear",
+                    "--ignore=tests/support/",
+                    "-m",
+                    "broker",
+                    "--broker=REDIS",
+                    "--slow",
+                ],
+            ),
+        ],
     )
+    def test_build_test_command(
+        self, mock_runner, marker, config_flag, extra_flags, expected
+    ):
+        """Test command building with various parameters."""
+        result = mock_runner.build_test_command(marker, config_flag, extra_flags)
+        assert result == expected
 
-    assert result.exit_code == 0
-    assert mock_subprocess_call.call_count == call_count
-    mock_subprocess_call.assert_has_calls(expected_calls, any_order=True)
+    def test_build_coverage_command(self, mock_runner):
+        """Test coverage command wrapping."""
+        pytest_cmd = ["pytest", "--version"]
+        result = mock_runner.build_coverage_command(pytest_cmd)
+        expected = ["coverage", "run", "--parallel-mode", "-m", "pytest", "--version"]
+        assert result == expected
 
-
-def test_default_category(mock_subprocess_call):
-    # Test the command with the default category (CORE)
-    result = runner.invoke(app, ["test"], standalone_mode=False)
-
-    assert result.exit_code == 0
-    mock_subprocess_call.assert_called_once_with(
-        ["pytest", "--cache-clear", "--ignore=tests/support/"]
+    @pytest.mark.parametrize(
+        "seconds,expected",
+        [
+            (30.5, "30.50 seconds"),
+            (75.2, "1m 15.2s (75.20 seconds)"),
+            (3661.8, "61m 1.8s (3661.80 seconds)"),
+        ],
     )
+    def test_format_duration(self, mock_runner, seconds, expected):
+        """Test duration formatting for various time periods."""
+        assert mock_runner.format_duration(seconds) == expected
 
+    def test_generate_test_suites(self, mock_runner):
+        """Test test suite generation."""
+        suites = mock_runner.generate_test_suites()
 
-def test_invalid_category(mock_subprocess_call):
-    # Test the command with an invalid category (should raise error)
-    result = runner.invoke(
-        app, ["test", "--category", "INVALID"], standalone_mode=False
+        assert len(suites) == 7  # Full Matrix + 3 DBs + 2 Brokers + 1 EventStore
+        suite_names = [suite.name for suite in suites]
+
+        assert "Full Matrix" in suite_names
+        assert all(f"Database: {db}" in suite_names for db in TEST_CONFIGS["databases"])
+        assert all(
+            f"Broker: {broker}" in suite_names for broker in TEST_CONFIGS["brokers"]
+        )
+        assert "Event Store: MESSAGE_DB" in suite_names
+
+    def test_run_single_suite_success(self, mock_runner, capsys):
+        """Test successful single suite execution."""
+        suite = TestSuite("Test Suite", ["pytest", "--version"])
+
+        result = mock_runner.run_single_suite(suite)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        assert "🚀 Starting tests for Test Suite..." in captured.out
+        assert "✅ Completed tests for Test Suite" in captured.out
+
+    def test_run_single_suite_failure(self, mock_runner, capsys):
+        """Test failed single suite execution."""
+        mock_runner.run_command = Mock(return_value=1)
+        suite = TestSuite("Failing Suite", ["pytest", "--fail"])
+
+        result = mock_runner.run_single_suite(suite)
+        assert result == 1
+
+        captured = capsys.readouterr()
+        assert "❌ Failed tests for Failing Suite (exit code: 1)" in captured.out
+
+    @pytest.mark.parametrize(
+        "category,expected_configs",
+        [
+            ("DATABASE", TEST_CONFIGS["databases"]),
+            ("BROKER", TEST_CONFIGS["brokers"]),
+            ("EVENTSTORE", TEST_CONFIGS["eventstores"]),
+        ],
     )
+    def test_run_category_tests(self, mock_runner, category, expected_configs):
+        """Test category-specific test execution."""
+        result = mock_runner.run_category_tests(category)
+        assert result == 0
+        assert mock_runner.run_command.call_count == len(expected_configs)
 
-    assert result.exit_code == 1
-    assert (
-        str(result.exception)
-        == "'INVALID' is not one of 'CORE', 'EVENTSTORE', 'DATABASE', 'BROKER', 'COVERAGE', 'FULL'."
+    def test_run_category_tests_invalid_category(self, mock_runner):
+        """Test run_category_tests with invalid category returns 0."""
+        result = mock_runner.run_category_tests("INVALID_CATEGORY")
+        assert result == 0
+        assert mock_runner.run_command.call_count == 0
+
+    def test_run_full_suite_parallel_default(self, mock_runner, capsys):
+        """Test run_full_suite with default parallel execution."""
+        mock_runner.run_test_suites_in_parallel = Mock(return_value=0)
+
+        result = mock_runner.run_full_suite()  # sequential=False by default
+
+        assert result == 0
+        mock_runner.run_test_suites_in_parallel.assert_called_once()
+
+        captured = capsys.readouterr()
+        assert "⚡ Running tests in parallel for faster execution..." in captured.out
+
+    def test_run_full_suite_sequential_mode(self, mock_runner):
+        """Test run_full_suite with sequential=True."""
+        mock_runner.run_test_suites_sequentially = Mock(return_value=0)
+
+        result = mock_runner.run_full_suite(sequential=True)
+
+        assert result == 0
+        mock_runner.run_test_suites_sequentially.assert_called_once()
+
+
+class TestTestSuite:
+    """Test the TestSuite dataclass."""
+
+    def test_creation(self):
+        """Test TestSuite creation."""
+        suite = TestSuite("Test Name", ["command", "arg"])
+        assert suite.name == "Test Name"
+        assert suite.command == ["command", "arg"]
+
+
+class TestCLICommands:
+    """Test CLI command integration."""
+
+    @pytest.mark.parametrize(
+        "category", ["CORE", "DATABASE", "EVENTSTORE", "BROKER", "FULL", "COVERAGE"]
     )
+    def test_all_categories_work(self, cli_runner, category):
+        """Test all categories execute without errors."""
+        with patch("protean.cli.test.TestRunner") as mock_runner_class:
+            mock_instance = Mock()
+            mock_instance.run_category_tests.return_value = 0
+            mock_instance.run_full_suite.return_value = 0
+            mock_instance.run_command.return_value = 0
+            mock_runner_class.return_value = mock_instance
+
+            result = cli_runner.invoke(
+                app, ["test", "--category", category], standalone_mode=False
+            )
+            assert result.exit_code == 0
+
+    def test_sequential_flag(self, cli_runner):
+        """Test sequential flag is passed correctly."""
+        with patch("protean.cli.test.TestRunner") as mock_runner_class:
+            mock_instance = Mock()
+            mock_instance.run_full_suite.return_value = 0
+            mock_runner_class.return_value = mock_instance
+
+            cli_runner.invoke(
+                app,
+                ["test", "--category", "FULL", "--sequential"],
+                standalone_mode=False,
+            )
+
+            mock_instance.run_full_suite.assert_called_once_with(True)
+
+    def test_coverage_with_diff_report(self, cli_runner):
+        """Test coverage category generates diff report on success."""
+        with patch("protean.cli.test.TestRunner") as mock_runner_class:
+            mock_instance = Mock()
+            mock_instance.run_full_suite.return_value = 0
+            mock_runner_class.return_value = mock_instance
+
+            cli_runner.invoke(
+                app, ["test", "--category", "COVERAGE"], standalone_mode=False
+            )
+
+            mock_instance.generate_diff_coverage_report.assert_called_once()
+
+    def test_coverage_skips_diff_report_on_failure(self, cli_runner, capsys):
+        """Test coverage category skips diff report when tests fail."""
+        with patch("protean.cli.test.TestRunner") as mock_runner_class:
+            mock_instance = Mock()
+            mock_instance.run_full_suite.return_value = 1
+            mock_runner_class.return_value = mock_instance
+
+            result = cli_runner.invoke(app, ["test", "--category", "COVERAGE"])
+
+            assert result.exit_code == 1
+            mock_instance.generate_diff_coverage_report.assert_not_called()
+
+    def test_invalid_category_rejected(self, cli_runner):
+        """Test invalid categories are rejected."""
+        result = cli_runner.invoke(
+            app, ["test", "--category", "INVALID"], standalone_mode=False
+        )
+        assert result.exit_code == 1
+        assert "is not one of" in str(result.exception)
 
 
-class TestInjectStyle:
-    def test_inject_style_success(self, tmp_path):
-        """Test successful style injection into HTML file."""
-        from protean.cli.test import STYLE_BLOCK, _inject_style
+class TestSequentialExecution:
+    """Test sequential execution functionality."""
 
-        # Create a test HTML file with a head section
-        test_html = tmp_path / "test.html"
-        test_html.write_text("<html><head></head><body>content</body></html>")
+    def test_sequential_execution_success(self, mock_runner, capsys):
+        """Test successful sequential execution."""
+        suites = [
+            TestSuite("Full Matrix", ["echo", "test1"]),
+            TestSuite("Database: MEMORY", ["echo", "test2"]),
+        ]
 
-        # Call the function
-        _inject_style(test_html)
+        with patch("time.time", side_effect=[100.0, 105.0]):
+            result = mock_runner.run_test_suites_sequentially(suites)
 
-        # Verify the style was injected
-        content = test_html.read_text()
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "⏱️  Starting sequential test execution..." in captured.out
+        assert "Running full test matrix..." in captured.out
+        assert "Running tests for Database: MEMORY…" in captured.out
+
+
+class TestParallelExecution:
+    """Test parallel execution functionality."""
+
+    def test_parallel_execution_success(self, mock_runner, capsys):
+        """Test successful parallel execution."""
+        suites = [
+            TestSuite("Suite 1", ["echo", "test1"]),
+            TestSuite("Suite 2", ["echo", "test2"]),
+        ]
+
+        with patch("time.time", side_effect=[100.0, 105.0]):
+            result = mock_runner.run_test_suites_in_parallel(suites)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "🔄 Running 2 test suites in parallel" in captured.out
+        assert "📊 Progress:" in captured.out
+
+    def test_parallel_execution_with_exception(self, mock_runner, capsys):
+        """Test parallel execution handles exceptions."""
+        suites = [TestSuite("Failing Suite", ["false"])]
+
+        # Mock executor that raises exception
+        class MockFuture:
+            def result(self):
+                raise RuntimeError("Test exception")
+
+        class MockExecutor:
+            def __init__(self, max_workers=3):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def submit(self, fn, suite, quiet=False):
+                return MockFuture()
+
+        with patch("protean.cli.test.ThreadPoolExecutor", MockExecutor), patch(
+            "protean.cli.test.as_completed", lambda x: list(x.keys())
+        ):
+            result = mock_runner.run_test_suites_in_parallel(suites)
+
+        assert result != 0
+        captured = capsys.readouterr()
+        assert "💥 Test suite 'Failing Suite' generated an exception" in captured.out
+
+
+class TestStyleInjection:
+    """Test HTML style injection functionality."""
+
+    def test_inject_style_success(self, mock_runner, html_file):
+        """Test successful style injection."""
+        from protean.cli.test import STYLE_BLOCK
+
+        mock_runner.inject_html_style(html_file)
+        content = html_file.read_text()
         assert STYLE_BLOCK in content
-        assert content.find(STYLE_BLOCK) < content.find("</head>")
-        assert content.endswith("<body>content</body></html>")
+        assert content.count(STYLE_BLOCK) == 1
 
-    def test_inject_style_already_injected(self, tmp_path):
-        """Test injection when style is already present."""
-        from protean.cli.test import STYLE_BLOCK, _inject_style
+    def test_inject_style_idempotent(self, mock_runner, html_file):
+        """Test style injection is idempotent."""
+        from protean.cli.test import STYLE_BLOCK
 
-        # Create a test HTML file that already has the style block
-        test_html = tmp_path / "test.html"
-        test_html.write_text(
-            f"<html><head>{STYLE_BLOCK}</head><body>content</body></html>"
-        )
+        mock_runner.inject_html_style(html_file)
+        mock_runner.inject_html_style(html_file)
 
-        # Get the original content for comparison
-        original_content = test_html.read_text()
+        content = html_file.read_text()
+        assert content.count(STYLE_BLOCK) == 1
 
-        # Call the function
-        _inject_style(test_html)
+    def test_inject_style_no_head_tag(self, mock_runner, tmp_path):
+        """Test injection when no </head> tag exists."""
+        html_file = tmp_path / "no_head.html"
+        html_file.write_text("<html><body>content</body></html>")
+        original_content = html_file.read_text()
 
-        # Verify the file wasn't modified
-        assert test_html.read_text() == original_content
+        mock_runner.inject_html_style(html_file)
+        assert html_file.read_text() == original_content
 
-    def test_inject_style_no_head(self, tmp_path):
-        """Test injection with no </head> tag."""
-        from protean.cli.test import _inject_style
-
-        # Create a test HTML file without a head closing tag
-        test_html = tmp_path / "test.html"
-        test_html.write_text("<html><body>content</body></html>")
-
-        # Get the original content for comparison
-        original_content = test_html.read_text()
-
-        # Call the function
-        _inject_style(test_html)
-
-        # Verify the file wasn't modified
-        assert test_html.read_text() == original_content
-
-    def test_inject_style_file_not_found(self):
-        """Test injection when file doesn't exist."""
-        from pathlib import Path
-
-        from protean.cli.test import _inject_style
-
-        # Try to inject into a non-existent file
-        nonexistent_file = Path("nonexistent_file.html")
-
-        # This should not raise an exception due to suppress(FileNotFoundError)
-        _inject_style(nonexistent_file)
-
-    def test_inject_style_custom_block(self, tmp_path):
-        """Test injection with a custom style block."""
-        from protean.cli.test import _inject_style
-
-        # Create a test HTML file
-        test_html = tmp_path / "test.html"
-        test_html.write_text("<html><head></head><body>content</body></html>")
-
-        # Custom style block
-        custom_style = "<style>body { color: blue; }</style>"
-
-        # Call the function with custom style
-        _inject_style(test_html, custom_style)
-
-        # Verify the custom style was injected
-        content = test_html.read_text()
-        assert custom_style in content
-        assert content.find(custom_style) < content.find("</head>")
+    def test_inject_style_nonexistent_file(self, mock_runner):
+        """Test injection with nonexistent file doesn't raise exception."""
+        mock_runner.inject_html_style(Path("nonexistent.html"))  # Should not raise
 
 
-class TestRunFull:
-    def test_run_full_success(self, mock_subprocess_call):
-        """Test run_full with all tests passing (line 135 where exit_status == 0)."""
-        from protean.cli.test import run_full
+class TestCoverageReporting:
+    """Test coverage and diff report functionality."""
 
-        # Configure the mock to indicate all commands succeeded
-        mock_subprocess_call.return_value = 0
+    def test_generate_diff_coverage_report_success(self, mock_runner):
+        """Test successful diff coverage report generation."""
+        with patch("webbrowser.open") as mock_browser, patch.object(
+            mock_runner, "inject_html_style"
+        ) as mock_inject:
+            mock_runner.run_command = Mock(return_value=0)
+            mock_runner.generate_diff_coverage_report()
 
-        # Run the function
-        exit_status = run_full(
-            subprocess,
-            ["coverage", "run", "--parallel-mode", "-m"],
-            ["pytest", "--cache-clear", "--ignore=tests/support/"],
-        )
+            mock_inject.assert_called_once()
+            mock_browser.assert_called_once()
 
-        # Verify all expected commands were called
-        assert mock_subprocess_call.call_count == 11
-        assert exit_status == 0
+    def test_generate_diff_coverage_report_success_with_real_paths(self):
+        """Test successful diff coverage report with real path operations."""
+        runner = TestRunner()
 
-        # Verify coverage combine commands were called (happens when exit_status == 0)
-        mock_subprocess_call.assert_any_call(["coverage", "combine"])
-        mock_subprocess_call.assert_any_call(["coverage", "xml"])
-        mock_subprocess_call.assert_any_call(["coverage", "report"])
+        with patch.object(runner, "run_command", return_value=0), patch.object(
+            runner, "inject_html_style"
+        ) as mock_inject, patch("webbrowser.open") as mock_browser, patch(
+            "os.path.abspath", return_value="/tmp/test_report.html"
+        ) as mock_abspath:
+            runner.generate_diff_coverage_report()
 
-    def test_run_full_with_failures(self, mock_subprocess_call):
-        """Test run_full with some tests failing (line 135 where exit_status != 0)."""
-        from protean.cli.test import run_full
+            # Verify the complete success path is executed
+            mock_inject.assert_called_once()
+            mock_browser.assert_called_once_with("file:///tmp/test_report.html")
+            mock_abspath.assert_called_once()
 
-        # Configure the mock to indicate some commands failed
-        # First call (erase) succeeds, second call (full test run) fails
-        mock_subprocess_call.side_effect = [0, 1] + [0] * 10
+    def test_generate_diff_coverage_report_failure(self, mock_runner):
+        """Test diff coverage report when diff-cover command fails."""
+        with patch("webbrowser.open") as mock_browser, patch.object(
+            mock_runner, "inject_html_style"
+        ) as mock_inject:
+            mock_runner.run_command = Mock(return_value=1)
+            mock_runner.generate_diff_coverage_report()
 
-        # Run the function
-        exit_status = run_full(
-            subprocess,
-            ["coverage", "run", "--parallel-mode", "-m"],
-            ["pytest", "--cache-clear", "--ignore=tests/support/"],
-        )
-
-        # Verify the function returned non-zero exit status
-        assert exit_status != 0
-
-        # Verify coverage combine commands were NOT called
-        # (this is the branch we want to test, when failures occur)
-        for cmd in [
-            ["coverage", "combine"],
-            ["coverage", "xml"],
-            ["coverage", "report"],
-        ]:
-            assert call(cmd) not in mock_subprocess_call.call_args_list
+            mock_inject.assert_not_called()
+            mock_browser.assert_not_called()
 
 
-class TestExitHandling:
-    def test_category_coverage_success(self, mock_subprocess_call, monkeypatch):
-        """Test COVERAGE category with success (line 183 where rc == 0)."""
-        from protean.cli.test import REPORT_PATH
+class TestTimingAndFinalization:
+    """Test timing and finalization functionality."""
 
-        # Setup mocks
-        mock_subprocess_call.return_value = 0
+    def test_finalize_coverage_success(self, capsys):
+        """Test coverage finalization on success."""
+        runner = TestRunner()
+        runner.exit_status = 0
 
-        # Mock webbrowser.open instead of subprocess.call for opening the report
-        mock_webbrowser_open = Mock()
-        monkeypatch.setattr("webbrowser.open", mock_webbrowser_open)
+        # Mock the run_command method properly
+        with patch.object(runner, "run_command", return_value=0) as mock_run:
+            runner._finalize_coverage_and_timing(100.0)
 
-        # Mock _inject_style to avoid file operations
-        monkeypatch.setattr("protean.cli.test._inject_style", lambda *args: None)
+        captured = capsys.readouterr()
+        assert "🎯 All tests passed!" in captured.out
+        assert "⏱️  Total execution time:" in captured.out
+        assert mock_run.call_count == 3  # combine, xml, report
 
-        # Run the test command with COVERAGE category
-        result = runner.invoke(
-            app, ["test", "--category", "COVERAGE"], standalone_mode=False
-        )
+    def test_finalize_coverage_failure(self, capsys):
+        """Test coverage finalization on failure."""
+        runner = TestRunner()
+        runner.exit_status = 1
 
-        # Verify exit code is 0
-        assert result.exit_code == 0
+        # Mock the run_command method properly
+        with patch.object(runner, "run_command", return_value=0):
+            runner._finalize_coverage_and_timing(100.0)
 
-        # Verify diff-cover was called
-        mock_subprocess_call.assert_any_call(
-            [
-                "diff-cover",
-                "coverage.xml",
-                "--compare-branch=main",
-                "--html-report",
-                REPORT_PATH.name,
-            ]
-        )
+        captured = capsys.readouterr()
+        assert "❌ Some tests failed – skipping coverage combine." in captured.out
+        assert "⏱️  Total execution time:" in captured.out
 
-        # Verify webbrowser.open was called
-        mock_webbrowser_open.assert_called()
 
-    def test_category_coverage_with_failure(self, mock_subprocess_call, monkeypatch):
-        """Test COVERAGE category with failure (line 183 where rc != 0)."""
-        from protean.cli.test import test
+class TestConfiguration:
+    """Test configuration constants and data structures."""
 
-        # Setup mocks to simulate a test failure in run_full
-        # We need to control what run_full returns
-        def mock_run_full(*args, **kwargs):
-            return 1  # Return non-zero to simulate failure
+    def test_test_configs_structure(self):
+        """Test TEST_CONFIGS has expected structure."""
+        assert "databases" in TEST_CONFIGS
+        assert "brokers" in TEST_CONFIGS
+        assert "eventstores" in TEST_CONFIGS
+        assert "full_matrix_flags" in TEST_CONFIGS
 
-        monkeypatch.setattr("protean.cli.test.run_full", mock_run_full)
+        assert len(TEST_CONFIGS["databases"]) == 3
+        assert len(TEST_CONFIGS["brokers"]) == 2
+        assert len(TEST_CONFIGS["eventstores"]) == 2
 
-        # Mock the print function to capture output
-        printed_messages = []
-        monkeypatch.setattr(
-            "builtins.print",
-            lambda *args: printed_messages.append(" ".join(str(a) for a in args)),
-        )
-
-        # Running with failures should raise typer.Exit
-        with pytest.raises(typer.Exit) as excinfo:
-            test(category=RunCategory.COVERAGE)
-
-        # Verify exit code is non-zero (line 190)
-        assert excinfo.value.exit_code != 0
-
-        # Check if the error message was printed
-        assert "❌ Tests failed – skipping diff-cover report." in " ".join(
-            printed_messages
-        )
-
-    def test_exit_with_error_code(self, mock_subprocess_call, monkeypatch):
-        """Test exiting with non-zero status (line 190)."""
-
-        # Configure subprocess.call to return non-zero to trigger the exception
-        def mock_run(*args):
-            return 1  # Return error code
-
-        monkeypatch.setattr("protean.cli.test._run", mock_run)
-
-        # This should raise typer.Exit with code=1
-        with pytest.raises(typer.Exit) as excinfo:
-            from protean.cli.test import test
-
-            test(category=RunCategory.CORE)
-
-        # Verify the exit code matches what the subprocess returned
-        assert excinfo.value.exit_code == 1
+    def test_run_category_enum(self):
+        """Test RunCategory enum has all expected values."""
+        expected_categories = {
+            "CORE",
+            "EVENTSTORE",
+            "DATABASE",
+            "BROKER",
+            "COVERAGE",
+            "FULL",
+        }
+        actual_categories = {category.value for category in RunCategory}
+        assert actual_categories == expected_categories
