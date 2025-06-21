@@ -87,7 +87,7 @@ def pytest_addoption(parser):
         "--broker",
         action="store",
         default="INLINE",
-        help="Run tests against a Eventstore type",
+        help="Run tests against a Broker type",
     )
 
 
@@ -234,6 +234,11 @@ def test_domain(db_config, store_config, broker_config, request):
 
         with domain.domain_context():
             yield domain
+
+
+@pytest.fixture()
+def broker(test_domain):
+    return test_domain.brokers["default"]
 
 
 @pytest.fixture

@@ -448,6 +448,7 @@ class BrokerSubscription:
         """
         messages = self.broker.read(
             self.stream_name,
+            self.subscriber_name,  # Use subscriber_name as consumer group
             no_of_messages=self.messages_per_tick,
         )  # FIXME Implement filtering
 
@@ -476,8 +477,22 @@ class BrokerSubscription:
                 self.handler, payload
             )
 
-            # Increment counter only for successful messages
+            # Handle ack/nack based on processing result
             if is_successful:
-                successful_count += 1
+                # Acknowledge successful processing
+                ack_result = self.broker.ack(
+                    self.stream_name, identifier, self.subscriber_name
+                )
+                if ack_result:
+                    successful_count += 1
+                else:
+                    logging.warning(f"Failed to acknowledge message {identifier}")
+            else:
+                # Negative acknowledge for failed processing
+                nack_result = self.broker.nack(
+                    self.stream_name, identifier, self.subscriber_name
+                )
+                if not nack_result:
+                    logging.warning(f"Failed to nack message {identifier}")
 
         return successful_count

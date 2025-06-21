@@ -1,6 +1,7 @@
 import pytest
 
 from protean.core.subscriber import BaseSubscriber
+from protean.domain import Processing
 from protean.server import Engine
 
 terms = []
@@ -24,17 +25,21 @@ def clear_terms():
     terms = []
 
 
-@pytest.mark.redis
-@pytest.mark.asyncio
-async def test_handler_invocation(test_domain):
+@pytest.fixture(autouse=True)
+def setup(test_domain):
     test_domain.register(DummySubscriber, stream="test_stream")
+    test_domain.config["message_processing"] = Processing.ASYNC.value
     test_domain.init(traverse=False)
 
+
+@pytest.mark.redis
+@pytest.mark.asyncio
+async def test_handler_invocation(test_domain, broker):
     with test_domain.domain_context():
         stream = "test_stream"
         message = {"foo": "bar"}
 
-        test_domain.brokers["default"].publish(stream, message)
+        broker.publish(stream, message)
 
         engine = Engine(domain=test_domain, test_mode=True)
         await engine.handle_broker_message(DummySubscriber, message)
@@ -45,16 +50,13 @@ async def test_handler_invocation(test_domain):
 
 
 @pytest.mark.redis
-def test_processing_broker_messages(test_domain):
-    test_domain.register(DummySubscriber, stream="test_stream")
-    test_domain.init(traverse=False)
-
+def test_processing_broker_messages(test_domain, broker):
     with test_domain.domain_context():
         stream = "test_stream"
         message1 = {"foo": "bar"}
         message2 = {"foo": "baz"}
-        test_domain.brokers["default"].publish(stream, message1)
-        test_domain.brokers["default"].publish(stream, message2)
+        broker.publish(stream, message1)
+        broker.publish(stream, message2)
 
         engine = Engine(domain=test_domain, test_mode=True)
         engine.run()
