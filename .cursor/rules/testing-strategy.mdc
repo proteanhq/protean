@@ -1,0 +1,22 @@
+---
+description: Test Writing Strategy and Testing Commands
+globs: 
+alwaysApply: false
+---
+Strategy:
+
+- Don't use mocks in tests, unless really necessary
+- Check for tests for every change, and add if necessary
+
+Commands:
+
+- Test All Broker Implementations: `protean test -c BROKER`: Runs generic tests marked `pytest.mark.broker` with all implementations of broker.
+- Test All EventStore Implementations: `protean test -c EVENTSTORE`: Runs generic tests marked `pytest.mark.eventstore` with all implementations of eventstore.
+- Test All Database Implementations `protean test -c DATABASE`: Runs generic tests marked `pytest.mark.database` with all implementations of database.
+- Run core tests with Memory stub: `protean test` Basis tests with memory implementations for database, broker, cache, and event store.
+- Run all possible tests with all adapter implementations: `protean test -c FULL`: Runs full test suite and calculates coverage. 
+
+Use `--redis`, `--sqlite`, `--elasticsearch`, `--postgresql` and other markers to run specific tests against a particular technology.
+
+Refer to src/protean/cli/test.py to understand testing possibities.
+Check the markers around test classes and methods to know what option to pass.

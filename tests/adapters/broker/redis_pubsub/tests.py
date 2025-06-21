@@ -19,7 +19,9 @@ class TestRedisConnection:
 
         assert isinstance(broker, RedisPubSubBroker)
         assert broker.__broker__ == "redis_pubsub"
-        assert broker.conn_info["URI"] == "redis://127.0.0.1:6379/0"
+        # Use the actual broker configuration from test_domain instead of hard-coded values
+        expected_uri = test_domain.config["brokers"]["default"]["URI"]
+        assert broker.conn_info["URI"] == expected_uri
         assert broker.redis_instance is not None
         assert isinstance(broker.redis_instance, redis.Redis)
 
@@ -61,7 +63,9 @@ class TestReceivingFromRedis:
         test_domain.brokers["default"].publish(stream, message)
 
         # Retrieve message
-        retrieved_message = test_domain.brokers["default"].get_next(stream)
+        retrieved_message = test_domain.brokers["default"].get_next(
+            stream, "test_consumer_group"
+        )
 
         assert retrieved_message is not None
         assert retrieved_message[0] is not None

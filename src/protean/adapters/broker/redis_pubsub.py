@@ -1,16 +1,20 @@
 import json
+import logging
+import time
 import uuid
 from typing import TYPE_CHECKING, Dict
 
 import redis
 
-from protean.port.broker import BaseBroker
+from protean.port.broker import BaseManualBroker, OperationState
 
 if TYPE_CHECKING:
     from protean.domain import Domain
 
+logger = logging.getLogger(__name__)
 
-class RedisPubSubBroker(BaseBroker):
+
+class RedisPubSubBroker(BaseManualBroker):
     """Redis as the Message Broker.
 
     FIXME: Convert to be a Context Manager, and release connection after use
@@ -32,19 +36,83 @@ class RedisPubSubBroker(BaseBroker):
 
         return identifier
 
-    def _get_next(self, stream: str) -> dict | None:
-        bytes_message = self.redis_instance.lpop(stream)
-        if bytes_message:
-            identifier, message = json.loads(bytes_message)
-            return (identifier, message)
+    def _get_next(self, stream: str, consumer_group: str) -> tuple[str, dict] | None:
+        """Get next message in stream for a specific consumer group"""
+        # Ensure consumer group exists (create if it doesn't)
+        self._ensure_group(consumer_group)
 
-        # There is no message in the stream
+        # Clean up stale in-flight messages first
+        self._cleanup_stale_messages(consumer_group, self._message_timeout)
+
+        # First, check for any failed messages that are ready for retry
+        self._requeue_failed_messages(stream, consumer_group)
+
+        # Get current position for this consumer group
+        position_key = f"position:{consumer_group}:{stream}"
+        position = int(self.redis_instance.get(position_key) or 0)
+
+        # Get message at this position
+        message_data = self.redis_instance.lindex(stream, position)
+        if message_data:
+            identifier, message = json.loads(message_data)
+
+            # Use Redis transaction for atomic operation
+            pipe = self.redis_instance.pipeline()
+            try:
+                # Watch the position key for changes
+                pipe.watch(position_key)
+
+                # Start transaction
+                pipe.multi()
+
+                # Increment position for this consumer group
+                pipe.incr(position_key)
+
+                # Track message ownership with reasonable expiration to avoid premature cleanup
+                # Use a minimum of 30 seconds to handle fast tests, but scale with message timeout for production
+                ownership_key = f"ownership:{identifier}"
+                pipe.sadd(ownership_key, consumer_group)
+                ownership_expiration = max(
+                    int(self._message_timeout * 2), 30
+                )  # At least 30 seconds
+                pipe.expire(ownership_key, ownership_expiration)
+
+                # Clear any previous operation state for fresh processing
+                self._clear_operation_state(consumer_group, identifier)
+
+                # Store message in in-flight status
+                self._store_in_flight_message(
+                    stream, consumer_group, identifier, message
+                )
+
+                # Execute transaction
+                pipe.execute()
+
+                return (identifier, message)
+
+            except redis.WatchError:
+                # Another process modified the position, retry
+                logger.debug(
+                    f"Position changed during get_next for {consumer_group}:{stream}, retrying"
+                )
+                return self._get_next(stream, consumer_group)
+            except Exception as e:
+                logger.error(f"Error in get_next for {consumer_group}:{stream}: {e}")
+                return None
+
+        # There is no message in the stream for this consumer group
         return None
 
-    def read(self, stream: str, no_of_messages: int) -> list[dict]:
+    def read(
+        self, stream: str, consumer_group: str, no_of_messages: int
+    ) -> list[tuple[str, dict]]:
+        """Read messages from the broker for a specific consumer group. Returns tuples of (identifier, message)."""
+        # Ensure consumer group exists
+        self._ensure_group(consumer_group)
+
         messages = []
         for _ in range(no_of_messages):
-            message = self._get_next(stream)
+            message = self._get_next(stream, consumer_group)
             if message:
                 messages.append(message)
             else:
@@ -52,6 +120,491 @@ class RedisPubSubBroker(BaseBroker):
                 break
 
         return messages
+
+    ####################################################
+    # BaseManualBroker abstract method implementations #
+    ####################################################
+    def _store_in_flight_message(
+        self, stream: str, consumer_group: str, identifier: str, message: dict
+    ) -> None:
+        """Store a message in in-flight status using Redis hash"""
+        in_flight_key = f"in_flight:{consumer_group}:{stream}"
+        message_info = {
+            "identifier": identifier,
+            "message": json.dumps(message),
+            "timestamp": str(time.time()),
+        }
+        self.redis_instance.hset(in_flight_key, identifier, json.dumps(message_info))
+
+    def _remove_in_flight_message(
+        self, stream: str, consumer_group: str, identifier: str
+    ) -> None:
+        """Remove a message from in-flight status"""
+        in_flight_key = f"in_flight:{consumer_group}:{stream}"
+        self.redis_instance.hdel(in_flight_key, identifier)
+
+    def _is_in_flight_message(
+        self, stream: str, consumer_group: str, identifier: str
+    ) -> bool:
+        """Check if a message is in in-flight status"""
+        in_flight_key = f"in_flight:{consumer_group}:{stream}"
+        return self.redis_instance.hexists(in_flight_key, identifier)
+
+    def _get_in_flight_message(
+        self, stream: str, consumer_group: str, identifier: str
+    ) -> tuple[str, dict] | None:
+        """Get in-flight message data"""
+        in_flight_key = f"in_flight:{consumer_group}:{stream}"
+        message_data_json = self.redis_instance.hget(in_flight_key, identifier)
+
+        if message_data_json:
+            message_data = json.loads(message_data_json)
+            message = json.loads(message_data["message"])
+            return (identifier, message)
+        return None
+
+    def _store_operation_state(
+        self, consumer_group: str, identifier: str, state: OperationState
+    ) -> None:
+        """Store operation state for idempotency"""
+        op_state_key = f"op_state:{consumer_group}:{identifier}"
+        self.redis_instance.setex(op_state_key, self._operation_state_ttl, state.value)
+
+    def _get_operation_state(
+        self, consumer_group: str, identifier: str
+    ) -> OperationState | None:
+        """Get current operation state"""
+        op_state_key = f"op_state:{consumer_group}:{identifier}"
+        current_state = self.redis_instance.get(op_state_key)
+        if current_state:
+            state_value = (
+                current_state.decode()
+                if isinstance(current_state, bytes)
+                else current_state
+            )
+            for state in OperationState:
+                if state.value == state_value:
+                    return state
+        return None
+
+    def _clear_operation_state(self, consumer_group: str, identifier: str) -> None:
+        """Clear operation state"""
+        op_state_key = f"op_state:{consumer_group}:{identifier}"
+        self.redis_instance.delete(op_state_key)
+
+    def _store_failed_message(
+        self,
+        stream: str,
+        consumer_group: str,
+        identifier: str,
+        message: dict,
+        retry_count: int,
+        next_retry_time: float,
+    ) -> None:
+        """Store a failed message for retry"""
+        failed_key = f"failed:{consumer_group}:{stream}"
+        failed_message_data = {
+            "identifier": identifier,
+            "message": json.dumps(message),
+            "retry_count": retry_count,
+            "next_retry_time": str(next_retry_time),
+        }
+        self.redis_instance.rpush(failed_key, json.dumps(failed_message_data))
+
+    def _remove_failed_message(
+        self, stream: str, consumer_group: str, identifier: str
+    ) -> None:
+        """Remove a failed message from retry queue"""
+        try:
+            failed_key = f"failed:{consumer_group}:{stream}"
+            failed_messages = self.redis_instance.lrange(failed_key, 0, -1)
+
+            # Find and remove the message with matching identifier
+            for msg_bytes in failed_messages:
+                failed_data = json.loads(
+                    msg_bytes.decode() if isinstance(msg_bytes, bytes) else msg_bytes
+                )
+                if failed_data["identifier"] == identifier:
+                    # Use lrem to remove the first occurrence
+                    self.redis_instance.lrem(failed_key, 1, msg_bytes)
+                    break
+        except Exception as e:
+            logger.debug(f"Error removing failed message '{identifier}': {e}")
+
+    def _get_retry_ready_messages(
+        self, stream: str, consumer_group: str
+    ) -> list[tuple[str, dict]]:
+        """Get messages ready for retry and remove them from failed queue"""
+        failed_key = f"failed:{consumer_group}:{stream}"
+        current_time = time.time()
+
+        try:
+            # Get all failed messages
+            failed_messages = self.redis_instance.lrange(failed_key, 0, -1)
+
+            # Process each failed message
+            ready_for_retry = []
+            remaining_failed = []
+
+            for msg_bytes in failed_messages:
+                failed_data = json.loads(
+                    msg_bytes.decode() if isinstance(msg_bytes, bytes) else msg_bytes
+                )
+                next_retry_time = float(failed_data["next_retry_time"])
+
+                if next_retry_time <= current_time:
+                    # Ready for retry
+                    identifier = failed_data["identifier"]
+                    message = json.loads(failed_data["message"])
+                    ready_for_retry.append((identifier, message))
+                else:
+                    # Not ready yet
+                    remaining_failed.append(msg_bytes)
+
+            # Clear the failed messages list
+            self.redis_instance.delete(failed_key)
+
+            # Add back the messages that aren't ready for retry
+            if remaining_failed:
+                self.redis_instance.rpush(failed_key, *remaining_failed)
+
+            return ready_for_retry
+        except Exception as e:
+            logger.error(
+                f"Error getting retry ready messages for {consumer_group}:{stream}: {e}"
+            )
+            return []
+
+    def _store_dlq_message(
+        self,
+        stream: str,
+        consumer_group: str,
+        identifier: str,
+        message: dict,
+        failure_reason: str,
+    ) -> None:
+        """Store a message in Dead Letter Queue"""
+        dlq_key = f"dlq:{consumer_group}:{stream}"
+        dlq_message_data = {
+            "identifier": identifier,
+            "message": json.dumps(message),
+            "failure_reason": failure_reason,
+            "timestamp": str(time.time()),
+        }
+        self.redis_instance.rpush(dlq_key, json.dumps(dlq_message_data))
+
+    def _validate_consumer_group(self, consumer_group: str) -> bool:
+        """Validate that the consumer group exists"""
+        group_key = f"consumer_group:{consumer_group}"
+        return self.redis_instance.exists(group_key) > 0
+
+    def _validate_message_ownership(self, identifier: str, consumer_group: str) -> bool:
+        """Validate that the message was delivered to the specified consumer group"""
+        try:
+            ownership_key = f"ownership:{identifier}"
+            return self.redis_instance.sismember(ownership_key, consumer_group)
+        except Exception:
+            return False
+
+    def _cleanup_stale_messages(
+        self, consumer_group: str, timeout_seconds: float
+    ) -> None:
+        """Remove messages that have been in-flight too long"""
+        try:
+            current_time = time.time()
+            cutoff_time = current_time - timeout_seconds
+
+            # Find all in-flight keys for this consumer group
+            in_flight_pattern = f"in_flight:{consumer_group}:*"
+            in_flight_keys = self.redis_instance.keys(in_flight_pattern)
+
+            for in_flight_key in in_flight_keys:
+                if isinstance(in_flight_key, bytes):
+                    in_flight_key = in_flight_key.decode("utf-8")
+
+                # Extract stream name from key
+                stream = in_flight_key.replace(f"in_flight:{consumer_group}:", "")
+
+                # Get all in-flight messages for this stream
+                in_flight_messages = self.redis_instance.hgetall(in_flight_key)
+
+                for identifier_bytes, message_data_bytes in in_flight_messages.items():
+                    identifier = (
+                        identifier_bytes.decode()
+                        if isinstance(identifier_bytes, bytes)
+                        else identifier_bytes
+                    )
+                    message_data_json = (
+                        message_data_bytes.decode()
+                        if isinstance(message_data_bytes, bytes)
+                        else message_data_bytes
+                    )
+
+                    try:
+                        message_data = json.loads(message_data_json)
+                        timestamp = float(message_data["timestamp"])
+
+                        if timestamp < cutoff_time:
+                            message = json.loads(message_data["message"])
+
+                            # Use transaction to move to DLQ and clean up
+                            pipe = self.redis_instance.pipeline()
+
+                            # Remove from in-flight
+                            pipe.hdel(in_flight_key, identifier)
+
+                            # Move to DLQ if enabled
+                            if self._enable_dlq:
+                                self._store_dlq_message(
+                                    stream,
+                                    consumer_group,
+                                    identifier,
+                                    message,
+                                    "timeout",
+                                )
+                                logger.warning(
+                                    f"Message '{identifier}' moved to DLQ due to timeout"
+                                )
+
+                            # Clean up tracking
+                            self._remove_retry_count(stream, consumer_group, identifier)
+                            self._cleanup_message_ownership(identifier, consumer_group)
+
+                            pipe.execute()
+
+                    except Exception as e:
+                        logger.error(
+                            f"Error processing stale message '{identifier}': {e}"
+                        )
+
+        except Exception as e:
+            logger.error(
+                f"Error cleaning up stale messages for consumer group '{consumer_group}': {e}"
+            )
+
+    def _get_retry_count(
+        self, stream: str, consumer_group: str, identifier: str
+    ) -> int:
+        """Get current retry count for a message"""
+        try:
+            retry_key = f"retry_count:{consumer_group}:{stream}"
+            count = self.redis_instance.hget(retry_key, identifier)
+            return int(count) if count else 0
+        except Exception:
+            return 0
+
+    def _set_retry_count(
+        self, stream: str, consumer_group: str, identifier: str, count: int
+    ) -> None:
+        """Set retry count for a message"""
+        retry_key = f"retry_count:{consumer_group}:{stream}"
+        self.redis_instance.hset(retry_key, identifier, count)
+
+    def _remove_retry_count(
+        self, stream: str, consumer_group: str, identifier: str
+    ) -> None:
+        """Remove retry count tracking for a message"""
+        retry_key = f"retry_count:{consumer_group}:{stream}"
+        self.redis_instance.hdel(retry_key, identifier)
+
+    def _requeue_messages(
+        self, stream: str, consumer_group: str, messages: list[tuple[str, dict]]
+    ) -> None:
+        """Requeue messages back to the main queue"""
+        if not messages:
+            return
+
+        try:
+            # Get current consumer position
+            position_key = f"position:{consumer_group}:{stream}"
+            current_position = int(self.redis_instance.get(position_key) or 0)
+
+            # Insert messages at the current position using a more complex approach
+            # Since Redis doesn't have list insert-at-index, we need to work around this
+            for identifier, message in reversed(messages):
+                message_json = json.dumps((identifier, message))
+
+                if current_position == 0:
+                    # Insert at the beginning
+                    self.redis_instance.lpush(stream, message_json)
+                else:
+                    # For positions > 0, we need to get all elements, modify the list, and rebuild
+                    # This is not efficient but necessary for test compatibility
+                    all_messages = self.redis_instance.lrange(stream, 0, -1)
+                    all_messages.insert(
+                        current_position,
+                        message_json.encode()
+                        if isinstance(message_json, str)
+                        else message_json,
+                    )
+
+                    # Clear and rebuild the list
+                    self.redis_instance.delete(stream)
+                    if all_messages:
+                        self.redis_instance.rpush(stream, *all_messages)
+
+            # Update all consumer positions that are at or beyond this position
+            position_pattern = f"position:*:{stream}"
+            position_keys = self.redis_instance.keys(position_pattern)
+            for pos_key in position_keys:
+                if isinstance(pos_key, bytes):
+                    pos_key = pos_key.decode("utf-8")
+
+                # Don't update the current consumer group's position
+                if pos_key != position_key:
+                    pos_value = int(self.redis_instance.get(pos_key) or 0)
+                    if pos_value >= current_position:
+                        self.redis_instance.set(pos_key, pos_value + len(messages))
+
+        except Exception as e:
+            logger.error(f"Error requeuing messages for {consumer_group}:{stream}: {e}")
+
+    def _cleanup_message_ownership(self, identifier: str, consumer_group: str) -> None:
+        """Clean up message ownership tracking"""
+        try:
+            ownership_key = f"ownership:{identifier}"
+            pipe = self.redis_instance.pipeline()
+            pipe.srem(ownership_key, consumer_group)
+            pipe.scard(ownership_key)
+            results = pipe.execute()
+
+            # If ownership set is empty, delete the key
+            if len(results) >= 2 and results[-1] == 0:
+                self.redis_instance.delete(ownership_key)
+        except Exception as e:
+            logger.debug(f"Error cleaning up message ownership for '{identifier}': {e}")
+
+    def _cleanup_expired_operation_states(self) -> None:
+        """Clean up expired operation states - Redis handles this automatically with TTL"""
+        # Redis handles expiration automatically with TTL, so no action needed
+        pass
+
+    def _get_dlq_messages(self, consumer_group: str, stream: str = None) -> dict:
+        """Get messages from Dead Letter Queue for inspection"""
+        try:
+            if stream:
+                dlq_key = f"dlq:{consumer_group}:{stream}"
+                messages = self.redis_instance.lrange(dlq_key, 0, -1)
+                # Convert JSON dictionaries to tuples to match InlineBroker format
+                dlq_tuples = []
+                for msg in messages:
+                    dlq_data = json.loads(
+                        msg.decode() if isinstance(msg, bytes) else msg
+                    )
+                    # Convert to tuple format: (identifier, message, failure_reason, timestamp)
+                    dlq_tuples.append(
+                        (
+                            dlq_data["identifier"],
+                            json.loads(dlq_data["message"]),
+                            dlq_data["failure_reason"],
+                            float(dlq_data["timestamp"]),
+                        )
+                    )
+                return {stream: dlq_tuples}
+            else:
+                # Get all DLQ keys for this consumer group
+                dlq_pattern = f"dlq:{consumer_group}:*"
+                dlq_keys = self.redis_instance.keys(dlq_pattern)
+
+                result = {}
+                for dlq_key in dlq_keys:
+                    if isinstance(dlq_key, bytes):
+                        dlq_key = dlq_key.decode("utf-8")
+
+                    stream_name = dlq_key.replace(f"dlq:{consumer_group}:", "")
+                    messages = self.redis_instance.lrange(dlq_key, 0, -1)
+                    # Convert JSON dictionaries to tuples to match InlineBroker format
+                    dlq_tuples = []
+                    for msg in messages:
+                        dlq_data = json.loads(
+                            msg.decode() if isinstance(msg, bytes) else msg
+                        )
+                        # Convert to tuple format: (identifier, message, failure_reason, timestamp)
+                        dlq_tuples.append(
+                            (
+                                dlq_data["identifier"],
+                                json.loads(dlq_data["message"]),
+                                dlq_data["failure_reason"],
+                                float(dlq_data["timestamp"]),
+                            )
+                        )
+                    result[stream_name] = dlq_tuples
+
+                return result
+        except Exception as e:
+            logger.error(f"Error getting DLQ messages: {e}")
+            return {}
+
+    def _reprocess_dlq_message(
+        self, identifier: str, consumer_group: str, stream: str
+    ) -> bool:
+        """Move a message from DLQ back to the main queue for reprocessing"""
+        try:
+            dlq_key = f"dlq:{consumer_group}:{stream}"
+            dlq_messages = self.redis_instance.lrange(dlq_key, 0, -1)
+
+            for msg_bytes in dlq_messages:
+                dlq_data = json.loads(
+                    msg_bytes.decode() if isinstance(msg_bytes, bytes) else msg_bytes
+                )
+                if dlq_data["identifier"] == identifier:
+                    # Use transaction to move message back and reset retry count
+                    pipe = self.redis_instance.pipeline()
+
+                    # Remove from DLQ
+                    pipe.lrem(dlq_key, 1, msg_bytes)
+
+                    # Reset retry count
+                    self._set_retry_count(stream, consumer_group, identifier, 0)
+
+                    # Add back to main queue at the beginning (using lpush for priority)
+                    message = json.loads(dlq_data["message"])
+                    message_tuple = (identifier, message)
+                    pipe.lpush(stream, json.dumps(message_tuple))
+
+                    # Update all consumer group positions
+                    position_pattern = f"position:*:{stream}"
+                    position_keys = self.redis_instance.keys(position_pattern)
+                    for key in position_keys:
+                        if isinstance(key, bytes):
+                            key = key.decode("utf-8")
+                        # Don't update the current consumer group's position
+                        if f"position:{consumer_group}:{stream}" != key:
+                            pipe.incr(key)
+
+                    pipe.execute()
+                    logger.info(f"Message '{identifier}' reprocessed from DLQ")
+                    return True
+
+            return False
+        except Exception as e:
+            logger.error(f"Error reprocessing DLQ message '{identifier}': {e}")
+            return False
+
+    def _get_consumer_groups_for_stream(self, stream: str) -> list[str]:
+        """Get list of consumer groups for a stream - avoids keys() pattern matching"""
+        try:
+            # Look for all consumer groups that have positions for this stream
+            # This is more efficient than using keys() pattern matching
+            consumer_groups = []
+
+            # Get all consumer group keys and check which ones have positions for this stream
+            group_keys = self.redis_instance.keys("consumer_group:*")
+            for key in group_keys:
+                if isinstance(key, bytes):
+                    key = key.decode("utf-8")
+
+                group_name = key.replace("consumer_group:", "")
+                position_key = f"position:{group_name}:{stream}"
+
+                # Check if this consumer group has a position for this stream
+                if self.redis_instance.exists(position_key):
+                    consumer_groups.append(group_name)
+
+            return consumer_groups
+        except Exception as e:
+            logger.error(f"Error getting consumer groups for stream '{stream}': {e}")
+            return []
 
     def _ensure_group(self, group_name: str) -> None:
         """Bootstrap/create consumer group for Redis PubSub.
@@ -61,8 +614,6 @@ class RedisPubSubBroker(BaseBroker):
         """
         group_key = f"consumer_group:{group_name}"
         if not self.redis_instance.exists(group_key):
-            import time
-
             self.redis_instance.hset(
                 group_key,
                 mapping={"created_at": str(time.time()), "consumer_count": "0"},
@@ -94,10 +645,53 @@ class RedisPubSubBroker(BaseBroker):
                     for k, v in group_info.items()
                 }
 
+                # Get in-flight, failed, and DLQ message counts
+                in_flight_pattern = f"in_flight:{group_name}:*"
+                failed_pattern = f"failed:{group_name}:*"
+                dlq_pattern = f"dlq:{group_name}:*"
+
+                in_flight_keys = self.redis_instance.keys(in_flight_pattern)
+                failed_keys = self.redis_instance.keys(failed_pattern)
+                dlq_keys = self.redis_instance.keys(dlq_pattern)
+
+                in_flight_count = sum(
+                    self.redis_instance.hlen(key) for key in in_flight_keys
+                )
+                failed_count = sum(self.redis_instance.llen(key) for key in failed_keys)
+                dlq_count = sum(self.redis_instance.llen(key) for key in dlq_keys)
+
+                # Create per-stream breakdowns
+                in_flight_messages = {}
+                for key in in_flight_keys:
+                    if isinstance(key, bytes):
+                        key = key.decode("utf-8")
+                    stream_name = key.replace(f"in_flight:{group_name}:", "")
+                    in_flight_messages[stream_name] = self.redis_instance.hlen(key)
+
+                failed_messages = {}
+                for key in failed_keys:
+                    if isinstance(key, bytes):
+                        key = key.decode("utf-8")
+                    stream_name = key.replace(f"failed:{group_name}:", "")
+                    failed_messages[stream_name] = self.redis_instance.llen(key)
+
+                dlq_messages = {}
+                for key in dlq_keys:
+                    if isinstance(key, bytes):
+                        key = key.decode("utf-8")
+                    stream_name = key.replace(f"dlq:{group_name}:", "")
+                    dlq_messages[stream_name] = self.redis_instance.llen(key)
+
                 consumer_groups[group_name] = {
                     "consumers": [],  # Redis PubSub doesn't track individual consumers
                     "created_at": float(group_info.get("created_at", 0)),
                     "consumer_count": int(group_info.get("consumer_count", 0)),
+                    "in_flight_count": in_flight_count,
+                    "in_flight_messages": in_flight_messages,
+                    "failed_count": failed_count,
+                    "failed_messages": failed_messages,
+                    "dlq_count": dlq_count,
+                    "dlq_messages": dlq_messages,
                 }
 
         return {"consumer_groups": consumer_groups}

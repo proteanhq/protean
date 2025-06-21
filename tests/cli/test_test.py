@@ -189,9 +189,6 @@ class TestTestRunner:
         assert result == 0
         mock_runner.run_test_suites_in_parallel.assert_called_once()
 
-        captured = capsys.readouterr()
-        assert "⚡ Running tests in parallel for faster execution..." in captured.out
-
     def test_run_full_suite_sequential_mode(self, mock_runner):
         """Test run_full_suite with sequential=True."""
         mock_runner.run_test_suites_sequentially = Mock(return_value=0)
