@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_uuid_generation_in_publish(broker):
     """Test that the default _publish method generates UUID identifiers"""
     stream = "test_stream"
@@ -26,7 +26,7 @@ def test_uuid_generation_in_publish(broker):
     assert identifier != identifier2
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_exception_during_ack_returns_false(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -48,7 +48,7 @@ def test_exception_during_ack_returns_false(broker):
         assert ack_result is False
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_exception_during_ack_cleanup_message_ownership_returns_false(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -73,7 +73,7 @@ def test_exception_during_ack_cleanup_message_ownership_returns_false(broker):
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_ack_operation_state_cleanup_on_exception(broker):
     """Test that operation state is cleaned up when exception occurs in ack"""
     stream = "test_stream"
@@ -107,7 +107,7 @@ def test_ack_operation_state_cleanup_on_exception(broker):
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_exception_during_nack_returns_false(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -129,7 +129,7 @@ def test_exception_during_nack_returns_false(broker):
         assert nack_result is False
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_exception_during_nack_operation_state_cleanup_on_exception(broker):
     """Test that operation state is cleaned up when exception occurs in nack"""
     stream = "test_stream"
@@ -155,7 +155,7 @@ def test_exception_during_nack_operation_state_cleanup_on_exception(broker):
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_exception_during_nack_with_retry_returns_false(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -180,7 +180,7 @@ def test_exception_during_nack_with_retry_returns_false(broker):
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_exception_during_nack_with_retry_store_failed_message_returns_false(
     broker,
 ):
@@ -207,7 +207,7 @@ def test_exception_during_nack_with_retry_store_failed_message_returns_false(
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_exception_during_nack_max_retries_exceeded_with_retry_message(broker):
     """Test exception handling in _handle_nack_max_retries_exceeded method when retry message is available"""
     stream = "test_stream"
@@ -248,7 +248,7 @@ def test_exception_during_nack_max_retries_exceeded_with_retry_message(broker):
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_exception_during_nack_max_retries_exceeded_with_simulated_condition(
     broker,
 ):
@@ -285,7 +285,7 @@ def test_exception_during_nack_max_retries_exceeded_with_simulated_condition(
                 mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_exception_during_requeue_failed_messages_returns_none(broker):
     """Test exception handling in _requeue_failed_messages method"""
     stream = "test_stream"
@@ -319,7 +319,7 @@ def test_exception_during_requeue_failed_messages_returns_none(broker):
         assert result is None
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_exception_during_requeue_messages_returns_none(broker):
     """Test exception handling when _requeue_messages raises exception"""
     stream = "test_stream"
@@ -354,7 +354,7 @@ def test_exception_during_requeue_messages_returns_none(broker):
         assert result is None
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_exception_during_mixed_scenarios(broker):
     """Test various exception scenarios in sequence to ensure robustness"""
     stream = "test_stream"
@@ -419,7 +419,7 @@ def test_exception_during_mixed_scenarios(broker):
     assert nack_result is True
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_exception_during_ack_logger_error_returns_false(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -449,7 +449,7 @@ def test_exception_during_ack_logger_error_returns_false(broker):
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_exception_during_nack_with_retry_logger_error_returns_false(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"

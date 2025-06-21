@@ -3,7 +3,7 @@ import time
 import pytest
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_message_timeout_cleanup(broker):
     """Test that messages are cleaned up after timeout"""
     stream = "test_stream"
@@ -55,7 +55,7 @@ def test_message_timeout_cleanup(broker):
         assert in_flight_info[stream] == 0
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_message_timeout_without_dlq(broker):
     """Test message timeout behavior when DLQ is disabled"""
     stream = "test_stream"
@@ -95,7 +95,7 @@ def test_message_timeout_without_dlq(broker):
             assert in_flight_info[stream] == 0
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_message_timeout_multiple_messages(broker):
     """Test timeout cleanup with multiple in-flight messages"""
     stream = "test_stream"
@@ -154,7 +154,7 @@ def test_message_timeout_multiple_messages(broker):
             assert in_flight_info[stream] == 0
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_message_timeout_cross_consumer_group_isolation(broker):
     """Test that timeout cleanup respects consumer group isolation"""
     stream = "test_stream"
@@ -203,7 +203,7 @@ def test_message_timeout_cross_consumer_group_isolation(broker):
         assert dlq_messages_2[stream][0][0] == message_id_for_group2
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_message_timeout_does_not_affect_acked_messages(broker):
     """Test that acknowledged messages are not affected by timeout cleanup"""
     stream = "test_stream"

@@ -168,6 +168,7 @@ markers = [
     "sendgrid",
     "database",
     "broker",
+    "manual_broker",
     "eventstore",
     "no_test_domain",
     "fastapi",

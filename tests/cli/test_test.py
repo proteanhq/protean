@@ -128,7 +128,9 @@ class TestTestRunner:
         """Test test suite generation."""
         suites = mock_runner.generate_test_suites()
 
-        assert len(suites) == 7  # Full Matrix + 3 DBs + 2 Brokers + 1 EventStore
+        assert (
+            len(suites) == 9
+        )  # Full Matrix + 3 DBs + 2 Brokers + + 2 Manual Brokers + 1 EventStore
         suite_names = [suite.name for suite in suites]
 
         assert "Full Matrix" in suite_names
@@ -478,6 +480,7 @@ class TestConfiguration:
             "EVENTSTORE",
             "DATABASE",
             "BROKER",
+            "MANUAL_BROKER",
             "COVERAGE",
             "FULL",
         }

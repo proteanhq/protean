@@ -35,6 +35,10 @@ STYLE_BLOCK = """
 TEST_CONFIGS = {
     "databases": ["MEMORY", "POSTGRESQL", "SQLITE"],
     "brokers": ["INLINE", "REDIS_PUBSUB"],
+    "manual_brokers": [
+        "INLINE",
+        "REDIS_PUBSUB",
+    ],  # Brokers that inherit from BaseManualBroker
     "eventstores": ["MEMORY", "MESSAGE_DB"],
     "full_matrix_flags": [
         "--slow",
@@ -52,6 +56,7 @@ class RunCategory(str, Enum):
     EVENTSTORE = "EVENTSTORE"
     DATABASE = "DATABASE"
     BROKER = "BROKER"
+    MANUAL_BROKER = "MANUAL_BROKER"
     COVERAGE = "COVERAGE"
     FULL = "FULL"
 
@@ -131,12 +136,19 @@ class TestRunner:
             )
             suites.append(TestSuite(f"Database: {db}", cmd))
 
-        # Broker tests
+        # Broker tests (for all brokers)
         for broker in TEST_CONFIGS["brokers"]:
             cmd = self.build_coverage_command(
                 self.build_test_command("broker", f"--broker={broker}")
             )
             suites.append(TestSuite(f"Broker: {broker}", cmd))
+
+        # Manual broker tests (only for BaseManualBroker implementations)
+        for broker in TEST_CONFIGS["manual_brokers"]:
+            cmd = self.build_coverage_command(
+                self.build_test_command("manual_broker", f"--broker={broker}")
+            )
+            suites.append(TestSuite(f"Broker Manual: {broker}", cmd))
 
         # Eventstore tests
         for store in ["MESSAGE_DB"]:  # Only MESSAGE_DB for full suite
@@ -235,6 +247,11 @@ class TestRunner:
             "EVENTSTORE": ("eventstore", TEST_CONFIGS["eventstores"], "--store"),
             "DATABASE": ("database", TEST_CONFIGS["databases"], "--db"),
             "BROKER": ("broker", TEST_CONFIGS["brokers"], "--broker"),
+            "MANUAL_BROKER": (
+                "manual_broker",
+                TEST_CONFIGS["manual_brokers"],
+                "--broker",
+            ),
         }
 
         if category not in config_map:
@@ -293,7 +310,7 @@ def test(
     runner = TestRunner()
 
     match category.value:
-        case "EVENTSTORE" | "DATABASE" | "BROKER":
+        case "EVENTSTORE" | "DATABASE" | "BROKER" | "MANUAL_BROKER":
             exit_code = runner.run_category_tests(category.value)
 
         case "FULL":
