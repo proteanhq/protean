@@ -3,7 +3,7 @@ import time
 import pytest
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_dlq_message_inspection(broker):
     """Test that DLQ messages can be inspected"""
     stream = "test_stream"
@@ -43,7 +43,7 @@ def test_dlq_message_inspection(broker):
     assert len(all_dlq_messages[stream]) == 1
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_dlq_message_reprocessing(broker):
     """Test that DLQ messages can be moved back for reprocessing"""
     stream = "test_stream"
@@ -88,7 +88,7 @@ def test_dlq_message_reprocessing(broker):
     assert retrieved_message[1] == message
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_dlq_multiple_messages(broker):
     """Test DLQ with multiple failed messages"""
     stream = "test_stream"
@@ -126,7 +126,7 @@ def test_dlq_multiple_messages(broker):
         assert identifier in dlq_identifiers
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_dlq_cross_consumer_group_isolation(broker):
     """Test that DLQ messages are isolated between consumer groups"""
     stream = "test_stream"
@@ -190,7 +190,7 @@ def test_dlq_cross_consumer_group_isolation(broker):
         assert dlq_messages_2[stream][0][0] == message_id_for_group2
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_dlq_info_tracking(broker):
     """Test that DLQ message counts are tracked in broker info"""
     stream = "test_stream"
@@ -226,7 +226,7 @@ def test_dlq_info_tracking(broker):
     assert final_dlq_count == initial_dlq_count + 1
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_get_dlq_messages_no_messages(broker):
     """Test getting DLQ messages when none exist"""
     consumer_group = "test_consumer_group"
@@ -238,7 +238,7 @@ def test_get_dlq_messages_no_messages(broker):
     assert len(dlq_messages[stream]) == 0
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_get_dlq_messages_specific_stream(broker):
     """Test getting DLQ messages for specific stream"""
     consumer_group = "test_consumer_group"
@@ -269,7 +269,7 @@ def test_get_dlq_messages_specific_stream(broker):
     assert stream2 not in dlq_messages
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_get_dlq_messages_all_streams(broker):
     """Test getting DLQ messages for all streams"""
     consumer_group = "test_consumer_group"
@@ -303,7 +303,7 @@ def test_get_dlq_messages_all_streams(broker):
     assert len(dlq_messages[stream2]) == 1
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_reprocess_dlq_message_not_found(broker):
     """Test DLQ reprocessing when message not found"""
     stream = "test_stream"
@@ -314,7 +314,7 @@ def test_reprocess_dlq_message_not_found(broker):
     assert result is False
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_max_retries_exceeded_dlq_disabled(broker):
     """Test max retries exceeded with DLQ disabled"""
     stream = "test_stream"

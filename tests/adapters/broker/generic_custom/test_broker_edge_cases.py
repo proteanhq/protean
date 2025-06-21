@@ -5,7 +5,7 @@ import time
 import pytest
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_info_method_returns_broker_information(broker):
     """Test that info method returns broker information"""
     # Call info method
@@ -18,7 +18,7 @@ def test_info_method_returns_broker_information(broker):
         assert isinstance(result["consumer_groups"], dict)
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_cleanup_operations_during_nack(broker):
     """Test that cleanup operations are performed during nack"""
     stream = "test_stream"
@@ -45,7 +45,7 @@ def test_cleanup_operations_during_nack(broker):
     assert retry_message[0] == identifier
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_message_ownership_tracking(broker):
     """Test that message ownership is properly tracked with functional behavior"""
     stream = "test_stream"
@@ -78,7 +78,7 @@ def test_message_ownership_tracking(broker):
     assert nack_result_2 is True
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_cross_stream_message_isolation(broker):
     """Test that messages in different streams are properly isolated"""
     stream1 = "stream_1"
@@ -110,7 +110,7 @@ def test_cross_stream_message_isolation(broker):
     assert ack_result2 is True
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_consumer_group_creation_during_operations(broker):
     """Test that consumer groups are properly created during operations"""
     stream = "test_stream"
@@ -130,7 +130,7 @@ def test_consumer_group_creation_during_operations(broker):
     assert ack_result is True
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_message_timeout_and_cleanup_behavior(broker):
     """Test message timeout and cleanup behavior"""
     stream = "test_stream"
@@ -159,7 +159,7 @@ def test_message_timeout_and_cleanup_behavior(broker):
     assert True  # Just verify no exceptions occurred
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_multiple_consumer_groups_independent_processing(broker):
     """Test that multiple consumer groups process messages independently"""
     stream = "test_stream"
@@ -196,7 +196,7 @@ def test_multiple_consumer_groups_independent_processing(broker):
     assert ack3 is True
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_message_deduplication_within_consumer_group(broker):
     """Test that messages are not duplicated within a consumer group"""
     stream = "test_stream"
@@ -224,7 +224,7 @@ def test_message_deduplication_within_consumer_group(broker):
     assert msg3 is None
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_error_handling_invalid_stream(broker):
     """Test error handling with invalid stream operations"""
     # Try to get from non-existent stream
@@ -232,7 +232,7 @@ def test_error_handling_invalid_stream(broker):
     assert message is None
 
 
-@pytest.mark.broker
+@pytest.mark.manual_broker
 def test_stream_cleanup_behavior(broker):
     """Test stream cleanup behavior"""
     stream = "cleanup_test_stream"
