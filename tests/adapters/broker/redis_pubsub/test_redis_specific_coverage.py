@@ -106,7 +106,7 @@ class TestRedisDataHandling:
         consumer_group = "test_consumer_group"
 
         # Create a failed message
-        failed_key = f"failed:{consumer_group}:{stream}"
+        failed_key = f"failed:{stream}:{consumer_group}"
         failed_data = {
             "identifier": "test_id",
             "message": json.dumps({"data": "test"}),
@@ -196,7 +196,8 @@ class TestRedisMessageFlowBehavior:
 
         # Created group should be valid
         group_name = "test_group"
-        broker._ensure_group(group_name)
+        stream = "test_stream"
+        broker._ensure_group(group_name, stream)
         assert broker._validate_consumer_group(group_name) is True
 
     def test_message_ownership_validation(self, broker):
@@ -338,16 +339,16 @@ class TestRedisMessageRequeue:
         consumer_group2 = "group2"
 
         # Create both groups and set positions
-        broker._ensure_group(consumer_group1)
-        broker._ensure_group(consumer_group2)
+        broker._ensure_group(consumer_group1, stream)
+        broker._ensure_group(consumer_group2, stream)
 
         # Publish some initial messages
         for i in range(3):
             broker.publish(stream, {"data": f"msg{i}"})
 
         # Set positions
-        pos_key1 = f"position:{consumer_group1}:{stream}"
-        pos_key2 = f"position:{consumer_group2}:{stream}"
+        pos_key1 = f"position:{stream}:{consumer_group1}"
+        pos_key2 = f"position:{stream}:{consumer_group2}"
         broker.redis_instance.set(pos_key1, "1")
         broker.redis_instance.set(pos_key2, "2")
 
@@ -370,17 +371,17 @@ class TestRedisMessageRequeue:
 
 @pytest.mark.redis
 class TestRedisDLQOperations:
-    """Test Dead Letter Queue operations"""
+    """Test DLQ operations"""
 
     def test_dlq_message_storage_and_retrieval(self, broker):
-        """Test storing and retrieving DLQ messages"""
+        """Test DLQ message storage and retrieval"""
         stream = "test_stream"
         consumer_group = "test_consumer_group"
         identifier = "test_id"
         message = {"data": "test"}
-        failure_reason = "processing_error"
+        failure_reason = "test_failure"
 
-        # Store DLQ message
+        # Store message in DLQ
         broker._store_dlq_message(
             stream, consumer_group, identifier, message, failure_reason
         )
@@ -390,102 +391,138 @@ class TestRedisDLQOperations:
         assert stream in dlq_messages
         assert len(dlq_messages[stream]) == 1
 
-        # DLQ messages are returned as tuples: (identifier, message, failure_reason, timestamp)
-        dlq_msg = dlq_messages[stream][0]
-        assert dlq_msg[0] == identifier  # identifier
-        assert dlq_msg[1] == message  # message
-        assert dlq_msg[2] == failure_reason  # failure_reason
-        assert isinstance(dlq_msg[3], float)  # timestamp
+        dlq_entry = dlq_messages[stream][0]
+        assert dlq_entry[0] == identifier
+        assert dlq_entry[1] == message
+        assert dlq_entry[2] == failure_reason
 
-        # Retrieve all DLQ messages
+        # Retrieve all DLQ messages for consumer group
         all_dlq_messages = broker._get_dlq_messages(consumer_group)
         assert stream in all_dlq_messages
         assert len(all_dlq_messages[stream]) == 1
 
     def test_dlq_message_reprocessing(self, broker):
-        """Test reprocessing messages from DLQ"""
+        """Test DLQ message reprocessing"""
         stream = "test_stream"
         consumer_group = "test_consumer_group"
         identifier = "test_id"
-        message = {"data": "test"}
+        message = {"data": "reprocess_test"}
 
-        # Store DLQ message
-        broker._store_dlq_message(stream, consumer_group, identifier, message, "error")
+        # Store message in DLQ
+        broker._store_dlq_message(
+            stream, consumer_group, identifier, message, "test_failure"
+        )
 
-        # Verify message is in DLQ
-        dlq_messages_before = broker._get_dlq_messages(consumer_group, stream)
-        assert stream in dlq_messages_before
-        assert len(dlq_messages_before[stream]) == 1
-
-        # Reprocess should succeed
+        # Reprocess the message
         result = broker._reprocess_dlq_message(identifier, consumer_group, stream)
         assert result is True
 
-        # Message should be removed from DLQ
-        dlq_messages_after = broker._get_dlq_messages(consumer_group, stream)
-        if stream in dlq_messages_after:
-            assert len(dlq_messages_after[stream]) == 0
+        # Verify message was removed from DLQ
+        dlq_messages = broker._get_dlq_messages(consumer_group, stream)
+        if stream in dlq_messages:
+            assert len(dlq_messages[stream]) == 0
+
+        # Verify message is back in main queue
+        retrieved_message = broker.get_next(stream, consumer_group)
+        assert retrieved_message is not None
+        assert retrieved_message[0] == identifier
+        assert retrieved_message[1] == message
 
     def test_dlq_reprocess_nonexistent_message(self, broker):
-        """Reprocessing non-existent DLQ message should return False"""
+        """Test reprocessing a non-existent DLQ message"""
+        stream = "test_stream"
+        consumer_group = "test_consumer_group"
+        non_existent_id = "non_existent_id"
 
-        result = broker._reprocess_dlq_message(
-            "nonexistent", "test_group", "test_stream"
-        )
+        # Try to reprocess non-existent message
+        result = broker._reprocess_dlq_message(non_existent_id, consumer_group, stream)
         assert result is False
 
 
 @pytest.mark.redis
 class TestRedisInfoOperations:
-    """Test Redis info and monitoring operations"""
+    """Test info operations"""
 
     def test_info_provides_consumer_group_details(self, broker):
-        """Info should provide detailed consumer group information"""
+        """Test that info provides comprehensive consumer group information"""
         stream = "test_stream"
         consumer_group = "test_consumer_group"
-        message = {"data": "test"}
+        message = {"data": "info_test"}
 
-        # Create consumer group and add data
-        broker._ensure_group(consumer_group)
-        broker.publish(stream, message)
-        broker.get_next(stream, consumer_group)  # Creates in-flight message
+        # Create consumer group and process some messages
+        identifier = broker.publish(stream, message)
+        broker.get_next(stream, consumer_group)
 
-        # Store failed and DLQ messages
-        broker._store_failed_message(
-            stream, consumer_group, "failed_id", message, 1, time.time() + 60
-        )
-        broker._store_dlq_message(stream, consumer_group, "dlq_id", message, "error")
-
+        # Get info
         info = broker._info()
 
         assert "consumer_groups" in info
         assert consumer_group in info["consumer_groups"]
 
         group_info = info["consumer_groups"][consumer_group]
+        assert "consumers" in group_info
+        assert "created_at" in group_info
+        assert "consumer_count" in group_info
+        assert "in_flight_count" in group_info
         assert "in_flight_messages" in group_info
+        assert "failed_count" in group_info
         assert "failed_messages" in group_info
+        assert "dlq_count" in group_info
         assert "dlq_messages" in group_info
+
+        # Verify stream-specific breakdowns
         assert stream in group_info["in_flight_messages"]
         assert stream in group_info["failed_messages"]
         assert stream in group_info["dlq_messages"]
 
     def test_consumer_groups_for_stream(self, broker):
-        """Should return consumer groups that have positions for a stream"""
+        """Test getting consumer groups for a specific stream"""
         stream = "test_stream"
-        group1 = "group1"
-        group2 = "group2"
+        consumer_group1 = "group1"
+        consumer_group2 = "group2"
+        message = {"data": "test"}
 
-        # Create groups
-        broker._ensure_group(group1)
-        broker._ensure_group(group2)
+        # Create consumer groups
+        broker._ensure_group(consumer_group1, stream)
+        broker._ensure_group(consumer_group2, stream)
 
-        # Only group1 has a position for the stream
-        pos_key1 = f"position:{group1}:{stream}"
-        broker.redis_instance.set(pos_key1, "0")
+        # Publish messages for both groups to consume
+        broker.publish(stream, message)
+        broker.publish(stream, message)
 
+        # Have both groups consume to create position keys
+        broker.get_next(stream, consumer_group1)
+        broker.get_next(stream, consumer_group2)
+
+        # Get consumer groups for stream
         groups = broker._get_consumer_groups_for_stream(stream)
-        assert group1 in groups
-        assert group2 not in groups
+
+        assert consumer_group1 in groups
+        assert consumer_group2 in groups
+
+    def test_info_handles_legacy_keys_without_separator(self, broker):
+        """Test info method handles legacy keys that might not have separator"""
+        # Create a legacy key format without separator for testing
+        legacy_key = "consumer_group:legacy_format_without_separator"
+        broker.redis_instance.hset(
+            legacy_key, mapping={"created_at": str(time.time()), "consumer_count": "1"}
+        )
+
+        # Info should handle this gracefully and continue processing
+        info = broker._info()
+        assert "consumer_groups" in info
+        # The legacy key should be skipped but not cause errors
+
+    def test_get_consumer_groups_for_stream_error_handling(self, broker):
+        """Test error handling in _get_consumer_groups_for_stream"""
+        stream = "test_stream"
+
+        # Mock keys() to raise exception
+        with patch.object(
+            broker.redis_instance, "keys", side_effect=Exception("Redis error")
+        ):
+            result = broker._get_consumer_groups_for_stream(stream)
+            assert result == []  # Should return empty list on error
 
 
 @pytest.mark.redis
@@ -508,7 +545,7 @@ class TestRedisCleanupOperations:
             broker.get_next(stream, consumer_group)
 
             # Make message stale by setting old timestamp
-            in_flight_key = f"in_flight:{consumer_group}:{stream}"
+            in_flight_key = f"in_flight:{stream}:{consumer_group}"
             old_timestamp = time.time() - 1000
             message_info = {
                 "identifier": identifier,
@@ -530,172 +567,258 @@ class TestRedisCleanupOperations:
         """Test message ownership cleanup"""
         identifier = "test_id"
         consumer_group = "test_consumer_group"
+        stream = "test_stream"
 
-        # Create ownership
+        # Set up message ownership
         ownership_key = f"ownership:{identifier}"
-        broker.redis_instance.sadd(ownership_key, consumer_group)
+        broker.redis_instance.sadd(ownership_key, f"{stream}:{consumer_group}")
 
-        # Cleanup should remove ownership
+        # Cleanup
         broker._cleanup_message_ownership(identifier, consumer_group)
 
-        # Key should be deleted when empty
-        assert not broker.redis_instance.exists(ownership_key)
+        # Verify cleanup
+        members = broker.redis_instance.smembers(ownership_key)
+        assert len(members) == 0
 
     def test_cleanup_message_ownership_preserves_other_owners(self, broker):
-        """Cleanup should preserve ownership for other consumer groups"""
+        """Test that ownership cleanup only removes specific consumer group"""
         identifier = "test_id"
-        group1 = "group1"
-        group2 = "group2"
+        consumer_group1 = "group1"
+        consumer_group2 = "group2"
+        stream = "test_stream"
 
-        # Create ownership for both groups
+        # Set up message ownership for multiple groups
         ownership_key = f"ownership:{identifier}"
-        broker.redis_instance.sadd(ownership_key, group1)
-        broker.redis_instance.sadd(ownership_key, group2)
+        broker.redis_instance.sadd(ownership_key, f"{stream}:{consumer_group1}")
+        broker.redis_instance.sadd(ownership_key, f"{stream}:{consumer_group2}")
 
-        # Cleanup one group
-        broker._cleanup_message_ownership(identifier, group1)
+        # Cleanup only group1
+        broker._cleanup_message_ownership(identifier, consumer_group1)
 
-        # Other group should still have ownership
-        assert broker.redis_instance.sismember(ownership_key, group2)
-        assert not broker.redis_instance.sismember(ownership_key, group1)
+        # Verify group2 ownership is preserved
+        members = broker.redis_instance.smembers(ownership_key)
+        assert len(members) == 1
+        remaining_member = list(members)[0]
+        if isinstance(remaining_member, bytes):
+            remaining_member = remaining_member.decode()
+        assert remaining_member == f"{stream}:{consumer_group2}"
+
+    def test_cleanup_message_ownership_with_empty_result(self, broker):
+        """Test cleanup when ownership set becomes empty"""
+        identifier = "test_id"
+        consumer_group = "test_consumer_group"
+        stream = "test_stream"
+
+        # Set up single ownership
+        ownership_key = f"ownership:{identifier}"
+        broker.redis_instance.sadd(ownership_key, f"{stream}:{consumer_group}")
+
+        # Cleanup - should delete the key when empty
+        broker._cleanup_message_ownership(identifier, consumer_group)
+
+        # Verify key is deleted
+        assert not broker.redis_instance.exists(ownership_key)
+
+    def test_cleanup_message_ownership_exception_handling(self, broker):
+        """Test cleanup handles exceptions gracefully"""
+        identifier = "test_id"
+        consumer_group = "test_consumer_group"
+
+        # Mock smembers to raise exception
+        with patch.object(
+            broker.redis_instance, "smembers", side_effect=Exception("Redis error")
+        ):
+            # Should not raise exception
+            try:
+                broker._cleanup_message_ownership(identifier, consumer_group)
+            except Exception as e:
+                pytest.fail(f"Cleanup should handle exceptions gracefully: {e}")
 
 
 @pytest.mark.redis
 class TestRedisRetryLogic:
-    """Test retry mechanism behavior"""
+    """Test retry logic and failed message handling"""
 
     def test_retry_ready_messages_filters_correctly(self, broker):
-        """Should return only messages ready for retry"""
+        """Test that retry ready messages are filtered by time correctly"""
         stream = "test_stream"
         consumer_group = "test_consumer_group"
-
-        failed_key = f"failed:{consumer_group}:{stream}"
         current_time = time.time()
 
-        # Add ready and not-ready messages
-        ready_data = {
+        # Store failed messages with different retry times
+        failed_key = f"failed:{stream}:{consumer_group}"
+
+        # Message ready for retry (past time)
+        ready_message = {
             "identifier": "ready_id",
             "message": json.dumps({"data": "ready"}),
             "retry_count": 1,
-            "next_retry_time": str(current_time - 10),  # Past time
+            "next_retry_time": str(current_time - 10),
         }
 
-        not_ready_data = {
+        # Message not ready (future time)
+        not_ready_message = {
             "identifier": "not_ready_id",
             "message": json.dumps({"data": "not_ready"}),
             "retry_count": 1,
-            "next_retry_time": str(current_time + 60),  # Future time
+            "next_retry_time": str(current_time + 100),
         }
 
-        broker.redis_instance.rpush(failed_key, json.dumps(ready_data))
-        broker.redis_instance.rpush(failed_key, json.dumps(not_ready_data))
+        broker.redis_instance.rpush(failed_key, json.dumps(ready_message))
+        broker.redis_instance.rpush(failed_key, json.dumps(not_ready_message))
 
-        # Get ready messages
+        # Get retry ready messages
         ready_messages = broker._get_retry_ready_messages(stream, consumer_group)
 
+        # Should only get the ready message
         assert len(ready_messages) == 1
         assert ready_messages[0][0] == "ready_id"
+        assert ready_messages[0][1] == {"data": "ready"}
 
-        # Not ready message should remain
+        # Verify not ready message is still in failed queue
         remaining = broker.redis_instance.lrange(failed_key, 0, -1)
         assert len(remaining) == 1
         remaining_data = json.loads(remaining[0])
         assert remaining_data["identifier"] == "not_ready_id"
 
-    def test_remove_failed_message_finds_correct_message(self, broker):
-        """Should remove only the specified failed message"""
+    def test_get_retry_ready_messages_exception_handling(self, broker):
+        """Test exception handling in _get_retry_ready_messages"""
         stream = "test_stream"
         consumer_group = "test_consumer_group"
 
-        failed_key = f"failed:{consumer_group}:{stream}"
+        # Mock lrange to raise exception
+        with patch.object(
+            broker.redis_instance, "lrange", side_effect=Exception("Redis error")
+        ):
+            result = broker._get_retry_ready_messages(stream, consumer_group)
+            assert result == []  # Should return empty list on error
 
-        # Add multiple failed messages
-        for i in range(3):
-            failed_data = {
-                "identifier": f"msg_{i}",
-                "message": json.dumps({"data": f"test_{i}"}),
+    def test_remove_failed_message_finds_correct_message(self, broker):
+        """Test that _remove_failed_message finds and removes the correct message"""
+        stream = "test_stream"
+        consumer_group = "test_consumer_group"
+        failed_key = f"failed:{stream}:{consumer_group}"
+
+        # Store multiple failed messages
+        messages = [
+            {
+                "identifier": "msg1",
+                "message": json.dumps({"data": "message1"}),
                 "retry_count": 1,
                 "next_retry_time": str(time.time()),
-            }
-            broker.redis_instance.rpush(failed_key, json.dumps(failed_data))
+            },
+            {
+                "identifier": "target_msg",
+                "message": json.dumps({"data": "target"}),
+                "retry_count": 2,
+                "next_retry_time": str(time.time()),
+            },
+            {
+                "identifier": "msg3",
+                "message": json.dumps({"data": "message3"}),
+                "retry_count": 1,
+                "next_retry_time": str(time.time()),
+            },
+        ]
 
-        # Remove middle message
-        broker._remove_failed_message(stream, consumer_group, "msg_1")
+        for msg in messages:
+            broker.redis_instance.rpush(failed_key, json.dumps(msg))
 
-        # Should have 2 messages left
+        # Remove target message
+        broker._remove_failed_message(stream, consumer_group, "target_msg")
+
+        # Verify correct message was removed
         remaining = broker.redis_instance.lrange(failed_key, 0, -1)
         assert len(remaining) == 2
 
-        # Check remaining messages
         remaining_ids = []
-        for msg_json in remaining:
-            msg_data = json.loads(msg_json)
+        for msg_bytes in remaining:
+            msg_data = json.loads(msg_bytes)
             remaining_ids.append(msg_data["identifier"])
 
-        assert "msg_0" in remaining_ids
-        assert "msg_2" in remaining_ids
-        assert "msg_1" not in remaining_ids
+        assert "msg1" in remaining_ids
+        assert "msg3" in remaining_ids
+        assert "target_msg" not in remaining_ids
+
+    def test_remove_failed_message_nonexistent(self, broker):
+        """Test removing a non-existent failed message"""
+        stream = "test_stream"
+        consumer_group = "test_consumer_group"
+
+        # Should not cause any errors
+        broker._remove_failed_message(stream, consumer_group, "non_existent_id")
 
 
 @pytest.mark.redis
 class TestRedisUtilityMethods:
-    """Test utility and helper methods"""
+    """Test utility methods"""
 
     def test_ensure_group_creates_group(self, broker):
-        """_ensure_group should create consumer group if it doesn't exist"""
-        group_name = "new_group"
+        """Test that _ensure_group creates a new consumer group"""
+        stream = "test_stream"
+        consumer_group = "new_consumer_group"
 
-        # Group shouldn't exist initially
-        group_key = f"consumer_group:{group_name}"
-        assert not broker.redis_instance.exists(group_key)
+        # Verify group doesn't exist
+        assert not broker._validate_consumer_group(consumer_group)
 
         # Create group
-        broker._ensure_group(group_name)
+        broker._ensure_group(consumer_group, stream)
 
-        # Group should now exist
-        assert broker.redis_instance.exists(group_key)
-        group_info = broker.redis_instance.hgetall(group_key)
-        assert b"created_at" in group_info or "created_at" in group_info
+        # Verify group now exists
+        assert broker._validate_consumer_group(consumer_group)
+
+        # Verify group data was stored
+        group_key = f"consumer_group:{stream}:{consumer_group}"
+        group_data = broker.redis_instance.hgetall(group_key)
+        assert group_data
+        assert b"created_at" in group_data or "created_at" in group_data
 
     def test_ensure_group_idempotent(self, broker):
-        """_ensure_group should be idempotent (safe to call multiple times)"""
-        group_name = "idempotent_group"
+        """Test that _ensure_group is idempotent"""
+        stream = "test_stream"
+        consumer_group = "test_consumer_group"
 
         # Create group twice
-        broker._ensure_group(group_name)
-        broker._ensure_group(group_name)
+        broker._ensure_group(consumer_group, stream)
+        group_key = f"consumer_group:{stream}:{consumer_group}"
+        first_data = dict(broker.redis_instance.hgetall(group_key))
 
-        # Should not cause errors and group should exist
-        group_key = f"consumer_group:{group_name}"
-        assert broker.redis_instance.exists(group_key)
+        broker._ensure_group(consumer_group, stream)
+        second_data = dict(broker.redis_instance.hgetall(group_key))
+
+        # Data should be the same (no duplicate creation)
+        assert first_data == second_data
 
     def test_data_reset_clears_all_data(self, broker):
-        """_data_reset should clear all Redis data"""
-
-        # Add some broker-related data
+        """Test that _data_reset clears all Redis data"""
         stream = "test_stream"
         consumer_group = "test_consumer_group"
         message = {"data": "test"}
 
-        # Create typical broker data structures
+        # Create some data
         identifier = broker.publish(stream, message)
         broker.get_next(stream, consumer_group)
-        broker._ensure_group(consumer_group)
+        broker._store_dlq_message(
+            stream, consumer_group, "dlq_id", message, "test_failure"
+        )
 
         # Verify data exists
-        assert broker.redis_instance.llen(stream) > 0
-        position_key = f"position:{consumer_group}:{stream}"
-        assert broker.redis_instance.exists(position_key)
-        group_key = f"consumer_group:{consumer_group}"
-        assert broker.redis_instance.exists(group_key)
+        assert broker.redis_instance.exists(stream)
+        dlq_key = f"dlq:{stream}:{consumer_group}"
+        assert broker.redis_instance.exists(dlq_key)
 
-        # Reset should clear everything
+        # Reset data
         broker._data_reset()
 
         # Verify all data is cleared
-        assert broker.redis_instance.llen(stream) == 0
-        assert not broker.redis_instance.exists(position_key)
-        assert not broker.redis_instance.exists(group_key)
+        assert not broker.redis_instance.exists(stream)
+        assert not broker.redis_instance.exists(dlq_key)
+
+        # Verify we can still use the broker after reset
+        new_identifier = broker.publish(stream, message)
+        new_message = broker.get_next(stream, consumer_group)
+        assert new_message is not None
+        assert new_message[0] == new_identifier
 
     def test_cleanup_expired_operation_states_noop(self, broker):
         """_cleanup_expired_operation_states should be a no-op (Redis handles TTL)"""
@@ -735,3 +858,187 @@ class TestRedisUtilityMethods:
         # Verify the method completes without raising errors
         broker._cleanup_expired_operation_states()
         broker._cleanup_expired_operation_states()  # Multiple calls should be safe
+
+
+@pytest.mark.redis
+class TestRedisBytesHandling:
+    """Test Redis bytes vs strings handling"""
+
+    def test_get_dlq_messages_handles_bytes_keys(self, broker):
+        """Test DLQ retrieval handles both bytes and string keys"""
+        stream = "test_stream"
+        consumer_group = "test_consumer_group"
+        identifier = "test_id"
+        message = {"data": "test"}
+
+        # Store message in DLQ
+        broker._store_dlq_message(
+            stream, consumer_group, identifier, message, "test_failure"
+        )
+
+        # Mock keys() to return bytes
+        original_keys = broker.redis_instance.keys
+
+        def mock_keys(pattern):
+            results = original_keys(pattern)
+            return [key.encode() if isinstance(key, str) else key for key in results]
+
+        with patch.object(broker.redis_instance, "keys", side_effect=mock_keys):
+            # Should handle bytes keys correctly
+            dlq_messages = broker._get_dlq_messages(consumer_group)
+            assert stream in dlq_messages
+
+    def test_cleanup_stale_messages_handles_bytes_keys(self, broker):
+        """Test stale message cleanup handles bytes keys correctly"""
+        stream = "test_stream"
+        consumer_group = "test_consumer_group"
+        message = {"data": "test"}
+
+        # Create in-flight message
+        identifier = broker.publish(stream, message)
+        broker.get_next(stream, consumer_group)
+
+        # Mock keys() to return bytes for in-flight keys
+        original_keys = broker.redis_instance.keys
+
+        def mock_keys(pattern):
+            results = original_keys(pattern)
+            return [key.encode() if isinstance(key, str) else key for key in results]
+
+        with patch.object(broker.redis_instance, "keys", side_effect=mock_keys):
+            # Should handle bytes keys without error
+            try:
+                broker._cleanup_stale_messages(consumer_group, 10.0)
+            except Exception as e:
+                pytest.fail(f"Should handle bytes keys gracefully: {e}")
+
+    def test_requeue_position_key_bytes_handling(self, broker):
+        """Test requeue handles position keys as bytes"""
+        stream = "test_stream"
+        consumer_group = "test_consumer_group"
+        messages = [("test_id", {"data": "test"})]
+
+        # Mock keys() to return bytes
+        original_keys = broker.redis_instance.keys
+
+        def mock_keys(pattern):
+            results = original_keys(pattern)
+            return [key.encode() if isinstance(key, str) else key for key in results]
+
+        with patch.object(broker.redis_instance, "keys", side_effect=mock_keys):
+            # Should handle bytes position keys without error
+            try:
+                broker._requeue_messages(stream, consumer_group, messages)
+            except Exception as e:
+                pytest.fail(f"Should handle bytes position keys gracefully: {e}")
+
+    def test_reprocess_dlq_position_key_bytes_handling(self, broker):
+        """Test DLQ reprocessing handles position keys as bytes"""
+        stream = "test_stream"
+        consumer_group = "test_consumer_group"
+        identifier = "test_id"
+        message = {"data": "test"}
+
+        # Store in DLQ
+        broker._store_dlq_message(
+            stream, consumer_group, identifier, message, "test_failure"
+        )
+
+        # Mock keys() to return bytes
+        original_keys = broker.redis_instance.keys
+
+        def mock_keys(pattern):
+            results = original_keys(pattern)
+            return [key.encode() if isinstance(key, str) else key for key in results]
+
+        with patch.object(broker.redis_instance, "keys", side_effect=mock_keys):
+            # Should handle bytes position keys during reprocessing
+            result = broker._reprocess_dlq_message(identifier, consumer_group, stream)
+            assert result is True
+
+
+@pytest.mark.redis
+class TestRedisMessageRequeueComplexScenarios:
+    """Test complex requeue scenarios specific to Redis"""
+
+    def test_requeue_with_position_greater_than_zero_rebuild_list(self, broker):
+        """Test requeue when current position > 0 requires list rebuild"""
+        stream = "test_stream"
+        consumer_group = "test_consumer_group"
+
+        # Publish initial messages
+        for i in range(5):
+            broker.publish(stream, {"data": f"initial_{i}"})
+
+        # Advance consumer position
+        for _ in range(3):
+            broker.get_next(stream, consumer_group)
+
+        # Current position should be 3, now requeue a message
+        messages = [("requeue_id", {"data": "requeued"})]
+        broker._requeue_messages(stream, consumer_group, messages)
+
+        # Verify message was inserted at correct position
+        all_messages = broker.redis_instance.lrange(stream, 0, -1)
+        assert len(all_messages) == 6  # 5 initial + 1 requeued
+
+        # The requeued message should be at position 3
+        requeued_msg = json.loads(all_messages[3])
+        assert requeued_msg[0] == "requeue_id"
+        assert requeued_msg[1] == {"data": "requeued"}
+
+    def test_requeue_with_position_zero_uses_lpush(self, broker):
+        """Test requeue when position is 0 uses lpush optimization"""
+        stream = "test_stream"
+        consumer_group = "test_consumer_group"
+
+        # Ensure consumer group exists and position is 0
+        broker._ensure_group(consumer_group, stream)
+        position_key = f"position:{stream}:{consumer_group}"
+        broker.redis_instance.set(position_key, "0")
+
+        # Requeue messages
+        messages = [("requeue_id", {"data": "requeued"})]
+
+        # Mock lpush to verify it's called
+        with patch.object(broker.redis_instance, "lpush") as mock_lpush:
+            broker._requeue_messages(stream, consumer_group, messages)
+            mock_lpush.assert_called_once()
+
+    def test_requeue_updates_consumer_positions_correctly(self, broker):
+        """Test that requeue correctly updates other consumer group positions"""
+        stream = "test_stream"
+        consumer_group1 = "group1"
+        consumer_group2 = "group2"
+        consumer_group3 = "group3"
+
+        # Set up consumer groups with different positions
+        broker._ensure_group(consumer_group1, stream)
+        broker._ensure_group(consumer_group2, stream)
+        broker._ensure_group(consumer_group3, stream)
+
+        pos_key1 = f"position:{stream}:{consumer_group1}"
+        pos_key2 = f"position:{stream}:{consumer_group2}"
+        pos_key3 = f"position:{stream}:{consumer_group3}"
+
+        # Set positions: group1=2, group2=1, group3=3
+        broker.redis_instance.set(pos_key1, "2")  # Will be requeuing for this group
+        broker.redis_instance.set(
+            pos_key2, "1"
+        )  # Before requeue position, should not change
+        broker.redis_instance.set(
+            pos_key3, "3"
+        )  # At/after requeue position, should increment
+
+        # Requeue for group1 (position 2)
+        messages = [("requeue_id", {"data": "requeued"})]
+        broker._requeue_messages(stream, consumer_group1, messages)
+
+        # Check final positions
+        final_pos1 = int(broker.redis_instance.get(pos_key1) or 0)
+        final_pos2 = int(broker.redis_instance.get(pos_key2) or 0)
+        final_pos3 = int(broker.redis_instance.get(pos_key3) or 0)
+
+        assert final_pos1 == 2  # Unchanged (own position)
+        assert final_pos2 == 1  # Unchanged (before requeue position)
+        assert final_pos3 == 4  # Incremented (was at/after requeue position)

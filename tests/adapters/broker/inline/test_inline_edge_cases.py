@@ -9,7 +9,7 @@ def test_remove_in_flight_message_when_not_exists(broker):
     consumer_group = "test_consumer_group"
 
     # Ensure group exists
-    broker._ensure_group(consumer_group)
+    broker._ensure_group(consumer_group, stream)
 
     # Add some actual in-flight messages to verify they remain unchanged
     identifier1 = broker.publish(stream, {"data": "message1"})
@@ -20,8 +20,8 @@ def test_remove_in_flight_message_when_not_exists(broker):
     broker.get_next(stream, consumer_group)
 
     # Capture initial state
-    initial_in_flight_count = len(broker._in_flight[consumer_group][stream])
-    initial_identifiers = set(broker._in_flight[consumer_group][stream].keys())
+    initial_in_flight_count = len(broker._in_flight[f"{stream}:{consumer_group}"])
+    initial_identifiers = set(broker._in_flight[f"{stream}:{consumer_group}"].keys())
 
     # Try to remove non-existent message - this should be a no-op
     non_existent_id = "non-existent-message-id"
@@ -31,12 +31,17 @@ def test_remove_in_flight_message_when_not_exists(broker):
     broker._remove_in_flight_message(stream, consumer_group, non_existent_id)
 
     # Verify state is unchanged
-    assert len(broker._in_flight[consumer_group][stream]) == initial_in_flight_count
-    assert set(broker._in_flight[consumer_group][stream].keys()) == initial_identifiers
+    assert (
+        len(broker._in_flight[f"{stream}:{consumer_group}"]) == initial_in_flight_count
+    )
+    assert (
+        set(broker._in_flight[f"{stream}:{consumer_group}"].keys())
+        == initial_identifiers
+    )
 
     # Verify the existing messages are still there
-    assert identifier1 in broker._in_flight[consumer_group][stream]
-    assert identifier2 in broker._in_flight[consumer_group][stream]
+    assert identifier1 in broker._in_flight[f"{stream}:{consumer_group}"]
+    assert identifier2 in broker._in_flight[f"{stream}:{consumer_group}"]
 
 
 def test_get_in_flight_message_not_exists(broker):
@@ -45,7 +50,7 @@ def test_get_in_flight_message_not_exists(broker):
     consumer_group = "test_consumer_group"
 
     # Ensure group exists
-    broker._ensure_group(consumer_group)
+    broker._ensure_group(consumer_group, stream)
 
     # Try to get non-existent message
     result = broker._get_in_flight_message(stream, consumer_group, "non-existent-id")
@@ -94,7 +99,7 @@ def test_remove_retry_count_when_not_exists(broker):
     consumer_group = "test_consumer_group"
 
     # Ensure group exists
-    broker._ensure_group(consumer_group)
+    broker._ensure_group(consumer_group, stream)
 
     # Try to remove non-existent retry count
     broker._remove_retry_count(stream, consumer_group, "non-existent-id")
@@ -114,7 +119,7 @@ def test_stale_message_cleanup_with_dlq_disabled(broker):
 
     # Manually make it stale by setting old timestamp
     old_timestamp = time.time() - broker._message_timeout - 100
-    broker._in_flight[consumer_group][stream][identifier] = (
+    broker._in_flight[f"{stream}:{consumer_group}"][identifier] = (
         identifier,
         {"data": "test"},
         old_timestamp,
@@ -124,8 +129,8 @@ def test_stale_message_cleanup_with_dlq_disabled(broker):
     broker._cleanup_stale_messages(consumer_group, broker._message_timeout)
 
     # Verify message was removed but not in DLQ
-    assert identifier not in broker._in_flight[consumer_group][stream]
-    assert len(broker._dead_letter_queue[consumer_group][stream]) == 0
+    assert identifier not in broker._in_flight[f"{stream}:{consumer_group}"]
+    assert len(broker._dead_letter_queue[f"{stream}:{consumer_group}"]) == 0
 
 
 def test_clear_operation_state_when_not_exists(broker):
@@ -134,7 +139,7 @@ def test_clear_operation_state_when_not_exists(broker):
     stream = "test_stream"
 
     # Ensure group exists
-    broker._ensure_group(consumer_group)
+    broker._ensure_group(consumer_group, stream)
 
     # Set up some existing operation state by creating actual in-flight messages
     identifier1 = broker.publish(stream, {"data": "message1"})
@@ -151,7 +156,7 @@ def test_clear_operation_state_when_not_exists(broker):
     broker._store_operation_state(consumer_group, identifier2, OperationState.PENDING)
 
     # Capture initial state
-    initial_in_flight_count = len(broker._in_flight[consumer_group][stream])
+    initial_in_flight_count = len(broker._in_flight[f"{stream}:{consumer_group}"])
     initial_message_ownership = broker._message_ownership.copy()
     initial_operation_states = dict(broker._operation_states[consumer_group])
 
@@ -163,21 +168,23 @@ def test_clear_operation_state_when_not_exists(broker):
     broker._clear_operation_state(consumer_group, non_existent_id)
 
     # Verify that existing state is unchanged
-    assert len(broker._in_flight[consumer_group][stream]) == initial_in_flight_count
+    assert (
+        len(broker._in_flight[f"{stream}:{consumer_group}"]) == initial_in_flight_count
+    )
     assert broker._message_ownership == initial_message_ownership
     assert dict(broker._operation_states[consumer_group]) == initial_operation_states
 
     # Verify specific messages are still in flight (clear_operation_state doesn't affect in-flight)
-    assert identifier1 in broker._in_flight[consumer_group][stream]
-    assert identifier2 in broker._in_flight[consumer_group][stream]
+    assert identifier1 in broker._in_flight[f"{stream}:{consumer_group}"]
+    assert identifier2 in broker._in_flight[f"{stream}:{consumer_group}"]
 
     # Verify that we can still clear existing operation state normally
     broker._clear_operation_state(consumer_group, identifier1)
     assert identifier1 not in broker._operation_states[consumer_group]
     assert identifier2 in broker._operation_states[consumer_group]
     # In-flight messages should remain (clear_operation_state only clears operation states)
-    assert identifier1 in broker._in_flight[consumer_group][stream]
-    assert identifier2 in broker._in_flight[consumer_group][stream]
+    assert identifier1 in broker._in_flight[f"{stream}:{consumer_group}"]
+    assert identifier2 in broker._in_flight[f"{stream}:{consumer_group}"]
 
 
 def test_requeue_messages_with_multiple_groups(broker):
@@ -187,21 +194,21 @@ def test_requeue_messages_with_multiple_groups(broker):
     consumer_group_2 = "group-2"
 
     # Set up multiple consumer groups
-    broker._ensure_group(consumer_group_1)
-    broker._ensure_group(consumer_group_2)
+    broker._ensure_group(consumer_group_1, stream)
+    broker._ensure_group(consumer_group_2, stream)
 
     # Set initial positions
-    broker._consumer_positions[consumer_group_1][stream] = 2
-    broker._consumer_positions[consumer_group_2][stream] = 2
+    broker._consumer_positions[f"{stream}:{consumer_group_1}"] = 2
+    broker._consumer_positions[f"{stream}:{consumer_group_2}"] = 2
 
     # Requeue a message for group 1
     messages = [("retry-id", {"data": "retry"})]
     broker._requeue_messages(stream, consumer_group_1, messages)
 
     # Verify group 2's position was adjusted
-    assert broker._consumer_positions[consumer_group_2][stream] == 3
+    assert broker._consumer_positions[f"{stream}:{consumer_group_2}"] == 3
     # Group 1's position should remain the same
-    assert broker._consumer_positions[consumer_group_1][stream] == 2
+    assert broker._consumer_positions[f"{stream}:{consumer_group_1}"] == 2
 
 
 def test_requeue_messages_empty_list(broker):
@@ -211,8 +218,8 @@ def test_requeue_messages_empty_list(broker):
     consumer_group_2 = "group-2"
 
     # Set up multiple consumer groups
-    broker._ensure_group(consumer_group_1)
-    broker._ensure_group(consumer_group_2)
+    broker._ensure_group(consumer_group_1, stream)
+    broker._ensure_group(consumer_group_2, stream)
 
     # Publish some messages and set up initial state
     for i in range(3):
@@ -224,10 +231,10 @@ def test_requeue_messages_empty_list(broker):
 
     # Capture initial state before requeuing empty list
     initial_messages_count = len(broker._messages[stream])
-    initial_position_1 = broker._consumer_positions[consumer_group_1][stream]
-    initial_position_2 = broker._consumer_positions[consumer_group_2][stream]
-    initial_in_flight_1 = dict(broker._in_flight[consumer_group_1][stream])
-    initial_in_flight_2 = dict(broker._in_flight[consumer_group_2][stream])
+    initial_position_1 = broker._consumer_positions[f"{stream}:{consumer_group_1}"]
+    initial_position_2 = broker._consumer_positions[f"{stream}:{consumer_group_2}"]
+    initial_in_flight_1 = dict(broker._in_flight[f"{stream}:{consumer_group_1}"])
+    initial_in_flight_2 = dict(broker._in_flight[f"{stream}:{consumer_group_2}"])
     initial_messages_copy = list(broker._messages[stream])
 
     # Requeue empty list - this should be a complete no-op
@@ -235,10 +242,18 @@ def test_requeue_messages_empty_list(broker):
 
     # Verify absolutely nothing changed
     assert len(broker._messages[stream]) == initial_messages_count
-    assert broker._consumer_positions[consumer_group_1][stream] == initial_position_1
-    assert broker._consumer_positions[consumer_group_2][stream] == initial_position_2
-    assert dict(broker._in_flight[consumer_group_1][stream]) == initial_in_flight_1
-    assert dict(broker._in_flight[consumer_group_2][stream]) == initial_in_flight_2
+    assert (
+        broker._consumer_positions[f"{stream}:{consumer_group_1}"] == initial_position_1
+    )
+    assert (
+        broker._consumer_positions[f"{stream}:{consumer_group_2}"] == initial_position_2
+    )
+    assert (
+        dict(broker._in_flight[f"{stream}:{consumer_group_1}"]) == initial_in_flight_1
+    )
+    assert (
+        dict(broker._in_flight[f"{stream}:{consumer_group_2}"]) == initial_in_flight_2
+    )
     assert broker._messages[stream] == initial_messages_copy
 
     # Verify that requeuing still works normally with actual messages
@@ -253,7 +268,8 @@ def test_requeue_messages_empty_list(broker):
 
     # Verify other consumer group's position was adjusted
     assert (
-        broker._consumer_positions[consumer_group_2][stream] == initial_position_2 + 1
+        broker._consumer_positions[f"{stream}:{consumer_group_2}"]
+        == initial_position_2 + 1
     )
 
 
@@ -288,13 +304,13 @@ def test_get_dlq_messages_specific_stream(broker):
     consumer_group = "test_consumer_group"
 
     # Ensure group exists
-    broker._ensure_group(consumer_group)
+    broker._ensure_group(consumer_group, stream)
 
     # Add DLQ message directly
-    broker._dead_letter_queue[consumer_group][stream].append(
+    broker._dead_letter_queue[f"{stream}:{consumer_group}"].append(
         ("id1", {"data": "test"}, "failure", time.time())
     )
-    broker._dead_letter_queue[consumer_group]["other-stream"].append(
+    broker._dead_letter_queue[f"other-stream:{consumer_group}"].append(
         ("id2", {"data": "test2"}, "failure", time.time())
     )
 
@@ -311,13 +327,15 @@ def test_get_dlq_messages_all_streams(broker):
     consumer_group = "test_consumer_group"
 
     # Ensure group exists
-    broker._ensure_group(consumer_group)
+    broker._ensure_group(
+        consumer_group, "stream1"
+    )  # Need to pick a stream for group creation
 
     # Add DLQ messages to multiple streams directly
-    broker._dead_letter_queue[consumer_group]["stream1"].append(
+    broker._dead_letter_queue[f"stream1:{consumer_group}"].append(
         ("id1", {"data": "test1"}, "failure", time.time())
     )
-    broker._dead_letter_queue[consumer_group]["stream2"].append(
+    broker._dead_letter_queue[f"stream2:{consumer_group}"].append(
         ("id2", {"data": "test2"}, "failure", time.time())
     )
 
@@ -344,8 +362,8 @@ def test_inline_broker_message_storage_format(broker):
     assert retrieved_message is not None
 
     # Verify internal storage format
-    assert identifier in broker._in_flight[consumer_group][stream]
-    stored_message = broker._in_flight[consumer_group][stream][identifier]
+    assert identifier in broker._in_flight[f"{stream}:{consumer_group}"]
+    stored_message = broker._in_flight[f"{stream}:{consumer_group}"][identifier]
     assert len(stored_message) == 3  # (id, message, timestamp)
     assert stored_message[0] == identifier
     assert stored_message[1] == message
@@ -365,4 +383,4 @@ def test_inline_broker_consumer_position_tracking(broker):
     for i in range(3):
         message = broker.get_next(stream, consumer_group)
         assert message is not None
-        assert broker._consumer_positions[consumer_group][stream] == i + 1
+        assert broker._consumer_positions[f"{stream}:{consumer_group}"] == i + 1

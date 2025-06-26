@@ -92,8 +92,9 @@ def test_retrieved_message_unchanged(broker):
     # Verify retrieved message matches original
     assert retrieved_message == original_message
 
-    # Verify identifier is a UUID4 using uuid package
-    assert uuid.UUID(identifier) is not None
+    # Verify identifier is a non-empty string
+    assert isinstance(identifier, str)
+    assert len(identifier) > 0
 
 
 def test_message_push_after_uow_exit(test_domain, broker):
@@ -130,13 +131,9 @@ def test_default_publish_generates_uuid(broker):
     # The publish method should generate a UUID
     identifier = broker.publish(stream, message)
 
-    # Should be a string UUID format
+    # Should be a non-empty string identifier
     assert isinstance(identifier, str)
-    assert len(identifier) == 36  # Standard UUID length with hyphens
-    assert identifier.count("-") == 4  # UUID has 4 hyphens
-
-    # Verify it's a valid UUID
-    uuid.UUID(identifier)  # This will raise ValueError if invalid
+    assert len(identifier) > 0
 
 
 @pytest.mark.broker
@@ -150,6 +147,12 @@ def test_publish_to_multiple_streams(broker):
 
     # Publish to different streams
     id1 = broker.publish(stream1, message1)
+
+    # Add a small delay for Redis Streams to ensure different timestamps
+    import time
+
+    time.sleep(0.001)  # 1ms delay
+
     id2 = broker.publish(stream2, message2)
 
     # Verify unique identifiers
@@ -173,21 +176,88 @@ def test_publish_to_multiple_streams(broker):
 
 
 @pytest.mark.broker
-def test_publish_empty_message(broker):
-    """Test publishing empty message dict"""
+def test_publish_empty_dict_raises_validation_error(broker):
+    """Test that publishing an empty dict raises ValidationError"""
+    from protean.exceptions import ValidationError
+
     stream = "test_stream"
-    consumer_group = "test_consumer_group"
     empty_message = {}
 
-    # Publish empty message
-    identifier = broker.publish(stream, empty_message)
-    assert isinstance(identifier, str)
+    with pytest.raises(ValidationError) as exc_info:
+        broker.publish(stream, empty_message)
 
-    # Retrieve and verify
-    retrieved = broker.get_next(stream, consumer_group)
-    assert retrieved is not None
-    assert retrieved[0] == identifier
-    assert retrieved[1] == empty_message
+    # Check that the error message is correct
+    assert exc_info.value.messages == {"message": ["Message cannot be empty"]}
+
+
+@pytest.mark.broker
+def test_publish_none_as_dict_raises_validation_error(broker):
+    """Test that publishing None as message raises ValidationError when it evaluates to falsy"""
+    from protean.exceptions import ValidationError
+
+    stream = "test_stream"
+
+    # This should raise ValidationError since None is falsy
+    with pytest.raises(ValidationError) as exc_info:
+        broker.publish(stream, None)
+
+    assert exc_info.value.messages == {"message": ["Message cannot be empty"]}
+
+
+@pytest.mark.broker
+def test_publish_valid_non_empty_dict_succeeds(broker):
+    """Test that publishing a non-empty dict succeeds"""
+    stream = "test_stream"
+    message = {"key": "value"}
+
+    # This should succeed
+    identifier = broker.publish(stream, message)
+
+    assert identifier is not None
+    assert isinstance(identifier, str)
+    assert len(identifier) > 0
+
+
+@pytest.mark.broker
+def test_publish_dict_with_false_values_succeeds(broker):
+    """Test that publishing a dict with falsy values but non-empty dict succeeds"""
+    stream = "test_stream"
+    message = {"key": None, "another_key": False, "number": 0}
+
+    # This should succeed because the dict itself is not empty
+    identifier = broker.publish(stream, message)
+
+    assert identifier is not None
+    assert isinstance(identifier, str)
+    assert len(identifier) > 0
+
+
+@pytest.mark.broker
+def test_publish_dict_with_empty_string_succeeds(broker):
+    """Test that publishing a dict with empty string values succeeds"""
+    stream = "test_stream"
+    message = {"key": ""}
+
+    # This should succeed because the dict itself is not empty
+    identifier = broker.publish(stream, message)
+
+    assert identifier is not None
+    assert isinstance(identifier, str)
+    assert len(identifier) > 0
+
+
+@pytest.mark.broker
+def test_publish_nested_empty_dict_succeeds(broker):
+    """Test that publishing a dict containing empty dicts succeeds"""
+    stream = "test_stream"
+    message = {"nested": {}}
+
+    # This should succeed because the outer dict is not empty
+    identifier = broker.publish(stream, message)
+
+    assert identifier is not None
+    assert isinstance(identifier, str)
+    assert len(identifier) > 0
 
 
 @pytest.mark.broker

@@ -171,7 +171,7 @@ class TestConsumerGroupCreation:
         ]
 
         # Call _ensure_group again
-        default_broker._ensure_group(user_subscriber_fqn)
+        default_broker._ensure_group(user_subscriber_fqn, "user")
 
         # Check that nothing changed
         info_after = default_broker.info()

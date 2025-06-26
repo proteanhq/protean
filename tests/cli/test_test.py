@@ -129,8 +129,8 @@ class TestTestRunner:
         suites = mock_runner.generate_test_suites()
 
         assert (
-            len(suites) == 9
-        )  # Full Matrix + 3 DBs + 2 Brokers + + 2 Manual Brokers + 1 EventStore
+            len(suites) == 8
+        )  # Full Matrix + 3 DBs + 1 Brokers + 2 Manual Brokers + 1 EventStore
         suite_names = [suite.name for suite in suites]
 
         assert "Full Matrix" in suite_names
@@ -466,11 +466,13 @@ class TestConfiguration:
         """Test TEST_CONFIGS has expected structure."""
         assert "databases" in TEST_CONFIGS
         assert "brokers" in TEST_CONFIGS
+        assert "manual_brokers" in TEST_CONFIGS
         assert "eventstores" in TEST_CONFIGS
         assert "full_matrix_flags" in TEST_CONFIGS
 
         assert len(TEST_CONFIGS["databases"]) == 3
-        assert len(TEST_CONFIGS["brokers"]) == 2
+        assert len(TEST_CONFIGS["brokers"]) == 1
+        assert len(TEST_CONFIGS["manual_brokers"]) == 2
         assert len(TEST_CONFIGS["eventstores"]) == 2
 
     def test_run_category_enum(self):

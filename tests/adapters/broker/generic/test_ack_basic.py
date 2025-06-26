@@ -35,7 +35,7 @@ def test_ack_unknown_message(broker):
     unknown_identifier = "unknown-message-id"
 
     # Ensure consumer group exists
-    broker._ensure_group(consumer_group)
+    broker._ensure_group(consumer_group, stream)
 
     # Try to acknowledge a message that doesn't exist
     ack_result = broker.ack(stream, unknown_identifier, consumer_group)

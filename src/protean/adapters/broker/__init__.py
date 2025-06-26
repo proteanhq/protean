@@ -10,6 +10,7 @@ from protean.port.broker import BaseBroker
 from protean.utils.globals import current_uow
 
 from .inline import InlineBroker
+from .redis import RedisBroker
 from .redis_pubsub import RedisPubSubBroker
 
 if TYPE_CHECKING:
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 BROKER_PROVIDERS = {
     "inline": "protean.adapters.InlineBroker",
+    "redis": "protean.adapters.broker.RedisBroker",
     "redis_pubsub": "protean.adapters.broker.RedisPubSubBroker",
 }
 
@@ -100,4 +102,4 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
                 broker.publish(stream, message)
 
 
-__all__ = ["InlineBroker", "RedisPubSubBroker"]
+__all__ = ["InlineBroker", "RedisBroker", "RedisPubSubBroker"]

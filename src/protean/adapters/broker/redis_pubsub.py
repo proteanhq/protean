@@ -13,6 +13,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Constants
+CONSUMER_GROUP_SEPARATOR = ":"
+
 
 class RedisPubSubBroker(BaseManualBroker):
     """Redis as the Message Broker.
@@ -39,7 +42,7 @@ class RedisPubSubBroker(BaseManualBroker):
     def _get_next(self, stream: str, consumer_group: str) -> tuple[str, dict] | None:
         """Get next message in stream for a specific consumer group"""
         # Ensure consumer group exists (create if it doesn't)
-        self._ensure_group(consumer_group)
+        self._ensure_group(consumer_group, stream)
 
         # Clean up stale in-flight messages first
         self._cleanup_stale_messages(consumer_group, self._message_timeout)
@@ -48,7 +51,7 @@ class RedisPubSubBroker(BaseManualBroker):
         self._requeue_failed_messages(stream, consumer_group)
 
         # Get current position for this consumer group
-        position_key = f"position:{consumer_group}:{stream}"
+        position_key = f"position:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         position = int(self.redis_instance.get(position_key) or 0)
 
         # Get message at this position
@@ -71,7 +74,9 @@ class RedisPubSubBroker(BaseManualBroker):
                 # Track message ownership with reasonable expiration to avoid premature cleanup
                 # Use a minimum of 30 seconds to handle fast tests, but scale with message timeout for production
                 ownership_key = f"ownership:{identifier}"
-                pipe.sadd(ownership_key, consumer_group)
+                pipe.sadd(
+                    ownership_key, f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+                )
                 ownership_expiration = max(
                     int(self._message_timeout * 2), 30
                 )  # At least 30 seconds
@@ -108,7 +113,7 @@ class RedisPubSubBroker(BaseManualBroker):
     ) -> list[tuple[str, dict]]:
         """Read messages from the broker for a specific consumer group. Returns tuples of (identifier, message)."""
         # Ensure consumer group exists
-        self._ensure_group(consumer_group)
+        self._ensure_group(consumer_group, stream)
 
         messages = []
         for _ in range(no_of_messages):
@@ -128,7 +133,7 @@ class RedisPubSubBroker(BaseManualBroker):
         self, stream: str, consumer_group: str, identifier: str, message: dict
     ) -> None:
         """Store a message in in-flight status using Redis hash"""
-        in_flight_key = f"in_flight:{consumer_group}:{stream}"
+        in_flight_key = f"in_flight:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         message_info = {
             "identifier": identifier,
             "message": json.dumps(message),
@@ -140,21 +145,21 @@ class RedisPubSubBroker(BaseManualBroker):
         self, stream: str, consumer_group: str, identifier: str
     ) -> None:
         """Remove a message from in-flight status"""
-        in_flight_key = f"in_flight:{consumer_group}:{stream}"
+        in_flight_key = f"in_flight:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         self.redis_instance.hdel(in_flight_key, identifier)
 
     def _is_in_flight_message(
         self, stream: str, consumer_group: str, identifier: str
     ) -> bool:
         """Check if a message is in in-flight status"""
-        in_flight_key = f"in_flight:{consumer_group}:{stream}"
+        in_flight_key = f"in_flight:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         return self.redis_instance.hexists(in_flight_key, identifier)
 
     def _get_in_flight_message(
         self, stream: str, consumer_group: str, identifier: str
     ) -> tuple[str, dict] | None:
         """Get in-flight message data"""
-        in_flight_key = f"in_flight:{consumer_group}:{stream}"
+        in_flight_key = f"in_flight:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         message_data_json = self.redis_instance.hget(in_flight_key, identifier)
 
         if message_data_json:
@@ -202,7 +207,7 @@ class RedisPubSubBroker(BaseManualBroker):
         next_retry_time: float,
     ) -> None:
         """Store a failed message for retry"""
-        failed_key = f"failed:{consumer_group}:{stream}"
+        failed_key = f"failed:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         failed_message_data = {
             "identifier": identifier,
             "message": json.dumps(message),
@@ -216,7 +221,7 @@ class RedisPubSubBroker(BaseManualBroker):
     ) -> None:
         """Remove a failed message from retry queue"""
         try:
-            failed_key = f"failed:{consumer_group}:{stream}"
+            failed_key = f"failed:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
             failed_messages = self.redis_instance.lrange(failed_key, 0, -1)
 
             # Find and remove the message with matching identifier
@@ -235,7 +240,7 @@ class RedisPubSubBroker(BaseManualBroker):
         self, stream: str, consumer_group: str
     ) -> list[tuple[str, dict]]:
         """Get messages ready for retry and remove them from failed queue"""
-        failed_key = f"failed:{consumer_group}:{stream}"
+        failed_key = f"failed:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         current_time = time.time()
 
         try:
@@ -284,7 +289,7 @@ class RedisPubSubBroker(BaseManualBroker):
         failure_reason: str,
     ) -> None:
         """Store a message in Dead Letter Queue"""
-        dlq_key = f"dlq:{consumer_group}:{stream}"
+        dlq_key = f"dlq:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         dlq_message_data = {
             "identifier": identifier,
             "message": json.dumps(message),
@@ -295,14 +300,22 @@ class RedisPubSubBroker(BaseManualBroker):
 
     def _validate_consumer_group(self, consumer_group: str) -> bool:
         """Validate that the consumer group exists"""
-        group_key = f"consumer_group:{consumer_group}"
-        return self.redis_instance.exists(group_key) > 0
+        # For redis_pubsub broker, we need to check all streams for this consumer group
+        group_pattern = f"consumer_group:*{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        matching_keys = self.redis_instance.keys(group_pattern)
+        return len(matching_keys) > 0
 
     def _validate_message_ownership(self, identifier: str, consumer_group: str) -> bool:
         """Validate that the message was delivered to the specified consumer group"""
         try:
             ownership_key = f"ownership:{identifier}"
-            return self.redis_instance.sismember(ownership_key, consumer_group)
+            # Check if any stream+consumer_group combination matches this consumer group
+            members = self.redis_instance.smembers(ownership_key)
+            for member in members:
+                member_str = member.decode() if isinstance(member, bytes) else member
+                if member_str.endswith(f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}"):
+                    return True
+            return False
         except Exception:
             return False
 
@@ -315,7 +328,7 @@ class RedisPubSubBroker(BaseManualBroker):
             cutoff_time = current_time - timeout_seconds
 
             # Find all in-flight keys for this consumer group
-            in_flight_pattern = f"in_flight:{consumer_group}:*"
+            in_flight_pattern = f"in_flight:*{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
             in_flight_keys = self.redis_instance.keys(in_flight_pattern)
 
             for in_flight_key in in_flight_keys:
@@ -323,7 +336,9 @@ class RedisPubSubBroker(BaseManualBroker):
                     in_flight_key = in_flight_key.decode("utf-8")
 
                 # Extract stream name from key
-                stream = in_flight_key.replace(f"in_flight:{consumer_group}:", "")
+                stream = in_flight_key.replace(f"in_flight:", "").split(
+                    CONSUMER_GROUP_SEPARATOR
+                )[0]
 
                 # Get all in-flight messages for this stream
                 in_flight_messages = self.redis_instance.hgetall(in_flight_key)
@@ -387,7 +402,9 @@ class RedisPubSubBroker(BaseManualBroker):
     ) -> int:
         """Get current retry count for a message"""
         try:
-            retry_key = f"retry_count:{consumer_group}:{stream}"
+            retry_key = (
+                f"retry_count:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+            )
             count = self.redis_instance.hget(retry_key, identifier)
             return int(count) if count else 0
         except Exception:
@@ -397,14 +414,14 @@ class RedisPubSubBroker(BaseManualBroker):
         self, stream: str, consumer_group: str, identifier: str, count: int
     ) -> None:
         """Set retry count for a message"""
-        retry_key = f"retry_count:{consumer_group}:{stream}"
+        retry_key = f"retry_count:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         self.redis_instance.hset(retry_key, identifier, count)
 
     def _remove_retry_count(
         self, stream: str, consumer_group: str, identifier: str
     ) -> None:
         """Remove retry count tracking for a message"""
-        retry_key = f"retry_count:{consumer_group}:{stream}"
+        retry_key = f"retry_count:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         self.redis_instance.hdel(retry_key, identifier)
 
     def _requeue_messages(
@@ -416,7 +433,9 @@ class RedisPubSubBroker(BaseManualBroker):
 
         try:
             # Get current consumer position
-            position_key = f"position:{consumer_group}:{stream}"
+            position_key = (
+                f"position:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+            )
             current_position = int(self.redis_instance.get(position_key) or 0)
 
             # Insert messages at the current position using a more complex approach
@@ -444,7 +463,7 @@ class RedisPubSubBroker(BaseManualBroker):
                         self.redis_instance.rpush(stream, *all_messages)
 
             # Update all consumer positions that are at or beyond this position
-            position_pattern = f"position:*:{stream}"
+            position_pattern = f"position:{stream}{CONSUMER_GROUP_SEPARATOR}*"
             position_keys = self.redis_instance.keys(position_pattern)
             for pos_key in position_keys:
                 if isinstance(pos_key, bytes):
@@ -464,12 +483,19 @@ class RedisPubSubBroker(BaseManualBroker):
         try:
             ownership_key = f"ownership:{identifier}"
             pipe = self.redis_instance.pipeline()
-            pipe.srem(ownership_key, consumer_group)
+
+            # Remove all stream+consumer_group combinations for this consumer group
+            members = self.redis_instance.smembers(ownership_key)
+            for member in members:
+                member_str = member.decode() if isinstance(member, bytes) else member
+                if member_str.endswith(f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}"):
+                    pipe.srem(ownership_key, member)
+
             pipe.scard(ownership_key)
             results = pipe.execute()
 
             # If ownership set is empty, delete the key
-            if len(results) >= 2 and results[-1] == 0:
+            if len(results) >= 1 and results[-1] == 0:
                 self.redis_instance.delete(ownership_key)
         except Exception as e:
             logger.debug(f"Error cleaning up message ownership for '{identifier}': {e}")
@@ -483,7 +509,7 @@ class RedisPubSubBroker(BaseManualBroker):
         """Get messages from Dead Letter Queue for inspection"""
         try:
             if stream:
-                dlq_key = f"dlq:{consumer_group}:{stream}"
+                dlq_key = f"dlq:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
                 messages = self.redis_instance.lrange(dlq_key, 0, -1)
                 # Convert JSON dictionaries to tuples to match InlineBroker format
                 dlq_tuples = []
@@ -503,7 +529,7 @@ class RedisPubSubBroker(BaseManualBroker):
                 return {stream: dlq_tuples}
             else:
                 # Get all DLQ keys for this consumer group
-                dlq_pattern = f"dlq:{consumer_group}:*"
+                dlq_pattern = f"dlq:*{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
                 dlq_keys = self.redis_instance.keys(dlq_pattern)
 
                 result = {}
@@ -511,7 +537,9 @@ class RedisPubSubBroker(BaseManualBroker):
                     if isinstance(dlq_key, bytes):
                         dlq_key = dlq_key.decode("utf-8")
 
-                    stream_name = dlq_key.replace(f"dlq:{consumer_group}:", "")
+                    stream_name = dlq_key.replace(f"dlq:", "").split(
+                        CONSUMER_GROUP_SEPARATOR
+                    )[0]
                     messages = self.redis_instance.lrange(dlq_key, 0, -1)
                     # Convert JSON dictionaries to tuples to match InlineBroker format
                     dlq_tuples = []
@@ -540,7 +568,7 @@ class RedisPubSubBroker(BaseManualBroker):
     ) -> bool:
         """Move a message from DLQ back to the main queue for reprocessing"""
         try:
-            dlq_key = f"dlq:{consumer_group}:{stream}"
+            dlq_key = f"dlq:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
             dlq_messages = self.redis_instance.lrange(dlq_key, 0, -1)
 
             for msg_bytes in dlq_messages:
@@ -562,14 +590,17 @@ class RedisPubSubBroker(BaseManualBroker):
                     message_tuple = (identifier, message)
                     pipe.lpush(stream, json.dumps(message_tuple))
 
-                    # Update all consumer group positions
-                    position_pattern = f"position:*:{stream}"
+                    # Update all consumer group positions for this stream
+                    position_pattern = f"position:{stream}{CONSUMER_GROUP_SEPARATOR}*"
                     position_keys = self.redis_instance.keys(position_pattern)
+                    current_position_key = (
+                        f"position:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+                    )
                     for key in position_keys:
                         if isinstance(key, bytes):
                             key = key.decode("utf-8")
                         # Don't update the current consumer group's position
-                        if f"position:{consumer_group}:{stream}" != key:
+                        if current_position_key != key:
                             pipe.incr(key)
 
                     pipe.execute()
@@ -594,25 +625,31 @@ class RedisPubSubBroker(BaseManualBroker):
                 if isinstance(key, bytes):
                     key = key.decode("utf-8")
 
-                group_name = key.replace("consumer_group:", "")
-                position_key = f"position:{group_name}:{stream}"
-
-                # Check if this consumer group has a position for this stream
-                if self.redis_instance.exists(position_key):
-                    consumer_groups.append(group_name)
+                # Extract stream and group name from the combined key
+                combined_part = key.replace("consumer_group:", "")
+                if CONSUMER_GROUP_SEPARATOR in combined_part:
+                    key_stream, group_name = combined_part.split(
+                        CONSUMER_GROUP_SEPARATOR, 1
+                    )
+                    # Only include groups for the specified stream
+                    if key_stream == stream:
+                        position_key = f"position:{stream}:{group_name}"
+                        # Check if this consumer group has a position for this stream
+                        if self.redis_instance.exists(position_key):
+                            consumer_groups.append(group_name)
 
             return consumer_groups
         except Exception as e:
             logger.error(f"Error getting consumer groups for stream '{stream}': {e}")
             return []
 
-    def _ensure_group(self, group_name: str) -> None:
+    def _ensure_group(self, group_name: str, stream: str) -> None:
         """Bootstrap/create consumer group for Redis PubSub.
 
         Note: Redis PubSub doesn't have native consumer groups like Redis Streams.
         This implementation creates a Redis key to track the group existence.
         """
-        group_key = f"consumer_group:{group_name}"
+        group_key = f"consumer_group:{stream}{CONSUMER_GROUP_SEPARATOR}{group_name}"
         if not self.redis_instance.exists(group_key):
             self.redis_instance.hset(
                 group_key,
@@ -628,12 +665,20 @@ class RedisPubSubBroker(BaseManualBroker):
 
         # Get all consumer group keys
         group_keys = self.redis_instance.keys("consumer_group:*")
+        group_aggregates = {}  # To aggregate info by consumer group name
 
         for key in group_keys:
             if isinstance(key, bytes):
                 key = key.decode("utf-8")
 
-            group_name = key.replace("consumer_group:", "")
+            # Extract stream and consumer group from the combined key
+            combined_part = key.replace("consumer_group:", "")
+            if CONSUMER_GROUP_SEPARATOR in combined_part:
+                stream, group_name = combined_part.split(CONSUMER_GROUP_SEPARATOR, 1)
+            else:
+                # Handle legacy keys that might not have the separator
+                continue
+
             group_info = self.redis_instance.hgetall(key)
 
             # Convert bytes to strings if needed
@@ -645,54 +690,56 @@ class RedisPubSubBroker(BaseManualBroker):
                     for k, v in group_info.items()
                 }
 
-                # Get in-flight, failed, and DLQ message counts
-                in_flight_pattern = f"in_flight:{group_name}:*"
-                failed_pattern = f"failed:{group_name}:*"
-                dlq_pattern = f"dlq:{group_name}:*"
+                # Initialize or aggregate group data
+                if group_name not in group_aggregates:
+                    group_aggregates[group_name] = {
+                        "consumers": [],  # Redis PubSub doesn't track individual consumers
+                        "created_at": float(group_info.get("created_at", 0)),
+                        "consumer_count": int(group_info.get("consumer_count", 0)),
+                        "in_flight_count": 0,
+                        "in_flight_messages": {},
+                        "failed_count": 0,
+                        "failed_messages": {},
+                        "dlq_count": 0,
+                        "dlq_messages": {},
+                    }
 
-                in_flight_keys = self.redis_instance.keys(in_flight_pattern)
-                failed_keys = self.redis_instance.keys(failed_pattern)
-                dlq_keys = self.redis_instance.keys(dlq_pattern)
-
-                in_flight_count = sum(
-                    self.redis_instance.hlen(key) for key in in_flight_keys
+                # Get counts for this specific stream+consumer_group combination
+                in_flight_key = (
+                    f"in_flight:{stream}{CONSUMER_GROUP_SEPARATOR}{group_name}"
                 )
-                failed_count = sum(self.redis_instance.llen(key) for key in failed_keys)
-                dlq_count = sum(self.redis_instance.llen(key) for key in dlq_keys)
+                failed_key = f"failed:{stream}{CONSUMER_GROUP_SEPARATOR}{group_name}"
+                dlq_key = f"dlq:{stream}{CONSUMER_GROUP_SEPARATOR}{group_name}"
 
-                # Create per-stream breakdowns
-                in_flight_messages = {}
-                for key in in_flight_keys:
-                    if isinstance(key, bytes):
-                        key = key.decode("utf-8")
-                    stream_name = key.replace(f"in_flight:{group_name}:", "")
-                    in_flight_messages[stream_name] = self.redis_instance.hlen(key)
+                # Add to aggregated counts
+                in_flight_count = (
+                    self.redis_instance.hlen(in_flight_key)
+                    if self.redis_instance.exists(in_flight_key)
+                    else 0
+                )
+                failed_count = (
+                    self.redis_instance.llen(failed_key)
+                    if self.redis_instance.exists(failed_key)
+                    else 0
+                )
+                dlq_count = (
+                    self.redis_instance.llen(dlq_key)
+                    if self.redis_instance.exists(dlq_key)
+                    else 0
+                )
 
-                failed_messages = {}
-                for key in failed_keys:
-                    if isinstance(key, bytes):
-                        key = key.decode("utf-8")
-                    stream_name = key.replace(f"failed:{group_name}:", "")
-                    failed_messages[stream_name] = self.redis_instance.llen(key)
+                group_aggregates[group_name]["in_flight_count"] += in_flight_count
+                group_aggregates[group_name]["failed_count"] += failed_count
+                group_aggregates[group_name]["dlq_count"] += dlq_count
 
-                dlq_messages = {}
-                for key in dlq_keys:
-                    if isinstance(key, bytes):
-                        key = key.decode("utf-8")
-                    stream_name = key.replace(f"dlq:{group_name}:", "")
-                    dlq_messages[stream_name] = self.redis_instance.llen(key)
+                # Add stream-specific breakdown
+                group_aggregates[group_name]["in_flight_messages"][stream] = (
+                    in_flight_count
+                )
+                group_aggregates[group_name]["failed_messages"][stream] = failed_count
+                group_aggregates[group_name]["dlq_messages"][stream] = dlq_count
 
-                consumer_groups[group_name] = {
-                    "consumers": [],  # Redis PubSub doesn't track individual consumers
-                    "created_at": float(group_info.get("created_at", 0)),
-                    "consumer_count": int(group_info.get("consumer_count", 0)),
-                    "in_flight_count": in_flight_count,
-                    "in_flight_messages": in_flight_messages,
-                    "failed_count": failed_count,
-                    "failed_messages": failed_messages,
-                    "dlq_count": dlq_count,
-                    "dlq_messages": dlq_messages,
-                }
+        consumer_groups = group_aggregates
 
         return {"consumer_groups": consumer_groups}
 

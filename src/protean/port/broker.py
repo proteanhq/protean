@@ -9,6 +9,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Type
 
 from protean.core.subscriber import BaseSubscriber
+from protean.exceptions import ValidationError
 from protean.utils import Processing
 
 if TYPE_CHECKING:
@@ -59,7 +60,13 @@ class BaseBroker(metaclass=ABCMeta):
         Returns:
             str: The identifier of the message. The content of the identifier is broker-specific.
             All brokers are guaranteed to provide message identifiers.
+
+        Raises:
+            ValidationError: If message is an empty dict
         """
+        if not message:
+            raise ValidationError({"message": ["Message cannot be empty"]})
+
         identifier = self._publish(stream, message)
 
         if (
@@ -82,7 +89,7 @@ class BaseBroker(metaclass=ABCMeta):
 
         Returns:
             str: The identifier of the message. The content of the identifier is broker-specific.
-            All brokers are guaranteed to provide message identifiers.
+            All brokers must return a non-empty string identifier.
         """
 
     def get_next(self, stream: str, consumer_group: str) -> dict | None:
@@ -148,11 +155,12 @@ class BaseBroker(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def _ensure_group(self, group_name: str) -> None:
+    def _ensure_group(self, group_name: str, stream: str = None) -> None:
         """Bootstrap/create consumer group.
 
         Args:
             group_name (str): The name of the consumer group to create
+            stream (str, optional): The stream name for brokers that require it (e.g., Redis Streams)
         """
 
     def info(self) -> dict:
@@ -328,7 +336,7 @@ class BaseManualBroker(BaseBroker):
     ) -> list[tuple[str, dict]]:
         """Default implementation using _get_next"""
         # Ensure consumer group exists
-        self._ensure_group(consumer_group)
+        self._ensure_group(consumer_group, stream)
 
         messages = []
         for _ in range(no_of_messages):
