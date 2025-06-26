@@ -34,7 +34,7 @@ STYLE_BLOCK = """
 
 TEST_CONFIGS = {
     "databases": ["MEMORY", "POSTGRESQL", "SQLITE"],
-    "brokers": ["INLINE", "REDIS_PUBSUB"],
+    "brokers": ["REDIS_PUBSUB"],
     "manual_brokers": [
         "INLINE",
         "REDIS_PUBSUB",
@@ -248,7 +248,7 @@ class TestRunner:
             "DATABASE": ("database", TEST_CONFIGS["databases"], "--db"),
             "BROKER": ("broker", TEST_CONFIGS["brokers"], "--broker"),
             "MANUAL_BROKER": (
-                "manual_broker",
+                "broker or manual_broker",
                 TEST_CONFIGS["manual_brokers"],
                 "--broker",
             ),

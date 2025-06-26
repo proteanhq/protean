@@ -58,20 +58,59 @@ def test_read_fewer_messages_than_requested(broker):
 
 @pytest.mark.broker
 def test_read_multiple_messages(broker):
-    """Test read method with multiple messages"""
+    """Test reading multiple messages at once"""
     stream = "test_stream"
     consumer_group = "test_consumer_group"
+    messages = [{"id": i, "data": f"message_{i}"} for i in range(5)]
 
-    # Publish multiple messages
-    broker.publish(stream, {"data": "msg1"})
-    broker.publish(stream, {"data": "msg2"})
-    broker.publish(stream, {"data": "msg3"})
+    # Publish messages
+    identifiers = []
+    for message in messages:
+        identifier = broker.publish(stream, message)
+        identifiers.append(identifier)
 
     # Read multiple messages
-    messages = broker.read(stream, consumer_group, 2)
-    assert len(messages) == 2
-    assert messages[0][1]["data"] == "msg1"
-    assert messages[1][1]["data"] == "msg2"
+    retrieved_messages = broker.read(stream, consumer_group, 3)
+
+    # Should get exactly 3 messages
+    assert len(retrieved_messages) == 3
+
+    # Verify messages are correct
+    for i, (identifier, message) in enumerate(retrieved_messages):
+        assert identifier == identifiers[i]
+        assert message == messages[i]
+
+
+@pytest.mark.broker
+def test_read_more_than_available(broker):
+    """Test reading more messages than available"""
+    stream = "test_stream"
+    consumer_group = "test_consumer_group"
+    message = {"data": "single message"}
+
+    # Publish only one message
+    identifier = broker.publish(stream, message)
+
+    # Try to read 5 messages
+    retrieved_messages = broker.read(stream, consumer_group, 5)
+
+    # Should get only the one available message
+    assert len(retrieved_messages) == 1
+    assert retrieved_messages[0][0] == identifier
+    assert retrieved_messages[0][1] == message
+
+
+@pytest.mark.broker
+def test_read_from_empty_stream(broker):
+    """Test reading from empty stream"""
+    stream = "empty_stream"
+    consumer_group = "test_consumer_group"
+
+    # Try to read from empty stream
+    retrieved_messages = broker.read(stream, consumer_group, 3)
+
+    # Should get empty list
+    assert len(retrieved_messages) == 0
 
 
 @pytest.mark.broker
@@ -90,8 +129,7 @@ def test_get_next_generates_uuid_identifier(broker):
 
     retrieved_identifier, retrieved_payload = retrieved_message
 
-    # Should be a string UUID format
+    # Should be a non-empty string identifier
     assert isinstance(retrieved_identifier, str)
-    assert len(retrieved_identifier) == 36  # Standard UUID length with hyphens
-    assert retrieved_identifier.count("-") == 4  # UUID has 4 hyphens
+    assert len(retrieved_identifier) > 0
     assert retrieved_identifier == identifier

@@ -9,7 +9,7 @@ def test_nack_unknown_message(broker):
     unknown_identifier = "unknown-message-id"
 
     # Ensure consumer group exists
-    broker._ensure_group(consumer_group)
+    broker._ensure_group(consumer_group, stream)
 
     # Try to nack a message that doesn't exist
     nack_result = broker.nack(stream, unknown_identifier, consumer_group)

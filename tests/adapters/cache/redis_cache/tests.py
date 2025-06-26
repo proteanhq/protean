@@ -19,7 +19,7 @@ class Token(BaseProjection):
 class TestCacheInitialization:
     def test_that_a_concrete_cache_can_be_initialized_successfully(self, test_domain):
         cache = RedisCache(
-            "dummy_name", test_domain, {"URI": "redis://127.0.0.1:6379/2"}
+            "dummy_name", test_domain, {"URI": "redis://127.0.0.1:6379/4"}
         )
         assert cache is not None
 

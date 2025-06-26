@@ -23,7 +23,9 @@ class TestRedisPubSubBrokerAdvancedFeatures:
 
         # Check Redis ownership key
         ownership_key = f"ownership:{identifier}"
-        assert broker.redis_instance.sismember(ownership_key, consumer_group)
+        assert broker.redis_instance.sismember(
+            ownership_key, f"{stream}:{consumer_group}"
+        )
 
         # Check key expiration is set
         ttl = broker.redis_instance.ttl(ownership_key)
@@ -42,9 +44,9 @@ class TestRedisPubSubBrokerAdvancedFeatures:
         assert retrieved_message is not None
 
         # Check that multiple Redis keys were created atomically
-        position_key = f"position:{consumer_group}:{stream}"
+        position_key = f"position:{stream}:{consumer_group}"
         ownership_key = f"ownership:{identifier}"
-        in_flight_key = f"in_flight:{consumer_group}:{stream}"
+        in_flight_key = f"in_flight:{stream}:{consumer_group}"
 
         assert broker.redis_instance.exists(position_key)
         assert broker.redis_instance.exists(ownership_key)
@@ -67,7 +69,7 @@ class TestRedisPubSubBrokerAdvancedFeatures:
         broker.nack(stream, identifier, consumer_group)
 
         # Check Redis retry count
-        retry_key = f"retry_count:{consumer_group}:{stream}"
+        retry_key = f"retry_count:{stream}:{consumer_group}"
         retry_count = broker.redis_instance.hget(retry_key, identifier)
         assert int(retry_count) == 1
 
@@ -98,7 +100,7 @@ class TestRedisPubSubBrokerAdvancedFeatures:
         broker.nack(stream, identifier, consumer_group)
 
         # Check Redis failed messages list
-        failed_key = f"failed:{consumer_group}:{stream}"
+        failed_key = f"failed:{stream}:{consumer_group}"
         failed_count = broker.redis_instance.llen(failed_key)
         assert failed_count == 1
 
@@ -134,7 +136,7 @@ class TestRedisPubSubBrokerAdvancedFeatures:
                     time.sleep(0.02)
 
         # Check Redis DLQ list
-        dlq_key = f"dlq:{consumer_group}:{stream}"
+        dlq_key = f"dlq:{stream}:{consumer_group}"
         dlq_count = broker.redis_instance.llen(dlq_key)
         assert dlq_count == 1
 
@@ -165,8 +167,8 @@ class TestRedisPubSubBrokerAdvancedFeatures:
         assert msg1[0] == ids[0]
 
         # Check Redis position keys
-        position_key_1 = f"position:{consumer_group_1}:{stream}"
-        position_key_2 = f"position:{consumer_group_2}:{stream}"
+        position_key_1 = f"position:{stream}:{consumer_group_1}"
+        position_key_2 = f"position:{stream}:{consumer_group_2}"
 
         assert int(broker.redis_instance.get(position_key_1) or 0) == 1
         assert int(broker.redis_instance.get(position_key_2) or 0) == 0
@@ -191,7 +193,7 @@ class TestRedisPubSubBrokerAdvancedFeatures:
         broker.nack(stream, identifier, consumer_group)
 
         # Check failed message exists
-        failed_key = f"failed:{consumer_group}:{stream}"
+        failed_key = f"failed:{stream}:{consumer_group}"
         assert broker.redis_instance.llen(failed_key) == 1
 
         # Wait for retry time and trigger requeue
@@ -239,10 +241,10 @@ class TestRedisPubSubBrokerAdvancedFeatures:
         broker.get_next(stream, consumer_group_2)
 
         # Check separate Redis keys for each group
-        in_flight_key_1 = f"in_flight:{consumer_group_1}:{stream}"
-        in_flight_key_2 = f"in_flight:{consumer_group_2}:{stream}"
-        position_key_1 = f"position:{consumer_group_1}:{stream}"
-        position_key_2 = f"position:{consumer_group_2}:{stream}"
+        in_flight_key_1 = f"in_flight:{stream}:{consumer_group_1}"
+        in_flight_key_2 = f"in_flight:{stream}:{consumer_group_2}"
+        position_key_1 = f"position:{stream}:{consumer_group_1}"
+        position_key_2 = f"position:{stream}:{consumer_group_2}"
 
         assert broker.redis_instance.hexists(in_flight_key_1, identifier)
         assert broker.redis_instance.hexists(in_flight_key_2, identifier)
@@ -251,8 +253,12 @@ class TestRedisPubSubBrokerAdvancedFeatures:
 
         # But ownership should track both groups
         ownership_key = f"ownership:{identifier}"
-        assert broker.redis_instance.sismember(ownership_key, consumer_group_1)
-        assert broker.redis_instance.sismember(ownership_key, consumer_group_2)
+        assert broker.redis_instance.sismember(
+            ownership_key, f"{stream}:{consumer_group_1}"
+        )
+        assert broker.redis_instance.sismember(
+            ownership_key, f"{stream}:{consumer_group_2}"
+        )
 
     def test_redis_transaction_retry_on_watch_error(self, broker):
         """Test handling of Redis WATCH errors during transactions"""
@@ -270,5 +276,5 @@ class TestRedisPubSubBrokerAdvancedFeatures:
         assert retrieved_message[0] == identifier
 
         # Verify the position was updated despite potential race conditions
-        position_key = f"position:{consumer_group}:{stream}"
+        position_key = f"position:{stream}:{consumer_group}"
         assert int(broker.redis_instance.get(position_key) or 0) == 1

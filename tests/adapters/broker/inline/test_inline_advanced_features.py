@@ -67,14 +67,14 @@ class TestInlineBrokerAdvancedFeatures:
         assert msg1[0] == ids[0]
 
         # Check position tracking
-        assert broker._consumer_positions[consumer_group_1][stream] == 1
-        assert broker._consumer_positions[consumer_group_2][stream] == 0
+        assert broker._consumer_positions[f"{stream}:{consumer_group_1}"] == 1
+        assert broker._consumer_positions[f"{stream}:{consumer_group_2}"] == 0
 
         # Group 2 gets first message (same message)
         msg2 = broker.get_next(stream, consumer_group_2)
         assert msg2 is not None
         assert msg2[0] == ids[0]  # Same message
-        assert broker._consumer_positions[consumer_group_2][stream] == 1
+        assert broker._consumer_positions[f"{stream}:{consumer_group_2}"] == 1
 
     def test_failed_messages_structure(self, broker):
         """Test the failed messages data structure in InlineBroker"""
@@ -93,7 +93,7 @@ class TestInlineBrokerAdvancedFeatures:
         broker.nack(stream, identifier, consumer_group)
 
         # Check failed messages structure
-        failed_msgs = broker._failed_messages[consumer_group][stream]
+        failed_msgs = broker._failed_messages[f"{stream}:{consumer_group}"]
         assert len(failed_msgs) == 1
 
         # Structure: (identifier, message, retry_count, next_retry_time)
@@ -125,7 +125,7 @@ class TestInlineBrokerAdvancedFeatures:
 
         # Check DLQ structure
         assert hasattr(broker, "_dead_letter_queue")
-        dlq_msgs = broker._dead_letter_queue[consumer_group][stream]
+        dlq_msgs = broker._dead_letter_queue[f"{stream}:{consumer_group}"]
         assert len(dlq_msgs) == 1
 
         # Structure: (identifier, message, failure_reason, timestamp)
@@ -150,7 +150,7 @@ class TestInlineBrokerAdvancedFeatures:
         assert retrieved_message is not None
 
         # Check message is in-flight
-        assert identifier in broker._in_flight[consumer_group][stream]
+        assert identifier in broker._in_flight[f"{stream}:{consumer_group}"]
 
         # Wait for timeout
         time.sleep(0.15)
@@ -159,8 +159,8 @@ class TestInlineBrokerAdvancedFeatures:
         broker.get_next(stream, consumer_group)
 
         # Check message was moved to DLQ
-        assert identifier not in broker._in_flight[consumer_group][stream]
-        dlq_msgs = broker._dead_letter_queue[consumer_group][stream]
+        assert identifier not in broker._in_flight[f"{stream}:{consumer_group}"]
+        dlq_msgs = broker._dead_letter_queue[f"{stream}:{consumer_group}"]
         assert len(dlq_msgs) == 1
         assert dlq_msgs[0][0] == identifier
         assert dlq_msgs[0][2] == "timeout"
@@ -179,7 +179,7 @@ class TestInlineBrokerAdvancedFeatures:
         broker.nack(stream, identifier, consumer_group)
 
         # Check message is in failed queue
-        failed_msgs = broker._failed_messages[consumer_group][stream]
+        failed_msgs = broker._failed_messages[f"{stream}:{consumer_group}"]
         assert len(failed_msgs) == 1
 
         # Wait for retry time
@@ -193,7 +193,7 @@ class TestInlineBrokerAdvancedFeatures:
         assert retry_message[0] == identifier
 
         # Check failed queue is now empty
-        failed_msgs = broker._failed_messages[consumer_group][stream]
+        failed_msgs = broker._failed_messages[f"{stream}:{consumer_group}"]
         assert len(failed_msgs) == 0
 
     def test_multiple_consumer_group_position_adjustment(self, broker):
@@ -219,8 +219,8 @@ class TestInlineBrokerAdvancedFeatures:
         broker.get_next(stream, consumer_group_2)
 
         # Check initial positions
-        assert broker._consumer_positions[consumer_group_1][stream] == 1
-        assert broker._consumer_positions[consumer_group_2][stream] == 2
+        assert broker._consumer_positions[f"{stream}:{consumer_group_1}"] == 1
+        assert broker._consumer_positions[f"{stream}:{consumer_group_2}"] == 2
 
         # Wait for retry and trigger requeue
         time.sleep(0.02)
@@ -228,5 +228,5 @@ class TestInlineBrokerAdvancedFeatures:
 
         # Check that group 2's position was adjusted for the requeued message
         assert (
-            broker._consumer_positions[consumer_group_2][stream] == 3
+            broker._consumer_positions[f"{stream}:{consumer_group_2}"] == 3
         )  # Incremented by 1

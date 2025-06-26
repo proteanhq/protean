@@ -200,11 +200,24 @@ def db_config(request):
 
 @pytest.fixture(scope="session")
 def broker_config(request):
+    """
+    Returns the broker configuration based on the command line option.
+
+    The default broker is `INLINE`.
+
+    Redis brokers are connected to different databases, because tests
+    may run in parallel, and we don't want them to interfere with each other.
+    """
     return {
         "INLINE": {"provider": "inline"},
+        "REDIS": {
+            "provider": "redis",
+            "URI": "redis://localhost:6379/2",
+            "TTL": 300,
+        },
         "REDIS_PUBSUB": {
             "provider": "redis_pubsub",
-            "URI": "redis://localhost:6379/2",
+            "URI": "redis://localhost:6379/3",
             "TTL": 300,
         },
     }[request.config.getoption("--broker", "INLINE")]

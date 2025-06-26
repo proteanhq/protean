@@ -11,6 +11,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Constants
+CONSUMER_GROUP_SEPARATOR = ":"
+
 
 class InlineBroker(BaseManualBroker):
     __broker__ = "inline"
@@ -27,32 +30,32 @@ class InlineBroker(BaseManualBroker):
         self._messages = defaultdict(list)
 
         # Initialize storage for consumer groups
-        # Structure: {group_name: {consumers: set(), created_at: timestamp}}
+        # Structure: {stream:group_name: {consumers: set(), created_at: timestamp}}
         self._consumer_groups = {}
 
         # Initialize storage for in-flight messages per consumer group
-        # Structure: {consumer_group: {stream: {identifier: (identifier, message, timestamp)}}}
-        self._in_flight = defaultdict(lambda: defaultdict(dict))
+        # Structure: {stream:consumer_group: {identifier: (identifier, message, timestamp)}}
+        self._in_flight = defaultdict(dict)
 
         # Initialize storage for failed messages (nacked messages waiting for retry)
-        # Structure: {consumer_group: {stream: [(identifier, message, retry_count, next_retry_time)]}}
-        self._failed_messages = defaultdict(lambda: defaultdict(list))
+        # Structure: {stream:consumer_group: [(identifier, message, retry_count, next_retry_time)]}
+        self._failed_messages = defaultdict(list)
 
         # Track retry counts per message per consumer group
-        # Structure: {consumer_group: {stream: {identifier: retry_count}}}
-        self._retry_counts = defaultdict(lambda: defaultdict(dict))
+        # Structure: {stream:consumer_group: {identifier: retry_count}}
+        self._retry_counts = defaultdict(dict)
 
         # Track read positions per consumer group to support multiple consumer groups
-        # Structure: {consumer_group: {stream: position}}
-        self._consumer_positions = defaultdict(lambda: defaultdict(int))
+        # Structure: {stream:consumer_group: position}
+        self._consumer_positions = defaultdict(int)
 
         # Track message ownership per consumer group
         # Structure: {identifier: {consumer_group: bool}}
         self._message_ownership = defaultdict(dict)
 
         # Dead Letter Queue for permanently failed messages
-        # Structure: {consumer_group: {stream: [(identifier, message, failure_reason, timestamp)]}}
-        self._dead_letter_queue = defaultdict(lambda: defaultdict(list))
+        # Structure: {stream:consumer_group: [(identifier, message, failure_reason, timestamp)]}
+        self._dead_letter_queue = defaultdict(list)
 
         # Track operation states for idempotency
         # Structure: {consumer_group: {identifier: (state, timestamp)}}
@@ -72,7 +75,10 @@ class InlineBroker(BaseManualBroker):
     def _get_next(self, stream: str, consumer_group: str) -> tuple[str, dict] | None:
         """Get next message in stream for a specific consumer group"""
         # Ensure consumer group exists (create if it doesn't)
-        self._ensure_group(consumer_group)
+        self._ensure_group(consumer_group, stream)
+
+        # Create combined group key for this stream+consumer_group
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
 
         # Clean up stale in-flight messages first
         self._cleanup_stale_messages(consumer_group, self._message_timeout)
@@ -81,14 +87,14 @@ class InlineBroker(BaseManualBroker):
         self._requeue_failed_messages(stream, consumer_group)
 
         # Check current position for this consumer group
-        position = self._consumer_positions[consumer_group][stream]
+        position = self._consumer_positions[group_key]
 
         # Check if there's a message at this position
         if position < len(self._messages[stream]):
             identifier, message = self._messages[stream][position]
 
             # Increment position for this consumer group
-            self._consumer_positions[consumer_group][stream] += 1
+            self._consumer_positions[group_key] += 1
 
             # Track message ownership
             self._message_ownership[identifier][consumer_group] = True
@@ -109,7 +115,8 @@ class InlineBroker(BaseManualBroker):
         self, stream: str, consumer_group: str, identifier: str, message: dict
     ) -> None:
         """Store a message in in-flight status"""
-        self._in_flight[consumer_group][stream][identifier] = (
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        self._in_flight[group_key][identifier] = (
             identifier,
             message,
             time.time(),
@@ -119,21 +126,24 @@ class InlineBroker(BaseManualBroker):
         self, stream: str, consumer_group: str, identifier: str
     ) -> None:
         """Remove a message from in-flight status"""
-        if identifier in self._in_flight[consumer_group][stream]:
-            del self._in_flight[consumer_group][stream][identifier]
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        if identifier in self._in_flight[group_key]:
+            del self._in_flight[group_key][identifier]
 
     def _is_in_flight_message(
         self, stream: str, consumer_group: str, identifier: str
     ) -> bool:
         """Check if a message is in in-flight status"""
-        return identifier in self._in_flight[consumer_group][stream]
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        return identifier in self._in_flight[group_key]
 
     def _get_in_flight_message(
         self, stream: str, consumer_group: str, identifier: str
     ) -> tuple[str, dict] | None:
         """Get in-flight message data"""
-        if identifier in self._in_flight[consumer_group][stream]:
-            identifier, message, _ = self._in_flight[consumer_group][stream][identifier]
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        if identifier in self._in_flight[group_key]:
+            identifier, message, _ = self._in_flight[group_key][identifier]
             return (identifier, message)
         return None
 
@@ -172,7 +182,8 @@ class InlineBroker(BaseManualBroker):
         next_retry_time: float,
     ) -> None:
         """Store a failed message for retry"""
-        self._failed_messages[consumer_group][stream].append(
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        self._failed_messages[group_key].append(
             (identifier, message, retry_count, next_retry_time)
         )
 
@@ -180,8 +191,9 @@ class InlineBroker(BaseManualBroker):
         self, stream: str, consumer_group: str, identifier: str
     ) -> None:
         """Remove a failed message from retry queue"""
-        failed_messages = self._failed_messages[consumer_group][stream]
-        self._failed_messages[consumer_group][stream] = [
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        failed_messages = self._failed_messages[group_key]
+        self._failed_messages[group_key] = [
             (msg_id, msg, retry_count, next_retry_time)
             for msg_id, msg, retry_count, next_retry_time in failed_messages
             if msg_id != identifier
@@ -192,7 +204,8 @@ class InlineBroker(BaseManualBroker):
     ) -> list[tuple[str, dict]]:
         """Get messages ready for retry and remove them from failed queue"""
         current_time = time.time()
-        failed_messages = self._failed_messages[consumer_group][stream]
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        failed_messages = self._failed_messages[group_key]
 
         # Find messages ready for retry
         ready_for_retry = []
@@ -207,7 +220,7 @@ class InlineBroker(BaseManualBroker):
                 )
 
         # Update failed messages list
-        self._failed_messages[consumer_group][stream] = remaining_failed
+        self._failed_messages[group_key] = remaining_failed
 
         return ready_for_retry
 
@@ -220,13 +233,18 @@ class InlineBroker(BaseManualBroker):
         failure_reason: str,
     ) -> None:
         """Store a message in Dead Letter Queue"""
-        self._dead_letter_queue[consumer_group][stream].append(
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        self._dead_letter_queue[group_key].append(
             (identifier, message, failure_reason, time.time())
         )
 
     def _validate_consumer_group(self, consumer_group: str) -> bool:
         """Validate that the consumer group exists"""
-        return consumer_group in self._consumer_groups
+        # For inline broker, we need to check all streams for this consumer group
+        for group_key in self._consumer_groups:
+            if group_key.endswith(f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}"):
+                return True
+        return False
 
     def _validate_message_ownership(self, identifier: str, consumer_group: str) -> bool:
         """Validate that the message was delivered to the specified consumer group"""
@@ -242,15 +260,25 @@ class InlineBroker(BaseManualBroker):
         current_time = time.time()
         cutoff_time = current_time - timeout_seconds
 
-        for stream in list(self._in_flight[consumer_group].keys()):
+        # Find all group keys for this consumer group
+        matching_group_keys = [
+            group_key
+            for group_key in self._in_flight.keys()
+            if group_key.endswith(f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}")
+        ]
+
+        for group_key in matching_group_keys:
+            # Extract stream name from group key
+            stream = group_key.split(CONSUMER_GROUP_SEPARATOR)[0]
+
             stale_messages = []
             for identifier, (msg_id, message, timestamp) in list(
-                self._in_flight[consumer_group][stream].items()
+                self._in_flight[group_key].items()
             ):
                 if timestamp < cutoff_time:
                     stale_messages.append((identifier, message))
                     # Remove from in-flight
-                    del self._in_flight[consumer_group][stream][identifier]
+                    del self._in_flight[group_key][identifier]
 
                     # Move to DLQ if enabled
                     if self._enable_dlq:
@@ -269,20 +297,23 @@ class InlineBroker(BaseManualBroker):
         self, stream: str, consumer_group: str, identifier: str
     ) -> int:
         """Get current retry count for a message"""
-        return self._retry_counts[consumer_group][stream].get(identifier, 0)
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        return self._retry_counts[group_key].get(identifier, 0)
 
     def _set_retry_count(
         self, stream: str, consumer_group: str, identifier: str, count: int
     ) -> None:
         """Set retry count for a message"""
-        self._retry_counts[consumer_group][stream][identifier] = count
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        self._retry_counts[group_key][identifier] = count
 
     def _remove_retry_count(
         self, stream: str, consumer_group: str, identifier: str
     ) -> None:
         """Remove retry count tracking for a message"""
-        if identifier in self._retry_counts[consumer_group][stream]:
-            del self._retry_counts[consumer_group][stream][identifier]
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        if identifier in self._retry_counts[group_key]:
+            del self._retry_counts[group_key][identifier]
 
     def _requeue_messages(
         self, stream: str, consumer_group: str, messages: list[tuple[str, dict]]
@@ -290,18 +321,23 @@ class InlineBroker(BaseManualBroker):
         """Requeue messages back to the main queue"""
         if messages:
             # Add ready messages back to the queue at the current position for this consumer group
-            current_position = self._consumer_positions[consumer_group][stream]
+            group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+            current_position = self._consumer_positions[group_key]
 
             # Insert messages in reverse order to maintain order
             for identifier, message in reversed(messages):
                 self._messages[stream].insert(current_position, (identifier, message))
                 # Adjust all consumer group positions that are at or beyond this position
-                for cgroup in self._consumer_positions:
+                for other_group_key in self._consumer_positions:
                     if (
-                        cgroup != consumer_group
-                        and self._consumer_positions[cgroup][stream] >= current_position
+                        other_group_key != group_key
+                        and other_group_key.startswith(
+                            f"{stream}{CONSUMER_GROUP_SEPARATOR}"
+                        )
+                        and self._consumer_positions[other_group_key]
+                        >= current_position
                     ):
-                        self._consumer_positions[cgroup][stream] += 1
+                        self._consumer_positions[other_group_key] += 1
 
     def _cleanup_message_ownership(self, identifier: str, consumer_group: str) -> None:
         """Clean up message ownership tracking"""
@@ -329,16 +365,24 @@ class InlineBroker(BaseManualBroker):
     def _get_dlq_messages(self, consumer_group: str, stream: str = None) -> dict:
         """Get messages from Dead Letter Queue for inspection"""
         if stream:
-            return {stream: list(self._dead_letter_queue[consumer_group][stream])}
+            group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+            return {stream: list(self._dead_letter_queue[group_key])}
         else:
-            return dict(self._dead_letter_queue[consumer_group])
+            # Get all DLQ messages for this consumer group across all streams
+            result = {}
+            for group_key in self._dead_letter_queue:
+                if group_key.endswith(f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}"):
+                    stream_name = group_key.split(CONSUMER_GROUP_SEPARATOR)[0]
+                    result[stream_name] = list(self._dead_letter_queue[group_key])
+            return result
 
     def _reprocess_dlq_message(
         self, identifier: str, consumer_group: str, stream: str
     ) -> bool:
         """Move a message from DLQ back to the main queue for reprocessing"""
         try:
-            dlq_messages = self._dead_letter_queue[consumer_group][stream]
+            group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+            dlq_messages = self._dead_letter_queue[group_key]
             for i, (msg_id, message, failure_reason, timestamp) in enumerate(
                 dlq_messages
             ):
@@ -350,19 +394,22 @@ class InlineBroker(BaseManualBroker):
                     self._set_retry_count(stream, consumer_group, identifier, 0)
 
                     # Add back to main queue at current position
-                    current_position = self._consumer_positions[consumer_group][stream]
+                    current_position = self._consumer_positions[group_key]
                     self._messages[stream].insert(
                         current_position, (identifier, message)
                     )
 
-                    # Adjust all consumer group positions
-                    for cgroup in self._consumer_positions:
+                    # Adjust all consumer group positions for this stream
+                    for other_group_key in self._consumer_positions:
                         if (
-                            cgroup != consumer_group
-                            and self._consumer_positions[cgroup][stream]
+                            other_group_key != group_key
+                            and other_group_key.startswith(
+                                f"{stream}{CONSUMER_GROUP_SEPARATOR}"
+                            )
+                            and self._consumer_positions[other_group_key]
                             >= current_position
                         ):
-                            self._consumer_positions[cgroup][stream] += 1
+                            self._consumer_positions[other_group_key] += 1
 
                     logger.info(f"Message '{identifier}' reprocessed from DLQ")
                     return True
@@ -371,42 +418,46 @@ class InlineBroker(BaseManualBroker):
             logger.error(f"Error reprocessing DLQ message '{identifier}': {e}")
             return False
 
-    def _ensure_group(self, group_name: str) -> None:
+    def _ensure_group(self, group_name: str, stream: str) -> None:
         """Bootstrap/create consumer group."""
-        if group_name not in self._consumer_groups:
-            self._consumer_groups[group_name] = {
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{group_name}"
+        if group_key not in self._consumer_groups:
+            self._consumer_groups[group_key] = {
                 "consumers": set(),
                 "created_at": time.time(),
             }
 
     def _info(self) -> dict:
         """Provide information about consumer groups and consumers."""
-        return {
-            "consumer_groups": {
-                group_name: {
+        # Group info by consumer group name across all streams
+        consumer_groups_info = {}
+
+        for group_key, group_info in self._consumer_groups.items():
+            # Extract stream and consumer group name from the combined key
+            stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+
+            if consumer_group not in consumer_groups_info:
+                consumer_groups_info[consumer_group] = {
                     "consumers": list(group_info["consumers"]),
                     "created_at": group_info["created_at"],
                     "consumer_count": len(group_info["consumers"]),
-                    "in_flight_messages": {
-                        stream: len(messages)
-                        for stream, messages in self._in_flight[group_name].items()
-                    },
-                    "failed_messages": {
-                        stream: len(messages)
-                        for stream, messages in self._failed_messages[
-                            group_name
-                        ].items()
-                    },
-                    "dlq_messages": {
-                        stream: len(messages)
-                        for stream, messages in self._dead_letter_queue[
-                            group_name
-                        ].items()
-                    },
+                    "in_flight_messages": {},
+                    "failed_messages": {},
+                    "dlq_messages": {},
                 }
-                for group_name, group_info in self._consumer_groups.items()
-            }
-        }
+
+            # Add stream-specific information
+            consumer_groups_info[consumer_group]["in_flight_messages"][stream] = len(
+                self._in_flight[group_key]
+            )
+            consumer_groups_info[consumer_group]["failed_messages"][stream] = len(
+                self._failed_messages[group_key]
+            )
+            consumer_groups_info[consumer_group]["dlq_messages"][stream] = len(
+                self._dead_letter_queue[group_key]
+            )
+
+        return {"consumer_groups": consumer_groups_info}
 
     def _data_reset(self) -> None:
         """Flush all data in broker instance"""
