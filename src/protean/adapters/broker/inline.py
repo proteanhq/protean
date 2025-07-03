@@ -470,3 +470,79 @@ class InlineBroker(BaseManualBroker):
         self._message_ownership.clear()
         self._dead_letter_queue.clear()
         self._operation_states.clear()
+
+    def _ping(self) -> bool:
+        """Test connectivity to the inline broker.
+
+        Since InlineBroker is in-memory, it's always available.
+
+        Returns:
+            bool: Always True for inline broker
+        """
+        return True
+
+    def _health_stats(self) -> dict:
+        """Get health statistics for the inline broker.
+
+        Returns:
+            dict: Health statistics including message counts and consumer group info
+        """
+        # Calculate total messages across all streams
+        total_messages = sum(len(messages) for messages in self._messages.values())
+
+        # Calculate total in-flight messages across all consumer groups
+        total_in_flight = sum(len(in_flight) for in_flight in self._in_flight.values())
+
+        # Calculate total failed messages across all consumer groups
+        total_failed = sum(len(failed) for failed in self._failed_messages.values())
+
+        # Calculate total DLQ messages across all consumer groups
+        total_dlq = sum(len(dlq) for dlq in self._dead_letter_queue.values())
+
+        # Get unique streams and consumer groups
+        streams = set(self._messages.keys())
+        consumer_groups = set()
+        for group_key in self._consumer_groups.keys():
+            if CONSUMER_GROUP_SEPARATOR in group_key:
+                _, group_name = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+                consumer_groups.add(group_name)
+
+        # Calculate memory usage estimate (rough approximation)
+        memory_estimate = (
+            total_messages * 100  # Rough estimate per message
+            + total_in_flight * 150  # In-flight messages have more metadata
+            + total_failed * 150  # Failed messages have retry info
+            + total_dlq * 150  # DLQ messages have failure info
+        )
+
+        return {
+            "healthy": True,  # InlineBroker is always healthy
+            "message_counts": {
+                "total_messages": total_messages,
+                "in_flight": total_in_flight,
+                "failed": total_failed,
+                "dlq": total_dlq,
+            },
+            "streams": {"count": len(streams), "names": list(streams)},
+            "consumer_groups": {
+                "count": len(consumer_groups),
+                "names": list(consumer_groups),
+            },
+            "memory_estimate_bytes": memory_estimate,
+            "configuration": {
+                "max_retries": self._max_retries,
+                "retry_delay": self._retry_delay,
+                "message_timeout": self._message_timeout,
+                "enable_dlq": self._enable_dlq,
+            },
+        }
+
+    def _ensure_connection(self) -> bool:
+        """Ensure connection to the inline broker.
+
+        Since InlineBroker is in-memory, no external connection is needed.
+
+        Returns:
+            bool: Always True for inline broker
+        """
+        return True

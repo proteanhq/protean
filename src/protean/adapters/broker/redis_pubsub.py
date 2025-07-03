@@ -336,7 +336,7 @@ class RedisPubSubBroker(BaseManualBroker):
                     in_flight_key = in_flight_key.decode("utf-8")
 
                 # Extract stream name from key
-                stream = in_flight_key.replace(f"in_flight:", "").split(
+                stream = in_flight_key.replace("in_flight:", "").split(
                     CONSUMER_GROUP_SEPARATOR
                 )[0]
 
@@ -537,7 +537,7 @@ class RedisPubSubBroker(BaseManualBroker):
                     if isinstance(dlq_key, bytes):
                         dlq_key = dlq_key.decode("utf-8")
 
-                    stream_name = dlq_key.replace(f"dlq:", "").split(
+                    stream_name = dlq_key.replace("dlq:", "").split(
                         CONSUMER_GROUP_SEPARATOR
                     )[0]
                     messages = self.redis_instance.lrange(dlq_key, 0, -1)
@@ -742,6 +742,267 @@ class RedisPubSubBroker(BaseManualBroker):
         consumer_groups = group_aggregates
 
         return {"consumer_groups": consumer_groups}
+
+    def _ping(self) -> bool:
+        """Test basic connectivity to Redis broker"""
+        try:
+            return self.redis_instance.ping()
+        except Exception as e:
+            logger.debug(f"Redis PubSub ping failed: {e}")
+            return False
+
+    def _health_stats(self) -> dict:
+        """Get Redis PubSub-specific health and performance statistics"""
+        try:
+            redis_info = self.redis_instance.info()
+
+            # Calculate message counts across all streams
+            message_counts = self._calculate_message_counts()
+
+            # Calculate streams and consumer groups info
+            streams_info = self._calculate_streams_info()
+            consumer_groups_info = self._calculate_consumer_groups_info()
+
+            # Extract key Redis metrics
+            stats = {
+                "healthy": True,
+                "redis_version": redis_info.get("redis_version", "unknown"),
+                "connected_clients": redis_info.get("connected_clients", 0),
+                "used_memory": redis_info.get("used_memory", 0),
+                "used_memory_human": redis_info.get("used_memory_human", "0B"),
+                "used_memory_peak": redis_info.get("used_memory_peak", 0),
+                "used_memory_peak_human": redis_info.get(
+                    "used_memory_peak_human", "0B"
+                ),
+                "keyspace_hits": redis_info.get("keyspace_hits", 0),
+                "keyspace_misses": redis_info.get("keyspace_misses", 0),
+                "expired_keys": redis_info.get("expired_keys", 0),
+                "evicted_keys": redis_info.get("evicted_keys", 0),
+                "total_commands_processed": redis_info.get(
+                    "total_commands_processed", 0
+                ),
+                "instantaneous_ops_per_sec": redis_info.get(
+                    "instantaneous_ops_per_sec", 0
+                ),
+                "role": redis_info.get("role", "unknown"),
+                "uptime_in_seconds": redis_info.get("uptime_in_seconds", 0),
+                "tcp_port": redis_info.get("tcp_port", 0),
+                "message_counts": message_counts,
+                "streams": streams_info,
+                "consumer_groups": consumer_groups_info,
+                "memory_estimate_bytes": redis_info.get("used_memory", 0),
+            }
+
+            # Calculate hit rate if we have the data
+            hits = stats["keyspace_hits"]
+            misses = stats["keyspace_misses"]
+            if hits + misses > 0:
+                stats["hit_rate"] = hits / (hits + misses)
+            else:
+                stats["hit_rate"] = 0.0
+
+            # Check for potential health issues
+            if redis_info.get("loading", 0) == 1:
+                stats["healthy"] = False
+                stats["warning"] = "Redis is loading data from disk"
+
+            if redis_info.get("rejected_connections", 0) > 0:
+                stats["healthy"] = False
+                stats["warning"] = "Redis has rejected connections"
+
+            # Add configuration details (includes manual broker configuration)
+            stats["configuration"] = {
+                "broker_type": "redis_pubsub",
+                "max_retries": self._max_retries,
+                "retry_delay": self._retry_delay,
+                "message_timeout": self._message_timeout,
+                "enable_dlq": self._enable_dlq,
+                "manual_consumer_groups": True,
+                "native_ack_nack": False,  # Manual implementation
+            }
+
+            return stats
+
+        except Exception as e:
+            logger.error(f"Error getting Redis PubSub health stats: {e}")
+            return {
+                "healthy": False,
+                "error": str(e),
+                "message_counts": {
+                    "total_messages": 0,
+                    "in_flight": 0,
+                    "failed": 0,
+                    "dlq": 0,
+                },
+                "streams": {"count": 0, "names": []},
+                "consumer_groups": {"count": 0, "names": []},
+                "memory_estimate_bytes": 0,
+                "configuration": {
+                    "broker_type": "redis_pubsub",
+                    "error": "Failed to get configuration",
+                    "max_retries": self._max_retries,
+                    "retry_delay": self._retry_delay,
+                    "message_timeout": self._message_timeout,
+                    "enable_dlq": self._enable_dlq,
+                    "manual_consumer_groups": True,
+                    "native_ack_nack": False,
+                },
+            }
+
+    def _ensure_connection(self) -> bool:
+        """Ensure connection to Redis broker is healthy, reconnect if necessary"""
+        try:
+            # Test current connection
+            if self.redis_instance.ping():
+                return True
+
+            # Connection failed, try to reconnect
+            logger.info("Redis PubSub connection failed, attempting to reconnect...")
+
+            # Create a new Redis instance with the same connection info
+            self.redis_instance = redis.Redis.from_url(self.conn_info["URI"])
+
+            # Test the new connection
+            if self.redis_instance.ping():
+                logger.info("Redis PubSub connection restored")
+                return True
+            else:
+                logger.error("Failed to restore Redis PubSub connection")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error ensuring Redis PubSub connection: {e}")
+            try:
+                # Last attempt - create completely new connection
+                self.redis_instance = redis.Redis.from_url(self.conn_info["URI"])
+                if self.redis_instance.ping():
+                    logger.info("Redis PubSub connection restored after recreation")
+                    return True
+            except Exception as reconnect_error:
+                logger.error(f"Failed to reconnect to Redis PubSub: {reconnect_error}")
+
+            return False
+
+    def _calculate_message_counts(self) -> dict:
+        """Calculate message counts across all streams"""
+        try:
+            streams_to_check = self._get_streams_to_check()
+            total_messages = 0
+            total_in_flight = 0
+            total_failed = 0
+            total_dlq = 0
+
+            for stream in streams_to_check:
+                try:
+                    # Get stream length (total messages)
+                    stream_length = self.redis_instance.llen(stream)
+                    total_messages += stream_length
+
+                    # Get in-flight, failed, and DLQ counts for all consumer groups in this stream
+                    consumer_groups = self._get_consumer_groups_for_stream(stream)
+                    for consumer_group in consumer_groups:
+                        # Count in-flight messages
+                        in_flight_key = f"in_flight:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+                        if self.redis_instance.exists(in_flight_key):
+                            total_in_flight += self.redis_instance.hlen(in_flight_key)
+
+                        # Count failed messages
+                        failed_key = (
+                            f"failed:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+                        )
+                        if self.redis_instance.exists(failed_key):
+                            total_failed += self.redis_instance.llen(failed_key)
+
+                        # Count DLQ messages
+                        dlq_key = (
+                            f"dlq:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+                        )
+                        if self.redis_instance.exists(dlq_key):
+                            total_dlq += self.redis_instance.llen(dlq_key)
+
+                except redis.ResponseError:
+                    # Stream might not exist
+                    pass
+
+            return {
+                "total_messages": total_messages,
+                "in_flight": total_in_flight,
+                "failed": total_failed,
+                "dlq": total_dlq,
+            }
+
+        except Exception as e:
+            logger.debug(f"Error calculating message counts: {e}")
+            return {"total_messages": 0, "in_flight": 0, "failed": 0, "dlq": 0}
+
+    def _get_streams_to_check(self) -> set:
+        """Get set of streams to check for info"""
+        streams = set(self._subscribers.keys())
+
+        # Also get streams from consumer group keys and position keys
+        try:
+            # Get streams from consumer group keys
+            group_keys = self.redis_instance.keys("consumer_group:*")
+            for key in group_keys:
+                if isinstance(key, bytes):
+                    key = key.decode("utf-8")
+                combined_part = key.replace("consumer_group:", "")
+                if CONSUMER_GROUP_SEPARATOR in combined_part:
+                    stream_name = combined_part.split(CONSUMER_GROUP_SEPARATOR, 1)[0]
+                    streams.add(stream_name)
+
+            # Get streams from position keys
+            position_keys = self.redis_instance.keys("position:*")
+            for key in position_keys:
+                if isinstance(key, bytes):
+                    key = key.decode("utf-8")
+                combined_part = key.replace("position:", "")
+                if CONSUMER_GROUP_SEPARATOR in combined_part:
+                    stream_name = combined_part.split(CONSUMER_GROUP_SEPARATOR, 1)[0]
+                    streams.add(stream_name)
+
+        except Exception as e:
+            logger.debug(f"Error getting streams to check: {e}")
+
+        return streams
+
+    def _calculate_streams_info(self) -> dict:
+        """Calculate streams information"""
+        try:
+            streams_to_check = self._get_streams_to_check()
+            # Filter out streams that don't actually exist as Redis lists
+            existing_streams = []
+            for stream in streams_to_check:
+                try:
+                    if self.redis_instance.exists(stream):
+                        existing_streams.append(stream)
+                except redis.ResponseError:
+                    # Stream doesn't exist, skip it
+                    pass
+
+            return {"count": len(existing_streams), "names": sorted(existing_streams)}
+        except Exception as e:
+            logger.debug(f"Error calculating streams info: {e}")
+            return {"count": 0, "names": []}
+
+    def _calculate_consumer_groups_info(self) -> dict:
+        """Calculate consumer groups information"""
+        try:
+            # Get all unique consumer group names across all streams
+            consumer_groups = set()
+            group_keys = self.redis_instance.keys("consumer_group:*")
+            for key in group_keys:
+                if isinstance(key, bytes):
+                    key = key.decode("utf-8")
+                combined_part = key.replace("consumer_group:", "")
+                if CONSUMER_GROUP_SEPARATOR in combined_part:
+                    _, group_name = combined_part.split(CONSUMER_GROUP_SEPARATOR, 1)
+                    consumer_groups.add(group_name)
+
+            return {"count": len(consumer_groups), "names": sorted(consumer_groups)}
+        except Exception as e:
+            logger.debug(f"Error calculating consumer groups info: {e}")
+            return {"count": 0, "names": []}
 
     def _data_reset(self) -> None:
         self.redis_instance.flushall()

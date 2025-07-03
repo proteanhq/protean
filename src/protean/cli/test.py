@@ -34,7 +34,7 @@ STYLE_BLOCK = """
 
 TEST_CONFIGS = {
     "databases": ["MEMORY", "POSTGRESQL", "SQLITE"],
-    "brokers": ["REDIS_PUBSUB"],
+    "brokers": ["REDIS"],
     "manual_brokers": [
         "INLINE",
         "REDIS_PUBSUB",
