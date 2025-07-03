@@ -49,6 +49,9 @@ class BaseBroker(metaclass=ABCMeta):
         self.conn_info = conn_info
 
         self._subscribers = defaultdict(set)
+        self._last_ping_time = None
+        self._last_ping_success = None
+        self._start_time = time.time()
 
     def publish(self, stream: str, message: dict) -> str:
         """Publish a message to the broker.
@@ -67,7 +70,19 @@ class BaseBroker(metaclass=ABCMeta):
         if not message:
             raise ValidationError({"message": ["Message cannot be empty"]})
 
-        identifier = self._publish(stream, message)
+        try:
+            identifier = self._publish(stream, message)
+        except Exception as e:
+            # Check if this is a connection-related error and attempt recovery
+            if self._is_connection_error(e):
+                logger.warning(f"Connection error during publish: {e}")
+                if self._ensure_connection():
+                    # Retry the operation once after reconnection
+                    identifier = self._publish(stream, message)
+                else:
+                    raise
+            else:
+                raise
 
         if (
             self.domain.config["message_processing"] == Processing.SYNC.value
@@ -78,6 +93,138 @@ class BaseBroker(metaclass=ABCMeta):
                 subscriber(message)
 
         return identifier
+
+    def ping(self) -> bool:
+        """Test broker connectivity.
+
+        Returns:
+            bool: True if broker is reachable and responsive, False otherwise
+        """
+        try:
+            start_time = time.time()
+            result = self._ping()
+            self._last_ping_time = time.time() - start_time
+            self._last_ping_success = result
+            return result
+        except Exception as e:
+            logger.debug(f"Ping failed for broker {self.name}: {e}")
+            self._last_ping_time = None
+            self._last_ping_success = False
+            return False
+
+    def health_stats(self) -> dict:
+        """Get comprehensive health statistics for the broker.
+
+        Returns:
+            dict: Health statistics with the following structure:
+                {
+                    'status': 'healthy' | 'degraded' | 'unhealthy',
+                    'connected': bool,
+                    'last_ping_ms': float | None,
+                    'uptime_seconds': float,
+                    'details': dict  # Broker-specific details
+                }
+        """
+        try:
+            # Get broker-specific health details
+            broker_details = self._health_stats()
+
+            # Perform a fresh ping to get current connectivity status
+            is_connected = self.ping()
+
+            # Determine overall health status
+            if is_connected and broker_details.get("healthy", True):
+                status = "healthy"
+            elif is_connected:
+                status = "degraded"  # Connected but some issues reported
+            else:
+                status = "unhealthy"
+
+            # Calculate uptime since broker initialization
+            uptime_seconds = time.time() - self._start_time
+
+            return {
+                "status": status,
+                "connected": is_connected,
+                "last_ping_ms": self._last_ping_time * 1000
+                if self._last_ping_time is not None
+                else None,
+                "uptime_seconds": uptime_seconds,
+                "details": broker_details,
+            }
+        except Exception as e:
+            logger.error(f"Error gathering health stats for broker {self.name}: {e}")
+            return {
+                "status": "unhealthy",
+                "connected": False,
+                "last_ping_ms": None,
+                "uptime_seconds": 0,
+                "details": {"error": str(e)},
+            }
+
+    def ensure_connection(self) -> bool:
+        """Ensure broker connection is healthy, attempt reconnection if needed.
+
+        This method can be called explicitly or is triggered automatically
+        when connection-related exceptions are encountered.
+
+        Returns:
+            bool: True if connection is healthy/restored, False otherwise
+        """
+        return self._ensure_connection()
+
+    def _is_connection_error(self, exception: Exception) -> bool:
+        """Check if an exception indicates a connection-related error.
+
+        Args:
+            exception: The exception to analyze
+
+        Returns:
+            bool: True if this appears to be a connection error
+        """
+        # Default implementation checks for common connection error patterns
+        error_str = str(exception).lower()
+        connection_indicators = [
+            "connection",
+            "timeout",
+            "timed out",
+            "network",
+            "unreachable",
+            "refused",
+            "reset",
+            "broken pipe",
+            "socket",
+        ]
+        return any(indicator in error_str for indicator in connection_indicators)
+
+    @abstractmethod
+    def _ping(self) -> bool:
+        """Test basic connectivity to the broker.
+
+        Returns:
+            bool: True if broker responds successfully, False otherwise
+        """
+
+    @abstractmethod
+    def _health_stats(self) -> dict:
+        """Get broker-specific health and performance statistics.
+
+        Returns:
+            dict: Broker-specific health details. Common fields may include:
+                - 'healthy': bool (overall broker health)
+                - 'queue_depth': int (pending messages)
+                - 'consumer_lag': dict (lag per consumer group)
+                - 'error_rate': float (recent error percentage)
+                - Any other broker-specific metrics
+        """
+
+    @abstractmethod
+    def _ensure_connection(self) -> bool:
+        """Ensure connection to broker is healthy, reconnect if necessary.
+
+        Returns:
+            bool: True if connection is healthy/restored, False if unable to connect
+        """
 
     @abstractmethod
     def _publish(self, stream: str, message: dict) -> str:
@@ -102,7 +249,19 @@ class BaseBroker(metaclass=ABCMeta):
         Returns:
             dict: The message payload, or None if no messages available
         """
-        return self._get_next(stream, consumer_group)
+        try:
+            return self._get_next(stream, consumer_group)
+        except Exception as e:
+            # Check if this is a connection-related error and attempt recovery
+            if self._is_connection_error(e):
+                logger.warning(f"Connection error during get_next: {e}")
+                if self._ensure_connection():
+                    # Retry the operation once after reconnection
+                    return self._get_next(stream, consumer_group)
+                else:
+                    raise
+            else:
+                raise
 
     @abstractmethod
     def _get_next(self, stream: str, consumer_group: str) -> dict | None:
