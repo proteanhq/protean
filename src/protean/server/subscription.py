@@ -3,7 +3,6 @@ import logging
 import os
 import secrets
 import socket
-import traceback
 from typing import List, Type, Union
 
 from protean.core.command_handler import BaseCommandHandler

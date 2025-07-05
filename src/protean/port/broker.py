@@ -267,8 +267,9 @@ class BaseBroker(metaclass=ABCMeta):
     def _get_next(self, stream: str, consumer_group: str) -> dict | None:
         """Overridden method to retrieve the next message to process from broker."""
 
-    @abstractmethod
-    def read(self, stream: str, consumer_group: str, no_of_messages: int) -> list[dict]:
+    def read(
+        self, stream: str, consumer_group: str, no_of_messages: int
+    ) -> list[tuple[str, dict]]:
         """Read messages from the broker.
 
         Args:
@@ -277,11 +278,89 @@ class BaseBroker(metaclass=ABCMeta):
             no_of_messages (int): The number of messages to read
 
         Returns:
-            list[dict]: The list of messages
+            list[tuple[str, dict]]: The list of (identifier, message) tuples
+        """
+        try:
+            return self._read(stream, consumer_group, no_of_messages)
+        except Exception as e:
+            # Check if this is a connection-related error and attempt recovery
+            if self._is_connection_error(e):
+                logger.warning(f"Connection error during read: {e}")
+                if self._ensure_connection():
+                    # Retry the operation once after reconnection
+                    return self._read(stream, consumer_group, no_of_messages)
+                else:
+                    raise
+            else:
+                raise
+
+    def ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+        """Acknowledge successful processing of a message.
+
+        Args:
+            stream (str): The stream from which the message was received
+            identifier (str): The unique identifier of the message to acknowledge
+            consumer_group (str): The consumer group that processed the message
+
+        Returns:
+            bool: True if the message was successfully acknowledged, False otherwise
+        """
+        try:
+            return self._ack(stream, identifier, consumer_group)
+        except Exception as e:
+            # Check if this is a connection-related error and attempt recovery
+            if self._is_connection_error(e):
+                logger.warning(f"Connection error during ack: {e}")
+                if self._ensure_connection():
+                    # Retry the operation once after reconnection
+                    return self._ack(stream, identifier, consumer_group)
+                else:
+                    raise
+            else:
+                raise
+
+    def nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+        """Negative acknowledge - mark message for reprocessing.
+
+        Args:
+            stream (str): The stream from which the message was received
+            identifier (str): The unique identifier of the message to nack
+            consumer_group (str): The consumer group that failed to process the message
+
+        Returns:
+            bool: True if the message was successfully marked for reprocessing, False otherwise
+        """
+        try:
+            return self._nack(stream, identifier, consumer_group)
+        except Exception as e:
+            # Check if this is a connection-related error and attempt recovery
+            if self._is_connection_error(e):
+                logger.warning(f"Connection error during nack: {e}")
+                if self._ensure_connection():
+                    # Retry the operation once after reconnection
+                    return self._nack(stream, identifier, consumer_group)
+                else:
+                    raise
+            else:
+                raise
+
+    @abstractmethod
+    def _read(
+        self, stream: str, consumer_group: str, no_of_messages: int
+    ) -> list[tuple[str, dict]]:
+        """Read messages from the broker.
+
+        Args:
+            stream (str): The stream from which to read messages
+            consumer_group (str): The consumer group identifier
+            no_of_messages (int): The number of messages to read
+
+        Returns:
+            list[tuple[str, dict]]: The list of (identifier, message) tuples
         """
 
     @abstractmethod
-    def ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
         """Acknowledge successful processing of a message.
 
         Args:
@@ -294,7 +373,7 @@ class BaseBroker(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+    def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
         """Negative acknowledge - mark message for reprocessing.
 
         Args:
@@ -490,7 +569,7 @@ class BaseManualBroker(BaseBroker):
     ) -> None:
         """Remove retry count tracking for a message"""
 
-    def read(
+    def _read(
         self, stream: str, consumer_group: str, no_of_messages: int
     ) -> list[tuple[str, dict]]:
         """Default implementation using _get_next"""
@@ -506,139 +585,6 @@ class BaseManualBroker(BaseBroker):
                 break
 
         return messages
-
-    def ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        """Template method for message acknowledgment with common logic"""
-        try:
-            # Clean up expired operation states first
-            self._cleanup_expired_operation_states()
-
-            # Check for idempotency
-            current_state = self._get_operation_state(consumer_group, identifier)
-            if current_state == OperationState.ACKNOWLEDGED:
-                logger.debug(
-                    f"Message '{identifier}' already acknowledged by consumer group '{consumer_group}' (idempotent)"
-                )
-                return False
-            elif current_state == OperationState.NACKED:
-                logger.warning(
-                    f"Cannot ack message '{identifier}' - already nacked by consumer group '{consumer_group}'"
-                )
-                return False
-
-            # Validate consumer group exists
-            if not self._validate_consumer_group(consumer_group):
-                logger.warning(f"Consumer group '{consumer_group}' does not exist")
-                return False
-
-            # Validate message ownership
-            if not self._validate_message_ownership(identifier, consumer_group):
-                logger.warning(
-                    f"Message '{identifier}' was not delivered to consumer group '{consumer_group}'"
-                )
-                return False
-
-            # Check if message is still in-flight
-            if not self._is_in_flight_message(stream, consumer_group, identifier):
-                logger.warning(
-                    f"Message '{identifier}' not found in in-flight status for consumer group '{consumer_group}'"
-                )
-                return False
-
-            # Set operation state to acknowledged
-            self._store_operation_state(
-                consumer_group, identifier, OperationState.ACKNOWLEDGED
-            )
-
-            # Remove message from in-flight status
-            self._remove_in_flight_message(stream, consumer_group, identifier)
-
-            # Clean up retry count tracking
-            self._remove_retry_count(stream, consumer_group, identifier)
-
-            # Remove any failed message entry
-            self._remove_failed_message(stream, consumer_group, identifier)
-
-            # Clean up message ownership tracking (broker-specific implementation)
-            self._cleanup_message_ownership(identifier, consumer_group)
-
-            logger.debug(
-                f"Message '{identifier}' acknowledged by consumer group '{consumer_group}'"
-            )
-            return True
-
-        except Exception as e:
-            logger.error(f"Error acknowledging message '{identifier}': {e}")
-            # Clean up operation state on failure
-            self._clear_operation_state(consumer_group, identifier)
-            return False
-
-    def nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        """Template method for negative acknowledgment with common logic"""
-        try:
-            # Clean up expired operation states first
-            self._cleanup_expired_operation_states()
-
-            # Check for idempotency
-            current_state = self._get_operation_state(consumer_group, identifier)
-            if current_state == OperationState.NACKED:
-                logger.debug(
-                    f"Message '{identifier}' already nacked by consumer group '{consumer_group}' (idempotent)"
-                )
-                return False
-            elif current_state == OperationState.ACKNOWLEDGED:
-                logger.warning(
-                    f"Cannot nack message '{identifier}' - already acknowledged by consumer group '{consumer_group}'"
-                )
-                return False
-
-            # Validate consumer group exists
-            if not self._validate_consumer_group(consumer_group):
-                logger.warning(f"Consumer group '{consumer_group}' does not exist")
-                return False
-
-            # Validate message ownership
-            if not self._validate_message_ownership(identifier, consumer_group):
-                logger.warning(
-                    f"Message '{identifier}' was not delivered to consumer group '{consumer_group}'"
-                )
-                return False
-
-            # Get message from in-flight status
-            message_data = self._get_in_flight_message(
-                stream, consumer_group, identifier
-            )
-            if not message_data:
-                logger.warning(
-                    f"Message '{identifier}' not found in in-flight status for consumer group '{consumer_group}'"
-                )
-                return False
-
-            _, message = message_data
-
-            # Get current retry count and increment it
-            retry_count = self._get_retry_count(stream, consumer_group, identifier)
-            new_retry_count = retry_count + 1
-
-            if new_retry_count <= self._max_retries:
-                return self._handle_nack_with_retry(
-                    stream,
-                    identifier,
-                    consumer_group,
-                    message,
-                    retry_count,
-                    new_retry_count,
-                )
-            else:
-                return self._handle_nack_max_retries_exceeded(
-                    stream, identifier, consumer_group, message, new_retry_count
-                )
-
-        except Exception as e:
-            logger.error(f"Error nacking message '{identifier}': {e}")
-            # Clean up operation state on failure
-            self._clear_operation_state(consumer_group, identifier)
-            return False
 
     def _handle_nack_with_retry(
         self,
@@ -780,3 +726,136 @@ class BaseManualBroker(BaseBroker):
         self, identifier: str, consumer_group: str, stream: str
     ) -> bool:
         """Broker-specific implementation of reprocessing DLQ messages"""
+
+    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+        """Template method for message acknowledgment with common logic"""
+        try:
+            # Clean up expired operation states first
+            self._cleanup_expired_operation_states()
+
+            # Check for idempotency
+            current_state = self._get_operation_state(consumer_group, identifier)
+            if current_state == OperationState.ACKNOWLEDGED:
+                logger.debug(
+                    f"Message '{identifier}' already acknowledged by consumer group '{consumer_group}' (idempotent)"
+                )
+                return False
+            elif current_state == OperationState.NACKED:
+                logger.warning(
+                    f"Cannot ack message '{identifier}' - already nacked by consumer group '{consumer_group}'"
+                )
+                return False
+
+            # Validate consumer group exists
+            if not self._validate_consumer_group(consumer_group):
+                logger.warning(f"Consumer group '{consumer_group}' does not exist")
+                return False
+
+            # Validate message ownership
+            if not self._validate_message_ownership(identifier, consumer_group):
+                logger.warning(
+                    f"Message '{identifier}' was not delivered to consumer group '{consumer_group}'"
+                )
+                return False
+
+            # Check if message is still in-flight
+            if not self._is_in_flight_message(stream, consumer_group, identifier):
+                logger.warning(
+                    f"Message '{identifier}' not found in in-flight status for consumer group '{consumer_group}'"
+                )
+                return False
+
+            # Set operation state to acknowledged
+            self._store_operation_state(
+                consumer_group, identifier, OperationState.ACKNOWLEDGED
+            )
+
+            # Remove message from in-flight status
+            self._remove_in_flight_message(stream, consumer_group, identifier)
+
+            # Clean up retry count tracking
+            self._remove_retry_count(stream, consumer_group, identifier)
+
+            # Remove any failed message entry
+            self._remove_failed_message(stream, consumer_group, identifier)
+
+            # Clean up message ownership tracking (broker-specific implementation)
+            self._cleanup_message_ownership(identifier, consumer_group)
+
+            logger.debug(
+                f"Message '{identifier}' acknowledged by consumer group '{consumer_group}'"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Error acknowledging message '{identifier}': {e}")
+            # Clean up operation state on failure
+            self._clear_operation_state(consumer_group, identifier)
+            return False
+
+    def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+        """Template method for negative acknowledgment with common logic"""
+        try:
+            # Clean up expired operation states first
+            self._cleanup_expired_operation_states()
+
+            # Check for idempotency
+            current_state = self._get_operation_state(consumer_group, identifier)
+            if current_state == OperationState.NACKED:
+                logger.debug(
+                    f"Message '{identifier}' already nacked by consumer group '{consumer_group}' (idempotent)"
+                )
+                return False
+            elif current_state == OperationState.ACKNOWLEDGED:
+                logger.warning(
+                    f"Cannot nack message '{identifier}' - already acknowledged by consumer group '{consumer_group}'"
+                )
+                return False
+
+            # Validate consumer group exists
+            if not self._validate_consumer_group(consumer_group):
+                logger.warning(f"Consumer group '{consumer_group}' does not exist")
+                return False
+
+            # Validate message ownership
+            if not self._validate_message_ownership(identifier, consumer_group):
+                logger.warning(
+                    f"Message '{identifier}' was not delivered to consumer group '{consumer_group}'"
+                )
+                return False
+
+            # Get message from in-flight status
+            message_data = self._get_in_flight_message(
+                stream, consumer_group, identifier
+            )
+            if not message_data:
+                logger.warning(
+                    f"Message '{identifier}' not found in in-flight status for consumer group '{consumer_group}'"
+                )
+                return False
+
+            _, message = message_data
+
+            # Get current retry count and increment it
+            retry_count = self._get_retry_count(stream, consumer_group, identifier)
+            new_retry_count = retry_count + 1
+
+            if new_retry_count <= self._max_retries:
+                return self._handle_nack_with_retry(
+                    stream,
+                    identifier,
+                    consumer_group,
+                    message,
+                    retry_count,
+                    new_retry_count,
+                )
+            else:
+                return self._handle_nack_max_retries_exceeded(
+                    stream, identifier, consumer_group, message, new_retry_count
+                )
+
+        except Exception as e:
+            logger.error(f"Error nacking message '{identifier}': {e}")
+            # Clean up operation state on failure
+            self._clear_operation_state(consumer_group, identifier)
+            return False

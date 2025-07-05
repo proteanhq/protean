@@ -108,7 +108,7 @@ class RedisPubSubBroker(BaseManualBroker):
         # There is no message in the stream for this consumer group
         return None
 
-    def read(
+    def _read(
         self, stream: str, consumer_group: str, no_of_messages: int
     ) -> list[tuple[str, dict]]:
         """Read messages from the broker for a specific consumer group. Returns tuples of (identifier, message)."""

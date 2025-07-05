@@ -124,7 +124,7 @@ class RedisBroker(BaseBroker):
             return value.decode()
         return str(value)
 
-    def read(
+    def _read(
         self, stream: str, consumer_group: str, no_of_messages: int
     ) -> List[Tuple[str, dict]]:
         """Read multiple messages from Redis Stream"""
@@ -137,7 +137,7 @@ class RedisBroker(BaseBroker):
                 break
         return messages
 
-    def ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
         """Acknowledge message using Redis Streams XACK"""
         nack_key = self._get_nack_key(stream, consumer_group, identifier)
         if nack_key in self._nacked_messages:
@@ -154,7 +154,7 @@ class RedisBroker(BaseBroker):
             logger.error(f"Unexpected error during ack: {e}")
             return False
 
-    def nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+    def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
         """Negative acknowledge - return message to pending list for reprocessing"""
         try:
             # Ensure the consumer group exists first
