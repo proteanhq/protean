@@ -15,6 +15,8 @@ from protean.utils import Processing
 if TYPE_CHECKING:
     from protean.domain import Domain
 
+from enum import Flag, auto
+
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
@@ -32,6 +34,38 @@ class OperationState(Enum):
     ACKNOWLEDGED = "acknowledged"
     NACKED = "nacked"
     FAILED = "failed"
+
+
+class BrokerCapabilities(Flag):
+    # Tier 1: Universal Foundation (Every broker has these)
+    PUBLISH = auto()  # Send messages
+    SUBSCRIBE = auto()  # Receive messages
+
+    # Tier 2: Storage & Consumer Management (Independent capabilities)
+    CONSUMER_GROUPS = auto()  # Multiple consumers, load balancing
+
+    # Tier 3: Message Lifecycle (Depends on CONSUMER_GROUPS)
+    ACK_NACK = auto()  # Acknowledge successful/failed processing
+    DELIVERY_GUARANTEES = auto()  # At-least-once delivery (depends on ACK_NACK)
+    MESSAGE_ORDERING = auto()  # Preserve message order (can be independent)
+
+    # Tier 4: Advanced Features (Various dependencies)
+    DEAD_LETTER_QUEUE = auto()  # Handle failed messages (depends on ACK_NACK)
+    REPLAY = auto()  # Re-read historical messages (depends on PERSISTENCE)
+    STREAM_PARTITIONING = auto()  # Partition streams for scalability
+
+    # Convenience Capability Sets
+    BASIC_PUBSUB = PUBLISH | SUBSCRIBE
+
+    SIMPLE_QUEUING = BASIC_PUBSUB | CONSUMER_GROUPS
+
+    RELIABLE_MESSAGING = SIMPLE_QUEUING | ACK_NACK | DELIVERY_GUARANTEES
+
+    ORDERED_MESSAGING = RELIABLE_MESSAGING | MESSAGE_ORDERING
+
+    ENTERPRISE_STREAMING = (
+        ORDERED_MESSAGING | DEAD_LETTER_QUEUE | REPLAY | STREAM_PARTITIONING
+    )
 
 
 class BaseBroker(metaclass=ABCMeta):
@@ -52,6 +86,48 @@ class BaseBroker(metaclass=ABCMeta):
         self._last_ping_time = None
         self._last_ping_success = None
         self._start_time = time.time()
+
+    @property
+    @abstractmethod
+    def capabilities(self) -> BrokerCapabilities:
+        """Return the capabilities of this broker implementation.
+
+        Returns:
+            BrokerCapabilities: The capabilities supported by this broker
+        """
+
+    def has_capability(self, capability: BrokerCapabilities) -> bool:
+        """Check if broker has a specific capability.
+
+        Args:
+            capability: The capability to check for
+
+        Returns:
+            bool: True if the broker has the capability, False otherwise
+        """
+        return capability in self.capabilities
+
+    def has_all_capabilities(self, capabilities: BrokerCapabilities) -> bool:
+        """Check if broker has all the specified capabilities.
+
+        Args:
+            capabilities: The capabilities to check for
+
+        Returns:
+            bool: True if the broker has all capabilities, False otherwise
+        """
+        return (self.capabilities & capabilities) == capabilities
+
+    def has_any_capability(self, capabilities: BrokerCapabilities) -> bool:
+        """Check if broker has any of the specified capabilities.
+
+        Args:
+            capabilities: The capabilities to check for
+
+        Returns:
+            bool: True if the broker has any of the capabilities, False otherwise
+        """
+        return bool(self.capabilities & capabilities)
 
     def publish(self, stream: str, message: dict) -> str:
         """Publish a message to the broker.
@@ -249,6 +325,11 @@ class BaseBroker(metaclass=ABCMeta):
         Returns:
             dict: The message payload, or None if no messages available
         """
+        # Check if broker supports consumer groups
+        if not self.has_capability(BrokerCapabilities.CONSUMER_GROUPS):
+            logger.warning(f"Broker {self.name} does not support consumer groups")
+            return None
+
         try:
             return self._get_next(stream, consumer_group)
         except Exception as e:
@@ -280,6 +361,11 @@ class BaseBroker(metaclass=ABCMeta):
         Returns:
             list[tuple[str, dict]]: The list of (identifier, message) tuples
         """
+        # Check if broker supports consumer groups
+        if not self.has_capability(BrokerCapabilities.CONSUMER_GROUPS):
+            logger.warning(f"Broker {self.name} does not support consumer groups")
+            return []
+
         try:
             return self._read(stream, consumer_group, no_of_messages)
         except Exception as e:
@@ -305,6 +391,13 @@ class BaseBroker(metaclass=ABCMeta):
         Returns:
             bool: True if the message was successfully acknowledged, False otherwise
         """
+        # Check if broker supports acknowledgment
+        if not self.has_capability(BrokerCapabilities.ACK_NACK):
+            logger.warning(
+                f"Broker {self.name} does not support message acknowledgment"
+            )
+            return False
+
         try:
             return self._ack(stream, identifier, consumer_group)
         except Exception as e:
@@ -330,6 +423,13 @@ class BaseBroker(metaclass=ABCMeta):
         Returns:
             bool: True if the message was successfully marked for reprocessing, False otherwise
         """
+        # Check if broker supports negative acknowledgment
+        if not self.has_capability(BrokerCapabilities.ACK_NACK):
+            logger.warning(
+                f"Broker {self.name} does not support message negative acknowledgment"
+            )
+            return False
+
         try:
             return self._nack(stream, identifier, consumer_group)
         except Exception as e:
@@ -430,432 +530,3 @@ class BaseBroker(metaclass=ABCMeta):
         logger.debug(
             f"Broker {self.name}: Registered Subscriber {subscriber_cls.__name__} for stream {stream}"
         )
-
-
-class BaseManualBroker(BaseBroker):
-    """Base class for brokers that require manual message tracking and retry handling.
-
-    This class provides common functionality for brokers like InlineBroker and RedisPubSubBroker
-    that need to manually track message states, implement retry logic, and handle DLQ operations.
-
-    Brokers with native consumer group support (like Redis Streams, Kafka) should inherit
-    directly from BaseBroker instead.
-    """
-
-    def __init__(
-        self, name: str, domain: "Domain", conn_info: dict[str, str | bool]
-    ) -> None:
-        super().__init__(name, domain, conn_info)
-
-        # Configuration for retry behavior and timeouts
-        self._max_retries = conn_info.get("max_retries", MAX_RETRIES)
-        self._retry_delay = conn_info.get("retry_delay", RETRY_DELAY)
-        self._backoff_multiplier = conn_info.get(
-            "backoff_multiplier", BACKOFF_MULTIPLIER
-        )
-        self._message_timeout = conn_info.get(
-            "message_timeout", MESSAGE_TIMEOUT
-        )  # 5 minutes default
-        self._enable_dlq = conn_info.get("enable_dlq", ENABLE_DLQ)
-        self._operation_state_ttl = max(
-            int(self._message_timeout * 3), OPERATION_STATE_TTL_MAX
-        )  # At least 1 minute
-
-    # Abstract methods for broker-specific storage operations
-    @abstractmethod
-    def _store_in_flight_message(
-        self, stream: str, consumer_group: str, identifier: str, message: dict
-    ) -> None:
-        """Store a message in in-flight status"""
-
-    @abstractmethod
-    def _remove_in_flight_message(
-        self, stream: str, consumer_group: str, identifier: str
-    ) -> None:
-        """Remove a message from in-flight status"""
-
-    @abstractmethod
-    def _is_in_flight_message(
-        self, stream: str, consumer_group: str, identifier: str
-    ) -> bool:
-        """Check if a message is in in-flight status"""
-
-    @abstractmethod
-    def _get_in_flight_message(
-        self, stream: str, consumer_group: str, identifier: str
-    ) -> tuple[str, dict] | None:
-        """Get in-flight message data"""
-
-    @abstractmethod
-    def _store_operation_state(
-        self, consumer_group: str, identifier: str, state: OperationState
-    ) -> None:
-        """Store operation state for idempotency"""
-
-    @abstractmethod
-    def _get_operation_state(
-        self, consumer_group: str, identifier: str
-    ) -> OperationState | None:
-        """Get current operation state"""
-
-    @abstractmethod
-    def _clear_operation_state(self, consumer_group: str, identifier: str) -> None:
-        """Clear operation state"""
-
-    @abstractmethod
-    def _store_failed_message(
-        self,
-        stream: str,
-        consumer_group: str,
-        identifier: str,
-        message: dict,
-        retry_count: int,
-        next_retry_time: float,
-    ) -> None:
-        """Store a failed message for retry"""
-
-    @abstractmethod
-    def _remove_failed_message(
-        self, stream: str, consumer_group: str, identifier: str
-    ) -> None:
-        """Remove a failed message from retry queue"""
-
-    @abstractmethod
-    def _get_retry_ready_messages(
-        self, stream: str, consumer_group: str
-    ) -> list[tuple[str, dict]]:
-        """Get messages ready for retry and remove them from failed queue"""
-
-    @abstractmethod
-    def _store_dlq_message(
-        self,
-        stream: str,
-        consumer_group: str,
-        identifier: str,
-        message: dict,
-        failure_reason: str,
-    ) -> None:
-        """Store a message in Dead Letter Queue"""
-
-    @abstractmethod
-    def _validate_consumer_group(self, consumer_group: str) -> bool:
-        """Validate that the consumer group exists"""
-
-    @abstractmethod
-    def _validate_message_ownership(self, identifier: str, consumer_group: str) -> bool:
-        """Validate that the message was delivered to the specified consumer group"""
-
-    @abstractmethod
-    def _cleanup_stale_messages(
-        self, consumer_group: str, timeout_seconds: float
-    ) -> None:
-        """Remove messages that have been in-flight too long"""
-
-    @abstractmethod
-    def _get_retry_count(
-        self, stream: str, consumer_group: str, identifier: str
-    ) -> int:
-        """Get current retry count for a message"""
-
-    @abstractmethod
-    def _set_retry_count(
-        self, stream: str, consumer_group: str, identifier: str, count: int
-    ) -> None:
-        """Set retry count for a message"""
-
-    @abstractmethod
-    def _remove_retry_count(
-        self, stream: str, consumer_group: str, identifier: str
-    ) -> None:
-        """Remove retry count tracking for a message"""
-
-    def _read(
-        self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> list[tuple[str, dict]]:
-        """Default implementation using _get_next"""
-        # Ensure consumer group exists
-        self._ensure_group(consumer_group, stream)
-
-        messages = []
-        for _ in range(no_of_messages):
-            message = self._get_next(stream, consumer_group)
-            if message:
-                messages.append(message)
-            else:
-                break
-
-        return messages
-
-    def _handle_nack_with_retry(
-        self,
-        stream: str,
-        identifier: str,
-        consumer_group: str,
-        message: dict,
-        retry_count: int,
-        new_retry_count: int,
-    ) -> bool:
-        """Handle nack with retry"""
-        try:
-            # Set operation state to nacked
-            self._store_operation_state(
-                consumer_group, identifier, OperationState.NACKED
-            )
-
-            # Remove from in-flight
-            self._remove_in_flight_message(stream, consumer_group, identifier)
-
-            # Update retry count
-            self._set_retry_count(stream, consumer_group, identifier, new_retry_count)
-
-            # Calculate next retry time with exponential backoff
-            delay = self._retry_delay * (self._backoff_multiplier**retry_count)
-            next_retry_time = time.time() + delay
-
-            # Remove any existing failed message entry
-            self._remove_failed_message(stream, consumer_group, identifier)
-
-            # Store in failed messages for retry
-            self._store_failed_message(
-                stream,
-                consumer_group,
-                identifier,
-                message,
-                new_retry_count,
-                next_retry_time,
-            )
-
-            logger.debug(
-                f"Message '{identifier}' nacked, retry {new_retry_count}/{self._max_retries} in {delay:.2f}s"
-            )
-            return True
-
-        except Exception as e:
-            logger.error(
-                f"Error handling nack with retry for message '{identifier}': {e}"
-            )
-            self._clear_operation_state(consumer_group, identifier)
-            return False
-
-    def _handle_nack_max_retries_exceeded(
-        self,
-        stream: str,
-        identifier: str,
-        consumer_group: str,
-        message: dict,
-        new_retry_count: int,
-    ) -> bool:
-        """Handle nack when max retries exceeded"""
-        try:
-            # Set operation state to failed
-            self._store_operation_state(
-                consumer_group, identifier, OperationState.FAILED
-            )
-
-            # Remove from in-flight
-            self._remove_in_flight_message(stream, consumer_group, identifier)
-
-            # Max retries exceeded - move to DLQ or discard
-            if self._enable_dlq:
-                self._store_dlq_message(
-                    stream, consumer_group, identifier, message, "max_retries_exceeded"
-                )
-                logger.warning(
-                    f"Message '{identifier}' moved to DLQ after {self._max_retries} retries"
-                )
-            else:
-                logger.warning(
-                    f"Message '{identifier}' discarded after {self._max_retries} retries"
-                )
-
-            # Clean up tracking
-            self._remove_retry_count(stream, consumer_group, identifier)
-            self._remove_failed_message(stream, consumer_group, identifier)
-            self._cleanup_message_ownership(identifier, consumer_group)
-
-            return True
-
-        except Exception as e:
-            logger.error(
-                f"Error handling max retries exceeded for message '{identifier}': {e}"
-            )
-            self._clear_operation_state(consumer_group, identifier)
-            return False
-
-    def _requeue_failed_messages(self, stream: str, consumer_group: str) -> None:
-        """Move failed messages back to the main queue if they're ready for retry"""
-        try:
-            ready_messages = self._get_retry_ready_messages(stream, consumer_group)
-            if ready_messages:
-                self._requeue_messages(stream, consumer_group, ready_messages)
-        except Exception as e:
-            logger.error(
-                f"Error requeuing failed messages for {consumer_group}:{stream}: {e}"
-            )
-
-    @abstractmethod
-    def _requeue_messages(
-        self, stream: str, consumer_group: str, messages: list[tuple[str, dict]]
-    ) -> None:
-        """Broker-specific implementation of requeuing messages"""
-
-    @abstractmethod
-    def _cleanup_message_ownership(self, identifier: str, consumer_group: str) -> None:
-        """Clean up message ownership tracking"""
-
-    @abstractmethod
-    def _cleanup_expired_operation_states(self) -> None:
-        """Clean up expired operation states"""
-
-    def get_dlq_messages(self, consumer_group: str, stream: str = None) -> dict:
-        """Get messages from Dead Letter Queue for inspection"""
-        return self._get_dlq_messages(consumer_group, stream)
-
-    @abstractmethod
-    def _get_dlq_messages(self, consumer_group: str, stream: str = None) -> dict:
-        """Broker-specific implementation of getting DLQ messages"""
-
-    def reprocess_dlq_message(
-        self, identifier: str, consumer_group: str, stream: str
-    ) -> bool:
-        """Move a message from DLQ back to the main queue for reprocessing"""
-        return self._reprocess_dlq_message(identifier, consumer_group, stream)
-
-    @abstractmethod
-    def _reprocess_dlq_message(
-        self, identifier: str, consumer_group: str, stream: str
-    ) -> bool:
-        """Broker-specific implementation of reprocessing DLQ messages"""
-
-    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        """Template method for message acknowledgment with common logic"""
-        try:
-            # Clean up expired operation states first
-            self._cleanup_expired_operation_states()
-
-            # Check for idempotency
-            current_state = self._get_operation_state(consumer_group, identifier)
-            if current_state == OperationState.ACKNOWLEDGED:
-                logger.debug(
-                    f"Message '{identifier}' already acknowledged by consumer group '{consumer_group}' (idempotent)"
-                )
-                return False
-            elif current_state == OperationState.NACKED:
-                logger.warning(
-                    f"Cannot ack message '{identifier}' - already nacked by consumer group '{consumer_group}'"
-                )
-                return False
-
-            # Validate consumer group exists
-            if not self._validate_consumer_group(consumer_group):
-                logger.warning(f"Consumer group '{consumer_group}' does not exist")
-                return False
-
-            # Validate message ownership
-            if not self._validate_message_ownership(identifier, consumer_group):
-                logger.warning(
-                    f"Message '{identifier}' was not delivered to consumer group '{consumer_group}'"
-                )
-                return False
-
-            # Check if message is still in-flight
-            if not self._is_in_flight_message(stream, consumer_group, identifier):
-                logger.warning(
-                    f"Message '{identifier}' not found in in-flight status for consumer group '{consumer_group}'"
-                )
-                return False
-
-            # Set operation state to acknowledged
-            self._store_operation_state(
-                consumer_group, identifier, OperationState.ACKNOWLEDGED
-            )
-
-            # Remove message from in-flight status
-            self._remove_in_flight_message(stream, consumer_group, identifier)
-
-            # Clean up retry count tracking
-            self._remove_retry_count(stream, consumer_group, identifier)
-
-            # Remove any failed message entry
-            self._remove_failed_message(stream, consumer_group, identifier)
-
-            # Clean up message ownership tracking (broker-specific implementation)
-            self._cleanup_message_ownership(identifier, consumer_group)
-
-            logger.debug(
-                f"Message '{identifier}' acknowledged by consumer group '{consumer_group}'"
-            )
-            return True
-
-        except Exception as e:
-            logger.error(f"Error acknowledging message '{identifier}': {e}")
-            # Clean up operation state on failure
-            self._clear_operation_state(consumer_group, identifier)
-            return False
-
-    def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        """Template method for negative acknowledgment with common logic"""
-        try:
-            # Clean up expired operation states first
-            self._cleanup_expired_operation_states()
-
-            # Check for idempotency
-            current_state = self._get_operation_state(consumer_group, identifier)
-            if current_state == OperationState.NACKED:
-                logger.debug(
-                    f"Message '{identifier}' already nacked by consumer group '{consumer_group}' (idempotent)"
-                )
-                return False
-            elif current_state == OperationState.ACKNOWLEDGED:
-                logger.warning(
-                    f"Cannot nack message '{identifier}' - already acknowledged by consumer group '{consumer_group}'"
-                )
-                return False
-
-            # Validate consumer group exists
-            if not self._validate_consumer_group(consumer_group):
-                logger.warning(f"Consumer group '{consumer_group}' does not exist")
-                return False
-
-            # Validate message ownership
-            if not self._validate_message_ownership(identifier, consumer_group):
-                logger.warning(
-                    f"Message '{identifier}' was not delivered to consumer group '{consumer_group}'"
-                )
-                return False
-
-            # Get message from in-flight status
-            message_data = self._get_in_flight_message(
-                stream, consumer_group, identifier
-            )
-            if not message_data:
-                logger.warning(
-                    f"Message '{identifier}' not found in in-flight status for consumer group '{consumer_group}'"
-                )
-                return False
-
-            _, message = message_data
-
-            # Get current retry count and increment it
-            retry_count = self._get_retry_count(stream, consumer_group, identifier)
-            new_retry_count = retry_count + 1
-
-            if new_retry_count <= self._max_retries:
-                return self._handle_nack_with_retry(
-                    stream,
-                    identifier,
-                    consumer_group,
-                    message,
-                    retry_count,
-                    new_retry_count,
-                )
-            else:
-                return self._handle_nack_max_retries_exceeded(
-                    stream, identifier, consumer_group, message, new_retry_count
-                )
-
-        except Exception as e:
-            logger.error(f"Error nacking message '{identifier}': {e}")
-            # Clean up operation state on failure
-            self._clear_operation_state(consumer_group, identifier)
-            return False

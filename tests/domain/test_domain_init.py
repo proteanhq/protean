@@ -150,9 +150,6 @@ def test_guess_caller_path_inner_exception_handling(monkeypatch):
     # Patch sys._getframe to return our mock frame
     monkeypatch.setattr(sys, "_getframe", lambda depth: mock_frame)
 
-    # Save original Path.resolve
-    original_path_resolve = Path.resolve
-
     # Define a mock that will raise TypeError
     def mock_resolve(self, *args, **kwargs):
         raise TypeError("Mock error for testing")

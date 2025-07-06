@@ -1,13 +1,13 @@
 import pytest
 
 
-@pytest.mark.broker
+@pytest.mark.simple_queuing
 def test_for_no_error_on_no_message(broker):
     message = broker.get_next("test_stream", "test_consumer_group")
     assert message is None
 
 
-@pytest.mark.broker
+@pytest.mark.simple_queuing
 def test_get_next_message(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -30,7 +30,7 @@ def test_get_next_message(broker):
     assert retrieved_message is None
 
 
-@pytest.mark.broker
+@pytest.mark.simple_queuing
 def test_read_with_no_messages_available(broker):
     """Test read method when no messages are available"""
     stream = "test_stream"
@@ -41,7 +41,7 @@ def test_read_with_no_messages_available(broker):
     assert len(messages) == 0
 
 
-@pytest.mark.broker
+@pytest.mark.simple_queuing
 def test_read_fewer_messages_than_requested(broker):
     """Test read method when fewer messages available than requested"""
     stream = "test_stream"
@@ -56,7 +56,7 @@ def test_read_fewer_messages_than_requested(broker):
     assert len(messages) == 2
 
 
-@pytest.mark.broker
+@pytest.mark.simple_queuing
 def test_read_multiple_messages(broker):
     """Test reading multiple messages at once"""
     stream = "test_stream"
@@ -81,7 +81,7 @@ def test_read_multiple_messages(broker):
         assert message == messages[i]
 
 
-@pytest.mark.broker
+@pytest.mark.simple_queuing
 def test_read_more_than_available(broker):
     """Test reading more messages than available"""
     stream = "test_stream"
@@ -100,7 +100,7 @@ def test_read_more_than_available(broker):
     assert retrieved_messages[0][1] == message
 
 
-@pytest.mark.broker
+@pytest.mark.simple_queuing
 def test_read_from_empty_stream(broker):
     """Test reading from empty stream"""
     stream = "empty_stream"
@@ -113,7 +113,7 @@ def test_read_from_empty_stream(broker):
     assert len(retrieved_messages) == 0
 
 
-@pytest.mark.broker
+@pytest.mark.simple_queuing
 def test_get_next_generates_uuid_identifier(broker):
     """Test that get_next returns messages with UUID identifiers"""
     stream = "test_stream"

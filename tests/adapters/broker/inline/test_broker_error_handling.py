@@ -1,3 +1,5 @@
+"""Test cases for broker error handling scenarios"""
+
 import time
 import uuid
 from unittest.mock import patch
@@ -5,7 +7,6 @@ from unittest.mock import patch
 import pytest
 
 
-@pytest.mark.manual_broker
 def test_uuid_generation_in_publish(broker):
     """Test that the default _publish method generates UUID identifiers"""
     stream = "test_stream"
@@ -26,9 +27,8 @@ def test_uuid_generation_in_publish(broker):
     assert identifier != identifier2
 
 
-@pytest.mark.manual_broker
-def test_manual_broker_publish_generates_uuid_format(broker):
-    """Test that manual brokers generate UUID identifiers with correct format"""
+def test_reliable_messaging_broker_publish_generates_uuid_format(broker):
+    """Test that reliable messaging brokers generate UUID identifiers with correct format"""
     stream = "test_stream"
     message = {"data": "test"}
 
@@ -39,8 +39,7 @@ def test_manual_broker_publish_generates_uuid_format(broker):
     uuid.UUID(identifier)  # This will raise ValueError if invalid
 
 
-@pytest.mark.manual_broker
-def test_manual_broker_retrieved_message_has_uuid_identifier(broker):
+def test_reliable_messaging_broker_retrieved_message_has_uuid_identifier(broker):
     """Test that retrieved messages have UUID identifiers for manual brokers"""
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -56,8 +55,7 @@ def test_manual_broker_retrieved_message_has_uuid_identifier(broker):
     assert uuid.UUID(identifier) is not None
 
 
-@pytest.mark.manual_broker
-def test_manual_broker_get_next_generates_uuid_identifier(broker):
+def test_reliable_messaging_broker_get_next_generates_uuid_identifier(broker):
     """Test that get_next returns messages with UUID identifiers for manual brokers"""
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -76,7 +74,6 @@ def test_manual_broker_get_next_generates_uuid_identifier(broker):
     assert uuid.UUID(retrieved_identifier) is not None
 
 
-@pytest.mark.manual_broker
 def test_exception_during_ack_returns_false(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -98,7 +95,6 @@ def test_exception_during_ack_returns_false(broker):
         assert ack_result is False
 
 
-@pytest.mark.manual_broker
 def test_exception_during_ack_cleanup_message_ownership_returns_false(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -123,7 +119,6 @@ def test_exception_during_ack_cleanup_message_ownership_returns_false(broker):
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.manual_broker
 def test_ack_operation_state_cleanup_on_exception(broker):
     """Test that operation state is cleaned up when exception occurs in ack"""
     stream = "test_stream"
@@ -157,7 +152,6 @@ def test_ack_operation_state_cleanup_on_exception(broker):
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.manual_broker
 def test_exception_during_nack_returns_false(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -179,7 +173,6 @@ def test_exception_during_nack_returns_false(broker):
         assert nack_result is False
 
 
-@pytest.mark.manual_broker
 def test_exception_during_nack_operation_state_cleanup_on_exception(broker):
     """Test that operation state is cleaned up when exception occurs in nack"""
     stream = "test_stream"
@@ -205,7 +198,6 @@ def test_exception_during_nack_operation_state_cleanup_on_exception(broker):
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.manual_broker
 def test_exception_during_nack_with_retry_returns_false(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -230,7 +222,6 @@ def test_exception_during_nack_with_retry_returns_false(broker):
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.manual_broker
 def test_exception_during_nack_with_retry_store_failed_message_returns_false(
     broker,
 ):
@@ -257,7 +248,6 @@ def test_exception_during_nack_with_retry_store_failed_message_returns_false(
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.manual_broker
 def test_exception_during_nack_max_retries_exceeded_with_retry_message(broker):
     """Test exception handling in _handle_nack_max_retries_exceeded method when retry message is available"""
     stream = "test_stream"
@@ -298,7 +288,6 @@ def test_exception_during_nack_max_retries_exceeded_with_retry_message(broker):
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.manual_broker
 def test_exception_during_nack_max_retries_exceeded_with_simulated_condition(
     broker,
 ):
@@ -335,7 +324,6 @@ def test_exception_during_nack_max_retries_exceeded_with_simulated_condition(
                 mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.manual_broker
 def test_exception_during_requeue_failed_messages_returns_none(broker):
     """Test exception handling in _requeue_failed_messages method"""
     stream = "test_stream"
@@ -369,7 +357,6 @@ def test_exception_during_requeue_failed_messages_returns_none(broker):
         assert result is None
 
 
-@pytest.mark.manual_broker
 def test_exception_during_requeue_messages_returns_none(broker):
     """Test exception handling when _requeue_messages raises exception"""
     stream = "test_stream"
@@ -404,7 +391,6 @@ def test_exception_during_requeue_messages_returns_none(broker):
         assert result is None
 
 
-@pytest.mark.manual_broker
 def test_exception_during_mixed_scenarios(broker):
     """Test various exception scenarios in sequence to ensure robustness"""
     stream = "test_stream"
@@ -469,7 +455,6 @@ def test_exception_during_mixed_scenarios(broker):
     assert nack_result is True
 
 
-@pytest.mark.manual_broker
 def test_exception_during_ack_logger_error_returns_false(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -481,16 +466,18 @@ def test_exception_during_ack_logger_error_returns_false(broker):
     assert retrieved_message is not None
 
     # Mock logger.debug to raise an exception at the very end of successful ack processing
-    import protean.port.broker
+    import protean.adapters.broker.inline
 
-    original_debug = protean.port.broker.logger.debug
+    original_debug = protean.adapters.broker.inline.logger.debug
 
     def mock_debug(msg, *args, **kwargs):
         if "acknowledged by consumer group" in msg:
             raise Exception("Logger debug failed")
         return original_debug(msg, *args, **kwargs)
 
-    with patch.object(protean.port.broker.logger, "debug", side_effect=mock_debug):
+    with patch.object(
+        protean.adapters.broker.inline.logger, "debug", side_effect=mock_debug
+    ):
         # Mock _clear_operation_state to verify the cleanup in exception block is called
         with patch.object(broker, "_clear_operation_state") as mock_clear:
             ack_result = broker.ack(stream, identifier, consumer_group)
@@ -499,7 +486,6 @@ def test_exception_during_ack_logger_error_returns_false(broker):
             mock_clear.assert_called_once_with(consumer_group, identifier)
 
 
-@pytest.mark.manual_broker
 def test_exception_during_nack_with_retry_logger_error_returns_false(broker):
     # Simulates logger.debug with exception
     import logging
@@ -523,7 +509,6 @@ def test_exception_during_nack_with_retry_logger_error_returns_false(broker):
         assert nack_result is True
 
 
-@pytest.mark.manual_broker
 def test_validate_message_ownership_exception_handling(broker):
     """Test that _validate_message_ownership handles exceptions gracefully"""
     stream = "test_stream"
@@ -558,7 +543,6 @@ def test_validate_message_ownership_exception_handling(broker):
             broker._message_ownership[identifier] = original_ownership
 
 
-@pytest.mark.manual_broker
 def test_get_retry_count_exception_handling(broker):
     """Test that _get_retry_count handles exceptions gracefully"""
     stream = "test_stream"
@@ -591,7 +575,6 @@ def test_get_retry_count_exception_handling(broker):
             broker._retry_counts[group_key] = original_data
 
 
-@pytest.mark.manual_broker
 def test_cleanup_stale_messages_exception_in_processing(broker):
     """Test exception handling during stale message processing"""
     stream = "test_stream"
@@ -634,7 +617,6 @@ def test_cleanup_stale_messages_exception_in_processing(broker):
             )
 
 
-@pytest.mark.manual_broker
 def test_requeue_messages_exception_handling(broker):
     """Test that _requeue_messages handles exceptions gracefully"""
     stream = "test_stream"
@@ -663,7 +645,6 @@ def test_requeue_messages_exception_handling(broker):
         pytest.fail(f"_requeue_messages should handle empty messages gracefully: {e}")
 
 
-@pytest.mark.manual_broker
 def test_remove_failed_message_exception_handling(broker):
     """Test that _remove_failed_message handles exceptions gracefully"""
     stream = "test_stream"
@@ -696,7 +677,6 @@ def test_remove_failed_message_exception_handling(broker):
         )
 
 
-@pytest.mark.manual_broker
 def test_get_in_flight_message_nonexistent(broker):
     """Test getting in-flight message data when message doesn't exist"""
     stream = "test_stream"

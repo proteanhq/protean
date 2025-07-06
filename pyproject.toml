@@ -167,11 +167,15 @@ markers = [
     "message_db",
     "sendgrid",
     "database",
-    "broker",
-    "manual_broker",
     "eventstore",
     "no_test_domain",
     "fastapi",
+    # Capability-based markers for broker testing
+    "basic_pubsub: tests for basic pub/sub capability (publish/subscribe only)",
+    "simple_queuing: tests for simple queuing capability (includes consumer groups)",
+    "reliable_messaging: tests for reliable messaging capability (includes ack/nack)",
+    "ordered_messaging: tests for ordered messaging capability (includes message ordering)",
+    "enterprise_streaming: tests for enterprise streaming capability (includes DLQ, replay, partitioning)",
 ]
 
 [tool.mypy]

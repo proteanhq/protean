@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_connection_error_detection_common_patterns(broker):
     """Test that common connection error patterns are detected"""
     connection_errors = [
@@ -22,7 +22,7 @@ def test_connection_error_detection_common_patterns(broker):
         assert result is True, f"Should detect '{error}' as connection error"
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_connection_error_detection_non_connection_errors(broker):
     """Test that non-connection errors are not detected as connection errors"""
     non_connection_errors = [
@@ -39,7 +39,7 @@ def test_connection_error_detection_non_connection_errors(broker):
         assert result is False, f"Should not detect '{error}' as connection error"
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_publish_with_connection_error_and_recovery(broker):
     """Test that publish() handles connection errors with automatic recovery"""
     stream = "test_stream"
@@ -70,7 +70,7 @@ def test_publish_with_connection_error_and_recovery(broker):
         assert call_count == 2  # Called twice: error then success
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_publish_with_connection_error_recovery_fails(broker):
     """Test that publish() raises error when recovery fails"""
     stream = "test_stream"
@@ -85,7 +85,7 @@ def test_publish_with_connection_error_recovery_fails(broker):
             broker.publish(stream, message)
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_publish_with_non_connection_error_no_retry(broker):
     """Test that publish() doesn't retry for non-connection errors"""
     stream = "test_stream"
@@ -106,7 +106,7 @@ def test_publish_with_non_connection_error_no_retry(broker):
         assert call_count == 1  # Only called once, no retry
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_get_next_with_connection_error_and_recovery(broker):
     """Test that get_next() handles connection errors with automatic recovery"""
     stream = "test_stream"
@@ -139,7 +139,7 @@ def test_get_next_with_connection_error_and_recovery(broker):
         assert call_count == 2  # Called twice: error then success
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_get_next_with_connection_error_recovery_fails(broker):
     """Test that get_next() raises error when recovery fails"""
     stream = "test_stream"
@@ -154,7 +154,7 @@ def test_get_next_with_connection_error_recovery_fails(broker):
             broker.get_next(stream, consumer_group)
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_get_next_with_non_connection_error_no_retry(broker):
     """Test that get_next() doesn't retry for non-connection errors"""
     stream = "test_stream"
@@ -175,7 +175,7 @@ def test_get_next_with_non_connection_error_no_retry(broker):
         assert call_count == 1  # Only called once, no retry
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_ensure_connection_called_explicitly(broker):
     """Test that ensure_connection() can be called explicitly"""
     result = broker.ensure_connection()
@@ -183,7 +183,7 @@ def test_ensure_connection_called_explicitly(broker):
     assert isinstance(result, bool)
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_ensure_connection_with_manual_broker_methods(broker):
     """Test ensure_connection with broker that has the method"""
     # Test the public interface
@@ -194,7 +194,7 @@ def test_ensure_connection_with_manual_broker_methods(broker):
     assert broker._ensure_connection() is True
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_connection_resilience_preserves_message_integrity(broker):
     """Test that connection errors don't corrupt message data"""
     stream = "test_stream"
@@ -229,7 +229,7 @@ def test_connection_resilience_preserves_message_integrity(broker):
         assert retrieved_message == original_message
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_connection_error_detection_case_insensitive(broker):
     """Test that connection error detection is case insensitive"""
     case_variations = [
@@ -247,7 +247,7 @@ def test_connection_error_detection_case_insensitive(broker):
         ), f"Should detect '{error}' as connection error (case insensitive)"
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_multiple_connection_errors_handled_gracefully(broker):
     """Test that multiple consecutive connection errors are handled properly"""
     stream = "test_stream"
@@ -283,7 +283,7 @@ def test_multiple_connection_errors_handled_gracefully(broker):
         )  # Two calls for message1 (fail + retry), one for message2
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_connection_error_logging(broker):
     """Test that connection errors are properly logged"""
     # Set up logging capture
@@ -307,7 +307,7 @@ def test_connection_error_logging(broker):
             broker._ensure_connection = lambda: True
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_ping_with_connection_error(broker):
     """Test ping behavior when connection errors occur"""
     # Mock the underlying ping method to raise an exception
@@ -326,7 +326,7 @@ def test_ping_with_connection_error(broker):
         broker._ping = original_ping
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_health_stats_with_calculation_errors(broker):
     """Test health stats when calculation methods fail"""
     # Mock methods that can fail during health stats calculation
@@ -359,7 +359,7 @@ def test_health_stats_with_calculation_errors(broker):
             broker._calculate_message_counts = original_calculate_message_counts
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_message_deserialization_errors(broker):
     """Test message handling when deserialization fails"""
     # This test is more relevant for brokers that handle serialization
@@ -398,7 +398,7 @@ def test_message_deserialization_errors(broker):
         assert result is not None
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_data_reset_error_handling(broker):
     """Test data reset when underlying operations fail"""
     # For inline broker, we'll test that _data_reset doesn't raise exceptions
@@ -415,7 +415,7 @@ def test_data_reset_error_handling(broker):
         pytest.fail(f"_data_reset should handle exceptions internally, but got: {e}")
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_ensure_connection_with_multiple_failures(broker):
     """Test ensure_connection with multiple consecutive failures"""
     # Mock the underlying connection method to fail multiple times

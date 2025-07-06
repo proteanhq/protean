@@ -1,5 +1,3 @@
-import subprocess
-import time
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -466,13 +464,11 @@ class TestConfiguration:
         """Test TEST_CONFIGS has expected structure."""
         assert "databases" in TEST_CONFIGS
         assert "brokers" in TEST_CONFIGS
-        assert "manual_brokers" in TEST_CONFIGS
         assert "eventstores" in TEST_CONFIGS
         assert "full_matrix_flags" in TEST_CONFIGS
 
         assert len(TEST_CONFIGS["databases"]) == 3
-        assert len(TEST_CONFIGS["brokers"]) == 1
-        assert len(TEST_CONFIGS["manual_brokers"]) == 2
+        assert len(TEST_CONFIGS["brokers"]) == 3
         assert len(TEST_CONFIGS["eventstores"]) == 2
 
     def test_run_category_enum(self):
@@ -482,7 +478,6 @@ class TestConfiguration:
             "EVENTSTORE",
             "DATABASE",
             "BROKER",
-            "MANUAL_BROKER",
             "COVERAGE",
             "FULL",
         }

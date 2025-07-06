@@ -4,8 +4,9 @@ from uuid import UUID, uuid4
 import pytest
 
 from protean import Domain
-from protean.exceptions import ValidationError
-from protean.fields import Identifier
+from protean.core.aggregate import BaseAggregate
+from protean.exceptions import InvalidOperationError, ValidationError
+from protean.fields import Identifier, String
 from protean.utils import IdentityType
 
 
@@ -151,3 +152,83 @@ class TestIdentityType:
             assert identifier._load(uuid_val) == uuid_val
             assert identifier.identity_type == IdentityType.UUID.value
             assert identifier.as_dict(uuid_val) == str(uuid_val)
+
+
+class TestIdentifierValidation:
+    """Test cases to cover missing validation error paths"""
+
+    def test_identifier_with_invalid_uuid_string(self):
+        """Test UUID identifier with invalid UUID string"""
+        identifier = Identifier(identity_type=IdentityType.UUID.value)
+        with pytest.raises(ValidationError):
+            identifier._load("invalid-uuid-string")
+
+    def test_identifier_with_invalid_int_string(self):
+        """Test INTEGER identifier with invalid integer string"""
+        identifier = Identifier(identity_type=IdentityType.INTEGER.value)
+        with pytest.raises(ValidationError):
+            identifier._load("not-a-number")
+
+    def test_identifier_with_boolean_value(self):
+        """Test identifier with boolean value"""
+        identifier = Identifier()
+        with pytest.raises(ValidationError):
+            identifier._load(True)
+
+    def test_unsupported_identity_type_during_cast(self):
+        """Test unsupported identity type during cast"""
+        identifier = Identifier()
+        # Force an unsupported identity type
+        identifier.identity_type = "UNSUPPORTED"
+
+        with pytest.raises(ValidationError) as exc:
+            identifier._load("test")
+        assert "Identity type not supported" in str(exc.value)
+
+
+class TestIdentifierImmutability:
+    """Test cases to cover identifier immutability"""
+
+    def test_cannot_change_identifier_once_set(self, test_domain):
+        """Test that identifiers cannot be changed once set"""
+
+        @test_domain.aggregate
+        class TestAggregate(BaseAggregate):
+            id = Identifier(identifier=True)
+            name = String()
+
+        aggregate = TestAggregate(id="test-id", name="test")
+
+        # Try to change the identifier
+        with pytest.raises(InvalidOperationError) as exc:
+            aggregate.id = "new-id"
+
+        assert "Identifiers cannot be changed once set" in str(exc.value)
+
+    def test_can_set_identifier_to_same_value(self, test_domain):
+        """Test that setting identifier to same value is allowed"""
+
+        @test_domain.aggregate
+        class TestAggregate(BaseAggregate):
+            id = Identifier(identifier=True)
+            name = String()
+
+        aggregate = TestAggregate(id="test-id", name="test")
+
+        # Set identifier to same value - should not raise error
+        aggregate.id = "test-id"
+        assert aggregate.id == "test-id"
+
+    def test_can_set_identifier_if_none(self, test_domain):
+        """Test that identifier can be set if it's None - covers early return in __set__"""
+
+        @test_domain.aggregate
+        class TestAggregate(BaseAggregate):
+            custom_id = Identifier(identifier=True)
+            name = String()
+
+        aggregate = TestAggregate(custom_id="test-id", name="test")
+
+        # Setting identifier to same value should work (covers the condition where value == existing_value)
+        aggregate.custom_id = "test-id"
+        assert aggregate.custom_id == "test-id"

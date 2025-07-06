@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import redis
 
-from protean.port.broker import BaseBroker
+from protean.port.broker import BaseBroker, BrokerCapabilities
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -43,6 +43,11 @@ class RedisBroker(BaseBroker):
         self._retry_delay = 1.0
         self._message_timeout = 300.0
         self._enable_dlq = False
+
+    @property
+    def capabilities(self) -> BrokerCapabilities:
+        """Redis Streams provide ordered messaging with native consumer groups."""
+        return BrokerCapabilities.ORDERED_MESSAGING
 
     @property
     def _created_groups(self):

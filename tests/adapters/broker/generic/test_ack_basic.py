@@ -1,7 +1,7 @@
 import pytest
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_ack_successful_message_processing(broker):
     """Test that successfully processed messages can be acknowledged"""
     stream = "test_stream"
@@ -27,7 +27,7 @@ def test_ack_successful_message_processing(broker):
     assert next_message is None
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_ack_unknown_message(broker):
     """Test that acknowledging an unknown message returns False"""
     stream = "test_stream"
@@ -42,7 +42,7 @@ def test_ack_unknown_message(broker):
     assert ack_result is False
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_ack_already_processed_message(broker):
     """Test that acknowledging an already acknowledged message returns False"""
     stream = "test_stream"
@@ -63,7 +63,7 @@ def test_ack_already_processed_message(broker):
     assert ack_result_second is False
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_multiple_consumers_different_groups(broker):
     """Test that different consumer groups can independently acknowledge messages"""
     stream = "test_stream"
@@ -93,7 +93,7 @@ def test_multiple_consumers_different_groups(broker):
     assert ack_result_2 is True
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_ack_nonexistent_consumer_group(broker):
     """Test that acknowledging from a non-existent consumer group returns False"""
     stream = "test_stream"
@@ -111,7 +111,7 @@ def test_ack_nonexistent_consumer_group(broker):
     assert ack_result is False
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_ack_message_ownership_validation(broker):
     """Test that messages can only be acknowledged by the consumer group that received them"""
     stream = "test_stream"
@@ -136,7 +136,7 @@ def test_ack_message_ownership_validation(broker):
     assert ack_result is True
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_ack_cross_stream_isolation(broker):
     """Test that acknowledging messages from different streams works correctly"""
     stream1 = "test_stream_1"
@@ -166,7 +166,7 @@ def test_ack_cross_stream_isolation(broker):
     assert ack_result2 is True
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_ack_with_invalid_consumer_group(broker):
     """Test ack with non-existent consumer group"""
     stream = "test_stream"
@@ -177,7 +177,7 @@ def test_ack_with_invalid_consumer_group(broker):
     assert result is False
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_ack_with_wrong_message_ownership(broker):
     """Test ack with message not owned by consumer group"""
     stream = "test_stream"

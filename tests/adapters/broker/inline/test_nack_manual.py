@@ -1,13 +1,8 @@
 import time
 
-import pytest
 
-# Tests for BaseManualBroker-specific nack functionality with retry logic and DLQ
-
-
-@pytest.mark.manual_broker
 def test_nack_moves_message_to_retry_queue(broker):
-    """Test that nacking a message moves it to retry queue for reprocessing (BaseManualBroker specific)"""
+    """Test that nacking a message moves it to retry queue for reprocessing (reliable messaging specific)"""
     stream = "test_stream"
     consumer_group = "test_consumer_group"
     message = {"foo": "bar"}
@@ -63,9 +58,8 @@ def test_nack_moves_message_to_retry_queue(broker):
     assert retry_payload == message
 
 
-@pytest.mark.manual_broker
 def test_nack_with_retry_mechanism(broker):
-    """Test that nacked messages are retried with exponential backoff (BaseManualBroker specific)"""
+    """Test that nacked messages are retried with exponential backoff (reliable messaging specific)"""
     stream = "test_stream"
     consumer_group = "test_consumer_group"
     message = {"foo": "bar"}
@@ -97,9 +91,8 @@ def test_nack_with_retry_mechanism(broker):
     assert retry_message[1] == message
 
 
-@pytest.mark.manual_broker
 def test_nack_max_retries_exceeded(broker):
-    """Test that messages are discarded after max retries are exceeded (BaseManualBroker specific)"""
+    """Test that messages are discarded after max retries are exceeded (reliable messaging specific)"""
     stream = "test_stream"
     consumer_group = "test_consumer_group"
     message = {"foo": "bar"}
@@ -129,9 +122,8 @@ def test_nack_max_retries_exceeded(broker):
     assert final_check is None
 
 
-@pytest.mark.manual_broker
 def test_nack_removes_from_in_flight_tracking(broker):
-    """Test that nacking a message removes it from in-flight tracking (BaseManualBroker specific)"""
+    """Test that nacking a message removes it from in-flight tracking (reliable messaging specific)"""
     stream = "test_stream"
     consumer_group = "test_consumer_group"
     message1 = {"id": 1}
@@ -169,9 +161,8 @@ def test_nack_removes_from_in_flight_tracking(broker):
         assert in_flight_info[stream] == 1
 
 
-@pytest.mark.manual_broker
 def test_nack_retry_count_tracking(broker):
-    """Test that retry counts are properly tracked for nacked messages (BaseManualBroker specific)"""
+    """Test that retry counts are properly tracked for nacked messages (reliable messaging specific)"""
     stream = "test_stream"
     consumer_group = "test_consumer_group"
     message = {"data": "retry_test"}
@@ -200,9 +191,8 @@ def test_nack_retry_count_tracking(broker):
     assert final_check is None
 
 
-@pytest.mark.manual_broker
 def test_nack_message_already_nacked_idempotent(broker):
-    """Test nack idempotency when message already nacked (BaseManualBroker specific)"""
+    """Test nack idempotency when message already nacked (reliable messaging specific)"""
     stream = "test_stream"
     consumer_group = "test_consumer_group"
     message = {"data": "test"}

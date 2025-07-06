@@ -16,7 +16,7 @@ class DummySubscriber(BaseSubscriber):
         count_up()
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_subscriber_sync_invocation(test_domain):
     test_domain.config["message_processing"] = Processing.SYNC.value
 

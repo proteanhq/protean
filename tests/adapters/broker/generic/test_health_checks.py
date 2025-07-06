@@ -3,7 +3,7 @@ import time
 import pytest
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_ping_returns_true_for_healthy_broker(broker):
     """Test that ping() returns True for a healthy broker"""
     result = broker.ping()
@@ -11,7 +11,7 @@ def test_ping_returns_true_for_healthy_broker(broker):
     assert isinstance(result, bool)
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_ping_tracks_timing_information(broker):
     """Test that ping() tracks timing information internally"""
     # Perform ping
@@ -25,7 +25,7 @@ def test_ping_tracks_timing_information(broker):
     assert broker._last_ping_success is True
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_multiple_pings_update_timing_info(broker):
     """Test that multiple pings update the timing information"""
     # First ping
@@ -45,7 +45,7 @@ def test_multiple_pings_update_timing_info(broker):
     assert broker._last_ping_success is True
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_health_stats_basic_structure(broker):
     """Test that health_stats() returns the expected structure"""
     stats = broker.health_stats()
@@ -68,7 +68,7 @@ def test_health_stats_basic_structure(broker):
     assert stats["connected"] is True
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_health_stats_includes_ping_timing(broker):
     """Test that health_stats() includes ping timing information"""
     # Perform a ping first
@@ -83,7 +83,7 @@ def test_health_stats_includes_ping_timing(broker):
     assert stats["last_ping_ms"] >= 0
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_health_stats_without_prior_ping(broker):
     """Test health_stats() behavior when no ping has been performed"""
     # Don't call ping() first
@@ -95,7 +95,7 @@ def test_health_stats_without_prior_ping(broker):
     assert "last_ping_ms" in stats
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_health_stats_details_for_inline_broker(broker):
     """Test broker-specific health details for inline broker"""
     # Add some test data first
@@ -145,7 +145,7 @@ def test_health_stats_details_for_inline_broker(broker):
     assert "enable_dlq" in config
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_health_stats_tracks_message_state_changes(broker):
     """Test that health stats reflect changes in message states"""
     # Initial state
@@ -169,7 +169,7 @@ def test_health_stats_tracks_message_state_changes(broker):
     assert counts["in_flight"] == 1
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_ensure_connection_returns_true(broker):
     """Test that ensure_connection() returns True for inline broker"""
     result = broker.ensure_connection()
@@ -177,7 +177,7 @@ def test_ensure_connection_returns_true(broker):
     assert isinstance(result, bool)
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_ensure_connection_idempotent(broker):
     """Test that multiple calls to ensure_connection() are safe"""
     result1 = broker.ensure_connection()
@@ -189,7 +189,7 @@ def test_ensure_connection_idempotent(broker):
     assert result3 is True
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_health_stats_uptime_increases(broker):
     """Test that uptime increases over time"""
     stats1 = broker.health_stats()
@@ -207,7 +207,7 @@ def test_health_stats_uptime_increases(broker):
     assert isinstance(uptime2, (int, float))
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_health_stats_with_failed_messages(broker):
     """Test health stats when there are failed messages"""
     # Publish a message and put it in failed state
@@ -224,7 +224,7 @@ def test_health_stats_with_failed_messages(broker):
     assert counts["failed"] >= 1  # Depending on broker implementation
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_health_stats_with_dlq_messages(broker):
     """Test health stats when there are DLQ messages"""
     # Configure broker for quick DLQ testing
@@ -244,7 +244,7 @@ def test_health_stats_with_dlq_messages(broker):
     assert "dlq" in stats["details"]["message_counts"]
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_health_stats_configuration_values(broker):
     """Test that health stats include correct configuration values"""
     stats = broker.health_stats()
@@ -257,7 +257,7 @@ def test_health_stats_configuration_values(broker):
     assert config["enable_dlq"] == broker._enable_dlq
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_health_stats_empty_broker_state(broker):
     """Test health stats for a completely empty broker"""
     stats = broker.health_stats()
@@ -280,7 +280,7 @@ def test_health_stats_empty_broker_state(broker):
     assert stats["connected"] is True
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_ping_after_data_reset(broker):
     """Test that ping works correctly after data reset"""
     # Add some data
@@ -294,7 +294,7 @@ def test_ping_after_data_reset(broker):
     assert result is True
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_health_stats_after_data_reset(broker):
     """Test health stats after data reset"""
     # Add some test data
@@ -316,7 +316,7 @@ def test_health_stats_after_data_reset(broker):
     assert message_counts["dlq"] == 0
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_ping_failure_handling(broker):
     """Test ping behavior when underlying ping fails"""
     # Mock the _ping method to raise an exception
@@ -340,7 +340,7 @@ def test_ping_failure_handling(broker):
         broker._ping = original_ping
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_health_stats_with_ping_failure(broker):
     """Test health stats when ping fails"""
     # Mock the _ping method to fail
@@ -366,7 +366,7 @@ def test_health_stats_with_ping_failure(broker):
         broker._ping = original_ping
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_health_stats_calculation_errors(broker):
     """Test health stats with various calculation errors"""
     # Mock different calculation methods to fail
@@ -415,7 +415,7 @@ def test_health_stats_calculation_errors(broker):
             broker._calculate_consumer_groups_info = original_calculate_groups
 
 
-@pytest.mark.broker
+@pytest.mark.reliable_messaging
 def test_health_stats_with_message_count_errors(broker):
     """Test health stats when message count calculation fails"""
     # Mock the message count calculation to fail
@@ -453,7 +453,7 @@ def test_health_stats_with_message_count_errors(broker):
             broker._calculate_message_counts = original_calculate_message_counts
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_health_stats_with_comprehensive_errors(broker):
     """Test health stats when all calculation methods fail"""
     # Mock all calculation methods to fail
@@ -512,7 +512,7 @@ def test_health_stats_with_comprehensive_errors(broker):
             broker._calculate_consumer_groups_info = original_calculate_groups
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_ensure_connection_error_recovery(broker):
     """Test ensure_connection with error recovery scenarios"""
     # Mock the _ensure_connection method to fail then succeed
