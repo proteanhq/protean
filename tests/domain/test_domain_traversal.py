@@ -1,9 +1,12 @@
 import os
 import sys
+import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
+from protean import Domain
 from protean.utils.domain_discovery import derive_domain
 from tests.shared import change_working_directory_to
 
@@ -89,11 +92,6 @@ def test_is_domain_file_nonexistent_path():
 @pytest.mark.no_test_domain
 def test_traverse_with_file_path():
     """Test that _traverse correctly handles when root_path is a file path."""
-    import tempfile
-    from unittest.mock import MagicMock, patch
-
-    from protean import Domain
-
     # Create a temporary file to use as the root_path
     with tempfile.NamedTemporaryFile(suffix=".py") as temp_file:
         # Create a Domain with the temporary file path as root_path
@@ -105,7 +103,7 @@ def test_traverse_with_file_path():
         # We'll patch the actual traversal logic to avoid side effects
         with patch("os.listdir") as mock_listdir, patch(
             "importlib.util.spec_from_file_location"
-        ) as mock_spec:
+        ):
             # Configure mocks to prevent actual traversal
             mock_listdir.return_value = []
 

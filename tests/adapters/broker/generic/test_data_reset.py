@@ -1,7 +1,7 @@
 import pytest
 
 
-@pytest.mark.broker
+@pytest.mark.basic_pubsub
 def test_data_reset(broker):
     broker.publish("test_stream1", {"foo": "bar1"})
     broker.publish("test_stream2", {"foo": "bar2"})

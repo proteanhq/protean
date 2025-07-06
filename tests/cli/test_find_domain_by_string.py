@@ -90,3 +90,39 @@ def test_find_domain_by_string_returns_correct_domain_instance(mock_module):
     assert (
         actual_domain is expected_domain
     ), "Should return the specific Domain instance associated with 'specific_domain'"
+
+
+# New tests to cover missing lines
+def test_find_domain_by_string_with_non_callable_function(mock_module):
+    """Test coverage for lines 71-72: when function is not callable"""
+    mock_module.not_callable = "not a function"
+    with pytest.raises(NoDomainException) as exc_info:
+        find_domain_by_string(mock_module, "not_callable()")
+    assert "not_callable' is not callable" in str(exc_info.value)
+
+
+def test_find_domain_by_string_with_nonexistent_function():
+    """Test coverage for lines 86-90: when function doesn't exist"""
+
+    # Create a real module-like object that raises AttributeError
+    class MockModule:
+        __name__ = "mock_module"
+
+        def __getattr__(self, name):
+            raise AttributeError(
+                f"'{self.__class__.__name__}' object has no attribute '{name}'"
+            )
+
+    mock_module = MockModule()
+
+    with pytest.raises(NoDomainException) as exc_info:
+        find_domain_by_string(mock_module, "nonexistent_function()")
+    assert "Failed to find function 'nonexistent_function'" in str(exc_info.value)
+
+
+def test_find_domain_by_string_with_function_returning_non_domain(mock_module):
+    """Test coverage for line 98: when function returns non-Domain object"""
+    mock_module.bad_function = MagicMock(return_value="not a domain")
+    with pytest.raises(NoDomainException) as exc_info:
+        find_domain_by_string(mock_module, "bad_function()")
+    assert "A valid Protean domain was not obtained" in str(exc_info.value)

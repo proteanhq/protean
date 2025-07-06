@@ -33,30 +33,29 @@ STYLE_BLOCK = """
 """
 
 TEST_CONFIGS = {
-    "databases": ["MEMORY", "POSTGRESQL", "SQLITE"],
-    "brokers": ["REDIS"],
-    "manual_brokers": [
+    "databases": ["POSTGRESQL", "SQLITE", "MEMORY"],
+    "brokers": [
+        "REDIS",
         "INLINE",
         "REDIS_PUBSUB",
-    ],  # Brokers that inherit from BaseManualBroker
+    ],
     "eventstores": ["MEMORY", "MESSAGE_DB"],
     "full_matrix_flags": [
         "--slow",
-        "--sqlite",
-        "--postgresql",
-        "--elasticsearch",
         "--redis",
+        "--postgresql",
         "--message_db",
     ],
 }
 
 
-class RunCategory(str, Enum):
+class RunCategory(Enum):
+    """Valid test run categories"""
+
     CORE = "CORE"
     EVENTSTORE = "EVENTSTORE"
     DATABASE = "DATABASE"
     BROKER = "BROKER"
-    MANUAL_BROKER = "MANUAL_BROKER"
     COVERAGE = "COVERAGE"
     FULL = "FULL"
 
@@ -76,6 +75,31 @@ class TestRunner:
 
     def __init__(self):
         self.exit_status = 0
+
+        # Broker capability mappings
+        self.broker_capabilities = {
+            "INLINE": "RELIABLE_MESSAGING",
+            "REDIS": "ORDERED_MESSAGING",
+            "REDIS_PUBSUB": "SIMPLE_QUEUING",
+        }
+
+        # Capability hierarchy (from lowest to highest)
+        self.capability_hierarchy = [
+            "BASIC_PUBSUB",
+            "SIMPLE_QUEUING",
+            "RELIABLE_MESSAGING",
+            "ORDERED_MESSAGING",
+            "ENTERPRISE_STREAMING",
+        ]
+
+        # Capability to marker mapping
+        self.capability_markers = {
+            "BASIC_PUBSUB": "basic_pubsub",
+            "SIMPLE_QUEUING": "simple_queuing",
+            "RELIABLE_MESSAGING": "reliable_messaging",
+            "ORDERED_MESSAGING": "ordered_messaging",
+            "ENTERPRISE_STREAMING": "enterprise_streaming",
+        }
 
     def run_command(self, cmd: list[str]) -> int:
         """Execute a command and return its exit code."""
@@ -117,6 +141,30 @@ class TestRunner:
                 html = html.replace("</head>", f"{STYLE_BLOCK}\n</head>")
                 path.write_text(html, encoding="utf-8")
 
+    def get_capability_marker_expression(self, broker: str) -> str:
+        """Get marker expression for broker's capabilities.
+
+        Returns a marker expression like 'basic_pubsub or simple_queuing or reliable_messaging'
+        that includes all capabilities up to and including the broker's level.
+        """
+        broker_capability = self.broker_capabilities.get(broker)
+        if not broker_capability:
+            return ""
+
+        # Find the index of the broker's capability
+        try:
+            capability_index = self.capability_hierarchy.index(broker_capability)
+        except ValueError:
+            return ""
+
+        # Get all capabilities up to and including the broker's level
+        applicable_capabilities = self.capability_hierarchy[: capability_index + 1]
+
+        # Convert to marker names and create OR expression
+        marker_names = [self.capability_markers[cap] for cap in applicable_capabilities]
+
+        return " or ".join(marker_names)
+
     def generate_test_suites(self) -> list[TestSuite]:
         """Generate all test suites for comprehensive testing."""
         suites = []
@@ -136,19 +184,21 @@ class TestRunner:
             )
             suites.append(TestSuite(f"Database: {db}", cmd))
 
-        # Broker tests (for all brokers)
-        for broker in TEST_CONFIGS["brokers"]:
-            cmd = self.build_coverage_command(
-                self.build_test_command("broker", f"--broker={broker}")
-            )
-            suites.append(TestSuite(f"Broker: {broker}", cmd))
+        # Capability-based broker tests
+        all_brokers = TEST_CONFIGS["brokers"]
+        for broker in all_brokers:
+            # Get marker expression for this broker's capabilities
+            marker_expression = self.get_capability_marker_expression(broker)
 
-        # Manual broker tests (only for BaseManualBroker implementations)
-        for broker in TEST_CONFIGS["manual_brokers"]:
-            cmd = self.build_coverage_command(
-                self.build_test_command("manual_broker", f"--broker={broker}")
-            )
-            suites.append(TestSuite(f"Broker Manual: {broker}", cmd))
+            if marker_expression:
+                # Use marker-based selection for broker tests
+                cmd = self.build_coverage_command(
+                    self.build_test_command(
+                        marker=marker_expression, extra_flags=[f"--broker={broker}"]
+                    )
+                )
+
+                suites.append(TestSuite(f"Broker: {broker}", cmd))
 
         # Eventstore tests
         for store in ["MESSAGE_DB"]:  # Only MESSAGE_DB for full suite
@@ -243,26 +293,31 @@ class TestRunner:
 
     def run_category_tests(self, category: str) -> int:
         """Run tests for a specific category."""
-        config_map = {
-            "EVENTSTORE": ("eventstore", TEST_CONFIGS["eventstores"], "--store"),
-            "DATABASE": ("database", TEST_CONFIGS["databases"], "--db"),
-            "BROKER": ("broker", TEST_CONFIGS["brokers"], "--broker"),
-            "MANUAL_BROKER": (
-                "broker or manual_broker",
-                TEST_CONFIGS["manual_brokers"],
-                "--broker",
-            ),
-        }
+        if category == "EVENTSTORE":
+            for store in TEST_CONFIGS["eventstores"]:
+                print(f"Running tests for EVENTSTORE: {store}…")
+                cmd = self.build_test_command("eventstore", f"--store={store}")
+                self.track_exit_code(self.run_command(cmd))
+        elif category == "DATABASE":
+            for db in TEST_CONFIGS["databases"]:
+                print(f"Running tests for DATABASE: {db}…")
+                cmd = self.build_test_command("database", f"--db={db}")
+                self.track_exit_code(self.run_command(cmd))
+        elif category == "BROKER":
+            # Use capability-based testing for brokers
+            all_brokers = TEST_CONFIGS["brokers"]
+            for broker in all_brokers:
+                marker_expression = self.get_capability_marker_expression(broker)
 
-        if category not in config_map:
-            return 0
+                if marker_expression:
+                    broker_capability = self.broker_capabilities.get(broker, "UNKNOWN")
+                    print(f"Running tests for BROKER: {broker} ({broker_capability})…")
 
-        marker, configs, flag_prefix = config_map[category]
-
-        for config in configs:
-            print(f"Running tests for {category}: {config}…")
-            cmd = self.build_test_command(marker, f"{flag_prefix}={config}")
-            self.track_exit_code(self.run_command(cmd))
+                    # Use marker-based selection for broker tests
+                    cmd = self.build_test_command(
+                        marker=marker_expression, extra_flags=[f"--broker={broker}"]
+                    )
+                    self.track_exit_code(self.run_command(cmd))
 
         return self.exit_status
 
@@ -310,7 +365,7 @@ def test(
     runner = TestRunner()
 
     match category.value:
-        case "EVENTSTORE" | "DATABASE" | "BROKER" | "MANUAL_BROKER":
+        case "EVENTSTORE" | "DATABASE" | "BROKER":
             exit_code = runner.run_category_tests(category.value)
 
         case "FULL":
