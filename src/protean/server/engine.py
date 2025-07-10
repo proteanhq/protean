@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import platform
 import signal
 import traceback
 from typing import Type, Union
@@ -49,10 +50,15 @@ class Engine:
         self.exit_code = 0
         self.shutting_down = False  # Flag to indicate the engine is shutting down
 
+        # Store original signal handlers for cleanup
+        self._original_signal_handlers = {}
+
         if self.debug:
             logger.setLevel(logging.DEBUG)
 
-        self.loop = asyncio.get_event_loop()
+        # Create a new event loop instead of getting the current one
+        # This avoids fragility when the caller already has a running loop
+        self.loop = asyncio.new_event_loop()
 
         # Gather all handlers
         self._subscriptions = {}
@@ -200,6 +206,70 @@ class Engine:
             # Reset message context
             g.pop("message_in_context", None)
 
+    def _setup_signal_handlers(self):
+        """
+        Set up signal handlers using the appropriate method based on the platform.
+
+        On Unix-like systems, use asyncio.add_signal_handler for better integration with the event loop.
+        On Windows, fall back to signal.signal as add_signal_handler is not available.
+        """
+
+        def signal_handler(sig, frame=None):
+            """Signal handler for non-asyncio signal handling (Windows)"""
+            if not self.shutting_down and self.loop.is_running():
+                asyncio.run_coroutine_threadsafe(self.shutdown(signal=sig), self.loop)
+
+        signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
+
+        # Check if we're on Windows or if add_signal_handler is not available
+        if platform.system() == "Windows" or not hasattr(
+            self.loop, "add_signal_handler"
+        ):
+            logger.debug(
+                "Using signal.signal() for signal handling (Windows or unsupported platform)"
+            )
+            for s in signals:
+                try:
+                    # Store original handler for cleanup
+                    self._original_signal_handlers[s] = signal.signal(s, signal_handler)
+                except (OSError, ValueError) as e:
+                    # Some signals may not be available on all platforms
+                    logger.debug(f"Signal {s} not available on this platform: {e}")
+        else:
+            logger.debug(
+                "Using asyncio.add_signal_handler() for signal handling (Unix-like)"
+            )
+            for s in signals:
+                try:
+                    self.loop.add_signal_handler(
+                        s, lambda s=s: asyncio.create_task(self.shutdown(signal=s))
+                    )
+                except (OSError, ValueError) as e:
+                    # Some signals may not be available on all platforms
+                    logger.debug(f"Signal {s} not available on this platform: {e}")
+
+    def _cleanup_signal_handlers(self):
+        """
+        Clean up signal handlers when shutting down.
+        """
+        if platform.system() == "Windows" or not hasattr(
+            self.loop, "add_signal_handler"
+        ):
+            # Restore original signal handlers
+            for sig, original_handler in self._original_signal_handlers.items():
+                try:
+                    signal.signal(sig, original_handler)
+                except (OSError, ValueError):
+                    pass  # Ignore errors during cleanup
+        else:
+            # Remove signal handlers from the event loop
+            signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
+            for s in signals:
+                try:
+                    self.loop.remove_signal_handler(s)
+                except (OSError, ValueError):
+                    pass  # Ignore errors during cleanup
+
     async def shutdown(self, signal=None, exit_code=0):
         """
         Cleanup tasks tied to the service's shutdown.
@@ -212,7 +282,7 @@ class Engine:
 
         try:
             msg = (
-                f"Received exit signal {signal.name}. Shutting down..."
+                f"Received exit signal {signal.name if hasattr(signal, 'name') else signal}. Shutting down..."
                 if signal
                 else "Shutting down..."
             )
@@ -237,6 +307,9 @@ class Engine:
             # Wait for subscriptions to shut down
             await asyncio.gather(*subscription_shutdown_tasks, return_exceptions=True)
             logger.info("All subscriptions have been shut down.")
+
+            # Clean up signal handlers
+            self._cleanup_signal_handlers()
         finally:
             self.loop.stop()
 
@@ -244,13 +317,14 @@ class Engine:
         """
         Start the Protean Engine and run the subscriptions.
         """
+        # Set the loop we created as the current event loop
+        # This ensures we use our own loop instead of any existing one
+        asyncio.set_event_loop(self.loop)
+
         logger.debug("Starting Protean Engine...")
-        # Handle Signals
-        signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
-        for s in signals:
-            self.loop.add_signal_handler(
-                s, lambda s=s: asyncio.create_task(self.shutdown(signal=s))
-            )
+
+        # Set up signal handlers using platform-appropriate method
+        self._setup_signal_handlers()
 
         # Handle Exceptions
         def handle_exception(loop, context):
@@ -265,10 +339,12 @@ class Engine:
                 traceback.print_stack(context["exception"])
                 logger.error(f"Caught exception: {msg}")
                 logger.info("Shutting down...")
-                if loop.is_running():
+                if loop.is_running() and not self.shutting_down:
+                    self.shutting_down = (
+                        True  # Set flag immediately to prevent multiple shutdown calls
+                    )
                     asyncio.create_task(self.shutdown(exit_code=1))
-
-                raise context["exception"]  # Raise the exception to stop the loop
+                # Don't re-raise the exception - let the loop drain gracefully
             else:
                 logger.error(f"Caught exception: {msg}")
 
@@ -300,5 +376,7 @@ class Engine:
                 logger.info("Protean Engine is running...")
                 self.loop.run_forever()
         finally:
+            # Clean up signal handlers before closing the loop
+            self._cleanup_signal_handlers()
             self.loop.close()
             logger.info("Protean Engine has stopped.")

@@ -149,7 +149,8 @@ filterwarnings = [
     "ignore::sqlalchemy.exc.SAWarning",
     "ignore::sqlalchemy.exc.SADeprecationWarning",
     "ignore:No configuration file found.*Using default configuration.*:UserWarning",
-    "ignore:Working outside of domain context"
+    "ignore:Working outside of domain context",
+    "ignore:.*was never awaited:RuntimeWarning"
 ]
 python_files = [
     "test_*.py",

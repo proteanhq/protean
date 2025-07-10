@@ -74,7 +74,7 @@ class TestServerCliCommand:
         domain = derive_domain("publishing7.py")
 
         # Run the command with early exit to avoid actually starting the server
-        with patch.object(mock_instance, "run") as mock_run:
+        with patch.object(mock_instance, "run"):
             args = [
                 "server2",
                 "--domain",

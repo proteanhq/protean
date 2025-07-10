@@ -2,10 +2,9 @@ import logging
 import os
 import sys
 from pathlib import Path
-from unittest.mock import ANY, MagicMock, PropertyMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
-import typer
 from typer.testing import CliRunner
 
 from protean.cli import app

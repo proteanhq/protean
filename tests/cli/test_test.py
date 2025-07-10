@@ -2,10 +2,17 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from protean.cli import app
-from protean.cli.test import TEST_CONFIGS, RunCategory, TestRunner, TestSuite
+from protean.cli.test import (
+    TEST_CONFIGS,
+    RunCategory,
+    TestRunner,
+    TestSuite,
+    validate_category,
+)
 
 
 @pytest.fixture
@@ -276,6 +283,114 @@ class TestCLICommands:
         )
         assert result.exit_code == 1
         assert "is not one of" in str(result.exception)
+
+    @pytest.mark.parametrize(
+        "category", ["core", "database", "eventstore", "broker", "full", "coverage"]
+    )
+    def test_case_insensitive_categories(self, cli_runner, category):
+        """Test that category validation is case insensitive."""
+        with patch("protean.cli.test.TestRunner") as mock_runner_class:
+            mock_instance = Mock()
+            mock_runner_class.return_value = mock_instance
+            mock_instance.run_command.return_value = 0
+            mock_instance.run_category_tests.return_value = 0
+            mock_instance.run_full_suite.return_value = 0
+            mock_instance.generate_diff_coverage_report.return_value = None
+
+            result = cli_runner.invoke(
+                app, ["test", "--category", category], standalone_mode=False
+            )
+            assert result.exit_code == 0
+
+    @pytest.mark.parametrize(
+        "category", ["Core", "DataBase", "EventStore", "Broker", "Full", "CoverAge"]
+    )
+    def test_mixed_case_categories(self, cli_runner, category):
+        """Test that category validation works with mixed case."""
+        with patch("protean.cli.test.TestRunner") as mock_runner_class:
+            mock_instance = Mock()
+            mock_runner_class.return_value = mock_instance
+            mock_instance.run_command.return_value = 0
+            mock_instance.run_category_tests.return_value = 0
+            mock_instance.run_full_suite.return_value = 0
+            mock_instance.generate_diff_coverage_report.return_value = None
+
+            result = cli_runner.invoke(
+                app, ["test", "--category", category], standalone_mode=False
+            )
+            assert result.exit_code == 0
+
+    def test_no_category_defaults_to_core(self, cli_runner):
+        """Test that not specifying a category defaults to CORE behavior."""
+        with patch("protean.cli.test.TestRunner") as mock_runner_class:
+            mock_instance = Mock()
+            mock_runner_class.return_value = mock_instance
+            mock_instance.run_command.return_value = 0
+
+            result = cli_runner.invoke(app, ["test"], standalone_mode=False)
+
+            assert result.exit_code == 0
+            # Should call run_command for CORE tests, not run_category_tests
+            mock_instance.run_command.assert_called_once()
+            mock_instance.run_category_tests.assert_not_called()
+            mock_instance.run_full_suite.assert_not_called()
+
+
+class TestCategoryValidation:
+    """Test the validate_category function directly."""
+
+    def test_validate_category_none_returns_core(self):
+        """Test that None input returns CORE."""
+        result = validate_category(None)
+        assert result == "CORE"
+
+    @pytest.mark.parametrize(
+        "input_value,expected",
+        [
+            ("core", "CORE"),
+            ("CORE", "CORE"),
+            ("Core", "CORE"),
+            ("database", "DATABASE"),
+            ("DATABASE", "DATABASE"),
+            ("DataBase", "DATABASE"),
+            ("eventstore", "EVENTSTORE"),
+            ("EVENTSTORE", "EVENTSTORE"),
+            ("EventStore", "EVENTSTORE"),
+            ("broker", "BROKER"),
+            ("BROKER", "BROKER"),
+            ("Broker", "BROKER"),
+            ("full", "FULL"),
+            ("FULL", "FULL"),
+            ("Full", "FULL"),
+            ("coverage", "COVERAGE"),
+            ("COVERAGE", "COVERAGE"),
+            ("Coverage", "COVERAGE"),
+        ],
+    )
+    def test_validate_category_case_insensitive(self, input_value, expected):
+        """Test that validate_category handles case insensitivity correctly."""
+        result = validate_category(input_value)
+        assert result == expected
+
+    @pytest.mark.parametrize(
+        "invalid_value", ["invalid", "INVALID", "Invalid", "xyz", "test", ""]
+    )
+    def test_validate_category_invalid_raises_bad_parameter(self, invalid_value):
+        """Test that invalid categories raise typer.BadParameter."""
+        with pytest.raises(typer.BadParameter) as exc_info:
+            validate_category(invalid_value)
+
+        assert "is not one of" in str(exc_info.value)
+        assert (
+            "['CORE', 'EVENTSTORE', 'DATABASE', 'BROKER', 'COVERAGE', 'FULL']"
+            in str(exc_info.value)
+        )
+
+    def test_validate_category_whitespace_handling(self):
+        """Test that validate_category handles whitespace correctly."""
+        # Leading/trailing whitespace should still work (typer usually handles this)
+        result = validate_category("core")
+        assert result == "CORE"
 
 
 class TestSequentialExecution:

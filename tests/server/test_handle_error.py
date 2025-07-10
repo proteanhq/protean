@@ -9,7 +9,6 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
 from protean.fields import Identifier, String
-from protean.port.broker import BaseBroker
 from protean.server import Engine
 from protean.utils import Processing
 from protean.utils.mixins import Message, handle
