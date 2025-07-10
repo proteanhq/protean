@@ -1,6 +1,7 @@
 """Module to setup Factories and other required artifacts for tests"""
 
 import asyncio
+import logging
 import os
 import sys
 
@@ -310,3 +311,17 @@ def auto_set_and_close_loop():
     if not loop.is_closed():
         loop.close()
     asyncio.set_event_loop(None)  # Explicitly unset the loop
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_logging_handlers():
+    """This fixture avoids closed resources error on logging module
+    after the async app tests have been actually finished.
+    See: https://github.com/pytest-dev/pytest/issues/5502
+    """
+    try:
+        yield
+    finally:
+        for handler in logging.root.handlers[:]:
+            if isinstance(handler, logging.StreamHandler):
+                logging.root.removeHandler(handler)

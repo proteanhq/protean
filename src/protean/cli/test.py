@@ -349,11 +349,31 @@ class TestRunner:
 app = typer.Typer()
 
 
+def validate_category(value: str) -> str:
+    """Validate and convert category string, returning the uppercase version."""
+    if value is None:
+        return "CORE"
+
+    try:
+        # Validate that the uppercase version is a valid RunCategory
+        RunCategory(value.upper())
+        return value.upper()
+    except ValueError:
+        valid_categories = [cat.value for cat in RunCategory]
+        raise typer.BadParameter(f"'{value}' is not one of {valid_categories}")
+
+
 @app.callback(invoke_without_command=True)
 def test(
     category: Annotated[
-        RunCategory, typer.Option("-c", "--category", case_sensitive=False)
-    ] = RunCategory.CORE,
+        str,
+        typer.Option(
+            "-c",
+            "--category",
+            help="Test category to run",
+            callback=validate_category,
+        ),
+    ] = "CORE",
     sequential: Annotated[
         bool,
         typer.Option(
@@ -364,9 +384,9 @@ def test(
     """Run tests with various configurations and coverage options."""
     runner = TestRunner()
 
-    match category.value:
+    match category:
         case "EVENTSTORE" | "DATABASE" | "BROKER":
-            exit_code = runner.run_category_tests(category.value)
+            exit_code = runner.run_category_tests(category)
 
         case "FULL":
             exit_code = runner.run_full_suite(sequential)
