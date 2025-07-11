@@ -43,8 +43,10 @@ TEST_CONFIGS = {
     "full_matrix_flags": [
         "--slow",
         "--redis",
+        "--sqlite",
         "--postgresql",
         "--message_db",
+        "--elasticsearch",
     ],
 }
 

@@ -110,16 +110,17 @@ class Subscription:
         Returns:
             None
         """
-        await self.tick()
+        while self.keep_going and not self.engine.shutting_down:
+            await self.tick()
 
-        if self.keep_going and not self.engine.shutting_down:
             # Keep control of the loop if in test mode
             #   Otherwise `asyncio.sleep` will give away control and
             #   the loop will be able to be stopped with `shutdown()`
             if not self.engine.test_mode:
                 await asyncio.sleep(self.tick_interval)
-
-            self.loop.create_task(self.poll())
+            else:
+                # In test mode, yield control briefly to allow shutdown
+                await asyncio.sleep(0)
 
     async def tick(self):
         """
@@ -400,16 +401,17 @@ class BrokerSubscription:
         Returns:
             None
         """
-        await self.tick()
+        while self.keep_going and not self.engine.shutting_down:
+            await self.tick()
 
-        if self.keep_going and not self.engine.shutting_down:
             # Keep control of the loop if in test mode
             #   Otherwise `asyncio.sleep` will give away control and
             #   the loop will be able to be stopped with `shutdown()`
             if not self.engine.test_mode:
                 await asyncio.sleep(self.tick_interval)
-
-            self.loop.create_task(self.poll())
+            else:
+                # In test mode, yield control briefly to allow shutdown
+                await asyncio.sleep(0)
 
     async def tick(self):
         """

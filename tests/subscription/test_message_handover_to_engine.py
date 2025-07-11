@@ -76,6 +76,6 @@ async def test_that_subscription_invokes_engine_handler_on_message(
     subscription = Subscription(
         engine, fully_qualified_name(UserEventHandler), "test::user", UserEventHandler
     )
-    await subscription.poll()
+    await subscription.tick()
 
     mock_handle_message.assert_called_once_with(UserEventHandler, TypeMatcher(Message))

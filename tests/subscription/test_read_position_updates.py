@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -175,3 +177,90 @@ async def test_that_positions_are_not_written_when_already_in_sync(test_domain):
     assert len(test_domain.event_store.store.read("$all")) == total_no_of_messages
     # Ensure last read message remains at 10
     assert await email_event_handler_subscription.fetch_last_position() == 10
+
+
+@pytest.mark.asyncio
+async def test_subscription_poll_exits_when_keep_going_false(test_domain, caplog):
+    """Test that Subscription.poll() exits when keep_going is set to False"""
+    engine = Engine(test_domain, test_mode=True)
+    subscription = engine._subscriptions[fqn(UserEventHandler)]
+
+    # Mock the tick method to prevent actual processing
+    subscription.tick = AsyncMock()
+
+    # Start polling in background
+    poll_task = asyncio.create_task(subscription.poll())
+
+    # Let it run briefly
+    await asyncio.sleep(0.1)
+
+    # Set keep_going to False to trigger exit
+    subscription.keep_going = False
+
+    # Wait for poll to complete
+    await asyncio.wait_for(poll_task, timeout=1.0)
+
+    # Verify poll exited
+    assert poll_task.done()
+
+
+@pytest.mark.asyncio
+async def test_subscription_poll_exits_when_engine_shutting_down(test_domain, caplog):
+    """Test that Subscription.poll() exits when engine.shutting_down is True"""
+    engine = Engine(test_domain, test_mode=True)
+    subscription = engine._subscriptions[fqn(UserEventHandler)]
+
+    # Mock the tick method to prevent actual processing
+    subscription.tick = AsyncMock()
+
+    # Start polling in background
+    poll_task = asyncio.create_task(subscription.poll())
+
+    # Let it run briefly
+    await asyncio.sleep(0.1)
+
+    # Set engine.shutting_down to True to trigger exit
+    engine.shutting_down = True
+
+    # Wait for poll to complete
+    await asyncio.wait_for(poll_task, timeout=1.0)
+
+    # Verify poll exited
+    assert poll_task.done()
+
+
+@pytest.mark.asyncio
+async def test_subscription_poll_test_mode_sleep_zero(test_domain):
+    """Test that Subscription.poll() uses asyncio.sleep(0) in test mode"""
+    engine = Engine(test_domain, test_mode=True)
+    subscription = engine._subscriptions[fqn(UserEventHandler)]
+
+    # Verify the engine is in test mode
+    assert engine.test_mode is True
+
+    # Mock tick to return immediately but let it run briefly
+    tick_call_count = 0
+
+    async def mock_tick():
+        nonlocal tick_call_count
+        tick_call_count += 1
+        # Stop after enough iterations to hit the sleep line
+        if tick_call_count >= 3:
+            subscription.keep_going = False
+        # Add a tiny delay to let the event loop run
+        await asyncio.sleep(0.001)
+
+    subscription.tick = mock_tick
+
+    # Start polling and let it run to hit the sleep(0) line
+    poll_task = asyncio.create_task(subscription.poll())
+
+    # Wait for poll to complete
+    try:
+        await asyncio.wait_for(poll_task, timeout=1.0)
+    except asyncio.TimeoutError:
+        subscription.keep_going = False
+        await asyncio.wait_for(poll_task, timeout=0.5)
+
+    # Verify tick was called multiple times (means the loop ran and hit sleep lines)
+    assert tick_call_count >= 3

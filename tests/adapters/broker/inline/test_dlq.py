@@ -1,7 +1,5 @@
 import time
 
-import pytest
-
 
 def test_dlq_message_inspection(broker):
     """Test that DLQ messages can be inspected"""
