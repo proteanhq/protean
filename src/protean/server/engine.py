@@ -13,7 +13,8 @@ from protean.core.subscriber import BaseSubscriber
 from protean.utils.globals import g
 from protean.utils.mixins import Message
 
-from .subscription import BrokerSubscription, Subscription
+from .subscription.broker_subscription import BrokerSubscription
+from .subscription.event_store_subscription import EventStoreSubscription
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,7 +65,7 @@ class Engine:
         self._subscriptions = {}
         for handler_name, record in self.domain.registry.event_handlers.items():
             # Create a subscription for each event handler
-            self._subscriptions[handler_name] = Subscription(
+            self._subscriptions[handler_name] = EventStoreSubscription(
                 self,
                 handler_name,
                 record.cls.meta_.stream_category
@@ -75,7 +76,7 @@ class Engine:
 
         for handler_name, record in self.domain.registry.command_handlers.items():
             # Create a subscription for each command handler
-            self._subscriptions[handler_name] = Subscription(
+            self._subscriptions[handler_name] = EventStoreSubscription(
                 self,
                 handler_name,
                 f"{record.cls.meta_.part_of.meta_.stream_category}:command",
@@ -85,11 +86,13 @@ class Engine:
         for handler_name, record in self.domain.registry.projectors.items():
             # Create a subscription for each projector
             for stream_category in record.cls.meta_.stream_categories:
-                self._subscriptions[f"{handler_name}-{stream_category}"] = Subscription(
-                    self,
-                    handler_name,
-                    stream_category,
-                    record.cls,
+                self._subscriptions[f"{handler_name}-{stream_category}"] = (
+                    EventStoreSubscription(
+                        self,
+                        handler_name,
+                        stream_category,
+                        record.cls,
+                    )
                 )
 
         # Gather broker subscriptions

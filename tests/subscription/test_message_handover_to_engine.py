@@ -10,7 +10,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
-from protean.server.subscription import Subscription
+from protean.server.subscription.event_store_subscription import EventStoreSubscription
 from protean.utils import Processing, TypeMatcher, fully_qualified_name
 from protean.utils.mixins import Message, handle
 
@@ -73,7 +73,7 @@ async def test_that_subscription_invokes_engine_handler_on_message(
     test_domain.repository_for(User).add(user)
 
     engine = Engine(test_domain, test_mode=True)
-    subscription = Subscription(
+    subscription = EventStoreSubscription(
         engine, fully_qualified_name(UserEventHandler), "test::user", UserEventHandler
     )
     await subscription.tick()

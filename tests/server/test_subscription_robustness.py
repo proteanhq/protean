@@ -9,7 +9,8 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
 from protean.fields import Identifier, String
 from protean.server import Engine
-from protean.server.subscription import BrokerSubscription, Subscription
+from protean.server.subscription.broker_subscription import BrokerSubscription
+from protean.server.subscription.event_store_subscription import EventStoreSubscription
 from protean.utils.eventing import Metadata
 from protean.utils.mixins import Message, handle
 
@@ -173,7 +174,7 @@ async def test_subscription_process_batch_with_asynchronous_flag(test_domain, ca
     engine = Engine(domain=test_domain, test_mode=False)
 
     # Create a subscription with a real handler
-    subscription = Subscription(
+    subscription = EventStoreSubscription(
         engine,
         "test_subscription",
         "test",  # User stream category
@@ -235,7 +236,7 @@ async def test_subscription_process_batch_exception_handling(test_domain, caplog
     engine = Engine(domain=test_domain, test_mode=False)
 
     # Create a subscription with the handler that raises exceptions
-    subscription = Subscription(
+    subscription = EventStoreSubscription(
         engine,
         "test_subscription",
         "test",  # User stream category
@@ -334,7 +335,7 @@ async def test_subscription_with_mixed_success_and_failure(test_domain, caplog):
     engine = Engine(domain=test_domain, test_mode=False)
 
     # Create a subscription with the failing handler
-    subscription = Subscription(
+    subscription = EventStoreSubscription(
         engine,
         "test_subscription",
         "test",  # User stream category
