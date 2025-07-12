@@ -10,7 +10,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
 from protean.fields import Identifier, String
 from protean.server import Engine
-from protean.server.subscription import Subscription
+from protean.server.subscription.event_store_subscription import EventStoreSubscription
 from protean.utils import Processing
 from protean.utils.eventing import Metadata
 from protean.utils.mixins import Message, handle
@@ -489,7 +489,7 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
     engine = Engine(domain=robust_test_domain, test_mode=True)
 
     # Create a subscription manually
-    subscription = Subscription(
+    subscription = EventStoreSubscription(
         engine,
         "test_subscription",
         "test_category",
@@ -530,7 +530,7 @@ async def test_subscription_exception_handling_with_position_updates(
     engine = Engine(domain=robust_test_domain, test_mode=True)
 
     # Create a subscription
-    subscription = Subscription(
+    subscription = EventStoreSubscription(
         engine,
         "test_subscription",
         "test_category",
