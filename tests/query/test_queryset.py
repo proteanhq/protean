@@ -65,7 +65,7 @@ class TestCriteriaConstruction:
         _, decon_args, decon_kwargs = q2._criteria.deconstruct()
 
         assert str(decon_args) == (
-            "(<Q: (NOT (AND: ('last_name', 'John')))>, " "<Q: (NOT (AND: ('age', 3)))>)"
+            "(<Q: (NOT (AND: ('last_name', 'John')))>, <Q: (NOT (AND: ('age', 3)))>)"
         )
         assert decon_kwargs == {}
         assert q1._criteria.connector == Q.AND
@@ -240,10 +240,7 @@ class TestCriteriaConstruction:
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
         assert str(decon_args) == (
-            "(<Q: (AND: "
-            "('last_name', 'John'), "
-            "('age', 3), "
-            "('name', 'Jean'))>,)"
+            "(<Q: (AND: ('last_name', 'John'), ('age', 3), ('name', 'Jean'))>,)"
         )
         assert decon_kwargs == {}
         assert q1._criteria.children[0].connector == Q.AND
@@ -259,7 +256,7 @@ class TestCriteriaConstruction:
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
 
         assert str(decon_args) == (
-            "(<Q: (OR: " "('last_name', 'John'), " "('age', 3), " "('name', 'Jean'))>,)"
+            "(<Q: (OR: ('last_name', 'John'), ('age', 3), ('name', 'Jean'))>,)"
         )
         assert decon_kwargs == {}
         assert q1._criteria.children[0].connector == Q.OR
@@ -273,7 +270,7 @@ class TestCriteriaConstruction:
         )
         _, decon_args, decon_kwargs = q1._criteria.deconstruct()
         assert str(decon_args) == (
-            "(<Q: (OR: ('last_name', 'John'), ('age', 3))>, " "('first_name', 'Jean'))"
+            "(<Q: (OR: ('last_name', 'John'), ('age', 3))>, ('first_name', 'Jean'))"
         )
         assert Q(*decon_args, **decon_kwargs) == q1._criteria
         assert q1._criteria.children[0].connector == Q.OR

@@ -123,9 +123,11 @@ class TestSubscriptionId:
 
     def test_subscription_id_with_mocked_components(self, test_domain):
         """Test subscription_id generation with mocked hostname, pid, and random hex"""
-        with patch("socket.gethostname", return_value="test-host"), patch(
-            "os.getpid", return_value=12345
-        ), patch("secrets.token_hex", return_value="abcdef"):
+        with (
+            patch("socket.gethostname", return_value="test-host"),
+            patch("os.getpid", return_value=12345),
+            patch("secrets.token_hex", return_value="abcdef"),
+        ):
             engine = Engine(test_domain, test_mode=True)
             subscription = engine._subscriptions[fqn(UserEventHandler)]
 

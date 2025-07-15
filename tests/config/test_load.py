@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 from protean.domain.config import Config2
-from protean.exceptions import ConfigurationError
 from protean.utils.domain_discovery import derive_domain
 from tests.shared import change_working_directory_to
 

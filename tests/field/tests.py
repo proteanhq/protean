@@ -27,7 +27,7 @@ class DummyStringField(Field):
 class MinLengthValidator:
     def __init__(self, min_length):
         self.min_length = min_length
-        self.error = f"Ensure this value has at least " f"{self.min_length} character."
+        self.error = f"Ensure this value has at least {self.min_length} character."
 
     def __call__(self, value):
         if len(value) < self.min_length:

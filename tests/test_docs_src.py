@@ -6,10 +6,10 @@ from protean import current_domain
 def test_import_my_module():
     try:
         from guides.change_state_008 import (
-            Registered,
-            User,
-            UserApplicationServices,
-            auth,
+            Registered,  # noqa: F401
+            User,  # noqa: F401
+            UserApplicationServices,  # noqa: F401
+            auth,  # noqa: F401
         )
 
         assert True  # If the import succeeds, the test passes

@@ -95,9 +95,9 @@ def test_is_interactive_context():
     # Test all interactive filenames from the actual implementation
     interactive_filenames = ["<stdin>", "<ipython-input>", "<string>", "<console>"]
     for filename in interactive_filenames:
-        assert (
-            domain._is_interactive_context(filename) is True
-        ), f"Should identify {filename} as interactive"
+        assert domain._is_interactive_context(filename) is True, (
+            f"Should identify {filename} as interactive"
+        )
 
     # Test typical non-interactive filenames
     non_interactive_filenames = [
@@ -108,9 +108,9 @@ def test_is_interactive_context():
         None,
     ]
     for filename in non_interactive_filenames:
-        assert (
-            domain._is_interactive_context(filename) is False
-        ), f"Should identify {filename} as non-interactive"
+        assert domain._is_interactive_context(filename) is False, (
+            f"Should identify {filename} as non-interactive"
+        )
 
 
 def test_interactive_path_resolution():
@@ -128,9 +128,9 @@ def test_interactive_path_resolution():
     # Test all the special filenames that should trigger the interactive path
     for filename in ["<stdin>", "<ipython-input>", "<string>", "<console>"]:
         path = simplified_guess_caller_path(filename)
-        assert path == str(
-            Path.cwd()
-        ), f"For {filename}, should return current working directory"
+        assert path == str(Path.cwd()), (
+            f"For {filename}, should return current working directory"
+        )
 
     # Make sure a regular filename doesn't trigger the interactive path
     assert simplified_guess_caller_path("regular_file.py") == "non-interactive-path"

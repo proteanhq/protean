@@ -101,8 +101,9 @@ def test_traverse_with_file_path():
         assert Path(domain.root_path).is_file()
 
         # We'll patch the actual traversal logic to avoid side effects
-        with patch("os.listdir") as mock_listdir, patch(
-            "importlib.util.spec_from_file_location"
+        with (
+            patch("os.listdir") as mock_listdir,
+            patch("importlib.util.spec_from_file_location"),
         ):
             # Configure mocks to prevent actual traversal
             mock_listdir.return_value = []

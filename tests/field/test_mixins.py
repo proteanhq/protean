@@ -167,8 +167,8 @@ class TestNOT_PROVIDED:
         assert NOT_PROVIDED is not False
         assert NOT_PROVIDED != ""
         assert NOT_PROVIDED != 0
-        assert NOT_PROVIDED is not []
-        assert NOT_PROVIDED is not {}
+        assert NOT_PROVIDED != []
+        assert NOT_PROVIDED != {}
 
         # Should be the same object when imported multiple times
         from protean.fields.mixins import NOT_PROVIDED as NOT_PROVIDED_2
