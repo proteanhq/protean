@@ -103,7 +103,7 @@ def _get_identity_type():
         return GUID
     else:
         raise ConfigurationError(
-            f'Unknown Identity Type {current_domain.config["identity_type"]}'
+            f"Unknown Identity Type {current_domain.config['identity_type']}"
         )
 
 
@@ -362,8 +362,8 @@ class SADAO(BaseDAO):
         # Fetch the record from database
         try:
             identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
-            db_item = conn.query(self.database_model_cls).get(
-                identifier
+            db_item = conn.get(
+                self.database_model_cls, identifier
             )  # This will raise exception if object was not found
         except DatabaseError as exc:
             logger.error(f"Database Record not found: {exc}")
@@ -424,8 +424,8 @@ class SADAO(BaseDAO):
         # Fetch the record from database
         try:
             identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
-            db_item = conn.query(self.database_model_cls).get(
-                identifier
+            db_item = conn.get(
+                self.database_model_cls, identifier
             )  # This will raise exception if object was not found
         except DatabaseError as exc:
             logger.error(f"Database Record not found: {exc}")

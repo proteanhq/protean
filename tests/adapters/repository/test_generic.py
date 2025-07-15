@@ -96,5 +96,5 @@ class TestConcurrency:
 
         assert exc.value.args[0] == (
             f"Wrong expected version: {person_dup2._version} "
-            f"(Aggregate: Person({identifier}), Version: {person_dup2._version+1})"
+            f"(Aggregate: Person({identifier}), Version: {person_dup2._version + 1})"
         )

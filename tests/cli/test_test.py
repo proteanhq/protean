@@ -453,8 +453,9 @@ class TestParallelExecution:
             def submit(self, fn, suite, quiet=False):
                 return MockFuture()
 
-        with patch("protean.cli.test.ThreadPoolExecutor", MockExecutor), patch(
-            "protean.cli.test.as_completed", lambda x: list(x.keys())
+        with (
+            patch("protean.cli.test.ThreadPoolExecutor", MockExecutor),
+            patch("protean.cli.test.as_completed", lambda x: list(x.keys())),
         ):
             result = mock_runner.run_test_suites_in_parallel(suites)
 
@@ -504,9 +505,10 @@ class TestCoverageReporting:
 
     def test_generate_diff_coverage_report_success(self, mock_runner):
         """Test successful diff coverage report generation."""
-        with patch("webbrowser.open") as mock_browser, patch.object(
-            mock_runner, "inject_html_style"
-        ) as mock_inject:
+        with (
+            patch("webbrowser.open") as mock_browser,
+            patch.object(mock_runner, "inject_html_style") as mock_inject,
+        ):
             mock_runner.run_command = Mock(return_value=0)
             mock_runner.generate_diff_coverage_report()
 
@@ -517,11 +519,14 @@ class TestCoverageReporting:
         """Test successful diff coverage report with real path operations."""
         runner = TestRunner()
 
-        with patch.object(runner, "run_command", return_value=0), patch.object(
-            runner, "inject_html_style"
-        ) as mock_inject, patch("webbrowser.open") as mock_browser, patch(
-            "os.path.abspath", return_value="/tmp/test_report.html"
-        ) as mock_abspath:
+        with (
+            patch.object(runner, "run_command", return_value=0),
+            patch.object(runner, "inject_html_style") as mock_inject,
+            patch("webbrowser.open") as mock_browser,
+            patch(
+                "os.path.abspath", return_value="/tmp/test_report.html"
+            ) as mock_abspath,
+        ):
             runner.generate_diff_coverage_report()
 
             # Verify the complete success path is executed
@@ -531,9 +536,10 @@ class TestCoverageReporting:
 
     def test_generate_diff_coverage_report_failure(self, mock_runner):
         """Test diff coverage report when diff-cover command fails."""
-        with patch("webbrowser.open") as mock_browser, patch.object(
-            mock_runner, "inject_html_style"
-        ) as mock_inject:
+        with (
+            patch("webbrowser.open") as mock_browser,
+            patch.object(mock_runner, "inject_html_style") as mock_inject,
+        ):
             mock_runner.run_command = Mock(return_value=1)
             mock_runner.generate_diff_coverage_report()
 

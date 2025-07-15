@@ -12,7 +12,7 @@ from uuid import UUID
 
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import ResultSet
-from protean.exceptions import ObjectNotFoundError, ValidationError
+from protean.exceptions import ObjectNotFoundError
 from protean.fields.basic import Auto
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider

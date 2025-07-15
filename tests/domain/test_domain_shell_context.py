@@ -32,9 +32,9 @@ class TestDomainShellContext:
         assert isinstance(context, dict), "The method should return a dictionary"
 
         assert "domain" in context, "The domain itself should be in the context"
-        assert (
-            context["domain"] is domain
-        ), "The domain in context should be the domain object"
+        assert context["domain"] is domain, (
+            "The domain in context should be the domain object"
+        )
 
         # Test for elements in the context
         assert (

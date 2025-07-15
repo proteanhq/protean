@@ -258,9 +258,7 @@ class BaseDAO(metaclass=ABCMeta):
 
         :param kwargs: named arguments of attribute names and values to filter on.
         """
-        logger.debug(
-            f"Lookup `{self.entity_cls.__name__}` object with values " f"{kwargs}"
-        )
+        logger.debug(f"Lookup `{self.entity_cls.__name__}` object with values {kwargs}")
 
         # Filter for item in the data store
         results = self.query.filter(**kwargs).all()

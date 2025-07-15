@@ -14,7 +14,7 @@ class TestAggregateAbstraction:
         with pytest.raises(NotSupportedError) as exc2:
             AbstractRole(foo="Titan")
         assert exc2.value.args[0] == (
-            "AbstractRole class has been marked abstract" " and cannot be instantiated"
+            "AbstractRole class has been marked abstract and cannot be instantiated"
         )
 
     def test_that_concrete_entities_can_be_created_from_abstract_entities_through_inheritance(
