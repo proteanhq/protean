@@ -23,7 +23,7 @@ def sample_metadata():
         fqn="test.TestEvent",
         kind="event",
         stream="test-stream",
-        origin_stream="test-aggregate-123",
+        origin_stream="test-message-123",
         timestamp=datetime.now(timezone.utc),
         version="1.0",
         sequence_id="1",
@@ -35,7 +35,7 @@ def sample_metadata():
 def sample_outbox(sample_metadata):
     """Create a sample outbox message for testing."""
     return Outbox.create_message(
-        source_id="aggregate-123",
+        message_id="message-123",
         stream_name="test-stream",
         message_type="TestEvent",
         data={"key": "value"},
@@ -53,7 +53,7 @@ class TestOutboxCreation:
     def test_create_message_with_all_fields(self, sample_metadata):
         """Test creating an outbox message with all fields."""
         outbox = Outbox.create_message(
-            source_id="aggregate-123",
+            message_id="message-123",
             stream_name="test-stream",
             message_type="TestEvent",
             data={"key": "value"},
@@ -65,7 +65,7 @@ class TestOutboxCreation:
             sequence_number=10,
         )
 
-        assert outbox.source_id == "aggregate-123"
+        assert outbox.message_id == "message-123"
         assert outbox.stream_name == "test-stream"
         assert outbox.type == "TestEvent"
         assert outbox.data == {"key": "value"}
@@ -83,7 +83,7 @@ class TestOutboxCreation:
     def test_create_message_with_defaults(self, sample_metadata):
         """Test creating an outbox message with default values."""
         outbox = Outbox.create_message(
-            source_id="aggregate-123",
+            message_id="message-123",
             stream_name="test-stream",
             message_type="TestEvent",
             data={"key": "value"},
@@ -101,7 +101,7 @@ class TestOutboxCreation:
         """Test that created_at is automatically set."""
         before_creation = datetime.now(timezone.utc)
         outbox = Outbox.create_message(
-            source_id="aggregate-123",
+            message_id="message-123",
             stream_name="test-stream",
             message_type="TestEvent",
             data={"key": "value"},
@@ -538,7 +538,7 @@ class TestEdgeCases:
     def test_zero_max_retries(self, sample_metadata):
         """Test behavior with zero max retries."""
         outbox = Outbox.create_message(
-            source_id="aggregate-123",
+            message_id="message-123",
             stream_name="test-stream",
             message_type="TestEvent",
             data={"key": "value"},
@@ -556,7 +556,7 @@ class TestEdgeCases:
     def test_negative_priority(self, sample_metadata):
         """Test handling of negative priority values."""
         outbox = Outbox.create_message(
-            source_id="aggregate-123",
+            message_id="message-123",
             stream_name="test-stream",
             message_type="TestEvent",
             data={"key": "value"},
@@ -619,7 +619,7 @@ class TestEdgeCases:
     def test_minimal_data_and_metadata(self, sample_metadata):
         """Test handling of minimal data."""
         outbox = Outbox.create_message(
-            source_id="aggregate-123",
+            message_id="message-123",
             stream_name="test-stream",
             message_type="TestEvent",
             data={"minimal": "data"},  # Minimal data
