@@ -303,6 +303,14 @@ class ElasticsearchDAO(BaseDAO):
         """
         raise NotImplementedError
 
+    def has_table(self) -> bool:
+        """Check if the index exists in Elasticsearch.
+
+        Returns True if the index exists, False otherwise.
+        """
+        conn = self.provider.get_connection()
+        return conn.indices.exists(index=self.database_model_cls._index._name)
+
 
 class ESProvider(BaseProvider):
     __database__ = "elasticsearch"
