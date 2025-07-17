@@ -205,6 +205,15 @@ class BaseDAO(metaclass=ABCMeta):
                      (in case of update statements, for example).
         """
 
+    @abstractmethod
+    def has_table(self) -> bool:
+        """Check if the table/collection exists in the data store.
+
+        Returns True if the table/collection exists, False otherwise.
+
+        :return: Boolean indicating if the table/collection exists
+        """
+
     ######################
     # Life-cycle methods #
     ######################

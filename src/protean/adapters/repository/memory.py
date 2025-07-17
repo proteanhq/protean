@@ -469,6 +469,14 @@ class DictDAO(BaseDAO):
         items = self.provider.raw(query, data)
         return ResultSet(offset=1, limit=len(items), total=len(items), items=items)
 
+    def has_table(self) -> bool:
+        """Check if the table/collection exists in the data store.
+
+        Returns True if the table/collection exists, False otherwise.
+        """
+        conn = self._get_session()
+        return self.schema_name in conn._db["data"]
+
 
 operators = {
     "exact": "==",

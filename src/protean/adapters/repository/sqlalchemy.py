@@ -13,6 +13,7 @@ from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm, text
 from sqlalchemy import types as sa_types
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
+from sqlalchemy import inspect
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from protean.core.database_model import BaseDatabaseModel
@@ -504,6 +505,19 @@ class SADAO(BaseDAO):
                 conn.close()
 
         return result
+
+    def has_table(self) -> bool:
+        """Check if the table exists in the database.
+
+        Returns True if the table exists, False otherwise.
+        """
+        inspector = inspect(self.provider._engine)
+
+        # Get the schema from the metadata, if any
+        schema = self.provider._metadata.schema
+
+        # Check if the table exists in the schema
+        return inspector.has_table(self.schema_name, schema=schema)
 
 
 class SAProvider(BaseProvider):
