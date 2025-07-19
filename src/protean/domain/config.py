@@ -52,6 +52,7 @@ def _default_config():
             },
         },
         "snapshot_threshold": 10,
+        "enable_outbox": False,
         "custom": {},
     }
 

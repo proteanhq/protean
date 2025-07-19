@@ -190,6 +190,89 @@ def generate_identity(
     return id_value
 
 
+def clone_class(cls: Element, new_name: str) -> Type[Element]:
+    """Clone a class with a new name.
+
+    Creates a new class with the same attributes and behavior as the original,
+    but with a different name. This is useful for creating variations of domain
+    elements without deep copying instance attributes.
+
+    Args:
+        cls: The class to clone (must be an Element or its subclass)
+        new_name: The name for the new class (must be a valid Python identifier)
+
+    Returns:
+        A new class type with the specified name
+
+    Raises:
+        TypeError: If cls is not a class or new_name is not a string
+        ValueError: If new_name is not a valid Python identifier
+    """
+    if not isinstance(cls, type):
+        raise TypeError(f"Expected a class, got {type(cls).__name__}")
+
+    if not isinstance(new_name, str):
+        raise TypeError(f"Class name must be a string, got {type(new_name).__name__}")
+
+    if not new_name:
+        raise ValueError("Class name cannot be empty")
+
+    if not new_name.isidentifier():
+        raise ValueError(f"'{new_name}' is not a valid Python identifier")
+
+    # Import keyword module to check for reserved keywords
+    import keyword
+
+    if keyword.iskeyword(new_name):
+        raise ValueError(f"'{new_name}' is a reserved Python keyword")
+
+    # Collect attributes, excluding auto-generated and special ones
+    # These should not be copied to avoid conflicts and maintain proper behavior
+    excluded_attrs = {
+        "__dict__",  # Instance attribute dictionary
+        "__weakref__",  # Weak reference support
+        "__module__",  # Will be set automatically by type()
+        "__doc__",  # Will be inherited or can be set separately
+        "__qualname__",  # Will be set explicitly below
+    }
+
+    # Create a shallow copy of class attributes, excluding the unwanted ones
+    attrs = {}
+    slots = getattr(cls, "__slots__", None)
+    slot_names = set()
+
+    # If the class has __slots__, collect slot names to avoid conflicts
+    if slots is not None:
+        if isinstance(slots, (tuple, list)):
+            slot_names = set(slots)
+        elif isinstance(slots, str):
+            slot_names = {slots}
+
+    for key, value in cls.__dict__.items():
+        if key not in excluded_attrs:
+            # Skip slot descriptors to avoid conflicts when cloning classes with __slots__
+            if slots is not None and key in slot_names:
+                # Skip the descriptor created by __slots__ to avoid conflicts
+                continue
+            attrs[key] = value
+
+    # Create the new class using type(), preserving the metaclass
+    # Pass the metaclass explicitly to preserve metaclass behavior
+    metaclass = type(cls)
+    if metaclass is not type:
+        # Custom metaclass - preserve it
+        new_cls = metaclass(new_name, cls.__bases__, attrs)
+    else:
+        # Standard type metaclass
+        new_cls = type(new_name, cls.__bases__, attrs)
+
+    # Set the qualified name to match the class name
+    # This ensures proper representation in debugging and introspection
+    new_cls.__qualname__ = new_name
+
+    return new_cls
+
+
 __all__ = [
     "Cache",
     "convert_str_values_to_list",

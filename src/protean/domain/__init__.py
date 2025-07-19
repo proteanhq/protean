@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 from uuid import uuid4
 
-from inflection import parameterize, titleize, transliterate, underscore
+from inflection import parameterize, titleize, transliterate, underscore, camelize
 
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
@@ -40,9 +40,11 @@ from protean.utils import (
     DomainObjects,
     Processing,
     fqn,
+    clone_class,
 )
 from protean.utils.container import Element
 from protean.utils.globals import g
+from protean.utils.outbox import Outbox, OutboxRepository
 from protean.utils.reflection import declared_fields, has_fields, id_field
 
 from .config import Config2, ConfigAttribute
@@ -230,6 +232,9 @@ class Domain:
         # FIXME Should all protean elements be subclassed from a base element?
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
 
+        # Store outbox DAOs per provider
+        self._outbox_repos = {}
+
     @property
     @lru_cache()
     def camel_case_name(self) -> str:
@@ -316,6 +321,10 @@ class Domain:
 
         # Initialize adapters after loading domain
         self._initialize()
+
+        # Initialize outbox DAOs for all providers
+        if self.config["enable_outbox"]:
+            self._initialize_outbox()
 
     def _traverse(self):
         # Standard Library Imports
@@ -542,7 +551,9 @@ class Domain:
 
         return factories[domain_object_type.value]
 
-    def _register_element(self, element_type, element_cls, **opts):  # noqa: C901
+    def _register_element(
+        self, element_type, element_cls, internal: bool = False, **opts
+    ):  # noqa: C901
         """Register class into the domain"""
         # Check if `element_cls` is already a subclass of the Element Type
         #   which would be the case in an explicit declaration like `class Account(BaseEntity):`
@@ -563,7 +574,7 @@ class Domain:
             self._database_models[fqn(new_cls.meta_.part_of)] = new_cls
 
         # Register element with domain
-        self._domain_registry.register_element(new_cls)
+        self._domain_registry.register_element(new_cls, internal)
 
         # Resolve or record elements to be resolved
 
@@ -674,12 +685,13 @@ class Domain:
         self,
         element_type,
         _cls=None,
+        internal: bool = False,
         **kwargs,
     ):
         """Returns the registered class after decoarating it and recording its presence in the domain"""
 
         def wrap(cls):
-            return self._register_element(element_type, cls, **kwargs)
+            return self._register_element(element_type, cls, internal, **kwargs)
 
         # See if we're being called as @Entity or @Entity().
         if _cls is None:
@@ -689,13 +701,15 @@ class Domain:
         # We're called as @dataclass without parens.
         return wrap(_cls)
 
-    def register_database_model(self, database_model_cls, **kwargs):
+    def register_database_model(
+        self, database_model_cls, internal: bool = False, **kwargs
+    ):
         """Register a model class"""
         return self._register_element(
-            DomainObjects.DATABASE_MODEL, database_model_cls, **kwargs
+            DomainObjects.DATABASE_MODEL, database_model_cls, internal, **kwargs
         )
 
-    def register(self, element_cls: Any, **kwargs: dict) -> Any:
+    def register(self, element_cls: Any, internal: bool = False, **kwargs: dict) -> Any:
         """Register an element with the domain.
 
         Returns the fully-formed domain element, subclassed and associated with
@@ -710,7 +724,9 @@ class Domain:
                 f"Element `{element_cls.__name__}` is not a valid element class"
             )
 
-        return self._register_element(element_cls.element_type, element_cls, **kwargs)
+        return self._register_element(
+            element_cls.element_type, element_cls, internal, **kwargs
+        )
 
     def fetch_element_cls_from_registry(
         self, element: str, element_types: Tuple[DomainObjects, ...]
@@ -1343,3 +1359,70 @@ class Domain:
             )
 
         return values
+
+    def _initialize_outbox(self):
+        """Initialize outbox repositories for all configured providers.
+
+        This method constructs and stores outbox repositories for each provider,
+        verifying that the outbox table exists in the database.
+        """
+
+        # Create outbox repositories for each provider
+        # Check if providers are available and initialized
+        if (
+            hasattr(self.providers, "_providers")
+            and self.providers._providers is not None
+        ):
+            for provider_name in self.providers._providers.keys():
+                try:
+                    # Synthesize new outbox class specific to this provider
+                    new_name = f"{camelize(provider_name)}Outbox"
+                    new_cls = clone_class(Outbox, new_name)
+
+                    self.register(
+                        new_cls,
+                        internal=True,
+                        schema_name="outbox",
+                        provider=provider_name,
+                    )
+
+                    # Synthesize new repository class specific to this provider
+                    new_repo_name = f"{camelize(provider_name)}OutboxRepository"
+                    new_repo_cls = clone_class(OutboxRepository, new_repo_name)
+
+                    # Register the repository manually into the domain registry
+                    # This is necessary to ensure the repository is available for the outbox class
+                    # Add repository to registry
+                    self.register(new_repo_cls, internal=True, part_of=new_cls)
+                    # Connect the explicitly defined repository to the outbox class
+                    self.providers._register_repository(
+                        new_cls, new_repo_cls
+                    )  # Associate
+
+                    outbox_repo = self.repository_for(new_cls)
+                    # Verify the outbox table exists
+                    if not outbox_repo._dao.has_table():
+                        raise ConfigurationError(
+                            f"Outbox table does not exist for provider '{provider_name}'. "
+                            f"Please ensure the outbox table is created in the database."
+                        )
+
+                    # Store the repository for later use
+                    self._outbox_repos[provider_name] = outbox_repo
+
+                except Exception as e:
+                    raise ConfigurationError(
+                        f"Failed to initialize outbox for provider '{provider_name}': {str(e)}"
+                    )
+        else:
+            # No providers configured - outbox repositories will be created lazily when needed
+            logger.debug(
+                "No providers configured during domain initialization. Outbox repositories will be created lazily."
+            )
+
+    def _get_outbox_repo(self, provider_name: str):
+        """Get outbox repository for a specific provider."""
+        if not self._outbox_repos:
+            self._initialize_outbox()
+
+        return self._outbox_repos[provider_name]

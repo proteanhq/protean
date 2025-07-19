@@ -5,7 +5,7 @@ from protean import UnitOfWork
 from .aggregate_elements import Comment, Post, PostMeta, PostRepository
 
 
-class TestUnitOfWorkRegistration:
+class TestChildObjectPersistence:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(Post)
