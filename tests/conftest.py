@@ -7,8 +7,6 @@ import sys
 
 import pytest
 
-from protean.domain import Processing
-
 
 def pytest_configure(config):
     # Insert the docs_src path into sys.path so that we can import elements from there
@@ -237,9 +235,9 @@ def test_domain(db_config, store_config, broker_config, request):
         domain.config["event_store"] = store_config
         domain.config["brokers"]["default"] = broker_config
 
-        domain.config["command_processing"] = Processing.SYNC.value
-        domain.config["event_processing"] = Processing.SYNC.value
-        domain.config["message_processing"] = Processing.SYNC.value
+        domain.config["command_processing"] = "sync"
+        domain.config["event_processing"] = "sync"
+        domain.config["message_processing"] = "sync"
 
         # We initialize and load default configuration into the domain here
         #   so that test cases that don't need explicit domain setup can

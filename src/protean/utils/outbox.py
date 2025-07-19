@@ -287,8 +287,7 @@ class OutboxRepository(BaseRepository):
         if limit is not None and limit == 0:
             return []
 
-        dao = current_domain.repository_for(Outbox)._dao
-        query = dao.query.filter(
+        query = self._dao.query.filter(
             status__in=[OutboxStatus.PENDING.value, OutboxStatus.FAILED.value]
         )
 
@@ -324,8 +323,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages in FAILED status
         """
-        dao = current_domain.repository_for(Outbox)._dao
-        query = dao.query.filter(status=OutboxStatus.FAILED.value)
+        query = self._dao.query.filter(status=OutboxStatus.FAILED.value)
         query = query.order_by("-last_processed_at")
 
         return self._apply_limit_and_execute(query, limit)
@@ -339,8 +337,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages in ABANDONED status
         """
-        dao = current_domain.repository_for(Outbox)._dao
-        query = dao.query.filter(status=OutboxStatus.ABANDONED.value)
+        query = self._dao.query.filter(status=OutboxStatus.ABANDONED.value)
         query = query.order_by("-last_processed_at")
 
         return self._apply_limit_and_execute(query, limit)
@@ -369,8 +366,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages in PROCESSING status
         """
-        dao = current_domain.repository_for(Outbox)._dao
-        query = dao.query.filter(status=OutboxStatus.PROCESSING.value)
+        query = self._dao.query.filter(status=OutboxStatus.PROCESSING.value)
         query = query.order_by("-last_processed_at")
 
         return self._apply_limit_and_execute(query, limit)
@@ -387,8 +383,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages for the given stream
         """
-        dao = current_domain.repository_for(Outbox)._dao
-        query = dao.query.filter(stream_name=stream_name)
+        query = self._dao.query.filter(stream_name=stream_name)
         query = query.order_by("-created_at")
 
         return self._apply_limit_and_execute(query, limit)
@@ -402,8 +397,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             The Outbox message with the given message ID, or None if not found
         """
-        dao = current_domain.repository_for(Outbox)._dao
-        query = dao.query.filter(message_id=message_id)
+        query = self._dao.query.filter(message_id=message_id)
         results = query.all().items
         return results[0] if results else None
 
@@ -419,8 +413,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages of the given type
         """
-        dao = current_domain.repository_for(Outbox)._dao
-        query = dao.query.filter(type=message_type)
+        query = self._dao.query.filter(type=message_type)
         query = query.order_by("-created_at")
 
         return self._apply_limit_and_execute(query, limit)
@@ -437,8 +430,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages with priority >= min_priority
         """
-        dao = current_domain.repository_for(Outbox)._dao
-        query = dao.query.filter(priority__gte=min_priority)
+        query = self._dao.query.filter(priority__gte=min_priority)
         query = query.order_by("-priority")
 
         return self._apply_limit_and_execute(query, limit)
@@ -455,8 +447,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages with the given correlation ID
         """
-        dao = current_domain.repository_for(Outbox)._dao
-        query = dao.query.filter(correlation_id=correlation_id)
+        query = self._dao.query.filter(correlation_id=correlation_id)
         query = query.order_by("-created_at")
 
         return self._apply_limit_and_execute(query, limit)
@@ -470,12 +461,11 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages that are stale
         """
-        dao = current_domain.repository_for(Outbox)._dao
         threshold_time = datetime.now(timezone.utc) - timedelta(
             minutes=stale_threshold_minutes
         )
 
-        query = dao.query.filter(
+        query = self._dao.query.filter(
             status=OutboxStatus.PROCESSING.value, last_processed_at__lt=threshold_time
         )
         query = query.order_by("last_processed_at")
@@ -494,10 +484,9 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of recent Outbox messages
         """
-        dao = current_domain.repository_for(Outbox)._dao
         threshold_time = datetime.now(timezone.utc) - timedelta(hours=hours)
 
-        query = dao.query.filter(created_at__gte=threshold_time)
+        query = self._dao.query.filter(created_at__gte=threshold_time)
         query = query.order_by("-created_at")
 
         return self._apply_limit_and_execute(query, limit)
@@ -511,10 +500,9 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages ready for retry
         """
-        dao = current_domain.repository_for(Outbox)._dao
         current_time = datetime.now(timezone.utc)
 
-        query = dao.query.filter(
+        query = self._dao.query.filter(
             status=OutboxStatus.FAILED.value, next_retry_at__lte=current_time
         ).order_by("-priority")
 
@@ -526,11 +514,10 @@ class OutboxRepository(BaseRepository):
         Returns:
             Dictionary with status as key and count as value
         """
-        dao = current_domain.repository_for(Outbox)._dao
         counts = {}
 
         for status in OutboxStatus:
-            results = dao.query.filter(status=status.value).all()
+            results = self._dao.query.filter(status=status.value).all()
             counts[status.value] = len(results)
 
         return counts
@@ -544,10 +531,9 @@ class OutboxRepository(BaseRepository):
         Returns:
             Number of messages deleted
         """
-        dao = current_domain.repository_for(Outbox)._dao
         threshold_time = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
 
-        query = dao.query.filter(
+        query = self._dao.query.filter(
             status=OutboxStatus.PUBLISHED.value, published_at__lt=threshold_time
         )
 

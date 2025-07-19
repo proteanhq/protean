@@ -2,7 +2,6 @@ import datetime
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Date, Integer, String
-from protean.utils.globals import current_domain
 
 
 class User(BaseAggregate):
@@ -14,7 +13,7 @@ class User(BaseAggregate):
 def test_for_sorting_without_nulls(test_domain):
     test_domain.register(User)
 
-    user_repo = current_domain.repository_for(User)
+    user_repo = test_domain.repository_for(User)
 
     user_repo.add(User(name="John", seq=1))
     user_repo.add(User(name="Jane", seq=2))
@@ -28,7 +27,7 @@ def test_for_sorting_without_nulls(test_domain):
 def test_for_sorting_with_dates(test_domain):
     test_domain.register(User)
 
-    user_repo = current_domain.repository_for(User)
+    user_repo = test_domain.repository_for(User)
 
     today = datetime.date.today()
 
@@ -46,7 +45,7 @@ def test_for_sorting_with_dates(test_domain):
 def test_for_in_lookup_with_integers(test_domain):
     test_domain.register(User)
 
-    user_repo = current_domain.repository_for(User)
+    user_repo = test_domain.repository_for(User)
 
     user_repo.add(User(name="John"))
     user_repo.add(User(name="Jane"))

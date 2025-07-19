@@ -1,4 +1,4 @@
-from guides.change_state_008 import User, UserApplicationServices
+from guides.change_state_008 import auth, User, UserApplicationServices
 
 from protean import current_domain
 
@@ -18,14 +18,15 @@ def test_import_my_module():
 
 
 def test_application_service_method_invocation():
-    # Run a sample test from elements declared in docs_src
-    app_services_obj = UserApplicationServices()
+    with auth.domain_context():
+        # Run a sample test from elements declared in docs_src
+        app_services_obj = UserApplicationServices()
 
-    user_id = app_services_obj.register_user(
-        email="john.doe@gmail.com", name="John Doe"
-    )
-    assert user_id is not None
+        user_id = app_services_obj.register_user(
+            email="john.doe@gmail.com", name="John Doe"
+        )
+        assert user_id is not None
 
-    app_services_obj.activate_user(user_id)
-    user = current_domain.repository_for(User).get(user_id)
-    assert user.status == "ACTIVE"
+        app_services_obj.activate_user(user_id)
+        user = current_domain.repository_for(User).get(user_id)
+        assert user.status == "ACTIVE"

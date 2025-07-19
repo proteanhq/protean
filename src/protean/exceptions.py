@@ -100,3 +100,7 @@ class SendError(ProteanException):
 
 class ExpectedVersionError(ProteanException):
     """Raised on expected version conflicts in EventSourcing"""
+
+
+class TransactionError(ProteanException):
+    """Raised when a transaction fails to commit or encounters an error during processing"""

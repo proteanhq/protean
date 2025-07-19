@@ -1,6 +1,5 @@
 from protean.core.aggregate import BaseAggregate
 from protean.fields import List
-from protean.utils.globals import current_domain
 
 
 class User(BaseAggregate):
@@ -10,7 +9,7 @@ class User(BaseAggregate):
 def test_for_any_lookup(test_domain):
     test_domain.register(User)
 
-    user_repo = current_domain.repository_for(User)
+    user_repo = test_domain.repository_for(User)
 
     user_repo.add(User(emails=["foo@example.com", "bar@example.com"]))
     user_repo.add(User(emails=["baz@example.com", "bar@example.com"]))
