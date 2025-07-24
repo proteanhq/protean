@@ -3,7 +3,7 @@
 import pytest
 from datetime import datetime, timezone, timedelta
 
-from protean.utils.outbox import Outbox, OutboxStatus
+from protean.utils.outbox import Outbox, OutboxStatus, ProcessingResult
 from protean.utils.eventing import Metadata
 
 
@@ -118,9 +118,12 @@ class TestStartProcessing:
     def test_start_processing_success(self, sample_outbox):
         """Test successfully starting to process a pending message."""
         worker_id = "worker-1"
-        result = sample_outbox.start_processing(worker_id, lock_duration_minutes=10)
+        success, result = sample_outbox.start_processing(
+            worker_id, lock_duration_minutes=10
+        )
 
-        assert result is True
+        assert success is True
+        assert result == ProcessingResult.SUCCESS
         assert sample_outbox.status == OutboxStatus.PROCESSING.value
         assert sample_outbox.locked_by == worker_id
         assert sample_outbox.locked_until is not None
@@ -130,43 +133,48 @@ class TestStartProcessing:
         """Test starting to process an already published message fails."""
         sample_outbox.status = OutboxStatus.PUBLISHED.value
 
-        result = sample_outbox.start_processing("worker-1")
+        success, result = sample_outbox.start_processing("worker-1")
 
-        assert result is False
+        assert success is False
+        assert result == ProcessingResult.NOT_ELIGIBLE
         assert sample_outbox.locked_by is None
 
     def test_start_processing_already_processing(self, sample_outbox):
         """Test starting to process an already processing message fails."""
         sample_outbox.status = OutboxStatus.PROCESSING.value
 
-        result = sample_outbox.start_processing("worker-1")
+        success, result = sample_outbox.start_processing("worker-1")
 
-        assert result is False
+        assert success is False
+        assert result == ProcessingResult.NOT_ELIGIBLE
 
     def test_start_processing_already_abandoned(self, sample_outbox):
         """Test starting to process an abandoned message fails."""
         sample_outbox.status = OutboxStatus.ABANDONED.value
 
-        result = sample_outbox.start_processing("worker-1")
+        success, result = sample_outbox.start_processing("worker-1")
 
-        assert result is False
+        assert success is False
+        assert result == ProcessingResult.NOT_ELIGIBLE
 
     def test_start_processing_max_retries_exceeded(self, sample_outbox):
         """Test starting to process when max retries exceeded fails."""
         sample_outbox.retry_count = sample_outbox.max_retries
 
-        result = sample_outbox.start_processing("worker-1")
+        success, result = sample_outbox.start_processing("worker-1")
 
-        assert result is False
+        assert success is False
+        assert result == ProcessingResult.MAX_RETRIES_EXCEEDED
 
     def test_start_processing_too_early_for_retry(self, sample_outbox):
         """Test starting to process before retry time fails."""
         sample_outbox.status = OutboxStatus.FAILED.value
         sample_outbox.next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=10)
 
-        result = sample_outbox.start_processing("worker-1")
+        success, result = sample_outbox.start_processing("worker-1")
 
-        assert result is False
+        assert success is False
+        assert result == ProcessingResult.RETRY_NOT_DUE
 
     def test_start_processing_ready_for_retry(self, sample_outbox):
         """Test starting to process a failed message that's ready for retry."""
@@ -174,9 +182,10 @@ class TestStartProcessing:
         sample_outbox.retry_count = 1
         sample_outbox.next_retry_at = datetime.now(timezone.utc) - timedelta(minutes=1)
 
-        result = sample_outbox.start_processing("worker-1")
+        success, result = sample_outbox.start_processing("worker-1")
 
-        assert result is True
+        assert success is True
+        assert result == ProcessingResult.SUCCESS
         assert sample_outbox.status == OutboxStatus.PROCESSING.value
 
     def test_start_processing_sets_lock_duration(self, sample_outbox):
@@ -184,8 +193,12 @@ class TestStartProcessing:
         lock_duration = 15
         before_lock = datetime.now(timezone.utc)
 
-        sample_outbox.start_processing("worker-1", lock_duration_minutes=lock_duration)
+        success, result = sample_outbox.start_processing(
+            "worker-1", lock_duration_minutes=lock_duration
+        )
 
+        assert success is True
+        assert result == ProcessingResult.SUCCESS
         expected_unlock_time = before_lock + timedelta(minutes=lock_duration)
         # Allow small time difference due to execution time
         time_diff = abs(
@@ -573,11 +586,12 @@ class TestEdgeCases:
         """Test very long lock duration."""
         lock_duration = 1440  # 24 hours
 
-        result = sample_outbox.start_processing(
+        success, result = sample_outbox.start_processing(
             "worker-1", lock_duration_minutes=lock_duration
         )
 
-        assert result is True
+        assert success is True
+        assert result == ProcessingResult.SUCCESS
         expected_unlock = datetime.now(timezone.utc) + timedelta(minutes=lock_duration)
         time_diff = abs((sample_outbox.locked_until - expected_unlock).total_seconds())
         assert time_diff < 1
@@ -585,12 +599,14 @@ class TestEdgeCases:
     def test_concurrent_processing_attempts(self, sample_outbox):
         """Test concurrent processing attempts on same message."""
         # First worker acquires lock
-        result1 = sample_outbox.start_processing("worker-1")
-        assert result1 is True
+        success1, result1 = sample_outbox.start_processing("worker-1")
+        assert success1 is True
+        assert result1 == ProcessingResult.SUCCESS
 
         # Second worker should fail to acquire lock
-        result2 = sample_outbox.start_processing("worker-2")
-        assert result2 is False
+        success2, result2 = sample_outbox.start_processing("worker-2")
+        assert success2 is False
+        assert result2 == ProcessingResult.ALREADY_LOCKED
         assert sample_outbox.locked_by == "worker-1"
 
     def test_state_transitions_integrity(self, sample_outbox):
@@ -600,7 +616,9 @@ class TestEdgeCases:
         assert sample_outbox.retry_count == 0
 
         # Start processing
-        sample_outbox.start_processing("worker-1")
+        success, result = sample_outbox.start_processing("worker-1")
+        assert success is True
+        assert result == ProcessingResult.SUCCESS
         assert sample_outbox.status == OutboxStatus.PROCESSING.value
         assert sample_outbox.locked_by == "worker-1"
 

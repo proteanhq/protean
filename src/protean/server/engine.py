@@ -15,6 +15,7 @@ from protean.utils.mixins import Message
 
 from .subscription.broker_subscription import BrokerSubscription
 from .subscription.event_store_subscription import EventStoreSubscription
+from .outbox_processor import OutboxProcessor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,35 +64,35 @@ class Engine:
 
         # Gather all handlers
         self._subscriptions = {}
-        for handler_name, record in self.domain.registry.event_handlers.items():
+        for handler_name, handler_record in self.domain.registry.event_handlers.items():
             # Create a subscription for each event handler
             self._subscriptions[handler_name] = EventStoreSubscription(
                 self,
-                handler_name,
-                record.cls.meta_.stream_category
-                or record.cls.meta_.part_of.meta_.stream_category,
-                record.cls,
-                origin_stream=record.cls.meta_.source_stream,
+                handler_record.cls.meta_.stream_category
+                or handler_record.cls.meta_.part_of.meta_.stream_category,
+                handler_record.cls,
+                origin_stream=handler_record.cls.meta_.source_stream,
             )
 
-        for handler_name, record in self.domain.registry.command_handlers.items():
+        for (
+            handler_name,
+            handler_record,
+        ) in self.domain.registry.command_handlers.items():
             # Create a subscription for each command handler
             self._subscriptions[handler_name] = EventStoreSubscription(
                 self,
-                handler_name,
-                f"{record.cls.meta_.part_of.meta_.stream_category}:command",
-                record.cls,
+                f"{handler_record.cls.meta_.part_of.meta_.stream_category}:command",
+                handler_record.cls,
             )
 
-        for handler_name, record in self.domain.registry.projectors.items():
+        for handler_name, handler_record in self.domain.registry.projectors.items():
             # Create a subscription for each projector
-            for stream_category in record.cls.meta_.stream_categories:
+            for stream_category in handler_record.cls.meta_.stream_categories:
                 self._subscriptions[f"{handler_name}-{stream_category}"] = (
                     EventStoreSubscription(
                         self,
-                        handler_name,
                         stream_category,
-                        record.cls,
+                        handler_record.cls,
                     )
                 )
 
@@ -109,10 +110,26 @@ class Engine:
             self._broker_subscriptions[subscriber_name] = BrokerSubscription(
                 self,
                 broker,
-                subscriber_name,
                 stream,
                 subscriber_cls,
             )
+
+        # Gather outbox processors - one per database-broker provider combination
+        self._outbox_processors = {}
+
+        # Create an outbox processor for each database provider to each broker provider
+        # Only if outbox is enabled in the domain
+        if self.domain.config.get("enable_outbox", False):
+            broker_provider_name = (
+                "default"  # FIXME: Explicitly define broker in config
+            )
+            for database_provider_name in self.domain.providers.keys():
+                processor_name = f"outbox-processor-{database_provider_name}-to-{broker_provider_name}"
+                self._outbox_processors[processor_name] = OutboxProcessor(
+                    self,
+                    database_provider_name,
+                    broker_provider_name,
+                )
 
     async def handle_broker_message(
         self, subscriber_cls: Type[BaseSubscriber], message: dict
@@ -302,6 +319,22 @@ class Engine:
                 for _, subscription in self._subscriptions.items()
             ]
 
+            # Add broker subscriptions to shutdown tasks
+            subscription_shutdown_tasks.extend(
+                [
+                    subscription.shutdown()
+                    for _, subscription in self._broker_subscriptions.items()
+                ]
+            )
+
+            # Add outbox processors to shutdown tasks
+            subscription_shutdown_tasks.extend(
+                [
+                    processor.shutdown()
+                    for _, processor in self._outbox_processors.items()
+                ]
+            )
+
             # Cancel outstanding tasks
             [task.cancel() for task in tasks]
             logger.info(f"Cancelling {len(tasks)} outstanding tasks")
@@ -353,7 +386,11 @@ class Engine:
 
         self.loop.set_exception_handler(handle_exception)
 
-        if len(self._subscriptions) == 0 and len(self._broker_subscriptions) == 0:
+        if (
+            len(self._subscriptions) == 0
+            and len(self._broker_subscriptions) == 0
+            and len(self._outbox_processors) == 0
+        ):
             logger.info("No subscriptions to start. Exiting...")
             return
 
@@ -367,11 +404,20 @@ class Engine:
             for _, subscription in self._broker_subscriptions.items()
         ]
 
+        outbox_processor_tasks = [
+            self.loop.create_task(processor.start())
+            for _, processor in self._outbox_processors.items()
+        ]
+
         try:
             if self.test_mode:
                 # If in test mode, run until all tasks complete
                 self.loop.run_until_complete(
-                    asyncio.gather(*subscription_tasks, *broker_subscription_tasks)
+                    asyncio.gather(
+                        *subscription_tasks,
+                        *broker_subscription_tasks,
+                        *outbox_processor_tasks,
+                    )
                 )
                 # Then immediately call and await the shutdown directly
                 self.loop.run_until_complete(self.shutdown())

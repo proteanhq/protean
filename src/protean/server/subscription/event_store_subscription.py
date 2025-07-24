@@ -1,10 +1,14 @@
 import logging
+import os
+import secrets
+import socket
 from typing import List, Union
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.port.event_store import BaseEventStore
 from protean.utils.mixins import Message, MessageType
+from protean.utils import fqn
 
 from . import BaseSubscription
 
@@ -22,7 +26,6 @@ class EventStoreSubscription(BaseSubscription):
     def __init__(
         self,
         engine,
-        subscriber_name: str,
         stream_category: str,
         handler: Union[BaseEventHandler, BaseCommandHandler],
         messages_per_tick: int = 10,
@@ -44,8 +47,18 @@ class EventStoreSubscription(BaseSubscription):
             tick_interval (int, optional): The interval between ticks. Defaults to 1.
         """
         # Initialize parent class
-        super().__init__(
-            engine, subscriber_name, handler, messages_per_tick, tick_interval
+        super().__init__(engine, messages_per_tick, tick_interval)
+
+        self.handler = handler
+        self.subscriber_name = fqn(self.handler)
+        self.subscriber_class_name = self.handler.__name__
+
+        # Generate unique subscription ID
+        hostname = socket.gethostname()
+        pid = os.getpid()
+        random_hex = secrets.token_hex(3)  # 3 bytes = 6 hex digits
+        self.subscription_id = (
+            f"{self.subscriber_class_name}-{hostname}-{pid}-{random_hex}"
         )
 
         # Event store specific attributes
@@ -54,7 +67,9 @@ class EventStoreSubscription(BaseSubscription):
         self.position_update_interval = position_update_interval
         self.origin_stream = origin_stream
 
-        self.subscriber_stream_name = f"position-{subscriber_name}-{stream_category}"
+        self.subscriber_stream_name = (
+            f"position-{self.subscriber_name}-{stream_category}"
+        )
         self.current_position: int = -1
         self.messages_since_last_position_write: int = 0
 
