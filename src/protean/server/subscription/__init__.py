@@ -1,10 +1,6 @@
 import asyncio
 import logging
-import os
-import secrets
-import socket
 from abc import ABC, abstractmethod
-from typing import Any
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,8 +22,6 @@ class BaseSubscription(ABC):
     def __init__(
         self,
         engine,
-        subscriber_name: str,
-        handler: Any,
         messages_per_tick: int = 10,
         tick_interval: int = 1,
     ) -> None:
@@ -36,7 +30,6 @@ class BaseSubscription(ABC):
 
         Args:
             engine: The Protean engine instance.
-            subscriber_name (str): FQN of the subscriber.
             handler: The handler instance.
             messages_per_tick (int, optional): The number of messages to process per tick. Defaults to 10.
             tick_interval (int, optional): The interval between ticks. Defaults to 1.
@@ -44,19 +37,8 @@ class BaseSubscription(ABC):
         self.engine = engine
         self.loop = engine.loop
 
-        self.subscriber_name = subscriber_name
-        self.subscriber_class_name = handler.__name__
-        self.handler = handler
         self.messages_per_tick = messages_per_tick
         self.tick_interval = tick_interval
-
-        # Generate unique subscription ID
-        hostname = socket.gethostname()
-        pid = os.getpid()
-        random_hex = secrets.token_hex(3)  # 3 bytes = 6 hex digits
-        self.subscription_id = (
-            f"{self.subscriber_class_name}-{hostname}-{pid}-{random_hex}"
-        )
 
         self.keep_going = True  # Initially set to keep going
 

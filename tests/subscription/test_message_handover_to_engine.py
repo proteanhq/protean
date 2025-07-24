@@ -11,7 +11,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
-from protean.utils import Processing, TypeMatcher, fully_qualified_name
+from protean.utils import Processing, TypeMatcher
 from protean.utils.mixins import Message, handle
 
 counter = 0
@@ -73,9 +73,7 @@ async def test_that_subscription_invokes_engine_handler_on_message(
     test_domain.repository_for(User).add(user)
 
     engine = Engine(test_domain, test_mode=True)
-    subscription = EventStoreSubscription(
-        engine, fully_qualified_name(UserEventHandler), "test::user", UserEventHandler
-    )
+    subscription = EventStoreSubscription(engine, "test::user", UserEventHandler)
     await subscription.tick()
 
     mock_handle_message.assert_called_once_with(UserEventHandler, TypeMatcher(Message))

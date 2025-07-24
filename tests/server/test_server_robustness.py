@@ -491,7 +491,6 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
     # Create a subscription manually
     subscription = EventStoreSubscription(
         engine,
-        "test_subscription",
         "test_category",
         SuccessfulEventHandler,
         messages_per_tick=10,
@@ -532,7 +531,6 @@ async def test_subscription_exception_handling_with_position_updates(
     # Create a subscription
     subscription = EventStoreSubscription(
         engine,
-        "test_subscription",
         "test_category",
         FailingEventHandler,
         messages_per_tick=10,

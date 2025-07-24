@@ -1,8 +1,12 @@
 import logging
+import os
+import secrets
+import socket
 from typing import Type
 
 from protean.core.subscriber import BaseSubscriber
 from protean.port.broker import BaseBroker
+from protean.utils import fqn
 
 from . import BaseSubscription
 
@@ -21,7 +25,6 @@ class BrokerSubscription(BaseSubscription):
         self,
         engine,
         broker,
-        subscriber_name: str,
         stream_name: str,
         handler: Type[BaseSubscriber],
         messages_per_tick: int = 10,
@@ -40,8 +43,18 @@ class BrokerSubscription(BaseSubscription):
             tick_interval (int, optional): The interval between ticks. Defaults to 1.
         """
         # Initialize parent class
-        super().__init__(
-            engine, subscriber_name, handler, messages_per_tick, tick_interval
+        super().__init__(engine, messages_per_tick, tick_interval)
+
+        self.handler = handler
+        self.subscriber_name = fqn(self.handler)
+        self.subscriber_class_name = handler.__name__
+
+        # Generate unique subscription ID
+        hostname = socket.gethostname()
+        pid = os.getpid()
+        random_hex = secrets.token_hex(3)  # 3 bytes = 6 hex digits
+        self.subscription_id = (
+            f"{self.subscriber_class_name}-{hostname}-{pid}-{random_hex}"
         )
 
         # Broker specific attributes

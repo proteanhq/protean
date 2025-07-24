@@ -1,13 +1,12 @@
 import traceback
 from datetime import datetime, timezone, timedelta
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean import fields
 from protean.utils.eventing import Metadata
-from protean.utils.globals import current_domain
 
 
 PAGE_SIZE = 50  # Default page size for fetching messages
@@ -19,6 +18,14 @@ class OutboxStatus(Enum):
     PUBLISHED = "published"
     FAILED = "failed"
     ABANDONED = "abandoned"  # Max retries exceeded
+
+
+class ProcessingResult(Enum):
+    SUCCESS = "success"
+    NOT_ELIGIBLE = "not_eligible"
+    ALREADY_LOCKED = "already_locked"
+    MAX_RETRIES_EXCEEDED = "max_retries_exceeded"
+    RETRY_NOT_DUE = "retry_not_due"
 
 
 class Outbox(BaseAggregate):
@@ -108,7 +115,9 @@ class Outbox(BaseAggregate):
             status=OutboxStatus.PENDING.value,
         )
 
-    def start_processing(self, worker_id: str, lock_duration_minutes: int = 5) -> bool:
+    def start_processing(
+        self, worker_id: str, lock_duration_minutes: int = 5
+    ) -> Tuple[bool, ProcessingResult]:
         """Attempt to acquire lock and start processing the message.
 
         Args:
@@ -116,18 +125,22 @@ class Outbox(BaseAggregate):
             lock_duration_minutes: How long to hold the lock
 
         Returns:
-            True if lock acquired successfully, False otherwise
+            Tuple of (success: bool, result: ProcessingResult) indicating outcome
         """
+        # Check if message is locked first (for PROCESSING status)
+        if self._is_locked():
+            return False, ProcessingResult.ALREADY_LOCKED
+
         # Check if message is eligible for processing
         if self.status not in [OutboxStatus.PENDING.value, OutboxStatus.FAILED.value]:
-            return False
+            return False, ProcessingResult.NOT_ELIGIBLE
 
-        if self._is_locked() or not self._can_retry():
-            return False
+        if not self._can_retry():
+            return False, ProcessingResult.MAX_RETRIES_EXCEEDED
 
         # Check if enough time has passed for retry
         if self.next_retry_at and datetime.now(timezone.utc) < self.next_retry_at:
-            return False
+            return False, ProcessingResult.RETRY_NOT_DUE
 
         # Acquire lock and mark as processing
         self.status = OutboxStatus.PROCESSING.value
@@ -136,7 +149,7 @@ class Outbox(BaseAggregate):
             minutes=lock_duration_minutes
         )
         self.last_processed_at = datetime.now(timezone.utc)
-        return True
+        return True, ProcessingResult.SUCCESS
 
     def mark_published(self) -> None:
         """Mark message as successfully published."""
@@ -351,8 +364,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages in PUBLISHED status
         """
-        dao = current_domain.repository_for(Outbox)._dao
-        query = dao.query.filter(status=OutboxStatus.PUBLISHED.value)
+        query = self._dao.query.filter(status=OutboxStatus.PUBLISHED.value)
         query = query.order_by("-published_at")
 
         return self._apply_limit_and_execute(query, limit)
