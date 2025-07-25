@@ -10,7 +10,7 @@ class MinLengthValidator:
 
     def __init__(self, min_length):
         self.min_length = min_length
-        self.message = f"value has less than " f"{self.min_length} characters"
+        self.message = f"value has less than {self.min_length} characters"
 
     def __call__(self, value):
         if self.min_length is not None and len(value) < self.min_length:
@@ -22,7 +22,7 @@ class MaxLengthValidator:
 
     def __init__(self, max_length):
         self.max_length = max_length
-        self.message = f"value has more than " f"{self.max_length} characters"
+        self.message = f"value has more than {self.max_length} characters"
 
     def __call__(self, value):
         if self.max_length is not None and len(value) > self.max_length:

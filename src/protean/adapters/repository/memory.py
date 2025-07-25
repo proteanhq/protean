@@ -12,7 +12,7 @@ from uuid import UUID
 
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import ResultSet
-from protean.exceptions import ObjectNotFoundError, ValidationError
+from protean.exceptions import ObjectNotFoundError
 from protean.fields.basic import Auto
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
@@ -468,6 +468,10 @@ class DictDAO(BaseDAO):
         """
         items = self.provider.raw(query, data)
         return ResultSet(offset=1, limit=len(items), total=len(items), items=items)
+
+    def has_table(self) -> bool:
+        """Always returns True for MemoryProvider as it is always available"""
+        return True
 
 
 operators = {

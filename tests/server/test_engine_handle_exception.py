@@ -33,11 +33,11 @@ def test_handle_exception_with_exception(engine):
     async def faulty_task():
         raise Exception("Test exception")
 
-    with mock.patch.object(engine, "shutdown") as mock_shutdown, mock.patch(
-        "traceback.print_stack"
-    ) as mock_print_stack, mock.patch(
-        "protean.server.engine.logger.error"
-    ) as mock_logger_error:
+    with (
+        mock.patch.object(engine, "shutdown") as mock_shutdown,
+        mock.patch("traceback.print_stack") as mock_print_stack,
+        mock.patch("protean.server.engine.logger.error") as mock_logger_error,
+    ):
         # Start the engine in a separate coroutine
         async def run_engine():
             loop.create_task(faulty_task())
@@ -89,9 +89,10 @@ def test_exception_handler_with_message_only(engine):
             )  # Reset handler to avoid infinite loop
             logger.error(f"Caught exception: {msg}")
 
-    with mock.patch.object(engine, "shutdown") as mock_shutdown, mock.patch(
-        "protean.server.engine.logger.error"
-    ) as mock_logger_error:
+    with (
+        mock.patch.object(engine, "shutdown") as mock_shutdown,
+        mock.patch("protean.server.engine.logger.error") as mock_logger_error,
+    ):
         # Create a faulty task without an exception in the context
         async def run_engine():
             # Set the exception handler before triggering the exception
@@ -126,11 +127,11 @@ def test_handle_exception_while_running(engine):
     async def faulty_task():
         raise Exception("Test exception while running")
 
-    with mock.patch.object(engine, "shutdown") as mock_shutdown, mock.patch(
-        "traceback.print_stack"
-    ) as mock_print_stack, mock.patch(
-        "protean.server.engine.logger.error"
-    ) as mock_logger_error:
+    with (
+        mock.patch.object(engine, "shutdown") as mock_shutdown,
+        mock.patch("traceback.print_stack") as mock_print_stack,
+        mock.patch("protean.server.engine.logger.error") as mock_logger_error,
+    ):
         # Run the engine with a faulty task that raises an exception
         async def run_engine():
             loop.create_task(faulty_task())

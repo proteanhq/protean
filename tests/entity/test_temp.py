@@ -15,5 +15,5 @@ def test_that_abstract_entities_cannot_be_initialized(test_domain):
     with pytest.raises(NotSupportedError) as exc2:
         AbstractRole(foo="Titan")
     assert exc2.value.args[0] == (
-        "AbstractRole class has been marked abstract" " and cannot be instantiated"
+        "AbstractRole class has been marked abstract and cannot be instantiated"
     )

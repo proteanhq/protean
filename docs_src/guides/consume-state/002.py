@@ -1,5 +1,3 @@
-from uuid import uuid4
-
 from protean import Domain
 from protean.core.projector import on
 from protean.fields import DateTime, Float, Identifier, Integer, String, Text

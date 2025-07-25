@@ -9,7 +9,8 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
 from protean.fields import Identifier, String
 from protean.server import Engine
-from protean.server.subscription import BrokerSubscription, Subscription
+from protean.server.subscription.broker_subscription import BrokerSubscription
+from protean.server.subscription.event_store_subscription import EventStoreSubscription
 from protean.utils.eventing import Metadata
 from protean.utils.mixins import Message, handle
 
@@ -173,9 +174,8 @@ async def test_subscription_process_batch_with_asynchronous_flag(test_domain, ca
     engine = Engine(domain=test_domain, test_mode=False)
 
     # Create a subscription with a real handler
-    subscription = Subscription(
+    subscription = EventStoreSubscription(
         engine,
-        "test_subscription",
         "test",  # User stream category
         CountingEventHandler,
         messages_per_tick=10,
@@ -223,7 +223,7 @@ async def test_subscription_process_batch_with_asynchronous_flag(test_domain, ca
 
         # Check if position updates were written
         position_messages = test_domain.event_store.store.read(
-            "position-test_subscription-test"
+            "position-tests.server.test_subscription_robustness.CountingEventHandler-test"
         )
         assert len(position_messages) > 0
 
@@ -235,9 +235,8 @@ async def test_subscription_process_batch_exception_handling(test_domain, caplog
     engine = Engine(domain=test_domain, test_mode=False)
 
     # Create a subscription with the handler that raises exceptions
-    subscription = Subscription(
+    subscription = EventStoreSubscription(
         engine,
-        "test_subscription",
         "test",  # User stream category
         UnhandledExceptionEventHandler,
         messages_per_tick=10,
@@ -273,7 +272,7 @@ async def test_subscription_process_batch_exception_handling(test_domain, caplog
 
         # Check if position was still updated in the event store despite the error
         position_messages = test_domain.event_store.store.read(
-            "position-test_subscription-test"
+            "position-tests.server.test_subscription_robustness.UnhandledExceptionEventHandler-test"
         )
         assert len(position_messages) > 0
 
@@ -293,7 +292,6 @@ async def test_broker_subscription_process_batch_exception_handling(
     subscription = BrokerSubscription(
         engine,
         broker,
-        "test_broker_subscription",
         "failure_stream",  # This stream has our failing subscriber
         FailingSubscriber,
         messages_per_tick=10,
@@ -334,9 +332,8 @@ async def test_subscription_with_mixed_success_and_failure(test_domain, caplog):
     engine = Engine(domain=test_domain, test_mode=False)
 
     # Create a subscription with the failing handler
-    subscription = Subscription(
+    subscription = EventStoreSubscription(
         engine,
-        "test_subscription",
         "test",  # User stream category
         FailingEventHandler,  # This handler fails for Registered but succeeds for EmailSent
         messages_per_tick=10,
@@ -384,6 +381,6 @@ async def test_subscription_with_mixed_success_and_failure(test_domain, caplog):
 
         # Check if position was updated for both messages
         position_messages = test_domain.event_store.store.read(
-            "position-test_subscription-test"
+            "position-tests.server.test_subscription_robustness.FailingEventHandler-test"
         )
         assert len(position_messages) > 0  # At least one position update

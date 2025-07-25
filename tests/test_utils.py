@@ -1,7 +1,7 @@
 import pytest
 
 from protean.exceptions import ConfigurationError
-from protean.utils import convert_str_values_to_list, generate_identity, get_version
+from protean.utils import convert_str_values_to_list, generate_identity
 
 
 def test_convert_str_values_to_list():

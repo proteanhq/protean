@@ -53,9 +53,9 @@ class TestFieldClone:
 
         # Assert
         assert cloned_field is not field, "The cloned field should be a new instance"
-        assert (
-            cloned_field.choices == field.choices
-        ), "Choices should be identical in the clone"
+        assert cloned_field.choices == field.choices, (
+            "Choices should be identical in the clone"
+        )
 
     def test_clone_with_validators(self):
         # Arrange
@@ -77,9 +77,9 @@ class TestFieldClone:
 
         # Assert
         assert cloned_field is not field, "The cloned field should be a new instance"
-        assert (
-            cloned_field.validators == field.validators
-        ), "Validators should be identical in the clone"
+        assert cloned_field.validators == field.validators, (
+            "Validators should be identical in the clone"
+        )
 
     def test_clone_with_default_callable(self):
         # Arrange
@@ -100,6 +100,6 @@ class TestFieldClone:
 
         # Assert
         assert cloned_field is not field, "The cloned field should be a new instance"
-        assert (
-            cloned_field.default is field.default
-        ), "Default callable should be identical in the clone"
+        assert cloned_field.default is field.default, (
+            "Default callable should be identical in the clone"
+        )

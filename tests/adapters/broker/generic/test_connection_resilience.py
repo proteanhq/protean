@@ -60,8 +60,9 @@ def test_publish_with_connection_error_and_recovery(broker):
             return original_publish(stream, message)
 
     # Mock _ensure_connection to return True (successful recovery)
-    with patch.object(broker, "_publish", side_effect=mock_publish), patch.object(
-        broker, "_ensure_connection", return_value=True
+    with (
+        patch.object(broker, "_publish", side_effect=mock_publish),
+        patch.object(broker, "_ensure_connection", return_value=True),
     ):
         # Should succeed after retry
         identifier = broker.publish(stream, message)
@@ -77,9 +78,12 @@ def test_publish_with_connection_error_recovery_fails(broker):
     message = {"data": "test"}
 
     # Mock _publish to always raise connection error
-    with patch.object(
-        broker, "_publish", side_effect=ConnectionError("Connection lost")
-    ), patch.object(broker, "_ensure_connection", return_value=False):
+    with (
+        patch.object(
+            broker, "_publish", side_effect=ConnectionError("Connection lost")
+        ),
+        patch.object(broker, "_ensure_connection", return_value=False),
+    ):
         # Should raise the original error when recovery fails
         with pytest.raises(ConnectionError, match="Connection lost"):
             broker.publish(stream, message)
@@ -130,8 +134,9 @@ def test_get_next_with_connection_error_and_recovery(broker):
             return original_get_next(stream, consumer_group)
 
     # Mock _ensure_connection to return True (successful recovery)
-    with patch.object(broker, "_get_next", side_effect=mock_get_next), patch.object(
-        broker, "_ensure_connection", return_value=True
+    with (
+        patch.object(broker, "_get_next", side_effect=mock_get_next),
+        patch.object(broker, "_ensure_connection", return_value=True),
     ):
         # Should succeed after retry
         result = broker.get_next(stream, consumer_group)
@@ -146,9 +151,12 @@ def test_get_next_with_connection_error_recovery_fails(broker):
     consumer_group = "test_group"
 
     # Mock _get_next to always raise connection error
-    with patch.object(
-        broker, "_get_next", side_effect=ConnectionError("Connection lost")
-    ), patch.object(broker, "_ensure_connection", return_value=False):
+    with (
+        patch.object(
+            broker, "_get_next", side_effect=ConnectionError("Connection lost")
+        ),
+        patch.object(broker, "_ensure_connection", return_value=False),
+    ):
         # Should raise the original error when recovery fails
         with pytest.raises(ConnectionError, match="Connection lost"):
             broker.get_next(stream, consumer_group)
@@ -217,8 +225,9 @@ def test_connection_resilience_preserves_message_integrity(broker):
             assert message == original_message
             return original_publish(stream, message)
 
-    with patch.object(broker, "_publish", side_effect=mock_publish), patch.object(
-        broker, "_ensure_connection", return_value=True
+    with (
+        patch.object(broker, "_publish", side_effect=mock_publish),
+        patch.object(broker, "_ensure_connection", return_value=True),
     ):
         # Publish should succeed and preserve message integrity
         identifier = broker.publish(stream, original_message)
@@ -242,9 +251,9 @@ def test_connection_error_detection_case_insensitive(broker):
 
     for error in case_variations:
         result = broker._is_connection_error(error)
-        assert (
-            result is True
-        ), f"Should detect '{error}' as connection error (case insensitive)"
+        assert result is True, (
+            f"Should detect '{error}' as connection error (case insensitive)"
+        )
 
 
 @pytest.mark.basic_pubsub
@@ -267,8 +276,9 @@ def test_multiple_connection_errors_handled_gracefully(broker):
             # Retry for message1 and normal call for message2 succeed
             return f"id-{message['id']}"
 
-    with patch.object(broker, "_publish", side_effect=mock_publish), patch.object(
-        broker, "_ensure_connection", return_value=True
+    with (
+        patch.object(broker, "_publish", side_effect=mock_publish),
+        patch.object(broker, "_ensure_connection", return_value=True),
     ):
         # First publish should fail and recover
         id1 = broker.publish(stream, message1)

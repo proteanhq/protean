@@ -13,6 +13,7 @@ from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm, text
 from sqlalchemy import types as sa_types
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
+from sqlalchemy import inspect
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from protean.core.database_model import BaseDatabaseModel
@@ -103,7 +104,7 @@ def _get_identity_type():
         return GUID
     else:
         raise ConfigurationError(
-            f'Unknown Identity Type {current_domain.config["identity_type"]}'
+            f"Unknown Identity Type {current_domain.config['identity_type']}"
         )
 
 
@@ -362,8 +363,8 @@ class SADAO(BaseDAO):
         # Fetch the record from database
         try:
             identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
-            db_item = conn.query(self.database_model_cls).get(
-                identifier
+            db_item = conn.get(
+                self.database_model_cls, identifier
             )  # This will raise exception if object was not found
         except DatabaseError as exc:
             logger.error(f"Database Record not found: {exc}")
@@ -424,8 +425,8 @@ class SADAO(BaseDAO):
         # Fetch the record from database
         try:
             identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
-            db_item = conn.query(self.database_model_cls).get(
-                identifier
+            db_item = conn.get(
+                self.database_model_cls, identifier
             )  # This will raise exception if object was not found
         except DatabaseError as exc:
             logger.error(f"Database Record not found: {exc}")
@@ -504,6 +505,19 @@ class SADAO(BaseDAO):
                 conn.close()
 
         return result
+
+    def has_table(self) -> bool:
+        """Check if the table exists in the database.
+
+        Returns True if the table exists, False otherwise.
+        """
+        inspector = inspect(self.provider._engine)
+
+        # Get the schema from the metadata, if any
+        schema = self.provider._metadata.schema
+
+        # Check if the table exists in the schema
+        return inspector.has_table(self.schema_name, schema=schema)
 
 
 class SAProvider(BaseProvider):
@@ -645,11 +659,15 @@ class SAProvider(BaseProvider):
 
     def _create_database_artifacts(self):
         # Create tables for all registered aggregates, entities, and projections
-        elements = {
-            **self.domain.registry.aggregates,
-            **self.domain.registry.entities,
-            **self.domain.registry.projections,
-        }
+
+        # Loop through self.domain.registry._elements and extract the classes under
+        #   the keys 'AGGREGATE', 'ENTITY', and 'PROJECTION'
+        #   We don't use properties because we want to access even the internal elements
+        elements = {}
+
+        for element_type in ["AGGREGATE", "ENTITY", "PROJECTION"]:
+            if element_type in self.domain.registry._elements:
+                elements.update(self.domain.registry._elements[element_type])
 
         for _, element_record in elements.items():
             self.domain.repository_for(element_record.cls)._dao

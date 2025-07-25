@@ -8,7 +8,7 @@ from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
-from protean.fields import Identifier, String
+from protean.fields import Identifier, String, Boolean
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 
@@ -18,7 +18,7 @@ class Register(BaseCommand):
     email = String()
 
 
-class RenameNameTwice(BaseCommand):
+class RenameAndActivate(BaseCommand):
     user_id = Identifier()
 
 
@@ -32,9 +32,14 @@ class Renamed(BaseEvent):
     name = String()
 
 
+class Activated(BaseEvent):
+    id = Identifier()
+
+
 class User(BaseAggregate):
     name = String()
     email = String()
+    active = Boolean(default=False)
 
     @apply
     def registered(self, event: Registered) -> None:
@@ -44,6 +49,10 @@ class User(BaseAggregate):
     def renamed(self, event: Renamed) -> None:
         self.name = event.name
 
+    @apply
+    def activated(self, event: Activated) -> None:
+        self.active = True
+
 
 class UserCommandHandler(BaseCommandHandler):
     @handle(Register)
@@ -52,31 +61,30 @@ class UserCommandHandler(BaseCommandHandler):
         user.raise_(Registered(id=command.user_id, email=command.email))
         current_domain.repository_for(User).add(user)
 
-    @handle(RenameNameTwice)
-    def rename_user(self, command: RenameNameTwice) -> None:
+    @handle(RenameAndActivate)
+    def rename_and_activate_user(self, command: RenameAndActivate) -> None:
         user_repo = current_domain.repository_for(User)
+        user = user_repo.get(command.user_id)
 
-        for _ in range(2):
-            user = user_repo.get(command.user_id)
-            user.raise_(
-                Renamed(
-                    id=user.id,
-                    name="".join(
-                        random.choice(string.ascii_uppercase) for i in range(10)
-                    ),
-                )
+        user.raise_(
+            Renamed(
+                id=user.id,
+                name="".join(random.choice(string.ascii_uppercase) for i in range(10)),
             )
+        )
+        user.raise_(Activated(id=user.id))
 
-            user_repo.add(user)
+        user_repo.add(user)
 
 
 def test_that_multiple_events_are_raised_per_aggregate_in_the_same_uow(test_domain):
     test_domain.register(User, is_event_sourced=True)
     test_domain.register(Register, part_of=User)
-    test_domain.register(RenameNameTwice, part_of=User)
+    test_domain.register(RenameAndActivate, part_of=User)
     test_domain.register(UserCommandHandler, part_of=User)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Renamed, part_of=User)
+    test_domain.register(Activated, part_of=User)
     test_domain.init(traverse=False)
 
     identifier = str(uuid4())
@@ -87,8 +95,8 @@ def test_that_multiple_events_are_raised_per_aggregate_in_the_same_uow(test_doma
         )
     )
 
-    UserCommandHandler().rename_user(
-        RenameNameTwice(
+    UserCommandHandler().rename_and_activate_user(
+        RenameAndActivate(
             user_id=identifier,
         )
     )
@@ -98,4 +106,4 @@ def test_that_multiple_events_are_raised_per_aggregate_in_the_same_uow(test_doma
     assert len(messages) == 3
     assert messages[0]["type"] == Registered.__type__
     assert messages[1]["type"] == Renamed.__type__
-    assert messages[2]["type"] == Renamed.__type__
+    assert messages[2]["type"] == Activated.__type__

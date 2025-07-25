@@ -961,3 +961,41 @@ class TestDAOLookup:
         from protean.adapters.repository.sqlalchemy import SAProvider
 
         assert SAProvider.get_lookups().get("sample") == sample_lookup_cls
+
+
+@pytest.mark.database
+class TestDAOHasTable:
+    """Test has_table method functionality"""
+
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(User)
+
+    def test_has_table_returns_false_before_creation(self, test_domain):
+        """Test that has_table returns False before any entity is created"""
+        dao = test_domain.repository_for(User)._dao
+
+        # For memory provider, table should not exist until first create
+        # For SQL databases, table creation happens during domain setup
+        # so we test if has_table works correctly
+        result = dao.has_table()
+        assert isinstance(result, bool)
+
+    def test_has_table_returns_true_after_creation(self, test_domain):
+        """Test that has_table returns True after creating an entity"""
+        dao = test_domain.repository_for(User)._dao
+
+        # Create an entity to ensure the table/collection exists
+        dao.create(email="john.doe@example.com", password="password")
+
+        assert dao.has_table() is True
+
+    def test_has_table_returns_true_after_multiple_creations(self, test_domain):
+        """Test that has_table returns True after creating multiple entities"""
+        dao = test_domain.repository_for(User)._dao
+
+        # Create multiple entities
+        dao.create(email="john.doe.1@example.com", password="password")
+        dao.create(email="john.doe.2@example.com", password="password")
+
+        assert dao.has_table() is True

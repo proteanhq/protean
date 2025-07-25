@@ -148,3 +148,5 @@ tester-*
 
 # Temporary Docs folder
 docs-old/*
+
+CLAUDE.md

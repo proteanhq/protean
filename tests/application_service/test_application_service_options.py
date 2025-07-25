@@ -2,11 +2,8 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService
-from protean.core.event import BaseEvent
-from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.fields import Identifier, String
-from protean.utils.globals import current_domain
+from protean.fields import String
 
 
 class User(BaseAggregate):

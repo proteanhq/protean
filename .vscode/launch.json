@@ -120,12 +120,12 @@
             "args": ["--postgresql"]
         },
         {
-            "name": "Generic Tests - Postgresql",
+            "name": "Specific Generic Test - Postgresql",
             "type": "debugpy",
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/adapters/repository/test_generic.py::TestPersistenceViaRepository::test_that_aggregate_can_be_persisted_with_repository",
+                "tests/server/test_outbox_processor.py::TestOutboxProcessor::test_get_next_batch_of_messages_with_data",
                 "-m",
                 "database",
                 "--db=POSTGRESQL",

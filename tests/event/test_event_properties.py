@@ -47,7 +47,6 @@ def test_event_hash(test_domain):
     user.raise_(Registered(email="john.doe@gmail.com", name="John Doe", user_id="1234"))
 
     event = user._events[0]
-    assert hash(event) == hash(json.dumps(event.payload, sort_keys=True))
-    assert event._metadata.payload_hash == hash(
-        json.dumps(event.payload, sort_keys=True)
-    )
+    payload_hash = hash(json.dumps(event.payload, sort_keys=True))
+    assert hash(event) == payload_hash
+    assert event._metadata.payload_hash == str(payload_hash)

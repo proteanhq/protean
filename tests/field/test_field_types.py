@@ -132,7 +132,7 @@ class TestIntegerField:
         with pytest.raises(ValidationError) as e_info:
             status._load(4)
         assert e_info.value.messages == {
-            "unlinked": ["Value `4` is not a valid choice. " "Must be among [0, 1, 2]"]
+            "unlinked": ["Value `4` is not a valid choice. Must be among [0, 1, 2]"]
         }
 
 
