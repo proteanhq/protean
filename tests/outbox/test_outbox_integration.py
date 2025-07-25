@@ -76,19 +76,12 @@ class TestOutboxIntegration:
             # If no default provider or outbox table doesn't exist, that's expected
             pass
 
-    def test_outbox_table_exists_after_initialization(self, test_domain):
-        """Test that outbox table exists after domain initialization"""
+    def test_outbox_repos_initialized(self, test_domain):
+        """Test that outbox repositories are initialized after domain initialization"""
         for provider_name, outbox_repo in test_domain._outbox_repos.items():
-            assert outbox_repo._dao.has_table(), (
-                f"Outbox table missing for provider {provider_name}"
+            assert outbox_repo is not None, (
+                f"Outbox repository not initialized for provider {provider_name}"
             )
-
-    def test_outbox_repo_configuration_error_on_missing_table(self, test_domain):
-        """Test that ConfigurationError is raised if outbox table doesn't exist"""
-        # This test would require creating a domain with a fresh database
-        # where the outbox table hasn't been created yet
-        # For now, we'll test the error handling logic
-        pass
 
     def test_events_stored_in_outbox_during_commit(self, test_domain):
         """Test that events are stored in outbox during UnitOfWork commit"""

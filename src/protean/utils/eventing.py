@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ConfigurationError, IncorrectUsageError
-from protean.fields import Boolean, DateTime, Field, Integer, String, ValueObject
+from protean.fields import Boolean, DateTime, Field, String, ValueObject
 from protean.fields.association import Association, Reference
 from protean.utils.container import BaseContainer, OptionsMixin
 from protean.utils.reflection import _ID_FIELD_NAME, declared_fields, fields
@@ -52,7 +52,7 @@ class Metadata(BaseValueObject):
     sequence_id = String()
 
     # Hash of the payload
-    payload_hash = Integer()
+    payload_hash = String()
 
     # Sync or Async?
     asynchronous = Boolean(default=True)

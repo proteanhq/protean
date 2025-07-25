@@ -1400,12 +1400,6 @@ class Domain:
                     )  # Associate
 
                     outbox_repo = self.repository_for(new_cls)
-                    # Verify the outbox table exists
-                    if not outbox_repo._dao.has_table():
-                        raise ConfigurationError(
-                            f"Outbox table does not exist for provider '{provider_name}'. "
-                            f"Please ensure the outbox table is created in the database."
-                        )
 
                     # Store the repository for later use
                     self._outbox_repos[provider_name] = outbox_repo
@@ -1422,6 +1416,9 @@ class Domain:
 
     def _get_outbox_repo(self, provider_name: str):
         """Get outbox repository for a specific provider."""
+        # This check is largely unnecessary because `domain.init()` is mandatory,
+        #   and it initializes the outbox repositories.
+        #   This is largely a safeguard for tests to execute without calling `domain.init()`.
         if not self._outbox_repos:
             self._initialize_outbox()
 
