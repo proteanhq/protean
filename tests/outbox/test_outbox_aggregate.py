@@ -47,6 +47,7 @@ def sample_outbox(sample_metadata):
     )
 
 
+@pytest.mark.database
 class TestOutboxCreation:
     """Test outbox message creation."""
 

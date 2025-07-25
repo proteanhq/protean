@@ -188,13 +188,13 @@ class TestTestRunner:
         assert mock_runner.run_command.call_count == 0
 
     def test_run_full_suite_parallel_default(self, mock_runner, capsys):
-        """Test run_full_suite with default parallel execution."""
-        mock_runner.run_test_suites_in_parallel = Mock(return_value=0)
+        """Test run_full_suite with default parallel execution (matrix-first)."""
+        mock_runner.run_full_suite_with_matrix_first = Mock(return_value=0)
 
         result = mock_runner.run_full_suite()  # sequential=False by default
 
         assert result == 0
-        mock_runner.run_test_suites_in_parallel.assert_called_once()
+        mock_runner.run_full_suite_with_matrix_first.assert_called_once()
 
     def test_run_full_suite_sequential_mode(self, mock_runner):
         """Test run_full_suite with sequential=True."""
@@ -204,6 +204,28 @@ class TestTestRunner:
 
         assert result == 0
         mock_runner.run_test_suites_sequentially.assert_called_once()
+
+    def test_run_full_suite_with_matrix_first(self, mock_runner, capsys):
+        """Test run_full_suite_with_matrix_first runs matrix first, then parallel."""
+        # Create test suites
+        suites = [
+            TestSuite("Full Matrix", ["echo", "matrix"]),
+            TestSuite("Database: MEMORY", ["echo", "db1"]),
+            TestSuite("Broker: REDIS", ["echo", "broker1"]),
+        ]
+
+        with patch("time.time", side_effect=[100.0, 105.0]):
+            result = mock_runner.run_full_suite_with_matrix_first(suites)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert (
+            "🎯 Running full test suite with matrix-first approach..." in captured.out
+        )
+        assert "🚀 Phase 1: Running full matrix test suite..." in captured.out
+        assert (
+            "🔄 Phase 2: Running 2 remaining test suites in parallel..." in captured.out
+        )
 
 
 class TestTestSuite:

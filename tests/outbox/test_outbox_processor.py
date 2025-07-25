@@ -55,8 +55,7 @@ def outbox_test_domain(test_domain):
     return test_domain
 
 
-@pytest.fixture
-def outbox_messages(outbox_test_domain):
+def persist_outbox_messages(outbox_test_domain):
     """Create test outbox messages"""
     outbox_repo = outbox_test_domain._get_outbox_repo("default")
 
@@ -79,7 +78,7 @@ def outbox_messages(outbox_test_domain):
     return messages
 
 
-# @pytest.mark.database  # FIXME Enable when outbox setup is enabled for all providers
+@pytest.mark.database
 class TestOutboxProcessor:
     """Test the OutboxProcessor functionality"""
 
@@ -172,9 +171,7 @@ class TestOutboxProcessor:
         assert messages == []
 
     @pytest.mark.asyncio
-    async def test_get_next_batch_of_messages_with_data(
-        self, outbox_test_domain, outbox_messages
-    ):
+    async def test_get_next_batch_of_messages_with_data(self, outbox_test_domain):
         """Test getting messages when outbox has data"""
         engine = MockEngine(outbox_test_domain)
 
@@ -186,40 +183,42 @@ class TestOutboxProcessor:
         assert all(msg.status == OutboxStatus.PENDING.value for msg in messages)
 
     @pytest.mark.asyncio
-    async def test_publish_message_success(self, outbox_test_domain, outbox_messages):
+    async def test_publish_message_success(self, outbox_test_domain):
         """Test successful message publishing"""
+        messages = persist_outbox_messages(outbox_test_domain)
+
         engine = MockEngine(outbox_test_domain)
 
         processor = OutboxProcessor(engine, "default", "default")
         await processor.initialize()
-
-        message = outbox_messages[0]
 
         # Mock broker publish to return success
         with patch.object(processor.broker, "publish", return_value="broker-msg-id"):
-            success = await processor._publish_message(message)
+            success = await processor._publish_message(messages[0])
             assert success is True
 
     @pytest.mark.asyncio
-    async def test_publish_message_failure(self, outbox_test_domain, outbox_messages):
+    async def test_publish_message_failure(self, outbox_test_domain):
         """Test message publishing failure"""
+        messages = persist_outbox_messages(outbox_test_domain)
+
         engine = MockEngine(outbox_test_domain)
 
         processor = OutboxProcessor(engine, "default", "default")
         await processor.initialize()
-
-        message = outbox_messages[0]
 
         # Mock broker publish to raise exception
         with patch.object(
             processor.broker, "publish", side_effect=Exception("Broker error")
         ):
-            success = await processor._publish_message(message)
+            success = await processor._publish_message(messages[0])
             assert success is False
 
     @pytest.mark.asyncio
-    async def test_process_batch_success(self, outbox_test_domain, outbox_messages):
+    async def test_process_batch_success(self, outbox_test_domain):
         """Test successful batch processing"""
+        messages = persist_outbox_messages(outbox_test_domain)
+
         engine = MockEngine(outbox_test_domain)
 
         processor = OutboxProcessor(engine, "default", "default")
@@ -227,19 +226,21 @@ class TestOutboxProcessor:
 
         # Mock broker publish to always succeed
         with patch.object(processor.broker, "publish", return_value="broker-msg-id"):
-            successful_count = await processor.process_batch(outbox_messages[:2])
+            successful_count = await processor.process_batch(messages[:2])
             assert successful_count == 2
 
             # Verify messages are marked as published
             outbox_repo = outbox_test_domain._get_outbox_repo("default")
             for i in range(2):
-                updated_msg = outbox_repo.get(outbox_messages[i].id)
+                updated_msg = outbox_repo.get(messages[i].id)
                 assert updated_msg.status == OutboxStatus.PUBLISHED.value
                 assert updated_msg.published_at is not None
 
     @pytest.mark.asyncio
-    async def test_process_batch_failure(self, outbox_test_domain, outbox_messages):
+    async def test_process_batch_failure(self, outbox_test_domain):
         """Test batch processing with failures"""
+        messages = persist_outbox_messages(outbox_test_domain)
+
         engine = MockEngine(outbox_test_domain)
 
         processor = OutboxProcessor(engine, "default", "default")
@@ -249,22 +250,22 @@ class TestOutboxProcessor:
         with patch.object(
             processor.broker, "publish", side_effect=Exception("Broker error")
         ):
-            successful_count = await processor.process_batch(outbox_messages[:2])
+            successful_count = await processor.process_batch(messages[:2])
             assert successful_count == 0
 
             # Verify messages are marked as failed
             outbox_repo = outbox_test_domain._get_outbox_repo("default")
             for i in range(2):
-                updated_msg = outbox_repo.get(outbox_messages[i].id)
+                updated_msg = outbox_repo.get(messages[i].id)
                 assert updated_msg.status == OutboxStatus.FAILED.value
                 assert updated_msg.retry_count == 1
                 assert updated_msg.last_error is not None
 
     @pytest.mark.asyncio
-    async def test_process_batch_mixed_results(
-        self, outbox_test_domain, outbox_messages
-    ):
+    async def test_process_batch_mixed_results(self, outbox_test_domain):
         """Test batch processing with mixed success/failure results"""
+        outbox_messages = persist_outbox_messages(outbox_test_domain)
+
         engine = MockEngine(outbox_test_domain)
 
         processor = OutboxProcessor(engine, "default", "default")
@@ -292,9 +293,11 @@ class TestOutboxProcessor:
 
     @pytest.mark.asyncio
     async def test_process_batch_concurrent_processing_protection(
-        self, outbox_test_domain, outbox_messages
+        self, outbox_test_domain
     ):
         """Test that messages are protected from concurrent processing"""
+        outbox_messages = persist_outbox_messages(outbox_test_domain)
+
         engine = MockEngine(outbox_test_domain)
 
         processor = OutboxProcessor(engine, "default", "default")
@@ -313,9 +316,11 @@ class TestOutboxProcessor:
 
     @pytest.mark.asyncio
     async def test_process_batch_save_failure_during_error_handling(
-        self, outbox_test_domain, outbox_messages
+        self, outbox_test_domain
     ):
         """Test exception handling when saving failed message status fails"""
+        outbox_messages = persist_outbox_messages(outbox_test_domain)
+
         engine = MockEngine(outbox_test_domain)
 
         processor = OutboxProcessor(engine, "default", "default")
@@ -348,9 +353,11 @@ class TestOutboxProcessor:
 
     @pytest.mark.asyncio
     async def test_process_batch_exception_during_processing_and_nested_save_failure(
-        self, outbox_test_domain, outbox_messages
+        self, outbox_test_domain
     ):
         """Test exception handling when an exception during processing and nested save failure occur"""
+        outbox_messages = persist_outbox_messages(outbox_test_domain)
+
         engine = MockEngine(outbox_test_domain)
 
         processor = OutboxProcessor(engine, "default", "default")
@@ -383,7 +390,7 @@ class TestOutboxProcessor:
 
     @pytest.mark.asyncio
     async def test_process_batch_nested_exception_handler_coverage(
-        self, outbox_test_domain, outbox_messages
+        self, outbox_test_domain
     ):
         """Test that covers the nested exception handler when both mark_failed and save fail"""
         engine = MockEngine(outbox_test_domain)
@@ -414,10 +421,10 @@ class TestOutboxProcessor:
                 broken_message.mark_failed.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_publish_message_payload_format(
-        self, outbox_test_domain, outbox_messages
-    ):
+    async def test_publish_message_payload_format(self, outbox_test_domain):
         """Test that message payload is formatted correctly for broker"""
+        outbox_messages = persist_outbox_messages(outbox_test_domain)
+
         engine = MockEngine(outbox_test_domain)
         processor = OutboxProcessor(engine, "default", "default")
         await processor.initialize()
@@ -445,7 +452,7 @@ class TestOutboxProcessor:
         assert "created_at" in payload
 
 
-# @pytest.mark.database  # FIXME Enable when outbox setup is enabled for all providers
+@pytest.mark.database
 class TestEngineIntegration:
     """Test OutboxProcessor integration with Engine"""
 
@@ -531,7 +538,7 @@ class TestEngineIntegration:
             domain.brokers._brokers.update(original_brokers)
 
 
-# @pytest.mark.database  # FIXME Enable when outbox setup is enabled for all providers
+@pytest.mark.database
 class TestOutboxProcessorEndToEnd:
     """End-to-end tests with real outbox processing"""
 

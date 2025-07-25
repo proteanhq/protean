@@ -533,11 +533,15 @@ class ESProvider(BaseProvider):
     def _create_database_artifacts(self):
         conn = self.get_connection()
 
-        elements = {
-            **self.domain.registry.aggregates,
-            **self.domain.registry.entities,
-            **self.domain.registry.projections,
-        }
+        # Loop through self.domain.registry._elements and extract the classes under
+        #   the keys 'AGGREGATE', 'ENTITY', and 'PROJECTION'
+        #   We don't use properties because we want to access even the internal elements
+        elements = {}
+
+        for element_type in ["AGGREGATE", "ENTITY", "PROJECTION"]:
+            if element_type in self.domain.registry._elements:
+                elements.update(self.domain.registry._elements[element_type])
+
         for _, element_record in elements.items():
             provider = current_domain.providers[element_record.cls.meta_.provider]
             database_model_cls = current_domain.repository_for(

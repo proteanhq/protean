@@ -323,14 +323,77 @@ class TestRunner:
 
         return self.exit_status
 
+    def run_full_suite_with_matrix_first(self, suites: list[TestSuite]) -> int:
+        """Run full matrix test first, then remaining suites in parallel."""
+        start_time = time.time()
+        print("🎯 Running full test suite with matrix-first approach...")
+
+        self.track_exit_code(self.run_command(["coverage", "erase"]))
+
+        # Find and run the full matrix test suite first
+        full_matrix_suite = None
+        remaining_suites = []
+
+        for suite in suites:
+            if suite.name == "Full Matrix":
+                full_matrix_suite = suite
+            else:
+                remaining_suites.append(suite)
+
+        if full_matrix_suite:
+            print("🚀 Phase 1: Running full matrix test suite...")
+            result = self.run_single_suite(full_matrix_suite)
+            self.track_exit_code(result)
+
+            # If full matrix fails, we might still want to run other suites
+            # but let's track the failure
+            if result != 0:
+                print(
+                    "⚠️  Full matrix tests failed, but continuing with remaining suites..."
+                )
+
+        # Run remaining suites in parallel
+        if remaining_suites:
+            print(
+                f"\n🔄 Phase 2: Running {len(remaining_suites)} remaining test suites in parallel..."
+            )
+
+            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                future_to_suite = {
+                    executor.submit(self.run_single_suite, suite, quiet=True): suite
+                    for suite in remaining_suites
+                }
+
+                for i, future in enumerate(as_completed(future_to_suite), 1):
+                    suite = future_to_suite[future]
+                    try:
+                        result = future.result()
+                        self.track_exit_code(result)
+                        print(
+                            f"📊 Progress: {i}/{len(remaining_suites)} remaining test suites completed"
+                        )
+                    except Exception as exc:
+                        print(
+                            f"💥 Test suite '{suite.name}' generated an exception: {exc}"
+                        )
+                        self.track_exit_code(1)
+
+        self._finalize_coverage_and_timing(start_time)
+        return self.exit_status
+
     def run_full_suite(self, sequential: bool = False) -> int:
-        """Run the complete test suite with coverage."""
+        """Run the complete test suite with coverage.
+
+        By default, runs the full matrix test suite first, then runs
+        the remaining suites in parallel. With sequential=True, runs
+        all suites sequentially.
+        """
         suites = self.generate_test_suites()
 
         if sequential:
             return self.run_test_suites_sequentially(suites)
         else:
-            return self.run_test_suites_in_parallel(suites)
+            return self.run_full_suite_with_matrix_first(suites)
 
     def generate_diff_coverage_report(self) -> None:
         """Generate and style the diff coverage report."""
