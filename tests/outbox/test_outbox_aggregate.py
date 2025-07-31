@@ -545,6 +545,33 @@ class TestPrivateHelperMethods:
         time_diff = abs((sample_outbox.next_retry_at - expected_time).total_seconds())
         assert time_diff < 1  # Less than 1 second difference
 
+    def test_calculate_next_retry_with_max_backoff(self, sample_outbox):
+        """Test _calculate_next_retry respects max backoff limit."""
+        base_delay = 30
+        max_backoff = 300  # 5 minutes
+        sample_outbox.retry_count = 10
+
+        before_calc = datetime.now(timezone.utc)
+        sample_outbox._calculate_next_retry(base_delay, max_backoff_seconds=max_backoff)
+
+        # Expected delay should not exceed max_backoff
+        expected_time = before_calc + timedelta(seconds=max_backoff)
+        time_diff = abs((sample_outbox.next_retry_at - expected_time).total_seconds())
+        assert time_diff < 1  # Less than 1 second difference
+
+    def test_calculate_next_retry_with_default_max_backoff(self, sample_outbox):
+        """Test _calculate_next_retry uses default max backoff if not provided."""
+        base_delay = 30
+        sample_outbox.retry_count = 10
+
+        before_calc = datetime.now(timezone.utc)
+        sample_outbox._calculate_next_retry(base_delay)
+
+        # Default max backoff is 3600 seconds (1 hour)
+        expected_time = before_calc + timedelta(seconds=3600)
+        time_diff = abs((sample_outbox.next_retry_at - expected_time).total_seconds())
+        assert time_diff < 1  # Less than 1 second difference
+
 
 class TestEdgeCases:
     """Test edge cases and boundary conditions."""

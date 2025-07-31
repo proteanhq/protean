@@ -461,16 +461,23 @@ class TestEngineIntegration:
         engine = Engine(outbox_test_domain, test_mode=True)
 
         # Engine should create outbox processors for each database-broker provider combination
-        # We have 2 database providers (default, memory) and 2 broker providers (default, secondary) = 4 combinations
         assert hasattr(engine, "_outbox_processors")
-        assert len(engine._outbox_processors) == 2
 
-        processor_names = list(engine._outbox_processors.keys())
-        expected_processors = [
-            "outbox-processor-default-to-default",
-            "outbox-processor-memory-to-default",  # FIXME Remove `memory` provider if possible
+        # Dynamically calculate the expected number of outbox processors
+        database_providers = outbox_test_domain.config.get("databases", [])
+        broker_providers = outbox_test_domain.config.get("brokers", [])
+        expected_combinations = [
+            f"outbox-processor-{db}-to-{broker}"
+            for db in database_providers
+            for broker in broker_providers
         ]
-        for expected in expected_processors:
+
+        # Assert the number of outbox processors matches the expected combinations
+        assert len(engine._outbox_processors) == len(expected_combinations)
+
+        # Assert that all expected processor names are present
+        processor_names = list(engine._outbox_processors.keys())
+        for expected in expected_combinations:
             assert expected in processor_names
 
     def test_engine_starts_outbox_processors(self, outbox_test_domain):

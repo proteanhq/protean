@@ -262,9 +262,15 @@ class Outbox(BaseAggregate):
         self.locked_until = None
         self.locked_by = None
 
-    def _calculate_next_retry(self, base_delay_seconds: int = 60) -> None:
-        """Calculate next retry time using exponential backoff."""
-        delay = base_delay_seconds * (2**self.retry_count)
+    def _calculate_next_retry(
+        self, base_delay_seconds: int = 60, max_backoff_seconds: int = 3600
+    ) -> None:
+        """Calculate next retry time using exponential backoff.
+        Args:
+            base_delay_seconds: Base delay in seconds for the backoff calculation.
+            max_backoff_seconds: Maximum allowable delay in seconds to cap the backoff.
+        """
+        delay = min(base_delay_seconds * (2**self.retry_count), max_backoff_seconds)
         self.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
 
 
