@@ -122,6 +122,23 @@ class TestOutboxProcessor:
             ):
                 asyncio.run(processor.initialize())
 
+    def test_outbox_processor_initialization_with_invalid_database_provider(self):
+        """Test OutboxProcessor initialization with invalid database provider"""
+        from protean.domain import Domain
+
+        domain = Domain(name="TestInvalidDBProvider")
+        domain.config["enable_outbox"] = True
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "nonexistent_db", "default")
+
+            # This should fail during initialization when trying to get outbox repository
+            # The domain raises a KeyError, which gets wrapped by domain context
+            with pytest.raises(KeyError, match="nonexistent_db"):
+                asyncio.run(processor.initialize())
+
     def test_outbox_processor_initialization_with_missing_outbox_repository(
         self, outbox_test_domain
     ):
@@ -450,6 +467,212 @@ class TestOutboxProcessor:
         assert payload["correlation_id"] == message.correlation_id
         assert payload["trace_id"] == message.trace_id
         assert "created_at" in payload
+
+
+@pytest.mark.database
+class TestOutboxConfiguration:
+    """Test outbox configuration and validation"""
+
+    def test_default_outbox_configuration(self):
+        """Test that default outbox configuration is loaded correctly"""
+        from protean.domain import Domain
+
+        domain = Domain(name="TestDefaultConfig")
+        domain.init(traverse=False)
+
+        # Default outbox config should be present
+        assert "outbox" in domain.config
+        assert domain.config["outbox"]["broker"] == "default"
+        assert domain.config["outbox"]["messages_per_tick"] == 10
+        assert domain.config["outbox"]["tick_interval"] == 1
+
+    def test_custom_outbox_configuration(self):
+        """Test custom outbox configuration is applied correctly"""
+        from protean.domain import Domain
+
+        custom_config = {
+            "enable_outbox": True,
+            "outbox": {
+                "broker": "custom_broker",
+                "messages_per_tick": 25,
+                "tick_interval": 5,
+            },
+            "brokers": {
+                "default": {"provider": "inline"},
+                "custom_broker": {"provider": "inline"},
+            },
+        }
+
+        domain = Domain(name="TestCustomConfig", config=custom_config)
+        domain.init(traverse=False)
+
+        # Custom config should be applied
+        assert domain.config["outbox"]["broker"] == "custom_broker"
+        assert domain.config["outbox"]["messages_per_tick"] == 25
+        assert domain.config["outbox"]["tick_interval"] == 5
+
+    def test_engine_uses_custom_outbox_configuration(self):
+        """Test that Engine uses custom outbox configuration for processors"""
+        from protean.domain import Domain
+
+        custom_config = {
+            "enable_outbox": True,
+            "outbox": {
+                "broker": "custom_broker",
+                "messages_per_tick": 15,
+                "tick_interval": 3,
+            },
+            "brokers": {
+                "default": {"provider": "inline"},
+                "custom_broker": {"provider": "inline"},
+            },
+        }
+
+        domain = Domain(name="TestEngineCustomConfig", config=custom_config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+
+            # Should create processors with custom configuration
+            assert len(engine._outbox_processors) > 0
+
+            # Get a processor and verify its configuration
+            processor = list(engine._outbox_processors.values())[0]
+            assert processor.broker_provider_name == "custom_broker"
+            assert processor.messages_per_tick == 15
+            assert processor.tick_interval == 3
+
+    def test_engine_validates_broker_exists_in_config(self):
+        """Test that Engine validates broker exists when creating outbox processors"""
+        from protean.domain import Domain
+
+        invalid_config = {
+            "enable_outbox": True,
+            "outbox": {
+                "broker": "nonexistent_broker",
+                "messages_per_tick": 10,
+                "tick_interval": 1,
+            },
+            "brokers": {
+                "default": {"provider": "inline"},
+            },
+        }
+
+        domain = Domain(name="TestInvalidBroker", config=invalid_config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            with pytest.raises(
+                ValueError,
+                match="Broker provider 'nonexistent_broker' not configured in domain",
+            ):
+                Engine(domain, test_mode=True)
+
+    def test_outbox_disabled_by_default(self):
+        """Test that outbox processors are not created when outbox is disabled"""
+        from protean.domain import Domain
+
+        domain = Domain(name="TestOutboxDisabled")
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+
+            # No outbox processors should be created when outbox is disabled
+            assert len(engine._outbox_processors) == 0
+
+    def test_outbox_configuration_with_multiple_brokers(self):
+        """Test outbox configuration with multiple brokers but specific broker selection"""
+        from protean.domain import Domain
+
+        multi_broker_config = {
+            "enable_outbox": True,
+            "outbox": {
+                "broker": "redis_broker",
+                "messages_per_tick": 20,
+                "tick_interval": 2,
+            },
+            "brokers": {
+                "default": {"provider": "inline"},
+                "redis_broker": {"provider": "inline"},
+                "rabbitmq_broker": {"provider": "inline"},
+            },
+        }
+
+        domain = Domain(name="TestMultiBroker", config=multi_broker_config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+
+            # Should create processors only for the configured broker
+            processor_names = list(engine._outbox_processors.keys())
+            for name in processor_names:
+                assert "redis_broker" in name
+                assert "rabbitmq_broker" not in name
+
+    def test_outbox_processor_custom_worker_id(self):
+        """Test OutboxProcessor with custom worker ID"""
+        from protean.domain import Domain
+
+        domain = Domain(name="TestCustomWorkerID")
+        domain.config["enable_outbox"] = True
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            custom_worker_id = "custom-worker-123"
+
+            processor = OutboxProcessor(
+                engine=engine,
+                database_provider_name="default",
+                broker_provider_name="default",
+                worker_id=custom_worker_id,
+            )
+
+            assert processor.worker_id == custom_worker_id
+
+    def test_outbox_configuration_partial_override(self):
+        """Test that partial outbox configuration overrides work correctly"""
+        from protean.domain import Domain
+
+        partial_config = {
+            "enable_outbox": True,
+            "outbox": {
+                "messages_per_tick": 50,  # Only override one parameter
+            },
+        }
+
+        domain = Domain(name="TestPartialOverride", config=partial_config)
+        domain.init(traverse=False)
+
+        # Should use custom messages_per_tick but default values for others
+        assert domain.config["outbox"]["messages_per_tick"] == 50
+        assert domain.config["outbox"]["tick_interval"] == 1  # Default
+        assert domain.config["outbox"]["broker"] == "default"  # Default
+
+    def test_engine_error_handling_with_missing_outbox_config_key(self):
+        """Test Engine handles missing outbox configuration keys gracefully"""
+        from protean.domain import Domain
+
+        incomplete_config = {
+            "enable_outbox": True,
+            "outbox": {},  # Empty outbox config - should use defaults
+        }
+
+        domain = Domain(name="TestIncompleteConfig", config=incomplete_config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            # Should work with default values
+            engine = Engine(domain, test_mode=True)
+
+            if engine._outbox_processors:
+                processor = list(engine._outbox_processors.values())[0]
+                assert processor.broker_provider_name == "default"
+                assert processor.messages_per_tick == 10
+                assert processor.tick_interval == 1
 
 
 @pytest.mark.database

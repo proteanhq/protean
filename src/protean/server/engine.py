@@ -120,15 +120,27 @@ class Engine:
         # Create an outbox processor for each database provider to each broker provider
         # Only if outbox is enabled in the domain
         if self.domain.config.get("enable_outbox", False):
-            broker_provider_name = (
-                "default"  # FIXME: Explicitly define broker in config
-            )
+            # Get the broker provider name from the config with validation
+            outbox_config = self.domain.config.get("outbox", {})
+            broker_provider_name = outbox_config.get("broker", "default")
+
+            if broker_provider_name not in self.domain.brokers:
+                raise ValueError(
+                    f"Broker provider '{broker_provider_name}' not configured in domain"
+                )
+
+            messages_per_tick = outbox_config.get("messages_per_tick", 10)
+            tick_interval = outbox_config.get("tick_interval", 1)
+
+            # Create an outbox processor for each database provider
             for database_provider_name in self.domain.providers.keys():
                 processor_name = f"outbox-processor-{database_provider_name}-to-{broker_provider_name}"
                 self._outbox_processors[processor_name] = OutboxProcessor(
                     self,
                     database_provider_name,
                     broker_provider_name,
+                    messages_per_tick=messages_per_tick,
+                    tick_interval=tick_interval,
                 )
 
     async def handle_broker_message(
