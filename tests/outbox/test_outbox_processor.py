@@ -10,7 +10,7 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.fields import String, Integer
 from protean.server import Engine
 from protean.server.outbox_processor import OutboxProcessor
-from protean.utils.outbox import Outbox, OutboxStatus, ProcessingResult
+from protean.utils.outbox import Outbox, OutboxStatus
 from protean.utils.eventing import Metadata
 
 
@@ -179,13 +179,22 @@ class TestOutboxProcessor:
     @pytest.mark.asyncio
     async def test_get_next_batch_of_messages_when_repo_not_initialized(self):
         """Test getting messages when outbox_repo is None"""
-        engine = MockEngine(None)
+        from protean.domain import Domain
 
-        processor = OutboxProcessor(engine, "default", "default", messages_per_tick=5)
-        # Don't call initialize() so outbox_repo remains None
+        # Create a minimal domain for the mock engine
+        domain = Domain(name="TestMinimalDomain")
+        domain.init(traverse=False)
 
-        messages = await processor.get_next_batch_of_messages()
-        assert messages == []
+        with domain.domain_context():
+            engine = MockEngine(domain)
+
+            processor = OutboxProcessor(
+                engine, "default", "default", messages_per_tick=5
+            )
+            # Don't call initialize() so outbox_repo remains None
+
+            messages = await processor.get_next_batch_of_messages()
+            assert messages == []
 
     @pytest.mark.asyncio
     async def test_get_next_batch_of_messages_with_data(self, outbox_test_domain):
@@ -409,33 +418,27 @@ class TestOutboxProcessor:
     async def test_process_batch_nested_exception_handler_coverage(
         self, outbox_test_domain
     ):
-        """Test that covers the nested exception handler when both mark_failed and save fail"""
-        engine = MockEngine(outbox_test_domain)
+        """Test error handling when saving failed message status fails in separate transaction"""
+        # Create a real message that can be persisted
+        messages = persist_outbox_messages(outbox_test_domain)
+        message = messages[0]
 
+        engine = MockEngine(outbox_test_domain)
         processor = OutboxProcessor(engine, "default", "default")
         await processor.initialize()
 
-        # Create a broken message that will fail during processing
-        broken_message = Mock()
-        broken_message.message_id = "broken-msg"
-        broken_message.start_processing = Mock(
-            return_value=(True, ProcessingResult.SUCCESS)
-        )
-        broken_message.mark_failed = Mock()  # mark_failed should succeed
-
-        # Make _publish_message fail to trigger the outer exception handler
+        # Make _publish_message fail to trigger the main exception handler
         with patch.object(
             processor, "_publish_message", side_effect=Exception("Publish error")
         ):
-            # Also make the repository add fail in the nested try/catch (after mark_failed succeeds)
+            # Make outbox_repo.get fail in the nested error handling to simulate
+            # the case where we can't reload the message to mark it as failed
             with patch.object(
-                processor.outbox_repo, "add", side_effect=Exception("Repository error")
+                processor.outbox_repo, "get", side_effect=Exception("Repository error")
             ):
-                # This should trigger lines 156-157: mark_failed succeeds but add fails
-                successful_count = await processor.process_batch([broken_message])
+                # This should trigger the nested exception handler
+                successful_count = await processor.process_batch([message])
                 assert successful_count == 0
-                # Verify mark_failed was called and succeeded
-                broken_message.mark_failed.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_publish_message_payload_format(self, outbox_test_domain):
@@ -863,3 +866,378 @@ class TestOutboxProcessorEndToEnd:
         messages = asyncio.run(processor.get_next_batch_of_messages())
         assert len(messages) == 1
         assert messages[0].message_id == "high-priority"  # Higher priority comes first
+
+
+@pytest.mark.database
+class TestAtomicTransactionProcessing:
+    """Test atomic transaction behavior in multi-processor environments"""
+
+    @pytest.mark.asyncio
+    async def test_atomic_message_processing_success(self, outbox_test_domain):
+        """Test that successful message processing is atomic"""
+        messages = persist_outbox_messages(outbox_test_domain)
+        message = messages[0]
+
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        # Mock broker to succeed
+        with patch.object(processor.broker, "publish", return_value="broker-msg-id"):
+            success = await processor._process_single_message(message)
+            assert success is True
+
+        # Verify message was atomically updated to PUBLISHED
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+        updated_message = outbox_repo.get(message.id)
+        assert updated_message.status == OutboxStatus.PUBLISHED.value
+        assert updated_message.published_at is not None
+
+    @pytest.mark.asyncio
+    async def test_atomic_message_processing_broker_failure(self, outbox_test_domain):
+        """Test that broker failures are handled atomically"""
+        messages = persist_outbox_messages(outbox_test_domain)
+        message = messages[0]
+
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        # Mock broker to fail
+        with patch.object(
+            processor.broker, "publish", side_effect=Exception("Broker error")
+        ):
+            success = await processor._process_single_message(message)
+            assert success is False
+
+        # Verify message was atomically updated to FAILED
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+        updated_message = outbox_repo.get(message.id)
+        assert updated_message.status == OutboxStatus.FAILED.value
+        assert updated_message.retry_count == 1
+
+    @pytest.mark.asyncio
+    async def test_atomic_processing_rollback_on_exception(self, outbox_test_domain):
+        """Test that processing exceptions cause complete rollback"""
+        messages = persist_outbox_messages(outbox_test_domain)
+        message = messages[0]
+
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        # Mock _publish_message to raise an exception after lock acquisition
+        with patch.object(
+            processor, "_publish_message", side_effect=Exception("Processing error")
+        ):
+            success = await processor._process_single_message(message)
+            assert success is False
+
+        # Verify message status was properly handled (should be marked as failed in separate transaction)
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+        updated_message = outbox_repo.get(message.id)
+        assert updated_message.status == OutboxStatus.FAILED.value
+
+    @pytest.mark.asyncio
+    async def test_concurrent_processor_lock_contention(self, outbox_test_domain):
+        """Test that multiple processors handle lock contention correctly"""
+        messages = persist_outbox_messages(outbox_test_domain)
+        message = messages[0]
+
+        # Create two processors with different worker IDs
+        engine1 = MockEngine(outbox_test_domain)
+        engine2 = MockEngine(outbox_test_domain)
+
+        processor1 = OutboxProcessor(engine1, "default", "default")
+        processor1.worker_id = "worker-1"
+        await processor1.initialize()
+
+        processor2 = OutboxProcessor(engine2, "default", "default")
+        processor2.worker_id = "worker-2"
+        await processor2.initialize()
+
+        # Mock both brokers to succeed
+        with (
+            patch.object(processor1.broker, "publish", return_value="broker-msg-1"),
+            patch.object(processor2.broker, "publish", return_value="broker-msg-2"),
+        ):
+            # Both processors try to process the same message
+            success1 = await processor1._process_single_message(message)
+            success2 = await processor2._process_single_message(message)
+
+        # Only one should succeed (the one that got the lock first)
+        assert success1 != success2  # Exactly one should be True
+        assert success1 or success2  # At least one should succeed
+
+        # Verify message was processed exactly once
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+        updated_message = outbox_repo.get(message.id)
+        assert updated_message.status == OutboxStatus.PUBLISHED.value
+
+    @pytest.mark.asyncio
+    async def test_individual_message_transaction_isolation(self, outbox_test_domain):
+        """Test that each message is processed in its own isolated transaction"""
+        messages = persist_outbox_messages(outbox_test_domain)[:3]
+
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        # Mock broker to succeed for first message, fail for second, succeed for third
+        def mock_publish(stream_name, message_payload):
+            if message_payload["id"] == "msg-0":
+                return "broker-msg-0"  # Success
+            elif message_payload["id"] == "msg-1":
+                raise Exception("Broker error for msg-1")  # Failure
+            else:
+                return "broker-msg-2"  # Success
+
+        with patch.object(processor.broker, "publish", side_effect=mock_publish):
+            successful_count = await processor.process_batch(messages)
+            assert successful_count == 2  # Two out of three should succeed
+
+        # Verify each message has correct individual status
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+
+        msg_0 = outbox_repo.get(messages[0].id)
+        assert msg_0.status == OutboxStatus.PUBLISHED.value
+
+        msg_1 = outbox_repo.get(messages[1].id)
+        assert msg_1.status == OutboxStatus.FAILED.value
+
+        msg_2 = outbox_repo.get(messages[2].id)
+        assert msg_2.status == OutboxStatus.PUBLISHED.value
+
+
+@pytest.mark.database
+class TestRetryConfiguration:
+    """Test configurable retry strategy functionality"""
+
+    def test_default_retry_configuration_loading(self):
+        """Test that default retry configuration is loaded correctly"""
+        from protean.domain import Domain
+
+        domain = Domain(name="TestDefaultRetryConfig")
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            retry_config = processor.get_retry_config()
+            assert retry_config["max_attempts"] == 3
+            assert retry_config["base_delay_seconds"] == 60
+            assert retry_config["max_backoff_seconds"] == 3600
+            assert retry_config["backoff_multiplier"] == 2
+            assert retry_config["jitter"] is True
+
+    def test_custom_retry_configuration(self):
+        """Test that custom retry configuration is applied correctly"""
+        from protean.domain import Domain
+
+        custom_config = {
+            "enable_outbox": True,
+            "outbox": {
+                "broker": "default",
+                "retry": {
+                    "max_attempts": 5,
+                    "base_delay_seconds": 30,
+                    "max_backoff_seconds": 1800,
+                    "backoff_multiplier": 3,
+                    "jitter": False,
+                },
+            },
+        }
+
+        domain = Domain(name="TestCustomRetryConfig", config=custom_config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            retry_config = processor.get_retry_config()
+            assert retry_config["max_attempts"] == 5
+            assert retry_config["base_delay_seconds"] == 30
+            assert retry_config["max_backoff_seconds"] == 1800
+            assert retry_config["backoff_multiplier"] == 3
+            assert retry_config["jitter"] is False
+
+    def test_partial_retry_configuration_override(self):
+        """Test that partial retry configuration overrides work correctly"""
+        from protean.domain import Domain
+
+        partial_config = {
+            "enable_outbox": True,
+            "outbox": {
+                "retry": {
+                    "max_attempts": 7,  # Only override max_attempts
+                    "base_delay_seconds": 120,  # And base delay
+                }
+            },
+        }
+
+        domain = Domain(name="TestPartialRetryConfig", config=partial_config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            retry_config = processor.get_retry_config()
+            assert retry_config["max_attempts"] == 7  # Custom
+            assert retry_config["base_delay_seconds"] == 120  # Custom
+            assert retry_config["max_backoff_seconds"] == 3600  # Default
+            assert retry_config["backoff_multiplier"] == 2  # Default
+            assert retry_config["jitter"] is True  # Default
+
+    def test_retry_delay_calculation_without_jitter(self):
+        """Test retry delay calculation without jitter"""
+        from protean.domain import Domain
+
+        config = {
+            "outbox": {
+                "retry": {
+                    "base_delay_seconds": 10,
+                    "backoff_multiplier": 2,
+                    "max_backoff_seconds": 100,
+                    "jitter": False,
+                }
+            }
+        }
+
+        domain = Domain(name="TestRetryDelay", config=config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            # Test exponential backoff: 10, 20, 40, 80, 100 (capped)
+            assert processor._calculate_retry_delay(0) == 10
+            assert processor._calculate_retry_delay(1) == 20
+            assert processor._calculate_retry_delay(2) == 40
+            assert processor._calculate_retry_delay(3) == 80
+            assert processor._calculate_retry_delay(4) == 100  # Capped at max_backoff
+
+    def test_retry_delay_calculation_with_jitter(self):
+        """Test retry delay calculation with jitter"""
+        from protean.domain import Domain
+
+        config = {
+            "outbox": {
+                "retry": {
+                    "base_delay_seconds": 100,
+                    "backoff_multiplier": 2,
+                    "max_backoff_seconds": 1000,
+                    "jitter": True,
+                }
+            }
+        }
+
+        domain = Domain(name="TestRetryDelayJitter", config=config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            # With jitter, delay should be within ±25% of expected value (100 ±25)
+            actual_delays = [processor._calculate_retry_delay(0) for _ in range(10)]
+
+            # All delays should be within the jitter range (75-125)
+            for delay in actual_delays:
+                assert 75 <= delay <= 125
+
+            # Should have some variation (not all the same)
+            assert len(set(actual_delays)) > 1
+
+    def test_should_retry_message_logic(self):
+        """Test message retry eligibility logic"""
+        from protean.domain import Domain
+
+        config = {
+            "outbox": {
+                "retry": {
+                    "max_attempts": 3,
+                }
+            }
+        }
+
+        domain = Domain(name="TestShouldRetry", config=config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            # Create a mock message
+            from unittest.mock import Mock
+
+            message = Mock()
+
+            # Should retry when retry_count < max_attempts
+            message.retry_count = 0
+            assert processor._should_retry_message(message) is True
+
+            message.retry_count = 2
+            assert processor._should_retry_message(message) is True
+
+            # Should not retry when retry_count >= max_attempts
+            message.retry_count = 3
+            assert processor._should_retry_message(message) is False
+
+            message.retry_count = 5
+            assert processor._should_retry_message(message) is False
+
+    def test_retry_configuration_integration(self):
+        """Test that retry configuration is properly loaded and accessible"""
+        from protean.domain import Domain
+
+        custom_config = {
+            "enable_outbox": True,
+            "outbox": {
+                "broker": "default",
+                "retry": {
+                    "max_attempts": 8,
+                    "base_delay_seconds": 45,
+                    "max_backoff_seconds": 2400,
+                    "backoff_multiplier": 1.5,
+                    "jitter": False,
+                },
+            },
+        }
+
+        domain = Domain(name="TestRetryIntegration", config=custom_config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            # Verify all configuration values are loaded correctly
+            retry_config = processor.get_retry_config()
+            assert retry_config["max_attempts"] == 8
+            assert retry_config["base_delay_seconds"] == 45
+            assert retry_config["max_backoff_seconds"] == 2400
+            assert retry_config["backoff_multiplier"] == 1.5
+            assert retry_config["jitter"] is False
+
+            # Test that the processor methods use the config
+            assert (
+                processor._should_retry_message(
+                    type("MockMessage", (), {"retry_count": 7})()
+                )
+                is True
+            )
+            assert (
+                processor._should_retry_message(
+                    type("MockMessage", (), {"retry_count": 8})()
+                )
+                is False
+            )
+
+            # Test delay calculation uses configured values
+            delay = processor._calculate_retry_delay(1)  # Second retry
+            expected = 45 * (1.5**1)  # base_delay * backoff_multiplier^retry_count
+            assert delay == int(expected)
