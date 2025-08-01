@@ -57,6 +57,13 @@ def _default_config():
             "broker": "default",
             "messages_per_tick": 10,
             "tick_interval": 1,
+            "retry": {
+                "max_attempts": 3,
+                "base_delay_seconds": 60,
+                "max_backoff_seconds": 3600,
+                "backoff_multiplier": 2,
+                "jitter": True,
+            },
         },
         "custom": {},
     }

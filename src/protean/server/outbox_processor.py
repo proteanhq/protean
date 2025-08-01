@@ -49,6 +49,16 @@ class OutboxProcessor(BaseSubscription):
         self.broker_provider_name = broker_provider_name
         self.worker_id = worker_id or self.subscription_id
 
+        # Load retry configuration from domain config
+        retry_config = engine.domain.config.get("outbox", {}).get("retry", {})
+        self.retry_config = {
+            "max_attempts": retry_config.get("max_attempts", 3),
+            "base_delay_seconds": retry_config.get("base_delay_seconds", 60),
+            "max_backoff_seconds": retry_config.get("max_backoff_seconds", 3600),
+            "backoff_multiplier": retry_config.get("backoff_multiplier", 2),
+            "jitter": retry_config.get("jitter", True),
+        }
+
         # Will be initialized in initialize() method
         self.subscriber_name: Optional[str] = None
         self.broker: Optional[BaseBroker] = None
@@ -104,13 +114,8 @@ class OutboxProcessor(BaseSubscription):
         """
         Process a batch of outbox messages.
 
-        This method processes each message by:
-        1. Acquiring a processing lock
-        2. Publishing the message to the broker
-        3. Updating the message status based on success/failure
-
-        Note that each persistence operation is instantly committed to db, because
-        there is no UoW in this context.
+        Each message is processed individually within its own atomic transaction
+        to ensure consistency and avoid race conditions in multi-processor environments.
 
         Args:
             messages (List[Outbox]): The batch of outbox messages to process.
@@ -122,11 +127,35 @@ class OutboxProcessor(BaseSubscription):
         successful_count = 0
 
         for message in messages:
-            try:
+            success = await self._process_single_message(message)
+            if success:
+                successful_count += 1
+
+        return successful_count
+
+    async def _process_single_message(self, message: Outbox) -> bool:
+        """
+        Process a single outbox message atomically.
+
+        This method handles the complete lifecycle of a message within a single
+        transaction to ensure atomicity and consistency across multiple processors.
+
+        Args:
+            message (Outbox): The outbox message to process.
+
+        Returns:
+            bool: True if message was processed successfully, False otherwise.
+        """
+        # Use UnitOfWork for atomic transaction management
+        # This ensures all operations (lock, publish, status update) are atomic
+        from protean.core.unit_of_work import UnitOfWork
+
+        try:
+            with UnitOfWork():
                 # Attempt to acquire lock and start processing
                 success, result = message.start_processing(self.worker_id)
                 if not success:
-                    # Log the specific reason why message was skipped at INFO level for production visibility
+                    # Log the specific reason why message was skipped
                     reason_messages = {
                         ProcessingResult.NOT_ELIGIBLE: f"Message {message.message_id} not eligible (status: {message.status})",
                         ProcessingResult.ALREADY_LOCKED: f"Message {message.message_id} already locked by {message.locked_by} until {message.locked_until}",
@@ -139,43 +168,53 @@ class OutboxProcessor(BaseSubscription):
                             f"Message {message.message_id} skipped for unknown reason: {result}",
                         )
                     )
-                    continue
+                    return False
+
+                # Save the lock acquisition (PROCESSING status)
+                self.outbox_repo.add(message)
 
                 # Publish message to broker
-                success = await self._publish_message(message)
+                publish_success = await self._publish_message(message)
 
-                if success:
-                    # Mark as published and save
+                # Update final status based on broker publish result
+                if publish_success:
                     message.mark_published()
-                    self.outbox_repo.add(message)
-
-                    successful_count += 1
                     logger.info(
                         f"Successfully published outbox message {message.message_id} to {message.stream_name}"
                     )
                 else:
-                    # Mark as failed and save
                     error = Exception("Failed to publish message to broker")
-                    message.mark_failed(error)
-
-                    self.outbox_repo.add(message)
+                    self._mark_message_failed(message, error)
                     logger.error(
                         f"Failed to publish outbox message {message.message_id}: {error}"
                     )
-            except Exception as exc:
-                logger.error(
-                    f"Error processing outbox message {message.message_id}: {str(exc)}"
-                )
-                try:
-                    # Mark as failed and save
-                    message.mark_failed(exc)
-                    self.outbox_repo.add(message)
-                except Exception as save_exc:
-                    logger.error(
-                        f"Failed to save failed message status for {message.message_id}: {save_exc}"
-                    )
 
-        return successful_count
+                # Save the final status
+                self.outbox_repo.add(message)
+
+                # UnitOfWork commits here - either all operations succeed or all rollback
+                return publish_success
+
+        except Exception as exc:
+            logger.error(
+                f"Error processing outbox message {message.message_id}: {str(exc)}"
+            )
+            # Transaction automatically rolls back on exception
+
+            # Try to save the error state in a separate transaction
+            try:
+                with UnitOfWork():
+                    # Reload message to get fresh state (in case transaction rolled back)
+                    fresh_message = self.outbox_repo.get(message.id)
+                    if fresh_message:
+                        self._mark_message_failed(fresh_message, exc)
+                        self.outbox_repo.add(fresh_message)
+            except Exception as save_exc:
+                logger.error(
+                    f"Failed to save failed message status for {message.message_id}: {save_exc}"
+                )
+
+            return False
 
     async def _publish_message(self, message: Outbox) -> bool:
         """
@@ -232,3 +271,63 @@ class OutboxProcessor(BaseSubscription):
         )
         # Any cleanup specific to outbox processor can be added here
         pass
+
+    def _mark_message_failed(self, message: Outbox, error: Exception) -> None:
+        """
+        Mark message as failed using configured retry parameters.
+
+        Args:
+            message (Outbox): The message to mark as failed.
+            error (Exception): The error that occurred during processing.
+        """
+        message.mark_failed(
+            error, base_delay_seconds=self.retry_config["base_delay_seconds"]
+        )
+
+    def _should_retry_message(self, message: Outbox) -> bool:
+        """
+        Check if a message should be retried based on configuration.
+
+        Args:
+            message (Outbox): The message to check.
+
+        Returns:
+            bool: True if the message should be retried, False otherwise.
+        """
+        return message.retry_count < self.retry_config["max_attempts"]
+
+    def _calculate_retry_delay(self, retry_count: int) -> int:
+        """
+        Calculate retry delay using configured parameters.
+
+        Args:
+            retry_count (int): Current retry attempt number.
+
+        Returns:
+            int: Delay in seconds until next retry.
+        """
+        import random
+
+        base_delay = self.retry_config["base_delay_seconds"]
+        multiplier = self.retry_config["backoff_multiplier"]
+        max_backoff = self.retry_config["max_backoff_seconds"]
+
+        # Calculate exponential backoff
+        delay = min(base_delay * (multiplier**retry_count), max_backoff)
+
+        # Add jitter if enabled (±25% randomization)
+        if self.retry_config["jitter"]:
+            jitter = delay * 0.25
+            delay = delay + random.uniform(-jitter, jitter)
+            delay = max(delay, 1)  # Ensure minimum 1 second delay
+
+        return int(delay)
+
+    def get_retry_config(self) -> dict:
+        """
+        Get the current retry configuration.
+
+        Returns:
+            dict: Current retry configuration parameters.
+        """
+        return self.retry_config.copy()
