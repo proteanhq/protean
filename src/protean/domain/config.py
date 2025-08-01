@@ -53,6 +53,11 @@ def _default_config():
         },
         "snapshot_threshold": 10,
         "enable_outbox": False,
+        "outbox": {
+            "broker": "default",
+            "messages_per_tick": 10,
+            "tick_interval": 1,
+        },
         "custom": {},
     }
 
