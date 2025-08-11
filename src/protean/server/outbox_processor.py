@@ -1,6 +1,7 @@
 import logging
 from typing import List, Optional
 
+from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker
 from protean.utils.outbox import Outbox, OutboxRepository, ProcessingResult
 
@@ -58,6 +59,22 @@ class OutboxProcessor(BaseSubscription):
             "backoff_multiplier": retry_config.get("backoff_multiplier", 2),
             "jitter": retry_config.get("jitter", True),
         }
+
+        # Load cleanup configuration from domain config
+        cleanup_config = engine.domain.config.get("outbox", {}).get("cleanup", {})
+        self.cleanup_config = {
+            "published_retention_hours": cleanup_config.get(
+                "published_retention_hours", 168
+            ),  # 7 days
+            "abandoned_retention_hours": cleanup_config.get(
+                "abandoned_retention_hours", 720
+            ),  # 30 days
+            "cleanup_interval_ticks": cleanup_config.get(
+                "cleanup_interval_ticks", 86400
+            ),
+        }
+
+        self.tick_count = 0
 
         # Will be initialized in initialize() method
         self.subscriber_name: Optional[str] = None
@@ -133,6 +150,50 @@ class OutboxProcessor(BaseSubscription):
 
         return successful_count
 
+    async def tick(self):
+        """
+        Override base tick method to add periodic cleanup functionality.
+
+        This method processes messages and periodically performs cleanup of old messages.
+        """
+        # Call parent tick method to process messages
+        await super().tick()
+
+        # Increment tick counter and check if cleanup is due
+        self.tick_count += 1
+        if self.tick_count >= self.cleanup_config["cleanup_interval_ticks"]:
+            await self._perform_cleanup()
+            self.tick_count = 0  # Reset counter
+
+    async def _perform_cleanup(self) -> None:
+        """
+        Perform cleanup of old outbox messages using configured retention periods.
+        """
+        if not self.outbox_repo:
+            return
+
+        try:
+            with UnitOfWork():
+                cleanup_result = self.outbox_repo.cleanup_old_messages(
+                    published_retention_hours=self.cleanup_config[
+                        "published_retention_hours"
+                    ],
+                    abandoned_retention_hours=self.cleanup_config[
+                        "abandoned_retention_hours"
+                    ],
+                )
+
+                if cleanup_result["total"] > 0:
+                    logger.info(
+                        f"Cleaned up {cleanup_result['total']} old outbox messages: "
+                        f"{cleanup_result['published']} published, {cleanup_result['abandoned']} abandoned"
+                    )
+                else:
+                    logger.debug("No old outbox messages to clean up")
+
+        except Exception as exc:
+            logger.error(f"Error during outbox cleanup: {str(exc)}")
+
     async def _process_single_message(self, message: Outbox) -> bool:
         """
         Process a single outbox message atomically.
@@ -174,7 +235,7 @@ class OutboxProcessor(BaseSubscription):
                 self.outbox_repo.add(message)
 
                 # Publish message to broker
-                publish_success = await self._publish_message(message)
+                publish_success, publish_error = await self._publish_message(message)
 
                 # Update final status based on broker publish result
                 if publish_success:
@@ -183,10 +244,9 @@ class OutboxProcessor(BaseSubscription):
                         f"Successfully published outbox message {message.message_id} to {message.stream_name}"
                     )
                 else:
-                    error = Exception("Failed to publish message to broker")
-                    self._mark_message_failed(message, error)
+                    self._mark_message_failed(message, publish_error)
                     logger.error(
-                        f"Failed to publish outbox message {message.message_id}: {error}"
+                        f"Failed to publish outbox message {message.message_id}: {publish_error}"
                     )
 
                 # Save the final status
@@ -216,7 +276,7 @@ class OutboxProcessor(BaseSubscription):
 
             return False
 
-    async def _publish_message(self, message: Outbox) -> bool:
+    async def _publish_message(self, message: Outbox) -> tuple[bool, Exception | None]:
         """
         Publish a single outbox message to the broker.
 
@@ -224,7 +284,7 @@ class OutboxProcessor(BaseSubscription):
             message (Outbox): The outbox message to publish.
 
         Returns:
-            bool: True if message was published successfully, False otherwise.
+            tuple[bool, Exception | None]: (success, error) - True and None if successful, False and exception if failed.
         """
         try:
             # Prepare the message payload for the broker
@@ -252,13 +312,13 @@ class OutboxProcessor(BaseSubscription):
             logger.debug(
                 f"Published message {message.message_id} to broker as {broker_message_id}"
             )
-            return True
+            return True, None
 
         except Exception as exc:
             logger.error(
                 f"Broker publish failed for message {message.message_id}: {str(exc)}"
             )
-            return False
+            return False, exc
 
     async def cleanup(self) -> None:
         """
@@ -280,8 +340,11 @@ class OutboxProcessor(BaseSubscription):
             message (Outbox): The message to mark as failed.
             error (Exception): The error that occurred during processing.
         """
+        # Use configured retry parameters
         message.mark_failed(
-            error, base_delay_seconds=self.retry_config["base_delay_seconds"]
+            error,
+            base_delay_seconds=self.retry_config["base_delay_seconds"],
+            max_retries=self.retry_config["max_attempts"],
         )
 
     def _should_retry_message(self, message: Outbox) -> bool:

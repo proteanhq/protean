@@ -284,6 +284,8 @@ def run_around_tests(test_domain):
         for provider_name in test_domain.providers:
             provider = test_domain.providers[provider_name]
             provider._data_reset()
+            # Close provider connections to prevent connection leaks
+            provider.close()
 
         for broker_name in test_domain.brokers:
             broker = test_domain.brokers[broker_name]

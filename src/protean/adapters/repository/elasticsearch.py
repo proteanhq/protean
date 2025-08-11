@@ -17,7 +17,7 @@ from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
 from protean.utils import IdentityStrategy, IdentityType
 from protean.utils.container import Options
-from protean.utils.globals import current_domain
+from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import Q
 from protean.utils.reflection import attributes, id_field
 
@@ -329,6 +329,13 @@ class ESProvider(BaseProvider):
         # A temporary cache of already constructed model classes
         self._database_model_classes = {}
 
+        # Create a persistent Elasticsearch client
+        self._client = Elasticsearch(
+            self.conn_info["database_uri"]["hosts"],
+            use_ssl=self.conn_info.get("USE_SSL", False),
+            verify_certs=self.conn_info.get("VERIFY_CERTS", False),
+        )
+
     def namespaced_schema_name(self, schema_name):
         # Prepend Namespace prefix if one has been provided
         if "NAMESPACE_PREFIX" in self.conn_info and self.conn_info["NAMESPACE_PREFIX"]:
@@ -379,17 +386,11 @@ class ESProvider(BaseProvider):
 
     def get_connection(self):
         """Get the connection object for the repository"""
-
-        return Elasticsearch(
-            self.conn_info["database_uri"]["hosts"],
-            use_ssl=self.conn_info.get("USE_SSL", False),
-            verify_certs=self.conn_info.get("VERIFY_CERTS", False),
-        )
+        return self._client
 
     def is_alive(self) -> bool:
         """Check if the connection is alive"""
-        conn = self.get_connection()
-        return conn.ping()
+        return self._client.ping()
 
     def get_dao(self, entity_cls, database_model_cls):
         """Return a DAO object configured with a live connection"""
@@ -507,14 +508,16 @@ class ESProvider(BaseProvider):
         raise NotImplementedError
 
     def _data_reset(self):
-        """Utility method to reset data in DB between tests"""
+        """Reset data"""
         conn = self.get_connection()
 
+        # Get all elements that have been registered with the domain
         elements = {
             **self.domain.registry.aggregates,
             **self.domain.registry.entities,
             **self.domain.registry.projections,
         }
+
         for _, element_record in elements.items():
             provider = current_domain.providers[element_record.cls.meta_.provider]
             repo = self.domain.repository_for(element_record.cls)
@@ -524,11 +527,26 @@ class ESProvider(BaseProvider):
                 provider.__class__.__database__ == "elasticsearch"
                 and conn.indices.exists(index=database_model_cls._index._name)
             ):
+                # Delete all documents from the index using delete_by_query with match_all
+                # This clears the data but keeps the index structure
                 conn.delete_by_query(
                     refresh=True,
                     index=database_model_cls._index._name,
                     body={"query": {"match_all": {}}},
                 )
+
+        # Discard any active Unit of Work
+        if current_uow and current_uow.in_progress:
+            current_uow.rollback()
+
+    def close(self):
+        """Close the provider and clean up resources.
+
+        Closes the Elasticsearch client and its underlying connection pool
+        to free up network resources and prevent connection leaks.
+        """
+        if hasattr(self, "_client") and self._client:
+            self._client.close()
 
     def _create_database_artifacts(self):
         conn = self.get_connection()

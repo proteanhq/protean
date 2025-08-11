@@ -633,7 +633,11 @@ class SAProvider(BaseProvider):
             if not current_uow:  # If not in a UoW, we need to close the connection
                 conn.close()
             return True
-        except DatabaseError:
+        except DatabaseError as e:
+            logger.error(
+                f"Could not connect to database at {self.conn_info['database_uri']}"
+            )
+            logger.error(f"Error: {e}")
             return False
 
     def _data_reset(self):
@@ -656,6 +660,15 @@ class SAProvider(BaseProvider):
         # Discard any active Unit of Work
         if current_uow and current_uow.in_progress:
             current_uow.rollback()
+
+    def close(self):
+        """Close the provider and clean up all connections.
+
+        Disposes of the SQLAlchemy engine which closes all connections in the pool
+        and frees up database resources.
+        """
+        if hasattr(self, "_engine") and self._engine:
+            self._engine.dispose()
 
     def _create_database_artifacts(self):
         # Create tables for all registered aggregates, entities, and projections

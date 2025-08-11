@@ -114,6 +114,14 @@ class MemoryProvider(BaseProvider):
         if current_uow and current_uow.in_progress:
             current_uow.rollback()
 
+    def close(self):
+        """Close the provider and clean up resources.
+
+        For MemoryProvider, this is a no-op since there are no persistent
+        connections or external resources to clean up.
+        """
+        pass
+
     def decorate_database_model_class(self, entity_cls, database_model_cls):
         schema_name = database_model_cls.derive_schema_name()
 
