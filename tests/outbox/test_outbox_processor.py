@@ -1034,6 +1034,7 @@ class TestRetryConfiguration:
             assert retry_config["max_backoff_seconds"] == 3600
             assert retry_config["backoff_multiplier"] == 2
             assert retry_config["jitter"] is True
+            assert retry_config["jitter_factor"] == 0.25
 
     def test_custom_retry_configuration(self):
         """Test that custom retry configuration is applied correctly"""
@@ -1049,6 +1050,7 @@ class TestRetryConfiguration:
                     "max_backoff_seconds": 1800,
                     "backoff_multiplier": 3,
                     "jitter": False,
+                    "jitter_factor": 0.1,
                 },
             },
         }
@@ -1066,6 +1068,7 @@ class TestRetryConfiguration:
             assert retry_config["max_backoff_seconds"] == 1800
             assert retry_config["backoff_multiplier"] == 3
             assert retry_config["jitter"] is False
+            assert retry_config["jitter_factor"] == 0.1
 
     def test_partial_retry_configuration_override(self):
         """Test that partial retry configuration overrides work correctly"""
@@ -1094,6 +1097,7 @@ class TestRetryConfiguration:
             assert retry_config["max_backoff_seconds"] == 3600  # Default
             assert retry_config["backoff_multiplier"] == 2  # Default
             assert retry_config["jitter"] is True  # Default
+            assert retry_config["jitter_factor"] == 0.25  # Default
 
     def test_retry_delay_calculation_without_jitter(self):
         """Test retry delay calculation without jitter"""
@@ -1125,7 +1129,7 @@ class TestRetryConfiguration:
             assert processor._calculate_retry_delay(4) == 100  # Capped at max_backoff
 
     def test_retry_delay_calculation_with_jitter(self):
-        """Test retry delay calculation with jitter"""
+        """Test retry delay calculation with jitter using default jitter factor"""
         from protean.domain import Domain
 
         config = {
@@ -1135,6 +1139,7 @@ class TestRetryConfiguration:
                     "backoff_multiplier": 2,
                     "max_backoff_seconds": 1000,
                     "jitter": True,
+                    "jitter_factor": 0.25,  # Default 25% jitter
                 }
             }
         }
@@ -1155,6 +1160,190 @@ class TestRetryConfiguration:
 
             # Should have some variation (not all the same)
             assert len(set(actual_delays)) > 1
+
+    def test_retry_delay_calculation_with_custom_jitter_factor(self):
+        """Test retry delay calculation with custom jitter factor"""
+        from protean.domain import Domain
+
+        config = {
+            "outbox": {
+                "retry": {
+                    "base_delay_seconds": 100,
+                    "backoff_multiplier": 2,
+                    "max_backoff_seconds": 1000,
+                    "jitter": True,
+                    "jitter_factor": 0.1,  # 10% jitter
+                }
+            }
+        }
+
+        domain = Domain(name="TestCustomJitterFactor", config=config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            # With 10% jitter, delay should be within ±10% of expected value (100 ±10)
+            actual_delays = [processor._calculate_retry_delay(0) for _ in range(20)]
+
+            # All delays should be within the jitter range (90-110)
+            for delay in actual_delays:
+                assert 90 <= delay <= 110
+
+            # Should have some variation (not all the same)
+            assert len(set(actual_delays)) > 1
+
+    def test_retry_delay_calculation_with_high_jitter_factor(self):
+        """Test retry delay calculation with high jitter factor"""
+        from protean.domain import Domain
+
+        config = {
+            "outbox": {
+                "retry": {
+                    "base_delay_seconds": 100,
+                    "backoff_multiplier": 1,  # No exponential backoff
+                    "max_backoff_seconds": 1000,
+                    "jitter": True,
+                    "jitter_factor": 0.5,  # 50% jitter
+                }
+            }
+        }
+
+        domain = Domain(name="TestHighJitterFactor", config=config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            # With 50% jitter, delay should be within ±50% of expected value (100 ±50)
+            actual_delays = [processor._calculate_retry_delay(0) for _ in range(20)]
+
+            # All delays should be within the jitter range (50-150)
+            for delay in actual_delays:
+                assert 50 <= delay <= 150
+
+            # Should have significant variation
+            assert len(set(actual_delays)) > 5
+
+    def test_retry_delay_calculation_with_zero_jitter_factor(self):
+        """Test retry delay calculation with zero jitter factor (effectively no jitter)"""
+        from protean.domain import Domain
+
+        config = {
+            "outbox": {
+                "retry": {
+                    "base_delay_seconds": 100,
+                    "backoff_multiplier": 2,
+                    "max_backoff_seconds": 1000,
+                    "jitter": True,  # Jitter enabled but factor is 0
+                    "jitter_factor": 0.0,  # No jitter
+                }
+            }
+        }
+
+        domain = Domain(name="TestZeroJitterFactor", config=config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            # With zero jitter factor, all delays should be exactly the base delay
+            actual_delays = [processor._calculate_retry_delay(0) for _ in range(10)]
+
+            # All delays should be exactly 100 (no variation)
+            for delay in actual_delays:
+                assert delay == 100
+
+    def test_jitter_factor_configuration_loading(self):
+        """Test that jitter factor is correctly loaded from configuration"""
+        from protean.domain import Domain
+
+        test_cases = [
+            (0.1, "10% jitter factor"),
+            (0.25, "25% jitter factor"),
+            (0.5, "50% jitter factor"),
+            (0.75, "75% jitter factor"),
+        ]
+
+        for jitter_factor, description in test_cases:
+            config = {
+                "outbox": {
+                    "retry": {
+                        "jitter_factor": jitter_factor,
+                    }
+                }
+            }
+
+            domain = Domain(
+                name=f"TestJitterFactor{int(jitter_factor * 100)}", config=config
+            )
+            domain.init(traverse=False)
+
+            with domain.domain_context():
+                engine = MockEngine(domain)
+                processor = OutboxProcessor(engine, "default", "default")
+
+                retry_config = processor.get_retry_config()
+                assert retry_config["jitter_factor"] == jitter_factor, (
+                    f"Failed for {description}"
+                )
+
+    def test_jitter_factor_partial_override(self):
+        """Test that jitter factor can be overridden independently of other retry settings"""
+        from protean.domain import Domain
+
+        partial_config = {
+            "enable_outbox": True,
+            "outbox": {
+                "retry": {
+                    "jitter_factor": 0.15,  # Only override jitter factor
+                }
+            },
+        }
+
+        domain = Domain(name="TestJitterFactorPartialOverride", config=partial_config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            retry_config = processor.get_retry_config()
+            assert retry_config["jitter_factor"] == 0.15  # Custom
+            assert retry_config["max_attempts"] == 3  # Default
+            assert retry_config["base_delay_seconds"] == 60  # Default
+            assert retry_config["jitter"] is True  # Default
+
+    def test_jitter_factor_minimum_delay_enforcement(self):
+        """Test that jitter factor calculation enforces minimum 1 second delay"""
+        from protean.domain import Domain
+
+        config = {
+            "outbox": {
+                "retry": {
+                    "base_delay_seconds": 2,  # Very small base delay
+                    "jitter": True,
+                    "jitter_factor": 0.9,  # Very high jitter that could go below 1
+                }
+            }
+        }
+
+        domain = Domain(name="TestJitterMinDelay", config=config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            # Even with high jitter on small base delay, minimum should be 1 second
+            actual_delays = [processor._calculate_retry_delay(0) for _ in range(50)]
+
+            # All delays should be at least 1 second
+            for delay in actual_delays:
+                assert delay >= 1
 
     def test_should_retry_message_logic(self):
         """Test message retry eligibility logic"""
@@ -1208,6 +1397,7 @@ class TestRetryConfiguration:
                     "max_backoff_seconds": 2400,
                     "backoff_multiplier": 1.5,
                     "jitter": False,
+                    "jitter_factor": 0.3,
                 },
             },
         }
@@ -1226,6 +1416,7 @@ class TestRetryConfiguration:
             assert retry_config["max_backoff_seconds"] == 2400
             assert retry_config["backoff_multiplier"] == 1.5
             assert retry_config["jitter"] is False
+            assert retry_config["jitter_factor"] == 0.3
 
             # Test that the processor methods use the config
             assert (
@@ -1245,6 +1436,61 @@ class TestRetryConfiguration:
             delay = processor._calculate_retry_delay(1)  # Second retry
             expected = 45 * (1.5**1)  # base_delay * backoff_multiplier^retry_count
             assert delay == int(expected)
+
+    def test_jitter_factor_with_exponential_backoff_integration(self):
+        """Test that jitter factor works correctly with exponential backoff at different retry counts"""
+        from protean.domain import Domain
+
+        config = {
+            "outbox": {
+                "retry": {
+                    "base_delay_seconds": 60,
+                    "backoff_multiplier": 2,
+                    "max_backoff_seconds": 500,
+                    "jitter": True,
+                    "jitter_factor": 0.2,  # 20% jitter
+                }
+            }
+        }
+
+        domain = Domain(name="TestJitterWithBackoff", config=config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            # Test different retry counts with their expected base delays
+            test_cases = [
+                (0, 60),  # First retry: 60 seconds
+                (1, 120),  # Second retry: 60 * 2 = 120 seconds
+                (2, 240),  # Third retry: 60 * 4 = 240 seconds
+                (3, 480),  # Fourth retry: 60 * 8 = 480 seconds
+                (4, 500),  # Fifth retry: 60 * 16 = 960, but capped at 500
+            ]
+
+            for retry_count, expected_base in test_cases:
+                # Test multiple samples to ensure jitter is working
+                actual_delays = [
+                    processor._calculate_retry_delay(retry_count) for _ in range(10)
+                ]
+
+                # Calculate expected jitter range (±20%)
+                jitter_amount = expected_base * 0.2
+                min_expected = expected_base - jitter_amount
+                max_expected = expected_base + jitter_amount
+
+                # All delays should be within the jitter range
+                for delay in actual_delays:
+                    assert min_expected <= delay <= max_expected, (
+                        f"Retry count {retry_count}: delay {delay} not in range "
+                        f"[{min_expected}, {max_expected}] for base delay {expected_base}"
+                    )
+
+                # Should have some variation (at least 2 different values in 10 samples)
+                assert len(set(actual_delays)) >= 2, (
+                    f"Retry count {retry_count}: insufficient jitter variation in delays {actual_delays}"
+                )
 
 
 @pytest.mark.database

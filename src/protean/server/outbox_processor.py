@@ -58,6 +58,7 @@ class OutboxProcessor(BaseSubscription):
             "max_backoff_seconds": retry_config.get("max_backoff_seconds", 3600),
             "backoff_multiplier": retry_config.get("backoff_multiplier", 2),
             "jitter": retry_config.get("jitter", True),
+            "jitter_factor": retry_config.get("jitter_factor", 0.25),
         }
 
         # Load cleanup configuration from domain config
@@ -374,13 +375,15 @@ class OutboxProcessor(BaseSubscription):
         base_delay = self.retry_config["base_delay_seconds"]
         multiplier = self.retry_config["backoff_multiplier"]
         max_backoff = self.retry_config["max_backoff_seconds"]
+        jitter_enabled = self.retry_config["jitter"]
+        jitter_factor = self.retry_config["jitter_factor"]
 
         # Calculate exponential backoff
         delay = min(base_delay * (multiplier**retry_count), max_backoff)
 
         # Add jitter if enabled (±25% randomization)
-        if self.retry_config["jitter"]:
-            jitter = delay * 0.25
+        if jitter_enabled:
+            jitter = delay * jitter_factor
             delay = delay + random.uniform(-jitter, jitter)
             delay = max(delay, 1)  # Ensure minimum 1 second delay
 

@@ -63,6 +63,7 @@ def _default_config():
                 "max_backoff_seconds": 3600,
                 "backoff_multiplier": 2,
                 "jitter": True,
+                "jitter_factor": 0.25,
             },
             "cleanup": {
                 "published_retention_hours": 168,  # 7 days
