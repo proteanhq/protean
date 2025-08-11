@@ -64,6 +64,11 @@ def _default_config():
                 "backoff_multiplier": 2,
                 "jitter": True,
             },
+            "cleanup": {
+                "published_retention_hours": 168,  # 7 days
+                "abandoned_retention_hours": 720,  # 30 days
+                "cleanup_interval_ticks": 86400,  # 1 day (24 hours)
+            },
         },
         "custom": {},
     }

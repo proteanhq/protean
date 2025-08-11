@@ -323,7 +323,7 @@ class Domain:
         self._initialize()
 
         # Initialize outbox DAOs for all providers
-        if self.config["enable_outbox"]:
+        if self.config.get("enable_outbox", False):
             self._initialize_outbox()
 
     def _traverse(self):

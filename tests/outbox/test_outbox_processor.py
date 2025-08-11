@@ -2,6 +2,7 @@
 
 import asyncio
 import pytest
+from datetime import datetime, timezone, timedelta
 from unittest.mock import Mock, patch
 
 from protean.core.aggregate import BaseAggregate
@@ -220,8 +221,9 @@ class TestOutboxProcessor:
 
         # Mock broker publish to return success
         with patch.object(processor.broker, "publish", return_value="broker-msg-id"):
-            success = await processor._publish_message(messages[0])
+            success, error = await processor._publish_message(messages[0])
             assert success is True
+            assert error is None
 
     @pytest.mark.asyncio
     async def test_publish_message_failure(self, outbox_test_domain):
@@ -237,8 +239,10 @@ class TestOutboxProcessor:
         with patch.object(
             processor.broker, "publish", side_effect=Exception("Broker error")
         ):
-            success = await processor._publish_message(messages[0])
+            success, error = await processor._publish_message(messages[0])
             assert success is False
+            assert error is not None
+            assert str(error) == "Broker error"
 
     @pytest.mark.asyncio
     async def test_process_batch_success(self, outbox_test_domain):
@@ -689,13 +693,13 @@ class TestEngineIntegration:
         # Engine should create outbox processors for each database-broker provider combination
         assert hasattr(engine, "_outbox_processors")
 
-        # Dynamically calculate the expected number of outbox processors
-        database_providers = outbox_test_domain.config.get("databases", [])
-        broker_providers = outbox_test_domain.config.get("brokers", [])
+        # Calculate expected processors: one for each database provider to the configured outbox broker
+        database_providers = list(outbox_test_domain.providers.keys())
+        outbox_broker = outbox_test_domain.config.get("outbox", {}).get(
+            "broker", "default"
+        )
         expected_combinations = [
-            f"outbox-processor-{db}-to-{broker}"
-            for db in database_providers
-            for broker in broker_providers
+            f"outbox-processor-{db}-to-{outbox_broker}" for db in database_providers
         ]
 
         # Assert the number of outbox processors matches the expected combinations
@@ -1241,3 +1245,270 @@ class TestRetryConfiguration:
             delay = processor._calculate_retry_delay(1)  # Second retry
             expected = 45 * (1.5**1)  # base_delay * backoff_multiplier^retry_count
             assert delay == int(expected)
+
+
+@pytest.mark.database
+class TestOutboxCleanup:
+    """Test outbox cleanup functionality"""
+
+    def test_cleanup_old_abandoned_messages(self, outbox_test_domain):
+        """Test cleanup of old abandoned messages"""
+        from datetime import datetime, timezone, timedelta
+
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+
+        # Create an abandoned message from 31 days ago
+        old_message = persist_outbox_messages(outbox_test_domain)[0]
+        old_message.status = OutboxStatus.ABANDONED.value
+        old_message.last_processed_at = datetime.now(timezone.utc) - timedelta(days=31)
+        outbox_repo.add(old_message)
+
+        # Create a recent abandoned message
+        recent_message = persist_outbox_messages(outbox_test_domain)[0]
+        recent_message.message_id = "recent-msg"
+        recent_message.status = OutboxStatus.ABANDONED.value
+        recent_message.last_processed_at = datetime.now(timezone.utc) - timedelta(
+            days=1
+        )
+        outbox_repo.add(recent_message)
+
+        # Verify both messages exist
+        abandoned_messages = outbox_repo.find_abandoned()
+        assert len(abandoned_messages) == 2
+
+        # Clean up old abandoned messages (older than 30 days)
+        cleaned_count = outbox_repo.cleanup_old_abandoned(
+            older_than_hours=720
+        )  # 30 days
+        assert cleaned_count == 1
+
+        # Verify only the recent message remains
+        remaining_abandoned = outbox_repo.find_abandoned()
+        assert len(remaining_abandoned) == 1
+        assert remaining_abandoned[0].message_id == "recent-msg"
+
+    def test_cleanup_old_messages_unified(self, outbox_test_domain):
+        """Test unified cleanup of both published and abandoned messages"""
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+
+        # Create old published message (8 days ago)
+        old_published = persist_outbox_messages(outbox_test_domain)[0]
+        old_published.message_id = "old-published"
+        old_published.status = OutboxStatus.PUBLISHED.value
+        old_published.published_at = datetime.now(timezone.utc) - timedelta(days=8)
+        outbox_repo.add(old_published)
+
+        # Create recent published message (1 day ago)
+        recent_published = persist_outbox_messages(outbox_test_domain)[0]
+        recent_published.message_id = "recent-published"
+        recent_published.status = OutboxStatus.PUBLISHED.value
+        recent_published.published_at = datetime.now(timezone.utc) - timedelta(days=1)
+        outbox_repo.add(recent_published)
+
+        # Create old abandoned message (31 days ago)
+        old_abandoned = persist_outbox_messages(outbox_test_domain)[0]
+        old_abandoned.message_id = "old-abandoned"
+        old_abandoned.status = OutboxStatus.ABANDONED.value
+        old_abandoned.last_processed_at = datetime.now(timezone.utc) - timedelta(
+            days=31
+        )
+        outbox_repo.add(old_abandoned)
+
+        # Create recent abandoned message (1 day ago)
+        recent_abandoned = persist_outbox_messages(outbox_test_domain)[0]
+        recent_abandoned.message_id = "recent-abandoned"
+        recent_abandoned.status = OutboxStatus.ABANDONED.value
+        recent_abandoned.last_processed_at = datetime.now(timezone.utc) - timedelta(
+            days=1
+        )
+        outbox_repo.add(recent_abandoned)
+
+        # Clean up with 7 days for published, 30 days for abandoned
+        cleanup_result = outbox_repo.cleanup_old_messages(
+            published_retention_hours=168,  # 7 days
+            abandoned_retention_hours=720,  # 30 days
+        )
+
+        # Verify results
+        assert cleanup_result["published"] == 1  # Old published message cleaned
+        assert cleanup_result["abandoned"] == 1  # Old abandoned message cleaned
+        assert cleanup_result["total"] == 2
+
+        # Verify only recent messages remain
+        remaining_published = outbox_repo.find_published()
+        assert len(remaining_published) == 1
+        assert remaining_published[0].message_id == "recent-published"
+
+        remaining_abandoned = outbox_repo.find_abandoned()
+        assert len(remaining_abandoned) == 1
+        assert remaining_abandoned[0].message_id == "recent-abandoned"
+
+
+@pytest.mark.database
+class TestOutboxPeriodicCleanup:
+    """Test periodic cleanup functionality in OutboxProcessor"""
+
+    def test_cleanup_configuration_loading(self, outbox_test_domain):
+        """Test that cleanup configuration is loaded correctly from domain config"""
+        custom_config = {
+            "enable_outbox": True,
+            "outbox": {
+                "cleanup": {
+                    "published_retention_hours": 72,  # 3 days
+                    "abandoned_retention_hours": 480,  # 20 days
+                },
+            },
+        }
+
+        from protean.domain import Domain
+
+        domain = Domain(name="TestCleanupConfig", config=custom_config)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+
+            assert processor.cleanup_config["published_retention_hours"] == 72
+            assert processor.cleanup_config["abandoned_retention_hours"] == 480
+
+    def test_cleanup_configuration_defaults(self, outbox_test_domain):
+        """Test that cleanup configuration uses defaults when not specified"""
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+
+        # Should use default values
+        assert processor.cleanup_config["published_retention_hours"] == 168  # 7 days
+        assert processor.cleanup_config["abandoned_retention_hours"] == 720  # 30 days
+
+    @pytest.mark.asyncio
+    async def test_periodic_cleanup_trigger(self, outbox_test_domain):
+        """Test that cleanup is triggered after the configured interval"""
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        processor.cleanup_config["cleanup_interval_ticks"] = (
+            3  # Set low interval for testing
+        )
+        await processor.initialize()
+
+        # Mock the cleanup method to track calls
+        cleanup_called = {"count": 0}
+
+        async def mock_perform_cleanup():
+            cleanup_called["count"] += 1
+
+        processor._perform_cleanup = mock_perform_cleanup
+
+        # Simulate 3 ticks - should trigger cleanup once
+        for _ in range(3):
+            await processor.tick()
+
+        # Cleanup should have been called once (after 3 ticks) and reset the counter
+        assert cleanup_called["count"] == 1
+
+        # Two more ticks should not trigger cleanup yet (tick_count = 2)
+        await processor.tick()
+        await processor.tick()
+        assert cleanup_called["count"] == 1
+
+        # One more tick should trigger cleanup again (tick_count = 3)
+        await processor.tick()
+        assert cleanup_called["count"] == 2
+
+    @pytest.mark.asyncio
+    async def test_perform_cleanup_functionality(self, outbox_test_domain):
+        """Test that _perform_cleanup actually cleans up old messages"""
+        from datetime import datetime, timezone, timedelta
+
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        processor.cleanup_config = {
+            "published_retention_hours": 24,  # 1 day
+            "abandoned_retention_hours": 48,  # 2 days
+        }
+        await processor.initialize()
+
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+
+        # Create old messages
+        old_published = persist_outbox_messages(outbox_test_domain)[0]
+        old_published.message_id = "old-pub"
+        old_published.status = OutboxStatus.PUBLISHED.value
+        old_published.published_at = datetime.now(timezone.utc) - timedelta(days=2)
+        outbox_repo.add(old_published)
+
+        old_abandoned = persist_outbox_messages(outbox_test_domain)[0]
+        old_abandoned.message_id = "old-aband"
+        old_abandoned.status = OutboxStatus.ABANDONED.value
+        old_abandoned.last_processed_at = datetime.now(timezone.utc) - timedelta(days=3)
+        outbox_repo.add(old_abandoned)
+
+        # Create recent messages
+        recent_published = persist_outbox_messages(outbox_test_domain)[0]
+        recent_published.message_id = "recent-pub"
+        recent_published.status = OutboxStatus.PUBLISHED.value
+        recent_published.published_at = datetime.now(timezone.utc) - timedelta(hours=12)
+        outbox_repo.add(recent_published)
+
+        # Verify messages exist before cleanup
+        assert len(outbox_repo.find_published()) == 2
+        assert len(outbox_repo.find_abandoned()) == 1
+
+        # Perform cleanup
+        await processor._perform_cleanup()
+
+        # Verify old messages were cleaned up
+        remaining_published = outbox_repo.find_published()
+        remaining_abandoned = outbox_repo.find_abandoned()
+
+        assert len(remaining_published) == 1
+        assert remaining_published[0].message_id == "recent-pub"
+        assert len(remaining_abandoned) == 0  # Old abandoned should be gone
+
+    @pytest.mark.asyncio
+    async def test_cleanup_error_handling(self, outbox_test_domain):
+        """Test that cleanup errors are handled gracefully"""
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        # Mock cleanup_old_messages to raise an exception
+        original_cleanup = processor.outbox_repo.cleanup_old_messages
+
+        def failing_cleanup(*args, **kwargs):
+            raise Exception("Cleanup error")
+
+        processor.outbox_repo.cleanup_old_messages = failing_cleanup
+
+        # This should not raise an exception
+        await processor._perform_cleanup()
+
+        # Restore original method
+        processor.outbox_repo.cleanup_old_messages = original_cleanup
+
+    @pytest.mark.asyncio
+    async def test_cleanup_with_no_outbox_repo(self):
+        """Test that cleanup handles missing outbox repository gracefully"""
+        from protean.domain import Domain
+
+        domain = Domain(name="TestNoRepo")
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            engine = MockEngine(domain)
+            processor = OutboxProcessor(engine, "default", "default")
+            # Don't call initialize() so outbox_repo remains None
+
+            # This should not raise an exception
+            await processor._perform_cleanup()
+
+    def test_cleanup_interval_configuration(self, outbox_test_domain):
+        """Test that cleanup interval can be configured"""
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+
+        # Default interval should be 86400 (1 day)
+        assert processor.cleanup_config["cleanup_interval_ticks"] == 86400
+
+        # Test that tick count starts at 0
+        assert processor.tick_count == 0

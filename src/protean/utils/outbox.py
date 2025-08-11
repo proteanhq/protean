@@ -160,12 +160,18 @@ class Outbox(BaseAggregate):
         # Clear lock
         self._clear_lock()
 
-    def mark_failed(self, error: Exception, base_delay_seconds: int = 60) -> None:
+    def mark_failed(
+        self,
+        error: Exception,
+        base_delay_seconds: int = 60,
+        max_retries: Optional[int] = None,
+    ) -> None:
         """Mark processing as failed and schedule retry if applicable.
 
         Args:
             error: The error that occurred during processing
             base_delay_seconds: Base delay for exponential backoff
+            max_retries: Override max retries (uses self.max_retries if None)
         """
         self.retry_count += 1
         self.last_processed_at = datetime.now(timezone.utc)
@@ -179,8 +185,13 @@ class Outbox(BaseAggregate):
         # Clear lock
         self._clear_lock()
 
+        # Use provided max_retries or fall back to instance max_retries
+        effective_max_retries = (
+            max_retries if max_retries is not None else self.max_retries
+        )
+
         # Determine next action based on retry eligibility
-        if self._can_retry():
+        if self.retry_count < effective_max_retries:
             self.status = OutboxStatus.FAILED.value
             self._calculate_next_retry(base_delay_seconds)
         else:
@@ -563,3 +574,60 @@ class OutboxRepository(BaseRepository):
         query.delete_all()
 
         return count
+
+    def cleanup_old_abandoned(self, older_than_hours: int = 720) -> int:
+        """Clean up abandoned messages older than specified hours.
+
+        Abandoned messages remain in the table for observability but can be cleaned up
+        after a reasonable retention period (default 30 days).
+
+        Args:
+            older_than_hours: Age in hours after which abandoned messages should be cleaned up (default: 720 = 30 days)
+
+        Returns:
+            Number of messages deleted
+        """
+        threshold_time = datetime.now(timezone.utc) - timedelta(hours=older_than_hours)
+
+        query = self._dao.query.filter(
+            status=OutboxStatus.ABANDONED.value, last_processed_at__lt=threshold_time
+        )
+
+        # Get count before deletion
+        messages_to_delete = query.all()
+        count = len(messages_to_delete)
+
+        # Delete the messages
+        query.delete_all()
+
+        return count
+
+    def cleanup_old_messages(
+        self, published_retention_hours: int = 168, abandoned_retention_hours: int = 720
+    ) -> dict:
+        """Clean up old published and abandoned messages based on retention periods.
+
+        This method cleans up both published and abandoned messages that are older
+        than their respective retention periods.
+
+        Args:
+            published_retention_hours: Age in hours after which published messages should be cleaned up (default: 168 = 7 days)
+            abandoned_retention_hours: Age in hours after which abandoned messages should be cleaned up (default: 720 = 30 days)
+
+        Returns:
+            dict: Number of messages deleted by status {'published': count, 'abandoned': count, 'total': total_count}
+        """
+        published_count = self.cleanup_old_published(
+            older_than_hours=published_retention_hours
+        )
+        abandoned_count = self.cleanup_old_abandoned(
+            older_than_hours=abandoned_retention_hours
+        )
+
+        total_count = published_count + abandoned_count
+
+        return {
+            "published": published_count,
+            "abandoned": abandoned_count,
+            "total": total_count,
+        }

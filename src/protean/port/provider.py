@@ -53,6 +53,17 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """Check if the connection is alive"""
 
     @abstractmethod
+    def close(self):
+        """Close the provider and clean up any persistent connections or resources.
+
+        This method should be called to properly dispose of connections and free up
+        resources when the provider is no longer needed. Implementations should:
+        - Close any connection pools
+        - Dispose of any persistent connections
+        - Clean up any other resources (engines, clients, etc.)
+        """
+
+    @abstractmethod
     def get_dao(self, entity_cls, database_model_cls):
         """Return a DAO object configured with a live connection"""
 

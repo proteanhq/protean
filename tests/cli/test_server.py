@@ -50,8 +50,15 @@ class TestServerCommand:
         """Test that the server command correctly initializes the domain"""
         change_working_directory_to("test7")
 
+        # Create a mock domain with proper configuration structure
+        mock_domain = MagicMock()
+        mock_domain.config = {
+            "enable_outbox": False,  # Disable outbox to avoid initialization issues
+        }
+        mock_domain.brokers = {"default": MagicMock()}
+
         with patch(
-            "protean.cli.derive_domain", return_value=MagicMock()
+            "protean.cli.derive_domain", return_value=mock_domain
         ) as mock_derive_domain:  # Correct the patch path here
             with patch("protean.server.engine.Engine.run") as mock_engine_run:
                 args = ["server", "--domain", "publishing7.py"]
