@@ -9,6 +9,7 @@ from enum import Enum
 from typing import Any
 
 import sqlalchemy.dialects.postgresql as psql
+import sqlalchemy.dialects.mssql as mssql
 from sqlalchemy import Column, MetaData, and_, create_engine, or_, orm, text
 from sqlalchemy import types as sa_types
 from sqlalchemy.engine.url import make_url
@@ -66,6 +67,8 @@ class GUID(TypeDecorator):
     def load_dialect_impl(self, dialect):
         if dialect.name == "postgresql":
             return dialect.type_descriptor(psql.UUID())
+        elif dialect.name == "mssql":
+            return dialect.type_descriptor(mssql.UNIQUEIDENTIFIER())
         else:
             return dialect.type_descriptor(CHAR(32))
 
@@ -74,6 +77,8 @@ class GUID(TypeDecorator):
             return value
         elif dialect.name == "postgresql":
             return str(value)
+        elif dialect.name == "mssql":
+            return value if isinstance(value, uuid.UUID) else uuid.UUID(value)
         else:
             if not isinstance(value, uuid.UUID):
                 return "%.32x" % uuid.UUID(value).int
@@ -87,6 +92,33 @@ class GUID(TypeDecorator):
         else:
             if not isinstance(value, uuid.UUID):
                 value = uuid.UUID(value)
+            return value
+
+
+class MSSQLJSON(TypeDecorator):
+    """JSON type for MSSQL using NVARCHAR storage with automatic serialization."""
+
+    impl = mssql.NVARCHAR
+    cache_ok = True
+
+    def __init__(self, length=None):
+        # Use NVARCHAR(MAX) by default for JSON storage
+        super().__init__(length=length)
+
+    def process_bind_param(self, value, dialect):
+        """Serialize Python objects to JSON string when binding to database."""
+        if value is None:
+            return value
+        return _custom_json_dumps(value)
+
+    def process_result_value(self, value, dialect):
+        """Deserialize JSON string back to Python objects when reading from database."""
+        if value is None:
+            return value
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            # If we can't parse as JSON, return the raw value
             return value
 
 
@@ -177,8 +209,9 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     # Get the SA type
                     sa_type_cls = field_mapping_for(field_obj)
 
-                    # Upgrade to Postgresql specific Data Types
-                    if subclass.__dict__["engine"].dialect.name == "postgresql":
+                    # Upgrade to Database-specific Data Types
+                    dialect_name = subclass.__dict__["engine"].dialect.name
+                    if dialect_name == "postgresql":
                         if field_cls == Dict and not field_obj.pickled:
                             sa_type_cls = psql.JSON
 
@@ -204,6 +237,19 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                                 type_args.append(field_mapping_type)
                             else:
                                 type_args.append(sa_types.Text)
+                    elif dialect_name == "mssql":
+                        # SQL Server doesn't have native JSON/Array types, use custom JSON type for JSON-like data
+                        if field_cls == Dict and not field_obj.pickled:
+                            sa_type_cls = MSSQLJSON
+                            type_args.append(
+                                None
+                            )  # NVARCHAR(MAX) with JSON serialization
+
+                        if field_cls == List and not field_obj.pickled:
+                            sa_type_cls = MSSQLJSON
+                            type_args.append(
+                                None
+                            )  # Store as JSON string with serialization
 
                     # Default to the text type if no mapping is found
                     if not sa_type_cls:
@@ -219,6 +265,11 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     # Update the arguments based on the field type
                     if issubclass(field_cls, String):
                         type_kwargs["length"] = field_obj.max_length
+                    # If the field is an Auto field and the type is a string, set the length to 255
+                    #   Without explicit length, we are leaving the decision to the database. And that
+                    #   will not work for MSSQL.
+                    elif issubclass(field_cls, Auto) and sa_type_cls == sa_types.String:
+                        type_kwargs["length"] = 255
 
                     # Update the attributes of the class
                     column = Column(sa_type_cls(*type_args, **type_kwargs), **col_args)
@@ -319,6 +370,15 @@ class SADAO(BaseDAO):
                 order_cols.append(col.desc())
             else:
                 order_cols.append(col)
+
+        # If the database is MSSQL and no order by clause is present, add the id column to the order by clause.
+        #   This is because MSSQL does not support OFFSET/LIMIT without an ORDER BY clause.
+        if (
+            self.provider.__database__ == SAProvider.databases.mssql.value
+            and not order_cols
+        ):
+            order_cols.append(getattr(self.database_model_cls, "id").asc())
+
         qs = qs.order_by(*order_cols)
         qs_without_limit = qs
         qs = qs.limit(limit).offset(offset)
@@ -329,7 +389,7 @@ class SADAO(BaseDAO):
             result = ResultSet(
                 offset=offset, limit=limit, total=qs_without_limit.count(), items=items
             )
-        except DatabaseError as exc:
+        except Exception as exc:
             logger.error(f"Error while filtering: {exc}")
             raise
         finally:
@@ -526,6 +586,7 @@ class SAProvider(BaseProvider):
     class databases(Enum):
         postgresql = "postgresql"
         sqlite = "sqlite"
+        mssql = "mssql"
 
     def _additional_engine_args(self):
         """Construct additional arguments for the engine"""
@@ -884,6 +945,44 @@ class SqliteProvider(SAProvider):
         return conn
 
 
+class MssqlProvider(SAProvider):
+    __database__ = SAProvider.databases.mssql.value
+
+    def _get_database_specific_engine_args(self) -> dict:
+        """Supplies additional database-specific arguments to SQLAlchemy Engine.
+
+        Return: a dictionary with database-specific SQLAlchemy Engine arguments.
+        """
+        return {
+            "isolation_level": "AUTOCOMMIT",
+            "pool_pre_ping": True,  # Enable connection health checks
+        }
+
+    def _get_database_specific_session_args(self) -> dict:
+        """Set Database specific session parameters.
+
+        Depending on the database in use, this method supplies
+        additional arguments while constructing sessions.
+
+        Return: a dictionary with additional arguments and values.
+        """
+        return {"autoflush": False}
+
+    def _execute_database_specific_connection_statements(self, conn):
+        """Execute connection statements depending on the database in use.
+        Overridden implementation for SQL Server.
+
+        Arguments:
+        * conn: An active connection object to the database
+
+        Return: Updated connection object
+        """
+        # Set SQL Server specific options if needed
+        # For example, you might want to set specific isolation levels
+        # conn.execute(text("SET TRANSACTION ISOLATION LEVEL READ COMMITTED;"))
+        return conn
+
+
 operators = {
     "exact": "__eq__",
     "iexact": "ilike",
@@ -1022,3 +1121,89 @@ class Overlap(DefaultLookup):
     """Overlap Query"""
 
     lookup_name = "overlap"
+
+
+class MSSQLStringLookupMixin:
+    """Mixin to add MSSQL case-sensitive collation support to string lookups"""
+
+    def _is_string_type(self, column):
+        """Check if the column type is a string-based type"""
+        if not hasattr(column, "type"):
+            return False
+
+        column_type = column.type
+
+        # Check for SQLAlchemy string types
+        string_types = (
+            sa_types.String,
+            sa_types.Text,
+            sa_types.Unicode,
+            sa_types.UnicodeText,
+            mssql.NVARCHAR,
+            mssql.VARCHAR,
+            mssql.CHAR,
+            mssql.NCHAR,
+            mssql.TEXT,
+            mssql.NTEXT,
+        )
+
+        # Also check for our custom MSSQLJSON type which is string-based for collation purposes
+        if isinstance(column_type, MSSQLJSON):
+            return True
+
+        return isinstance(column_type, string_types)
+
+    def process_source(self):
+        """Return source column with case-sensitive collation applied only for string types"""
+        source_col = getattr(self.database_model_cls, self.source)
+
+        # Only apply collation to string/text columns
+        if self._is_string_type(source_col):
+            return source_col.collate("Latin1_General_CS_AS")
+
+        # For non-string types, return the column as-is
+        return source_col
+
+
+@MssqlProvider.register_lookup
+class MSSQLExact(MSSQLStringLookupMixin, DefaultLookup):
+    """Case-sensitive exact match query for MSSQL using CS/BIN collation"""
+
+    lookup_name = "exact"
+
+    def as_expression(self):
+        """Build the expression with case-sensitive collation for string fields only"""
+        return self.process_source() == self.process_target()
+
+
+@MssqlProvider.register_lookup
+class MSSQLContains(MSSQLStringLookupMixin, DefaultLookup):
+    """Case-sensitive contains query for MSSQL using CS/BIN collation"""
+
+    lookup_name = "contains"
+
+    def as_expression(self):
+        """Build the contains expression with case-sensitive collation for string fields only"""
+        return self.process_source().contains(self.process_target())
+
+
+@MssqlProvider.register_lookup
+class MSSQLStartswith(MSSQLStringLookupMixin, DefaultLookup):
+    """Case-sensitive startswith query for MSSQL using CS/BIN collation"""
+
+    lookup_name = "startswith"
+
+    def as_expression(self):
+        """Build the startswith expression with case-sensitive collation for string fields only"""
+        return self.process_source().startswith(self.process_target())
+
+
+@MssqlProvider.register_lookup
+class MSSQLEndswith(MSSQLStringLookupMixin, DefaultLookup):
+    """Case-sensitive endswith query for MSSQL using CS/BIN collation"""
+
+    lookup_name = "endswith"
+
+    def as_expression(self):
+        """Build the endswith expression with case-sensitive collation for string fields only"""
+        return self.process_source().endswith(self.process_target())

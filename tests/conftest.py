@@ -32,6 +32,9 @@ def pytest_addoption(parser):
         "--postgresql", action="store_true", default=False, help="Run Postgresql tests"
     )
     parser.addoption(
+        "--mssql", action="store_true", default=False, help="Run MSSQL tests"
+    )
+    parser.addoption(
         "--elasticsearch",
         action="store_true",
         default=False,
@@ -94,7 +97,7 @@ def pytest_collection_modifyitems(config, items):
     """Configure special markers on tests, so as to control execution"""
     run_slow = run_pending = run_sqlite = run_postgresql = run_elasticsearch = (
         run_redis
-    ) = run_message_db = run_sendgrid = False
+    ) = run_message_db = run_sendgrid = run_mssql = False
 
     if config.getoption("--slow"):
         # --slow given in cli: do not skip slow tests
@@ -112,6 +115,9 @@ def pytest_collection_modifyitems(config, items):
     if config.getoption("--elasticsearch"):
         run_elasticsearch = True
 
+    if config.getoption("--mssql"):
+        run_mssql = True
+
     if config.getoption("--redis"):
         run_redis = True
 
@@ -126,6 +132,7 @@ def pytest_collection_modifyitems(config, items):
     skip_sqlite = pytest.mark.skip(reason="need --sqlite option to run")
     skip_postgresql = pytest.mark.skip(reason="need --postgresql option to run")
     skip_elasticsearch = pytest.mark.skip(reason="need --elasticsearch option to run")
+    skip_mssql = pytest.mark.skip(reason="need --mssql option to run")
     skip_redis = pytest.mark.skip(reason="need --redis option to run")
     skip_message_db = pytest.mark.skip(reason="need --message_db option to run")
     skip_sendgrid = pytest.mark.skip(reason="need --sendgrid option to run")
@@ -141,6 +148,8 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_postgresql)
         if "elasticsearch" in item.keywords and run_elasticsearch is False:
             item.add_marker(skip_elasticsearch)
+        if "mssql" in item.keywords and run_mssql is False:
+            item.add_marker(skip_mssql)
         if "redis" in item.keywords and run_redis is False:
             item.add_marker(skip_redis)
         if "message_db" in item.keywords and run_message_db is False:
@@ -189,6 +198,10 @@ def db_config(request):
             "SQLITE": {
                 "provider": "sqlite",
                 "database_uri": "sqlite:///test.db",
+            },
+            "MSSQL": {
+                "provider": "mssql",
+                "database_uri": "mssql+pyodbc://sa:Protean123!@localhost:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes",
             },
         }[request.config.getoption("--db", "MEMORY")]
     except KeyError as e:

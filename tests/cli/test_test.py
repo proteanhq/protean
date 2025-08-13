@@ -134,8 +134,8 @@ class TestTestRunner:
         suites = mock_runner.generate_test_suites()
 
         assert (
-            len(suites) == 8
-        )  # Full Matrix + 3 DBs + 1 Brokers + 2 Manual Brokers + 1 EventStore
+            len(suites) == 9
+        )  # Full Matrix + 4 DBs + 1 Brokers + 2 Manual Brokers + 1 EventStore
         suite_names = [suite.name for suite in suites]
 
         assert "Full Matrix" in suite_names
@@ -610,7 +610,7 @@ class TestConfiguration:
         assert "eventstores" in TEST_CONFIGS
         assert "full_matrix_flags" in TEST_CONFIGS
 
-        assert len(TEST_CONFIGS["databases"]) == 3
+        assert len(TEST_CONFIGS["databases"]) == 4
         assert len(TEST_CONFIGS["brokers"]) == 3
         assert len(TEST_CONFIGS["eventstores"]) == 2
 

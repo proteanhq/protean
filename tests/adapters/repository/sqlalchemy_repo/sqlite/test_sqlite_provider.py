@@ -1,18 +1,19 @@
+"""Module to test SQLite Provider specific functionality"""
+
 import pytest
-from elasticsearch import Elasticsearch
-from elasticsearch_dsl.response import Response
+from sqlalchemy.engine.result import Result
+from sqlalchemy.orm.session import Session
 
 from protean import Domain
-from protean.adapters import Providers
-from protean.adapters.repository.elasticsearch import ESProvider
+from protean.adapters.repository.sqlalchemy import SqliteProvider
 from protean.exceptions import ConfigurationError
 
 from .elements import Alien, Person
 
 
-@pytest.mark.elasticsearch
-class TestProviders:
-    """This class holds tests for Providers Singleton"""
+@pytest.mark.sqlite
+class TestSqliteProvider:
+    """Test SQLite-specific provider functionality"""
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
@@ -20,45 +21,33 @@ class TestProviders:
         test_domain.register(Alien)
         test_domain.init(traverse=False)
 
-    def test_initialization_of_providers_on_first_call(self, test_domain):
-        """Test that ``providers`` object is available"""
-        assert isinstance(test_domain.providers, Providers)
-        assert test_domain.providers._providers is not None
-        assert "default" in test_domain.providers
+    def test_provider_type_is_sqlite(self, test_domain):
+        """Test that provider is of correct SQLite type"""
+        provider = test_domain.providers["default"]
+        assert isinstance(provider, SqliteProvider)
 
-    def test_provider_detail(self, test_domain):
-        """Test provider info loaded for tests"""
-
-        provider1 = test_domain.providers["default"]
-        assert isinstance(provider1, ESProvider)
-
-    def test_provider_get_connection(self, test_domain):
-        """Test ``get_connection`` method and check for connection details"""
-
+    def test_provider_get_connection_returns_active_session(self, test_domain):
+        """Test that get_connection returns active SQLAlchemy session"""
         conn = test_domain.providers["default"].get_connection()
         assert conn is not None
-        assert isinstance(conn, Elasticsearch)
-
-    def test_provider_is_alive(self, test_domain):
-        """Test ``is_alive`` method"""
-        assert test_domain.providers["default"].is_alive()
+        assert isinstance(conn, Session)
+        assert conn.is_active
 
     @pytest.mark.no_test_domain
-    def test_exception_on_invalid_provider(self):
-        """Test exception on invalid provider"""
+    def test_exception_on_invalid_sqlite_provider(self):
+        """Test exception on invalid SQLite provider"""
         domain = Domain()
         domain.config["databases"]["default"] = {
-            "provider": "elasticsearch",
-            "database_uri": '{"hosts": ["imaginary"]}',
+            "provider": "sqlite",
+            "database_uri": "sqlite:////C:/Users/username/foobar.db",
         }
         with pytest.raises(ConfigurationError) as exc:
             domain.init(traverse=False)
 
         assert "Could not connect to database at" in str(exc.value)
 
-    @pytest.mark.pending
-    def test_provider_raw(self, test_domain):
-        """Test raw queries"""
+    def test_sqlite_raw_queries_with_sql(self, test_domain):
+        """Test SQLite-specific raw SQL queries"""
         test_domain.repository_for(Person)._dao.create(
             first_name="Murdock", age=7, last_name="John"
         )
@@ -81,9 +70,9 @@ class TestProviders:
 
         provider = test_domain.providers["default"]
 
-        # Filter by column value
+        # Filter by column value - SQLite specific SQL
         results = provider.raw("SELECT count(*) FROM person where last_name = 'John'")
-        assert isinstance(results, Response)
+        assert isinstance(results, Result)
         assert next(results)[0] == 2
 
         results = provider.raw(
@@ -96,6 +85,6 @@ class TestProviders:
         assert next(results)[0] == 2
 
         results = provider.raw(
-            "SELECT * FROM person where last_name = 'John' and age in (6,7)"
+            "SELECT first_name FROM person where last_name = 'John' and age in (6,7)"
         )
         assert next(results)[0] == "Murdock"

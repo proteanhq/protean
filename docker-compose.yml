@@ -49,6 +49,15 @@ services:
     ports:
       - "0.0.0.0:5433:5432"
 
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: Y
+      SA_PASSWORD: "Protean123!"
+      MSSQL_PID: "Developer"
+
 volumes:
   elasticsearch-data:
     driver: local

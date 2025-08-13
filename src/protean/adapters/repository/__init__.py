@@ -16,6 +16,7 @@ DATABASE_PROVIDERS = {
     "memory": "protean.adapters.MemoryProvider",
     "postgresql": "protean.adapters.repository.sqlalchemy.PostgresqlProvider",
     "sqlite": "protean.adapters.repository.sqlalchemy.SqliteProvider",
+    "mssql": "protean.adapters.repository.sqlalchemy.MssqlProvider",
     "elasticsearch": "protean.adapters.repository.elasticsearch.ESProvider",
 }
 

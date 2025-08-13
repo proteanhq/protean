@@ -33,7 +33,7 @@ STYLE_BLOCK = """
 """
 
 TEST_CONFIGS = {
-    "databases": ["POSTGRESQL", "SQLITE", "MEMORY"],
+    "databases": ["POSTGRESQL", "SQLITE", "MEMORY", "MSSQL"],
     "brokers": [
         "REDIS",
         "INLINE",
@@ -47,6 +47,7 @@ TEST_CONFIGS = {
         "--postgresql",
         "--message_db",
         "--elasticsearch",
+        "--mssql",
     ],
 }
 
