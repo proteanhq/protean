@@ -26,7 +26,7 @@ def mock_runner():
 @pytest.fixture
 def cli_runner():
     """Fixture for Typer CLI testing."""
-    return CliRunner(mix_stderr=True)
+    return CliRunner()
 
 
 @pytest.fixture
