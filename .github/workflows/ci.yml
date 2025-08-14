@@ -49,6 +49,19 @@ jobs:
         ports:
           - 5433:5432
 
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          SA_PASSWORD: Protean123!
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P Protean123! -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -93,6 +106,9 @@ jobs:
           PGPASSWORD: postgres
           REDIS_HOST: localhost
           REDIS_PORT: ${{ job.services.redis.ports[6379] }}
+          MSSQL_PASSWORD: Protean123!
+          MSSQL_USER: sa
+          MSSQL_PORT: ${{ job.services.mssql.ports[1433] }}
 
       - name: CodeCOV
         uses: codecov/codecov-action@v5.4.2
