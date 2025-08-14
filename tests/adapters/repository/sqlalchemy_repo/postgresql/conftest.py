@@ -21,9 +21,9 @@ def setup_db():
     with domain.domain_context():
         # Create all associated tables
         from .elements import Alien, ComplexUser, Person, User
-        from .test_associations import Audit, Comment, Post
-        from .test_persistence import Event
-        from .test_persisting_list_of_value_objects import Customer, Order
+        from .test_postgresql_associations import Audit, Comment, Post
+        from .test_postgresql_persistence import Event
+        from .test_postgresql_persisting_list_of_value_objects import Customer, Order
 
         domain.register(Alien)
         domain.register(ComplexUser)

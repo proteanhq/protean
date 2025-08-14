@@ -12,14 +12,17 @@ from protean.exceptions import (
 from .elements import Person, PersonRepository
 
 
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(Person)
+    test_domain.register(PersonRepository, part_of=Person)
+    test_domain.init(traverse=False)
+
+
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
 class TestUnitOfWorkErrorHandling:
     """Test error handling scenarios in UnitOfWork"""
-
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(Person)
-        test_domain.register(PersonRepository, part_of=Person)
-        test_domain.init(traverse=False)
 
     def test_configuration_error_during_commit_is_propagated(self, test_domain):
         """Test that ConfigurationError during commit is re-raised"""

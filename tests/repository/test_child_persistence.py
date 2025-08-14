@@ -5,24 +5,22 @@ from protean.utils.globals import current_domain
 from .child_entities import Comment, Post, PostMeta
 
 
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(Post)
+    test_domain.register(PostMeta, part_of=Post)
+    test_domain.register(Comment, part_of=Post)
+    test_domain.init(traverse=False)
+
+
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
 class TestHasOnePersistence:
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(Post)
-        test_domain.register(PostMeta, part_of=Post)
-        test_domain.register(Comment, part_of=Post)
-        test_domain.init(traverse=False)
-
-    @pytest.fixture(autouse=True)
-    def persist_post(self, test_domain, register_elements):
-        post = test_domain.repository_for(Post).add(
-            Post(title="Test Post", slug="test-post", content="Do Re Mi Fa")
-        )
-        return post
-
     @pytest.fixture
     def persisted_post(self, test_domain):
-        return test_domain.repository_for(Post)._dao.find_by(title="Test Post")
+        return test_domain.repository_for(Post).add(
+            Post(title="Test Post", slug="test-post", content="Do Re Mi Fa")
+        )
 
     def test_that_has_one_entity_can_be_added(self, persisted_post):
         post_repo = current_domain.repository_for(Post)
@@ -79,14 +77,9 @@ class TestHasOnePersistence:
         assert refreshed_post.post_meta is None
 
 
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
 class TestHasManyPersistence:
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(Post)
-        test_domain.register(PostMeta, part_of=Post)
-        test_domain.register(Comment, part_of=Post)
-        test_domain.init(traverse=False)
-
     @pytest.fixture
     def persisted_post(self, test_domain):
         post = test_domain.repository_for(Post).add(

@@ -36,56 +36,60 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
-def test_1st_level_associations():
-    assert declared_fields(University)["departments"].__class__.__name__ == "HasMany"
-    assert declared_fields(University)["departments"].field_name == "departments"
-    assert declared_fields(University)["departments"].to_cls == Department
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
+class TestHasManyWithHasOneWithHasOne:
+    @pytest.fixture
+    def university(self, test_domain):
+        office = Office(id="1", building="Building 1", room=101)
+        dean = Dean(id="2", name="John Doe", age=45, office=office)
+        department1 = Department(id="31", name="Computer Science", dean=dean)
+        department2 = Department(id="32", name="Electrical Engineering")
+        university = University(
+            id="4", name="MIT", departments=[department1, department2]
+        )
 
-    assert declared_fields(Department)["dean"].__class__.__name__ == "HasOne"
-    assert declared_fields(Department)["dean"].field_name == "dean"
-    assert declared_fields(Department)["dean"].to_cls == Dean
+        test_domain.repository_for(University).add(university)
 
-    assert declared_fields(Dean)["office"].__class__.__name__ == "HasOne"
-    assert declared_fields(Dean)["office"].field_name == "office"
-    assert declared_fields(Dean)["office"].to_cls == Office
+        return test_domain.repository_for(University).get(university.id)
 
+    def test_1st_level_associations(self):
+        assert (
+            declared_fields(University)["departments"].__class__.__name__ == "HasMany"
+        )
+        assert declared_fields(University)["departments"].field_name == "departments"
+        assert declared_fields(University)["departments"].to_cls == Department
 
-def test_university_basic_structure():
-    office = Office(building="Building 1", room=101)
-    dean = Dean(name="John Doe", age=45, office=office)
-    department = Department(name="Computer Science", dean=dean)
-    university = University(name="MIT", departments=[department])
+        assert declared_fields(Department)["dean"].__class__.__name__ == "HasOne"
+        assert declared_fields(Department)["dean"].field_name == "dean"
+        assert declared_fields(Department)["dean"].to_cls == Dean
 
-    assert university.departments[0] == department
-    assert department.university_id == university.id
-    assert university.departments[0].dean == dean
-    assert university.departments[0].dean.department_id == department.id
-    assert university.departments[0].dean.office == office
-    assert university.departments[0].dean.office.dean_id == dean.id
+        assert declared_fields(Dean)["office"].__class__.__name__ == "HasOne"
+        assert declared_fields(Dean)["office"].field_name == "office"
+        assert declared_fields(Dean)["office"].to_cls == Office
 
+    def test_university_basic_structure(self):
+        office = Office(building="Building 1", room=101)
+        dean = Dean(name="John Doe", age=45, office=office)
+        department = Department(name="Computer Science", dean=dean)
+        university = University(name="MIT", departments=[department])
 
-@pytest.fixture
-def university(test_domain):
-    office = Office(building="Building 1", room=101)
-    dean = Dean(name="John Doe", age=45, office=office)
-    department1 = Department(name="Computer Science", dean=dean)
-    department2 = Department(name="Electrical Engineering")
-    university = University(name="MIT", departments=[department1, department2])
+        assert university.departments[0] == department
+        assert department.university_id == university.id
+        assert university.departments[0].dean == dean
+        assert university.departments[0].dean.department_id == department.id
+        assert university.departments[0].dean.office == office
+        assert university.departments[0].dean.office.dean_id == dean.id
 
-    test_domain.repository_for(University).add(university)
+    def test_switch_deans_office(self, test_domain, university):
+        new_office = Office(building="Building 2", room=201)
+        university.departments[0].dean.office = new_office
 
-    return test_domain.repository_for(University).get(university.id)
+        test_domain.repository_for(University).add(university)
 
-
-def test_switch_deans_office(test_domain, university):
-    new_office = Office(building="Building 2", room=201)
-    university.departments[0].dean.office = new_office
-
-    test_domain.repository_for(University).add(university)
-
-    university = test_domain.repository_for(University).get(university.id)
-    assert university.departments[0].dean.office == new_office
-    assert (
-        university.departments[0].dean.office.dean_id
-        == university.departments[0].dean.id
-    )
+        university = test_domain.repository_for(University).get(university.id)
+        assert university.departments[0].dean.office == new_office
+        assert (
+            university.departments[0].dean.office.dean_id
+            == university.departments[0].dean.id
+        )

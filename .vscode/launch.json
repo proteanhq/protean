@@ -133,6 +133,32 @@
             ]
         },
         {
+            "name": "Specific Generic Test - MSSQL",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/adapters/repository/test_dao.py::TestDAORetrievalFunctionality::test_comparisons_using_different_operators",
+                "-m",
+                "database",
+                "--db=MSSQL",
+                "-sv"
+            ]
+        },
+        {
+            "name": "Specific Generic Test - Elasticsearch",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/adapters/repository/test_dao.py::TestDAORetrievalFunctionality::test_filtering_of_database_records",
+                "-m",
+                "database",
+                "--db=ELASTICSEARCH",
+                "-sv"
+            ]
+        },
+        {
             "name": "Generic Tests - Elasticsearch",
             "type": "debugpy",
             "request": "launch",

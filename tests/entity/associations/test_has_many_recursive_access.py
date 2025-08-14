@@ -40,11 +40,12 @@ def test_1st_level_associations():
 
 def test_customers_basic_structure():
     items = [
-        OrderItem(product_id="1", quantity=2, price=10.0),
-        OrderItem(product_id="2", quantity=3, price=15.0),
+        OrderItem(id="item-1", product_id="product-1", quantity=2, price=10.0),
+        OrderItem(id="item-2", product_id="product-2", quantity=3, price=15.0),
     ]
-    order = Order(ordered_on=datetime.today().date(), items=items)
+    order = Order(id="order-1", ordered_on=datetime.today().date(), items=items)
     customer = Customer(
+        id="customer-1",
         name="John Doe",
         orders=[order],
     )
@@ -63,11 +64,12 @@ def test_customers_basic_structure():
 def customer(test_domain):
     # Create a customer, with an order and multiple order items
     items = [
-        OrderItem(product_id="1", quantity=2, price=10.0),
-        OrderItem(product_id="2", quantity=3, price=15.0),
+        OrderItem(id="item-1", product_id="product-1", quantity=2, price=10.0),
+        OrderItem(id="item-2", product_id="product-2", quantity=3, price=15.0),
     ]
-    order = Order(ordered_on=datetime.today().date(), items=items)
+    order = Order(id="order-1", ordered_on=datetime.today().date(), items=items)
     customer = Customer(
+        id="customer-1",
         name="John Doe",
         orders=[order],
     )
@@ -79,6 +81,8 @@ def customer(test_domain):
     return test_domain.repository_for(Customer).get(customer.id)
 
 
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
 class TestEntityAssociationsAdd:
     def test_all_associations_are_persisted_on_direct_initialization(self, customer):
         assert len(customer.orders) == 1
@@ -87,18 +91,22 @@ class TestEntityAssociationsAdd:
         customer.orders[0].customer == customer
 
         assert len(customer.orders[0].items) == 2
-        assert customer.orders[0].items[0].product_id == "1"
-        customer.orders[0].items[0].order_id == customer.orders[0].id
-        customer.orders[0].items[0].order == customer.orders[0]
+        item1 = next(item for item in customer.orders[0].items if item.id == "item-1")
+        assert item1.product_id == "product-1"
+        assert item1.order_id == customer.orders[0].id
+        assert item1.order == customer.orders[0]
 
     def test_all_associations_are_persisted_on_1st_level_nested_entity_addition(
         self, test_domain, customer
     ):
         customer.add_orders(
             Order(
+                id="order-2",
                 ordered_on=datetime.today().date(),
                 items=[
-                    OrderItem(product_id="4", quantity=1, price=20.0),
+                    OrderItem(
+                        id="item-3", product_id="product-3", quantity=1, price=20.0
+                    ),
                 ],
             )
         )
@@ -110,14 +118,22 @@ class TestEntityAssociationsAdd:
 
         # Ensure new order is added
         assert len(refreshed_customer.orders) == 2
-        assert len(refreshed_customer.orders[1].items) == 1
+        new_order = next(
+            order for order in refreshed_customer.orders if order.id == "order-2"
+        )
+        assert new_order.items[0].product_id == "product-3"
+        assert new_order.items[0].order_id == new_order.id
+        assert new_order.items[0].order == new_order
+
         # Ensure old order item is intact
         assert len(refreshed_customer.orders[0].items) == 2
 
     def test_all_associations_are_persisted_on_2nd_level_nested_entity_addition(
         self, test_domain, customer
     ):
-        customer.orders[0].add_items(OrderItem(product_id="3", quantity=4, price=20.0))
+        customer.orders[0].add_items(
+            OrderItem(id="item-4", product_id="product-4", quantity=4, price=20.0)
+        )
 
         test_domain.repository_for(Customer).add(customer)
 
@@ -127,6 +143,8 @@ class TestEntityAssociationsAdd:
         assert len(refreshed_customer.orders[0].items) == 3
 
 
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
 class TestEntityAssociationsUpdate:
     def test_associations_updates_are_persisted_on_1st_level_nested_entity_updates(
         self, test_domain, customer
@@ -185,6 +203,8 @@ class TestEntityAssociationsUpdate:
         assert refreshed_customer.orders[0].items[0].quantity == 15
 
 
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
 class TestEntityAssociationsRemoval:
     def test_associations_removal_is_persisted_on_1st_level_nested_entity_removal(
         self, test_domain, customer

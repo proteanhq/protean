@@ -176,7 +176,7 @@ class TestServerCliCommand:
         )
 
         assert result.exit_code != 0
-        assert "Cannot specify CORS origins when CORS is disabled" in result.stdout
+        assert "Cannot specify CORS origins when CORS is disabled" in result.stderr
 
     @pytest.mark.fastapi
     def test_server2_command_domain_error(self, runner):
@@ -187,5 +187,5 @@ class TestServerCliCommand:
         assert result.exit_code != 0
         assert (
             "Error loading Protean domain: Could not import 'nonexistent'"
-            in result.stdout
+            in result.stderr
         )

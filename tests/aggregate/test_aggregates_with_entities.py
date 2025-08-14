@@ -3,14 +3,17 @@ import pytest
 from .aggregate_elements import Comment, Post, PostMeta
 
 
-class TestAggregatesWithEntities:
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(Post)
-        test_domain.register(PostMeta, part_of=Post)
-        test_domain.register(Comment, part_of=Post)
-        test_domain.init(traverse=False)
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(Post)
+    test_domain.register(PostMeta, part_of=Post)
+    test_domain.register(Comment, part_of=Post)
+    test_domain.init(traverse=False)
 
+
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
+class TestAggregatesWithEntities:
     @pytest.fixture
     def persisted_post(self, test_domain):
         post = test_domain.repository_for(Post)._dao.create(

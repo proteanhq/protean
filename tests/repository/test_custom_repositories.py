@@ -43,6 +43,7 @@ class PersonSQLiteCustomRepository(BaseRepository):
         return result
 
 
+@pytest.mark.database
 class TestRepositoryConstructionAndRegistration:
     @pytest.fixture
     def custom_test_domain(self, test_domain):

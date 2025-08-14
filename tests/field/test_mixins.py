@@ -134,14 +134,14 @@ class TestFieldDescriptorMixin:
         """Test FieldDescriptorMixin.__set_name__ method"""
         mixin = FieldDescriptorMixin()
 
-        class TestEntity:
+        class DummyEntity:
             pass
 
-        mixin.__set_name__(TestEntity, "test_field")
+        mixin.__set_name__(DummyEntity, "test_field")
 
         assert mixin.field_name == "test_field"
         assert mixin.attribute_name == "test_field"
-        assert mixin._entity_cls == TestEntity
+        assert mixin._entity_cls == DummyEntity
 
     def test_field_descriptor_mixin_get_attribute_name_with_referenced_as(self):
         """Test FieldDescriptorMixin.get_attribute_name with referenced_as"""

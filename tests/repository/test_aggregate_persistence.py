@@ -14,13 +14,16 @@ class TestAggregatePersistenceWithMemoryProvider:
         assert conn._db["data"]["foo"] == "bar"
 
 
-class TestAggregatePersistenceWithRepository:
-    @pytest.fixture(autouse=True)
-    def register_repositories(self, test_domain):
-        test_domain.register(Person)
-        test_domain.register(PersonRepository, part_of=Person)
-        yield
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(Person)
+    test_domain.register(PersonRepository, part_of=Person)
+    test_domain.init(traverse=False)
 
+
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
+class TestAggregatePersistenceWithRepository:
     @pytest.fixture
     def person_dao(self, test_domain):
         return test_domain.repository_for(Person)._dao

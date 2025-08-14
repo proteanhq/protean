@@ -9,7 +9,8 @@ def test_main():
     runner = CliRunner()
     result = runner.invoke(app)
 
-    assert result.exit_code == 0
+    # With no_args_is_help=True, invoking with no args shows help and exits with code 2
+    assert result.exit_code == 2
 
 
 def test_callback_function():

@@ -12,7 +12,7 @@ from uuid import UUID
 
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.queryset import ResultSet
-from protean.exceptions import ObjectNotFoundError
+from protean.exceptions import DatabaseError, ObjectNotFoundError
 from protean.fields.basic import Auto
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
@@ -294,8 +294,18 @@ class DictDAO(BaseDAO):
             conn._db["data"][self.schema_name][identifier] = model_obj
 
         if not current_uow:
-            conn.commit()
-            conn.close()
+            try:
+                conn.commit()
+            except Exception as exc:
+                # For memory provider, most errors would be during commit simulation
+                # This could include validation errors, constraint violations, etc.
+                conn.rollback()
+                raise DatabaseError(
+                    f"Database error during creation: {str(exc)}",
+                    original_exception=exc,
+                )
+            finally:
+                conn.close()
 
         return model_obj
 
@@ -394,8 +404,15 @@ class DictDAO(BaseDAO):
             conn._db["data"][self.schema_name][identifier] = model_obj
 
         if not current_uow:
-            conn.commit()
-            conn.close()
+            try:
+                conn.commit()
+            except Exception as exc:
+                conn.rollback()
+                raise DatabaseError(
+                    f"Database error during update: {str(exc)}", original_exception=exc
+                )
+            finally:
+                conn.close()
 
         return model_obj
 
@@ -415,8 +432,16 @@ class DictDAO(BaseDAO):
             update_count += 1
 
         if not current_uow:
-            conn.commit()
-            conn.close()
+            try:
+                conn.commit()
+            except Exception as exc:
+                conn.rollback()
+                raise DatabaseError(
+                    f"Database error during update_all: {str(exc)}",
+                    original_exception=exc,
+                )
+            finally:
+                conn.close()
 
         return update_count
 
@@ -436,8 +461,16 @@ class DictDAO(BaseDAO):
             del conn._db["data"][self.schema_name][identifier]
 
         if not current_uow:
-            conn.commit()
-            conn.close()
+            try:
+                conn.commit()
+            except Exception as exc:
+                conn.rollback()
+                raise DatabaseError(
+                    f"Database error during deletion: {str(exc)}",
+                    original_exception=exc,
+                )
+            finally:
+                conn.close()
 
         return model_obj
 
@@ -460,8 +493,16 @@ class DictDAO(BaseDAO):
                     del conn._db["data"][self.schema_name]
 
         if not current_uow:
-            conn.commit()
-            conn.close()
+            try:
+                conn.commit()
+            except Exception as exc:
+                conn.rollback()
+                raise DatabaseError(
+                    f"Database error during delete_all: {str(exc)}",
+                    original_exception=exc,
+                )
+            finally:
+                conn.close()
 
         return len(items)
 
