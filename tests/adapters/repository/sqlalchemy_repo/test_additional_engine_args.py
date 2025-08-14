@@ -33,7 +33,7 @@ class TestAdditionalEngineArgs:
             conn_info={
                 "provider": "postgresql",
                 "database_uri": "postgresql://postgres:postgres@localhost:5432/postgres",
-                "SCHEMA": "test_schema",
+                "schema": "test_schema",
                 "echo": True,
             },
         )
@@ -42,7 +42,7 @@ class TestAdditionalEngineArgs:
 
         assert "provider" not in result
         assert "database_uri" not in result
-        assert "SCHEMA" not in result
+        assert "schema" not in result
         assert "echo" in result
 
     def test_database_specific_args_are_included(self, test_domain):
