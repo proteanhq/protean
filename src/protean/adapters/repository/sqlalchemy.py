@@ -610,11 +610,20 @@ class SAProvider(BaseProvider):
             {
                 key: value
                 for key, value in self.conn_info.items()
-                if key not in ["provider", "database_uri", "SCHEMA"]
+                if key not in ["provider", "database_uri", "schema"]
             }
         )
 
         return extra_args
+
+    def _get_default_schema(self, database):
+        try:
+            return {
+                self.databases.postgresql.value: "public",
+                self.databases.mssql.value: "dbo",
+            }[database]
+        except KeyError:
+            return None
 
     def __init__(self, name, domain, conn_info: dict):
         """Initialize and maintain Engine"""
@@ -626,20 +635,15 @@ class SAProvider(BaseProvider):
             **self._additional_engine_args(),
         )
 
-        if self.__database__ == self.databases.postgresql.value:
-            # Nest database tables under a schema, so that we have complete control
-            #   on creating/dropping db structures. We cannot control structures in the
-            #   the default `public` schema.
-            #
-            # Use `SCHEMA` value if specified as part of the conn info. Otherwise, construct
-            #   and use default schema name as `DB`_schema.
-            schema = (
-                self.conn_info["SCHEMA"] if "SCHEMA" in self.conn_info else "public"
-            )
+        # Use `schema` value if specified as part of the conn info. Otherwise, construct
+        #   and use default schema name as `DB`_schema.
+        schema = (
+            self.conn_info["schema"]
+            if "schema" in self.conn_info
+            else self._get_default_schema(self.__database__)
+        )
 
-            self._metadata = MetaData(schema=schema)
-        else:
-            self._metadata = MetaData()
+        self._metadata = MetaData(schema=schema)
 
         # A temporary cache of already constructed model classes
         self._database_model_classes = {}
