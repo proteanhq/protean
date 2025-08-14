@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "protean"
-version = "0.13.0"
+version = "0.14.0"
 description = "Protean Application Framework"
 authors = ["Subhash Bhushan C <subhash@team8solutions.com>"]
 license = "BSD 3-Clause"
