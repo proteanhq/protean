@@ -201,7 +201,7 @@ def db_config(request):
             },
             "MSSQL": {
                 "provider": "mssql",
-                "database_uri": "mssql+pyodbc://sa:Protean123!@localhost:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes",
+                "database_uri": "mssql+pyodbc://sa:Protean123!@localhost:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes",
             },
         }[request.config.getoption("--db", "MEMORY")]
     except KeyError as e:

@@ -8,13 +8,16 @@ from protean import UnitOfWork
 from .elements import Person, PersonRepository
 
 
-class TestUnitOfWorkTransactions:
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(Person)
-        test_domain.register(PersonRepository, part_of=Person)
-        test_domain.init(traverse=False)
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(Person)
+    test_domain.register(PersonRepository, part_of=Person)
+    test_domain.init(traverse=False)
 
+
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
+class TestUnitOfWorkTransactions:
     def random_name(self):
         return "".join(random.choices(string.ascii_uppercase + string.digits, k=15))
 

@@ -30,109 +30,104 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
-def test_1st_level_associations():
-    assert declared_fields(Dean)["office"].__class__.__name__ == "HasOne"
-    assert declared_fields(Dean)["office"].field_name == "office"
-    assert declared_fields(Dean)["office"].to_cls == Office
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
+class TestHasOneRecursiveAccess:
+    @pytest.fixture
+    def university(self, test_domain):
+        office = Office(building="Main Building", room=101)
+        dean = Dean(name="John Doe", age=45, office=office)
+        university = University(name="MIT", dean=dean)
 
+        test_domain.repository_for(University).add(university)
 
-def test_university_basic_structure():
-    office = Office(building="Main Building", room=101)
-    dean = Dean(name="John Doe", age=45, office=office)
-    university = University(name="MIT", dean=dean)
+        # Reload the university from the repository
+        return test_domain.repository_for(University).get(university.id)
 
-    assert university.dean == dean
-    assert dean.university_id == university.id
-    assert university.dean.office == office
-    assert university.dean.office.dean_id == dean.id
-    assert university.dean.office.dean == dean
+    def test_1st_level_associations(self):
+        assert declared_fields(Dean)["office"].__class__.__name__ == "HasOne"
+        assert declared_fields(Dean)["office"].field_name == "office"
+        assert declared_fields(Dean)["office"].to_cls == Office
 
+    def test_university_basic_structure(self):
+        office = Office(building="Main Building", room=101)
+        dean = Dean(name="John Doe", age=45, office=office)
+        university = University(name="MIT", dean=dean)
 
-@pytest.fixture
-def university(test_domain):
-    office = Office(building="Main Building", room=101)
-    dean = Dean(name="John Doe", age=45, office=office)
-    university = University(name="MIT", dean=dean)
+        assert university.dean == dean
+        assert dean.university_id == university.id
+        assert university.dean.office == office
+        assert university.dean.office.dean_id == dean.id
+        assert university.dean.office.dean == dean
 
-    test_domain.repository_for(University).add(university)
+    def test_switch_1st_level_has_one_entity(self, test_domain, university):
+        university.dean = Dean(
+            name="Jane Doe", age=50, office=Office(building="Main Building", room=102)
+        )
 
-    # Reload the university from the repository
-    return test_domain.repository_for(University).get(university.id)
+        test_domain.repository_for(University).add(university)
 
+        # Reload the university from the repository
+        reloaded_university = test_domain.repository_for(University).get(university.id)
 
-def test_switch_1st_level_has_one_entity(test_domain, university):
-    university.dean = Dean(
-        name="Jane Doe", age=50, office=Office(building="Main Building", room=102)
-    )
+        assert reloaded_university.dean.name == "Jane Doe"
+        assert reloaded_university.dean.office.room == 102
 
-    test_domain.repository_for(University).add(university)
+    def test_direct_update_1st_level_has_one_entity(self, test_domain, university):
+        university.dean.age = 55
 
-    # Reload the university from the repository
-    reloaded_university = test_domain.repository_for(University).get(university.id)
+        test_domain.repository_for(University).add(university)
 
-    assert reloaded_university.dean.name == "Jane Doe"
-    assert reloaded_university.dean.office.room == 102
+        # Reload the university from the repository
+        reloaded_university = test_domain.repository_for(University).get(university.id)
 
+        assert reloaded_university.dean.name == "John Doe"
+        assert reloaded_university.dean.age == 55
 
-def test_direct_update_1st_level_has_one_entity(test_domain, university):
-    university.dean.age = 55
+    def test_switch_2nd_level_has_one_entity(self, test_domain, university):
+        university.dean.office = Office(building="Main Building", room=103)
 
-    test_domain.repository_for(University).add(university)
+        test_domain.repository_for(University).add(university)
 
-    # Reload the university from the repository
-    reloaded_university = test_domain.repository_for(University).get(university.id)
+        # Reload the university from the repository
+        reloaded_university = test_domain.repository_for(University).get(university.id)
 
-    assert reloaded_university.dean.name == "John Doe"
-    assert reloaded_university.dean.age == 55
+        assert reloaded_university.dean.office.room == 103
+        assert reloaded_university.dean.office.building == "Main Building"
+        assert reloaded_university.dean.name == "John Doe"
+        assert reloaded_university.dean.age == 45
 
+    def test_direct_update_2nd_level_has_one_entity(self, test_domain, university):
+        university.dean.office.room = 104
 
-def test_switch_2nd_level_has_one_entity(test_domain, university):
-    university.dean.office = Office(building="Main Building", room=103)
+        test_domain.repository_for(University).add(university)
 
-    test_domain.repository_for(University).add(university)
+        # Reload the university from the repository
+        reloaded_university = test_domain.repository_for(University).get(university.id)
 
-    # Reload the university from the repository
-    reloaded_university = test_domain.repository_for(University).get(university.id)
+        assert reloaded_university.dean.office.room == 104
+        assert reloaded_university.dean.office.building == "Main Building"
+        assert reloaded_university.dean.name == "John Doe"
+        assert reloaded_university.dean.age == 45
 
-    assert reloaded_university.dean.office.room == 103
-    assert reloaded_university.dean.office.building == "Main Building"
-    assert reloaded_university.dean.name == "John Doe"
-    assert reloaded_university.dean.age == 45
+    def test_reset_1st_level_has_one_entity(self, test_domain, university):
+        university.dean = None
 
+        test_domain.repository_for(University).add(university)
 
-def test_direct_update_2nd_level_has_one_entity(test_domain, university):
-    university.dean.office.room = 104
+        # Reload the university from the repository
+        reloaded_university = test_domain.repository_for(University).get(university.id)
 
-    test_domain.repository_for(University).add(university)
+        assert reloaded_university.dean is None
 
-    # Reload the university from the repository
-    reloaded_university = test_domain.repository_for(University).get(university.id)
+    def test_reset_2nd_level_has_one_entity(self, test_domain, university):
+        university.dean.office = None
 
-    assert reloaded_university.dean.office.room == 104
-    assert reloaded_university.dean.office.building == "Main Building"
-    assert reloaded_university.dean.name == "John Doe"
-    assert reloaded_university.dean.age == 45
+        test_domain.repository_for(University).add(university)
 
+        # Reload the university from the repository
+        reloaded_university = test_domain.repository_for(University).get(university.id)
 
-def test_reset_1st_level_has_one_entity(test_domain, university):
-    university.dean = None
-
-    test_domain.repository_for(University).add(university)
-
-    # Reload the university from the repository
-    reloaded_university = test_domain.repository_for(University).get(university.id)
-
-    assert reloaded_university.dean is None
-
-
-def test_reset_2nd_level_has_one_entity(test_domain, university):
-    university.dean.office = None
-
-    test_domain.repository_for(University).add(university)
-
-    # Reload the university from the repository
-    reloaded_university = test_domain.repository_for(University).get(university.id)
-
-    assert reloaded_university.dean.office is None
-    assert reloaded_university.dean.name == "John Doe"
-    assert reloaded_university.dean.age == 45
+        assert reloaded_university.dean.office is None
+        assert reloaded_university.dean.name == "John Doe"
+        assert reloaded_university.dean.age == 45

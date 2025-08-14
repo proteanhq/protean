@@ -11,7 +11,7 @@ from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Document, Index, Keyword, Mapping, Search, query
 
 from protean.core.queryset import ResultSet
-from protean.exceptions import ObjectNotFoundError
+from protean.exceptions import DatabaseError, ObjectNotFoundError
 from protean.fields import Reference
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
@@ -20,6 +20,7 @@ from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import Q
 from protean.utils.reflection import attributes, id_field
+from protean.fields import Integer, Float, Boolean, DateTime, Date, Auto, Identifier
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +54,14 @@ class ElasticsearchModel(Document):
                     attribute_obj.relation.value
                 )
             else:
-                item_dict[attribute_obj.attribute_name] = getattr(
-                    entity, attribute_obj.attribute_name
-                )
+                attr_name = attribute_obj.attribute_name
+                attr_value = getattr(entity, attr_name)
+                # Store entity version as 'entity_version' to avoid conflict with ES _version
+                # FIXME Make this more robust and database implementation resistant
+                if attr_name == "_version":
+                    item_dict["entity_version"] = attr_value
+                else:
+                    item_dict[attr_name] = attr_value
 
         model_obj = cls(**item_dict)
 
@@ -93,9 +99,12 @@ class ElasticsearchModel(Document):
         id_field_name = id_field(cls.meta_.part_of).field_name
         item_dict[id_field_name] = identifier
 
-        # Set version from document meta, only if `_version` attr is present
+        # Set version from document fields, only if `_version` attr is present
+        # We store the entity version as a regular field rather than using ES native versioning
+        # Use 'entity_version' to avoid conflict with Elasticsearch's _version metadata
         if hasattr(cls.meta_.part_of, "_version"):
-            item_dict["_version"] = item.meta.version
+            version_value = values.get("entity_version", -1)
+            item_dict["_version"] = version_value
 
         entity_obj = cls.meta_.part_of(item_dict)
 
@@ -146,6 +155,8 @@ class ElasticsearchDAO(BaseDAO):
                 else:
                     stripped_key, lookup_class = self.provider._extract_lookup(child[0])
                     lookup = lookup_class(stripped_key, child[1])
+                    # Pass database model class to lookup for cached field type information
+                    lookup.database_model_cls = self.database_model_cls
                     if criteria.negated:
                         composed_query = composed_query & ~lookup.as_expression()
                     else:
@@ -157,6 +168,8 @@ class ElasticsearchDAO(BaseDAO):
                 else:
                     stripped_key, lookup_class = self.provider._extract_lookup(child[0])
                     lookup = lookup_class(stripped_key, child[1])
+                    # Pass database model class to lookup for cached field type information
+                    lookup.database_model_cls = self.database_model_cls
                     if criteria.negated:
                         composed_query = composed_query | ~lookup.as_expression()
                     else:
@@ -187,20 +200,82 @@ class ElasticsearchDAO(BaseDAO):
         if order_by:
             s = s.sort(*order_by)
 
-        s = s[offset : offset + limit]
+        if limit is not None:
+            s = s[offset : offset + limit]
+        else:
+            # When limit is None, we want to return all results
+            # Elasticsearch has a default limit of 10 and max of 10000 by default
+            # We set a very large limit to effectively get all results
+            s = s[offset : offset + 10000]
 
         # Return the results
         try:
             response = s.execute()
+
+            # Convert hits to ElasticsearchModel objects with proper metadata
+            model_items = []
+            for hit in response.hits:
+                # Create a model object from the hit data
+                model_obj = self.database_model_cls(**hit.to_dict())
+                model_obj.meta.id = hit.meta.id
+                if hasattr(hit.meta, "version"):
+                    model_obj.meta.version = hit.meta.version
+                model_items.append(model_obj)
+
             result = ResultSet(
                 offset=offset,
                 limit=limit,
                 total=response.hits.total.value,
-                items=response.hits,
+                items=model_items,
             )
         except Exception as exc:
-            logger.error(f"Error while filtering: {exc}")
-            raise
+            # Check if it's a sort field mapping error
+            if "No mapping found for" in str(exc) and "in order to sort on" in str(exc):
+                logger.warning(
+                    f"Sort field not found in mapping, retrying without sort: {exc}"
+                )
+                # Retry without sorting
+                try:
+                    s_no_sort = (
+                        Search(using=conn, index=self.database_model_cls._index._name)
+                        .query(q)
+                        .params(version=True)
+                    )
+
+                    if limit is not None:
+                        s_no_sort = s_no_sort[offset : offset + limit]
+                    else:
+                        s_no_sort = s_no_sort[offset : offset + 10000]
+
+                    response = s_no_sort.execute()
+
+                    # Convert hits to ElasticsearchModel objects with proper metadata
+                    model_items = []
+                    for hit in response.hits:
+                        model_obj = self.database_model_cls(**hit.to_dict())
+                        model_obj.meta.id = hit.meta.id
+                        if hasattr(hit.meta, "version"):
+                            model_obj.meta.version = hit.meta.version
+                        model_items.append(model_obj)
+
+                    result = ResultSet(
+                        offset=offset,
+                        limit=limit,
+                        total=response.hits.total.value,
+                        items=model_items,
+                    )
+                except Exception as retry_exc:
+                    logger.error(f"Error while filtering (retry): {retry_exc}")
+                    raise DatabaseError(
+                        f"Database error during filtering: {str(retry_exc)}",
+                        original_exception=retry_exc,
+                    )
+            else:
+                logger.error(f"Error while filtering: {exc}")
+                raise DatabaseError(
+                    f"Database error during filtering: {str(exc)}",
+                    original_exception=exc,
+                )
 
         return result
 
@@ -216,7 +291,9 @@ class ElasticsearchDAO(BaseDAO):
             )
         except Exception as exc:
             logger.error(f"Error while creating: {exc}")
-            raise
+            raise DatabaseError(
+                f"Database error during creation: {str(exc)}", original_exception=exc
+            )
 
         return model_obj
 
@@ -246,18 +323,62 @@ class ElasticsearchDAO(BaseDAO):
                 using=conn,
             )
         except Exception as exc:
-            logger.error(f"Error while creating: {exc}")
-            raise
+            logger.error(f"Error while updating: {exc}")
+            raise DatabaseError(
+                f"Database error during update: {str(exc)}", original_exception=exc
+            )
 
         return model_obj
 
     def _update_all(self, criteria: Q, *args, **kwargs):
         """Updates object directly in the data store and returns update count"""
-        raise NotImplementedError
+        conn = self.provider.get_connection()
+
+        # Build the filters from the criteria
+        q = elasticsearch_dsl.Q()
+        if criteria and criteria.children:
+            q = self._build_filters(criteria)
+
+        # Prepare update values
+        values = {}
+        if args:
+            values = args[0]  # `args[0]` is required because `*args` is sent as a tuple
+        values.update(kwargs)
+
+        if not values:
+            return 0
+
+        # Build the update script
+        script_lines = []
+        params = {}
+        for field_name, field_value in values.items():
+            param_name = f"new_{field_name}"
+            script_lines.append(f"ctx._source.{field_name} = params.{param_name}")
+            params[param_name] = field_value
+
+        script = "; ".join(script_lines)
+
+        try:
+            # Use update_by_query API
+            response = conn.update_by_query(
+                index=self.database_model_cls._index._name,
+                body={
+                    "query": q.to_dict() if q else {"match_all": {}},
+                    "script": {"source": script, "params": params},
+                },
+                refresh=True,
+            )
+
+            return response.get("updated", 0)
+        except Exception as exc:
+            logger.error(f"Error while updating all: {exc}")
+            raise DatabaseError(
+                f"Database error during update_all: {str(exc)}", original_exception=exc
+            )
 
     def _delete(self, model_obj):
         """Delete a Record from the Repository"""
-        conn = self._get_session()
+        conn = self.provider.get_connection()
 
         try:
             model_obj.delete(
@@ -265,15 +386,24 @@ class ElasticsearchDAO(BaseDAO):
                 using=conn,
                 refresh=True,
             )
+        except NotFoundError as exc:
+            logger.error(f"Database Record not found: {exc}")
+            identifier = getattr(model_obj, id_field(self.entity_cls).attribute_name)
+            raise ObjectNotFoundError(
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
+            )
         except Exception as exc:
-            logger.error(f"Error while creating: {exc}")
-            raise
+            logger.error(f"Error while deleting: {exc}")
+            raise DatabaseError(
+                f"Database error during deletion: {str(exc)}", original_exception=exc
+            )
 
         return model_obj
 
     def _delete_all(self, criteria: Q = None):
         """Delete all records matching criteria from the Repository"""
-        conn = self._get_session()
+        conn = self.provider.get_connection()
 
         # Build the filters from the criteria
         q = elasticsearch_dsl.Q()
@@ -291,7 +421,9 @@ class ElasticsearchDAO(BaseDAO):
             index.refresh()
         except Exception as exc:
             logger.error(f"Error while deleting records: {exc}")
-            raise
+            raise DatabaseError(
+                f"Database error during delete_all: {str(exc)}", original_exception=exc
+            )
 
         return response.deleted
 
@@ -353,13 +485,76 @@ class ESProvider(BaseProvider):
 
         return schema_name
 
+    def _compute_keyword_fields(self, entity_cls):
+        """Precompute which fields should use .keyword subfield for exact matching.
+
+        Returns a set of field names that should use the .keyword subfield.
+        This computation is done once during model construction for efficiency.
+        """
+        keyword_fields = set()
+        entity_attributes = attributes(entity_cls)
+
+        for field_name, field_obj in entity_attributes.items():
+            # Numeric and date fields should not use .keyword subfield
+            # They are mapped as their native types (long, double, date) in Elasticsearch
+            numeric_and_date_types = (Integer, Float, Boolean, DateTime, Date)
+            if isinstance(field_obj, numeric_and_date_types):
+                continue
+
+            # Identifier fields are explicitly mapped as keyword type, so don't need .keyword suffix
+            if isinstance(field_obj, (Auto, Identifier)) or getattr(
+                field_obj, "identifier", False
+            ):
+                continue
+
+            # All other fields (String, Text, etc.) should use .keyword for exact matching
+            keyword_fields.add(field_name)
+
+        return keyword_fields
+
     def _extract_lookup(self, key):
         """Extract lookup method based on key name format"""
+        # Handle special case of keyword field modifier: field__keyword__lookup
+        if "__keyword__" in key:
+            parts = key.split("__keyword__")
+            if len(parts) == 2:
+                field_name = parts[0]
+                lookup_part = parts[1]
+
+                # Remove leading __ if present
+                if lookup_part.startswith("__"):
+                    lookup_part = lookup_part[2:]
+
+                # If there's a lookup after keyword, use it; otherwise default to exact
+                if lookup_part and lookup_part in operators:
+                    op = lookup_part
+                else:
+                    # If no lookup specified after keyword, or unknown lookup, default to exact
+                    op = "exact"
+
+                # Mark that this should use keyword field
+                attribute = f"{field_name}__use_keyword"
+                return attribute, self.get_lookup(op)
+
+        # Handle simple field__keyword case (without additional lookup)
+        if key.endswith("__keyword"):
+            field_name = key[:-9]  # Remove "__keyword"
+            attribute = f"{field_name}__use_keyword"
+            return attribute, self.get_lookup("exact")
+
+        # Standard lookup extraction
         parts = key.rsplit("__", 1)
 
-        if len(parts) > 1 and parts[1] in operators:
-            op = parts[1]
-            attribute = parts[0]
+        if len(parts) > 1:
+            potential_op = parts[1]
+            if potential_op in operators:
+                op = potential_op
+                attribute = parts[0]
+            else:
+                # If the potential operator is not recognized, we still try to get the lookup
+                # This will raise NotImplementedError if the lookup doesn't exist
+                op = potential_op
+                attribute = parts[0]
         else:
             # 'exact' is the default lookup if there was no explicit comparison op in `key`
             op = "exact"
@@ -449,6 +644,10 @@ class ESProvider(BaseProvider):
                 custom_attrs,
             )
 
+            # Precompute and cache field type information for efficient lookup operations
+            keyword_fields = self._compute_keyword_fields(entity_cls)
+            decorated_database_database_model_cls._keyword_fields = keyword_fields
+
             # Memoize the constructed model class
             self._database_model_classes[schema_name] = (
                 decorated_database_database_model_cls
@@ -490,6 +689,10 @@ class ESProvider(BaseProvider):
             m.field(id_field_name, Keyword())
 
             database_model_cls._index.mapping(m)
+
+            # Precompute and cache field type information for efficient lookup operations
+            keyword_fields = self._compute_keyword_fields(entity_cls)
+            database_model_cls._keyword_fields = keyword_fields
 
             # Memoize the constructed model class
             self._database_model_classes[schema_name] = database_model_cls
@@ -595,12 +798,39 @@ class ESProvider(BaseProvider):
 class DefaultLookup(BaseLookup):
     """Base class with default implementation of expression construction"""
 
+    def process_source(self):
+        """Return source with transformations, if any"""
+        field_name = self.source
+
+        # Handle explicit keyword field marker
+        if field_name.endswith("__use_keyword"):
+            field_name = field_name.replace("__use_keyword", "")
+            # Always use .keyword suffix when explicitly requested
+            if not field_name.endswith(".keyword"):
+                field_name = f"{field_name}.keyword"
+
+        return field_name
+
     def process_target(self):
         """Return target with transformations, if any"""
         if isinstance(self.target, UUID):
             self.target = str(self.target)
 
         return self.target
+
+    def should_use_keyword_field(self, field_name):
+        """Determine if a field should use the .keyword subfield for exact matching.
+
+        Uses precomputed field type information from the database model class for efficiency.
+        """
+        # Access the precomputed keyword fields from the database model class
+        if hasattr(self, "database_model_cls") and hasattr(
+            self.database_model_cls, "_keyword_fields"
+        ):
+            return field_name in self.database_model_cls._keyword_fields
+
+        # Fallback: if we don't have the cached info, default to using .keyword for safety
+        return True
 
 
 @ESProvider.register_lookup
@@ -610,7 +840,36 @@ class Exact(DefaultLookup):
     lookup_name = "exact"
 
     def as_expression(self):
-        return query.Q("term", **{self.process_source(): self.process_target()})
+        # For exact matching on text fields, we need to use the .keyword subfield
+        # which is automatically created by Elasticsearch for text fields
+        field_name = self.process_source()
+
+        # Use cached field type information to determine if .keyword suffix is needed
+        if not field_name.endswith(".keyword") and self.should_use_keyword_field(
+            field_name
+        ):
+            field_name = f"{field_name}.keyword"
+
+        return query.Q("term", **{field_name: self.process_target()})
+
+
+@ESProvider.register_lookup
+class IExact(DefaultLookup):
+    """Case-insensitive Exact Match Query"""
+
+    lookup_name = "iexact"
+
+    def as_expression(self):
+        # For case-insensitive exact matching, we use the analyzed text field
+        # which has been lowercased by the default analyzer
+        field_name = self.process_source()
+        target_value = self.process_target()
+
+        # Convert target to lowercase to match the analyzed field
+        if isinstance(target_value, str):
+            target_value = target_value.lower()
+
+        return query.Q("term", **{field_name: target_value})
 
 
 @ESProvider.register_lookup
@@ -623,7 +882,16 @@ class In(DefaultLookup):
         return super().process_target()
 
     def as_expression(self):
-        return query.Q("terms", **{self.process_source(): self.process_target()})
+        # For exact matching in lists, we need to use the .keyword subfield
+        field_name = self.process_source()
+
+        # Use cached field type information to determine if .keyword suffix is needed
+        if not field_name.endswith(".keyword") and self.should_use_keyword_field(
+            field_name
+        ):
+            field_name = f"{field_name}.keyword"
+
+        return query.Q("terms", **{field_name: self.process_target()})
 
 
 @ESProvider.register_lookup
@@ -673,9 +941,18 @@ class Contains(DefaultLookup):
     lookup_name = "contains"
 
     def as_expression(self):
+        # Wildcard queries work on keyword fields for exact case-sensitive matching
+        field_name = self.process_source()
+
+        # Use cached field type information to determine if .keyword suffix is needed
+        if not field_name.endswith(".keyword") and self.should_use_keyword_field(
+            field_name
+        ):
+            field_name = f"{field_name}.keyword"
+
         return query.Q(
             "wildcard",
-            **{self.process_source(): {"value": f"*{self.process_target()}*"}},
+            **{field_name: {"value": f"*{self.process_target()}*"}},
         )
 
 
@@ -702,9 +979,18 @@ class Startswith(DefaultLookup):
     lookup_name = "startswith"
 
     def as_expression(self):
+        # Wildcard queries work on keyword fields
+        field_name = self.process_source()
+
+        # Use cached field type information to determine if .keyword suffix is needed
+        if not field_name.endswith(".keyword") and self.should_use_keyword_field(
+            field_name
+        ):
+            field_name = f"{field_name}.keyword"
+
         return query.Q(
             "wildcard",
-            **{self.process_source(): {"value": f"{self.process_target()}*"}},
+            **{field_name: {"value": f"{self.process_target()}*"}},
         )
 
 
@@ -713,7 +999,16 @@ class Endswith(DefaultLookup):
     lookup_name = "endswith"
 
     def as_expression(self):
+        # Wildcard queries work on keyword fields
+        field_name = self.process_source()
+
+        # Use cached field type information to determine if .keyword suffix is needed
+        if not field_name.endswith(".keyword") and self.should_use_keyword_field(
+            field_name
+        ):
+            field_name = f"{field_name}.keyword"
+
         return query.Q(
             "wildcard",
-            **{self.process_source(): {"value": f"*{self.process_target()}"}},
+            **{field_name: {"value": f"*{self.process_target()}"}},
         )

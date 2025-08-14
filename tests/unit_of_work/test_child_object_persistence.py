@@ -5,19 +5,22 @@ from protean import UnitOfWork
 from .aggregate_elements import Comment, Post, PostMeta, PostRepository
 
 
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(Post)
+    test_domain.register(PostMeta, part_of=Post)
+    test_domain.register(Comment, part_of=Post)
+
+    test_domain.register(PostRepository, part_of=Post)
+
+    test_domain.init(traverse=False)
+
+    yield
+
+
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
 class TestChildObjectPersistence:
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(Post)
-        test_domain.register(PostMeta, part_of=Post)
-        test_domain.register(Comment, part_of=Post)
-
-        test_domain.register(PostRepository, part_of=Post)
-
-        test_domain.init(traverse=False)
-
-        yield
-
     @pytest.fixture
     def persisted_post(self, test_domain):
         post = test_domain.repository_for(Post).add(

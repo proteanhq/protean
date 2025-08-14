@@ -88,3 +88,71 @@ class TestElasticsearchProvider:
             "SELECT * FROM person where last_name = 'John' and age in (6,7)"
         )
         assert next(results)[0] == "Murdock"
+
+    def test_keyword_fields_precomputed_for_constructed_model(self, test_domain):
+        """Test that keyword fields are precomputed and cached during model construction"""
+        provider = test_domain.providers["default"]
+
+        # Get the database model class for Person
+        person_model_cls = provider.construct_database_model_class(Person)
+
+        # Verify that keyword fields are cached
+        assert hasattr(person_model_cls, "_keyword_fields")
+        keyword_fields = person_model_cls._keyword_fields
+
+        # String fields should be in keyword_fields
+        assert "first_name" in keyword_fields
+        assert "last_name" in keyword_fields
+
+        # Numeric/date fields should NOT be in keyword_fields
+        assert "age" not in keyword_fields  # Integer field
+        assert "created_at" not in keyword_fields  # DateTime field
+        assert "id" not in keyword_fields  # Identifier field
+
+    def test_keyword_fields_cached_on_dao_database_model(self, test_domain):
+        """Test that keyword fields are cached on DAO's database model class"""
+        dao = test_domain.repository_for(Person)._dao
+
+        # Verify that keyword fields are cached on the DAO's database model class
+        assert hasattr(dao.database_model_cls, "_keyword_fields")
+        keyword_fields = dao.database_model_cls._keyword_fields
+
+        # Verify correct field classification
+        assert "first_name" in keyword_fields  # String field
+        assert "last_name" in keyword_fields  # String field
+        assert "age" not in keyword_fields  # Integer field
+        assert "created_at" not in keyword_fields  # DateTime field
+
+    def test_compute_keyword_fields_method(self, test_domain):
+        """Test the _compute_keyword_fields method directly"""
+        provider = test_domain.providers["default"]
+
+        # Test with Person entity (has String, Integer, DateTime fields)
+        keyword_fields = provider._compute_keyword_fields(Person)
+
+        # Should be a set
+        assert isinstance(keyword_fields, set)
+
+        # String fields should be included
+        expected_string_fields = {"first_name", "last_name"}
+        assert expected_string_fields.issubset(keyword_fields)
+
+        # Non-string fields should be excluded
+        non_string_fields = {"age", "created_at", "id"}
+        assert not any(field in keyword_fields for field in non_string_fields)
+
+    def test_keyword_fields_cached_across_dao_instances(self, test_domain):
+        """Test that keyword fields are shared across DAO instances for same entity"""
+        # Get two DAO instances for the same entity
+        dao1 = test_domain.repository_for(Person)._dao
+        dao2 = test_domain.repository_for(Person)._dao
+
+        # Both should have the same cached keyword fields
+        assert hasattr(dao1.database_model_cls, "_keyword_fields")
+        assert hasattr(dao2.database_model_cls, "_keyword_fields")
+
+        # Should be the same object (cached)
+        assert (
+            dao1.database_model_cls._keyword_fields
+            is dao2.database_model_cls._keyword_fields
+        )

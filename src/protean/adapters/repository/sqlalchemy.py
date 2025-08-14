@@ -22,6 +22,7 @@ from protean.core.queryset import ResultSet
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import (
     ConfigurationError,
+    DatabaseError as ProteanDatabaseError,
     ObjectNotFoundError,
 )
 from protean.fields import (
@@ -371,13 +372,16 @@ class SADAO(BaseDAO):
             else:
                 order_cols.append(col)
 
-        # If the database is MSSQL and no order by clause is present, add the id column to the order by clause.
-        #   This is because MSSQL does not support OFFSET/LIMIT without an ORDER BY clause.
-        if (
-            self.provider.__database__ == SAProvider.databases.mssql.value
-            and not order_cols
-        ):
-            order_cols.append(getattr(self.database_model_cls, "id").asc())
+        # It is better to have explicitly order results, instead of relying on default
+        #   db behavior. Postgresql and SQLite do not force ordering, but their result
+        #   order is undefined. MSSQL does not support OFFSET/LIMIT without an ORDER BY clause.
+        # So, we order by primary key ascending when there is no order specified.
+        if not order_cols:
+            order_cols.append(
+                getattr(
+                    self.database_model_cls, id_field(self.entity_cls).attribute_name
+                ).asc()
+            )
 
         qs = qs.order_by(*order_cols)
         qs_without_limit = qs
@@ -403,14 +407,19 @@ class SADAO(BaseDAO):
         """Add a new record to the sqlalchemy database"""
         conn = self._get_session()
 
-        try:
-            conn.add(model_obj)
-        except DatabaseError as exc:
-            logger.error(f"Error while creating: {exc}")
-            raise
-        finally:
-            if not current_uow:
+        conn.add(model_obj)
+
+        if not current_uow:
+            try:
                 conn.commit()
+            except DatabaseError as exc:
+                logger.error(f"Error while creating: {exc}")
+                conn.rollback()
+                raise ProteanDatabaseError(
+                    f"Database error during creation: {str(exc)}",
+                    original_exception=exc,
+                )
+            finally:
                 conn.close()
 
         return model_obj
@@ -439,18 +448,22 @@ class SADAO(BaseDAO):
             )
 
         # Sync DB Record with current changes. When the session is committed, changes are automatically synced
-        try:
-            for attribute in attributes(self.entity_cls):
-                if attribute != id_field(self.entity_cls).attribute_name and getattr(
-                    model_obj, attribute
-                ) != getattr(db_item, attribute):
-                    setattr(db_item, attribute, getattr(model_obj, attribute))
-        except DatabaseError as exc:
-            logger.error(f"Error while updating: {exc}")
-            raise
-        finally:
-            if not current_uow:
+        for attribute in attributes(self.entity_cls):
+            if attribute != id_field(self.entity_cls).attribute_name and getattr(
+                model_obj, attribute
+            ) != getattr(db_item, attribute):
+                setattr(db_item, attribute, getattr(model_obj, attribute))
+
+        if not current_uow:
+            try:
                 conn.commit()
+            except DatabaseError as exc:
+                logger.error(f"Error while updating: {exc}")
+                conn.rollback()
+                raise ProteanDatabaseError(
+                    f"Database error during update: {str(exc)}", original_exception=exc
+                )
+            finally:
                 conn.close()
 
         return model_obj

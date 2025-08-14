@@ -1,17 +1,21 @@
 import pytest
 
-from protean.exceptions import ValidationError
+from protean.exceptions import DatabaseError
 
 from .elements import Person, PersonRepository
 
 
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(Person)
+    test_domain.register(PersonRepository, part_of=Person)
+    test_domain.init(traverse=False)
+
+
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
 class TestState:
     """Class that holds tests for Entity State Management"""
-
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(Person)
-        test_domain.register(PersonRepository, part_of=Person)
 
     def test_that_a_default_state_is_available_when_the_entity_instantiated(self):
         person = Person(first_name="John", last_name="Doe")
@@ -44,7 +48,7 @@ class TestState:
         try:
             del person.first_name
             test_domain.repository_for(Person)._dao.save(person)
-        except ValidationError:
+        except DatabaseError:
             assert person.state_.is_new
 
     def test_that_a_changed_entity_still_shows_as_changed_if_persistence_failed(
@@ -60,7 +64,7 @@ class TestState:
         try:
             del person.first_name
             test_domain.repository_for(Person)._dao.save(person)
-        except ValidationError:
+        except DatabaseError:
             assert person.state_.is_changed
 
     def test_that_entity_is_marked_as_not_new_after_successful_persistence(

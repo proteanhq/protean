@@ -22,11 +22,15 @@ def setup_db():
     with domain.domain_context():
         # Create all indexes
         from .elements import Alien, ComplexUser, Person, User
+        from .test_field_type_detection import DummyEntity, MinimalEntity, NumericEntity
 
         domain.register(Person)
         domain.register(Alien)
         domain.register(User)
         domain.register(ComplexUser)
+        domain.register(DummyEntity)
+        domain.register(MinimalEntity)
+        domain.register(NumericEntity)
         domain.init(traverse=False)
 
         domain.providers["default"]._create_database_artifacts()

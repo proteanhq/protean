@@ -94,6 +94,14 @@ class ValidationError(ProteanExceptionWithMessage):
     """
 
 
+class DatabaseError(ProteanException):
+    """Raised when database operations fail."""
+
+    def __init__(self, message: str, original_exception=None, **kwargs):
+        super().__init__(message, **kwargs)
+        self.original_exception = original_exception
+
+
 class SendError(ProteanException):
     """Raised on email dispatch failure."""
 

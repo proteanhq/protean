@@ -37,10 +37,13 @@ class TestBasicPersistence:
         event = Event(name="TestEvent", sequence_id=1)
         test_domain.repository_for(Event).add(event)
 
+        # Fetch the event again
+        retrieved_event = test_domain.repository_for(Event).get(event.id)
+
         # Update the event
-        event.name = "UpdatedEvent"
-        event.sequence_id = 2
-        test_domain.repository_for(Event).add(event)
+        retrieved_event.name = "UpdatedEvent"
+        retrieved_event.sequence_id = 2
+        test_domain.repository_for(Event).add(retrieved_event)
 
         # Retrieve and verify
         retrieved_event = test_domain.repository_for(Event).get(event.id)
