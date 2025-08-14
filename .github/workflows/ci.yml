@@ -90,6 +90,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-${{ matrix.python-version }}-
 
+      - name: Install Microsoft ODBC Driver 18 and tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl gnupg apt-transport-https
+          curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc >/dev/null
+          curl -sSL https://packages.microsoft.com/config/ubuntu/24.04/prod.list | sudo tee /etc/apt/sources.list.d/microsoft-prod.list >/dev/null
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 unixodbc-dev
+          echo "/opt/mssql-tools18/bin" >> $GITHUB_PATH
+
       - name: Install dependencies
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
@@ -109,6 +119,7 @@ jobs:
           MSSQL_PASSWORD: Protean123!
           MSSQL_USER: sa
           MSSQL_PORT: ${{ job.services.mssql.ports[1433] }}
+          MSSQL_HOST: localhost
 
       - name: CodeCOV
         uses: codecov/codecov-action@v5.4.2
