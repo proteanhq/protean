@@ -106,6 +106,7 @@ nav:
         - guides/domain-definition/aggregates.md
         - guides/domain-definition/entities.md
         - guides/domain-definition/value-objects.md
+        - guides/domain-definition/deciding-between-elements.md
         - guides/domain-definition/events.md
       - Add Behavior:
         - guides/domain-behavior/index.md
