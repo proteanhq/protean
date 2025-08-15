@@ -203,6 +203,7 @@ nav:
       - core-concepts/ddd.md
       - core-concepts/cqrs.md
       - core-concepts/event-sourcing.md
+      - core-concepts/architecture-decision.md
     # - Domain-Driven Design:
     #   - core-concepts/domain-driven-design/index.md
     #   - core-concepts/domain-driven-design/ubiquitous-language.md

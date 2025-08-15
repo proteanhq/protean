@@ -57,21 +57,18 @@ are initialized and injected at runtime, ensuring that your core domain logic
 is insulated and remains consistent across various environments, including
 local development and CI/CD.
 
-## Choose the right patterns
+## Pragmatism over Purity
 
-Protean does not prescribe a one-size-fits-all solution but instead offers
-the flexibility to choose and combine architectural patterns that best suit
-the needs of the domain:
+Protean prioritizes practical solutions over architectural purity, recognizing
+that real-world applications often require different patterns for different
+parts of the same domain.
 
-- Flexibility and Choice: Developers are free to implement each domain in DDD,
-CRUD, CQRS, Event Sourcing, or any combination thereof, depending on what
-best addresses the domain needs.
-- Microservices Architecture: Being microservices-friendly within Protean
-allows for decentralized governance and technology diversity, which is crucial
-for large-scale enterprise applications.
-- Technology Choice: Each microservice or component can independently decide
-its architectural style and underlying technology, promoting a system that is
-as heterogeneous as it needs to be.
+While architectural consistency within a domain is desirable, forcing a
+single pattern across all aggregates can lead to over-engineering some
+components while under-serving others. Protean embraces a **pragmatic
+approach** that allows mixing CQRS and Event Sourcing patterns at the
+aggregate level within the same domain, provided the decision is explicit,
+well-documented, and justified.
 
 ## Progressive fragmentation of domain
 
