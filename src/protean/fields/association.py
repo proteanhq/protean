@@ -109,7 +109,7 @@ class Reference(FieldCacheMixin, Field):
 
     def get_attribute_name(self):
         """Return formatted attribute name for the shadow field"""
-        return "{}_{}".format(self.field_name, self.linked_attribute)
+        return self.referenced_as if self.referenced_as else "{}_{}".format(self.field_name, self.linked_attribute)
 
     def get_shadow_field(self):
         """Return shadow field
