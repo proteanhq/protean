@@ -201,3 +201,4 @@ for name, element_type in properties().items():
     """
     prop = _create_element_property(element_type)
     setattr(_DomainRegistry, name, prop)
+registry = _DomainRegistry()
