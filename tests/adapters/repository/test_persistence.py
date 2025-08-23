@@ -7,7 +7,7 @@ from datetime import datetime
 
 class Event(BaseAggregate):
     name = String(max_length=255, required=True)
-    created_at = DateTime(default=datetime.now())
+    created_at = DateTime(default=datetime.now)
     sequence_id = Integer()
 
 
