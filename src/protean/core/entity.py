@@ -26,11 +26,12 @@ from protean.utils.container import BaseContainer, IdentityMixin, OptionsMixin
 from protean.utils.globals import current_domain
 from protean.utils.reflection import (
     _FIELDS,
-    attributes,
+    reference_fields,
     data_fields,
     declared_fields,
     fields,
     id_field,
+    value_object_fields,
 )
 
 logger = logging.getLogger(__name__)
@@ -365,9 +366,31 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                         for field_name in err.messages:
                             self.errors[field_name].extend(err.messages[field_name])
 
-        for field_name, field_obj in attributes(self).items():
-            if field_name not in loaded_fields and not hasattr(self, field_name):
-                setattr(self, field_name, None)
+        # Walk through reference fields and set attributes to None, if the
+        #   field was not specified explicitly.
+        for field_obj in reference_fields(self).values():
+            attr_name = field_obj.attribute_name
+            if (
+                # Field is not loaded yet
+                attr_name not in loaded_fields
+                # Field was not specified explicitly
+                and not hasattr(self, attr_name)
+            ):
+                setattr(self, attr_name, None)
+
+        # Walk through value objects and set their shadow attributes to None, if the
+        #   value object was not specified explicitly.
+        for field_obj in value_object_fields(self).values():
+            shadow_fields = field_obj.get_shadow_fields()
+            for _, shadow_field in shadow_fields:
+                attr_name = shadow_field.attribute_name
+                if (
+                    # Field is not loaded yet
+                    attr_name not in loaded_fields
+                    # Field was not specified explicitly
+                    and not hasattr(self, attr_name)
+                ):
+                    setattr(self, attr_name, None)
 
         self._initialized = True
 

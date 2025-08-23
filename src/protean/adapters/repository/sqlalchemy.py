@@ -18,6 +18,7 @@ from sqlalchemy import inspect
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from protean.core.database_model import BaseDatabaseModel
+from protean.core.entity import BaseEntity
 from protean.core.queryset import ResultSet
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import (
@@ -283,27 +284,33 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
         return cls.derive_schema_name()
 
     @classmethod
-    def from_entity(cls, entity):
+    def from_entity(cls, entity) -> "SqlalchemyModel":
         """Convert the entity to a model object"""
         item_dict = {}
-        for attribute_obj in attributes(cls.meta_.part_of).values():
-            if isinstance(attribute_obj, Reference):
-                item_dict[attribute_obj.relation.attribute_name] = (
-                    attribute_obj.relation.value
-                )
+        for attr_obj in attributes(cls.meta_.part_of).values():
+            if isinstance(attr_obj, Reference):
+                item_dict[attr_obj.relation.attribute_name] = attr_obj.relation.value
             else:
-                item_dict[attribute_obj.attribute_name] = getattr(
-                    entity, attribute_obj.attribute_name
-                )
+                if attr_obj.referenced_as:
+                    item_dict[attr_obj.referenced_as] = getattr(
+                        entity, attr_obj.field_name
+                    )
+                else:
+                    item_dict[attr_obj.attribute_name] = getattr(
+                        entity, attr_obj.attribute_name
+                    )
         return cls(**item_dict)
 
     @classmethod
-    def to_entity(cls, model_obj: "SqlalchemyModel"):
+    def to_entity(cls, item: "SqlalchemyModel") -> BaseEntity:
         """Convert the model object to an entity"""
         item_dict = {}
-        for field_name in attributes(cls.meta_.part_of):
-            item_dict[field_name] = getattr(model_obj, field_name, None)
-        return cls.meta_.part_of(item_dict)
+        for attr_name, attr_obj in attributes(cls.meta_.part_of).items():
+            if attr_obj.referenced_as:
+                item_dict[attr_obj.field_name] = getattr(item, attr_obj.referenced_as)
+            else:
+                item_dict[attr_name] = getattr(item, attr_name)
+        return cls.meta_.part_of(**item_dict)
 
 
 class SADAO(BaseDAO):

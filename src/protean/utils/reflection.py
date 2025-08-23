@@ -145,3 +145,31 @@ def association_fields(class_or_instance: Type[Element] | Element) -> dict[str, 
 def has_association_fields(class_or_instance: Type[Element] | Element) -> bool:
     """Check if Element has association fields."""
     return bool(association_fields(class_or_instance))
+
+
+def reference_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
+    """Return a dictionary of reference fields in this element.
+
+    Accepts an Element or an instance of one.
+    """
+    from protean.fields.association import Reference
+
+    return {
+        field_name: field_obj
+        for field_name, field_obj in declared_fields(class_or_instance).items()
+        if isinstance(field_obj, Reference)
+    }
+
+
+def value_object_fields(class_or_instance: Type[Element] | Element) -> dict[str, Field]:
+    """Return a dictionary of value object fields in this element.
+
+    Accepts an Element or an instance of one.
+    """
+    from protean.fields.embedded import ValueObject
+
+    return {
+        field_name: field_obj
+        for field_name, field_obj in declared_fields(class_or_instance).items()
+        if isinstance(field_obj, ValueObject)
+    }
