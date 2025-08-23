@@ -11,9 +11,11 @@ from typing import Any
 from uuid import UUID
 
 from protean.core.database_model import BaseDatabaseModel
+from protean.core.entity import BaseEntity
 from protean.core.queryset import ResultSet
 from protean.exceptions import DatabaseError, ObjectNotFoundError
 from protean.fields.basic import Auto
+from protean.fields.association import Reference
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider
 from protean.utils.container import Options
@@ -28,15 +30,29 @@ class MemoryModel(BaseDatabaseModel):
     @classmethod
     def from_entity(cls, entity) -> "MemoryModel":
         """Convert the entity to a dictionary record"""
-        dict_obj = {}
-        for attribute_name in attributes(entity):
-            dict_obj[attribute_name] = getattr(entity, attribute_name)
-        return dict_obj
+        item_dict = {}
+        for attr_name, attr_obj in attributes(cls.meta_.part_of).items():
+            if isinstance(attr_obj, Reference):
+                item_dict[attr_obj.relation.attribute_name] = attr_obj.relation.value
+            else:
+                if attr_obj.referenced_as:
+                    item_dict[attr_obj.referenced_as] = getattr(
+                        entity, attr_obj.field_name
+                    )
+                else:
+                    item_dict[attr_name] = getattr(entity, attr_name)
+        return item_dict
 
     @classmethod
-    def to_entity(cls, item: "MemoryModel"):
+    def to_entity(cls, item: "MemoryModel") -> BaseEntity:
         """Convert the dictionary record to an entity"""
-        return cls.meta_.part_of(**item)
+        item_dict = {}
+        for attr_name, attr_obj in attributes(cls.meta_.part_of).items():
+            if attr_obj.referenced_as:
+                item_dict[attr_obj.field_name] = item[attr_obj.referenced_as]
+            else:
+                item_dict[attr_name] = item[attr_name]
+        return cls.meta_.part_of(**item_dict)
 
 
 class MemorySession:

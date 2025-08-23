@@ -48,3 +48,20 @@ def change_working_directory_to(path):
 
     os.chdir(test_path)
     sys.path.insert(0, str(test_path))
+
+
+def has_key_or_attr(obj, name):
+    try:
+        return name in obj  # Works if obj is dict-like
+    except TypeError:
+        return hasattr(obj, name)
+
+
+def get_value_from_key_or_attr(obj, name, default=None):
+    """
+    Retrieve a value from a dict or object by name.
+    Returns `default` if key/attribute is missing.
+    """
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)

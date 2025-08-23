@@ -161,7 +161,7 @@ class TestDAORetrievalFunctionality:
         self, test_domain
     ):
         person_query = test_domain.repository_for(Person)._dao.query.filter(
-            name="Murdock"
+            first_name="Murdock"
         )
         filters = [
             person_query,

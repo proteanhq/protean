@@ -242,9 +242,7 @@ class TestDAORetrievalFunctionality:
         )
 
         # Filter by the last name
-        people = test_domain.repository_for(Person)._dao.query.filter(
-            last_name__keyword="Doe"
-        )
+        people = test_domain.repository_for(Person)._dao.query.filter(last_name="Doe")
         assert people is not None
         assert people.total == 2
         assert len(people.items) == 2
@@ -309,9 +307,7 @@ class TestDAORetrievalFunctionality:
     def test_entity_retrieval_by_specific_column_value(
         self, test_domain, identifier, persisted_person
     ):
-        person = test_domain.repository_for(Person)._dao.find_by(
-            first_name__keyword="John"
-        )
+        person = test_domain.repository_for(Person)._dao.find_by(first_name="John")
         assert person is not None
         assert person.id == identifier
         assert person == persisted_person
@@ -320,9 +316,7 @@ class TestDAORetrievalFunctionality:
         self, test_domain, persisted_person
     ):
         with pytest.raises(ObjectNotFoundError):
-            test_domain.repository_for(Person)._dao.find_by(
-                first_name__keyword="JohnnyChase"
-            )
+            test_domain.repository_for(Person)._dao.find_by(first_name="JohnnyChase")
 
     def test_entity_retrieval_by_multiple_column_values(self, test_domain):
         identifier1 = uuid4()
@@ -335,7 +329,7 @@ class TestDAORetrievalFunctionality:
         )
 
         person = test_domain.repository_for(Person)._dao.find_by(
-            first_name__keyword="Johnny1", age=8
+            first_name="Johnny1", age=8
         )
         assert person is not None
         assert person.id == identifier1
@@ -349,9 +343,7 @@ class TestDAORetrievalFunctionality:
         )
 
         with pytest.raises(ObjectNotFoundError):
-            test_domain.repository_for(Person)._dao.find_by(
-                first_name__keyword="Johnny1", age=6
-            )
+            test_domain.repository_for(Person)._dao.find_by(first_name="Johnny1", age=6)
 
     def test_error_on_finding_multiple_results(self, test_domain):
         test_domain.repository_for(Person)._dao.create(
@@ -362,9 +354,7 @@ class TestDAORetrievalFunctionality:
         )
 
         with pytest.raises(TooManyObjectsError):
-            test_domain.repository_for(Person)._dao.find_by(
-                first_name__keyword="Johnny1"
-            )
+            test_domain.repository_for(Person)._dao.find_by(first_name="Johnny1")
 
     def test_entity_query_initialization(self, test_domain):
         """Test the initialization of a QuerySet"""
@@ -394,7 +384,7 @@ class TestDAORetrievalFunctionality:
         self, test_domain
     ):
         person_query = test_domain.repository_for(Person)._dao.query.filter(
-            name="Murdock"
+            first_name="Murdock"
         )
         filters = [
             person_query,
@@ -428,8 +418,8 @@ class TestDAORetrievalFunctionality:
         # Filter by Person attributes
         query = (
             test_domain.repository_for(Person)
-            ._dao.query.filter(first_name__keyword="Jean")
-            .filter(last_name__keyword="John")
+            ._dao.query.filter(first_name="Jean")
+            .filter(last_name="John")
             .filter(age=3)
         )
         people = query.all()
@@ -457,9 +447,7 @@ class TestDAORetrievalFunctionality:
         )
 
         # Filter by Person attributes
-        query = test_domain.repository_for(Person)._dao.query.filter(
-            last_name__keyword="John"
-        )
+        query = test_domain.repository_for(Person)._dao.query.filter(last_name="John")
         people = query.all()
 
         assert people is not None
@@ -487,7 +475,7 @@ class TestDAORetrievalFunctionality:
         # Filter by Dog attributes
         query = (
             test_domain.repository_for(Person)
-            ._dao.query.filter(last_name__keyword="John")
+            ._dao.query.filter(last_name="John")
             .order_by("age")
         )
         people = query.all()
@@ -512,9 +500,7 @@ class TestDAORetrievalFunctionality:
         )
 
         # Filter by the LastName
-        people = test_domain.repository_for(Person)._dao.query.filter(
-            last_name__keyword="John"
-        )
+        people = test_domain.repository_for(Person)._dao.query.filter(last_name="John")
         assert len(people.items) != 0
         assert people.total == 2
         assert len(people.items) == 2
@@ -522,7 +508,7 @@ class TestDAORetrievalFunctionality:
         # Order the results by age
         people = (
             test_domain.repository_for(Person)
-            ._dao.query.filter(last_name__keyword="John")
+            ._dao.query.filter(last_name="John")
             .order_by("-age")
         )
         assert len(people.items) != 0
@@ -542,9 +528,7 @@ class TestDAORetrievalFunctionality:
         )
 
         # Filter by Exclusion
-        dogs = test_domain.repository_for(Person)._dao.query.exclude(
-            last_name__keyword="John"
-        )
+        dogs = test_domain.repository_for(Person)._dao.query.exclude(last_name="John")
         assert len(dogs.items) != 0
         assert dogs.total == 1
         assert len(dogs.items) == 1
@@ -565,7 +549,7 @@ class TestDAORetrievalFunctionality:
 
         # Filter by the first_name
         people = test_domain.repository_for(Person)._dao.query.exclude(
-            first_name__keyword__in=["Murdock", "Jean"]
+            first_name__in=["Murdock", "Jean"]
         )
         assert len(people.items) != 0
         assert people.total == 1
@@ -594,10 +578,10 @@ class TestDAORetrievalFunctionality:
         people_gt = test_domain.repository_for(Person)._dao.query.filter(age__gt=3)
         people_lt = test_domain.repository_for(Person)._dao.query.filter(age__lt=6)
         people_in = test_domain.repository_for(Person)._dao.query.filter(
-            first_name__keyword__in=["Jean", "Bart", "Nobody"]
+            first_name__in=["Jean", "Bart", "Nobody"]
         )
         people_exact = test_domain.repository_for(Person)._dao.query.filter(
-            last_name__keyword__exact="John"
+            last_name__exact="John"
         )
 
         assert people_gte.total == 3
@@ -621,7 +605,7 @@ class TestDAORetrievalFunctionality:
         )
 
         people_contains = test_domain.repository_for(Person)._dao.query.filter(
-            last_name__keyword__contains="Joh"
+            last_name__contains="Joh"
         )
 
         assert people_contains.total == 1
@@ -639,13 +623,13 @@ class TestDAORetrievalFunctionality:
         )
 
         people_contains = test_domain.repository_for(Person)._dao.query.filter(
-            last_name__keyword__icontains="Joh"
+            last_name__icontains="Joh"
         )
 
         assert people_contains.total == 2
 
         people_contains = test_domain.repository_for(Person)._dao.query.filter(
-            last_name__keyword__icontains="joh"
+            last_name__icontains="joh"
         )
 
         assert people_contains.total == 2

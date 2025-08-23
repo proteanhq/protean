@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Union
 from protean.utils import DomainObjects
 from protean.utils.globals import current_uow
 from protean.utils.query import Q
-from protean.utils.reflection import id_field
+from protean.utils.reflection import id_field, fields, attributes
 
 if TYPE_CHECKING:
     from protean.core.entity import BaseEntity
@@ -114,10 +114,36 @@ class QuerySet:
 
     def _filter_or_exclude(self, negate, *args, **kwargs):
         clone = self._clone()
+
+        # Parse kwarg keys and replace field names with referenced_as if present
+        #   This way, the domain and filtering logic will always refer to a field by its field name,
+        #   but the database will use the referenced_as attribute name.
+        new_kwargs = {}
+        for key, value in kwargs.items():
+            # Extract the field name in the composite key (e.g. `name` from `name__contains`)
+            extracted_key_name, _ = self._owner_dao.provider._extract_lookup(key)
+
+            # Get the attribute name of the field
+            # We want to support both field name and attribute name in the query,
+            #   so we look for the key name in both fields and attributes.
+            #
+            # If we don't find it in either, we raise an error.
+            try:
+                attr_name = fields(self._entity_cls)[extracted_key_name].attribute_name
+            except KeyError:
+                attr_name = attributes(self._entity_cls)[
+                    extracted_key_name
+                ].attribute_name
+
+            # Replace the field name in the composite key with the attribute name
+            new_key_name = key.replace(extracted_key_name, attr_name)
+            # Add the new key and value to the new kwargs
+            new_kwargs[new_key_name] = value
+
         if negate:
-            clone._add_q(~Q(*args, **kwargs))
+            clone._add_q(~Q(*args, **new_kwargs))
         else:
-            clone._add_q(Q(*args, **kwargs))
+            clone._add_q(Q(*args, **new_kwargs))
         return clone
 
     def limit(self, limit):

@@ -512,57 +512,6 @@ class ESProvider(BaseProvider):
 
         return keyword_fields
 
-    def _extract_lookup(self, key):
-        """Extract lookup method based on key name format"""
-        # Handle special case of keyword field modifier: field__keyword__lookup
-        if "__keyword__" in key:
-            parts = key.split("__keyword__")
-            if len(parts) == 2:
-                field_name = parts[0]
-                lookup_part = parts[1]
-
-                # Remove leading __ if present
-                if lookup_part.startswith("__"):
-                    lookup_part = lookup_part[2:]
-
-                # If there's a lookup after keyword, use it; otherwise default to exact
-                if lookup_part and lookup_part in operators:
-                    op = lookup_part
-                else:
-                    # If no lookup specified after keyword, or unknown lookup, default to exact
-                    op = "exact"
-
-                # Mark that this should use keyword field
-                attribute = f"{field_name}__use_keyword"
-                return attribute, self.get_lookup(op)
-
-        # Handle simple field__keyword case (without additional lookup)
-        if key.endswith("__keyword"):
-            field_name = key[:-9]  # Remove "__keyword"
-            attribute = f"{field_name}__use_keyword"
-            return attribute, self.get_lookup("exact")
-
-        # Standard lookup extraction
-        parts = key.rsplit("__", 1)
-
-        if len(parts) > 1:
-            potential_op = parts[1]
-            if potential_op in operators:
-                op = potential_op
-                attribute = parts[0]
-            else:
-                # If the potential operator is not recognized, we still try to get the lookup
-                # This will raise NotImplementedError if the lookup doesn't exist
-                op = potential_op
-                attribute = parts[0]
-        else:
-            # 'exact' is the default lookup if there was no explicit comparison op in `key`
-            op = "exact"
-            attribute = key
-
-        # Construct and assign the lookup class as a filter criteria
-        return attribute, self.get_lookup(op)
-
     def get_session(self):
         """Establish a new session with the database.
 
@@ -797,19 +746,6 @@ class ESProvider(BaseProvider):
 
 class DefaultLookup(BaseLookup):
     """Base class with default implementation of expression construction"""
-
-    def process_source(self):
-        """Return source with transformations, if any"""
-        field_name = self.source
-
-        # Handle explicit keyword field marker
-        if field_name.endswith("__use_keyword"):
-            field_name = field_name.replace("__use_keyword", "")
-            # Always use .keyword suffix when explicitly requested
-            if not field_name.endswith(".keyword"):
-                field_name = f"{field_name}.keyword"
-
-        return field_name
 
     def process_target(self):
         """Return target with transformations, if any"""
