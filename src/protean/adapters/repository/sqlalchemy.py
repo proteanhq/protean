@@ -306,8 +306,9 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
         """Convert the model object to an entity"""
         item_dict = {}
         for attr_name, attr_obj in attributes(cls.meta_.part_of).items():
-            if attr_obj.referenced_as:
-                item_dict[attr_obj.field_name] = getattr(item, attr_obj.referenced_as)
+            referenced_as = getattr(attr_obj, "referenced_as", None)
+            if referenced_as:
+                item_dict[attr_obj.field_name] = getattr(item, referenced_as)
             else:
                 item_dict[attr_name] = getattr(item, attr_name)
         return cls.meta_.part_of(**item_dict)
