@@ -128,12 +128,16 @@ class QuerySet:
             #   so we look for the key name in both fields and attributes.
             #
             # If we don't find it in either, we raise an error.
-            try:
+            if extracted_key_name in fields(self._entity_cls):
                 attr_name = fields(self._entity_cls)[extracted_key_name].attribute_name
-            except KeyError:
+            elif extracted_key_name in attributes(self._entity_cls):
                 attr_name = attributes(self._entity_cls)[
                     extracted_key_name
                 ].attribute_name
+            else:
+                raise KeyError(
+                    f"Key '{extracted_key_name}' not found in either fields or attributes of {self._entity_cls}"
+                )
 
             # Replace the field name in the composite key with the attribute name
             new_key_name = key.replace(extracted_key_name, attr_name)
