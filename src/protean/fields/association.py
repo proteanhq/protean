@@ -109,7 +109,9 @@ class Reference(FieldCacheMixin, Field):
 
     def get_attribute_name(self):
         """Return formatted attribute name for the shadow field"""
-        return "{}_{}".format(self.field_name, self.linked_attribute)
+        return self.referenced_as or "{}_{}".format(
+            self.field_name, self.linked_attribute
+        )
 
     def get_shadow_field(self):
         """Return shadow field
@@ -257,6 +259,7 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         super().__init__(**kwargs)
 
         self._to_cls = to_cls
+        self.via = kwargs.pop("via", None)
 
         # FIXME Find an elegant way to avoid these declarations in associations
         # Associations cannot be marked `required` or `unique`
@@ -286,6 +289,9 @@ class Association(FieldBase, FieldDescriptorMixin, FieldCacheMixin):
         FIXME Explore converting this method into an attribute, and treating it
         uniformly at `association` level.
         """
+        if self.via:
+            return self.via
+
         return (
             utils.inflection.underscore(owner.__name__)
             + "_"
