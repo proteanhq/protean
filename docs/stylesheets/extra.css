@@ -10,7 +10,7 @@
 }
 
 p {
-  line-height: 1.75em;
+  line-height: 1.5em;
 }
 
 /* Don't change link color on visits */
@@ -23,12 +23,18 @@ p a, article ul li a {
   font-weight: 600;
 }
 
-.md-content__inner p, ul li {
+.md-content__inner p, ul li, ol li {
   font-size: 0.9em;
 }
 
 .md-typeset code {
   font-size: 0.80em;
+}
+
+.md-typeset pre code {
+  border: 1px solid #e0e0e0;
+  border-radius: 0.25em;
+  padding: 0.1em 0.25em;
 }
 
 /* Primary color and tighter space */
@@ -38,8 +44,12 @@ p a, article ul li a {
 }
 
 /* Heavier fonts */
-.md-typeset h1, .md-typeset h2 {
+.md-typeset h1 {
   font-weight: 800;
+}
+
+.md-typeset h2 {
+  font-weight: 400;
 }
 
 .md-typeset h1 {
@@ -51,7 +61,6 @@ p a, article ul li a {
 }
 
 .md-typeset h3 {
-  font-weight: 600;
   font-size: 1.25em;
 }
 

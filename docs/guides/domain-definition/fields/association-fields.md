@@ -10,6 +10,8 @@ never link to another Aggregate directly. Aggregates are transaction boundaries
 and no transaction should span across aggregates. Read more in
 [Aggregate concepts](../../../core-concepts/domain-elements/aggregates.md).
 
+For a comprehensive guide on relationships, see [Expressing Relationships](../relationships.md).
+
 ## `HasOne`
 
 Represents an one-to-one association between an aggregate and its entities.
@@ -136,3 +138,69 @@ In [3]: comments = post.filter_comments(content="Bar", rating=2.5)
 In [4]: comments[0].to_dict()
 Out[4]: {'content': 'Bar', 'rating': 2.5, 'id': '3b7fd92e-be11-4b3b-96e9-1caf02779f14'}
 ```
+
+## `Reference`
+
+A `Reference` field establishes the inverse relationship from child entities to their parent aggregate. While `HasOne` and `HasMany` define the forward relationship (parent to child), the `Reference` field enables navigation from child to parent.
+
+Every entity associated with an aggregate automatically gets a `Reference` field created for it, unless explicitly defined. The field name is derived from the aggregate's name (e.g., `Post` becomes `post`).
+
+```python hl_lines="4"
+@domain.entity(part_of=Post)
+class Comment:
+    content = String(max_length=500)
+    post = Reference(Post)  # Explicit reference field
+```
+
+### Shadow Fields
+
+Reference fields automatically create shadow fields (foreign key attributes) that store the actual identifier values. These shadow fields follow the naming convention `<field_name>_<id_field>`:
+
+```shell hl_lines="6"
+In [1]: from protean.reflection import attributes
+In [2]: attributes(Comment)
+Out[2]: 
+{'content': String(max_length=500),
+ 'id': Auto(identifier=True),
+ 'post': Reference(),
+ 'post_id': _ReferenceField()}
+```
+
+### Custom Shadow Field Names
+
+Use `referenced_as` to specify a custom name for the shadow field:
+
+```python
+@domain.entity(part_of=Order)
+class OrderItem:
+    quantity = Integer()
+    order = Reference(Order, referenced_as="order_number")
+    # Creates shadow field 'order_number' instead of 'order_id'
+```
+
+The same name has to be specified on the `HasOne` or `HasMany` field with the `via` option, to establish the two-way relationship.
+
+```python
+@domain.aggregate
+class Order:
+   ordered_at = DateTime()
+   items = HasMany(OrderItem, via="order_number")
+```
+
+## Customizing Foreign Keys with `via`
+
+By default, association fields create foreign keys following the pattern `<aggregate_name>_id`. The `via` parameter allows you to specify a custom field name for the foreign key relationship:
+
+```python hl_lines="4 9"
+@domain.aggregate  
+class Product:
+    name = String(max_length=100)
+    reviews = HasMany("Review", via="product_sku")
+
+@domain.entity(part_of=Product)
+class Review:
+    content = String(max_length=1000)
+    product_sku = String()  # Custom foreign key field
+```
+
+This is particularly useful when you want to link entities using fields other than the default identifier, or when you need specific naming conventions for your foreign key relationships.
