@@ -2,7 +2,7 @@ site_name: Protean
 site_url: https://docs.proteanhq.com
 repo_name: proteanhq/protean
 repo_url: https://github.com/proteanhq/protean
-copyright: Copyright &copy; 2019 - 2024 Subhash Bhushan
+copyright: Copyright &copy; 2019 - 2025 Subhash Bhushan
 
 theme:
   name: material
@@ -11,8 +11,8 @@ theme:
   favicon: assets/favicon.png
   language: custom
   font:
-    text: Inter
-    code: JetBrains Mono
+    text: Lato
+    code: Roboto Mono
   palette:
   - media: '(prefers-color-scheme: light)'
     scheme: default
@@ -99,12 +99,13 @@ nav:
         - guides/domain-definition/index.md
         - Fields:
           - guides/domain-definition/fields/index.md
-          - guides/domain-definition/fields/arguments.md
           - guides/domain-definition/fields/simple-fields.md
           - guides/domain-definition/fields/container-fields.md
           - guides/domain-definition/fields/association-fields.md
+          - guides/domain-definition/fields/arguments.md
         - guides/domain-definition/aggregates.md
         - guides/domain-definition/entities.md
+        - guides/domain-definition/relationships.md
         - guides/domain-definition/value-objects.md
         - guides/domain-definition/deciding-between-elements.md
         - guides/domain-definition/events.md

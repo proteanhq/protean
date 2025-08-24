@@ -110,8 +110,6 @@ class:
 An aggregate's behavior can be customized with by passing additional options
 to its decorator, or with a `Meta` class as we saw earlier.
 
-Available options are:
-
 ### `abstract`
 
 Marks an Aggregate as abstract if `True`. If abstract, the aggregate
@@ -195,8 +193,9 @@ stream to listen to.
 
 ## Associations
 
-Protean provides multiple options for Aggregates to weave object graphs with
-enclosed Entities.
+Protean provides multiple options for Aggregates to weave object graphs with enclosed Entities. Associations define relationships between the aggregate and its child entities, establishing clear parent-child hierarchies within aggregate boundaries.
+
+For comprehensive documentation on relationships, see [Expressing Relationships](./relationships.md).
 
 ### `HasOne`
 
@@ -246,20 +245,24 @@ Out[7]:
  'id': '19031285-6e27-4b7e-8b06-47ba6766208a'}
 ```
 
-### `Reference`
+### Bidirectional Relationships
 
-A `Reference` field establishes the opposite relationship with the parent at
-the data level. Entities that are connected by `HasMany` and `HasOne`
-relationships are connected to the owning aggregate with a `Reference` field
-acting as the foreign key.
+Associations automatically create bidirectional relationships. Child entities get `Reference` fields that point back to their parent aggregate, enabling navigation in both directions:
 
 ```shell
+# Navigation from parent to child
 In [8]: post = current_domain.repository_for(Post).get(post.id)
+In [9]: post.comments
+Out[9]: [<Comment: Comment object (...)>, <Comment: Comment object (...)>]
 
-In [9]: post.comments[0].post
-Out[9]: <Post: Post object (id: e288ee30-e1d5-4fb3-94d8-d8083a6dc9db)>
+# Navigation from child to parent
+In [10]: comment = post.comments[0]
+In [11]: comment.post
+Out[11]: <Post: Post object (id: e288ee30-e1d5-4fb3-94d8-d8083a6dc9db)>
 
-In [10]: post.comments[0].post_id
-Out[10]: 'e288ee30-e1d5-4fb3-94d8-d8083a6dc9db'
+# Access to foreign key value
+In [12]: comment.post_id
+Out[12]: 'e288ee30-e1d5-4fb3-94d8-d8083a6dc9db'
 ```
-<!-- FIXME Add details about the attribute `<>_id` and the entity `<>` -->
+
+The `Reference` field (`comment.post`) provides access to the full parent object, while the shadow field (`comment.post_id`) contains the foreign key value.

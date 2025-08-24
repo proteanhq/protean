@@ -85,6 +85,48 @@ and associate it with the entity, just like in an aggregate.
 
 ## Associations
 
-Entities can be further enclose other entities within them, with the `HasOne`
-and `HasMany` relationships, just like in an aggregate. Refer to the Aggregate's
-[Association documentation](./aggregates.md#associations) for more details.
+Entities can enclose other entities within them using `HasOne` and `HasMany` relationships, similar to aggregates. Additionally, entities automatically receive `Reference` fields that establish inverse relationships to their parent aggregate.
+
+### Automatic Reference Fields
+
+When an entity is associated with an aggregate, Protean automatically creates a `Reference` field that points back to the parent:
+
+```python
+@domain.aggregate
+class Order:
+    number = String(max_length=20)
+    items = HasMany("OrderItem")
+
+@domain.entity(part_of=Order)
+class OrderItem:
+    product_name = String(max_length=100)
+    quantity = Integer()
+    # Automatically gets: order = Reference(Order)
+    # Automatically gets: order_id = String()  # Shadow field
+```
+
+### Explicit Reference Fields
+
+You can also explicitly define reference fields for more control:
+
+```python
+@domain.entity(part_of=Order)
+class OrderItem:
+    product_name = String(max_length=100)
+    quantity = Integer()
+    order = Reference(Order, referenced_as="order_number")
+    # Creates shadow field 'order_number' instead of 'order_id'
+```
+
+### Navigation Between Entities
+
+Reference fields enable navigation from child entities back to their parent aggregate:
+
+```python
+# Access parent aggregate from entity
+order_item = OrderItem(product_name="Widget", quantity=2)
+parent_order = order_item.order  # Order object
+order_id = order_item.order_id   # Order's ID value
+```
+
+For comprehensive relationship documentation, see [Expressing Relationships](./relationships.md) and [Association Fields](./fields/association-fields.md).
