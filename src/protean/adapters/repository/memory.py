@@ -5,7 +5,7 @@ import json
 from collections import defaultdict
 from datetime import date, datetime
 from itertools import count
-from operator import itemgetter
+
 from threading import Lock
 from typing import Any
 from uuid import UUID
@@ -22,6 +22,46 @@ from protean.utils.container import Options
 from protean.utils.globals import current_uow
 from protean.utils.query import Q
 from protean.utils.reflection import attributes, fields, id_field
+
+
+class _ReverseCompare:
+    """Helper class to reverse comparison order for descending sorts"""
+
+    def __init__(self, value):
+        self.value = value
+
+    def __lt__(self, other):
+        if isinstance(other, _ReverseCompare):
+            # Both are reverse, so flip the comparison
+            return self.value > other.value
+        # Comparing with non-reverse value should not happen in our context
+        return self.value > other
+
+    def __le__(self, other):
+        if isinstance(other, _ReverseCompare):
+            return self.value >= other.value
+        return self.value >= other
+
+    def __eq__(self, other):
+        if isinstance(other, _ReverseCompare):
+            return self.value == other.value
+        return self.value == other
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __gt__(self, other):
+        if isinstance(other, _ReverseCompare):
+            return self.value < other.value
+        return self.value < other
+
+    def __ge__(self, other):
+        if isinstance(other, _ReverseCompare):
+            return self.value <= other.value
+        return self.value <= other
+
+    def __repr__(self):
+        return f"_ReverseCompare({self.value!r})"
 
 
 class MemoryModel(BaseDatabaseModel):
@@ -374,25 +414,46 @@ class DictDAO(BaseDAO):
             items = list(conn._db["data"][self.schema_name].values())
 
         # Sort the filtered results based on the order_by clause
-        for o_key in order_by:
-            reverse = False
-            if o_key.startswith("-"):
-                reverse = True
-                o_key = o_key[1:]
+        # Use compound sorting to match database behavior
+        if order_by:
 
-            null_items = [item for item in items if item.get(o_key) is None]
-            non_null_items = [item for item in items if item.get(o_key) is not None]
-            sorted_items = sorted(
-                non_null_items, key=itemgetter(o_key), reverse=reverse
-            )
+            def compound_sort_key(item):
+                """Create a compound sort key that matches database ORDER BY behavior"""
+                key_parts = []
 
-            # null values sort as if larger than any non-null value
-            # So in reverse (DESC) order, null values come first
-            # in ASC order, null values come last
-            if reverse:
-                items = null_items + sorted_items
-            else:
-                items = sorted_items + null_items
+                for o_key in order_by:
+                    is_desc = o_key.startswith("-")
+                    field_name = o_key[1:] if is_desc else o_key
+                    value = item.get(field_name)
+
+                    # Handle nulls consistently:
+                    # - In ASC order: nulls come last
+                    # - In DESC order: nulls come first
+                    # We use tuples where the first element determines null vs non-null precedence
+                    if value is None:
+                        if is_desc:
+                            # DESC: nulls should come first (smallest sort key)
+                            key_parts.append((0,))
+                        else:
+                            # ASC: nulls should come last (largest sort key)
+                            key_parts.append((2,))
+                    else:
+                        # Non-null values get precedence 1
+                        if is_desc:
+                            # For DESC order, negate numeric values or reverse string comparison
+                            if isinstance(value, (int, float)):
+                                key_parts.append((1, -value))
+                            else:
+                                # For non-numeric values (strings, dates, etc.), use reverse comparison
+                                # We'll wrap in a special class that reverses all comparisons
+                                key_parts.append((1, _ReverseCompare(value)))
+                        else:
+                            # For ASC order, use value directly
+                            key_parts.append((1, value))
+
+                return tuple(key_parts)
+
+            items = sorted(items, key=compound_sort_key)
 
         result = ResultSet(
             offset=offset,
