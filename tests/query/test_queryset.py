@@ -302,7 +302,7 @@ class TestCriteriaConstruction:
         """Test that clone works as expected... it clones!"""
         query1 = test_domain.repository_for(Person)._dao.query.filter(last_name="John")
         query2 = query1.filter(age=3)
-        query3 = query2.order_by("name")
+        query3 = query2.order_by("first_name")
 
         assert query1 != query2
         assert query2 != query3
