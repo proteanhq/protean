@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import functools
+import hashlib
+import json
 import logging
 from collections import defaultdict
 from enum import Enum
@@ -73,11 +75,14 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     # Version of the message envelope format itself
     message_format_version = fields.String(default="1.0")
 
+    # Message integrity checksum for validation
+    checksum = fields.String()
+
     # Version that the stream is expected to be when the message is written
     expected_version = fields.Integer()
 
     @classmethod
-    def from_dict(cls, message: Dict) -> Message:
+    def from_dict(cls, message: Dict, validate: bool = True) -> Message:
         try:
             # Handle message format version - default to "1.0" if not present (backward compatibility)
             # Use explicit check to preserve None and empty string values
@@ -86,7 +91,8 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
             else:
                 message_format_version = "1.0"
 
-            return Message(
+            # Create the message object
+            msg = Message(
                 message_format_version=message_format_version,
                 stream_name=message["stream_name"],
                 type=message["type"],
@@ -96,7 +102,25 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 global_position=message["global_position"],
                 time=message["time"],
                 id=message["id"],
+                checksum=message.get("checksum"),  # Include checksum if present
             )
+
+            # Validate integrity if requested and checksum is present
+            if validate and msg.checksum:
+                if not msg.validate_checksum():
+                    raise DeserializationError(
+                        message_id=str(message.get("id", "unknown")),
+                        error="Message integrity validation failed - checksum mismatch",
+                        context={
+                            "stored_checksum": msg.checksum,
+                            "computed_checksum": msg.compute_checksum(),
+                            "validation_requested": True,
+                            "message_type": message.get("type", "unknown"),
+                            "stream_name": message.get("stream_name", "unknown"),
+                        },
+                    )
+
+            return msg
         except KeyError as e:
             # Convert KeyError to DeserializationError with better context
             message_id = message.get("id", "unknown")
@@ -118,6 +142,40 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 error=f"Missing required field '{missing_field}' in message data",
                 context=context,
             ) from e
+
+    def compute_checksum(self) -> str:
+        """Compute message checksum for integrity validation.
+
+        Uses the container's existing to_dict() method and excludes only the checksum field
+        to create a consistent hash. This approach is robust against Message structure changes.
+
+        Returns:
+            str: Hexadecimal representation of the message checksum
+        """
+        # Use the container's built-in serialization, excluding checksum field
+        checksum_data = self.to_dict()
+        checksum_data.pop("checksum", None)  # Remove checksum field if present
+
+        # Convert to JSON with sorted keys for consistent hashing
+        json_data = json.dumps(checksum_data, sort_keys=True, separators=(",", ":"))
+
+        # Compute SHA-256 hash
+        return hashlib.sha256(json_data.encode("utf-8")).hexdigest()
+
+    def validate_checksum(self) -> bool:
+        """Validate message integrity using stored checksum.
+
+        Computes the current checksum and compares it with the stored checksum
+        to verify message integrity.
+
+        Returns:
+            bool: True if message integrity is valid, False otherwise
+        """
+        if not hasattr(self, "checksum") or not self.checksum:
+            return False  # No checksum available for validation
+
+        current_checksum = self.compute_checksum()
+        return current_checksum == self.checksum
 
     def to_object(self) -> Union[BaseEvent, BaseCommand]:
         """Reconstruct the event/command object from the message data."""
@@ -191,13 +249,19 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
             if not message_object.__class__.__name__.endswith("FactEvent"):
                 expected_version = message_object._expected_version
 
-        return cls(
+        # Create the message
+        message = cls(
             stream_name=message_object._metadata.stream,
             type=message_object.__class__.__type__,
             data=message_object.payload,
             metadata=message_object._metadata,
             expected_version=expected_version,
         )
+
+        # Automatically compute and set checksum for integrity validation
+        message.checksum = message.compute_checksum()
+
+        return message
 
 
 class handle:
