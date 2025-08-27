@@ -123,3 +123,51 @@ class TestReferencedAs:
 
         hydrated_user = user_repo._dao.query.filter(full_name__iexact="john doe").first
         assert hydrated_user.name == "John Doe"
+
+    def test_order_by_referenced_as(self, test_domain):
+        user1 = User(name="John Doe", age=45)
+        user2 = User(name="Jane Doe", age=35)
+        user3 = User(name="Jim Doe", age=12)
+        user4 = User(name="Uncle Doe", age=45)
+        user_repo = test_domain.repository_for(User)
+        user_repo.add(user1)
+        user_repo.add(user2)
+        user_repo.add(user3)
+        user_repo.add(user4)
+
+        # Should work with field name
+        asc_ordered_users = user_repo._dao.query.order_by("age").all().items
+        assert asc_ordered_users[0].name == "Jim Doe"
+        assert asc_ordered_users[1].name == "Jane Doe"
+        assert asc_ordered_users[2].name in ["Uncle Doe", "John Doe"]
+        assert asc_ordered_users[3].name in ["Uncle Doe", "John Doe"]
+
+        # Should work with referenced as as well
+        asc_ordered_users = user_repo._dao.query.order_by("years").all().items
+        assert asc_ordered_users[0].name == "Jim Doe"
+        assert asc_ordered_users[1].name == "Jane Doe"
+        assert asc_ordered_users[2].name in ["Uncle Doe", "John Doe"]
+        assert asc_ordered_users[3].name in ["Uncle Doe", "John Doe"]
+
+        # Should work irrespective of asc or desc
+        desc_ordered_users = user_repo._dao.query.order_by("-years").all().items
+        assert desc_ordered_users[0].name in ["Uncle Doe", "John Doe"]
+        assert desc_ordered_users[1].name in ["Uncle Doe", "John Doe"]
+        assert desc_ordered_users[2].name == "Jane Doe"
+        assert desc_ordered_users[3].name == "Jim Doe"
+
+        # Should work with multiple fields
+        asc_ordered_users = user_repo._dao.query.order_by(["age", "name"]).all().items
+        assert asc_ordered_users[0].name == "Jim Doe"
+        assert asc_ordered_users[1].name == "Jane Doe"
+        assert asc_ordered_users[2].name in ["Uncle Doe", "John Doe"]
+        assert asc_ordered_users[3].name in ["Uncle Doe", "John Doe"]
+
+        # Should work with multiple fields in descending order
+        desc_ordered_users = (
+            user_repo._dao.query.order_by(["-age", "-name"]).all().items
+        )
+        assert desc_ordered_users[0].name in ["Uncle Doe", "John Doe"]
+        assert desc_ordered_users[1].name in ["Uncle Doe", "John Doe"]
+        assert desc_ordered_users[2].name == "Jane Doe"
+        assert desc_ordered_users[3].name == "Jim Doe"

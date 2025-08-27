@@ -240,6 +240,10 @@ class TestViaInAssociationField:
 
         # Retrieve and remove instructor
         retrieved_course = test_domain.repository_for(Course).get(course.course_id)
+        assert retrieved_course.instructor == instructor
+        assert retrieved_course.instructor.course_assigned == course.course_id
+        assert instructor.course.instructor.course == course
+
         retrieved_course.instructor = None
         test_domain.repository_for(Course).add(retrieved_course)
 

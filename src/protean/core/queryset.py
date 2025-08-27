@@ -172,10 +172,43 @@ class QuerySet:
     def order_by(self, order_by: Union[list, str]):
         """Update order_by setting for filter set"""
         clone = self._clone()
+
         if isinstance(order_by, str):
             order_by = [order_by]
 
-        clone._order_by.extend(item for item in order_by if item not in clone._order_by)
+        # Get the attribute name of the field
+        # We want to support both field name and attribute name in the query,
+        #   so we look for the key name in both fields and attributes.
+        #
+        # If we don't find it in either, we raise an error.
+        new_order_by = []
+
+        for key in order_by:
+            # If the key starts with a minus sign, it is a descending order
+            reverse = False
+            if key.startswith("-"):
+                reverse = True
+                cleaned_key = key[1:]
+            else:
+                cleaned_key = key
+
+            if cleaned_key in fields(self._entity_cls):
+                attr_name = fields(self._entity_cls)[cleaned_key].attribute_name
+            elif cleaned_key in attributes(self._entity_cls):
+                attr_name = attributes(self._entity_cls)[cleaned_key].attribute_name
+            else:
+                raise KeyError(
+                    f"Key '{cleaned_key}' not found in either fields or attributes of {self._entity_cls}"
+                )
+
+            if reverse:
+                new_order_by.append(f"-{attr_name}")
+            else:
+                new_order_by.append(attr_name)
+
+        clone._order_by.extend(
+            item for item in new_order_by if item not in clone._order_by
+        )
 
         return clone
 
