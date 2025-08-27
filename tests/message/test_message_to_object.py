@@ -5,7 +5,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent, Metadata
-from protean.exceptions import InvalidDataError
+from protean.exceptions import InvalidDataError, DeserializationError
 from protean.fields import Identifier, String
 from protean.utils.mixins import Message
 
@@ -79,9 +79,15 @@ def test_construct_command_from_message(test_domain):
 def test_invalid_message_throws_exception():
     message = Message(metadata=Metadata(kind="INVALID"))
 
-    with pytest.raises(InvalidDataError) as exc:
+    with pytest.raises(DeserializationError) as exc:
         message.to_object()
 
-    assert exc.value.messages == {
+    # Check that it's the right exception with enhanced context
+    error = exc.value
+    assert "Message type is not supported for deserialization" in error.error
+
+    # Check that the original InvalidDataError is preserved in the exception chain
+    assert isinstance(error.__cause__, InvalidDataError)
+    assert error.__cause__.messages == {
         "kind": ["Message type is not supported for deserialization"]
     }

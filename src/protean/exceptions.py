@@ -112,3 +112,31 @@ class ExpectedVersionError(ProteanException):
 
 class TransactionError(ProteanException):
     """Raised when a transaction fails to commit or encounters an error during processing"""
+
+
+class DeserializationError(ProteanException):
+    """Exception raised when message deserialization fails.
+
+    Provides enhanced error context including message details and the original error
+    to help with debugging and troubleshooting message processing issues.
+    """
+
+    def __init__(
+        self, message_id: str, error: str, context: dict[str, Any] = None, **kwargs
+    ):
+        """Initialize DeserializationError.
+
+        Args:
+            message_id: Unique identifier of the message that failed to deserialize
+            error: Description of the error that occurred
+            context: Additional context information about the message and error
+        """
+        self.message_id = message_id
+        self.error = error
+        self.context = context or {}
+        super().__init__(
+            f"Failed to deserialize message {message_id}: {error}", **kwargs
+        )
+
+    def __repr__(self) -> str:
+        return f"DeserializationError(message_id='{self.message_id}', error='{self.error}', context={self.context})"

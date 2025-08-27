@@ -10,7 +10,11 @@ from protean import fields
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
-from protean.exceptions import ConfigurationError, InvalidDataError
+from protean.exceptions import (
+    ConfigurationError,
+    InvalidDataError,
+    DeserializationError,
+)
 from protean.utils import DomainObjects
 from protean.utils.container import BaseContainer, OptionsMixin
 from protean.utils.eventing import Metadata
@@ -74,44 +78,102 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
 
     @classmethod
     def from_dict(cls, message: Dict) -> Message:
-        # Handle message format version - default to "1.0" if not present (backward compatibility)
-        # Use explicit check to preserve None and empty string values
-        if "message_format_version" in message:
-            message_format_version = message["message_format_version"]
-        else:
-            message_format_version = "1.0"
+        try:
+            # Handle message format version - default to "1.0" if not present (backward compatibility)
+            # Use explicit check to preserve None and empty string values
+            if "message_format_version" in message:
+                message_format_version = message["message_format_version"]
+            else:
+                message_format_version = "1.0"
 
-        return Message(
-            message_format_version=message_format_version,
-            stream_name=message["stream_name"],
-            type=message["type"],
-            data=message["data"],
-            metadata=message["metadata"],
-            position=message["position"],
-            global_position=message["global_position"],
-            time=message["time"],
-            id=message["id"],
-        )
+            return Message(
+                message_format_version=message_format_version,
+                stream_name=message["stream_name"],
+                type=message["type"],
+                data=message["data"],
+                metadata=message["metadata"],
+                position=message["position"],
+                global_position=message["global_position"],
+                time=message["time"],
+                id=message["id"],
+            )
+        except KeyError as e:
+            # Convert KeyError to DeserializationError with better context
+            message_id = message.get("id", "unknown")
+            missing_field = str(e).strip("'\"")
+
+            # Build context about available fields
+            context = {
+                "missing_field": missing_field,
+                "available_fields": list(message.keys())
+                if isinstance(message, dict)
+                else "not_available",
+                "message_type": message.get("type", "unknown"),
+                "stream_name": message.get("stream_name", "unknown"),
+                "original_exception_type": "KeyError",
+            }
+
+            raise DeserializationError(
+                message_id=str(message_id),
+                error=f"Missing required field '{missing_field}' in message data",
+                context=context,
+            ) from e
 
     def to_object(self) -> Union[BaseEvent, BaseCommand]:
         """Reconstruct the event/command object from the message data."""
-        if self.metadata.kind not in [
-            MessageType.COMMAND.value,
-            MessageType.EVENT.value,
-        ]:
-            # We are dealing with a malformed or unknown message
-            raise InvalidDataError(
-                {"kind": ["Message type is not supported for deserialization"]}
+        try:
+            if self.metadata.kind not in [
+                MessageType.COMMAND.value,
+                MessageType.EVENT.value,
+            ]:
+                # We are dealing with a malformed or unknown message
+                raise InvalidDataError(
+                    {"kind": ["Message type is not supported for deserialization"]}
+                )
+
+            element_cls = current_domain._events_and_commands.get(
+                self.metadata.type, None
             )
 
-        element_cls = current_domain._events_and_commands.get(self.metadata.type, None)
+            if element_cls is None:
+                raise ConfigurationError(
+                    f"Message type {self.metadata.type} is not registered with the domain."
+                )
 
-        if element_cls is None:
-            raise ConfigurationError(
-                f"Message type {self.metadata.type} is not registered with the domain."
-            )
+            return element_cls(_metadata=self.metadata, **self.data)
 
-        return element_cls(_metadata=self.metadata, **self.data)
+        except Exception as e:
+            # Enhanced error context for debugging
+            context = {
+                "type": getattr(self, "type", "unknown"),
+                "stream_name": getattr(self, "stream_name", "unknown"),
+                "metadata_kind": getattr(self.metadata, "kind", "unknown")
+                if hasattr(self, "metadata")
+                else "unknown",
+                "metadata_type": getattr(self.metadata, "type", "unknown")
+                if hasattr(self, "metadata")
+                else "unknown",
+                "message_format_version": getattr(
+                    self, "message_format_version", "unknown"
+                ),
+                "position": getattr(self, "position", "unknown"),
+                "global_position": getattr(self, "global_position", "unknown"),
+                "original_exception_type": type(e).__name__,
+                "has_metadata": hasattr(self, "metadata"),
+                "has_data": hasattr(self, "data"),
+                "data_keys": list(self.data.keys())
+                if hasattr(self, "data") and isinstance(self.data, dict)
+                else "not_available",
+            }
+
+            message_id = getattr(self, "id", "unknown")
+            # Handle case where ID is None
+            if message_id is None:
+                message_id = "unknown"
+
+            raise DeserializationError(
+                message_id=str(message_id), error=str(e), context=context
+            ) from e
 
     @classmethod
     def to_message(cls, message_object: Union[BaseEvent, BaseCommand]) -> Message:

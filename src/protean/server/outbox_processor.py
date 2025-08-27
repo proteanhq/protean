@@ -208,11 +208,9 @@ class OutboxProcessor(BaseSubscription):
         Returns:
             bool: True if message was processed successfully, False otherwise.
         """
-        # Use UnitOfWork for atomic transaction management
-        # This ensures all operations (lock, publish, status update) are atomic
-        from protean.core.unit_of_work import UnitOfWork
-
         try:
+            # Use UnitOfWork for atomic transaction management
+            # This ensures all operations (lock, publish, status update) are atomic
             with UnitOfWork():
                 # Attempt to acquire lock and start processing
                 success, result = message.start_processing(self.worker_id)
