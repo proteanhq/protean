@@ -63,14 +63,26 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     - ID generation
     - Payload construction
     - Serialization and De-serialization
+    - Message format versioning for schema evolution
     """
+
+    # Version of the message envelope format itself
+    message_format_version = fields.String(default="1.0")
 
     # Version that the stream is expected to be when the message is written
     expected_version = fields.Integer()
 
     @classmethod
     def from_dict(cls, message: Dict) -> Message:
+        # Handle message format version - default to "1.0" if not present (backward compatibility)
+        # Use explicit check to preserve None and empty string values
+        if "message_format_version" in message:
+            message_format_version = message["message_format_version"]
+        else:
+            message_format_version = "1.0"
+
         return Message(
+            message_format_version=message_format_version,
             stream_name=message["stream_name"],
             type=message["type"],
             data=message["data"],
