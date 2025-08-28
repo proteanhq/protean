@@ -7,7 +7,7 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent, Metadata
 from protean.exceptions import InvalidDataError, DeserializationError
 from protean.fields import Identifier, String
-from protean.utils.mixins import Message
+from protean.utils.message import Message
 
 
 class User(BaseAggregate):

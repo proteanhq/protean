@@ -7,7 +7,7 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import ConfigurationError, DeserializationError
 from protean.fields import Identifier, String
-from protean.utils.mixins import Message
+from protean.utils.message import Message
 from protean.utils.eventing import Metadata
 
 

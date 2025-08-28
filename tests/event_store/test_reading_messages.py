@@ -8,7 +8,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
-from protean.utils.mixins import Message
+from protean.utils.message import Message
 
 
 class User(BaseAggregate):

@@ -11,7 +11,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
 from protean.utils.globals import g
-from protean.utils.mixins import Message
+from protean.utils.message import Message
 
 from .subscription.broker_subscription import BrokerSubscription
 from .subscription.event_store_subscription import EventStoreSubscription

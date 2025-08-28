@@ -5,7 +5,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.port.event_store import BaseEventStore
 from protean.utils.globals import current_domain
-from protean.utils.mixins import MessageRecord
+from protean.utils.message import MessageRecord
 
 
 class MemoryMessage(BaseAggregate, MessageRecord):
