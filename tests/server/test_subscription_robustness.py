@@ -12,7 +12,8 @@ from protean.server import Engine
 from protean.server.subscription.broker_subscription import BrokerSubscription
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
 from protean.utils.eventing import Metadata
-from protean.utils.mixins import Message, handle
+from protean.utils.message import Message
+from protean.utils.mixins import handle
 
 # Set up logger
 logger = logging.getLogger(__name__)

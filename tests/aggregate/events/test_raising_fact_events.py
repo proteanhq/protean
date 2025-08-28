@@ -2,7 +2,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import String
-from protean.utils.mixins import Message
+from protean.utils.message import Message
 
 
 class User(BaseAggregate):

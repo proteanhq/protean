@@ -7,7 +7,8 @@ from protean.core.subscriber import BaseSubscriber
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.utils import Processing
-from protean.utils.mixins import Message, handle
+from protean.utils.message import Message
+from protean.utils.mixins import handle
 
 # Counter for tracking method calls
 error_handler_counter = 0

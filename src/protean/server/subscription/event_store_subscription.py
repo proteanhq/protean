@@ -7,7 +7,7 @@ from typing import List, Union
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.port.event_store import BaseEventStore
-from protean.utils.mixins import Message, MessageType
+from protean.utils.message import Message, MessageType
 from protean.utils import fqn
 
 from . import BaseSubscription

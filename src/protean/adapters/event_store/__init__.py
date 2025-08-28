@@ -16,7 +16,7 @@ from protean.core.event_sourced_repository import (
 from protean.core.projector import BaseProjector
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.utils import fqn
-from protean.utils.mixins import Message
+from protean.utils.message import Message
 
 if TYPE_CHECKING:
     from protean.domain import Domain

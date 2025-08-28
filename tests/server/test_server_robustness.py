@@ -13,7 +13,8 @@ from protean.server import Engine
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
 from protean.utils import Processing
 from protean.utils.eventing import Metadata
-from protean.utils.mixins import Message, handle
+from protean.utils.message import Message
+from protean.utils.mixins import handle
 
 # Global variables to track processing
 event_counter = 0

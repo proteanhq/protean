@@ -4,7 +4,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.fields import HasOne, Identifier, String
-from protean.utils.mixins import Message
+from protean.utils.message import Message
 
 
 class Account(BaseEntity):

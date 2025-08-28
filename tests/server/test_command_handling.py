@@ -8,7 +8,8 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.utils import Processing
-from protean.utils.mixins import Message, handle
+from protean.utils.message import Message
+from protean.utils.mixins import handle
 
 counter = 0
 
