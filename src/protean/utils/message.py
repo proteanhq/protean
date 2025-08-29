@@ -14,6 +14,7 @@ from protean.exceptions import (
     InvalidDataError,
     DeserializationError,
 )
+from protean.core.value_object import BaseValueObject
 from protean.utils.container import BaseContainer, OptionsMixin
 from protean.utils.eventing import Metadata
 from protean.utils.globals import current_domain
@@ -59,6 +60,23 @@ class MessageRecord(BaseContainer):
     metadata = fields.ValueObject(Metadata)
 
 
+class MessageEnvelope(BaseValueObject):
+    """Message envelope containing integrity and versioning information."""
+
+    specversion = fields.String(default="1.0")
+    checksum = fields.String()
+
+    @classmethod
+    def build(cls, payload: dict) -> MessageEnvelope:
+        return cls(checksum=cls.compute_checksum(payload))
+
+    @classmethod
+    def compute_checksum(cls, payload: dict) -> str:
+        """Compute checksum for message integrity validation."""
+        json_data = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(json_data.encode("utf-8")).hexdigest()
+
+
 class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     """Generic message class
     It provides concrete implementations for:
@@ -68,11 +86,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     - Message format versioning for schema evolution
     """
 
-    # Version of the message envelope format itself
-    message_format_version = fields.String(default="1.0")
-
-    # Message integrity checksum for validation
-    checksum = fields.String()
+    envelope = fields.ValueObject(MessageEnvelope)
 
     # Version that the stream is expected to be when the message is written
     expected_version = fields.Integer()
@@ -80,16 +94,14 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     @classmethod
     def from_dict(cls, message: Dict, validate: bool = True) -> Message:
         try:
-            # Handle message format version - default to "1.0" if not present (backward compatibility)
-            # Use explicit check to preserve None and empty string values
-            if "message_format_version" in message:
-                message_format_version = message["message_format_version"]
-            else:
-                message_format_version = "1.0"
+            envelope = (
+                MessageEnvelope(**message.get("envelope"))
+                if message.get("envelope", None)
+                else MessageEnvelope()
+            )
 
             # Create the message object
             msg = Message(
-                message_format_version=message_format_version,
                 stream_name=message["stream_name"],
                 type=message["type"],
                 data=message["data"],
@@ -98,18 +110,20 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 global_position=message["global_position"],
                 time=message["time"],
                 id=message["id"],
-                checksum=message.get("checksum"),  # Include checksum if present
+                envelope=envelope,
             )
 
             # Validate integrity if requested and checksum is present
-            if validate and msg.checksum:
+            if validate and msg.envelope.checksum:
                 if not msg.validate_checksum():
                     raise DeserializationError(
                         message_id=str(message.get("id", "unknown")),
                         error="Message integrity validation failed - checksum mismatch",
                         context={
-                            "stored_checksum": msg.checksum,
-                            "computed_checksum": msg.compute_checksum(),
+                            "stored_checksum": msg.envelope.checksum,
+                            "computed_checksum": MessageEnvelope.compute_checksum(
+                                msg.data
+                            ),
                             "validation_requested": True,
                             "message_type": message.get("type", "unknown"),
                             "stream_name": message.get("stream_name", "unknown"),
@@ -139,25 +153,6 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 context=context,
             ) from e
 
-    def compute_checksum(self) -> str:
-        """Compute message checksum for integrity validation.
-
-        Uses the container's existing to_dict() method and excludes only the checksum field
-        to create a consistent hash. This approach is robust against Message structure changes.
-
-        Returns:
-            str: Hexadecimal representation of the message checksum
-        """
-        # Use the container's built-in serialization, excluding checksum field
-        checksum_data = self.to_dict()
-        checksum_data.pop("checksum", None)  # Remove checksum field if present
-
-        # Convert to JSON with sorted keys for consistent hashing
-        json_data = json.dumps(checksum_data, sort_keys=True, separators=(",", ":"))
-
-        # Compute SHA-256 hash
-        return hashlib.sha256(json_data.encode("utf-8")).hexdigest()
-
     def validate_checksum(self) -> bool:
         """Validate message integrity using stored checksum.
 
@@ -167,11 +162,11 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
         Returns:
             bool: True if message integrity is valid, False otherwise
         """
-        if not hasattr(self, "checksum") or not self.checksum:
+        if not hasattr(self, "envelope") or not self.envelope.checksum:
             return False  # No checksum available for validation
 
-        current_checksum = self.compute_checksum()
-        return current_checksum == self.checksum
+        current_checksum = MessageEnvelope.compute_checksum(self.data)
+        return current_checksum == self.envelope.checksum
 
     def to_object(self) -> Union[BaseEvent, BaseCommand]:
         """Reconstruct the event/command object from the message data."""
@@ -198,6 +193,9 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
 
         except Exception as e:
             # Enhanced error context for debugging
+            envelope = getattr(self, "envelope", None)
+            envelope_data = envelope.to_dict() if envelope else None
+
             context = {
                 "type": getattr(self, "type", "unknown"),
                 "stream_name": getattr(self, "stream_name", "unknown"),
@@ -207,9 +205,6 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 "metadata_type": getattr(self.metadata, "type", "unknown")
                 if hasattr(self, "metadata")
                 else "unknown",
-                "message_format_version": getattr(
-                    self, "message_format_version", "unknown"
-                ),
                 "position": getattr(self, "position", "unknown"),
                 "global_position": getattr(self, "global_position", "unknown"),
                 "original_exception_type": type(e).__name__,
@@ -218,6 +213,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 "data_keys": list(self.data.keys())
                 if hasattr(self, "data") and isinstance(self.data, dict)
                 else "not_available",
+                "envelope": envelope_data,
             }
 
             message_id = getattr(self, "id", "unknown")
@@ -255,6 +251,6 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
         )
 
         # Automatically compute and set checksum for integrity validation
-        message.checksum = message.compute_checksum()
+        message.envelope = MessageEnvelope.build(message.data)
 
         return message

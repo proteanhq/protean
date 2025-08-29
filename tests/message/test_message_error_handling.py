@@ -7,7 +7,7 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import ConfigurationError, DeserializationError
 from protean.fields import Identifier, String
-from protean.utils.message import Message
+from protean.utils.message import Message, MessageEnvelope
 from protean.utils.eventing import Metadata
 
 
@@ -79,11 +79,13 @@ class TestMessageErrorHandling:
 
     def test_invalid_message_kind_raises_enhanced_error(self):
         """Test that invalid message kind raises DeserializationError with context"""
+
         message = Message(
             id="invalid-msg-1",
             type="test.invalid",
             stream_name="test-stream",
             data={"test": "data"},
+            envelope=MessageEnvelope(specversion="1.0", checksum=""),
             metadata=Metadata(
                 id="invalid-meta-1",
                 type="test.invalid",
@@ -106,7 +108,8 @@ class TestMessageErrorHandling:
         assert context["stream_name"] == "test-stream"
         assert context["metadata_kind"] == "INVALID_KIND"
         assert context["metadata_type"] == "test.invalid"
-        assert context["message_format_version"] == "1.0"  # Default value
+        assert context["envelope"] is not None  # Envelope should be present
+        assert context["envelope"]["specversion"] == "1.0"
         assert context["original_exception_type"] == "InvalidDataError"
         assert context["has_metadata"] is True
         assert context["has_data"] is True
@@ -180,9 +183,9 @@ class TestMessageErrorHandling:
 
     def test_missing_metadata_raises_enhanced_error(self):
         """Test that message with missing metadata raises DeserializationError"""
-        # Create message dict without metadata to test from_dict error handling
+        # Create message dict with envelope but without metadata to test from_dict error handling
         message_dict = {
-            "message_format_version": "1.0",
+            "envelope": {"specversion": "1.0", "checksum": ""},
             "id": "no-metadata-msg-1",
             "type": "test.event",
             "stream_name": "test-stream",
@@ -205,9 +208,9 @@ class TestMessageErrorHandling:
 
     def test_missing_data_raises_enhanced_error(self):
         """Test that message with missing data raises DeserializationError"""
-        # Create message dict without data to test from_dict error handling
+        # Create message dict with envelope but without data to test from_dict error handling
         message_dict = {
-            "message_format_version": "1.0",
+            "envelope": {"specversion": "1.0", "checksum": ""},
             "id": "no-data-msg-1",
             "type": "test.registered",
             "stream_name": "user-123",
@@ -290,6 +293,7 @@ class TestMessageErrorHandling:
 
     def test_enhanced_context_includes_all_relevant_fields(self):
         """Test that error context includes all relevant message fields"""
+
         message = Message(
             id="context-test-msg-1",
             type="unregistered.type",
@@ -297,7 +301,7 @@ class TestMessageErrorHandling:
             data={"field1": "value1", "field2": "value2"},
             position=42,
             global_position=100,
-            message_format_version="2.0",
+            envelope=MessageEnvelope(specversion="2.0", checksum=""),
             metadata=Metadata(
                 id="context-test-meta-1",
                 type="unregistered.type",
@@ -318,7 +322,9 @@ class TestMessageErrorHandling:
         assert context["stream_name"] == "context-stream"
         assert context["metadata_kind"] == "EVENT"
         assert context["metadata_type"] == "unregistered.type"
-        assert context["message_format_version"] == "2.0"
+        assert context["envelope"] is not None  # Envelope should be present
+        assert context["envelope"]["specversion"] == "2.0"
+        assert context["envelope"]["checksum"] == ""
         assert context["position"] == 42
         assert context["global_position"] == 100
         assert context["original_exception_type"] == "ConfigurationError"
