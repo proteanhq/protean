@@ -4,10 +4,10 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
-from protean.core.event import BaseEvent, Metadata
+from protean.core.event import BaseEvent
 from protean.exceptions import InvalidDataError, DeserializationError
 from protean.fields import Identifier, String
-from protean.utils.eventing import Message
+from protean.utils.eventing import Message, Metadata
 
 
 class User(BaseAggregate):

@@ -43,6 +43,7 @@ from protean.utils import (
     clone_class,
 )
 from protean.utils.container import Element
+from protean.utils.eventing import Metadata, MessageHeaders
 from protean.utils.globals import g
 from protean.utils.outbox import Outbox, OutboxRepository
 from protean.utils.reflection import declared_fields, has_fields, id_field
@@ -1189,26 +1190,36 @@ class Domain:
             if g.message_in_context.metadata.kind == "EVENT":
                 origin_stream = g.message_in_context.stream_name
 
-        command_with_metadata = command.__class__(
-            command.to_dict(),
-            _metadata={
-                "id": identifier,  # FIXME Double check command ID format and construction
-                "type": command.__class__.__type__,
-                "fqn": command._metadata.fqn,
-                "kind": "EVENT",
-                "stream": stream,
-                "origin_stream": origin_stream,
-                "timestamp": command._metadata.timestamp,
-                "version": command._metadata.version,
-                "sequence_id": None,
-                "payload_hash": hash(
+        headers = MessageHeaders(
+            id=identifier,  # FIXME Double check command ID format and construction
+            type=command.__class__.__type__,
+            time=command._metadata.headers.time
+            if (command._metadata.headers and command._metadata.headers.time)
+            else None,
+        )
+
+        metadata = Metadata(
+            fqn=command._metadata.fqn,
+            kind="COMMAND",
+            stream=stream,
+            origin_stream=origin_stream,
+            version=command._metadata.version,
+            sequence_id=None,
+            payload_hash=str(
+                hash(
                     json.dumps(
                         command.payload,
                         sort_keys=True,
                     )
-                ),
-                "asynchronous": asynchronous,
-            },
+                )
+            ),
+            asynchronous=asynchronous,
+            headers=headers,
+        )
+
+        command_with_metadata = command.__class__(
+            command.to_dict(),
+            _metadata=metadata,
         )
 
         return command_with_metadata

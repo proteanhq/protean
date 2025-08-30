@@ -38,17 +38,20 @@ def test_event_payload():
 
     assert event.to_dict() == {
         "_metadata": {
-            "id": f"test::user-{user_id}-0",
-            "type": "Test.UserLoggedIn.v1",
             "fqn": fqn(UserLoggedIn),
             "kind": "EVENT",
             "stream": f"test::user-{user_id}",
             "origin_stream": None,
-            "timestamp": str(event._metadata.timestamp),
             "version": "v1",
             "sequence_id": "0",
             "payload_hash": event._metadata.payload_hash,
             "asynchronous": False,  # Test Domain event_processing is SYNC by default
+            "headers": {
+                "id": f"test::user-{user_id}-0",
+                "type": "Test.UserLoggedIn.v1",
+                "time": str(event._metadata.headers.time),
+                "traceparent": None,
+            },
         },
         "user_id": event.user_id,
     }

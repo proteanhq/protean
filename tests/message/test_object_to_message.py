@@ -65,21 +65,25 @@ def test_construct_message_from_event():
     assert type(message) is Message
 
     # Verify Message Content
-    assert message.headers.type == Registered.__type__
+    assert message.metadata.headers.type == Registered.__type__
     assert message.stream_name == f"{User.meta_.stream_category}-{identifier}"
     assert message.metadata.kind == "EVENT"
     assert message.data == user._events[-1].payload
-    assert message.headers.time is None
+    assert (
+        message.metadata.headers.time is not None
+    )  # Events now have time set automatically
     assert message.expected_version == user._version - 1
 
     # Verify Message Dict
     message_dict = message.to_dict()
 
-    assert message_dict["headers"]["type"] == Registered.__type__
+    assert message_dict["metadata"]["headers"]["type"] == Registered.__type__
     assert message_dict["metadata"]["kind"] == "EVENT"
     assert message_dict["stream_name"] == f"{User.meta_.stream_category}-{identifier}"
     assert message_dict["data"] == user._events[-1].payload
-    assert message_dict["headers"]["time"] is None
+    assert (
+        message_dict["metadata"]["headers"]["time"] is not None
+    )  # Events now have time set automatically
     assert (
         message_dict["expected_version"] == user._version - 1
     )  # Expected version is always one less than current
@@ -98,22 +102,22 @@ def test_construct_message_from_command(test_domain):
     assert type(message) is Message
 
     # Verify Message Content
-    assert message.headers.type == Register.__type__
+    assert message.metadata.headers.type == Register.__type__
     assert message.stream_name == f"{User.meta_.stream_category}:command-{identifier}"
     assert message.metadata.kind == "COMMAND"
     assert message.data == command_with_metadata.payload
-    assert message.headers.time is not None
+    assert message.metadata.headers.time is not None
 
     # Verify Message Dict
     message_dict = message.to_dict()
-    assert message_dict["headers"]["type"] == Register.__type__
+    assert message_dict["metadata"]["headers"]["type"] == Register.__type__
     assert message_dict["metadata"]["kind"] == "COMMAND"
     assert (
         message_dict["stream_name"]
         == f"{User.meta_.stream_category}:command-{identifier}"
     )
     assert message_dict["data"] == command_with_metadata.payload
-    assert message_dict["headers"]["time"] is not None
+    assert message_dict["metadata"]["headers"]["time"] is not None
 
 
 def test_construct_message_from_command_without_identifier(test_domain):
@@ -150,7 +154,7 @@ def test_construct_message_from_either_event_or_command(test_domain):
     assert type(message) is Message
 
     # Verify Message Content
-    assert message.headers.type == Register.__type__
+    assert message.metadata.headers.type == Register.__type__
     assert message.stream_name == f"{User.meta_.stream_category}:command-{identifier}"
     assert message.metadata.kind == "COMMAND"
     assert message.data == command.payload
@@ -166,11 +170,13 @@ def test_construct_message_from_either_event_or_command(test_domain):
     assert type(message) is Message
 
     # Verify Message Content
-    assert message.headers.type == Registered.__type__
+    assert message.metadata.headers.type == Registered.__type__
     assert message.stream_name == f"{User.meta_.stream_category}-{identifier}"
     assert message.metadata.kind == "EVENT"
     assert message.data == event.payload
-    assert message.headers.time is None
+    assert (
+        message.metadata.headers.time is not None
+    )  # Events now have time set automatically
 
 
 def test_object_is_registered_with_domain():

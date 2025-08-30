@@ -1,11 +1,13 @@
 import logging
 
+from datetime import datetime, timezone
+
 from protean.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
 )
 from protean.utils import DomainObjects, derive_element_class, fqn
-from protean.utils.eventing import BaseMessageType, Metadata
+from protean.utils.eventing import BaseMessageType, Metadata, MessageHeaders
 from protean.utils.globals import g
 
 logger = logging.getLogger(__name__)
@@ -40,13 +42,28 @@ class BaseEvent(BaseMessageType):
                 origin_stream = g.message_in_context.metadata.origin_stream
 
         # Value Objects are immutable, so we create a clone/copy and associate it
+        # Use existing headers if they exist, but ensure type is set
+        if hasattr(self._metadata, "headers") and self._metadata.headers:
+            # Preserve existing headers but ensure type is set
+            headers = MessageHeaders(
+                id=self._metadata.headers.id,
+                time=self._metadata.headers.time,
+                type=self._metadata.headers.type or self.__class__.__type__,
+                traceparent=self._metadata.headers.traceparent,
+            )
+        else:
+            # Create new headers with type and current time
+            headers = MessageHeaders(
+                type=self.__class__.__type__, time=datetime.now(timezone.utc)
+            )
+
         self._metadata = Metadata(
             self._metadata.to_dict(),  # Template from old Metadata
-            type=self.__class__.__type__,
             kind="EVENT",
             fqn=fqn(self.__class__),
             origin_stream=origin_stream,
             version=self.__class__.__version__,  # Was set in `__init_subclass__`
+            headers=headers,
         )
 
         # Finally lock the event and make it immutable

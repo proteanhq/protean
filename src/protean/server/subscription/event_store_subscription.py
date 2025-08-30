@@ -242,7 +242,7 @@ class EventStoreSubscription(BaseSubscription):
 
         for message in messages:
             logging.info(
-                f"{message.headers.type}-{message.headers.id} : {message.to_dict()}"
+                f"{message.metadata.headers.type}-{message.metadata.headers.id} : {message.to_dict()}"
             )
 
             # Handle only if the message is asynchronous

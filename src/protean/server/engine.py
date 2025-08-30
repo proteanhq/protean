@@ -214,12 +214,12 @@ class Engine:
                 handler_cls._handle(message)
 
                 logger.info(
-                    f"{handler_cls.__name__} processed {message.headers.type}-{message.headers.id} successfully."
+                    f"{handler_cls.__name__} processed {message.metadata.headers.type}-{message.metadata.headers.id} successfully."
                 )
                 return True
             except Exception as exc:  # Includes handling `ConfigurationError`
                 logger.error(
-                    f"Error handling message {message.stream_name}-{message.headers.id} "
+                    f"Error handling message {message.stream_name}-{message.metadata.headers.id} "
                     f"in {handler_cls.__name__}: {str(exc)}"
                 )
                 # Print the stack trace

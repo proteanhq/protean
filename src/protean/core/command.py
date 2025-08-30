@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from protean.exceptions import (
     IncorrectUsageError,
     InvalidDataError,
@@ -5,7 +7,7 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.utils import DomainObjects, derive_element_class, fqn
-from protean.utils.eventing import BaseMessageType, Metadata
+from protean.utils.eventing import BaseMessageType, Metadata, MessageHeaders
 from protean.utils.globals import g
 
 
@@ -38,13 +40,28 @@ class BaseCommand(BaseMessageType):
                 if g.message_in_context.metadata.kind == "EVENT":
                     origin_stream = g.message_in_context.stream_name
 
-            # Value Objects are immutable, so we create a clone/copy and associate it
+            # Use existing headers if they have meaningful content, otherwise create new ones
+            has_meaningful_headers = (
+                hasattr(self._metadata, "headers")
+                and self._metadata.headers
+                and (self._metadata.headers.type or self._metadata.headers.id)
+            )
+
+            headers = (
+                self._metadata.headers
+                if has_meaningful_headers
+                else MessageHeaders(
+                    type=self.__class__.__type__, time=datetime.now(timezone.utc)
+                )
+            )
+
             self._metadata = Metadata(
                 self._metadata.to_dict(),  # Template
                 kind="COMMAND",
                 fqn=fqn(self.__class__),
                 origin_stream=origin_stream,
                 version=version,
+                headers=headers,
             )
 
             # Finally lock the command and make it immutable

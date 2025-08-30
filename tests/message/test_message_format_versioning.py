@@ -73,17 +73,18 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "id": "test-id",
-                "type": "test.registered",
                 "fqn": "test.Registered",
                 "kind": "EVENT",
                 "stream": "user-123",
                 "origin_stream": None,
-                "timestamp": "2023-01-01T00:00:00Z",
                 "version": "v1",
                 "sequence_id": "1",
                 "payload_hash": "hash123",
                 "asynchronous": True,
+                "headers": {
+                    "id": "test-id",
+                    "type": "test.registered",
+                },
             },
             "position": 1,
             "global_position": 1,
@@ -95,7 +96,7 @@ class TestMessageFormatVersioning:
 
         assert message.envelope.specversion == "1.0"
         assert message.stream_name == "user-123"
-        assert message.headers.type == "test.registered"
+        assert message.metadata.headers.type == "test.registered"
 
     def test_from_dict_without_format_version_defaults_to_1_0(self):
         """Test messages with envelope but no specversion default to 1.0"""
@@ -107,17 +108,18 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "id": "test-id",
-                "type": "test.registered",
                 "fqn": "test.Registered",
                 "kind": "EVENT",
                 "stream": "user-123",
                 "origin_stream": None,
-                "timestamp": "2023-01-01T00:00:00Z",
                 "version": "v1",
                 "sequence_id": "1",
                 "payload_hash": "hash123",
                 "asynchronous": True,
+                "headers": {
+                    "id": "test-id",
+                    "type": "test.registered",
+                },
             },
             "position": 1,
             "global_position": 1,
@@ -139,17 +141,18 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "id": "test-id",
-                "type": "test.registered",
                 "fqn": "test.Registered",
                 "kind": "EVENT",
                 "stream": "user-123",
                 "origin_stream": None,
-                "timestamp": "2023-01-01T00:00:00Z",
                 "version": "v1",
                 "sequence_id": "1",
                 "payload_hash": "hash123",
                 "asynchronous": True,
+                "headers": {
+                    "id": "test-id",
+                    "type": "test.registered",
+                },
             },
             "position": 1,
             "global_position": 1,
@@ -207,25 +210,27 @@ class TestMessageFormatVersioning:
 
         # Verify other fields are preserved
         assert reconstructed_message.stream_name == original_message.stream_name
-        assert reconstructed_message.headers.type == original_message.headers.type
+        assert (
+            reconstructed_message.metadata.headers.type
+            == original_message.metadata.headers.type
+        )
         assert reconstructed_message.data == original_message.data
 
     def test_message_creation_with_explicit_format_version(self):
         """Test creating message with explicit specversion in envelope"""
 
-        headers = MessageHeaders(type="test.event")
-
         message = Message(
             envelope=MessageEnvelope(specversion="2.5", checksum=""),
             stream_name="test-stream",
-            headers=headers,
             data={"test": "data"},
             metadata=Metadata(
-                id="test-id",
-                type="test.event",
                 fqn="test.Event",
                 kind="EVENT",
                 stream="test-stream",
+                headers=MessageHeaders(
+                    id="test-id",
+                    type="test.event",
+                ),
             ),
         )
 
@@ -240,11 +245,13 @@ class TestMessageFormatVersioning:
             stream_name="test-stream",
             data={},
             metadata=Metadata(
-                id="test-id",
-                type="test.event",
                 fqn="test.Event",
                 kind="EVENT",
                 stream="test-stream",
+                headers=MessageHeaders(
+                    id="test-id",
+                    type="test.event",
+                ),
             ),
         )
         assert message.envelope.specversion == "1.0"
@@ -284,17 +291,18 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "id": "test-id",
-                "type": "test.registered",
                 "fqn": "test.Registered",
                 "kind": "EVENT",
                 "stream": "user-123",
                 "origin_stream": None,
-                "timestamp": "2023-01-01T00:00:00Z",
                 "version": "v1",
                 "sequence_id": "1",
                 "payload_hash": "hash123",
                 "asynchronous": True,
+                "headers": {
+                    "id": "test-id",
+                    "type": "test.registered",
+                },
             },
             "position": 1,
             "global_position": 1,
@@ -315,17 +323,18 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "id": "test-id",
-                "type": "test.registered",
                 "fqn": "test.Registered",
                 "kind": "EVENT",
                 "stream": "user-123",
                 "origin_stream": None,
-                "timestamp": "2023-01-01T00:00:00Z",
                 "version": "v1",
                 "sequence_id": "1",
                 "payload_hash": "hash123",
                 "asynchronous": True,
+                "headers": {
+                    "id": "test-id",
+                    "type": "test.registered",
+                },
             },
             "position": 1,
             "global_position": 1,

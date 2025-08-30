@@ -220,7 +220,10 @@ async def test_subscription_process_batch_with_asynchronous_flag(test_domain, ca
         assert result == 1  # One successful message
 
         # Verify the message was processed and logged
-        assert f"{async_message.headers.type}-{async_message.headers.id}" in caplog.text
+        assert (
+            f"{async_message.metadata.headers.type}-{async_message.metadata.headers.id}"
+            in caplog.text
+        )
 
         # Check if position updates were written
         position_messages = test_domain.event_store.store.read(

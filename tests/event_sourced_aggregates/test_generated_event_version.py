@@ -72,7 +72,7 @@ def register_elements(test_domain):
 def test_aggregate_and_event_version_on_initialization():
     user = User.register(user_id="1", name="John Doe", email="john.doe@example.com")
     assert user._version == 0
-    assert user._events[0]._metadata.id.endswith("-0")
+    assert user._events[0]._metadata.headers.id.endswith("-0")
     assert user._events[0]._metadata.sequence_id == "0"
 
 
@@ -89,7 +89,7 @@ def test_aggregate_and_event_version_after_first_persistence(test_domain):
     # Deserialize event
     event = Message.to_object(event_messages[0])
 
-    assert event._metadata.id.endswith("-0")
+    assert event._metadata.headers.id.endswith("-0")
     assert event._metadata.sequence_id == "0"
 
 
@@ -113,7 +113,7 @@ def test_aggregate_and_event_version_after_first_persistence_after_multiple_pers
     # Deserialize event
     event = Message.to_object(event_messages[-1])
 
-    assert event._metadata.id.endswith("-10")
+    assert event._metadata.headers.id.endswith("-10")
     assert event._metadata.sequence_id == "10"
 
 
@@ -125,9 +125,9 @@ def test_aggregate_and_event_version_after_multiple_event_generation_in_one_upda
 
     # Check event versions before persistence
     assert user._version == 1
-    assert user._events[0]._metadata.id.endswith("-0")
+    assert user._events[0]._metadata.headers.id.endswith("-0")
     assert user._events[0]._metadata.sequence_id == "0"
-    assert user._events[1]._metadata.id.endswith("-1")
+    assert user._events[1]._metadata.headers.id.endswith("-1")
     assert user._events[1]._metadata.sequence_id == "1"
 
     # Persist user just once
@@ -144,7 +144,7 @@ def test_aggregate_and_event_version_after_multiple_event_generation_in_one_upda
     event1 = Message.to_object(event_messages[0])
     event2 = Message.to_object(event_messages[1])
 
-    assert event1._metadata.id.endswith("-0")
+    assert event1._metadata.headers.id.endswith("-0")
     assert event1._metadata.sequence_id == "0"
-    assert event2._metadata.id.endswith("-1")
+    assert event2._metadata.headers.id.endswith("-1")
     assert event2._metadata.sequence_id == "1"

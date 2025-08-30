@@ -41,20 +41,22 @@ def test_event_has_metadata_value_object():
 def test_metadata_defaults():
     event = UserLoggedIn(user_id=str(uuid4()))
     assert event._metadata is not None
-    assert isinstance(event._metadata.timestamp, datetime)
+    assert isinstance(event._metadata.headers.time, datetime)
 
 
 def test_metadata_can_be_overridden():
     now_timestamp = datetime.now() - timedelta(hours=1)
-    event = UserLoggedIn(user_id=str(uuid4()), _metadata={"timestamp": now_timestamp})
+    event = UserLoggedIn(
+        user_id=str(uuid4()), _metadata={"headers": {"time": now_timestamp}}
+    )
     assert event._metadata is not None
-    assert event._metadata.timestamp == now_timestamp
+    assert event._metadata.headers.time == now_timestamp
 
 
 class TestMetadataType:
     def test_metadata_has_type_field(self):
         metadata_field = fields(UserLoggedIn)["_metadata"]
-        assert hasattr(metadata_field.value_object_cls, "type")
+        assert hasattr(metadata_field.value_object_cls, "headers")
 
     def test_command_metadata_type_default(self):
         assert hasattr(UserLoggedIn, "__type__")
@@ -63,7 +65,7 @@ class TestMetadataType:
     def test_type_value_in_metadata(self, test_domain):
         user = User(id=str(uuid4()), email="john.doe@gmail.com", name="John Doe")
         user.raise_(UserLoggedIn(user_id=user.id))
-        assert user._events[0]._metadata.type == "Test.UserLoggedIn.v1"
+        assert user._events[0]._metadata.headers.type == "Test.UserLoggedIn.v1"
 
 
 class TestMetadataVersion:
@@ -159,22 +161,25 @@ def test_event_metadata():
     event = user._events[0]
     assert event._metadata is not None
 
-    assert isinstance(event._metadata.timestamp, datetime)
-    assert event._metadata.id == f"test::user-{user.id}-0"
+    assert isinstance(event._metadata.headers.time, datetime)
+    assert event._metadata.headers.id == f"test::user-{user.id}-0"
 
     assert event.to_dict() == {
         "_metadata": {
-            "id": f"test::user-{user.id}-0",
-            "type": "Test.UserLoggedIn.v1",
             "fqn": fqn(UserLoggedIn),
             "kind": "EVENT",
             "stream": f"test::user-{user.id}",
             "origin_stream": None,
-            "timestamp": str(event._metadata.timestamp),
             "version": "v1",
             "sequence_id": "0",
             "payload_hash": event._metadata.payload_hash,
             "asynchronous": False,  # Test Domain event_processing is SYNC by default
+            "headers": {
+                "id": f"test::user-{user.id}-0",
+                "type": "Test.UserLoggedIn.v1",
+                "time": str(event._metadata.headers.time),
+                "traceparent": None,
+            },
         },
         "user_id": event.user_id,
     }

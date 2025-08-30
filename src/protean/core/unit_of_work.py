@@ -99,9 +99,9 @@ class UnitOfWork:
 
                 for event in all_events[provider_name]:
                     outbox_message = Outbox.create_message(
-                        message_id=event._metadata.id,
+                        message_id=event._metadata.headers.id,
                         stream_name=event._metadata.stream,
-                        message_type=event._metadata.type,
+                        message_type=event._metadata.headers.type,
                         data=event.to_dict(),
                         metadata=event._metadata,
                     )
