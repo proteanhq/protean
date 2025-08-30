@@ -7,7 +7,7 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import DeserializationError
 from protean.fields import Identifier, String
-from protean.utils.message import Message, MessageEnvelope
+from protean.utils.eventing import Message, MessageEnvelope, MessageHeaders
 from protean.utils.eventing import Metadata
 
 
@@ -59,10 +59,14 @@ class TestMessageIntegrity:
     def test_compute_checksum_produces_consistent_results(self):
         """Test that compute_checksum produces consistent results for same data"""
 
+        headers = MessageHeaders(
+            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
+        )
+
         message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
-            type="test.registered",
+            headers=headers,
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 id="test-id",
@@ -73,8 +77,6 @@ class TestMessageIntegrity:
             ),
             position=1,
             global_position=1,
-            time="2023-01-01T00:00:00Z",
-            id="msg-123",
         )
 
         # Compute checksum multiple times
@@ -89,10 +91,14 @@ class TestMessageIntegrity:
     def test_compute_checksum_excludes_checksum_field(self):
         """Test that compute_checksum excludes the checksum field itself"""
 
+        headers = MessageHeaders(
+            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
+        )
+
         message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
-            type="test.registered",
+            headers=headers,
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 id="test-id",
@@ -103,8 +109,6 @@ class TestMessageIntegrity:
             ),
             position=1,
             global_position=1,
-            time="2023-01-01T00:00:00Z",
-            id="msg-123",
         )
 
         # Compute checksum without setting it
@@ -136,12 +140,16 @@ class TestMessageIntegrity:
     def test_validate_integrity_with_invalid_checksum(self):
         """Test validate_checksum returns False for invalid checksum"""
 
+        headers = MessageHeaders(
+            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
+        )
+
         message = Message(
             envelope=MessageEnvelope(
                 specversion="1.0", checksum="invalid_checksum_value"
             ),
             stream_name="user-123",
-            type="test.registered",
+            headers=headers,
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 id="test-id",
@@ -152,8 +160,6 @@ class TestMessageIntegrity:
             ),
             position=1,
             global_position=1,
-            time="2023-01-01T00:00:00Z",
-            id="msg-123",
         )
 
         # Should fail integrity validation
@@ -162,10 +168,14 @@ class TestMessageIntegrity:
     def test_validate_integrity_with_no_checksum(self):
         """Test validate_checksum returns False when no checksum is present"""
 
+        headers = MessageHeaders(
+            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
+        )
+
         message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
-            type="test.registered",
+            headers=headers,
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 id="test-id",
@@ -176,8 +186,6 @@ class TestMessageIntegrity:
             ),
             position=1,
             global_position=1,
-            time="2023-01-01T00:00:00Z",
-            id="msg-123",
         )
 
         # No checksum set - should return False
@@ -188,6 +196,7 @@ class TestMessageIntegrity:
         # Create a message dict with envelope
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": ""},
+            "headers": {"id": "msg-123", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
@@ -224,6 +233,7 @@ class TestMessageIntegrity:
         """Test from_dict with validation=True rejects invalid checksum"""
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": "invalid_checksum_value"},
+            "headers": {"id": "msg-123", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
@@ -261,6 +271,7 @@ class TestMessageIntegrity:
         """Test from_dict with validation=False accepts invalid checksum"""
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": "invalid_checksum_value"},
+            "headers": {"id": "msg-123", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
@@ -292,6 +303,7 @@ class TestMessageIntegrity:
         """Test from_dict skips validation when no checksum is present"""
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": ""},
+            "headers": {"id": "msg-123", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
@@ -322,10 +334,14 @@ class TestMessageIntegrity:
     def test_checksum_changes_with_different_data(self):
         """Test that checksum changes when message data changes"""
 
+        headers = MessageHeaders(
+            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
+        )
+
         base_message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
-            type="test.registered",
+            headers=headers,
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 id="test-id",
@@ -336,15 +352,17 @@ class TestMessageIntegrity:
             ),
             position=1,
             global_position=1,
-            time="2023-01-01T00:00:00Z",
-            id="msg-123",
         )
 
         # Modified message with different data
+        modified_headers = MessageHeaders(
+            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
+        )
+
         modified_message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
-            type="test.registered",
+            headers=modified_headers,
             data={"id": "123", "email": "different@example.com"},  # Changed email
             metadata=Metadata(
                 id="test-id",
@@ -355,8 +373,6 @@ class TestMessageIntegrity:
             ),
             position=1,
             global_position=1,
-            time="2023-01-01T00:00:00Z",
-            id="msg-123",
         )
 
         base_checksum = MessageEnvelope.compute_checksum(base_message.data)
@@ -368,10 +384,14 @@ class TestMessageIntegrity:
     def test_checksum_includes_all_relevant_fields(self):
         """Test that checksum computation includes all relevant message fields"""
 
+        headers = MessageHeaders(
+            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
+        )
+
         message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
-            type="test.registered",
+            headers=headers,
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 id="test-id",
@@ -382,8 +402,6 @@ class TestMessageIntegrity:
             ),
             position=1,
             global_position=1,
-            time="2023-01-01T00:00:00Z",
-            id="msg-123",
             expected_version=5,
         )
 
@@ -457,6 +475,7 @@ class TestMessageIntegrity:
         """Test that integrity validation errors include comprehensive context"""
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": "tampered_checksum_value"},
+            "headers": {"id": "msg-123", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},

@@ -8,7 +8,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
-from protean.utils.message import Message
+from protean.utils.eventing import Message
 
 
 class User(BaseAggregate):
@@ -145,5 +145,5 @@ def test_reading_last_message(test_domain, renamed_user):
     message = test_domain.event_store.store.read_last_message(
         f"test::user-{renamed_user.id}"
     )
-    assert message.type == Renamed.__type__
+    assert message.headers.type == Renamed.__type__
     assert message.data["name"] == "John Doe 9"

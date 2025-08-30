@@ -6,7 +6,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.fields import Identifier, String
-from protean.utils.message import Message, MessageEnvelope
+from protean.utils.eventing import Message, MessageEnvelope, MessageHeaders
 from protean.utils.eventing import Metadata
 
 
@@ -68,6 +68,7 @@ class TestMessageFormatVersioning:
         """Test creating message from dict with envelope containing specversion"""
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": ""},
+            "headers": {"id": "no-data-msg-1", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
@@ -94,13 +95,14 @@ class TestMessageFormatVersioning:
 
         assert message.envelope.specversion == "1.0"
         assert message.stream_name == "user-123"
-        assert message.type == "test.registered"
+        assert message.headers.type == "test.registered"
 
     def test_from_dict_without_format_version_defaults_to_1_0(self):
         """Test messages with envelope but no specversion default to 1.0"""
         # Message dict with envelope but no specversion
         message_dict = {
             "envelope": {"checksum": ""},
+            "headers": {"id": "test-id", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
@@ -132,6 +134,7 @@ class TestMessageFormatVersioning:
         """Test creating message from dict with a different specversion"""
         message_dict = {
             "envelope": {"specversion": "2.0", "checksum": ""},
+            "headers": {"id": "test-id", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
@@ -204,16 +207,18 @@ class TestMessageFormatVersioning:
 
         # Verify other fields are preserved
         assert reconstructed_message.stream_name == original_message.stream_name
-        assert reconstructed_message.type == original_message.type
+        assert reconstructed_message.headers.type == original_message.headers.type
         assert reconstructed_message.data == original_message.data
 
     def test_message_creation_with_explicit_format_version(self):
         """Test creating message with explicit specversion in envelope"""
 
+        headers = MessageHeaders(type="test.event")
+
         message = Message(
             envelope=MessageEnvelope(specversion="2.5", checksum=""),
             stream_name="test-stream",
-            type="test.event",
+            headers=headers,
             data={"test": "data"},
             metadata=Metadata(
                 id="test-id",
@@ -230,7 +235,18 @@ class TestMessageFormatVersioning:
         """Test the properties of the envelope specversion field"""
 
         # Test default value
-        message = Message(envelope=MessageEnvelope())
+        message = Message(
+            envelope=MessageEnvelope(),
+            stream_name="test-stream",
+            data={},
+            metadata=Metadata(
+                id="test-id",
+                type="test.event",
+                fqn="test.Event",
+                kind="EVENT",
+                stream="test-stream",
+            ),
+        )
         assert message.envelope.specversion == "1.0"
 
         # Test that it's a string field and accepts string values
@@ -263,6 +279,7 @@ class TestMessageFormatVersioning:
         """Test behavior with empty string specversion - defaults to '1.0' due to field validation"""
         message_dict = {
             "envelope": {"specversion": "", "checksum": ""},
+            "headers": {"id": "test-id", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
@@ -293,6 +310,7 @@ class TestMessageFormatVersioning:
         """Test behavior when specversion is explicitly None in dict - defaults to '1.0' due to field validation"""
         message_dict = {
             "envelope": {"specversion": None, "checksum": ""},
+            "headers": {"id": "test-id", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},

@@ -7,7 +7,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
-from protean.utils.message import Message
+from protean.utils.eventing import Message
 from protean.utils.mixins import handle
 
 counter = 0

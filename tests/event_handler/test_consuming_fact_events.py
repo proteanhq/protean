@@ -4,7 +4,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event_handler import BaseEventHandler
 from protean.core.projection import BaseProjection
 from protean.fields import String
-from protean.utils.message import Message
+from protean.utils.eventing import Message
 from protean.utils.mixins import handle
 
 

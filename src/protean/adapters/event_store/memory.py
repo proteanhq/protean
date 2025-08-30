@@ -1,15 +1,40 @@
 from datetime import UTC, datetime
 from typing import Any, Dict, List
 
+from protean import fields
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.port.event_store import BaseEventStore
 from protean.utils.globals import current_domain
-from protean.utils.message import MessageRecord
+from protean.utils.eventing import Metadata
 
 
-class MemoryMessage(BaseAggregate, MessageRecord):
-    pass
+class MemoryMessage(BaseAggregate):
+    # Primary key. The ordinal position of the message in the entire message store.
+    # Global position may have gaps.
+    global_position = fields.Auto(increment=True, identifier=True)
+
+    # The ordinal position of the message in its stream.
+    # Position is gapless.
+    position = fields.Integer()
+
+    # Message creation time
+    time = fields.DateTime()
+
+    # Unique ID of the message
+    id = fields.Auto()
+
+    # Name of stream to which the message is written
+    stream_name = fields.String(max_length=255)
+
+    # The type of the message
+    type = fields.String()
+
+    # JSON representation of the message body
+    data = fields.Dict()
+
+    # JSON representation of the message metadata
+    metadata = fields.ValueObject(Metadata)
 
 
 class MemoryMessageRepository(BaseRepository):

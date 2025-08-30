@@ -7,7 +7,7 @@ from protean.core.event import BaseEvent
 from protean.core.command import BaseCommand
 from protean.exceptions import DeserializationError
 from protean.fields import Identifier, String
-from protean.utils.message import Message, MessageEnvelope, MessageHeaders, TraceParent
+from protean.utils.eventing import Message, MessageEnvelope, MessageHeaders, TraceParent
 from protean.utils.eventing import Metadata
 
 
@@ -200,7 +200,7 @@ class TestMessageHeaders:
         """Test MessageHeaders.build() method with traceparent string"""
         traceparent_str = "00-1234567890abcdef1234567890abcdef-abcdef1234567890-01"
 
-        headers = MessageHeaders.build(traceparent_str)
+        headers = MessageHeaders.build(traceparent=traceparent_str)
 
         assert headers.traceparent is not None
         assert headers.traceparent.trace_id == "1234567890abcdef1234567890abcdef"
@@ -211,15 +211,15 @@ class TestMessageHeaders:
         """Test MessageHeaders.build() method with invalid traceparent string"""
         invalid_traceparent = "invalid-traceparent"
 
-        headers = MessageHeaders.build(invalid_traceparent)
+        headers = MessageHeaders.build(traceparent=invalid_traceparent)
 
         # build() should handle invalid traceparent gracefully
         assert headers.traceparent is None
 
     def test_message_headers_build_from_empty_traceparent(self):
         """Test MessageHeaders.build() method with empty/None traceparent"""
-        headers1 = MessageHeaders.build(None)
-        headers2 = MessageHeaders.build("")
+        headers1 = MessageHeaders.build(traceparent=None)
+        headers2 = MessageHeaders.build(traceparent="")
 
         # Both should create MessageHeaders with no traceparent
         assert headers1.traceparent is None
@@ -242,7 +242,6 @@ class TestMessageWithHeaders:
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             headers=headers,
             stream_name="test-stream",
-            type="test.event",
             data={"test": "data"},
             metadata=Metadata(
                 id="test-id",
@@ -259,12 +258,14 @@ class TestMessageWithHeaders:
             == "1234567890abcdef1234567890abcdef"
         )
 
-    def test_message_creation_without_headers(self):
-        """Test creating Message without headers"""
+    def test_message_creation_without_explicit_headers(self):
+        """Test creating Message without explicit headers creates headers from legacy params"""
+        headers = MessageHeaders(type="test.event")
+
         message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="test-stream",
-            type="test.event",
+            headers=headers,
             data={"test": "data"},
             metadata=Metadata(
                 id="test-id",
@@ -275,6 +276,26 @@ class TestMessageWithHeaders:
             ),
         )
 
+        # Headers should be auto-created from legacy parameters
+        assert message.headers is not None
+        assert message.headers.type == "test.event"
+
+    def test_message_creation_with_no_headers_or_legacy_params(self):
+        """Test creating Message with no headers and no legacy params leaves headers as None"""
+        message = Message(
+            envelope=MessageEnvelope(specversion="1.0", checksum=""),
+            stream_name="test-stream",
+            data={"test": "data"},
+            metadata=Metadata(
+                id="test-id",
+                type="test.event",
+                fqn="test.Event",
+                kind="EVENT",
+                stream="test-stream",
+            ),
+        )
+
+        # No headers should be created when no legacy parameters are provided
         assert message.headers is None
 
     def test_message_to_dict_includes_headers(self):
@@ -290,7 +311,6 @@ class TestMessageWithHeaders:
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             headers=headers,
             stream_name="test-stream",
-            type="test.event",
             data={"test": "data"},
             metadata=Metadata(
                 id="test-id",
@@ -310,12 +330,14 @@ class TestMessageWithHeaders:
         )
         assert message_dict["headers"]["traceparent"]["sampled"] is True
 
-    def test_message_to_dict_excludes_empty_headers(self):
-        """Test that to_dict() excludes headers when None"""
+    def test_message_to_dict_includes_headers_when_legacy_params_provided(self):
+        """Test that to_dict() includes headers when legacy params are provided"""
+        headers = MessageHeaders(type="test.event")
+
         message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="test-stream",
-            type="test.event",
+            headers=headers,
             data={"test": "data"},
             metadata=Metadata(
                 id="test-id",
@@ -329,7 +351,8 @@ class TestMessageWithHeaders:
         message_dict = message.to_dict()
 
         assert "headers" in message_dict
-        assert message_dict["headers"] is None
+        assert message_dict["headers"] is not None
+        assert message_dict["headers"]["type"] == "test.event"
 
     def test_message_from_dict_with_headers(self):
         """Test creating Message from dict with headers"""
@@ -372,10 +395,11 @@ class TestMessageWithHeaders:
         )
         assert message.headers.traceparent.sampled is True
 
-    def test_message_from_dict_without_headers(self):
-        """Test creating Message from dict without headers (backward compatibility)"""
+    def test_message_from_dict_without_headers_creates_headers(self):
+        """Test creating Message from dict without headers creates headers from legacy fields"""
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": ""},
+            "headers": {"id": "msg-123", "type": "test.event", "time": None},
             "stream_name": "test-stream",
             "type": "test.event",
             "data": {"test": "data"},
@@ -400,13 +424,16 @@ class TestMessageWithHeaders:
 
         message = Message.from_dict(message_dict)
 
-        assert message.headers is None
+        # Headers should be created from legacy fields
+        assert message.headers is not None
+        assert message.headers.id == "msg-123"
+        assert message.headers.type == "test.event"
 
-    def test_message_from_dict_with_empty_headers(self):
-        """Test creating Message from dict with empty headers"""
+    def test_message_from_dict_with_empty_headers_populates_from_legacy_fields(self):
+        """Test creating Message from dict with empty headers uses legacy fields"""
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": ""},
-            "headers": {"traceparent": None},
+            "headers": {"id": "msg-123", "type": "test.event", "traceparent": None},
             "stream_name": "test-stream",
             "type": "test.event",
             "data": {"test": "data"},
@@ -431,9 +458,11 @@ class TestMessageWithHeaders:
 
         message = Message.from_dict(message_dict)
 
-        # When traceparent is None, the ValueObject field validation rejects the MessageHeaders
-        # This is expected behavior - headers becomes None when all nested fields are None
-        assert message.headers is None
+        # Headers should be populated with legacy field values
+        assert message.headers is not None
+        assert message.headers.id == "msg-123"
+        assert message.headers.type == "test.event"
+        assert message.headers.traceparent is None
 
     def test_message_from_dict_with_valid_traceparent(self):
         """Test creating Message from dict with valid traceparent data"""
@@ -492,7 +521,6 @@ class TestMessageWithHeaders:
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             headers=headers,
             stream_name="test-stream",
-            type="test.event",
             data={"test": "data"},
             metadata=Metadata(
                 id="test-id",
@@ -525,8 +553,8 @@ class TestMessageWithHeaders:
             reconstructed_message.headers.traceparent.causation_id == "abcdef1234567890"
         )
 
-    def test_message_to_message_preserves_headers_when_none(self):
-        """Test that to_message creates message without headers when not present in event/command"""
+    def test_message_to_message_creates_headers_with_type(self):
+        """Test that to_message creates message with headers containing type"""
         identifier = str(uuid4())
         user = User(id=identifier, email="john.doe@example.com", name="John Doe")
         user.raise_(
@@ -535,8 +563,9 @@ class TestMessageWithHeaders:
 
         message = Message.to_message(user._events[-1])
 
-        # Current implementation should not set headers automatically
-        assert message.headers is None
+        # Headers should be created with type from the event
+        assert message.headers is not None
+        assert message.headers.type is not None
 
     def test_message_error_context_includes_headers(self):
         """Test that error context includes headers information"""
@@ -545,11 +574,13 @@ class TestMessageWithHeaders:
             parent_id="abcdef1234567890",
             sampled=True,
         )
-        headers = MessageHeaders(traceparent=traceparent)
-
-        message = Message(
+        headers = MessageHeaders(
             id="test-msg-with-headers",
             type="unregistered.type",
+            traceparent=traceparent,
+        )
+
+        message = Message(
             stream_name="test-stream",
             data={"field1": "value1"},
             envelope=MessageEnvelope(specversion="1.0", checksum=""),

@@ -6,7 +6,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.fields import Identifier
-from protean.utils.message import Message
+from protean.utils.eventing import Message
 
 
 class BaseEventStore(metaclass=ABCMeta):
@@ -97,7 +97,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
         position = self._write(
             message.stream_name,
-            message.type,
+            message.headers.type,
             message.data,
             metadata=message.metadata.to_dict(),
             expected_version=message.expected_version,
