@@ -77,6 +77,65 @@ class MessageEnvelope(BaseValueObject):
         return hashlib.sha256(json_data.encode("utf-8")).hexdigest()
 
 
+class TraceParent(BaseValueObject):
+    """Represents the trace context for distributed tracing (OpenTelemetry compatible)
+
+    Format:
+    traceparent: 00-<trace_id>-<parent_id>-<trace_flags>
+    """
+
+    trace_id = fields.String(max_length=32, min_length=32)
+    parent_id = fields.String(max_length=16, min_length=16)
+    sampled = fields.Boolean(default=False)
+
+    @classmethod
+    def build(cls, traceparent: str) -> TraceParent:
+        try:
+            parts = traceparent.split("-")
+            if len(parts) != 4:
+                raise ValueError("Traceparent must have 4 parts separated by hyphens")
+
+            version, trace_id, parent_id, sampled_flag = parts
+
+            # Version should always be "00" for current W3C spec
+            if version != "00":
+                raise ValueError(f"Unsupported traceparent version: {version}")
+
+            sampled = sampled_flag == "01"
+            return cls(trace_id=trace_id, parent_id=parent_id, sampled=sampled)
+        except Exception as e:
+            logger.error(f"Error parsing traceparent: {e}")
+            logger.error(f"Provided traceparent: {traceparent}")
+            return None
+
+    def to_dict(self) -> str:
+        return f"00-{self.trace_id}-{self.parent_id}-{'01' if self.sampled else '00'}"
+
+    @property
+    def correlation_id(self) -> str:
+        return self.trace_id
+
+    @property
+    def causation_id(self) -> str:
+        return self.parent_id
+
+
+class MessageHeaders(BaseValueObject):
+    """Structured headers for message metadata"""
+
+    # Tracing (OpenTelemetry compatible, W3C-spec compliant)
+    #   Holds trace context information
+    #   Serves as a container for Correlation and Causation IDs as well
+    traceparent = fields.ValueObject(TraceParent, required=False)
+
+    @classmethod
+    def build(cls, traceparent: str) -> MessageHeaders:
+        headers = {}
+        if traceparent:
+            headers["traceparent"] = TraceParent.build(traceparent)
+        return cls(**headers)
+
+
 class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     """Generic message class
     It provides concrete implementations for:
@@ -87,6 +146,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     """
 
     envelope = fields.ValueObject(MessageEnvelope)
+    headers = fields.ValueObject(MessageHeaders)
 
     # Version that the stream is expected to be when the message is written
     expected_version = fields.Integer()
@@ -100,6 +160,25 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 else MessageEnvelope()
             )
 
+            headers_data = message.get("headers")
+            if headers_data is not None:
+                # If headers_data contains a traceparent string, use build()
+                # If headers_data is a dict with traceparent dict/None, create directly
+                traceparent_data = headers_data.get("traceparent")
+                if isinstance(traceparent_data, str):
+                    headers = MessageHeaders.build(traceparent_data)
+                elif isinstance(traceparent_data, dict):
+                    # Create TraceParent from dict and MessageHeaders
+                    traceparent = (
+                        TraceParent(**traceparent_data) if traceparent_data else None
+                    )
+                    headers = MessageHeaders(traceparent=traceparent)
+                else:
+                    # traceparent is None or other
+                    headers = MessageHeaders(traceparent=None)
+            else:
+                headers = None
+
             # Create the message object
             msg = Message(
                 stream_name=message["stream_name"],
@@ -111,6 +190,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 time=message["time"],
                 id=message["id"],
                 envelope=envelope,
+                headers=headers,
             )
 
             # Validate integrity if requested and checksum is present
