@@ -66,17 +66,20 @@ class TestDomainEventDefinition:
             raw_event.to_dict()
             == {
                 "_metadata": {
-                    "id": None,  # ID is none because the event is not being raised in the proper way (with `_raise`)
-                    "type": "Test.UserAdded.v1",
                     "fqn": fully_qualified_name(UserAdded),
                     "kind": "EVENT",
                     "stream": None,  # Stream is none here because of the same reason as above
                     "origin_stream": None,
-                    "timestamp": str(raw_event._metadata.timestamp),
                     "version": "v1",
                     "sequence_id": None,  # Sequence is unknown as event is not being raised as part of an aggregate
                     "payload_hash": raw_event._metadata.payload_hash,
                     "asynchronous": True,  # Asynchronous is True by default
+                    "headers": {
+                        "id": None,  # ID is none because the event is not being raised in the proper way (with `_raise`)
+                        "type": "Test.UserAdded.v1",
+                        "time": str(raw_event._metadata.headers.time),
+                        "traceparent": None,
+                    },
                 },
                 "email": {
                     "address": "john.doe@gmail.com",
@@ -88,17 +91,20 @@ class TestDomainEventDefinition:
 
         assert raised_event.to_dict() == {
             "_metadata": {
-                "id": f"test::user-{user.id}-0.1",
-                "type": "Test.UserAdded.v1",
                 "fqn": fully_qualified_name(UserAdded),
                 "kind": "EVENT",
                 "stream": f"test::user-{user.id}",
                 "origin_stream": None,
-                "timestamp": str(raised_event._metadata.timestamp),
                 "version": "v1",
                 "sequence_id": "0.1",
                 "payload_hash": raised_event._metadata.payload_hash,
                 "asynchronous": False,  # Test Domain event_processing is SYNC by default
+                "headers": {
+                    "id": f"test::user-{user.id}-0.1",
+                    "type": "Test.UserAdded.v1",
+                    "time": str(raised_event._metadata.headers.time),
+                    "traceparent": None,
+                },
             },
             "email": {
                 "address": "john.doe@gmail.com",

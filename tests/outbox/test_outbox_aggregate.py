@@ -17,17 +17,21 @@ def setup_outbox_domain(test_domain):
 @pytest.fixture
 def sample_metadata():
     """Create sample metadata for testing."""
+    from protean.utils.eventing import MessageHeaders
+
     return Metadata(
-        id="test-id",
-        type="TestEvent",
         fqn="test.TestEvent",
         kind="event",
         stream="test-stream",
         origin_stream="test-message-123",
-        timestamp=datetime.now(timezone.utc),
         version="1.0",
         sequence_id="1",
         payload_hash=12345,
+        headers=MessageHeaders(
+            id="test-id",
+            type="TestEvent",
+            time=datetime.now(timezone.utc),
+        ),
     )
 
 

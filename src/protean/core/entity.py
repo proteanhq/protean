@@ -23,6 +23,7 @@ from protean.utils import (
     inflection,
 )
 from protean.utils.container import BaseContainer, IdentityMixin, OptionsMixin
+from protean.utils.eventing import Metadata, MessageHeaders
 from protean.utils.globals import current_domain
 from protean.utils.reflection import (
     _FIELDS,
@@ -505,28 +506,39 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
 
         # Event is immutable, so we clone a new event object from the event raised,
         # and add the enhanced metadata to it.
-        event_with_metadata = event.__class__(
-            event.to_dict(),
-            _expected_version=self._root._event_position,
-            _metadata={
-                "id": event_identity,
-                "type": event._metadata.type,
-                "fqn": event._metadata.fqn,
-                "kind": event._metadata.kind,
-                "stream": stream,
-                "origin_stream": event._metadata.origin_stream,
-                "timestamp": event._metadata.timestamp,
-                "version": event._metadata.version,
-                "sequence_id": sequence_id,
-                "payload_hash": hash(
+
+        headers = MessageHeaders(
+            id=event_identity,
+            type=event.__class__.__type__,
+            time=event._metadata.headers.time
+            if (event._metadata.headers and event._metadata.headers.time)
+            else None,
+        )
+
+        metadata = Metadata(
+            fqn=event._metadata.fqn,
+            kind=event._metadata.kind,
+            stream=stream,
+            origin_stream=event._metadata.origin_stream,
+            version=event._metadata.version,
+            sequence_id=sequence_id,
+            payload_hash=str(
+                hash(
                     json.dumps(
                         event.payload,
                         sort_keys=True,
                     )
-                ),
-                "asynchronous": current_domain.config["event_processing"]
-                == Processing.ASYNC.value,
-            },
+                )
+            ),
+            asynchronous=current_domain.config["event_processing"]
+            == Processing.ASYNC.value,
+            headers=headers,
+        )
+
+        event_with_metadata = event.__class__(
+            event.to_dict(),
+            _expected_version=self._root._event_position,
+            _metadata=metadata,
         )
 
         # Increment the event position after generating event

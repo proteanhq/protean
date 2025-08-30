@@ -67,7 +67,7 @@ def test_generation_of_first_fact_event_on_persistence(test_domain):
     assert event.email == "john.doe@example.com"
 
     # Check event versions
-    assert event._metadata.id.endswith("-0")
+    assert event._metadata.headers.id.endswith("-0")
     assert event._metadata.sequence_id == "0"
     assert event._version == 0
 
@@ -106,7 +106,7 @@ def test_generation_of_subsequent_fact_events_after_fetch(test_domain):
     assert event.__class__.__name__ == "UserFactEvent"
     assert event.name == "John Doe"
 
-    assert event._metadata.id.endswith("-0")
+    assert event._metadata.headers.id.endswith("-0")
     assert event._metadata.sequence_id == "0"
     assert event._version == 0
 
@@ -116,6 +116,6 @@ def test_generation_of_subsequent_fact_events_after_fetch(test_domain):
     assert event.__class__.__name__ == "UserFactEvent"
     assert event.name == "Jane Doe"
 
-    assert event._metadata.id.endswith("-1")
+    assert event._metadata.headers.id.endswith("-1")
     assert event._metadata.sequence_id == "1"
     assert event._version == 1

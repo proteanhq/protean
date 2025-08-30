@@ -29,7 +29,7 @@ def register_elements(test_domain):
 class TestMetadataType:
     def test_metadata_has_type_field(self):
         metadata_field = fields(Login)["_metadata"]
-        assert hasattr(metadata_field.value_object_cls, "type")
+        assert hasattr(metadata_field.value_object_cls, "headers")
 
     def test_command_metadata_type_default(self):
         assert hasattr(Login, "__type__")
@@ -37,7 +37,7 @@ class TestMetadataType:
 
     def test_type_value_in_metadata(self, test_domain):
         command = test_domain._enrich_command(Login(user_id=str(uuid4())), True)
-        assert command._metadata.type == "Test.Login.v1"
+        assert command._metadata.headers.type == "Test.Login.v1"
 
 
 class TestMetadataVersion:
@@ -103,17 +103,20 @@ def test_command_metadata(test_domain):
         command.to_dict()
         == {
             "_metadata": {
-                "id": f"{identifier}",  # FIXME Double-check command identifier format and construction
-                "type": "Test.Login.v1",
                 "fqn": fqn(Login),
                 "kind": "COMMAND",
                 "stream": f"test::user:command-{identifier}",
                 "origin_stream": None,
-                "timestamp": str(command._metadata.timestamp),
                 "version": "v1",
                 "sequence_id": None,
                 "payload_hash": command._metadata.payload_hash,
                 "asynchronous": True,
+                "headers": {
+                    "id": f"{identifier}",  # FIXME Double-check command identifier format and construction
+                    "type": "Test.Login.v1",
+                    "time": str(command._metadata.headers.time),
+                    "traceparent": None,
+                },
             },
             "user_id": command.user_id,
         }

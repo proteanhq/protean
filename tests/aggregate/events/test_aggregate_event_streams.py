@@ -63,13 +63,13 @@ class TestDeltaEvents:
         user.activate()
 
         assert len(user._events) == 2
-        assert user._events[0]._metadata.id == f"test::user-{user.id}-0.1"
-        assert user._events[0]._metadata.type == "Test.UserRenamed.v1"
+        assert user._events[0]._metadata.headers.id == f"test::user-{user.id}-0.1"
+        assert user._events[0]._metadata.headers.type == "Test.UserRenamed.v1"
         assert user._events[0]._metadata.version == "v1"
         assert user._events[0]._metadata.sequence_id == "0.1"
 
-        assert user._events[1]._metadata.id == f"test::user-{user.id}-0.2"
-        assert user._events[1]._metadata.type == "Test.UserActivated.v1"
+        assert user._events[1]._metadata.headers.id == f"test::user-{user.id}-0.2"
+        assert user._events[1]._metadata.headers.type == "Test.UserActivated.v1"
         assert user._events[1]._metadata.version == "v1"
         assert user._events[1]._metadata.sequence_id == "0.2"
 
@@ -91,12 +91,12 @@ class TestDeltaEvents:
         event_messages = test_domain.event_store.store.read(f"test::user-{user.id}")
         assert len(event_messages) == 2
 
-        assert event_messages[0].metadata.id == f"test::user-{user.id}-0.1"
-        assert event_messages[0].metadata.type == "Test.UserRenamed.v1"
+        assert event_messages[0].metadata.headers.id == f"test::user-{user.id}-0.1"
+        assert event_messages[0].metadata.headers.type == "Test.UserRenamed.v1"
         assert event_messages[0].metadata.version == "v1"
         assert event_messages[0].metadata.sequence_id == "0.1"
 
-        assert event_messages[1].metadata.id == f"test::user-{user.id}-0.2"
-        assert event_messages[1].metadata.type == "Test.UserActivated.v1"
+        assert event_messages[1].metadata.headers.id == f"test::user-{user.id}-0.2"
+        assert event_messages[1].metadata.headers.type == "Test.UserActivated.v1"
         assert event_messages[1].metadata.version == "v1"
         assert event_messages[1].metadata.sequence_id == "0.2"

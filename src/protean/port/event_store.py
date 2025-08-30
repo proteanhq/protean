@@ -97,7 +97,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
         position = self._write(
             message.stream_name,
-            message.headers.type,
+            message.metadata.headers.type,
             message.data,
             metadata=message.metadata.to_dict(),
             expected_version=message.expected_version,

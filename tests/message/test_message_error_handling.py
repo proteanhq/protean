@@ -80,19 +80,18 @@ class TestMessageErrorHandling:
     def test_invalid_message_kind_raises_enhanced_error(self):
         """Test that invalid message kind raises DeserializationError with context"""
 
-        headers = MessageHeaders(id="invalid-msg-1", type="test.invalid")
-
         message = Message(
-            headers=headers,
             stream_name="test-stream",
             data={"test": "data"},
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             metadata=Metadata(
-                id="invalid-meta-1",
-                type="test.invalid",
                 kind="INVALID_KIND",  # Invalid kind
                 fqn="test.Invalid",
                 stream="test-stream",
+                headers=MessageHeaders(
+                    id="invalid-msg-1",
+                    type="test.invalid",
+                ),
             ),
         )
 
@@ -118,18 +117,18 @@ class TestMessageErrorHandling:
 
     def test_unregistered_message_type_raises_enhanced_error(self):
         """Test that unregistered message type raises DeserializationError with context"""
-        headers = MessageHeaders(id="unregistered-msg-1", type="unregistered.event")
 
         message = Message(
-            headers=headers,
             stream_name="unregistered-stream",
             data={"id": "123", "data": "test"},
             metadata=Metadata(
-                id="unregistered-meta-1",
-                type="unregistered.event",
                 kind="EVENT",
                 fqn="unregistered.Event",
                 stream="unregistered-stream",
+                headers=MessageHeaders(
+                    id="unregistered-msg-1",
+                    type="unregistered.event",
+                ),
             ),
         )
 
@@ -154,18 +153,18 @@ class TestMessageErrorHandling:
 
     def test_malformed_data_raises_enhanced_error(self):
         """Test that malformed message data raises DeserializationError with context"""
-        headers = MessageHeaders(id="malformed-msg-1", type="test.registered")
 
         message = Message(
-            headers=headers,
             stream_name="user-123",
             data={"invalid_field": "value"},  # Missing required fields
             metadata=Metadata(
-                id="malformed-meta-1",
-                type="test.registered",
                 kind="EVENT",
                 fqn="test.Registered",
                 stream="user-123",
+                headers=MessageHeaders(
+                    id="malformed-msg-1",
+                    type="test.registered",
+                ),
             ),
         )
 
@@ -249,18 +248,17 @@ class TestMessageErrorHandling:
     def test_message_with_unknown_id_raises_enhanced_error(self):
         """Test that message with unknown ID still provides context"""
         # Create a message with a proper ID but unregistered type
-        headers = MessageHeaders(id="known-id-123", type="unregistered.event")
-
         message = Message(
-            headers=headers,
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                id="unknown-meta-1",
-                type="unregistered.event",
                 kind="EVENT",
                 fqn="unregistered.Event",
                 stream="test-stream",
+                headers=MessageHeaders(
+                    id="known-id-123",
+                    type="unregistered.event",
+                ),
             ),
         )
 
@@ -273,18 +271,18 @@ class TestMessageErrorHandling:
 
     def test_exception_chaining_preserves_original_error(self):
         """Test that DeserializationError preserves the original exception via chaining"""
-        headers = MessageHeaders(id="chain-test-msg-1", type="unregistered.event")
 
         message = Message(
-            headers=headers,
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                id="chain-test-meta-1",
-                type="unregistered.event",
                 kind="EVENT",
                 fqn="unregistered.Event",
                 stream="test-stream",
+                headers=MessageHeaders(
+                    id="chain-test-msg-1",
+                    type="unregistered.event",
+                ),
             ),
         )
 
@@ -299,21 +297,20 @@ class TestMessageErrorHandling:
     def test_enhanced_context_includes_all_relevant_fields(self):
         """Test that error context includes all relevant message fields"""
 
-        headers = MessageHeaders(id="context-test-msg-1", type="unregistered.type")
-
         message = Message(
-            headers=headers,
             stream_name="context-stream",
             data={"field1": "value1", "field2": "value2"},
             position=42,
             global_position=100,
             envelope=MessageEnvelope(specversion="2.0", checksum=""),
             metadata=Metadata(
-                id="context-test-meta-1",
-                type="unregistered.type",
                 kind="EVENT",
                 fqn="unregistered.Type",
                 stream="context-stream",
+                headers=MessageHeaders(
+                    id="context-test-msg-1",
+                    type="unregistered.type",
+                ),
             ),
         )
 
@@ -358,18 +355,17 @@ class TestMessageErrorHandling:
 
     def test_command_deserialization_error_handling(self, test_domain):
         """Test error handling for command deserialization"""
-        headers = MessageHeaders(id="cmd-error-msg-1", type="unregistered.command")
-
         message = Message(
-            headers=headers,
             stream_name="user:command-123",
             data={"test": "data"},
             metadata=Metadata(
-                id="cmd-error-meta-1",
-                type="unregistered.command",
                 kind="COMMAND",
                 fqn="unregistered.Command",
                 stream="user:command-123",
+                headers=MessageHeaders(
+                    id="cmd-error-msg-1",
+                    type="unregistered.command",
+                ),
             ),
         )
 
@@ -386,21 +382,17 @@ class TestMessageErrorHandling:
 
     def test_error_handling_with_corrupted_message_fields(self):
         """Test error handling when message has corrupted or unexpected field values"""
-        headers = MessageHeaders(
-            id="corrupted-msg-1",
-            type=None,  # Corrupted type field
-        )
-
         message = Message(
-            headers=headers,
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                id="corrupted-meta-1",
-                type="test.event",
                 kind="EVENT",
                 fqn="test.Event",
                 stream="test-stream",
+                headers=MessageHeaders(
+                    id="corrupted-msg-1",
+                    type=None,  # Corrupted type field
+                ),
             ),
         )
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Union
 
@@ -97,15 +96,28 @@ class TraceParent(BaseValueObject):
 class MessageHeaders(BaseValueObject):
     """Structured headers for message metadata"""
 
-    # Core identification
-    id = Auto(required=False)
-    time = DateTime(required=False)
-    type = String(required=False)
+    #######################
+    # Core identification #
+    #######################
+    # FIXME Fix the format documentation for `id`
+    # Event Format is <domain-name>.<class-name>.<version>.<aggregate-id>.<aggregate-version>
+    # Command Format is <domain-name>.<class-name>.<version>
+    id = String()
 
-    # Tracing (OpenTelemetry compatible, W3C-spec compliant)
+    # Time of event generation
+    time = DateTime()
+
+    # Type of the event
+    # Format is <domain-name>.<event-class-name>.<event-version>
+    type = String()
+
+    ###########
+    # Tracing #
+    ###########
+    # OpenTelemetry compatible, W3C-spec compliant
     #   Holds trace context information
     #   Serves as a container for Correlation and Causation IDs as well
-    traceparent = ValueObject(TraceParent, required=False)
+    traceparent = ValueObject(TraceParent)
 
     @classmethod
     def build(cls, **kwargs) -> MessageHeaders:
@@ -116,17 +128,6 @@ class MessageHeaders(BaseValueObject):
 
 
 class Metadata(BaseValueObject):
-    # Unique identifier of the event/command
-    #
-    # FIXME Fix the format documentation
-    # Event Format is <domain-name>.<class-name>.<version>.<aggregate-id>.<aggregate-version>
-    # Command Format is <domain-name>.<class-name>.<version>
-    id = String()
-
-    # Type of the event
-    # Format is <domain-name>.<event-class-name>.<event-version>
-    type = String()
-
     # Fully Qualified Name of the event/command
     fqn = String(sanitize=False)
 
@@ -139,9 +140,6 @@ class Metadata(BaseValueObject):
 
     # Name of the stream that originated this event/command
     origin_stream = String()
-
-    # Time of event generation
-    timestamp = DateTime(default=lambda: datetime.now(timezone.utc))
 
     # Version of the event
     # Can be overridden with `__version__` class attr in event/command class definition
@@ -162,6 +160,8 @@ class Metadata(BaseValueObject):
 
     # Sync or Async?
     asynchronous = Boolean(default=True)
+
+    headers = ValueObject(MessageHeaders)
 
 
 class MessageRecord(BaseContainer):
@@ -276,7 +276,9 @@ class BaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         if type(other) is not type(self):
             return False
 
-        return self._metadata.id == other._metadata.id
+        return (self._metadata.headers.id if self._metadata.headers else None) == (
+            other._metadata.headers.id if other._metadata.headers else None
+        )
 
     def __hash__(self) -> int:
         """Hash based on data."""
@@ -304,7 +306,6 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     """
 
     envelope = ValueObject(MessageEnvelope)
-    headers = ValueObject(MessageHeaders)
 
     # Version that the stream is expected to be when the message is written
     expected_version = Integer()
@@ -318,45 +319,51 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 else MessageEnvelope()
             )
 
-            headers_data = message.get("headers", {})
-            # Extract id, time, type from headers or fallback to top level for backward compatibility
-            headers_kwargs = {
-                "id": headers_data.get("id", message.get("id", None)),
-                "time": headers_data.get("time", message.get("time", None)),
-                "type": headers_data.get("type", message.get("type", None)),
-            }
+            # Handle headers within metadata
+            metadata_dict = message["metadata"]
 
-            # If headers_data contains a traceparent string, use build()
-            # If headers_data is a dict with traceparent dict/None, create directly
-            traceparent_data = headers_data.get("traceparent")
-            traceparent = TraceParent(**traceparent_data) if traceparent_data else None
-            headers_kwargs["traceparent"] = traceparent
+            # If headers are not in metadata but at top level (backward compatibility)
+            if "headers" not in metadata_dict:
+                headers_data = message.get("headers", {})
+                # Extract id, time, type from headers or fallback to top level for backward compatibility
+                headers_kwargs = {
+                    "id": headers_data.get("id", message.get("id", None)),
+                    "time": headers_data.get("time", message.get("time", None)),
+                    "type": headers_data.get("type", message.get("type", None)),
+                }
 
-            headers = MessageHeaders(**headers_kwargs)
+                # If headers_data contains a traceparent string, use build()
+                # If headers_data is a dict with traceparent dict/None, create directly
+                traceparent_data = headers_data.get("traceparent")
+                traceparent = (
+                    TraceParent(**traceparent_data) if traceparent_data else None
+                )
+                headers_kwargs["traceparent"] = traceparent
+
+                metadata_dict["headers"] = MessageHeaders(**headers_kwargs)
 
             # Create the message object
             msg = Message(
                 stream_name=message["stream_name"],
                 data=message["data"],
-                metadata=message["metadata"],
+                metadata=metadata_dict,
                 position=message["position"],
                 global_position=message["global_position"],
                 envelope=envelope,
-                headers=headers,
             )
 
             # Validate integrity if requested and checksum is present
             if validate and msg.envelope.checksum:
                 if not msg.validate_checksum():
-                    # Get message ID from headers or fallback to top-level
+                    # Get message ID from metadata.headers or fallback to top-level
                     message_id = (
-                        headers.id
-                        if headers and headers.id
+                        msg.metadata.headers.id
+                        if msg.metadata.headers and msg.metadata.headers.id
                         else message.get("id", "unknown")
                     )
                     message_type = (
-                        headers.type
-                        if headers and headers.type
+                        msg.metadata.headers.type
+                        if msg.metadata.headers and msg.metadata.headers.type
                         else message.get("type", "unknown")
                     )
 
@@ -428,12 +435,12 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 )
 
             element_cls = current_domain._events_and_commands.get(
-                self.metadata.type, None
+                self.metadata.headers.type, None
             )
 
             if element_cls is None:
                 raise ConfigurationError(
-                    f"Message type {self.metadata.type} is not registered with the domain."
+                    f"Message type {self.metadata.headers.type} is not registered with the domain."
                 )
 
             return element_cls(_metadata=self.metadata, **self.data)
@@ -443,10 +450,14 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
             envelope = getattr(self, "envelope", None)
             envelope_data = envelope.to_dict() if envelope else None
 
-            # Get type and ID from headers if available
-            message_type = self.headers.type if self.headers else "unknown"
+            # Get type and ID from metadata.headers if available
+            message_type = (
+                self.metadata.headers.type if self.metadata.headers else "unknown"
+            )
             message_id = (
-                self.headers.id if self.headers and self.headers.id else "unknown"
+                self.metadata.headers.id
+                if self.metadata.headers and self.metadata.headers.id
+                else "unknown"
             )
 
             context = {
@@ -455,8 +466,8 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 "metadata_kind": getattr(self.metadata, "kind", "unknown")
                 if hasattr(self, "metadata")
                 else "unknown",
-                "metadata_type": getattr(self.metadata, "type", "unknown")
-                if hasattr(self, "metadata")
+                "metadata_type": getattr(self.metadata.headers, "type", "unknown")
+                if hasattr(self, "metadata") and self.metadata.headers
                 else "unknown",
                 "position": getattr(self, "position", "unknown"),
                 "global_position": getattr(self, "global_position", "unknown"),
@@ -493,18 +504,27 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
             if not message_object.__class__.__name__.endswith("FactEvent"):
                 expected_version = message_object._expected_version
 
-        # Create the message headers
-        headers = MessageHeaders(
-            type=message_object.__class__.__type__,
-        )
+        # Ensure metadata has headers set correctly
+        # The message_object._metadata should already have headers from event/command creation
+        # If not, create minimal headers
+        if not message_object._metadata.headers:
+            headers = MessageHeaders(
+                type=message_object.__class__.__type__,
+                time=None,  # Don't set time for converted messages
+            )
+            # Clone metadata with headers
+            metadata_dict = message_object._metadata.to_dict()
+            metadata_dict["headers"] = headers
+            metadata = Metadata(**metadata_dict)
+        else:
+            metadata = message_object._metadata
 
         # Create the message
         message = cls(
             stream_name=message_object._metadata.stream,
             data=message_object.payload,
-            metadata=message_object._metadata,
+            metadata=metadata,
             expected_version=expected_version,
-            headers=headers,
         )
 
         # Automatically compute and set checksum for integrity validation

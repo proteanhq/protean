@@ -145,5 +145,5 @@ def test_reading_last_message(test_domain, renamed_user):
     message = test_domain.event_store.store.read_last_message(
         f"test::user-{renamed_user.id}"
     )
-    assert message.headers.type == Renamed.__type__
+    assert message.metadata.headers.type == Renamed.__type__
     assert message.data["name"] == "John Doe 9"

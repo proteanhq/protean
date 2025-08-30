@@ -115,5 +115,5 @@ async def test_no_filtering_for_event_handlers_without_defined_origin_stream(
     )
 
     assert len(filtered_messages) == 3
-    assert filtered_messages[0].headers.type == Registered.__type__
-    assert filtered_messages[2].headers.type == Sent.__type__
+    assert filtered_messages[0].metadata.headers.type == Registered.__type__
+    assert filtered_messages[2].metadata.headers.type == Sent.__type__

@@ -59,21 +59,19 @@ class TestMessageIntegrity:
     def test_compute_checksum_produces_consistent_results(self):
         """Test that compute_checksum produces consistent results for same data"""
 
-        headers = MessageHeaders(
-            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
-        )
-
         message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
-            headers=headers,
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                id="test-id",
-                type="test.registered",
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                headers=MessageHeaders(
+                    id="msg-123",
+                    type="test.registered",
+                    time="2023-01-01T00:00:00Z",
+                ),
             ),
             position=1,
             global_position=1,
@@ -91,21 +89,19 @@ class TestMessageIntegrity:
     def test_compute_checksum_excludes_checksum_field(self):
         """Test that compute_checksum excludes the checksum field itself"""
 
-        headers = MessageHeaders(
-            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
-        )
-
         message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
-            headers=headers,
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                id="test-id",
-                type="test.registered",
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                headers=MessageHeaders(
+                    id="msg-123",
+                    type="test.registered",
+                    time="2023-01-01T00:00:00Z",
+                ),
             ),
             position=1,
             global_position=1,
@@ -140,23 +136,21 @@ class TestMessageIntegrity:
     def test_validate_integrity_with_invalid_checksum(self):
         """Test validate_checksum returns False for invalid checksum"""
 
-        headers = MessageHeaders(
-            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
-        )
-
         message = Message(
             envelope=MessageEnvelope(
                 specversion="1.0", checksum="invalid_checksum_value"
             ),
             stream_name="user-123",
-            headers=headers,
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                id="test-id",
-                type="test.registered",
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                headers=MessageHeaders(
+                    id="msg-123",
+                    type="test.registered",
+                    time="2023-01-01T00:00:00Z",
+                ),
             ),
             position=1,
             global_position=1,
@@ -168,21 +162,19 @@ class TestMessageIntegrity:
     def test_validate_integrity_with_no_checksum(self):
         """Test validate_checksum returns False when no checksum is present"""
 
-        headers = MessageHeaders(
-            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
-        )
-
         message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
-            headers=headers,
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                id="test-id",
-                type="test.registered",
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                headers=MessageHeaders(
+                    id="msg-123",
+                    type="test.registered",
+                    time="2023-01-01T00:00:00Z",
+                ),
             ),
             position=1,
             global_position=1,
@@ -196,22 +188,19 @@ class TestMessageIntegrity:
         # Create a message dict with envelope
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": ""},
-            "headers": {"id": "msg-123", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "id": "test-id",
-                "type": "test.registered",
                 "fqn": "test.Registered",
                 "kind": "EVENT",
                 "stream": "user-123",
                 "origin_stream": None,
-                "timestamp": "2023-01-01T00:00:00Z",
                 "version": "v1",
                 "sequence_id": "1",
                 "payload_hash": "hash123",
                 "asynchronous": True,
+                "headers": {"id": "msg-123", "type": "test.registered"},
             },
             "position": 1,
             "global_position": 1,
@@ -233,22 +222,19 @@ class TestMessageIntegrity:
         """Test from_dict with validation=True rejects invalid checksum"""
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": "invalid_checksum_value"},
-            "headers": {"id": "msg-123", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "id": "test-id",
-                "type": "test.registered",
                 "fqn": "test.Registered",
                 "kind": "EVENT",
                 "stream": "user-123",
                 "origin_stream": None,
-                "timestamp": "2023-01-01T00:00:00Z",
                 "version": "v1",
                 "sequence_id": "1",
                 "payload_hash": "hash123",
                 "asynchronous": True,
+                "headers": {"id": "msg-123", "type": "test.registered"},
             },
             "position": 1,
             "global_position": 1,
@@ -271,22 +257,19 @@ class TestMessageIntegrity:
         """Test from_dict with validation=False accepts invalid checksum"""
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": "invalid_checksum_value"},
-            "headers": {"id": "msg-123", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "id": "test-id",
-                "type": "test.registered",
                 "fqn": "test.Registered",
                 "kind": "EVENT",
                 "stream": "user-123",
                 "origin_stream": None,
-                "timestamp": "2023-01-01T00:00:00Z",
                 "version": "v1",
                 "sequence_id": "1",
                 "payload_hash": "hash123",
                 "asynchronous": True,
+                "headers": {"id": "msg-123", "type": "test.registered"},
             },
             "position": 1,
             "global_position": 1,
@@ -303,22 +286,19 @@ class TestMessageIntegrity:
         """Test from_dict skips validation when no checksum is present"""
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": ""},
-            "headers": {"id": "msg-123", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "id": "test-id",
-                "type": "test.registered",
                 "fqn": "test.Registered",
                 "kind": "EVENT",
                 "stream": "user-123",
                 "origin_stream": None,
-                "timestamp": "2023-01-01T00:00:00Z",
                 "version": "v1",
                 "sequence_id": "1",
                 "payload_hash": "hash123",
                 "asynchronous": True,
+                "headers": {"id": "msg-123", "type": "test.registered"},
             },
             "position": 1,
             "global_position": 1,
@@ -334,42 +314,38 @@ class TestMessageIntegrity:
     def test_checksum_changes_with_different_data(self):
         """Test that checksum changes when message data changes"""
 
-        headers = MessageHeaders(
-            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
-        )
-
         base_message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
-            headers=headers,
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                id="test-id",
-                type="test.registered",
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                headers=MessageHeaders(
+                    id="msg-123",
+                    type="test.registered",
+                    time="2023-01-01T00:00:00Z",
+                ),
             ),
             position=1,
             global_position=1,
         )
 
         # Modified message with different data
-        modified_headers = MessageHeaders(
-            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
-        )
-
         modified_message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
-            headers=modified_headers,
             data={"id": "123", "email": "different@example.com"},  # Changed email
             metadata=Metadata(
-                id="test-id",
-                type="test.registered",
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                headers=MessageHeaders(
+                    id="msg-123",
+                    type="test.registered",
+                    time="2023-01-01T00:00:00Z",
+                ),
             ),
             position=1,
             global_position=1,
@@ -384,21 +360,19 @@ class TestMessageIntegrity:
     def test_checksum_includes_all_relevant_fields(self):
         """Test that checksum computation includes all relevant message fields"""
 
-        headers = MessageHeaders(
-            id="msg-123", type="test.registered", time="2023-01-01T00:00:00Z"
-        )
-
         message = Message(
             envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
-            headers=headers,
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                id="test-id",
-                type="test.registered",
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                headers=MessageHeaders(
+                    id="msg-123",
+                    type="test.registered",
+                    time="2023-01-01T00:00:00Z",
+                ),
             ),
             position=1,
             global_position=1,
@@ -475,22 +449,19 @@ class TestMessageIntegrity:
         """Test that integrity validation errors include comprehensive context"""
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": "tampered_checksum_value"},
-            "headers": {"id": "msg-123", "type": "test.registered", "time": None},
             "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "id": "test-id",
-                "type": "test.registered",
                 "fqn": "test.Registered",
                 "kind": "EVENT",
                 "stream": "user-123",
                 "origin_stream": None,
-                "timestamp": "2023-01-01T00:00:00Z",
                 "version": "v1",
                 "sequence_id": "1",
                 "payload_hash": "hash123",
                 "asynchronous": True,
+                "headers": {"id": "msg-123", "type": "test.registered"},
             },
             "position": 1,
             "global_position": 1,
