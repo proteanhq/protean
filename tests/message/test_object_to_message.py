@@ -7,7 +7,7 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
-from protean.utils.message import Message
+from protean.utils.eventing import Message
 
 
 class User(BaseAggregate):
@@ -53,7 +53,7 @@ def register(test_domain):
     test_domain.init(traverse=False)
 
 
-def test_construct_message_from_event(test_domain):
+def test_construct_message_from_event():
     identifier = str(uuid4())
     user = User(id=identifier, email="john.doe@example.com", name="John Doe")
     user.raise_(Registered(id=identifier, email="john.doe@gmail.com", name="John Doe"))
@@ -65,21 +65,21 @@ def test_construct_message_from_event(test_domain):
     assert type(message) is Message
 
     # Verify Message Content
-    assert message.type == Registered.__type__
+    assert message.headers.type == Registered.__type__
     assert message.stream_name == f"{User.meta_.stream_category}-{identifier}"
     assert message.metadata.kind == "EVENT"
     assert message.data == user._events[-1].payload
-    assert message.time is None
+    assert message.headers.time is None
     assert message.expected_version == user._version - 1
 
     # Verify Message Dict
     message_dict = message.to_dict()
 
-    assert message_dict["type"] == Registered.__type__
+    assert message_dict["headers"]["type"] == Registered.__type__
     assert message_dict["metadata"]["kind"] == "EVENT"
     assert message_dict["stream_name"] == f"{User.meta_.stream_category}-{identifier}"
     assert message_dict["data"] == user._events[-1].payload
-    assert message_dict["time"] is None
+    assert message_dict["headers"]["time"] is None
     assert (
         message_dict["expected_version"] == user._version - 1
     )  # Expected version is always one less than current
@@ -98,22 +98,22 @@ def test_construct_message_from_command(test_domain):
     assert type(message) is Message
 
     # Verify Message Content
-    assert message.type == Register.__type__
+    assert message.headers.type == Register.__type__
     assert message.stream_name == f"{User.meta_.stream_category}:command-{identifier}"
     assert message.metadata.kind == "COMMAND"
     assert message.data == command_with_metadata.payload
-    assert message.time is not None
+    assert message.headers.time is not None
 
     # Verify Message Dict
     message_dict = message.to_dict()
-    assert message_dict["type"] == Register.__type__
+    assert message_dict["headers"]["type"] == Register.__type__
     assert message_dict["metadata"]["kind"] == "COMMAND"
     assert (
         message_dict["stream_name"]
         == f"{User.meta_.stream_category}:command-{identifier}"
     )
     assert message_dict["data"] == command_with_metadata.payload
-    assert message_dict["time"] is not None
+    assert message_dict["headers"]["time"] is not None
 
 
 def test_construct_message_from_command_without_identifier(test_domain):
@@ -150,7 +150,7 @@ def test_construct_message_from_either_event_or_command(test_domain):
     assert type(message) is Message
 
     # Verify Message Content
-    assert message.type == Register.__type__
+    assert message.headers.type == Register.__type__
     assert message.stream_name == f"{User.meta_.stream_category}:command-{identifier}"
     assert message.metadata.kind == "COMMAND"
     assert message.data == command.payload
@@ -166,11 +166,11 @@ def test_construct_message_from_either_event_or_command(test_domain):
     assert type(message) is Message
 
     # Verify Message Content
-    assert message.type == Registered.__type__
+    assert message.headers.type == Registered.__type__
     assert message.stream_name == f"{User.meta_.stream_category}-{identifier}"
     assert message.metadata.kind == "EVENT"
     assert message.data == event.payload
-    assert message.time is None
+    assert message.headers.time is None
 
 
 def test_object_is_registered_with_domain():

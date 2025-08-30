@@ -5,7 +5,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.fields import Identifier, String
-from protean.utils.message import Message
+from protean.utils.eventing import Message
 
 
 class UserStatus(Enum):

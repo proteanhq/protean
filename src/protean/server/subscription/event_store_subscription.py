@@ -7,7 +7,7 @@ from typing import List, Union
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.port.event_store import BaseEventStore
-from protean.utils.message import Message, MessageType
+from protean.utils.eventing import Message, MessageType
 from protean.utils import fqn
 
 from . import BaseSubscription
@@ -241,7 +241,9 @@ class EventStoreSubscription(BaseSubscription):
         successful_count = 0
 
         for message in messages:
-            logging.info(f"{message.type}-{message.id} : {message.to_dict()}")
+            logging.info(
+                f"{message.headers.type}-{message.headers.id} : {message.to_dict()}"
+            )
 
             # Handle only if the message is asynchronous
             # Synchronous messages are handled by the domain as soon as they are received

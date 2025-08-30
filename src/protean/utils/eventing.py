@@ -1,12 +1,118 @@
+from __future__ import annotations
+
+import hashlib
 import json
+import logging
 from datetime import datetime, timezone
+from enum import Enum
+from typing import TYPE_CHECKING, Union
 
 from protean.core.value_object import BaseValueObject
-from protean.exceptions import ConfigurationError, IncorrectUsageError
+from protean.exceptions import (
+    ConfigurationError,
+    IncorrectUsageError,
+    InvalidDataError,
+    DeserializationError,
+)
 from protean.fields import Boolean, DateTime, Field, String, ValueObject
+from protean.fields.basic import Auto, Integer, Dict
 from protean.fields.association import Association, Reference
 from protean.utils.container import BaseContainer, OptionsMixin
 from protean.utils.reflection import _ID_FIELD_NAME, declared_fields, fields
+from protean.utils.globals import current_domain
+
+if TYPE_CHECKING:
+    from protean.core.command import BaseCommand
+    from protean.core.event import BaseEvent
+
+logger = logging.getLogger(__name__)
+
+
+class MessageType(Enum):
+    EVENT = "EVENT"
+    COMMAND = "COMMAND"
+    READ_POSITION = "READ_POSITION"
+
+
+class MessageEnvelope(BaseValueObject):
+    """Message envelope containing integrity and versioning information."""
+
+    specversion = String(default="1.0")
+    checksum = String()
+
+    @classmethod
+    def build(cls, payload: dict) -> MessageEnvelope:
+        return cls(checksum=cls.compute_checksum(payload))
+
+    @classmethod
+    def compute_checksum(cls, payload: dict) -> str:
+        """Compute checksum for message integrity validation."""
+        json_data = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(json_data.encode("utf-8")).hexdigest()
+
+
+class TraceParent(BaseValueObject):
+    """Represents the trace context for distributed tracing (OpenTelemetry compatible)
+
+    Format:
+    traceparent: 00-<trace_id>-<parent_id>-<trace_flags>
+    """
+
+    trace_id = String(max_length=32, min_length=32)
+    parent_id = String(max_length=16, min_length=16)
+    sampled = Boolean(default=False)
+
+    @classmethod
+    def build(cls, traceparent: str) -> TraceParent:
+        try:
+            parts = traceparent.split("-")
+            if len(parts) != 4:
+                raise ValueError("Traceparent must have 4 parts separated by hyphens")
+
+            version, trace_id, parent_id, sampled_flag = parts
+
+            # Version should always be "00" for current W3C spec
+            if version != "00":
+                raise ValueError(f"Unsupported traceparent version: {version}")
+
+            sampled = sampled_flag == "01"
+            return cls(trace_id=trace_id, parent_id=parent_id, sampled=sampled)
+        except Exception as e:
+            logger.error(f"Error parsing traceparent: {e}")
+            logger.error(f"Provided traceparent: {traceparent}")
+            return None
+
+    def to_dict(self) -> str:
+        return f"00-{self.trace_id}-{self.parent_id}-{'01' if self.sampled else '00'}"
+
+    @property
+    def correlation_id(self) -> str:
+        return self.trace_id
+
+    @property
+    def causation_id(self) -> str:
+        return self.parent_id
+
+
+class MessageHeaders(BaseValueObject):
+    """Structured headers for message metadata"""
+
+    # Core identification
+    id = Auto(required=False)
+    time = DateTime(required=False)
+    type = String(required=False)
+
+    # Tracing (OpenTelemetry compatible, W3C-spec compliant)
+    #   Holds trace context information
+    #   Serves as a container for Correlation and Causation IDs as well
+    traceparent = ValueObject(TraceParent, required=False)
+
+    @classmethod
+    def build(cls, **kwargs) -> MessageHeaders:
+        headers = kwargs.copy()
+        if "traceparent" in headers:
+            headers["traceparent"] = TraceParent.build(headers["traceparent"])
+        return cls(**headers)
 
 
 class Metadata(BaseValueObject):
@@ -56,6 +162,29 @@ class Metadata(BaseValueObject):
 
     # Sync or Async?
     asynchronous = Boolean(default=True)
+
+
+class MessageRecord(BaseContainer):
+    """
+    Base Container holding all fields of a message.
+    """
+
+    # Primary key. The ordinal position of the message in the entire message store.
+    # Global position may have gaps.
+    global_position = Auto(increment=True, identifier=True)
+
+    # The ordinal position of the message in its stream.
+    # Position is gapless.
+    position = Integer()
+
+    # Name of stream to which the message is written
+    stream_name = String(max_length=255)
+
+    # JSON representation of the message body
+    data = Dict()
+
+    # JSON representation of the message metadata
+    metadata = ValueObject(Metadata)
 
 
 class BaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
@@ -163,3 +292,222 @@ class BaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             field_name: field_obj.as_dict(getattr(self, field_name, None))
             for field_name, field_obj in fields(self).items()
         }
+
+
+class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
+    """Generic message class
+    It provides concrete implementations for:
+    - ID generation
+    - Payload construction
+    - Serialization and De-serialization
+    - Message format versioning for schema evolution
+    """
+
+    envelope = ValueObject(MessageEnvelope)
+    headers = ValueObject(MessageHeaders)
+
+    # Version that the stream is expected to be when the message is written
+    expected_version = Integer()
+
+    @classmethod
+    def from_dict(cls, message: dict, validate: bool = True) -> Message:
+        try:
+            envelope = (
+                MessageEnvelope(**message.get("envelope"))
+                if message.get("envelope", None)
+                else MessageEnvelope()
+            )
+
+            headers_data = message.get("headers", {})
+            # Extract id, time, type from headers or fallback to top level for backward compatibility
+            headers_kwargs = {
+                "id": headers_data.get("id", message.get("id", None)),
+                "time": headers_data.get("time", message.get("time", None)),
+                "type": headers_data.get("type", message.get("type", None)),
+            }
+
+            # If headers_data contains a traceparent string, use build()
+            # If headers_data is a dict with traceparent dict/None, create directly
+            traceparent_data = headers_data.get("traceparent")
+            traceparent = TraceParent(**traceparent_data) if traceparent_data else None
+            headers_kwargs["traceparent"] = traceparent
+
+            headers = MessageHeaders(**headers_kwargs)
+
+            # Create the message object
+            msg = Message(
+                stream_name=message["stream_name"],
+                data=message["data"],
+                metadata=message["metadata"],
+                position=message["position"],
+                global_position=message["global_position"],
+                envelope=envelope,
+                headers=headers,
+            )
+
+            # Validate integrity if requested and checksum is present
+            if validate and msg.envelope.checksum:
+                if not msg.validate_checksum():
+                    # Get message ID from headers or fallback to top-level
+                    message_id = (
+                        headers.id
+                        if headers and headers.id
+                        else message.get("id", "unknown")
+                    )
+                    message_type = (
+                        headers.type
+                        if headers and headers.type
+                        else message.get("type", "unknown")
+                    )
+
+                    raise DeserializationError(
+                        message_id=str(message_id),
+                        error="Message integrity validation failed - checksum mismatch",
+                        context={
+                            "stored_checksum": msg.envelope.checksum,
+                            "computed_checksum": MessageEnvelope.compute_checksum(
+                                msg.data
+                            ),
+                            "validation_requested": True,
+                            "message_type": message_type,
+                            "stream_name": message.get("stream_name", "unknown"),
+                        },
+                    )
+
+            return msg
+        except KeyError as e:
+            # Convert KeyError to DeserializationError with better context
+            # Try to get message ID and type from headers first, then fallback to top-level
+            headers_data = message.get("headers", {})
+            message_id = headers_data.get("id") or message.get("id", "unknown")
+            message_type = headers_data.get("type") or message.get("type", "unknown")
+            missing_field = str(e).strip("'\"")
+
+            # Build context about available fields
+            context = {
+                "missing_field": missing_field,
+                "available_fields": list(message.keys())
+                if isinstance(message, dict)
+                else "not_available",
+                "message_type": message_type,
+                "stream_name": message.get("stream_name", "unknown"),
+                "original_exception_type": "KeyError",
+            }
+
+            raise DeserializationError(
+                message_id=str(message_id),
+                error=f"Missing required field '{missing_field}' in message data",
+                context=context,
+            ) from e
+
+    def validate_checksum(self) -> bool:
+        """Validate message integrity using stored checksum.
+
+        Computes the current checksum and compares it with the stored checksum
+        to verify message integrity.
+
+        Returns:
+            bool: True if message integrity is valid, False otherwise
+        """
+        if not hasattr(self, "envelope") or not self.envelope.checksum:
+            return False  # No checksum available for validation
+
+        current_checksum = MessageEnvelope.compute_checksum(self.data)
+        return current_checksum == self.envelope.checksum
+
+    def to_object(self) -> Union[BaseEvent, BaseCommand]:
+        """Reconstruct the event/command object from the message data."""
+        try:
+            if self.metadata.kind not in [
+                MessageType.COMMAND.value,
+                MessageType.EVENT.value,
+            ]:
+                # We are dealing with a malformed or unknown message
+                raise InvalidDataError(
+                    {"kind": ["Message type is not supported for deserialization"]}
+                )
+
+            element_cls = current_domain._events_and_commands.get(
+                self.metadata.type, None
+            )
+
+            if element_cls is None:
+                raise ConfigurationError(
+                    f"Message type {self.metadata.type} is not registered with the domain."
+                )
+
+            return element_cls(_metadata=self.metadata, **self.data)
+
+        except Exception as e:
+            # Enhanced error context for debugging
+            envelope = getattr(self, "envelope", None)
+            envelope_data = envelope.to_dict() if envelope else None
+
+            # Get type and ID from headers if available
+            message_type = self.headers.type if self.headers else "unknown"
+            message_id = (
+                self.headers.id if self.headers and self.headers.id else "unknown"
+            )
+
+            context = {
+                "type": message_type,
+                "stream_name": getattr(self, "stream_name", "unknown"),
+                "metadata_kind": getattr(self.metadata, "kind", "unknown")
+                if hasattr(self, "metadata")
+                else "unknown",
+                "metadata_type": getattr(self.metadata, "type", "unknown")
+                if hasattr(self, "metadata")
+                else "unknown",
+                "position": getattr(self, "position", "unknown"),
+                "global_position": getattr(self, "global_position", "unknown"),
+                "original_exception_type": type(e).__name__,
+                "has_metadata": hasattr(self, "metadata"),
+                "has_data": hasattr(self, "data"),
+                "data_keys": list(self.data.keys())
+                if hasattr(self, "data") and isinstance(self.data, dict)
+                else "not_available",
+                "envelope": envelope_data,
+            }
+
+            # Handle case where ID is None
+            if message_id is None:
+                message_id = "unknown"
+
+            raise DeserializationError(
+                message_id=str(message_id), error=str(e), context=context
+            ) from e
+
+    @classmethod
+    def to_message(cls, message_object: Union[BaseEvent, BaseCommand]) -> Message:
+        if not message_object.meta_.part_of:
+            raise ConfigurationError(
+                f"`{message_object.__class__.__name__}` is not associated with an aggregate."
+            )
+
+        # Set the expected version of the stream
+        #   Applies only to events
+        expected_version = None
+        if message_object._metadata.kind == MessageType.EVENT.value:
+            # If this is a Fact Event, don't set an expected version.
+            # Otherwise, expect the previous version
+            if not message_object.__class__.__name__.endswith("FactEvent"):
+                expected_version = message_object._expected_version
+
+        # Create the message headers
+        headers = MessageHeaders(
+            type=message_object.__class__.__type__,
+        )
+
+        # Create the message
+        message = cls(
+            stream_name=message_object._metadata.stream,
+            data=message_object.payload,
+            metadata=message_object._metadata,
+            expected_version=expected_version,
+            headers=headers,
+        )
+
+        # Automatically compute and set checksum for integrity validation
+        message.envelope = MessageEnvelope.build(message.data)
+
+        return message

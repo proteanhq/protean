@@ -2,7 +2,7 @@ import json
 
 from protean import Domain
 from protean.fields import HasOne, String
-from protean.utils.message import Message
+from protean.utils.eventing import Message
 
 domain = Domain(name="Authentication")
 

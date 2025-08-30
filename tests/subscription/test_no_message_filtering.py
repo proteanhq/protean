@@ -12,7 +12,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.fields import DateTime, Identifier, String
 from protean.server import Engine
 from protean.utils import fqn
-from protean.utils.message import Message
+from protean.utils.eventing import Message
 from protean.utils.mixins import handle
 
 
@@ -115,5 +115,5 @@ async def test_no_filtering_for_event_handlers_without_defined_origin_stream(
     )
 
     assert len(filtered_messages) == 3
-    assert filtered_messages[0].type == Registered.__type__
-    assert filtered_messages[2].type == Sent.__type__
+    assert filtered_messages[0].headers.type == Registered.__type__
+    assert filtered_messages[2].headers.type == Sent.__type__

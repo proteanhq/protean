@@ -12,7 +12,7 @@ from protean.server import Engine
 from protean.server.subscription.broker_subscription import BrokerSubscription
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
 from protean.utils.eventing import Metadata
-from protean.utils.message import Message
+from protean.utils.eventing import Message
 from protean.utils.mixins import handle
 
 # Set up logger
@@ -220,7 +220,7 @@ async def test_subscription_process_batch_with_asynchronous_flag(test_domain, ca
         assert result == 1  # One successful message
 
         # Verify the message was processed and logged
-        assert f"{async_message.type}-{async_message.id}" in caplog.text
+        assert f"{async_message.headers.type}-{async_message.headers.id}" in caplog.text
 
         # Check if position updates were written
         position_messages = test_domain.event_store.store.read(

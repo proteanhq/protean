@@ -8,7 +8,7 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.utils import DomainObjects
-from protean.utils.message import Message
+from protean.utils.eventing import Message
 
 
 class handle:

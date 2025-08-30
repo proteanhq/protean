@@ -11,7 +11,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
 from protean.utils.globals import g
-from protean.utils.message import Message
+from protean.utils.eventing import Message
 
 from .subscription.broker_subscription import BrokerSubscription
 from .subscription.event_store_subscription import EventStoreSubscription
@@ -214,12 +214,12 @@ class Engine:
                 handler_cls._handle(message)
 
                 logger.info(
-                    f"{handler_cls.__name__} processed {message.type}-{message.id} successfully."
+                    f"{handler_cls.__name__} processed {message.headers.type}-{message.headers.id} successfully."
                 )
                 return True
             except Exception as exc:  # Includes handling `ConfigurationError`
                 logger.error(
-                    f"Error handling message {message.stream_name}-{message.id} "
+                    f"Error handling message {message.stream_name}-{message.headers.id} "
                     f"in {handler_cls.__name__}: {str(exc)}"
                 )
                 # Print the stack trace
