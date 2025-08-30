@@ -69,7 +69,6 @@ class Outbox(BaseAggregate):
     # Message priority for processing order
     priority = fields.Integer(default=0)  # Higher = more important
 
-    # Aggregate methods that encapsulate changes
     @classmethod
     def create_message(
         cls,

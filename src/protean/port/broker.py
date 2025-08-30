@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Type
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ValidationError
 from protean.utils import Processing
+from protean.utils.globals import current_uow
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -146,29 +147,34 @@ class BaseBroker(metaclass=ABCMeta):
         if not message:
             raise ValidationError({"message": ["Message cannot be empty"]})
 
-        try:
-            identifier = self._publish(stream, message)
-        except Exception as e:
-            # Check if this is a connection-related error and attempt recovery
-            if self._is_connection_error(e):
-                logger.warning(f"Connection error during publish: {e}")
-                if self._ensure_connection():
-                    # Retry the operation once after reconnection
-                    identifier = self._publish(stream, message)
+        if current_uow:
+            logger.debug(f"Recording message {message} in {current_uow} for dispatch")
+
+            current_uow.register_message(stream, message)
+        else:
+            try:
+                identifier = self._publish(stream, message)
+            except Exception as e:
+                # Check if this is a connection-related error and attempt recovery
+                if self._is_connection_error(e):
+                    logger.warning(f"Connection error during publish: {e}")
+                    if self._ensure_connection():
+                        # Retry the operation once after reconnection
+                        identifier = self._publish(stream, message)
+                    else:
+                        raise
                 else:
                     raise
-            else:
-                raise
 
-        if (
-            self.domain.config["message_processing"] == Processing.SYNC.value
-            and self._subscribers[stream]
-        ):
-            for subscriber_cls in self._subscribers[stream]:
-                subscriber = subscriber_cls()
-                subscriber(message)
+            if (
+                self.domain.config["message_processing"] == Processing.SYNC.value
+                and self._subscribers[stream]
+            ):
+                for subscriber_cls in self._subscribers[stream]:
+                    subscriber = subscriber_cls()
+                    subscriber(message)
 
-        return identifier
+            return identifier
 
     def ping(self) -> bool:
         """Test broker connectivity.

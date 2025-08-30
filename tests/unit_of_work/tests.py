@@ -117,9 +117,11 @@ class TestUnitOfWorkAdditionalCoverage:
         # Register a message
         uow.register_message("test_stream", {"data": "test"})
 
-        # Mock brokers
+        # Setup mock brokers
         mock_broker1 = Mock()
+        mock_broker1._subscribers = {"test_stream": [Mock()]}
         mock_broker2 = Mock()
+        mock_broker2._subscribers = {"test_stream": [Mock()]}
         test_domain.brokers = {"default": mock_broker1, "redis": mock_broker2}
 
         # Commit should dispatch messages to all brokers

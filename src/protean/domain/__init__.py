@@ -1170,14 +1170,6 @@ class Domain:
             **kwargs,
         )
 
-    ########################
-    # Broker Functionality #
-    ########################
-
-    def publish(self, stream: str, message: dict) -> None:
-        """Publish messages to all configured brokers."""
-        self.brokers.publish(stream, message)
-
     #####################
     # Handling Commands #
     #####################
