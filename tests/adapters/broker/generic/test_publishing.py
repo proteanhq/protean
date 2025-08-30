@@ -1,6 +1,9 @@
 import pytest
 
+from unittest.mock import Mock
+
 from protean.core.unit_of_work import UnitOfWork
+from protean.utils import Processing
 
 from ..elements import Person, PersonAdded
 
@@ -102,7 +105,9 @@ def test_message_push_after_uow_exit(test_domain, broker):
         )
 
         test_domain.repository_for(Person).add(person)
-        test_domain.publish("person_added", person._events[0].to_dict())
+        test_domain.brokers["default"].publish(
+            "person_added", person._events[0].to_dict()
+        )
 
         assert broker.get_next("person_added", "test_consumer_group") is None
 
@@ -113,6 +118,49 @@ def test_message_push_after_uow_exit(test_domain, broker):
     assert message["last_name"] == "Doe"
     assert message["age"] == 25
     assert "_metadata" in message
+
+
+def test_sync_message_processing_after_uow_exit(test_domain, broker):
+    """Test that synchronous message processing occurs after UnitOfWork exit when configured"""
+
+    # Configure domain for synchronous message processing
+    test_domain.config["message_processing"] = Processing.SYNC.value
+
+    # Create a mock subscriber to track message processing
+    mock_subscriber = Mock()
+    mock_subscriber_instance = Mock()
+    mock_subscriber.return_value = mock_subscriber_instance
+
+    # Register the mock subscriber for the stream
+    broker._subscribers["person_added"] = [mock_subscriber]
+
+    with UnitOfWork():
+        person = Person.add_newcomer(
+            {"id": "1", "first_name": "John", "last_name": "Doe", "age": 25}
+        )
+
+        test_domain.repository_for(Person).add(person)
+        # Register message for broker publishing
+        test_domain.brokers["default"].publish(
+            "person_added", person._events[0].to_dict()
+        )
+
+        # Before UnitOfWork exit, subscriber should not be called yet
+        mock_subscriber.assert_not_called()
+        mock_subscriber_instance.assert_not_called()
+
+    # After UnitOfWork exits, message should be published and subscriber should be called synchronously
+    mock_subscriber.assert_called_once()
+    mock_subscriber_instance.assert_called_once()
+
+    # Verify the message was passed to subscriber
+    call_args = mock_subscriber_instance.call_args[0]
+    message_data = call_args[0]
+    assert message_data["id"] == "1"
+    assert message_data["first_name"] == "John"
+    assert message_data["last_name"] == "Doe"
+    assert message_data["age"] == 25
+    assert "_metadata" in message_data
 
 
 @pytest.mark.basic_pubsub
