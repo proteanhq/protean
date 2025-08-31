@@ -50,23 +50,23 @@ class TestMessageIntegrity:
         message = Message.to_message(user._events[-1])
 
         # Message should have a checksum in envelope
-        assert message.envelope.checksum is not None
-        assert isinstance(message.envelope.checksum, str)
+        assert message.metadata.envelope.checksum is not None
+        assert isinstance(message.metadata.envelope.checksum, str)
         assert (
-            len(message.envelope.checksum) == 64
+            len(message.metadata.envelope.checksum) == 64
         )  # SHA-256 produces 64 character hex string
 
     def test_compute_checksum_produces_consistent_results(self):
         """Test that compute_checksum produces consistent results for same data"""
 
         message = Message(
-            envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
@@ -90,13 +90,13 @@ class TestMessageIntegrity:
         """Test that compute_checksum excludes the checksum field itself"""
 
         message = Message(
-            envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
@@ -111,9 +111,12 @@ class TestMessageIntegrity:
         checksum_without = MessageEnvelope.compute_checksum(message.data)
 
         # Set a different checksum value in envelope
-        message.envelope = MessageEnvelope(
+        # Update envelope through metadata
+        metadata_dict = message.metadata.to_dict()
+        metadata_dict["envelope"] = MessageEnvelope(
             specversion="1.0", checksum="some_different_checksum"
         )
+        message.metadata = Metadata(**metadata_dict)
 
         # Compute again - should be the same since checksum field is excluded from data calculation
         checksum_with = MessageEnvelope.compute_checksum(message.data)
@@ -137,15 +140,15 @@ class TestMessageIntegrity:
         """Test validate_checksum returns False for invalid checksum"""
 
         message = Message(
-            envelope=MessageEnvelope(
-                specversion="1.0", checksum="invalid_checksum_value"
-            ),
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                envelope=MessageEnvelope(
+                    specversion="1.0", checksum="invalid_checksum_value"
+                ),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
@@ -163,13 +166,13 @@ class TestMessageIntegrity:
         """Test validate_checksum returns False when no checksum is present"""
 
         message = Message(
-            envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
@@ -211,11 +214,15 @@ class TestMessageIntegrity:
         # Create message to compute correct checksum
         temp_message = Message.from_dict(message_dict, validate=False)
         correct_checksum = MessageEnvelope.compute_checksum(temp_message.data)
-        message_dict["envelope"]["checksum"] = correct_checksum
+        # Update the envelope in the dict before creating message
+        message_dict["metadata"]["envelope"] = {
+            "specversion": "1.0",
+            "checksum": correct_checksum,
+        }
 
         # This should not raise an exception
         message = Message.from_dict(message_dict, validate=True)
-        assert message.envelope.checksum == correct_checksum
+        assert message.metadata.envelope.checksum == correct_checksum
         assert message.validate_checksum() is True
 
     def test_from_dict_with_validation_enabled_invalid_checksum(self):
@@ -279,7 +286,7 @@ class TestMessageIntegrity:
 
         # This should not raise an exception since validation is disabled
         message = Message.from_dict(message_dict, validate=False)
-        assert message.envelope.checksum == "invalid_checksum_value"
+        assert message.metadata.envelope.checksum == "invalid_checksum_value"
         assert message.validate_checksum() is False  # But manual validation should fail
 
     def test_from_dict_with_no_checksum_skips_validation(self):
@@ -308,20 +315,20 @@ class TestMessageIntegrity:
 
         # Should work fine even with validation=True since no checksum is present
         message = Message.from_dict(message_dict, validate=True)
-        assert message.envelope.checksum == ""
+        assert message.metadata.envelope.checksum == ""
         assert message.validate_checksum() is False
 
     def test_checksum_changes_with_different_data(self):
         """Test that checksum changes when message data changes"""
 
         base_message = Message(
-            envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
@@ -334,13 +341,13 @@ class TestMessageIntegrity:
 
         # Modified message with different data
         modified_message = Message(
-            envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
             data={"id": "123", "email": "different@example.com"},  # Changed email
             metadata=Metadata(
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
@@ -361,13 +368,13 @@ class TestMessageIntegrity:
         """Test that checksum computation includes all relevant message fields"""
 
         message = Message(
-            envelope=MessageEnvelope(specversion="1.0", checksum=""),
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 fqn="test.Registered",
                 kind="EVENT",
                 stream="user-123",
+                envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
@@ -399,7 +406,7 @@ class TestMessageIntegrity:
         message = Message.to_message(command)
 
         # Command message should have checksum and pass validation
-        assert message.envelope.checksum is not None
+        assert message.metadata.envelope.checksum is not None
         assert message.validate_checksum() is True
 
     def test_message_roundtrip_preserves_integrity(self):
@@ -412,11 +419,11 @@ class TestMessageIntegrity:
 
         # Create original message with checksum
         original_message = Message.to_message(user._events[-1])
-        original_checksum = original_message.envelope.checksum
+        original_checksum = original_message.metadata.envelope.checksum
 
         # Serialize to dict
         message_dict = original_message.to_dict()
-        assert message_dict["envelope"]["checksum"] == original_checksum
+        assert message_dict["metadata"]["envelope"]["checksum"] == original_checksum
 
         # Debug: Check if reconstructed message computes same checksum
         reconstructed_without_validation = Message.from_dict(
@@ -433,11 +440,15 @@ class TestMessageIntegrity:
             # So we'll just verify that the reconstructed message has a valid checksum
             # and can validate its own integrity
             assert (
-                reconstructed_without_validation.envelope.checksum == original_checksum
+                reconstructed_without_validation.metadata.envelope.checksum
+                == original_checksum
             )
 
             # Update the stored checksum to the recomputed one for validation
-            message_dict["envelope"]["checksum"] = recomputed_checksum
+            message_dict["metadata"]["envelope"] = {
+                "specversion": "1.0",
+                "checksum": recomputed_checksum,
+            }
 
         # Deserialize back with validation
         reconstructed_message = Message.from_dict(message_dict, validate=True)
@@ -493,8 +504,14 @@ class TestMessageIntegrity:
         message = Message.to_message(user._events[-1])
         message_dict = message.to_dict()
 
-        assert "envelope" in message_dict
-        assert "checksum" in message_dict["envelope"]
-        assert message_dict["envelope"]["checksum"] == message.envelope.checksum
-        assert message_dict["envelope"]["checksum"] is not None
-        assert len(message_dict["envelope"]["checksum"]) == 64  # SHA-256 hex length
+        assert "metadata" in message_dict
+        assert "envelope" in message_dict["metadata"]
+        assert "checksum" in message_dict["metadata"]["envelope"]
+        assert (
+            message_dict["metadata"]["envelope"]["checksum"]
+            == message.metadata.envelope.checksum
+        )
+        assert message_dict["metadata"]["envelope"]["checksum"] is not None
+        assert (
+            len(message_dict["metadata"]["envelope"]["checksum"]) == 64
+        )  # SHA-256 hex length

@@ -74,6 +74,10 @@ class TestDomainEventDefinition:
                     "sequence_id": None,  # Sequence is unknown as event is not being raised as part of an aggregate
                     "payload_hash": raw_event._metadata.payload_hash,
                     "asynchronous": True,  # Asynchronous is True by default
+                    "envelope": {
+                        "specversion": "1.0",
+                        "checksum": None,
+                    },
                     "headers": {
                         "id": None,  # ID is none because the event is not being raised in the proper way (with `_raise`)
                         "type": "Test.UserAdded.v1",
@@ -99,6 +103,10 @@ class TestDomainEventDefinition:
                 "sequence_id": "0.1",
                 "payload_hash": raised_event._metadata.payload_hash,
                 "asynchronous": False,  # Test Domain event_processing is SYNC by default
+                "envelope": {
+                    "specversion": "1.0",
+                    "checksum": None,
+                },
                 "headers": {
                     "id": f"test::user-{user.id}-0.1",
                     "type": "Test.UserAdded.v1",

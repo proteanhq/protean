@@ -83,11 +83,11 @@ class TestMessageErrorHandling:
         message = Message(
             stream_name="test-stream",
             data={"test": "data"},
-            envelope=MessageEnvelope(specversion="1.0", checksum=""),
             metadata=Metadata(
                 kind="INVALID_KIND",  # Invalid kind
                 fqn="test.Invalid",
                 stream="test-stream",
+                envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="invalid-msg-1",
                     type="test.invalid",
@@ -302,11 +302,11 @@ class TestMessageErrorHandling:
             data={"field1": "value1", "field2": "value2"},
             position=42,
             global_position=100,
-            envelope=MessageEnvelope(specversion="2.0", checksum=""),
             metadata=Metadata(
                 kind="EVENT",
                 fqn="unregistered.Type",
                 stream="context-stream",
+                envelope=MessageEnvelope(specversion="2.0", checksum=""),
                 headers=MessageHeaders(
                     id="context-test-msg-1",
                     type="unregistered.type",

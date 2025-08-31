@@ -174,6 +174,10 @@ def test_event_metadata():
             "sequence_id": "0",
             "payload_hash": event._metadata.payload_hash,
             "asynchronous": False,  # Test Domain event_processing is SYNC by default
+            "envelope": {
+                "specversion": "1.0",
+                "checksum": None,
+            },
             "headers": {
                 "id": f"test::user-{user.id}-0",
                 "type": "Test.UserLoggedIn.v1",

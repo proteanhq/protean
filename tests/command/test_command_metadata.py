@@ -111,6 +111,10 @@ def test_command_metadata(test_domain):
                 "sequence_id": None,
                 "payload_hash": command._metadata.payload_hash,
                 "asynchronous": True,
+                "envelope": {
+                    "specversion": "1.0",
+                    "checksum": None,
+                },
                 "headers": {
                     "id": f"{identifier}",  # FIXME Double-check command identifier format and construction
                     "type": "Test.Login.v1",

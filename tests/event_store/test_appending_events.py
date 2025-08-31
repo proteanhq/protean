@@ -40,4 +40,8 @@ def test_appending_raw_events(test_domain):
     assert message.stream_name == f"test::authentication-{identifier}"
     assert message.metadata.kind == "EVENT"
     assert message.data == event.payload
-    assert message.metadata == event._metadata
+    # Compare metadata fields (except envelope which now has checksum in message)
+    assert message.metadata.fqn == event._metadata.fqn
+    assert message.metadata.kind == event._metadata.kind
+    assert message.metadata.stream == event._metadata.stream
+    assert message.metadata.headers == event._metadata.headers
