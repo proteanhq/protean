@@ -77,7 +77,11 @@ def test_reading_a_message(test_domain, registered_user):
     assert message.stream_name == f"test::user-{registered_user.id}"
     assert message.metadata.kind == "EVENT"
     assert message.data == registered_user._events[-1].payload
-    assert message.metadata == registered_user._events[-1]._metadata
+    # Compare metadata fields (except envelope which now has checksum in message)
+    assert message.metadata.fqn == registered_user._events[-1]._metadata.fqn
+    assert message.metadata.kind == registered_user._events[-1]._metadata.kind
+    assert message.metadata.stream == registered_user._events[-1]._metadata.stream
+    assert message.metadata.headers == registered_user._events[-1]._metadata.headers
 
 
 @pytest.mark.eventstore
@@ -89,9 +93,16 @@ def test_reading_many_messages(test_domain, activated_user):
     assert messages[0].stream_name == f"test::user-{activated_user.id}"
     assert messages[0].metadata.kind == "EVENT"
     assert messages[0].data == activated_user._events[0].payload
-    assert messages[0].metadata == activated_user._events[0]._metadata
+    # Compare metadata fields (except envelope which now has checksum in message)
+    assert messages[0].metadata.fqn == activated_user._events[0]._metadata.fqn
+    assert messages[0].metadata.kind == activated_user._events[0]._metadata.kind
+    assert messages[0].metadata.stream == activated_user._events[0]._metadata.stream
+    assert messages[0].metadata.headers == activated_user._events[0]._metadata.headers
     assert messages[1].data == activated_user._events[1].payload
-    assert messages[1].metadata == activated_user._events[1]._metadata
+    assert messages[1].metadata.fqn == activated_user._events[1]._metadata.fqn
+    assert messages[1].metadata.kind == activated_user._events[1]._metadata.kind
+    assert messages[1].metadata.stream == activated_user._events[1]._metadata.stream
+    assert messages[1].metadata.headers == activated_user._events[1]._metadata.headers
 
 
 @pytest.mark.eventstore
@@ -134,9 +145,16 @@ def test_reading_messages_by_category(test_domain, activated_user):
     assert messages[0].stream_name == f"test::user-{activated_user.id}"
     assert messages[0].metadata.kind == "EVENT"
     assert messages[0].data == activated_user._events[0].payload
-    assert messages[0].metadata == activated_user._events[0]._metadata
+    # Compare metadata fields (except envelope which now has checksum in message)
+    assert messages[0].metadata.fqn == activated_user._events[0]._metadata.fqn
+    assert messages[0].metadata.kind == activated_user._events[0]._metadata.kind
+    assert messages[0].metadata.stream == activated_user._events[0]._metadata.stream
+    assert messages[0].metadata.headers == activated_user._events[0]._metadata.headers
     assert messages[1].data == activated_user._events[1].payload
-    assert messages[1].metadata == activated_user._events[1]._metadata
+    assert messages[1].metadata.fqn == activated_user._events[1]._metadata.fqn
+    assert messages[1].metadata.kind == activated_user._events[1]._metadata.kind
+    assert messages[1].metadata.stream == activated_user._events[1]._metadata.stream
+    assert messages[1].metadata.headers == activated_user._events[1]._metadata.headers
 
 
 @pytest.mark.eventstore

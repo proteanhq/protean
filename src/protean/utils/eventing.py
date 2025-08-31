@@ -162,6 +162,7 @@ class Metadata(BaseValueObject):
     asynchronous = Boolean(default=True)
 
     headers = ValueObject(MessageHeaders)
+    envelope = ValueObject(MessageEnvelope)
 
 
 class MessageRecord(BaseContainer):
@@ -305,22 +306,22 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     - Message format versioning for schema evolution
     """
 
-    envelope = ValueObject(MessageEnvelope)
-
     # Version that the stream is expected to be when the message is written
     expected_version = Integer()
 
     @classmethod
     def from_dict(cls, message: dict, validate: bool = True) -> Message:
         try:
-            envelope = (
-                MessageEnvelope(**message.get("envelope"))
-                if message.get("envelope", None)
-                else MessageEnvelope()
-            )
-
-            # Handle headers within metadata
+            # Handle headers and envelope within metadata
             metadata_dict = message["metadata"]
+
+            # Handle envelope within metadata (backward compatibility)
+            if "envelope" not in metadata_dict:
+                envelope_data = message.get("envelope", {})
+                metadata_dict["envelope"] = MessageEnvelope(
+                    specversion=envelope_data.get("specversion", "1.0"),
+                    checksum=envelope_data.get("checksum", ""),
+                )
 
             # If headers are not in metadata but at top level (backward compatibility)
             if "headers" not in metadata_dict:
@@ -349,11 +350,10 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 metadata=metadata_dict,
                 position=message["position"],
                 global_position=message["global_position"],
-                envelope=envelope,
             )
 
             # Validate integrity if requested and checksum is present
-            if validate and msg.envelope.checksum:
+            if validate and msg.metadata.envelope and msg.metadata.envelope.checksum:
                 if not msg.validate_checksum():
                     # Get message ID from metadata.headers or fallback to top-level
                     message_id = (
@@ -371,7 +371,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                         message_id=str(message_id),
                         error="Message integrity validation failed - checksum mismatch",
                         context={
-                            "stored_checksum": msg.envelope.checksum,
+                            "stored_checksum": msg.metadata.envelope.checksum,
                             "computed_checksum": MessageEnvelope.compute_checksum(
                                 msg.data
                             ),
@@ -416,11 +416,15 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
         Returns:
             bool: True if message integrity is valid, False otherwise
         """
-        if not hasattr(self, "envelope") or not self.envelope.checksum:
+        if (
+            not hasattr(self, "metadata")
+            or not self.metadata.envelope
+            or not self.metadata.envelope.checksum
+        ):
             return False  # No checksum available for validation
 
         current_checksum = MessageEnvelope.compute_checksum(self.data)
-        return current_checksum == self.envelope.checksum
+        return current_checksum == self.metadata.envelope.checksum
 
     def to_object(self) -> Union[BaseEvent, BaseCommand]:
         """Reconstruct the event/command object from the message data."""
@@ -447,7 +451,11 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
 
         except Exception as e:
             # Enhanced error context for debugging
-            envelope = getattr(self, "envelope", None)
+            envelope = (
+                getattr(self.metadata, "envelope", None)
+                if hasattr(self, "metadata")
+                else None
+            )
             envelope_data = envelope.to_dict() if envelope else None
 
             # Get type and ID from metadata.headers if available
@@ -519,15 +527,20 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
         else:
             metadata = message_object._metadata
 
+        # Automatically compute and set envelope with checksum for integrity validation
+        envelope = MessageEnvelope.build(message_object.payload)
+
+        # Clone metadata with envelope
+        metadata_dict = metadata.to_dict()
+        metadata_dict["envelope"] = envelope
+        metadata_with_envelope = Metadata(**metadata_dict)
+
         # Create the message
         message = cls(
             stream_name=message_object._metadata.stream,
             data=message_object.payload,
-            metadata=metadata,
+            metadata=metadata_with_envelope,
             expected_version=expected_version,
         )
-
-        # Automatically compute and set checksum for integrity validation
-        message.envelope = MessageEnvelope.build(message.data)
 
         return message

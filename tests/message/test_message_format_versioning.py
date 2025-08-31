@@ -48,7 +48,7 @@ class TestMessageFormatVersioning:
 
         message = Message.to_message(user._events[-1])
 
-        assert message.envelope.specversion == "1.0"
+        assert message.metadata.envelope.specversion == "1.0"
 
     def test_message_to_dict_includes_format_version(self):
         """Test that to_dict() includes envelope with specversion"""
@@ -61,8 +61,9 @@ class TestMessageFormatVersioning:
         message = Message.to_message(user._events[-1])
         message_dict = message.to_dict()
 
-        assert "envelope" in message_dict
-        assert message_dict["envelope"]["specversion"] == "1.0"
+        assert "metadata" in message_dict
+        assert "envelope" in message_dict["metadata"]
+        assert message_dict["metadata"]["envelope"]["specversion"] == "1.0"
 
     def test_from_dict_with_format_version(self):
         """Test creating message from dict with envelope containing specversion"""
@@ -94,7 +95,7 @@ class TestMessageFormatVersioning:
 
         message = Message.from_dict(message_dict)
 
-        assert message.envelope.specversion == "1.0"
+        assert message.metadata.envelope.specversion == "1.0"
         assert message.stream_name == "user-123"
         assert message.metadata.headers.type == "test.registered"
 
@@ -130,7 +131,7 @@ class TestMessageFormatVersioning:
         message = Message.from_dict(message_dict)
 
         # Should default to "1.0" due to field default
-        assert message.envelope.specversion == "1.0"
+        assert message.metadata.envelope.specversion == "1.0"
 
     def test_from_dict_with_different_format_version(self):
         """Test creating message from dict with a different specversion"""
@@ -162,7 +163,7 @@ class TestMessageFormatVersioning:
 
         message = Message.from_dict(message_dict)
 
-        assert message.envelope.specversion == "2.0"
+        assert message.metadata.envelope.specversion == "2.0"
 
     def test_command_message_has_format_version(self, test_domain):
         """Test that command messages also include specversion in envelope"""
@@ -172,10 +173,10 @@ class TestMessageFormatVersioning:
 
         message = Message.to_message(command)
 
-        assert message.envelope.specversion == "1.0"
+        assert message.metadata.envelope.specversion == "1.0"
 
         message_dict = message.to_dict()
-        assert message_dict["envelope"]["specversion"] == "1.0"
+        assert message_dict["metadata"]["envelope"]["specversion"] == "1.0"
 
     def test_message_roundtrip_preserves_format_version(self):
         """Test that specversion is preserved through serialization/deserialization cycle"""
@@ -187,26 +188,26 @@ class TestMessageFormatVersioning:
 
         # Create original message
         original_message = Message.to_message(user._events[-1])
-        assert original_message.envelope.specversion == "1.0"
+        assert original_message.metadata.envelope.specversion == "1.0"
 
         # Serialize to dict
         message_dict = original_message.to_dict()
-        assert message_dict["envelope"]["specversion"] == "1.0"
+        assert message_dict["metadata"]["envelope"]["specversion"] == "1.0"
 
         # Check if checksum validation will work (serialization may change data representation)
         temp_message = Message.from_dict(message_dict, validate=False)
         if (
             MessageEnvelope.compute_checksum(temp_message.data)
-            != original_message.envelope.checksum
+            != original_message.metadata.envelope.checksum
         ):
             # Update checksum in dict to match the deserialized representation
-            message_dict["envelope"]["checksum"] = MessageEnvelope.compute_checksum(
-                temp_message.data
+            message_dict["metadata"]["envelope"]["checksum"] = (
+                MessageEnvelope.compute_checksum(temp_message.data)
             )
 
         # Deserialize back to message with validation
         reconstructed_message = Message.from_dict(message_dict, validate=True)
-        assert reconstructed_message.envelope.specversion == "1.0"
+        assert reconstructed_message.metadata.envelope.specversion == "1.0"
 
         # Verify other fields are preserved
         assert reconstructed_message.stream_name == original_message.stream_name
@@ -220,13 +221,13 @@ class TestMessageFormatVersioning:
         """Test creating message with explicit specversion in envelope"""
 
         message = Message(
-            envelope=MessageEnvelope(specversion="2.5", checksum=""),
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
                 fqn="test.Event",
                 kind="EVENT",
                 stream="test-stream",
+                envelope=MessageEnvelope(specversion="2.5", checksum=""),
                 headers=MessageHeaders(
                     id="test-id",
                     type="test.event",
@@ -234,31 +235,34 @@ class TestMessageFormatVersioning:
             ),
         )
 
-        assert message.envelope.specversion == "2.5"
+        assert message.metadata.envelope.specversion == "2.5"
 
     def test_message_format_version_field_properties(self):
         """Test the properties of the envelope specversion field"""
 
         # Test default value
         message = Message(
-            envelope=MessageEnvelope(),
             stream_name="test-stream",
             data={},
             metadata=Metadata(
                 fqn="test.Event",
                 kind="EVENT",
                 stream="test-stream",
+                envelope=MessageEnvelope(),
                 headers=MessageHeaders(
                     id="test-id",
                     type="test.event",
                 ),
             ),
         )
-        assert message.envelope.specversion == "1.0"
+        assert message.metadata.envelope.specversion == "1.0"
 
         # Test that it's a string field and accepts string values
-        message.envelope = MessageEnvelope(specversion="3.14", checksum="")
-        assert message.envelope.specversion == "3.14"
+        # Update envelope through metadata
+        metadata_dict = message.metadata.to_dict()
+        metadata_dict["envelope"] = MessageEnvelope(specversion="3.14", checksum="")
+        message.metadata = Metadata(**metadata_dict)
+        assert message.metadata.envelope.specversion == "3.14"
 
     def test_multiple_messages_same_format_version(self):
         """Test that multiple messages created in sequence have the same specversion"""
@@ -278,9 +282,12 @@ class TestMessageFormatVersioning:
         message1 = Message.to_message(user1._events[-1])
         message2 = Message.to_message(user2._events[-1])
 
-        assert message1.envelope.specversion == "1.0"
-        assert message2.envelope.specversion == "1.0"
-        assert message1.envelope.specversion == message2.envelope.specversion
+        assert message1.metadata.envelope.specversion == "1.0"
+        assert message2.metadata.envelope.specversion == "1.0"
+        assert (
+            message1.metadata.envelope.specversion
+            == message2.metadata.envelope.specversion
+        )
 
     def test_format_version_with_empty_string(self):
         """Test behavior with empty string specversion - defaults to '1.0' due to field validation"""
@@ -312,7 +319,7 @@ class TestMessageFormatVersioning:
 
         message = Message.from_dict(message_dict)
         # Empty string is considered an "empty value" by the String field, so it uses default "1.0"
-        assert message.envelope.specversion == "1.0"
+        assert message.metadata.envelope.specversion == "1.0"
 
     def test_format_version_with_none_value(self):
         """Test behavior when specversion is explicitly None in dict - defaults to '1.0' due to field validation"""
@@ -344,4 +351,4 @@ class TestMessageFormatVersioning:
 
         message = Message.from_dict(message_dict)
         # None is considered an "empty value" by the String field, so it uses default "1.0"
-        assert message.envelope.specversion == "1.0"
+        assert message.metadata.envelope.specversion == "1.0"
