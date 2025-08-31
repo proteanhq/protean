@@ -73,7 +73,6 @@ class TestDomainEventDefinition:
                     "origin_stream": None,
                     "version": "v1",
                     "sequence_id": None,  # Sequence is unknown as event is not being raised as part of an aggregate
-                    "payload_hash": raw_event._metadata.payload_hash,
                     "asynchronous": True,  # Asynchronous is True by default
                     "envelope": {
                         "specversion": "1.0",
@@ -105,7 +104,6 @@ class TestDomainEventDefinition:
                 "origin_stream": None,
                 "version": "v1",
                 "sequence_id": "0.1",
-                "payload_hash": raised_event._metadata.payload_hash,
                 "asynchronous": False,  # Test Domain event_processing is SYNC by default
                 "envelope": {
                     "specversion": "1.0",

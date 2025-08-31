@@ -226,7 +226,6 @@ class TestMessageErrorHandling:
                 "timestamp": "2023-01-01T00:00:00Z",
                 "version": "v1",
                 "sequence_id": "1",
-                "payload_hash": "hash123",
                 "asynchronous": True,
             },
             "position": 1,

@@ -26,7 +26,6 @@ def sample_metadata():
         origin_stream="test-message-123",
         version="1.0",
         sequence_id="1",
-        payload_hash=12345,
         headers=MessageHeaders(
             id="test-id",
             type="TestEvent",

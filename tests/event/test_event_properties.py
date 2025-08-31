@@ -49,4 +49,3 @@ def test_event_hash(test_domain):
     event = user._events[0]
     payload_hash = hash(json.dumps(event.payload, sort_keys=True))
     assert hash(event) == payload_hash
-    assert event._metadata.payload_hash == str(payload_hash)

@@ -155,9 +155,6 @@ class Metadata(BaseValueObject):
     #   single update.
     sequence_id = String()
 
-    # Hash of the payload
-    payload_hash = String()
-
     # Sync or Async?
     asynchronous = Boolean(default=True)
 

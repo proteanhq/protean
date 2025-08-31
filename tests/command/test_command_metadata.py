@@ -113,7 +113,6 @@ def test_command_metadata(test_domain):
                 "origin_stream": None,
                 "version": "v1",
                 "sequence_id": None,
-                "payload_hash": command._metadata.payload_hash,
                 "asynchronous": True,
                 "envelope": {
                     "specversion": "1.0",

@@ -53,8 +53,7 @@ with domain.domain_context():
             "origin_stream": null,
             "timestamp": "2024-07-18 22:06:10.148226+00:00",
             "version": "v1",
-            "sequence_id": "0.1",
-            "payload_hash": 6154717103144054927
+            "sequence_id": "0.1"
         },
         "user_id": "1"
     }
@@ -74,8 +73,7 @@ with domain.domain_context():
             "origin_stream": null,
             "timestamp": "2024-07-18 22:06:10.155603+00:00",
             "version": "v2",
-            "sequence_id": "0.2",
-            "payload_hash": -3600345200911557224
+            "sequence_id": "0.2"
         },
         "user_id": "1",
         "activated_at": "2024-07-18 22:06:10.155694+00:00"
