@@ -46,8 +46,7 @@ with domain.domain_context():
             "origin_stream": null,
             "timestamp": "2024-07-18 22:01:02.364078+00:00",
             "version": "v1",
-            "sequence_id": "0.1",
-            "payload_hash": 2754382941688457931
+            "sequence_id": "0.1"
         },
         "_version": 0,
         "name": "John Doe",

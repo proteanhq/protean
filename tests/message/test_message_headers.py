@@ -366,7 +366,6 @@ class TestMessageWithHeaders:
                 "origin_stream": None,
                 "version": "v1",
                 "sequence_id": "1",
-                "payload_hash": "hash123",
                 "asynchronous": True,
                 "headers": {
                     "id": "test-id",
@@ -407,7 +406,6 @@ class TestMessageWithHeaders:
                 "origin_stream": None,
                 "version": "v1",
                 "sequence_id": "1",
-                "payload_hash": "hash123",
                 "asynchronous": True,
                 "headers": {
                     "id": "msg-123",
@@ -442,7 +440,6 @@ class TestMessageWithHeaders:
                 "origin_stream": None,
                 "version": "v1",
                 "sequence_id": "1",
-                "payload_hash": "hash123",
                 "asynchronous": True,
                 "headers": {
                     "id": "msg-123",
@@ -478,7 +475,6 @@ class TestMessageWithHeaders:
                 "origin_stream": None,
                 "version": "v1",
                 "sequence_id": "1",
-                "payload_hash": "hash123",
                 "asynchronous": True,
                 "headers": {
                     "id": "test-id",

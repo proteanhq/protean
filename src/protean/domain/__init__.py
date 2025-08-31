@@ -5,7 +5,6 @@ to register Domain Elements.
 from __future__ import annotations
 
 import inspect
-import json
 import logging
 import os
 import sys
@@ -1208,14 +1207,6 @@ class Domain:
             origin_stream=origin_stream,
             version=command._metadata.version,
             sequence_id=None,
-            payload_hash=str(
-                hash(
-                    json.dumps(
-                        command.payload,
-                        sort_keys=True,
-                    )
-                )
-            ),
             asynchronous=asynchronous,
             envelope=envelope,
             headers=headers,

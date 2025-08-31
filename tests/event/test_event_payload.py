@@ -48,7 +48,6 @@ def test_event_payload():
             "origin_stream": None,
             "version": "v1",
             "sequence_id": "0",
-            "payload_hash": event._metadata.payload_hash,
             "asynchronous": False,  # Test Domain event_processing is SYNC by default
             "envelope": {
                 "specversion": "1.0",

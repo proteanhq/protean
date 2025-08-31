@@ -2,7 +2,6 @@
 
 import functools
 import inspect
-import json
 import logging
 from collections import defaultdict
 from functools import partial
@@ -525,14 +524,6 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
             origin_stream=event._metadata.origin_stream,
             version=event._metadata.version,
             sequence_id=sequence_id,
-            payload_hash=str(
-                hash(
-                    json.dumps(
-                        event.payload,
-                        sort_keys=True,
-                    )
-                )
-            ),
             asynchronous=current_domain.config["event_processing"]
             == Processing.ASYNC.value,
             headers=headers,
