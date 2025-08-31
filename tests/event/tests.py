@@ -8,6 +8,7 @@ from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Identifier, String, ValueObject
 from protean.utils import fully_qualified_name
+from protean.utils.eventing import MessageEnvelope
 from protean.utils.reflection import data_fields, declared_fields, fields
 
 from .elements import Person, PersonAdded
@@ -93,6 +94,9 @@ class TestDomainEventDefinition:
             }
         )
 
+        # Compute expected checksum
+        expected_checksum = MessageEnvelope.compute_checksum(raised_event.payload)
+
         assert raised_event.to_dict() == {
             "_metadata": {
                 "fqn": fully_qualified_name(UserAdded),
@@ -105,7 +109,7 @@ class TestDomainEventDefinition:
                 "asynchronous": False,  # Test Domain event_processing is SYNC by default
                 "envelope": {
                     "specversion": "1.0",
-                    "checksum": None,
+                    "checksum": expected_checksum,
                 },
                 "headers": {
                     "id": f"test::user-{user.id}-0.1",

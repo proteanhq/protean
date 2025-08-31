@@ -7,6 +7,7 @@ from protean.core.event import BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
 from protean.utils import fqn
+from protean.utils.eventing import MessageEnvelope
 
 
 class User(BaseAggregate):
@@ -36,6 +37,9 @@ def test_event_payload():
     user.login()
     event = user._events[0]
 
+    # Compute expected checksum
+    expected_checksum = MessageEnvelope.compute_checksum(event.payload)
+
     assert event.to_dict() == {
         "_metadata": {
             "fqn": fqn(UserLoggedIn),
@@ -48,7 +52,7 @@ def test_event_payload():
             "asynchronous": False,  # Test Domain event_processing is SYNC by default
             "envelope": {
                 "specversion": "1.0",
-                "checksum": None,
+                "checksum": expected_checksum,
             },
             "headers": {
                 "id": f"test::user-{user_id}-0",
