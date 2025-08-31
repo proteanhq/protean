@@ -6,6 +6,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.fields import Identifier, String
 from protean.utils import Processing, fqn
+from protean.utils.eventing import MessageEnvelope
 from protean.utils.reflection import fields
 
 
@@ -99,6 +100,9 @@ def test_command_metadata(test_domain):
     identifier = str(uuid4())
     command = test_domain._enrich_command(Login(user_id=identifier), True)
 
+    # Compute expected checksum
+    expected_checksum = MessageEnvelope.compute_checksum(command.payload)
+
     assert (
         command.to_dict()
         == {
@@ -113,7 +117,7 @@ def test_command_metadata(test_domain):
                 "asynchronous": True,
                 "envelope": {
                     "specversion": "1.0",
-                    "checksum": None,
+                    "checksum": expected_checksum,
                 },
                 "headers": {
                     "id": f"{identifier}",  # FIXME Double-check command identifier format and construction
@@ -125,3 +129,49 @@ def test_command_metadata(test_domain):
             "user_id": command.user_id,
         }
     )
+
+
+class TestCommandEnvelope:
+    def test_enrich_command_adds_envelope_with_checksum(self, test_domain):
+        """Test that _enrich_command adds envelope with correct checksum"""
+        identifier = str(uuid4())
+        command = Login(user_id=identifier)
+
+        enriched_command = test_domain._enrich_command(command, True)
+
+        # Verify envelope exists
+        assert enriched_command._metadata.envelope is not None
+        assert enriched_command._metadata.envelope.specversion == "1.0"
+
+        # Verify checksum is computed correctly
+        expected_checksum = MessageEnvelope.compute_checksum(enriched_command.payload)
+        assert enriched_command._metadata.envelope.checksum == expected_checksum
+
+    def test_command_envelope_checksum_changes_with_payload(self, test_domain):
+        """Test that different payloads produce different checksums"""
+        command1 = Login(user_id=str(uuid4()))
+        command2 = Login(user_id=str(uuid4()))
+
+        enriched1 = test_domain._enrich_command(command1, True)
+        enriched2 = test_domain._enrich_command(command2, True)
+
+        # Different payloads should have different checksums
+        assert (
+            enriched1._metadata.envelope.checksum
+            != enriched2._metadata.envelope.checksum
+        )
+
+    def test_command_envelope_checksum_consistent_for_same_payload(self, test_domain):
+        """Test that same payload always produces same checksum"""
+        identifier = str(uuid4())
+        command1 = Login(user_id=identifier)
+        command2 = Login(user_id=identifier)
+
+        enriched1 = test_domain._enrich_command(command1, True)
+        enriched2 = test_domain._enrich_command(command2, True)
+
+        # Same payload should have same checksum
+        assert (
+            enriched1._metadata.envelope.checksum
+            == enriched2._metadata.envelope.checksum
+        )

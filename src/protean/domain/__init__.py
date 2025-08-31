@@ -43,7 +43,7 @@ from protean.utils import (
     clone_class,
 )
 from protean.utils.container import Element
-from protean.utils.eventing import Metadata, MessageHeaders
+from protean.utils.eventing import Metadata, MessageEnvelope, MessageHeaders
 from protean.utils.globals import g
 from protean.utils.outbox import Outbox, OutboxRepository
 from protean.utils.reflection import declared_fields, has_fields, id_field
@@ -1198,6 +1198,9 @@ class Domain:
             else None,
         )
 
+        # Compute envelope with checksum for integrity validation
+        envelope = MessageEnvelope.build(command.payload)
+
         metadata = Metadata(
             fqn=command._metadata.fqn,
             kind="COMMAND",
@@ -1214,6 +1217,7 @@ class Domain:
                 )
             ),
             asynchronous=asynchronous,
+            envelope=envelope,
             headers=headers,
         )
 
