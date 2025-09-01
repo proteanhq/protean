@@ -174,8 +174,10 @@ class EventStoreSubscription(BaseSubscription):
             "Read",
             {"position": position},
             metadata={
-                "kind": MessageType.READ_POSITION.value,
-                "origin_stream": self.stream_category,
+                "domain": {
+                    "kind": MessageType.READ_POSITION.value,
+                    "origin_stream": self.stream_category,
+                }
             },
         )
 
@@ -195,8 +197,10 @@ class EventStoreSubscription(BaseSubscription):
         filtered_messages = []
 
         for message in messages:
-            origin_stream = message.metadata and self.store.category(
-                message.metadata.origin_stream
+            origin_stream = (
+                message.metadata
+                and message.metadata.domain
+                and self.store.category(message.metadata.domain.origin_stream)
             )
 
             if self.origin_stream == origin_stream:
@@ -247,7 +251,7 @@ class EventStoreSubscription(BaseSubscription):
 
             # Handle only if the message is asynchronous
             # Synchronous messages are handled by the domain as soon as they are received
-            if message.metadata.asynchronous:
+            if message.metadata.domain and message.metadata.domain.asynchronous:
                 # Process the message and get a success/failure result
                 is_successful = await self.engine.handle_message(self.handler, message)
 

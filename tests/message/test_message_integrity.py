@@ -8,7 +8,7 @@ from protean.core.event import BaseEvent
 from protean.exceptions import DeserializationError
 from protean.fields import Identifier, String
 from protean.utils.eventing import Message, MessageEnvelope, MessageHeaders
-from protean.utils.eventing import Metadata
+from protean.utils.eventing import Metadata, DomainMeta
 
 
 class User(BaseAggregate):
@@ -63,14 +63,16 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                fqn="test.Registered",
-                kind="EVENT",
                 stream="user-123",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
                     time="2023-01-01T00:00:00Z",
+                ),
+                domain=DomainMeta(
+                    fqn="test.Registered",
+                    kind="EVENT",
                 ),
             ),
             position=1,
@@ -93,14 +95,16 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                fqn="test.Registered",
-                kind="EVENT",
                 stream="user-123",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
                     time="2023-01-01T00:00:00Z",
+                ),
+                domain=DomainMeta(
+                    fqn="test.Registered",
+                    kind="EVENT",
                 ),
             ),
             position=1,
@@ -143,9 +147,11 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                fqn="test.Registered",
-                kind="EVENT",
                 stream="user-123",
+                domain=DomainMeta(
+                    fqn="test.Registered",
+                    kind="EVENT",
+                ),
                 envelope=MessageEnvelope(
                     specversion="1.0", checksum="invalid_checksum_value"
                 ),
@@ -169,14 +175,16 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                fqn="test.Registered",
-                kind="EVENT",
                 stream="user-123",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
                     time="2023-01-01T00:00:00Z",
+                ),
+                domain=DomainMeta(
+                    fqn="test.Registered",
+                    kind="EVENT",
                 ),
             ),
             position=1,
@@ -195,14 +203,16 @@ class TestMessageIntegrity:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "fqn": "test.Registered",
-                "kind": "EVENT",
                 "stream": "user-123",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {"id": "msg-123", "type": "test.registered"},
+                "domain": {
+                    "fqn": "test.Registered",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
+                },
             },
             "position": 1,
             "global_position": 1,
@@ -232,14 +242,16 @@ class TestMessageIntegrity:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "fqn": "test.Registered",
-                "kind": "EVENT",
                 "stream": "user-123",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {"id": "msg-123", "type": "test.registered"},
+                "domain": {
+                    "fqn": "test.Registered",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
+                },
             },
             "position": 1,
             "global_position": 1,
@@ -266,14 +278,16 @@ class TestMessageIntegrity:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "fqn": "test.Registered",
-                "kind": "EVENT",
                 "stream": "user-123",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {"id": "msg-123", "type": "test.registered"},
+                "domain": {
+                    "fqn": "test.Registered",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
+                },
             },
             "position": 1,
             "global_position": 1,
@@ -294,14 +308,16 @@ class TestMessageIntegrity:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "fqn": "test.Registered",
-                "kind": "EVENT",
                 "stream": "user-123",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {"id": "msg-123", "type": "test.registered"},
+                "domain": {
+                    "fqn": "test.Registered",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
+                },
             },
             "position": 1,
             "global_position": 1,
@@ -321,14 +337,16 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                fqn="test.Registered",
-                kind="EVENT",
                 stream="user-123",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
                     time="2023-01-01T00:00:00Z",
+                ),
+                domain=DomainMeta(
+                    fqn="test.Registered",
+                    kind="EVENT",
                 ),
             ),
             position=1,
@@ -340,14 +358,16 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "different@example.com"},  # Changed email
             metadata=Metadata(
-                fqn="test.Registered",
-                kind="EVENT",
                 stream="user-123",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
                     time="2023-01-01T00:00:00Z",
+                ),
+                domain=DomainMeta(
+                    fqn="test.Registered",
+                    kind="EVENT",
                 ),
             ),
             position=1,
@@ -367,14 +387,16 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                fqn="test.Registered",
-                kind="EVENT",
                 stream="user-123",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
                     time="2023-01-01T00:00:00Z",
+                ),
+                domain=DomainMeta(
+                    fqn="test.Registered",
+                    kind="EVENT",
                 ),
             ),
             position=1,
@@ -460,14 +482,16 @@ class TestMessageIntegrity:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "fqn": "test.Registered",
-                "kind": "EVENT",
                 "stream": "user-123",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {"id": "msg-123", "type": "test.registered"},
+                "domain": {
+                    "fqn": "test.Registered",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
+                },
             },
             "position": 1,
             "global_position": 1,

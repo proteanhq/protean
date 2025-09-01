@@ -26,7 +26,10 @@ class TestMessageDBEventStore:
 
         with pytest.raises(ConfigurationError) as exc:
             domain.event_store.store._write(
-                "testStream-123", "Event1", {"foo": "bar"}, {"kind": "EVENT"}
+                "testStream-123",
+                "Event1",
+                {"foo": "bar"},
+                {"domain": {"kind": "EVENT"}},
             )
 
         assert 'FATAL:  database "dummy" does not exist' in str(exc.value)

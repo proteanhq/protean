@@ -65,13 +65,13 @@ class TestDeltaEvents:
         assert len(user._events) == 2
         assert user._events[0]._metadata.headers.id == f"test::user-{user.id}-0.1"
         assert user._events[0]._metadata.headers.type == "Test.UserRenamed.v1"
-        assert user._events[0]._metadata.version == "v1"
-        assert user._events[0]._metadata.sequence_id == "0.1"
+        assert user._events[0]._metadata.domain.version == "v1"
+        assert user._events[0]._metadata.domain.sequence_id == "0.1"
 
         assert user._events[1]._metadata.headers.id == f"test::user-{user.id}-0.2"
         assert user._events[1]._metadata.headers.type == "Test.UserActivated.v1"
-        assert user._events[1]._metadata.version == "v1"
-        assert user._events[1]._metadata.sequence_id == "0.2"
+        assert user._events[1]._metadata.domain.version == "v1"
+        assert user._events[1]._metadata.domain.sequence_id == "0.2"
 
     def test_event_stream_name_in_message(self):
         user = User(name="John Doe", email="john.doe@example.com")
@@ -93,10 +93,10 @@ class TestDeltaEvents:
 
         assert event_messages[0].metadata.headers.id == f"test::user-{user.id}-0.1"
         assert event_messages[0].metadata.headers.type == "Test.UserRenamed.v1"
-        assert event_messages[0].metadata.version == "v1"
-        assert event_messages[0].metadata.sequence_id == "0.1"
+        assert event_messages[0].metadata.domain.version == "v1"
+        assert event_messages[0].metadata.domain.sequence_id == "0.1"
 
         assert event_messages[1].metadata.headers.id == f"test::user-{user.id}-0.2"
         assert event_messages[1].metadata.headers.type == "Test.UserActivated.v1"
-        assert event_messages[1].metadata.version == "v1"
-        assert event_messages[1].metadata.sequence_id == "0.2"
+        assert event_messages[1].metadata.domain.version == "v1"
+        assert event_messages[1].metadata.domain.sequence_id == "0.2"

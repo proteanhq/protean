@@ -42,7 +42,7 @@ from protean.utils import (
     clone_class,
 )
 from protean.utils.container import Element
-from protean.utils.eventing import Metadata, MessageEnvelope, MessageHeaders
+from protean.utils.eventing import Metadata, MessageEnvelope, MessageHeaders, DomainMeta
 from protean.utils.globals import g
 from protean.utils.outbox import Outbox, OutboxRepository
 from protean.utils.reflection import declared_fields, has_fields, id_field
@@ -1186,7 +1186,7 @@ class Domain:
 
         origin_stream = None
         if hasattr(g, "message_in_context"):
-            if g.message_in_context.metadata.kind == "EVENT":
+            if g.message_in_context.metadata.domain.kind == "EVENT":
                 origin_stream = g.message_in_context.stream_name
 
         headers = MessageHeaders(
@@ -1200,16 +1200,29 @@ class Domain:
         # Compute envelope with checksum for integrity validation
         envelope = MessageEnvelope.build(command.payload)
 
-        metadata = Metadata(
-            fqn=command._metadata.fqn,
+        # Build domain metadata
+        domain_meta = DomainMeta(
+            fqn=command._metadata.domain.fqn
+            if command._metadata.domain
+            else command._metadata.fqn
+            if hasattr(command._metadata, "fqn")
+            else None,
             kind="COMMAND",
-            stream=stream,
             origin_stream=origin_stream,
-            version=command._metadata.version,
+            version=command._metadata.domain.version
+            if command._metadata.domain
+            else command._metadata.version
+            if hasattr(command._metadata, "version")
+            else None,
             sequence_id=None,
             asynchronous=asynchronous,
-            envelope=envelope,
+        )
+
+        metadata = Metadata(
+            stream=stream,
             headers=headers,
+            envelope=envelope,
+            domain=domain_meta,
         )
 
         command_with_metadata = command.__class__(

@@ -4,7 +4,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
-from protean.core.event import BaseEvent, Metadata
+from protean.core.event import BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
 from protean.utils.globals import g
@@ -82,7 +82,7 @@ def test_origin_stream_in_event_from_command_without_origin_stream(
         )
     )
     event_message = Message.to_message(user._events[-1])
-    assert event_message.metadata.origin_stream is None
+    assert event_message.metadata.domain.origin_stream is None
 
 
 def test_origin_stream_in_event_from_command_with_origin_stream(
@@ -90,9 +90,22 @@ def test_origin_stream_in_event_from_command_with_origin_stream(
 ):
     command_message = register_command_message
 
+    # Create a new Metadata with updated origin_stream in domain metadata
+    from protean.utils.eventing import DomainMeta, Metadata
+
     command_message.metadata = Metadata(
-        command_message.metadata.to_dict(), origin_stream="foo"
-    )  # Metadata is a VO and immutable, so creating a copy with updated value
+        stream=command_message.metadata.stream,
+        headers=command_message.metadata.headers,
+        envelope=command_message.metadata.envelope,
+        domain=DomainMeta(
+            fqn=command_message.metadata.domain.fqn,
+            kind=command_message.metadata.domain.kind,
+            origin_stream="foo",
+            version=command_message.metadata.domain.version,
+            sequence_id=command_message.metadata.domain.sequence_id,
+            asynchronous=command_message.metadata.domain.asynchronous,
+        ),
+    )
     g.message_in_context = command_message
 
     user = User(id=user_id, email="john.doe@gmail.com", name="John Doe")
@@ -105,7 +118,7 @@ def test_origin_stream_in_event_from_command_with_origin_stream(
     )
     event_message = Message.to_message(user._events[-1])
 
-    assert event_message.metadata.origin_stream == "foo"
+    assert event_message.metadata.domain.origin_stream == "foo"
 
 
 def test_origin_stream_in_aggregate_event_from_command_without_origin_stream(
@@ -126,7 +139,7 @@ def test_origin_stream_in_aggregate_event_from_command_without_origin_stream(
     )
     event_message = Message.to_message(user._events[-1])
 
-    assert event_message.metadata.origin_stream is None
+    assert event_message.metadata.domain.origin_stream is None
 
 
 def test_origin_stream_in_aggregate_event_from_command_with_origin_stream(
@@ -134,9 +147,22 @@ def test_origin_stream_in_aggregate_event_from_command_with_origin_stream(
 ):
     command_message = register_command_message
 
+    # Create a new Metadata with updated origin_stream in domain metadata
+    from protean.utils.eventing import DomainMeta, Metadata
+
     command_message.metadata = Metadata(
-        command_message.metadata.to_dict(), origin_stream="foo"
-    )  # Metadata is a VO and immutable, so creating a copy with updated value
+        stream=command_message.metadata.stream,
+        headers=command_message.metadata.headers,
+        envelope=command_message.metadata.envelope,
+        domain=DomainMeta(
+            fqn=command_message.metadata.domain.fqn,
+            kind=command_message.metadata.domain.kind,
+            origin_stream="foo",
+            version=command_message.metadata.domain.version,
+            sequence_id=command_message.metadata.domain.sequence_id,
+            asynchronous=command_message.metadata.domain.asynchronous,
+        ),
+    )
     g.message_in_context = command_message
 
     user = User(
@@ -153,7 +179,7 @@ def test_origin_stream_in_aggregate_event_from_command_with_origin_stream(
     )
     event_message = Message.to_message(user._events[-1])
 
-    assert event_message.metadata.origin_stream == "foo"
+    assert event_message.metadata.domain.origin_stream == "foo"
 
 
 def test_origin_stream_in_command_from_event(
@@ -169,4 +195,4 @@ def test_origin_stream_in_command_from_event(
     enriched_command = test_domain._enrich_command(command, True)
     command_message = Message.to_message(enriched_command)
 
-    assert command_message.metadata.origin_stream == f"test::user-{user_id}"
+    assert command_message.metadata.domain.origin_stream == f"test::user-{user_id}"

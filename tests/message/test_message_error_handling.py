@@ -7,8 +7,13 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import ConfigurationError, DeserializationError
 from protean.fields import Identifier, String
-from protean.utils.eventing import Message, MessageEnvelope, MessageHeaders
-from protean.utils.eventing import Metadata
+from protean.utils.eventing import (
+    Message,
+    MessageEnvelope,
+    MessageHeaders,
+    DomainMeta,
+    Metadata,
+)
 
 
 class User(BaseAggregate):
@@ -84,14 +89,13 @@ class TestMessageErrorHandling:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                kind="INVALID_KIND",  # Invalid kind
-                fqn="test.Invalid",
                 stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="invalid-msg-1",
                     type="test.invalid",
                 ),
+                domain=DomainMeta(fqn="test.Invalid", kind="INVALID_KIND"),
             ),
         )
 
@@ -122,13 +126,12 @@ class TestMessageErrorHandling:
             stream_name="unregistered-stream",
             data={"id": "123", "data": "test"},
             metadata=Metadata(
-                kind="EVENT",
-                fqn="unregistered.Event",
                 stream="unregistered-stream",
                 headers=MessageHeaders(
                     id="unregistered-msg-1",
                     type="unregistered.event",
                 ),
+                domain=DomainMeta(fqn="unregistered.Event", kind="EVENT"),
             ),
         )
 
@@ -158,12 +161,14 @@ class TestMessageErrorHandling:
             stream_name="user-123",
             data={"invalid_field": "value"},  # Missing required fields
             metadata=Metadata(
-                kind="EVENT",
-                fqn="test.Registered",
                 stream="user-123",
                 headers=MessageHeaders(
                     id="malformed-msg-1",
                     type="test.registered",
+                ),
+                domain=DomainMeta(
+                    fqn="test.Registered",
+                    kind="EVENT",
                 ),
             ),
         )
@@ -217,16 +222,20 @@ class TestMessageErrorHandling:
             "type": "test.registered",
             "stream_name": "user-123",
             "metadata": {
-                "id": "no-data-meta-1",
-                "type": "test.registered",
-                "kind": "EVENT",
-                "fqn": "test.Registered",
                 "stream": "user-123",
-                "origin_stream": None,
-                "timestamp": "2023-01-01T00:00:00Z",
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
+                "headers": {
+                    "id": "no-data-msg-1",
+                    "type": "test.registered",
+                    "time": "2023-01-01T00:00:00Z",
+                },
+                "domain": {
+                    "fqn": "test.Registered",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
+                },
             },
             "position": 1,
             "global_position": 1,
@@ -251,13 +260,12 @@ class TestMessageErrorHandling:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                kind="EVENT",
-                fqn="unregistered.Event",
                 stream="test-stream",
                 headers=MessageHeaders(
                     id="known-id-123",
                     type="unregistered.event",
                 ),
+                domain=DomainMeta(fqn="unregistered.Event", kind="EVENT"),
             ),
         )
 
@@ -275,13 +283,12 @@ class TestMessageErrorHandling:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                kind="EVENT",
-                fqn="unregistered.Event",
                 stream="test-stream",
                 headers=MessageHeaders(
                     id="chain-test-msg-1",
                     type="unregistered.event",
                 ),
+                domain=DomainMeta(fqn="unregistered.Event", kind="EVENT"),
             ),
         )
 
@@ -302,13 +309,15 @@ class TestMessageErrorHandling:
             position=42,
             global_position=100,
             metadata=Metadata(
-                kind="EVENT",
-                fqn="unregistered.Type",
                 stream="context-stream",
                 envelope=MessageEnvelope(specversion="2.0", checksum=""),
                 headers=MessageHeaders(
                     id="context-test-msg-1",
                     type="unregistered.type",
+                ),
+                domain=DomainMeta(
+                    fqn="unregistered.Type",
+                    kind="EVENT",
                 ),
             ),
         )
@@ -358,12 +367,14 @@ class TestMessageErrorHandling:
             stream_name="user:command-123",
             data={"test": "data"},
             metadata=Metadata(
-                kind="COMMAND",
-                fqn="unregistered.Command",
                 stream="user:command-123",
                 headers=MessageHeaders(
                     id="cmd-error-msg-1",
                     type="unregistered.command",
+                ),
+                domain=DomainMeta(
+                    fqn="unregistered.Command",
+                    kind="COMMAND",
                 ),
             ),
         )
@@ -385,13 +396,12 @@ class TestMessageErrorHandling:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                kind="EVENT",
-                fqn="test.Event",
                 stream="test-stream",
                 headers=MessageHeaders(
                     id="corrupted-msg-1",
                     type=None,  # Corrupted type field
                 ),
+                domain=DomainMeta(fqn="test.Event", kind="EVENT"),
             ),
         )
 

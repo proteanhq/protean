@@ -6,8 +6,13 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.fields import Identifier, String
-from protean.utils.eventing import Message, MessageEnvelope, MessageHeaders
-from protean.utils.eventing import Metadata
+from protean.utils.eventing import (
+    Message,
+    MessageEnvelope,
+    MessageHeaders,
+    DomainMeta,
+    Metadata,
+)
 
 
 class User(BaseAggregate):
@@ -74,16 +79,18 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "fqn": "test.Registered",
-                "kind": "EVENT",
                 "stream": "user-123",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {
                     "id": "test-id",
                     "type": "test.registered",
+                },
+                "domain": {
+                    "fqn": "test.Registered",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
                 },
             },
             "position": 1,
@@ -108,16 +115,18 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "fqn": "test.Registered",
-                "kind": "EVENT",
                 "stream": "user-123",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {
                     "id": "test-id",
                     "type": "test.registered",
+                },
+                "domain": {
+                    "fqn": "test.Registered",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
                 },
             },
             "position": 1,
@@ -140,16 +149,18 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "fqn": "test.Registered",
-                "kind": "EVENT",
                 "stream": "user-123",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {
                     "id": "test-id",
                     "type": "test.registered",
+                },
+                "domain": {
+                    "fqn": "test.Registered",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
                 },
             },
             "position": 1,
@@ -221,13 +232,15 @@ class TestMessageFormatVersioning:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                fqn="test.Event",
-                kind="EVENT",
                 stream="test-stream",
                 envelope=MessageEnvelope(specversion="2.5", checksum=""),
                 headers=MessageHeaders(
                     id="test-id",
                     type="test.event",
+                ),
+                domain=DomainMeta(
+                    fqn="test.Event",
+                    kind="EVENT",
                 ),
             ),
         )
@@ -242,13 +255,15 @@ class TestMessageFormatVersioning:
             stream_name="test-stream",
             data={},
             metadata=Metadata(
-                fqn="test.Event",
-                kind="EVENT",
                 stream="test-stream",
                 envelope=MessageEnvelope(),
                 headers=MessageHeaders(
                     id="test-id",
                     type="test.event",
+                ),
+                domain=DomainMeta(
+                    fqn="test.Event",
+                    kind="EVENT",
                 ),
             ),
         )
@@ -295,16 +310,18 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "fqn": "test.Registered",
-                "kind": "EVENT",
                 "stream": "user-123",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {
                     "id": "test-id",
                     "type": "test.registered",
+                },
+                "domain": {
+                    "fqn": "test.Registered",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
                 },
             },
             "position": 1,
@@ -326,16 +343,18 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "fqn": "test.Registered",
-                "kind": "EVENT",
                 "stream": "user-123",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {
                     "id": "test-id",
                     "type": "test.registered",
+                },
+                "domain": {
+                    "fqn": "test.Registered",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
                 },
             },
             "position": 1,

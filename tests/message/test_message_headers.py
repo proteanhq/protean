@@ -7,8 +7,14 @@ from protean.core.event import BaseEvent
 from protean.core.command import BaseCommand
 from protean.exceptions import DeserializationError
 from protean.fields import Identifier, String
-from protean.utils.eventing import Message, MessageEnvelope, MessageHeaders, TraceParent
-from protean.utils.eventing import Metadata
+from protean.utils.eventing import (
+    Message,
+    MessageEnvelope,
+    MessageHeaders,
+    TraceParent,
+    DomainMeta,
+    Metadata,
+)
 
 
 class User(BaseAggregate):
@@ -244,11 +250,10 @@ class TestMessageWithHeaders:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                fqn="test.Event",
-                kind="EVENT",
                 stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=headers,
+                domain=DomainMeta(fqn="test.Event", kind="EVENT"),
             ),
         )
 
@@ -264,14 +269,13 @@ class TestMessageWithHeaders:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                fqn="test.Event",
-                kind="EVENT",
                 stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="test-id",
                     type="test.event",
                 ),
+                domain=DomainMeta(fqn="test.Event", kind="EVENT"),
             ),
         )
 
@@ -285,9 +289,8 @@ class TestMessageWithHeaders:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                fqn="test.Event",
-                kind="EVENT",
                 stream="test-stream",
+                domain=DomainMeta(fqn="test.Event", kind="EVENT"),
                 # No headers provided
             ),
         )
@@ -310,11 +313,10 @@ class TestMessageWithHeaders:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                fqn="test.Event",
-                kind="EVENT",
                 stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=headers,
+                domain=DomainMeta(fqn="test.Event", kind="EVENT"),
             ),
         )
 
@@ -334,13 +336,15 @@ class TestMessageWithHeaders:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                fqn="test.Event",
-                kind="EVENT",
                 stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="test-id",
                     type="test.event",
+                ),
+                domain=DomainMeta(
+                    fqn="test.Event",
+                    kind="EVENT",
                 ),
             ),
         )
@@ -360,13 +364,7 @@ class TestMessageWithHeaders:
             "type": "test.event",
             "data": {"test": "data"},
             "metadata": {
-                "fqn": "test.Event",
-                "kind": "EVENT",
                 "stream": "test-stream",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {
                     "id": "test-id",
                     "type": "test.event",
@@ -375,6 +373,14 @@ class TestMessageWithHeaders:
                         "parent_id": "abcdef1234567890",
                         "sampled": True,
                     },
+                },
+                "domain": {
+                    "fqn": "test.Event",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
                 },
             },
             "position": 1,
@@ -400,17 +406,19 @@ class TestMessageWithHeaders:
             "type": "test.event",
             "data": {"test": "data"},
             "metadata": {
-                "fqn": "test.Event",
-                "kind": "EVENT",
                 "stream": "test-stream",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {
                     "id": "msg-123",
                     "type": "test.event",
                     "time": None,
+                },
+                "domain": {
+                    "fqn": "test.Event",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
                 },
             },
             "position": 1,
@@ -434,17 +442,19 @@ class TestMessageWithHeaders:
             "type": "test.event",
             "data": {"test": "data"},
             "metadata": {
-                "fqn": "test.Event",
-                "kind": "EVENT",
                 "stream": "test-stream",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {
                     "id": "msg-123",
                     "type": "test.event",
                     "traceparent": None,
+                },
+                "domain": {
+                    "fqn": "test.Event",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
                 },
             },
             "position": 1,
@@ -469,13 +479,7 @@ class TestMessageWithHeaders:
             "type": "test.event",
             "data": {"test": "data"},
             "metadata": {
-                "fqn": "test.Event",
-                "kind": "EVENT",
                 "stream": "test-stream",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "1",
-                "asynchronous": True,
                 "headers": {
                     "id": "test-id",
                     "type": "test.event",
@@ -484,6 +488,14 @@ class TestMessageWithHeaders:
                         "parent_id": "abcdef1234567890",
                         "sampled": True,
                     },
+                },
+                "domain": {
+                    "fqn": "test.Event",
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "1",
+                    "asynchronous": True,
                 },
             },
             "position": 1,
@@ -519,11 +531,10 @@ class TestMessageWithHeaders:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                fqn="test.Event",
-                kind="EVENT",
                 stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=headers,
+                domain=DomainMeta(fqn="test.Event", kind="EVENT"),
             ),
         )
 
@@ -584,11 +595,10 @@ class TestMessageWithHeaders:
             stream_name="test-stream",
             data={"field1": "value1"},
             metadata=Metadata(
-                kind="EVENT",
-                fqn="unregistered.Type",
                 stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=headers,
+                domain=DomainMeta(fqn="unregistered.Type", kind="EVENT"),
             ),
         )
 

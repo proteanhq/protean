@@ -42,13 +42,7 @@ def test_event_payload():
 
     assert event.to_dict() == {
         "_metadata": {
-            "fqn": fqn(UserLoggedIn),
-            "kind": "EVENT",
             "stream": f"test::user-{user_id}",
-            "origin_stream": None,
-            "version": "v1",
-            "sequence_id": "0",
-            "asynchronous": False,  # Test Domain event_processing is SYNC by default
             "envelope": {
                 "specversion": "1.0",
                 "checksum": expected_checksum,
@@ -58,6 +52,14 @@ def test_event_payload():
                 "type": "Test.UserLoggedIn.v1",
                 "time": str(event._metadata.headers.time),
                 "traceparent": None,
+            },
+            "domain": {
+                "fqn": fqn(UserLoggedIn),
+                "kind": "EVENT",
+                "origin_stream": None,
+                "version": "v1",
+                "sequence_id": "0",
+                "asynchronous": False,  # Test Domain event_processing is SYNC by default
             },
         },
         "user_id": event.user_id,

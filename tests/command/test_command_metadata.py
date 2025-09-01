@@ -44,11 +44,11 @@ class TestMetadataType:
 class TestMetadataVersion:
     def test_metadata_has_command_version(self):
         metadata_field = fields(Login)["_metadata"]
-        assert hasattr(metadata_field.value_object_cls, "version")
+        assert hasattr(metadata_field.value_object_cls, "domain")
 
     def test_command_metadata_version_default(self):
         command = Login(user_id=str(uuid4()))
-        assert command._metadata.version == "v1"
+        assert command._metadata.domain.version == "v1"
 
     def test_overridden_version(self, test_domain):
         class Login(BaseCommand):
@@ -59,17 +59,17 @@ class TestMetadataVersion:
         test_domain.init(traverse=False)
 
         command = Login(user_id=str(uuid4()))
-        assert command._metadata.version == "v2"
+        assert command._metadata.domain.version == "v2"
 
 
 class TestMetadataAsynchronous:
     def test_metadata_has_asynchronous_field(self):
         metadata_field = fields(Login)["_metadata"]
-        assert hasattr(metadata_field.value_object_cls, "asynchronous")
+        assert hasattr(metadata_field.value_object_cls, "domain")
 
     def test_command_metadata_asynchronous_default(self):
         command = Login(user_id=str(uuid4()))
-        assert command._metadata.asynchronous is True
+        assert command._metadata.domain.asynchronous is True
 
     def test_command_metadata_asynchronous_override(self, test_domain):
         identifier = str(uuid4())
@@ -80,7 +80,7 @@ class TestMetadataAsynchronous:
             f"test::user:command-{identifier}"
         )
         assert last_command is not None
-        assert last_command.metadata.asynchronous is False
+        assert last_command.metadata.domain.asynchronous is False
 
     def test_command_metadata_asynchronous_default_from_domain(self, test_domain):
         test_domain.config["command_processing"] = Processing.SYNC.value
@@ -93,7 +93,7 @@ class TestMetadataAsynchronous:
             f"test::user:command-{identifier}"
         )
         assert last_command is not None
-        assert last_command.metadata.asynchronous is False
+        assert last_command.metadata.domain.asynchronous is False
 
 
 def test_command_metadata(test_domain):
@@ -107,13 +107,15 @@ def test_command_metadata(test_domain):
         command.to_dict()
         == {
             "_metadata": {
-                "fqn": fqn(Login),
-                "kind": "COMMAND",
                 "stream": f"test::user:command-{identifier}",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": None,
-                "asynchronous": True,
+                "domain": {
+                    "fqn": fqn(Login),
+                    "kind": "COMMAND",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": None,
+                    "asynchronous": True,
+                },
                 "envelope": {
                     "specversion": "1.0",
                     "checksum": expected_checksum,

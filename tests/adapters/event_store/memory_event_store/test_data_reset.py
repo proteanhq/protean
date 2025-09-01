@@ -1,6 +1,6 @@
 def test_write_to_event_store(test_domain):
     test_domain.event_store.store._write(
-        "testStream-123", "Event1", {"foo": "bar"}, {"kind": "EVENT"}
+        "testStream-123", "Event1", {"foo": "bar"}, {"domain": {"kind": "EVENT"}}
     )
     assert len(test_domain.event_store.store._read("testStream-123")) == 1
 

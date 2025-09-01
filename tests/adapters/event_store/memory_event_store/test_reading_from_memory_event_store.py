@@ -1,6 +1,6 @@
 def test_reading_stream_message(test_domain):
     test_domain.event_store.store._write(
-        "testStream-123", "Event1", {"foo": "bar"}, {"kind": "EVENT"}
+        "testStream-123", "Event1", {"foo": "bar"}, {"domain": {"kind": "EVENT"}}
     )
 
     messages = test_domain.event_store.store._read("testStream-123")
@@ -13,7 +13,10 @@ def test_reading_stream_message(test_domain):
 def test_reading_multiple_stream_messages(test_domain):
     for i in range(5):
         test_domain.event_store.store._write(
-            "testStream-123", "Event1", {"foo": f"bar{i}"}, {"kind": "EVENT"}
+            "testStream-123",
+            "Event1",
+            {"foo": f"bar{i}"},
+            {"domain": {"kind": "EVENT"}},
         )
 
     messages = test_domain.event_store.store._read("testStream-123")
@@ -24,7 +27,7 @@ def test_reading_multiple_stream_messages(test_domain):
 
 def test_reading_category_message(test_domain):
     test_domain.event_store.store._write(
-        "testStream-123", "Event1", {"foo": "bar"}, {"kind": "EVENT"}
+        "testStream-123", "Event1", {"foo": "bar"}, {"domain": {"kind": "EVENT"}}
     )
 
     messages = test_domain.event_store.store._read("testStream")
@@ -37,7 +40,10 @@ def test_reading_category_message(test_domain):
 def test_reading_multiple_category_messages(test_domain):
     for i in range(5):
         test_domain.event_store.store._write(
-            "testStream-123", "Event1", {"foo": f"bar{i}"}, {"kind": "EVENT"}
+            "testStream-123",
+            "Event1",
+            {"foo": f"bar{i}"},
+            {"domain": {"kind": "EVENT"}},
         )
 
     messages = test_domain.event_store.store._read("testStream")
@@ -49,11 +55,17 @@ def test_reading_multiple_category_messages(test_domain):
 def test_reading_targeted_stream_messages(test_domain):
     for i in range(5):
         test_domain.event_store.store._write(
-            "testStream-123", "Event1", {"foo": f"bar{i}"}, {"kind": "EVENT"}
+            "testStream-123",
+            "Event1",
+            {"foo": f"bar{i}"},
+            {"domain": {"kind": "EVENT"}},
         )
     for i in range(5):
         test_domain.event_store.store._write(
-            "testStream-456", "Event1", {"foo": f"baz{i}"}, {"kind": "EVENT"}
+            "testStream-456",
+            "Event1",
+            {"foo": f"baz{i}"},
+            {"domain": {"kind": "EVENT"}},
         )
 
     messages = test_domain.event_store.store._read("testStream-456")
@@ -65,7 +77,10 @@ def test_reading_targeted_stream_messages(test_domain):
 def test_read_last_message(test_domain):
     for i in range(5):
         test_domain.event_store.store._write(
-            "testStream-123", "Event1", {"foo": f"bar{i}"}, {"kind": "EVENT"}
+            "testStream-123",
+            "Event1",
+            {"foo": f"bar{i}"},
+            {"domain": {"kind": "EVENT"}},
         )
 
     message = test_domain.event_store.store._read_last_message("testStream-123")

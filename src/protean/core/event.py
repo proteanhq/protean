@@ -7,7 +7,7 @@ from protean.exceptions import (
     NotSupportedError,
 )
 from protean.utils import DomainObjects, derive_element_class, fqn
-from protean.utils.eventing import BaseMessageType, Metadata, MessageHeaders
+from protean.utils.eventing import BaseMessageType, Metadata, MessageHeaders, DomainMeta
 from protean.utils.globals import g
 
 logger = logging.getLogger(__name__)
@@ -36,10 +36,10 @@ class BaseEvent(BaseMessageType):
         origin_stream = None
         if hasattr(g, "message_in_context"):
             if (
-                g.message_in_context.metadata.kind == "COMMAND"
-                and g.message_in_context.metadata.origin_stream is not None
+                g.message_in_context.metadata.domain.kind == "COMMAND"
+                and g.message_in_context.metadata.domain.origin_stream is not None
             ):
-                origin_stream = g.message_in_context.metadata.origin_stream
+                origin_stream = g.message_in_context.metadata.domain.origin_stream
 
         # Value Objects are immutable, so we create a clone/copy and associate it
         # Use existing headers if they exist, but ensure type is set
@@ -57,13 +57,39 @@ class BaseEvent(BaseMessageType):
                 type=self.__class__.__type__, time=datetime.now(timezone.utc)
             )
 
-        self._metadata = Metadata(
-            self._metadata.to_dict(),  # Template from old Metadata
+        # If metadata already has domain with sequence_id and asynchronous set (from raise_),
+        # preserve those values
+        existing_domain = (
+            self._metadata.domain if hasattr(self._metadata, "domain") else None
+        )
+
+        # Build domain metadata
+        domain_meta = DomainMeta(
             kind="EVENT",
             fqn=fqn(self.__class__),
             origin_stream=origin_stream,
             version=self.__class__.__version__,  # Was set in `__init_subclass__`
+            sequence_id=existing_domain.sequence_id
+            if existing_domain and existing_domain.sequence_id is not None
+            else None,
+            asynchronous=existing_domain.asynchronous
+            if existing_domain and hasattr(existing_domain, "asynchronous")
+            else True,
+        )
+
+        # Also preserve stream and envelope if they exist
+        existing_stream = (
+            self._metadata.stream if hasattr(self._metadata, "stream") else None
+        )
+        existing_envelope = (
+            self._metadata.envelope if hasattr(self._metadata, "envelope") else None
+        )
+
+        self._metadata = Metadata(
+            stream=existing_stream,
             headers=headers,
+            envelope=existing_envelope,
+            domain=domain_meta,
         )
 
         # Finally lock the event and make it immutable

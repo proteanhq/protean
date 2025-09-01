@@ -11,8 +11,7 @@ from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.broker_subscription import BrokerSubscription
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
-from protean.utils.eventing import Metadata
-from protean.utils.eventing import Message
+from protean.utils.eventing import Message, DomainMeta, Metadata
 from protean.utils.mixins import handle
 
 # Set up logger
@@ -163,7 +162,9 @@ def create_event_message(event_cls, user_id, asynchronous=True, **kwargs):
 
     # Set asynchronous explicitly
     if not asynchronous:
-        message.metadata = Metadata(message.metadata.to_dict(), asynchronous=False)
+        old_domain_meta = message.metadata.domain
+        new_domain_meta = DomainMeta(old_domain_meta.to_dict(), asynchronous=False)
+        message.metadata = Metadata(message.metadata.to_dict(), domain=new_domain_meta)
 
     return message
 
