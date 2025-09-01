@@ -111,6 +111,9 @@ class MessageHeaders(BaseValueObject):
     # Format is <domain-name>.<event-class-name>.<event-version>
     type = String()
 
+    # Name of the stream to which the event/command is written
+    stream = String()
+
     ###########
     # Tracing #
     ###########
@@ -157,9 +160,6 @@ class DomainMeta(BaseValueObject):
 
 
 class Metadata(BaseValueObject):
-    # Name of the stream to which the event/command is written
-    stream = String()
-
     headers = ValueObject(MessageHeaders)
     envelope = ValueObject(MessageEnvelope)
     domain = ValueObject(DomainMeta)
@@ -540,7 +540,9 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
 
         # Create the message
         message = cls(
-            stream_name=message_object._metadata.stream,
+            stream_name=metadata_with_envelope.headers.stream
+            if metadata_with_envelope.headers
+            else None,
             data=message_object.payload,
             metadata=metadata_with_envelope,
             expected_version=expected_version,

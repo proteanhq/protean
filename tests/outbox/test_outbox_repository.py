@@ -22,11 +22,11 @@ def sample_metadata():
     from protean.utils.eventing import MessageHeaders
 
     return Metadata(
-        stream="test-stream",
         headers=MessageHeaders(
             id="test-id",
             type="TestEvent",
             time=datetime.now(timezone.utc),
+            stream="test-stream",
         ),
         domain=DomainMeta(
             fqn="test.TestEvent",

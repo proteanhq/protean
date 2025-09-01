@@ -43,5 +43,5 @@ def test_appending_raw_events(test_domain):
     # Compare metadata fields (except envelope which now has checksum in message)
     assert message.metadata.domain.fqn == event._metadata.domain.fqn
     assert message.metadata.domain.kind == event._metadata.domain.kind
-    assert message.metadata.stream == event._metadata.stream
+    assert message.metadata.headers.stream == event._metadata.headers.stream
     assert message.metadata.headers == event._metadata.headers

@@ -42,7 +42,6 @@ def test_event_payload():
 
     assert event.to_dict() == {
         "_metadata": {
-            "stream": f"test::user-{user_id}",
             "envelope": {
                 "specversion": "1.0",
                 "checksum": expected_checksum,
@@ -50,6 +49,7 @@ def test_event_payload():
             "headers": {
                 "id": f"test::user-{user_id}-0",
                 "type": "Test.UserLoggedIn.v1",
+                "stream": f"test::user-{user_id}",
                 "time": str(event._metadata.headers.time),
                 "traceparent": None,
             },

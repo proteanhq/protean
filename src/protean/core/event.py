@@ -77,16 +77,25 @@ class BaseEvent(BaseMessageType):
             else True,
         )
 
-        # Also preserve stream and envelope if they exist
-        existing_stream = (
-            self._metadata.stream if hasattr(self._metadata, "stream") else None
-        )
+        # Also preserve envelope if it exists
         existing_envelope = (
             self._metadata.envelope if hasattr(self._metadata, "envelope") else None
         )
 
+        # Preserve stream in headers if it exists
+        existing_stream = None
+        if (
+            hasattr(self._metadata, "headers")
+            and self._metadata.headers
+            and hasattr(self._metadata.headers, "stream")
+        ):
+            existing_stream = self._metadata.headers.stream
+
+        # Create new headers with stream if needed
+        if existing_stream:
+            headers = MessageHeaders(**{**headers.to_dict(), "stream": existing_stream})
+
         self._metadata = Metadata(
-            stream=existing_stream,
             headers=headers,
             envelope=existing_envelope,
             domain=domain_meta,

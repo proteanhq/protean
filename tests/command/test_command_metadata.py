@@ -107,7 +107,6 @@ def test_command_metadata(test_domain):
         command.to_dict()
         == {
             "_metadata": {
-                "stream": f"test::user:command-{identifier}",
                 "domain": {
                     "fqn": fqn(Login),
                     "kind": "COMMAND",
@@ -123,6 +122,7 @@ def test_command_metadata(test_domain):
                 "headers": {
                     "id": f"{identifier}",  # FIXME Double-check command identifier format and construction
                     "type": "Test.Login.v1",
+                    "stream": f"test::user:command-{identifier}",
                     "time": str(command._metadata.headers.time),
                     "traceparent": None,
                 },

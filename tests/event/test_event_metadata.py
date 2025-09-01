@@ -172,7 +172,6 @@ def test_event_metadata():
 
     assert event.to_dict() == {
         "_metadata": {
-            "stream": f"test::user-{user.id}",
             "domain": {
                 "fqn": fqn(UserLoggedIn),
                 "kind": "EVENT",
@@ -188,6 +187,7 @@ def test_event_metadata():
             "headers": {
                 "id": f"test::user-{user.id}-0",
                 "type": "Test.UserLoggedIn.v1",
+                "stream": f"test::user-{user.id}",
                 "time": str(event._metadata.headers.time),
                 "traceparent": None,
             },

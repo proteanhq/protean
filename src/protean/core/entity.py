@@ -509,6 +509,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
         headers = MessageHeaders(
             id=event_identity,
             type=event.__class__.__type__,
+            stream=stream,
             time=event._metadata.headers.time
             if (event._metadata.headers and event._metadata.headers.time)
             else None,
@@ -526,7 +527,6 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
         )
 
         metadata = Metadata(
-            stream=stream,
             headers=headers,
             envelope=envelope,
             domain=domain_meta,

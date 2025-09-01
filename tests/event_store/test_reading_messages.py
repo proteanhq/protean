@@ -85,7 +85,10 @@ def test_reading_a_message(test_domain, registered_user):
         message.metadata.domain.kind
         == registered_user._events[-1]._metadata.domain.kind
     )
-    assert message.metadata.stream == registered_user._events[-1]._metadata.stream
+    assert (
+        message.metadata.headers.stream
+        == registered_user._events[-1]._metadata.headers.stream
+    )
     assert message.metadata.headers == registered_user._events[-1]._metadata.headers
 
 
@@ -107,7 +110,10 @@ def test_reading_many_messages(test_domain, activated_user):
         messages[0].metadata.domain.kind
         == activated_user._events[0]._metadata.domain.kind
     )
-    assert messages[0].metadata.stream == activated_user._events[0]._metadata.stream
+    assert (
+        messages[0].metadata.headers.stream
+        == activated_user._events[0]._metadata.headers.stream
+    )
     assert messages[0].metadata.headers == activated_user._events[0]._metadata.headers
     assert messages[1].data == activated_user._events[1].payload
     assert (
@@ -118,7 +124,10 @@ def test_reading_many_messages(test_domain, activated_user):
         messages[1].metadata.domain.kind
         == activated_user._events[1]._metadata.domain.kind
     )
-    assert messages[1].metadata.stream == activated_user._events[1]._metadata.stream
+    assert (
+        messages[1].metadata.headers.stream
+        == activated_user._events[1]._metadata.headers.stream
+    )
     assert messages[1].metadata.headers == activated_user._events[1]._metadata.headers
 
 
@@ -171,7 +180,10 @@ def test_reading_messages_by_category(test_domain, activated_user):
         messages[0].metadata.domain.kind
         == activated_user._events[0]._metadata.domain.kind
     )
-    assert messages[0].metadata.stream == activated_user._events[0]._metadata.stream
+    assert (
+        messages[0].metadata.headers.stream
+        == activated_user._events[0]._metadata.headers.stream
+    )
     assert messages[0].metadata.headers == activated_user._events[0]._metadata.headers
     assert messages[1].data == activated_user._events[1].payload
     assert (
@@ -182,7 +194,10 @@ def test_reading_messages_by_category(test_domain, activated_user):
         messages[1].metadata.domain.kind
         == activated_user._events[1]._metadata.domain.kind
     )
-    assert messages[1].metadata.stream == activated_user._events[1]._metadata.stream
+    assert (
+        messages[1].metadata.headers.stream
+        == activated_user._events[1]._metadata.headers.stream
+    )
     assert messages[1].metadata.headers == activated_user._events[1]._metadata.headers
 
 

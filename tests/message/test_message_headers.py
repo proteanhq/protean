@@ -243,14 +243,16 @@ class TestMessageWithHeaders:
             sampled=True,
         )
         headers = MessageHeaders(
-            id="test-id", type="test.event", traceparent=traceparent
+            id="test-id",
+            type="test.event",
+            stream="test-stream",
+            traceparent=traceparent,
         )
 
         message = Message(
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=headers,
                 domain=DomainMeta(fqn="test.Event", kind="EVENT"),
@@ -269,11 +271,11 @@ class TestMessageWithHeaders:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="test-id",
                     type="test.event",
+                    stream="test-stream",
                 ),
                 domain=DomainMeta(fqn="test.Event", kind="EVENT"),
             ),
@@ -289,14 +291,15 @@ class TestMessageWithHeaders:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                stream="test-stream",
                 domain=DomainMeta(fqn="test.Event", kind="EVENT"),
-                # No headers provided
+                headers=MessageHeaders(stream="test-stream"),
+                # Headers now include stream
             ),
         )
 
-        # No headers should be created when no legacy parameters are provided
-        assert message.metadata.headers is None
+        # Headers should now contain stream
+        assert message.metadata.headers is not None
+        assert message.metadata.headers.stream == "test-stream"
 
     def test_message_to_dict_includes_headers(self):
         """Test that to_dict() includes headers when present"""
@@ -306,14 +309,16 @@ class TestMessageWithHeaders:
             sampled=True,
         )
         headers = MessageHeaders(
-            id="test-id", type="test.event", traceparent=traceparent
+            id="test-id",
+            type="test.event",
+            stream="test-stream",
+            traceparent=traceparent,
         )
 
         message = Message(
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=headers,
                 domain=DomainMeta(fqn="test.Event", kind="EVENT"),
@@ -336,11 +341,11 @@ class TestMessageWithHeaders:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="test-id",
                     type="test.event",
+                    stream="test-stream",
                 ),
                 domain=DomainMeta(
                     fqn="test.Event",
@@ -364,10 +369,10 @@ class TestMessageWithHeaders:
             "type": "test.event",
             "data": {"test": "data"},
             "metadata": {
-                "stream": "test-stream",
                 "headers": {
                     "id": "test-id",
                     "type": "test.event",
+                    "stream": "test-stream",
                     "traceparent": {
                         "trace_id": "1234567890abcdef1234567890abcdef",
                         "parent_id": "abcdef1234567890",
@@ -406,10 +411,10 @@ class TestMessageWithHeaders:
             "type": "test.event",
             "data": {"test": "data"},
             "metadata": {
-                "stream": "test-stream",
                 "headers": {
                     "id": "msg-123",
                     "type": "test.event",
+                    "stream": "test-stream",
                     "time": None,
                 },
                 "domain": {
@@ -442,10 +447,10 @@ class TestMessageWithHeaders:
             "type": "test.event",
             "data": {"test": "data"},
             "metadata": {
-                "stream": "test-stream",
                 "headers": {
                     "id": "msg-123",
                     "type": "test.event",
+                    "stream": "test-stream",
                     "traceparent": None,
                 },
                 "domain": {
@@ -479,10 +484,10 @@ class TestMessageWithHeaders:
             "type": "test.event",
             "data": {"test": "data"},
             "metadata": {
-                "stream": "test-stream",
                 "headers": {
                     "id": "test-id",
                     "type": "test.event",
+                    "stream": "test-stream",
                     "traceparent": {
                         "trace_id": "1234567890abcdef1234567890abcdef",
                         "parent_id": "abcdef1234567890",
@@ -523,7 +528,10 @@ class TestMessageWithHeaders:
             sampled=True,
         )
         headers = MessageHeaders(
-            id="test-id", type="test.event", traceparent=traceparent
+            id="test-id",
+            type="test.event",
+            stream="test-stream",
+            traceparent=traceparent,
         )
 
         # Create original message
@@ -531,7 +539,6 @@ class TestMessageWithHeaders:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=headers,
                 domain=DomainMeta(fqn="test.Event", kind="EVENT"),
@@ -595,7 +602,6 @@ class TestMessageWithHeaders:
             stream_name="test-stream",
             data={"field1": "value1"},
             metadata=Metadata(
-                stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=headers,
                 domain=DomainMeta(fqn="unregistered.Type", kind="EVENT"),
