@@ -7,7 +7,7 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.utils import DomainObjects, derive_element_class, fqn
-from protean.utils.eventing import BaseMessageType, Metadata, MessageHeaders
+from protean.utils.eventing import BaseMessageType, Metadata, MessageHeaders, DomainMeta
 from protean.utils.globals import g
 
 
@@ -37,7 +37,7 @@ class BaseCommand(BaseMessageType):
 
             origin_stream = None
             if hasattr(g, "message_in_context"):
-                if g.message_in_context.metadata.kind == "EVENT":
+                if g.message_in_context.metadata.domain.kind == "EVENT":
                     origin_stream = g.message_in_context.stream_name
 
             # Use existing headers if they have meaningful content, otherwise create new ones
@@ -55,13 +55,39 @@ class BaseCommand(BaseMessageType):
                 )
             )
 
-            self._metadata = Metadata(
-                self._metadata.to_dict(),  # Template
+            # If metadata already has domain with sequence_id and asynchronous set (from enrich),
+            # preserve those values
+            existing_domain = (
+                self._metadata.domain if hasattr(self._metadata, "domain") else None
+            )
+
+            # Build domain metadata
+            domain_meta = DomainMeta(
                 kind="COMMAND",
                 fqn=fqn(self.__class__),
                 origin_stream=origin_stream,
                 version=version,
+                sequence_id=existing_domain.sequence_id
+                if existing_domain and hasattr(existing_domain, "sequence_id")
+                else None,
+                asynchronous=existing_domain.asynchronous
+                if existing_domain and hasattr(existing_domain, "asynchronous")
+                else True,
+            )
+
+            # Also preserve stream and envelope if they exist
+            existing_stream = (
+                self._metadata.stream if hasattr(self._metadata, "stream") else None
+            )
+            existing_envelope = (
+                self._metadata.envelope if hasattr(self._metadata, "envelope") else None
+            )
+
+            self._metadata = Metadata(
+                stream=existing_stream,
                 headers=headers,
+                envelope=existing_envelope,
+                domain=domain_meta,
             )
 
             # Finally lock the command and make it immutable

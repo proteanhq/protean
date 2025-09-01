@@ -22,7 +22,7 @@ from protean.utils import (
     inflection,
 )
 from protean.utils.container import BaseContainer, IdentityMixin, OptionsMixin
-from protean.utils.eventing import Metadata, MessageHeaders, MessageEnvelope
+from protean.utils.eventing import DomainMeta, Metadata, MessageHeaders, MessageEnvelope
 from protean.utils.globals import current_domain
 from protean.utils.reflection import (
     _FIELDS,
@@ -517,17 +517,19 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
         # Build envelope with checksum
         envelope = MessageEnvelope.build(event.payload)
 
-        metadata = Metadata(
-            fqn=event._metadata.fqn,
-            kind=event._metadata.kind,
-            stream=stream,
-            origin_stream=event._metadata.origin_stream,
-            version=event._metadata.version,
+        # Build domain metadata
+        domain_meta = DomainMeta(
+            event._metadata.domain.to_dict(),
             sequence_id=sequence_id,
             asynchronous=current_domain.config["event_processing"]
             == Processing.ASYNC.value,
+        )
+
+        metadata = Metadata(
+            stream=stream,
             headers=headers,
             envelope=envelope,
+            domain=domain_meta,
         )
 
         event_with_metadata = event.__class__(

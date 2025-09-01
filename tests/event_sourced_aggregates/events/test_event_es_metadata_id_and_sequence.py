@@ -35,4 +35,4 @@ def test_event_is_generated_with_unique_id():
 
     event = user._events[0]
     assert event._metadata.headers.id == f"test::user-{identifier}-0"
-    assert event._metadata.sequence_id == "0"
+    assert event._metadata.domain.sequence_id == "0"

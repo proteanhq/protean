@@ -101,9 +101,22 @@ async def test_no_filtering_for_event_handlers_without_defined_origin_stream(
         Message.to_message(email._events[0]),
     ]
 
+    # Create a new Metadata with updated origin_stream in domain metadata
+    from protean.utils.eventing import DomainMeta
+
     messages[2].metadata = Metadata(
-        messages[2].metadata.to_dict(), origin_stream=f"user-{identifier}"
-    )  # Metadata is a VO and immutable, so creating a copy with updated value
+        stream=messages[2].metadata.stream,
+        headers=messages[2].metadata.headers,
+        envelope=messages[2].metadata.envelope,
+        domain=DomainMeta(
+            fqn=messages[2].metadata.domain.fqn,
+            kind=messages[2].metadata.domain.kind,
+            origin_stream=f"user-{identifier}",
+            version=messages[2].metadata.domain.version,
+            sequence_id=messages[2].metadata.domain.sequence_id,
+            asynchronous=messages[2].metadata.domain.asynchronous,
+        ),
+    )
 
     # Mock `read` method and have it return the 3 messages
     mock_store_read = mock.Mock()

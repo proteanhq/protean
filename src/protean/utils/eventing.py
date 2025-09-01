@@ -127,16 +127,13 @@ class MessageHeaders(BaseValueObject):
         return cls(**headers)
 
 
-class Metadata(BaseValueObject):
+class DomainMeta(BaseValueObject):
     # Fully Qualified Name of the event/command
     fqn = String(sanitize=False)
 
     # Kind of the object
     # Can be one of "EVENT", "COMMAND"
     kind = String()
-
-    # Name of the stream to which the event/command is written
-    stream = String()
 
     # Name of the stream that originated this event/command
     origin_stream = String()
@@ -158,8 +155,14 @@ class Metadata(BaseValueObject):
     # Sync or Async?
     asynchronous = Boolean(default=True)
 
+
+class Metadata(BaseValueObject):
+    # Name of the stream to which the event/command is written
+    stream = String()
+
     headers = ValueObject(MessageHeaders)
     envelope = ValueObject(MessageEnvelope)
+    domain = ValueObject(DomainMeta)
 
 
 class MessageRecord(BaseContainer):
@@ -426,7 +429,7 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     def to_object(self) -> Union[BaseEvent, BaseCommand]:
         """Reconstruct the event/command object from the message data."""
         try:
-            if self.metadata.kind not in [
+            if self.metadata.domain.kind not in [
                 MessageType.COMMAND.value,
                 MessageType.EVENT.value,
             ]:
@@ -468,8 +471,8 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
             context = {
                 "type": message_type,
                 "stream_name": getattr(self, "stream_name", "unknown"),
-                "metadata_kind": getattr(self.metadata, "kind", "unknown")
-                if hasattr(self, "metadata")
+                "metadata_kind": getattr(self.metadata.domain, "kind", "unknown")
+                if hasattr(self, "metadata") and self.metadata.domain
                 else "unknown",
                 "metadata_type": getattr(self.metadata.headers, "type", "unknown")
                 if hasattr(self, "metadata") and self.metadata.headers
@@ -503,7 +506,10 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
         # Set the expected version of the stream
         #   Applies only to events
         expected_version = None
-        if message_object._metadata.kind == MessageType.EVENT.value:
+        if (
+            message_object._metadata.domain
+            and message_object._metadata.domain.kind == MessageType.EVENT.value
+        ):
             # If this is a Fact Event, don't set an expected version.
             # Otherwise, expect the previous version
             if not message_object.__class__.__name__.endswith("FactEvent"):

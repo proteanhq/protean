@@ -67,13 +67,7 @@ class TestDomainEventDefinition:
             raw_event.to_dict()
             == {
                 "_metadata": {
-                    "fqn": fully_qualified_name(UserAdded),
-                    "kind": "EVENT",
                     "stream": None,  # Stream is none here because of the same reason as above
-                    "origin_stream": None,
-                    "version": "v1",
-                    "sequence_id": None,  # Sequence is unknown as event is not being raised as part of an aggregate
-                    "asynchronous": True,  # Asynchronous is True by default
                     "envelope": {
                         "specversion": "1.0",
                         "checksum": None,
@@ -83,6 +77,14 @@ class TestDomainEventDefinition:
                         "type": "Test.UserAdded.v1",
                         "time": str(raw_event._metadata.headers.time),
                         "traceparent": None,
+                    },
+                    "domain": {
+                        "fqn": fully_qualified_name(UserAdded),
+                        "kind": "EVENT",
+                        "origin_stream": None,
+                        "version": "v1",
+                        "sequence_id": None,
+                        "asynchronous": True,  # Asynchronous is True by default
                     },
                 },
                 "email": {
@@ -98,13 +100,7 @@ class TestDomainEventDefinition:
 
         assert raised_event.to_dict() == {
             "_metadata": {
-                "fqn": fully_qualified_name(UserAdded),
-                "kind": "EVENT",
                 "stream": f"test::user-{user.id}",
-                "origin_stream": None,
-                "version": "v1",
-                "sequence_id": "0.1",
-                "asynchronous": False,  # Test Domain event_processing is SYNC by default
                 "envelope": {
                     "specversion": "1.0",
                     "checksum": expected_checksum,
@@ -114,6 +110,14 @@ class TestDomainEventDefinition:
                     "type": "Test.UserAdded.v1",
                     "time": str(raised_event._metadata.headers.time),
                     "traceparent": None,
+                },
+                "domain": {
+                    "fqn": fully_qualified_name(UserAdded),
+                    "kind": "EVENT",
+                    "origin_stream": None,
+                    "version": "v1",
+                    "sequence_id": "0.1",
+                    "asynchronous": False,
                 },
             },
             "email": {

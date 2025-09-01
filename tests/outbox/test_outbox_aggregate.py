@@ -4,7 +4,7 @@ import pytest
 from datetime import datetime, timezone, timedelta
 
 from protean.utils.outbox import Outbox, OutboxStatus, ProcessingResult
-from protean.utils.eventing import Metadata
+from protean.utils.eventing import MessageHeaders, DomainMeta, Metadata
 
 
 @pytest.fixture(autouse=True)
@@ -17,19 +17,19 @@ def setup_outbox_domain(test_domain):
 @pytest.fixture
 def sample_metadata():
     """Create sample metadata for testing."""
-    from protean.utils.eventing import MessageHeaders
-
     return Metadata(
-        fqn="test.TestEvent",
-        kind="event",
         stream="test-stream",
-        origin_stream="test-message-123",
-        version="1.0",
-        sequence_id="1",
         headers=MessageHeaders(
             id="test-id",
             type="TestEvent",
             time=datetime.now(timezone.utc),
+        ),
+        domain=DomainMeta(
+            fqn="test.TestEvent",
+            kind="event",
+            origin_stream="test-message-123",
+            version="1.0",
+            sequence_id="1",
         ),
     )
 

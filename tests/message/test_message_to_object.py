@@ -7,7 +7,7 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import InvalidDataError, DeserializationError
 from protean.fields import Identifier, String
-from protean.utils.eventing import Message, Metadata
+from protean.utils.eventing import Message, Metadata, DomainMeta
 
 
 class User(BaseAggregate):
@@ -77,7 +77,7 @@ def test_construct_command_from_message(test_domain):
 
 
 def test_invalid_message_throws_exception():
-    message = Message(metadata=Metadata(kind="INVALID"))
+    message = Message(metadata=Metadata(domain=DomainMeta(kind="INVALID")))
 
     with pytest.raises(DeserializationError) as exc:
         message.to_object()

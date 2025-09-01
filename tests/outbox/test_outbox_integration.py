@@ -192,8 +192,8 @@ class TestOutboxIntegration:
         assert test_event_record is not None
         assert test_event_record.metadata is not None
         assert test_event_record.metadata.headers.time is not None
-        assert test_event_record.metadata.version is not None
-        assert test_event_record.metadata.fqn is not None
+        assert test_event_record.metadata.domain.version is not None
+        assert test_event_record.metadata.domain.fqn is not None
         assert test_event_record.created_at is not None
         assert test_event_record.retry_count == 0
         assert test_event_record.max_retries >= 3

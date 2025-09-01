@@ -68,7 +68,7 @@ def test_generation_of_first_fact_event_on_persistence(test_domain):
 
     # Check event versions
     assert event._metadata.headers.id.endswith("-0")
-    assert event._metadata.sequence_id == "0"
+    assert event._metadata.domain.sequence_id == "0"
     assert event._version == 0
 
 
@@ -107,7 +107,7 @@ def test_generation_of_subsequent_fact_events_after_fetch(test_domain):
     assert event.name == "John Doe"
 
     assert event._metadata.headers.id.endswith("-0")
-    assert event._metadata.sequence_id == "0"
+    assert event._metadata.domain.sequence_id == "0"
     assert event._version == 0
 
     # Deserialize 2nd event and verify
@@ -117,5 +117,5 @@ def test_generation_of_subsequent_fact_events_after_fetch(test_domain):
     assert event.name == "Jane Doe"
 
     assert event._metadata.headers.id.endswith("-1")
-    assert event._metadata.sequence_id == "1"
+    assert event._metadata.domain.sequence_id == "1"
     assert event._version == 1

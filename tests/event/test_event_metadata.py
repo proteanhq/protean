@@ -8,7 +8,7 @@ from protean.core.event import BaseEvent
 from protean.fields import String, ValueObject
 from protean.fields.basic import Identifier
 from protean.utils import Processing, fqn
-from protean.utils.eventing import MessageEnvelope
+from protean.utils.eventing import MessageEnvelope, DomainMeta
 from protean.utils.reflection import fields
 
 
@@ -72,11 +72,12 @@ class TestMetadataType:
 class TestMetadataVersion:
     def test_metadata_has_event_version(self):
         metadata_field = fields(UserLoggedIn)["_metadata"]
-        assert hasattr(metadata_field.value_object_cls, "version")
+        assert hasattr(metadata_field.value_object_cls, "domain")
+        assert hasattr(DomainMeta, "version")
 
     def test_event_metadata_version_default(self):
         event = UserLoggedIn(user_id=str(uuid4()))
-        assert event._metadata.version == "v1"
+        assert event._metadata.domain.version == "v1"
 
     def test_overridden_version(self, test_domain):
         class UserLoggedIn(BaseEvent):
@@ -87,7 +88,7 @@ class TestMetadataVersion:
         test_domain.init(traverse=False)
 
         event = UserLoggedIn(user_id=str(uuid4()))
-        assert event._metadata.version == "v2"
+        assert event._metadata.domain.version == "v2"
 
     def test_version_value_in_multiple_event_definitions(self, test_domain):
         def version1():
@@ -128,18 +129,19 @@ class TestMetadataVersion:
 class TestMetadataAsynchronous:
     def test_metadata_has_asynchronous_field(self):
         metadata_field = fields(UserLoggedIn)["_metadata"]
-        assert hasattr(metadata_field.value_object_cls, "asynchronous")
+        assert hasattr(metadata_field.value_object_cls, "domain")
+        assert hasattr(DomainMeta, "asynchronous")
 
     def test_event_metadata_asynchronous_default(self):
         event = UserLoggedIn(user_id=str(uuid4()))
-        assert event._metadata.asynchronous is True
+        assert event._metadata.domain.asynchronous is True
 
     def test_event_metadata_asynchronous_override(self, test_domain):
         user = User(id=str(uuid4()), email="john.doe@gmail.com", name="John Doe")
         user.raise_(UserLoggedIn(user_id=user.id))
 
         # Test Domain event_processing is SYNC by default
-        assert user._events[0]._metadata.asynchronous is False
+        assert user._events[0]._metadata.domain.asynchronous is False
 
     def test_event_metadata_asynchronous_default_from_domain(self, test_domain):
         # Test Domain event_processing is SYNC by default
@@ -148,7 +150,7 @@ class TestMetadataAsynchronous:
         user = User(id=str(uuid4()), email="john.doe@gmail.com", name="John Doe")
         user.raise_(UserLoggedIn(user_id=user.id))
 
-        assert user._events[0]._metadata.asynchronous is True
+        assert user._events[0]._metadata.domain.asynchronous is True
 
 
 def test_event_metadata():
@@ -170,13 +172,15 @@ def test_event_metadata():
 
     assert event.to_dict() == {
         "_metadata": {
-            "fqn": fqn(UserLoggedIn),
-            "kind": "EVENT",
             "stream": f"test::user-{user.id}",
-            "origin_stream": None,
-            "version": "v1",
-            "sequence_id": "0",
-            "asynchronous": False,  # Test Domain event_processing is SYNC by default
+            "domain": {
+                "fqn": fqn(UserLoggedIn),
+                "kind": "EVENT",
+                "origin_stream": None,
+                "version": "v1",
+                "sequence_id": "0",
+                "asynchronous": False,  # Test Domain event_processing is SYNC by default
+            },
             "envelope": {
                 "specversion": "1.0",
                 "checksum": expected_checksum,

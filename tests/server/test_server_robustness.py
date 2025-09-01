@@ -12,8 +12,7 @@ from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
 from protean.utils import Processing
-from protean.utils.eventing import Metadata
-from protean.utils.eventing import Message
+from protean.utils.eventing import Metadata, DomainMeta, Message
 from protean.utils.mixins import handle
 
 # Global variables to track processing
@@ -503,9 +502,11 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
     # Create a synchronous message (should be skipped)
     sync_event = EmailSent(id=str(uuid4()), email="sync@example.com")
     sync_message = Message.to_message(sync_event)
+
     # Force-construct a synchronous message
+    domain_meta = DomainMeta(sync_message.metadata.domain.to_dict(), asynchronous=False)
     sync_message.metadata = Metadata(
-        sync_message.metadata.to_dict(), asynchronous=False
+        sync_message.metadata.to_dict(), domain=domain_meta.to_dict()
     )
     messages.append(sync_message)
 
@@ -561,7 +562,11 @@ async def test_subscription_exception_handling_with_position_updates(
 
     # Set message's global position for tracking
     message.global_position = 42
-    message.metadata = Metadata(message.metadata.to_dict(), asynchronous=True)
+
+    # Update the asynchronous flag in the domain metadata
+    old_domain_meta = message.metadata.domain
+    new_domain_meta = DomainMeta(old_domain_meta.to_dict(), asynchronous=True)
+    message.metadata = Metadata(message.metadata.to_dict(), domain=new_domain_meta)
 
     # Process the batch
     await subscription.process_batch([message])
