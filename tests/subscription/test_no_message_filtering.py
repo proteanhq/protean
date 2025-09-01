@@ -105,7 +105,6 @@ async def test_no_filtering_for_event_handlers_without_defined_origin_stream(
     from protean.utils.eventing import DomainMeta
 
     messages[2].metadata = Metadata(
-        stream=messages[2].metadata.stream,
         headers=messages[2].metadata.headers,
         envelope=messages[2].metadata.envelope,
         domain=DomainMeta(

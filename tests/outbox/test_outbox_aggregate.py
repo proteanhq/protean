@@ -18,10 +18,10 @@ def setup_outbox_domain(test_domain):
 def sample_metadata():
     """Create sample metadata for testing."""
     return Metadata(
-        stream="test-stream",
         headers=MessageHeaders(
             id="test-id",
             type="TestEvent",
+            stream="test-stream",
             time=datetime.now(timezone.utc),
         ),
         domain=DomainMeta(

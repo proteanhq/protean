@@ -89,11 +89,11 @@ class TestMessageErrorHandling:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                stream="test-stream",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="invalid-msg-1",
                     type="test.invalid",
+                    stream="test-stream",
                 ),
                 domain=DomainMeta(fqn="test.Invalid", kind="INVALID_KIND"),
             ),
@@ -126,10 +126,10 @@ class TestMessageErrorHandling:
             stream_name="unregistered-stream",
             data={"id": "123", "data": "test"},
             metadata=Metadata(
-                stream="unregistered-stream",
                 headers=MessageHeaders(
                     id="unregistered-msg-1",
                     type="unregistered.event",
+                    stream="unregistered-stream",
                 ),
                 domain=DomainMeta(fqn="unregistered.Event", kind="EVENT"),
             ),
@@ -161,10 +161,10 @@ class TestMessageErrorHandling:
             stream_name="user-123",
             data={"invalid_field": "value"},  # Missing required fields
             metadata=Metadata(
-                stream="user-123",
                 headers=MessageHeaders(
                     id="malformed-msg-1",
                     type="test.registered",
+                    stream="user-123",
                 ),
                 domain=DomainMeta(
                     fqn="test.Registered",
@@ -222,10 +222,10 @@ class TestMessageErrorHandling:
             "type": "test.registered",
             "stream_name": "user-123",
             "metadata": {
-                "stream": "user-123",
                 "headers": {
                     "id": "no-data-msg-1",
                     "type": "test.registered",
+                    "stream": "user-123",
                     "time": "2023-01-01T00:00:00Z",
                 },
                 "domain": {
@@ -260,10 +260,10 @@ class TestMessageErrorHandling:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                stream="test-stream",
                 headers=MessageHeaders(
                     id="known-id-123",
                     type="unregistered.event",
+                    stream="test-stream",
                 ),
                 domain=DomainMeta(fqn="unregistered.Event", kind="EVENT"),
             ),
@@ -283,10 +283,10 @@ class TestMessageErrorHandling:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                stream="test-stream",
                 headers=MessageHeaders(
                     id="chain-test-msg-1",
                     type="unregistered.event",
+                    stream="test-stream",
                 ),
                 domain=DomainMeta(fqn="unregistered.Event", kind="EVENT"),
             ),
@@ -309,11 +309,11 @@ class TestMessageErrorHandling:
             position=42,
             global_position=100,
             metadata=Metadata(
-                stream="context-stream",
                 envelope=MessageEnvelope(specversion="2.0", checksum=""),
                 headers=MessageHeaders(
                     id="context-test-msg-1",
                     type="unregistered.type",
+                    stream="context-stream",
                 ),
                 domain=DomainMeta(
                     fqn="unregistered.Type",
@@ -367,10 +367,10 @@ class TestMessageErrorHandling:
             stream_name="user:command-123",
             data={"test": "data"},
             metadata=Metadata(
-                stream="user:command-123",
                 headers=MessageHeaders(
                     id="cmd-error-msg-1",
                     type="unregistered.command",
+                    stream="user:command-123",
                 ),
                 domain=DomainMeta(
                     fqn="unregistered.Command",
@@ -396,8 +396,8 @@ class TestMessageErrorHandling:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                stream="test-stream",
                 headers=MessageHeaders(
+                    stream="test-stream",
                     id="corrupted-msg-1",
                     type=None,  # Corrupted type field
                 ),

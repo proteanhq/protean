@@ -63,11 +63,11 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                stream="user-123",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
+                    stream="user-123",
                     time="2023-01-01T00:00:00Z",
                 ),
                 domain=DomainMeta(
@@ -95,11 +95,11 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                stream="user-123",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
+                    stream="user-123",
                     time="2023-01-01T00:00:00Z",
                 ),
                 domain=DomainMeta(
@@ -147,18 +147,18 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                stream="user-123",
+                headers=MessageHeaders(
+                    id="msg-123",
+                    type="test.registered",
+                    stream="user-123",
+                    time="2023-01-01T00:00:00Z",
+                ),
                 domain=DomainMeta(
                     fqn="test.Registered",
                     kind="EVENT",
                 ),
                 envelope=MessageEnvelope(
                     specversion="1.0", checksum="invalid_checksum_value"
-                ),
-                headers=MessageHeaders(
-                    id="msg-123",
-                    type="test.registered",
-                    time="2023-01-01T00:00:00Z",
                 ),
             ),
             position=1,
@@ -175,11 +175,11 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                stream="user-123",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
+                    stream="user-123",
                     time="2023-01-01T00:00:00Z",
                 ),
                 domain=DomainMeta(
@@ -203,8 +203,11 @@ class TestMessageIntegrity:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "stream": "user-123",
-                "headers": {"id": "msg-123", "type": "test.registered"},
+                "headers": {
+                    "id": "msg-123",
+                    "type": "test.registered",
+                    "stream": "user-123",
+                },
                 "domain": {
                     "fqn": "test.Registered",
                     "kind": "EVENT",
@@ -242,8 +245,11 @@ class TestMessageIntegrity:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "stream": "user-123",
-                "headers": {"id": "msg-123", "type": "test.registered"},
+                "headers": {
+                    "id": "msg-123",
+                    "type": "test.registered",
+                    "stream": "user-123",
+                },
                 "domain": {
                     "fqn": "test.Registered",
                     "kind": "EVENT",
@@ -278,8 +284,11 @@ class TestMessageIntegrity:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "stream": "user-123",
-                "headers": {"id": "msg-123", "type": "test.registered"},
+                "headers": {
+                    "id": "msg-123",
+                    "type": "test.registered",
+                    "stream": "user-123",
+                },
                 "domain": {
                     "fqn": "test.Registered",
                     "kind": "EVENT",
@@ -308,8 +317,11 @@ class TestMessageIntegrity:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "stream": "user-123",
-                "headers": {"id": "msg-123", "type": "test.registered"},
+                "headers": {
+                    "id": "msg-123",
+                    "type": "test.registered",
+                    "stream": "user-123",
+                },
                 "domain": {
                     "fqn": "test.Registered",
                     "kind": "EVENT",
@@ -337,11 +349,11 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                stream="user-123",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
+                    stream="user-123",
                     time="2023-01-01T00:00:00Z",
                 ),
                 domain=DomainMeta(
@@ -358,11 +370,11 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "different@example.com"},  # Changed email
             metadata=Metadata(
-                stream="user-123",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
+                    stream="user-123",
                     time="2023-01-01T00:00:00Z",
                 ),
                 domain=DomainMeta(
@@ -387,11 +399,11 @@ class TestMessageIntegrity:
             stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
-                stream="user-123",
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
                 headers=MessageHeaders(
                     id="msg-123",
                     type="test.registered",
+                    stream="user-123",
                     time="2023-01-01T00:00:00Z",
                 ),
                 domain=DomainMeta(
@@ -482,8 +494,11 @@ class TestMessageIntegrity:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "stream": "user-123",
-                "headers": {"id": "msg-123", "type": "test.registered"},
+                "headers": {
+                    "id": "msg-123",
+                    "type": "test.registered",
+                    "stream": "user-123",
+                },
                 "domain": {
                     "fqn": "test.Registered",
                     "kind": "EVENT",

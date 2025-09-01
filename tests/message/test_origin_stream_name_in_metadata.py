@@ -94,7 +94,6 @@ def test_origin_stream_in_event_from_command_with_origin_stream(
     from protean.utils.eventing import DomainMeta, Metadata
 
     command_message.metadata = Metadata(
-        stream=command_message.metadata.stream,
         headers=command_message.metadata.headers,
         envelope=command_message.metadata.envelope,
         domain=DomainMeta(
@@ -151,7 +150,6 @@ def test_origin_stream_in_aggregate_event_from_command_with_origin_stream(
     from protean.utils.eventing import DomainMeta, Metadata
 
     command_message.metadata = Metadata(
-        stream=command_message.metadata.stream,
         headers=command_message.metadata.headers,
         envelope=command_message.metadata.envelope,
         domain=DomainMeta(

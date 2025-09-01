@@ -79,10 +79,10 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "stream": "user-123",
                 "headers": {
                     "id": "test-id",
                     "type": "test.registered",
+                    "stream": "user-123",
                 },
                 "domain": {
                     "fqn": "test.Registered",
@@ -115,10 +115,10 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "stream": "user-123",
                 "headers": {
                     "id": "test-id",
                     "type": "test.registered",
+                    "stream": "user-123",
                 },
                 "domain": {
                     "fqn": "test.Registered",
@@ -149,10 +149,10 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "stream": "user-123",
                 "headers": {
                     "id": "test-id",
                     "type": "test.registered",
+                    "stream": "user-123",
                 },
                 "domain": {
                     "fqn": "test.Registered",
@@ -232,11 +232,11 @@ class TestMessageFormatVersioning:
             stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
-                stream="test-stream",
                 envelope=MessageEnvelope(specversion="2.5", checksum=""),
                 headers=MessageHeaders(
                     id="test-id",
                     type="test.event",
+                    stream="test-stream",
                 ),
                 domain=DomainMeta(
                     fqn="test.Event",
@@ -255,11 +255,11 @@ class TestMessageFormatVersioning:
             stream_name="test-stream",
             data={},
             metadata=Metadata(
-                stream="test-stream",
                 envelope=MessageEnvelope(),
                 headers=MessageHeaders(
                     id="test-id",
                     type="test.event",
+                    stream="test-stream",
                 ),
                 domain=DomainMeta(
                     fqn="test.Event",
@@ -310,10 +310,10 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "stream": "user-123",
                 "headers": {
                     "id": "test-id",
                     "type": "test.registered",
+                    "stream": "user-123",
                 },
                 "domain": {
                     "fqn": "test.Registered",
@@ -343,10 +343,10 @@ class TestMessageFormatVersioning:
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
-                "stream": "user-123",
                 "headers": {
                     "id": "test-id",
                     "type": "test.registered",
+                    "stream": "user-123",
                 },
                 "domain": {
                     "fqn": "test.Registered",

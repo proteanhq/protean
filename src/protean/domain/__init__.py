@@ -1192,6 +1192,7 @@ class Domain:
         headers = MessageHeaders(
             id=identifier,  # FIXME Double check command ID format and construction
             type=command.__class__.__type__,
+            stream=stream,
             time=command._metadata.headers.time
             if (command._metadata.headers and command._metadata.headers.time)
             else None,
@@ -1219,7 +1220,6 @@ class Domain:
         )
 
         metadata = Metadata(
-            stream=stream,
             headers=headers,
             envelope=envelope,
             domain=domain_meta,

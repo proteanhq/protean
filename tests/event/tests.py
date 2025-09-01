@@ -67,7 +67,6 @@ class TestDomainEventDefinition:
             raw_event.to_dict()
             == {
                 "_metadata": {
-                    "stream": None,  # Stream is none here because of the same reason as above
                     "envelope": {
                         "specversion": "1.0",
                         "checksum": None,
@@ -75,6 +74,7 @@ class TestDomainEventDefinition:
                     "headers": {
                         "id": None,  # ID is none because the event is not being raised in the proper way (with `_raise`)
                         "type": "Test.UserAdded.v1",
+                        "stream": None,  # Stream is none here because of the same reason as above
                         "time": str(raw_event._metadata.headers.time),
                         "traceparent": None,
                     },
@@ -100,7 +100,6 @@ class TestDomainEventDefinition:
 
         assert raised_event.to_dict() == {
             "_metadata": {
-                "stream": f"test::user-{user.id}",
                 "envelope": {
                     "specversion": "1.0",
                     "checksum": expected_checksum,
@@ -108,6 +107,7 @@ class TestDomainEventDefinition:
                 "headers": {
                     "id": f"test::user-{user.id}-0.1",
                     "type": "Test.UserAdded.v1",
+                    "stream": f"test::user-{user.id}",
                     "time": str(raised_event._metadata.headers.time),
                     "traceparent": None,
                 },
