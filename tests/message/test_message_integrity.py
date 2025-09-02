@@ -409,11 +409,11 @@ class TestMessageIntegrity:
                 domain=DomainMeta(
                     fqn="test.Registered",
                     kind="EVENT",
+                    expected_version=5,
                 ),
             ),
             position=1,
             global_position=1,
-            expected_version=5,
         )
 
         actual_checksum = MessageEnvelope.compute_checksum(message.data)

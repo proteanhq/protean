@@ -72,7 +72,7 @@ def test_construct_message_from_event():
     assert (
         message.metadata.headers.time is not None
     )  # Events now have time set automatically
-    assert message.expected_version == user._version - 1
+    assert message.metadata.domain.expected_version == user._version - 1
 
     # Verify Message Dict
     message_dict = message.to_dict()
@@ -85,7 +85,7 @@ def test_construct_message_from_event():
         message_dict["metadata"]["headers"]["time"] is not None
     )  # Events now have time set automatically
     assert (
-        message_dict["expected_version"] == user._version - 1
+        message_dict["metadata"]["domain"]["expected_version"] == user._version - 1
     )  # Expected version is always one less than current
 
 

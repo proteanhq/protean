@@ -158,6 +158,9 @@ class DomainMeta(BaseValueObject):
     # Sync or Async?
     asynchronous = Boolean(default=True)
 
+    # Version that the stream is expected to be when the message is written
+    expected_version = Integer()
+
 
 class Metadata(BaseValueObject):
     headers = ValueObject(MessageHeaders)
@@ -305,9 +308,6 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     - Serialization and De-serialization
     - Message format versioning for schema evolution
     """
-
-    # Version that the stream is expected to be when the message is written
-    expected_version = Integer()
 
     @classmethod
     def from_dict(cls, message: dict, validate: bool = True) -> Message:
@@ -533,9 +533,14 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
         # Automatically compute and set envelope with checksum for integrity validation
         envelope = MessageEnvelope.build(message_object.payload)
 
-        # Clone metadata with envelope
+        # Clone metadata with envelope and expected_version
         metadata_dict = metadata.to_dict()
         metadata_dict["envelope"] = envelope
+
+        # Set expected_version in domain if it exists
+        if expected_version is not None and metadata_dict.get("domain"):
+            metadata_dict["domain"]["expected_version"] = expected_version
+
         metadata_with_envelope = Metadata(**metadata_dict)
 
         # Create the message
@@ -545,7 +550,6 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
             else None,
             data=message_object.payload,
             metadata=metadata_with_envelope,
-            expected_version=expected_version,
         )
 
         return message

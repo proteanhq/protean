@@ -179,6 +179,7 @@ def test_event_metadata():
                 "version": "v1",
                 "sequence_id": "0",
                 "asynchronous": False,  # Test Domain event_processing is SYNC by default
+                "expected_version": None,
             },
             "envelope": {
                 "specversion": "1.0",
