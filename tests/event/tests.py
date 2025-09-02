@@ -85,6 +85,7 @@ class TestDomainEventDefinition:
                         "version": "v1",
                         "sequence_id": None,
                         "asynchronous": True,  # Asynchronous is True by default
+                        "expected_version": None,
                     },
                 },
                 "email": {
@@ -118,6 +119,7 @@ class TestDomainEventDefinition:
                     "version": "v1",
                     "sequence_id": "0.1",
                     "asynchronous": False,
+                    "expected_version": None,
                 },
             },
             "email": {

@@ -100,7 +100,9 @@ class BaseEventStore(metaclass=ABCMeta):
             message.metadata.headers.type,
             message.data,
             metadata=message.metadata.to_dict(),
-            expected_version=message.expected_version,
+            expected_version=message.metadata.domain.expected_version
+            if message.metadata.domain
+            else None,
         )
 
         return position
