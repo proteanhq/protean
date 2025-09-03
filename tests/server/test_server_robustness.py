@@ -504,7 +504,7 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
 
     ########
     # NOTE #
-    ########a
+    ########
     # This is an extremely cumbersome way of testing this, but this is the only way because
     #   we need to set `asynchronous` differently for different events. Protean automatically
     #   gathers `asynchronous` value from the domain, so we have to go under the hood to set

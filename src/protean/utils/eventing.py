@@ -4,7 +4,7 @@ import hashlib
 import json
 import logging
 from enum import Enum
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Union, Optional
 
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import (
@@ -304,48 +304,116 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     metadata = ValueObject(Metadata)
 
     @classmethod
+    def _build_envelope(cls, metadata_dict: dict, message: dict) -> None:
+        """Build envelope within metadata if not present."""
+        if "envelope" not in metadata_dict:
+            envelope_data = message.get("envelope", {})
+            metadata_dict["envelope"] = MessageEnvelope(
+                specversion=envelope_data.get("specversion", "1.0"),
+                checksum=envelope_data.get("checksum", None),
+            )
+
+    @classmethod
+    def _build_headers(cls, metadata_dict: dict, message: dict) -> None:
+        """Build headers within metadata if not present."""
+        if "headers" not in metadata_dict:
+            headers_data = message.get("headers", {})
+            headers_kwargs = {
+                "id": headers_data.get("id", message.get("id", None)),
+                "time": headers_data.get("time", message.get("time", None)),
+                "type": headers_data.get("type", message.get("type", None)),
+                "stream": headers_data.get("stream", message.get("stream", None)),
+            }
+
+            traceparent_data = headers_data.get("traceparent")
+            if traceparent_data:
+                headers_kwargs["traceparent"] = TraceParent(**traceparent_data)
+
+            metadata_dict["headers"] = MessageHeaders(**headers_kwargs)
+
+    @classmethod
+    def _build_event_store_meta(cls, metadata_dict: dict, message: dict) -> None:
+        """Add EventStoreMeta if position and global_position are present."""
+        if "position" in message or "global_position" in message:
+            metadata_dict["event_store"] = EventStoreMeta(
+                position=message.get("position"),
+                global_position=message.get("global_position"),
+            )
+
+    @classmethod
+    def _validate_and_raise(cls, msg: Message, message: dict) -> None:
+        """Validate message integrity and raise error if validation fails."""
+        if not msg.verify_integrity():
+            message_id = cls._extract_message_id(msg, message)
+            message_type = cls._extract_message_type(msg, message)
+
+            raise DeserializationError(
+                message_id=str(message_id),
+                error="Message integrity validation failed - checksum mismatch",
+                context={
+                    "stored_checksum": msg.metadata.envelope.checksum,
+                    "computed_checksum": MessageEnvelope.compute_checksum(msg.data),
+                    "validation_requested": True,
+                    "message_type": message_type,
+                    "stream_name": cls._extract_stream_name(msg.metadata.to_dict()),
+                },
+            )
+
+    @classmethod
+    def _extract_message_id(cls, msg: Message, message: dict) -> str:
+        """Extract message ID from message or return 'unknown'."""
+        if msg.metadata.headers and msg.metadata.headers.id:
+            return msg.metadata.headers.id
+        return message.get("id", "unknown")
+
+    @classmethod
+    def _extract_message_type(cls, msg: Message, message: dict) -> str:
+        """Extract message type from message or return 'unknown'."""
+        if msg.metadata.headers and msg.metadata.headers.type:
+            return msg.metadata.headers.type
+        return message.get("type", "unknown")
+
+    @classmethod
+    def _extract_stream_name(cls, metadata_dict: dict) -> str:
+        """Extract stream name from metadata or return 'unknown'."""
+        return metadata_dict.get("headers", {}).get("stream", "unknown")
+
+    @classmethod
+    def _handle_key_error(cls, e: KeyError, message: dict) -> None:
+        """Handle KeyError by converting to DeserializationError with context."""
+        headers_data = message.get("headers", {})
+        message_id = headers_data.get("id") or message.get("id", "unknown")
+        message_type = headers_data.get("type") or message.get("type", "unknown")
+        missing_field = str(e).strip("'\"")
+
+        context = {
+            "missing_field": missing_field,
+            "available_fields": list(message.keys())
+            if isinstance(message, dict)
+            else "not_available",
+            "message_type": message_type,
+            "stream_name": message.get("metadata", {})
+            .get("headers", {})
+            .get("stream", "unknown"),
+            "original_exception_type": "KeyError",
+        }
+
+        raise DeserializationError(
+            message_id=str(message_id),
+            error=f"Missing required field '{missing_field}' in message data",
+            context=context,
+        ) from e
+
+    @classmethod
     def deserialize(cls, message: dict, validate: bool = True) -> Message:
         """Deserialize a message from its dictionary representation."""
         try:
-            # Handle headers and envelope within metadata
             metadata_dict = message["metadata"]
 
-            # Handle envelope within metadata (backward compatibility)
-            if "envelope" not in metadata_dict:
-                envelope_data = message.get("envelope", {})
-                metadata_dict["envelope"] = MessageEnvelope(
-                    specversion=envelope_data.get("specversion", "1.0"),
-                    checksum=envelope_data.get("checksum", ""),
-                )
-
-            # If headers are not in metadata but at top level (backward compatibility)
-            if "headers" not in metadata_dict:
-                headers_data = message.get("headers", {})
-                # Extract id, time, type from headers or fallback to top level for backward compatibility
-                headers_kwargs = {
-                    "id": headers_data.get("id", message.get("id", None)),
-                    "time": headers_data.get("time", message.get("time", None)),
-                    "type": headers_data.get("type", message.get("type", None)),
-                }
-
-                # If headers_data contains a traceparent string, use build()
-                # If headers_data is a dict with traceparent dict/None, create directly
-                traceparent_data = headers_data.get("traceparent")
-                traceparent = (
-                    TraceParent(**traceparent_data) if traceparent_data else None
-                )
-                headers_kwargs["traceparent"] = traceparent
-
-                metadata_dict["headers"] = MessageHeaders(**headers_kwargs)
-
-            # FIXME We can do this properly if we shift this method into event store port.
-            #    `position` and `global_position` are present in event store message structure alone.
-            # Add EventStoreMeta if position and global_position are present
-            if "position" in message or "global_position" in message:
-                metadata_dict["event_store"] = EventStoreMeta(
-                    position=message.get("position"),
-                    global_position=message.get("global_position"),
-                )
+            # Build metadata components
+            cls._build_envelope(metadata_dict, message)
+            cls._build_headers(metadata_dict, message)
+            cls._build_event_store_meta(metadata_dict, message)
 
             # Create the message object
             msg = Message(
@@ -353,64 +421,14 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
                 metadata=metadata_dict,
             )
 
-            # Validate integrity if requested and checksum is present
+            # Validate integrity if requested
             if validate and msg.metadata.envelope and msg.metadata.envelope.checksum:
-                if not msg.verify_integrity():
-                    # Get message ID from metadata.headers or fallback to top-level
-                    message_id = (
-                        msg.metadata.headers.id
-                        if msg.metadata.headers and msg.metadata.headers.id
-                        else message.get("id", "unknown")
-                    )
-                    message_type = (
-                        msg.metadata.headers.type
-                        if msg.metadata.headers and msg.metadata.headers.type
-                        else message.get("type", "unknown")
-                    )
-
-                    raise DeserializationError(
-                        message_id=str(message_id),
-                        error="Message integrity validation failed - checksum mismatch",
-                        context={
-                            "stored_checksum": msg.metadata.envelope.checksum,
-                            "computed_checksum": MessageEnvelope.compute_checksum(
-                                msg.data
-                            ),
-                            "validation_requested": True,
-                            "message_type": message_type,
-                            "stream_name": metadata_dict.get("headers", {}).get(
-                                "stream", "unknown"
-                            ),
-                        },
-                    )
+                cls._validate_and_raise(msg, message)
 
             return msg
+
         except KeyError as e:
-            # Convert KeyError to DeserializationError with better context
-            # Try to get message ID and type from headers first, then fallback to top-level
-            headers_data = message.get("headers", {})
-            message_id = headers_data.get("id") or message.get("id", "unknown")
-            message_type = headers_data.get("type") or message.get("type", "unknown")
-            missing_field = str(e).strip("'\"")
-
-            # Build context about available fields
-            context = {
-                "missing_field": missing_field,
-                "available_fields": list(message.keys())
-                if isinstance(message, dict)
-                else "not_available",
-                "message_type": message_type,
-                "stream_name": message.get("metadata", {})
-                .get("headers", {})
-                .get("stream", "unknown"),
-                "original_exception_type": "KeyError",
-            }
-
-            raise DeserializationError(
-                message_id=str(message_id),
-                error=f"Missing required field '{missing_field}' in message data",
-                context=context,
-            ) from e
+            cls._handle_key_error(e, message)
 
     def verify_integrity(self) -> bool:
         """Verify message integrity using checksum validation.
@@ -431,136 +449,176 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         current_checksum = MessageEnvelope.compute_checksum(self.data)
         return current_checksum == self.metadata.envelope.checksum
 
+    def _validate_message_kind(self) -> None:
+        """Validate that the message kind is supported for deserialization."""
+        if self.metadata.domain.kind not in [
+            MessageType.COMMAND.value,
+            MessageType.EVENT.value,
+        ]:
+            raise InvalidDataError(
+                {"kind": ["Message type is not supported for deserialization"]}
+            )
+
+    def _get_element_class(self) -> type:
+        """Get the element class for the message type."""
+        element_cls = current_domain._events_and_commands.get(
+            self.metadata.headers.type, None
+        )
+
+        if element_cls is None:
+            raise ConfigurationError(
+                f"Message type {self.metadata.headers.type} is not registered with the domain."
+            )
+
+        return element_cls
+
+    def _build_error_context(self, exception: Exception) -> dict:
+        """Build detailed error context for debugging."""
+        envelope = (
+            getattr(self.metadata, "envelope", None)
+            if hasattr(self, "metadata")
+            else None
+        )
+        envelope_data = envelope.to_dict() if envelope else None
+
+        message_type = (
+            self.metadata.headers.type if self.metadata.headers else "unknown"
+        )
+
+        context = {
+            "type": message_type,
+            "stream_name": self._safe_get_attr(
+                self.metadata, "headers.stream", "unknown"
+            ),
+            "metadata_kind": self._safe_get_attr(
+                self.metadata, "domain.kind", "unknown"
+            ),
+            "metadata_type": self._safe_get_attr(
+                self.metadata, "headers.type", "unknown"
+            ),
+            "position": self._safe_get_attr(
+                self.metadata, "event_store.position", "unknown"
+            ),
+            "global_position": self._safe_get_attr(
+                self.metadata, "event_store.global_position", "unknown"
+            ),
+            "original_exception_type": type(exception).__name__,
+            "has_metadata": hasattr(self, "metadata"),
+            "has_data": hasattr(self, "data"),
+            "data_keys": list(self.data.keys())
+            if hasattr(self, "data") and isinstance(self.data, dict)
+            else "not_available",
+            "envelope": envelope_data,
+        }
+
+        return context
+
+    def _safe_get_attr(self, obj, attr_path: str, default: str = "unknown") -> str:
+        """Safely get nested attribute from object."""
+        try:
+            attrs = attr_path.split(".")
+            result = obj
+            for attr in attrs:
+                result = getattr(result, attr, None)
+                if result is None:
+                    return default
+            return result if result is not None else default
+        except (AttributeError, TypeError):
+            return default
+
     def to_domain_object(self) -> Union[BaseEvent, BaseCommand]:
         """Convert this message back to its original domain object."""
         try:
-            if self.metadata.domain.kind not in [
-                MessageType.COMMAND.value,
-                MessageType.EVENT.value,
-            ]:
-                # We are dealing with a malformed or unknown message
-                raise InvalidDataError(
-                    {"kind": ["Message type is not supported for deserialization"]}
-                )
-
-            element_cls = current_domain._events_and_commands.get(
-                self.metadata.headers.type, None
-            )
-
-            if element_cls is None:
-                raise ConfigurationError(
-                    f"Message type {self.metadata.headers.type} is not registered with the domain."
-                )
-
+            self._validate_message_kind()
+            element_cls = self._get_element_class()
             return element_cls(_metadata=self.metadata, **self.data)
 
         except Exception as e:
-            # Enhanced error context for debugging
-            envelope = (
-                getattr(self.metadata, "envelope", None)
-                if hasattr(self, "metadata")
-                else None
-            )
-            envelope_data = envelope.to_dict() if envelope else None
+            context = self._build_error_context(e)
 
-            # Get type and ID from metadata.headers if available
-            message_type = (
-                self.metadata.headers.type if self.metadata.headers else "unknown"
-            )
-            message_id = (
-                self.metadata.headers.id
-                if self.metadata.headers and self.metadata.headers.id
-                else "unknown"
-            )
+            if self.metadata.headers and self.metadata.headers.id:
+                message_id = self.metadata.headers.id
+            else:
+                message_id = context.get("type", "unknown")
 
-            context = {
-                "type": message_type,
-                "stream_name": self.metadata.headers.stream
-                if self.metadata.headers and self.metadata.headers.stream
-                else "unknown",
-                "metadata_kind": getattr(self.metadata.domain, "kind", "unknown")
-                if hasattr(self, "metadata") and self.metadata.domain
-                else "unknown",
-                "metadata_type": getattr(self.metadata.headers, "type", "unknown")
-                if hasattr(self, "metadata") and self.metadata.headers
-                else "unknown",
-                "position": self.metadata.event_store.position
-                if self.metadata.event_store
-                else "unknown",
-                "global_position": self.metadata.event_store.global_position
-                if self.metadata.event_store
-                else "unknown",
-                "original_exception_type": type(e).__name__,
-                "has_metadata": hasattr(self, "metadata"),
-                "has_data": hasattr(self, "data"),
-                "data_keys": list(self.data.keys())
-                if hasattr(self, "data") and isinstance(self.data, dict)
-                else "not_available",
-                "envelope": envelope_data,
-            }
-
-            # Handle case where ID is None
-            if message_id is None:
-                message_id = "unknown"
+            # Ensure message_id is never None
+            message_id = str(message_id) if message_id else "unknown"
 
             raise DeserializationError(
-                message_id=str(message_id), error=str(e), context=context
+                message_id=message_id, error=str(e), context=context
             ) from e
+
+    @classmethod
+    def _validate_aggregate_association(
+        cls, message_object: Union[BaseEvent, BaseCommand]
+    ) -> None:
+        """Validate that the message object is associated with an aggregate."""
+        if not message_object.meta_.part_of:
+            raise ConfigurationError(
+                f"`{message_object.__class__.__name__}` is not associated with an aggregate."
+            )
+
+    @classmethod
+    def _determine_expected_version(
+        cls, message_object: Union[BaseEvent, BaseCommand]
+    ) -> Optional[int]:
+        """Determine the expected version for the message.
+
+        Returns expected version for non-fact events, None otherwise.
+        """
+        if (
+            message_object._metadata.domain
+            and message_object._metadata.domain.kind == MessageType.EVENT.value
+            and not message_object.__class__.__name__.endswith("FactEvent")
+        ):
+            return message_object._expected_version
+        return None
+
+    @classmethod
+    def _ensure_headers(cls, message_object: Union[BaseEvent, BaseCommand]) -> Metadata:
+        """Ensure metadata has headers set correctly."""
+        if not message_object._metadata.headers:
+            headers = MessageHeaders(
+                type=message_object.__class__.__type__,
+                time=None,  # Don't set time for converted messages
+            )
+            metadata_dict = message_object._metadata.to_dict()
+            metadata_dict["headers"] = headers
+            return Metadata(**metadata_dict)
+        return message_object._metadata
+
+    @classmethod
+    def _build_final_metadata(
+        cls,
+        metadata: Metadata,
+        envelope: MessageEnvelope,
+        expected_version: Optional[int],
+    ) -> Metadata:
+        """Build final metadata with envelope and expected version."""
+        metadata_dict = metadata.to_dict()
+        metadata_dict["envelope"] = envelope
+
+        if expected_version is not None and metadata_dict.get("domain"):
+            metadata_dict["domain"]["expected_version"] = expected_version
+
+        return Metadata(**metadata_dict)
 
     @classmethod
     def from_domain_object(
         cls, message_object: Union[BaseEvent, BaseCommand]
     ) -> Message:
         """Create a message from a domain event or command."""
-        if not message_object.meta_.part_of:
-            raise ConfigurationError(
-                f"`{message_object.__class__.__name__}` is not associated with an aggregate."
-            )
+        cls._validate_aggregate_association(message_object)
 
-        # Set the expected version of the stream
-        #   Applies only to events
-        expected_version = None
-        if (
-            message_object._metadata.domain
-            and message_object._metadata.domain.kind == MessageType.EVENT.value
-        ):
-            # If this is a Fact Event, don't set an expected version.
-            # Otherwise, expect the previous version
-            if not message_object.__class__.__name__.endswith("FactEvent"):
-                expected_version = message_object._expected_version
-
-        # Ensure metadata has headers set correctly
-        # The message_object._metadata should already have headers from event/command creation
-        # If not, create minimal headers
-        if not message_object._metadata.headers:
-            headers = MessageHeaders(
-                type=message_object.__class__.__type__,
-                time=None,  # Don't set time for converted messages
-            )
-            # Clone metadata with headers
-            metadata_dict = message_object._metadata.to_dict()
-            metadata_dict["headers"] = headers
-            metadata = Metadata(**metadata_dict)
-        else:
-            metadata = message_object._metadata
-
-        # Automatically compute and set envelope with checksum for integrity validation
+        expected_version = cls._determine_expected_version(message_object)
+        metadata = cls._ensure_headers(message_object)
         envelope = MessageEnvelope.build(message_object.payload)
 
-        # Clone metadata with envelope and expected_version
-        metadata_dict = metadata.to_dict()
-        metadata_dict["envelope"] = envelope
+        metadata_with_envelope = cls._build_final_metadata(
+            metadata, envelope, expected_version
+        )
 
-        # Set expected_version in domain if it exists
-        if expected_version is not None and metadata_dict.get("domain"):
-            metadata_dict["domain"]["expected_version"] = expected_version
-
-        metadata_with_envelope = Metadata(**metadata_dict)
-
-        # Create the message
-        message = cls(
+        return cls(
             data=message_object.payload,
             metadata=metadata_with_envelope,
         )
-
-        return message
