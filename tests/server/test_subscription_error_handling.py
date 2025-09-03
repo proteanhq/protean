@@ -123,7 +123,7 @@ async def test_event_handler_error_handling(test_domain_setup, caplog):
 
     # Directly call handle_message for both event handlers to test error handling
     # For normal handler that has error handler
-    message = Message.to_message(user._events[-1])
+    message = Message.from_domain_object(user._events[-1])
 
     # Test the handler with normal error handling
     await engine.handle_message(ErrorHandlerEventHandler, message)
@@ -176,7 +176,7 @@ async def test_handle_message_during_shutdown(test_domain_setup):
     user.raise_(
         Registered(id=user_id, email="shutdown@example.com", name="Shutdown Test")
     )
-    message = Message.to_message(user._events[-1])
+    message = Message.from_domain_object(user._events[-1])
 
     # Set the shutting_down flag
     engine.shutting_down = True

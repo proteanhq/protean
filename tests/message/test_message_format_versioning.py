@@ -51,7 +51,7 @@ class TestMessageFormatVersioning:
             Registered(id=identifier, email="john.doe@example.com", name="John Doe")
         )
 
-        message = Message.to_message(user._events[-1])
+        message = Message.from_domain_object(user._events[-1])
 
         assert message.metadata.envelope.specversion == "1.0"
 
@@ -63,7 +63,7 @@ class TestMessageFormatVersioning:
             Registered(id=identifier, email="john.doe@example.com", name="John Doe")
         )
 
-        message = Message.to_message(user._events[-1])
+        message = Message.from_domain_object(user._events[-1])
         message_dict = message.to_dict()
 
         assert "metadata" in message_dict
@@ -98,7 +98,7 @@ class TestMessageFormatVersioning:
             "id": "msg-123",
         }
 
-        message = Message.from_dict(message_dict)
+        message = Message.deserialize(message_dict)
 
         assert message.metadata.envelope.specversion == "1.0"
         assert message.metadata.headers.stream == "user-123"
@@ -133,7 +133,7 @@ class TestMessageFormatVersioning:
             "id": "msg-123",
         }
 
-        message = Message.from_dict(message_dict)
+        message = Message.deserialize(message_dict)
 
         # Should default to "1.0" due to field default
         assert message.metadata.envelope.specversion == "1.0"
@@ -166,7 +166,7 @@ class TestMessageFormatVersioning:
             "id": "msg-123",
         }
 
-        message = Message.from_dict(message_dict)
+        message = Message.deserialize(message_dict)
 
         assert message.metadata.envelope.specversion == "2.0"
 
@@ -176,7 +176,7 @@ class TestMessageFormatVersioning:
         command = Register(id=identifier, email="john.doe@example.com", name="John Doe")
         command = test_domain._enrich_command(command, True)
 
-        message = Message.to_message(command)
+        message = Message.from_domain_object(command)
 
         assert message.metadata.envelope.specversion == "1.0"
 
@@ -192,7 +192,7 @@ class TestMessageFormatVersioning:
         )
 
         # Create original message
-        original_message = Message.to_message(user._events[-1])
+        original_message = Message.from_domain_object(user._events[-1])
         assert original_message.metadata.envelope.specversion == "1.0"
 
         # Serialize to dict
@@ -200,7 +200,7 @@ class TestMessageFormatVersioning:
         assert message_dict["metadata"]["envelope"]["specversion"] == "1.0"
 
         # Check if checksum validation will work (serialization may change data representation)
-        temp_message = Message.from_dict(message_dict, validate=False)
+        temp_message = Message.deserialize(message_dict, validate=False)
         if (
             MessageEnvelope.compute_checksum(temp_message.data)
             != original_message.metadata.envelope.checksum
@@ -211,7 +211,7 @@ class TestMessageFormatVersioning:
             )
 
         # Deserialize back to message with validation
-        reconstructed_message = Message.from_dict(message_dict, validate=True)
+        reconstructed_message = Message.deserialize(message_dict, validate=True)
         assert reconstructed_message.metadata.envelope.specversion == "1.0"
 
         # Verify other fields are preserved
@@ -289,8 +289,8 @@ class TestMessageFormatVersioning:
             Registered(id=identifier2, email="user2@example.com", name="User Two")
         )
 
-        message1 = Message.to_message(user1._events[-1])
-        message2 = Message.to_message(user2._events[-1])
+        message1 = Message.from_domain_object(user1._events[-1])
+        message2 = Message.from_domain_object(user2._events[-1])
 
         assert message1.metadata.envelope.specversion == "1.0"
         assert message2.metadata.envelope.specversion == "1.0"
@@ -327,7 +327,7 @@ class TestMessageFormatVersioning:
             "id": "msg-123",
         }
 
-        message = Message.from_dict(message_dict)
+        message = Message.deserialize(message_dict)
         # Empty string is considered an "empty value" by the String field, so it uses default "1.0"
         assert message.metadata.envelope.specversion == "1.0"
 
@@ -359,6 +359,6 @@ class TestMessageFormatVersioning:
             "id": "msg-123",
         }
 
-        message = Message.from_dict(message_dict)
+        message = Message.deserialize(message_dict)
         # None is considered an "empty value" by the String field, so it uses default "1.0"
         assert message.metadata.envelope.specversion == "1.0"

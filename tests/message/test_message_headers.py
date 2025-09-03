@@ -389,7 +389,7 @@ class TestMessageWithHeaders:
             "id": "msg-123",
         }
 
-        message = Message.from_dict(message_dict)
+        message = Message.deserialize(message_dict)
 
         assert message.metadata.headers is not None
         assert (
@@ -427,7 +427,7 @@ class TestMessageWithHeaders:
             "id": "msg-123",
         }
 
-        message = Message.from_dict(message_dict)
+        message = Message.deserialize(message_dict)
 
         # Headers should be in metadata
         assert message.metadata.headers is not None
@@ -463,7 +463,7 @@ class TestMessageWithHeaders:
             "id": "msg-123",
         }
 
-        message = Message.from_dict(message_dict)
+        message = Message.deserialize(message_dict)
 
         # Headers should be populated with correct values
         assert message.metadata.headers is not None
@@ -504,7 +504,7 @@ class TestMessageWithHeaders:
             "id": "msg-123",
         }
 
-        message = Message.from_dict(message_dict)
+        message = Message.deserialize(message_dict)
 
         # With valid traceparent data, headers should be properly created
         assert message.metadata.headers is not None
@@ -543,7 +543,7 @@ class TestMessageWithHeaders:
         message_dict = original_message.to_dict()
 
         # Deserialize back to message
-        reconstructed_message = Message.from_dict(message_dict, validate=False)
+        reconstructed_message = Message.deserialize(message_dict, validate=False)
 
         # Verify headers are preserved
         assert reconstructed_message.metadata.headers is not None
@@ -573,7 +573,7 @@ class TestMessageWithHeaders:
             Registered(id=identifier, email="john.doe@example.com", name="John Doe")
         )
 
-        message = Message.to_message(user._events[-1])
+        message = Message.from_domain_object(user._events[-1])
 
         # Headers should be created with type from the event
         assert message.metadata.headers is not None
@@ -602,7 +602,7 @@ class TestMessageWithHeaders:
         )
 
         with pytest.raises(DeserializationError) as exc_info:
-            message.to_object()
+            message.to_domain_object()
 
         error = exc_info.value
         context = error.context

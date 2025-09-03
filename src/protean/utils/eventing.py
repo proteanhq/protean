@@ -304,7 +304,8 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     metadata = ValueObject(Metadata)
 
     @classmethod
-    def from_dict(cls, message: dict, validate: bool = True) -> Message:
+    def deserialize(cls, message: dict, validate: bool = True) -> Message:
+        """Deserialize a message from its dictionary representation."""
         try:
             # Handle headers and envelope within metadata
             metadata_dict = message["metadata"]
@@ -354,7 +355,7 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
 
             # Validate integrity if requested and checksum is present
             if validate and msg.metadata.envelope and msg.metadata.envelope.checksum:
-                if not msg.validate_checksum():
+                if not msg.verify_integrity():
                     # Get message ID from metadata.headers or fallback to top-level
                     message_id = (
                         msg.metadata.headers.id
@@ -411,8 +412,8 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
                 context=context,
             ) from e
 
-    def validate_checksum(self) -> bool:
-        """Validate message integrity using stored checksum.
+    def verify_integrity(self) -> bool:
+        """Verify message integrity using checksum validation.
 
         Computes the current checksum and compares it with the stored checksum
         to verify message integrity.
@@ -430,8 +431,8 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         current_checksum = MessageEnvelope.compute_checksum(self.data)
         return current_checksum == self.metadata.envelope.checksum
 
-    def to_object(self) -> Union[BaseEvent, BaseCommand]:
-        """Reconstruct the event/command object from the message data."""
+    def to_domain_object(self) -> Union[BaseEvent, BaseCommand]:
+        """Convert this message back to its original domain object."""
         try:
             if self.metadata.domain.kind not in [
                 MessageType.COMMAND.value,
@@ -507,7 +508,10 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             ) from e
 
     @classmethod
-    def to_message(cls, message_object: Union[BaseEvent, BaseCommand]) -> Message:
+    def from_domain_object(
+        cls, message_object: Union[BaseEvent, BaseCommand]
+    ) -> Message:
+        """Create a message from a domain event or command."""
         if not message_object.meta_.part_of:
             raise ConfigurationError(
                 f"`{message_object.__class__.__name__}` is not associated with an aggregate."

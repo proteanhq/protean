@@ -52,7 +52,7 @@ def register_command_message(user_id, test_domain):
         ),
         True,
     )
-    return Message.to_message(enriched_command)
+    return Message.from_domain_object(enriched_command)
 
 
 @pytest.fixture
@@ -65,7 +65,7 @@ def registered_event_message(user_id):
             name=user.name,
         )
     )
-    return Message.to_message(user._events[0])
+    return Message.from_domain_object(user._events[0])
 
 
 def test_origin_stream_in_event_from_command_without_origin_stream(
@@ -81,7 +81,7 @@ def test_origin_stream_in_event_from_command_without_origin_stream(
             name="John Doe",
         )
     )
-    event_message = Message.to_message(user._events[-1])
+    event_message = Message.from_domain_object(user._events[-1])
     assert event_message.metadata.domain.origin_stream is None
 
 
@@ -115,7 +115,7 @@ def test_origin_stream_in_event_from_command_with_origin_stream(
             name="John Doe",
         )
     )
-    event_message = Message.to_message(user._events[-1])
+    event_message = Message.from_domain_object(user._events[-1])
 
     assert event_message.metadata.domain.origin_stream == "foo"
 
@@ -136,7 +136,7 @@ def test_origin_stream_in_aggregate_event_from_command_without_origin_stream(
             name="John Doe",
         )
     )
-    event_message = Message.to_message(user._events[-1])
+    event_message = Message.from_domain_object(user._events[-1])
 
     assert event_message.metadata.domain.origin_stream is None
 
@@ -175,7 +175,7 @@ def test_origin_stream_in_aggregate_event_from_command_with_origin_stream(
             name="John Doe",
         )
     )
-    event_message = Message.to_message(user._events[-1])
+    event_message = Message.from_domain_object(user._events[-1])
 
     assert event_message.metadata.domain.origin_stream == "foo"
 
@@ -191,6 +191,6 @@ def test_origin_stream_in_command_from_event(
     )
 
     enriched_command = test_domain._enrich_command(command, True)
-    command_message = Message.to_message(enriched_command)
+    command_message = Message.from_domain_object(enriched_command)
 
     assert command_message.metadata.domain.origin_stream == f"test::user-{user_id}"

@@ -5,7 +5,6 @@ import pytest
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.fields import Identifier, String
-from protean.utils.eventing import Message
 
 
 class UserStatus(Enum):
@@ -87,7 +86,7 @@ def test_aggregate_and_event_version_after_first_persistence(test_domain):
     assert refreshed_user._version == 0
 
     # Deserialize event
-    event = Message.to_object(event_messages[0])
+    event = event_messages[0].to_domain_object()
 
     assert event._metadata.headers.id.endswith("-0")
     assert event._metadata.domain.sequence_id == "0"
@@ -111,7 +110,7 @@ def test_aggregate_and_event_version_after_first_persistence_after_multiple_pers
     assert refreshed_user._version == 10
 
     # Deserialize event
-    event = Message.to_object(event_messages[-1])
+    event = event_messages[-1].to_domain_object()
 
     assert event._metadata.headers.id.endswith("-10")
     assert event._metadata.domain.sequence_id == "10"
@@ -141,8 +140,8 @@ def test_aggregate_and_event_version_after_multiple_event_generation_in_one_upda
     event_messages = test_domain.event_store.store.read(f"test::user-{user.user_id}")
     assert len(event_messages) == 2
 
-    event1 = Message.to_object(event_messages[0])
-    event2 = Message.to_object(event_messages[1])
+    event1 = event_messages[0].to_domain_object()
+    event2 = event_messages[1].to_domain_object()
 
     assert event1._metadata.headers.id.endswith("-0")
     assert event1._metadata.domain.sequence_id == "0"

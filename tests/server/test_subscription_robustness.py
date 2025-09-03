@@ -160,7 +160,7 @@ def create_event_message(event_cls, user_id, asynchronous=True, **kwargs):
     from protean.utils.eventing import EventStoreMeta
 
     event = event_cls(id=user_id, **kwargs)
-    message = Message.to_message(event)
+    message = Message.from_domain_object(event)
 
     # Add EventStoreMeta for position tracking
     metadata_dict = message.metadata.to_dict()

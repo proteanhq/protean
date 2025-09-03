@@ -100,7 +100,7 @@ class TestMessageErrorHandling:
         )
 
         with pytest.raises(DeserializationError) as exc_info:
-            message.to_object()
+            message.to_domain_object()
 
         error = exc_info.value
         assert error.message_id == "invalid-msg-1"
@@ -135,7 +135,7 @@ class TestMessageErrorHandling:
         )
 
         with pytest.raises(DeserializationError) as exc_info:
-            message.to_object()
+            message.to_domain_object()
 
         error = exc_info.value
         assert error.message_id == "unregistered-msg-1"
@@ -172,7 +172,7 @@ class TestMessageErrorHandling:
         )
 
         with pytest.raises(DeserializationError) as exc_info:
-            message.to_object()
+            message.to_domain_object()
 
         error = exc_info.value
         assert error.message_id == "malformed-msg-1"
@@ -206,7 +206,7 @@ class TestMessageErrorHandling:
 
         # This should raise a DeserializationError due to missing metadata
         with pytest.raises(DeserializationError) as exc_info:
-            Message.from_dict(message_dict)
+            Message.deserialize(message_dict)
 
         error = exc_info.value
         assert error.message_id == "no-metadata-msg-1"
@@ -246,7 +246,7 @@ class TestMessageErrorHandling:
 
         # This should raise a DeserializationError due to missing data
         with pytest.raises(DeserializationError) as exc_info:
-            Message.from_dict(message_dict)
+            Message.deserialize(message_dict)
 
         error = exc_info.value
         assert error.message_id == "no-data-msg-1"
@@ -270,7 +270,7 @@ class TestMessageErrorHandling:
         )
 
         with pytest.raises(DeserializationError) as exc_info:
-            message.to_object()
+            message.to_domain_object()
 
         error = exc_info.value
         # Should have the correct ID
@@ -292,7 +292,7 @@ class TestMessageErrorHandling:
         )
 
         with pytest.raises(DeserializationError) as exc_info:
-            message.to_object()
+            message.to_domain_object()
 
         error = exc_info.value
         # Check that the original exception is chained
@@ -323,7 +323,7 @@ class TestMessageErrorHandling:
         )
 
         with pytest.raises(DeserializationError) as exc_info:
-            message.to_object()
+            message.to_domain_object()
 
         error = exc_info.value
         context = error.context
@@ -351,10 +351,10 @@ class TestMessageErrorHandling:
             Registered(id=identifier, email="john.doe@example.com", name="John Doe")
         )
 
-        message = Message.to_message(user._events[-1])
+        message = Message.from_domain_object(user._events[-1])
 
         # Should not raise any exception
-        reconstructed_event = message.to_object()
+        reconstructed_event = message.to_domain_object()
 
         assert isinstance(reconstructed_event, Registered)
         assert reconstructed_event.id == identifier
@@ -379,7 +379,7 @@ class TestMessageErrorHandling:
         )
 
         with pytest.raises(DeserializationError) as exc_info:
-            message.to_object()
+            message.to_domain_object()
 
         error = exc_info.value
         assert error.message_id == "cmd-error-msg-1"
@@ -404,7 +404,7 @@ class TestMessageErrorHandling:
         )
 
         with pytest.raises(DeserializationError) as exc_info:
-            message.to_object()
+            message.to_domain_object()
 
         error = exc_info.value
         context = error.context

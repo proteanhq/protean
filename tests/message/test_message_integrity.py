@@ -47,7 +47,7 @@ class TestMessageIntegrity:
             Registered(id=identifier, email="john.doe@example.com", name="John Doe")
         )
 
-        message = Message.to_message(user._events[-1])
+        message = Message.from_domain_object(user._events[-1])
 
         # Message should have a checksum in envelope
         assert message.metadata.envelope.checksum is not None
@@ -137,10 +137,10 @@ class TestMessageIntegrity:
             Registered(id=identifier, email="john.doe@example.com", name="John Doe")
         )
 
-        message = Message.to_message(user._events[-1])
+        message = Message.from_domain_object(user._events[-1])
 
         # Message should pass integrity validation
-        assert message.validate_checksum() is True
+        assert message.verify_integrity() is True
 
     def test_validate_integrity_with_invalid_checksum(self):
         """Test validate_checksum returns False for invalid checksum"""
@@ -169,7 +169,7 @@ class TestMessageIntegrity:
         )
 
         # Should fail integrity validation
-        assert message.validate_checksum() is False
+        assert message.verify_integrity() is False
 
     def test_validate_integrity_with_no_checksum(self):
         """Test validate_checksum returns False when no checksum is present"""
@@ -196,7 +196,7 @@ class TestMessageIntegrity:
         )
 
         # No checksum set - should return False
-        assert message.validate_checksum() is False
+        assert message.verify_integrity() is False
 
     def test_from_dict_with_validation_enabled_valid_checksum(self):
         """Test from_dict with validation=True accepts valid checksum"""
@@ -228,7 +228,7 @@ class TestMessageIntegrity:
         }
 
         # Create message to compute correct checksum
-        temp_message = Message.from_dict(message_dict, validate=False)
+        temp_message = Message.deserialize(message_dict, validate=False)
         correct_checksum = MessageEnvelope.compute_checksum(temp_message.data)
         # Update the envelope in the dict before creating message
         message_dict["metadata"]["envelope"] = {
@@ -237,9 +237,9 @@ class TestMessageIntegrity:
         }
 
         # This should not raise an exception
-        message = Message.from_dict(message_dict, validate=True)
+        message = Message.deserialize(message_dict, validate=True)
         assert message.metadata.envelope.checksum == correct_checksum
-        assert message.validate_checksum() is True
+        assert message.verify_integrity() is True
 
     def test_from_dict_with_validation_enabled_invalid_checksum(self):
         """Test from_dict with validation=True rejects invalid checksum"""
@@ -271,7 +271,7 @@ class TestMessageIntegrity:
 
         # This should raise a DeserializationError
         with pytest.raises(DeserializationError) as exc_info:
-            Message.from_dict(message_dict, validate=True)
+            Message.deserialize(message_dict, validate=True)
 
         error = exc_info.value
         assert error.message_id == "msg-123"
@@ -309,9 +309,9 @@ class TestMessageIntegrity:
         }
 
         # This should not raise an exception since validation is disabled
-        message = Message.from_dict(message_dict, validate=False)
+        message = Message.deserialize(message_dict, validate=False)
         assert message.metadata.envelope.checksum == "invalid_checksum_value"
-        assert message.validate_checksum() is False  # But manual validation should fail
+        assert message.verify_integrity() is False  # But manual validation should fail
 
     def test_from_dict_with_no_checksum_skips_validation(self):
         """Test from_dict skips validation when no checksum is present"""
@@ -342,9 +342,9 @@ class TestMessageIntegrity:
         }
 
         # Should work fine even with validation=True since no checksum is present
-        message = Message.from_dict(message_dict, validate=True)
+        message = Message.deserialize(message_dict, validate=True)
         assert message.metadata.envelope.checksum == ""
-        assert message.validate_checksum() is False
+        assert message.verify_integrity() is False
 
     def test_checksum_changes_with_different_data(self):
         """Test that checksum changes when message data changes"""
@@ -440,11 +440,11 @@ class TestMessageIntegrity:
         command = Register(id=identifier, email="john.doe@example.com", name="John Doe")
         command = test_domain._enrich_command(command, True)
 
-        message = Message.to_message(command)
+        message = Message.from_domain_object(command)
 
         # Command message should have checksum and pass validation
         assert message.metadata.envelope.checksum is not None
-        assert message.validate_checksum() is True
+        assert message.verify_integrity() is True
 
     def test_message_roundtrip_preserves_integrity(self):
         """Test that message integrity is preserved through serialization/deserialization"""
@@ -455,7 +455,7 @@ class TestMessageIntegrity:
         )
 
         # Create original message with checksum
-        original_message = Message.to_message(user._events[-1])
+        original_message = Message.from_domain_object(user._events[-1])
         original_checksum = original_message.metadata.envelope.checksum
 
         # Serialize to dict
@@ -463,7 +463,7 @@ class TestMessageIntegrity:
         assert message_dict["metadata"]["envelope"]["checksum"] == original_checksum
 
         # Debug: Check if reconstructed message computes same checksum
-        reconstructed_without_validation = Message.from_dict(
+        reconstructed_without_validation = Message.deserialize(
             message_dict, validate=False
         )
         recomputed_checksum = MessageEnvelope.compute_checksum(
@@ -488,10 +488,10 @@ class TestMessageIntegrity:
             }
 
         # Deserialize back with validation
-        reconstructed_message = Message.from_dict(message_dict, validate=True)
+        reconstructed_message = Message.deserialize(message_dict, validate=True)
 
         # Should pass validation with the correct checksum
-        assert reconstructed_message.validate_checksum() is True
+        assert reconstructed_message.verify_integrity() is True
 
     def test_integrity_validation_error_context(self):
         """Test that integrity validation errors include comprehensive context"""
@@ -522,7 +522,7 @@ class TestMessageIntegrity:
         }
 
         with pytest.raises(DeserializationError) as exc_info:
-            Message.from_dict(message_dict, validate=True)
+            Message.deserialize(message_dict, validate=True)
 
         error = exc_info.value
         context = error.context
@@ -542,7 +542,7 @@ class TestMessageIntegrity:
             Registered(id=identifier, email="john.doe@example.com", name="John Doe")
         )
 
-        message = Message.to_message(user._events[-1])
+        message = Message.from_domain_object(user._events[-1])
         message_dict = message.to_dict()
 
         assert "metadata" in message_dict

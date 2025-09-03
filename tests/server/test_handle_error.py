@@ -217,7 +217,7 @@ async def test_event_handler_error_handling(test_domain, caplog):
             password_hash="hash",
         )
     )
-    message = Message.to_message(user._events[-1])
+    message = Message.from_domain_object(user._events[-1])
 
     # Create engine
     engine = Engine(domain=test_domain, test_mode=True)
@@ -257,7 +257,7 @@ async def test_command_handler_error_handling(test_domain, caplog):
         name="John Doe",
         password_hash="hash",
     )
-    message = Message.to_message(
+    message = Message.from_domain_object(
         test_domain._enrich_command(command, asynchronous=True)
     )
 
