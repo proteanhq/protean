@@ -3,6 +3,7 @@ from typing import List, Optional
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker
+from protean.utils.eventing import Message
 from protean.utils.outbox import Outbox, OutboxRepository, ProcessingResult
 
 from .subscription import BaseSubscription
@@ -279,6 +280,9 @@ class OutboxProcessor(BaseSubscription):
         """
         Publish a single outbox message to the broker.
 
+        Reconstructs a Message object from the outbox record and publishes
+        it with the standard structure (data and metadata).
+
         Args:
             message (Outbox): The outbox message to publish.
 
@@ -286,27 +290,19 @@ class OutboxProcessor(BaseSubscription):
             tuple[bool, Exception | None]: (success, error) - True and None if successful, False and exception if failed.
         """
         try:
-            # Prepare the message payload for the broker
-            message_payload = {
-                "id": message.message_id,
-                "type": message.type,
-                "data": message.data,
-                "metadata": message.metadata.to_dict() if message.metadata else {},
-                "created_at": message.created_at.isoformat()
-                if message.created_at
-                else None,
-            }
-
-            # Add correlation and trace IDs if available
-            if message.correlation_id:
-                message_payload["correlation_id"] = message.correlation_id
-            if message.trace_id:
-                message_payload["trace_id"] = message.trace_id
-
-            # Publish to broker
-            broker_message_id = self.broker.publish(
-                message.stream_name, message_payload
+            # Reconstruct the Message object from outbox record
+            # The outbox already contains the proper data and metadata fields
+            msg = Message(
+                data=message.data,
+                metadata=message.metadata,
             )
+
+            # Convert to dict for publishing - this gives us the standard structure
+            # with top-level 'data' and 'metadata' keys
+            message_dict = msg.to_dict()
+
+            # Publish the standardized message structure to broker
+            broker_message_id = self.broker.publish(message.stream_name, message_dict)
 
             logger.debug(
                 f"Published message {message.message_id} to broker as {broker_message_id}"
