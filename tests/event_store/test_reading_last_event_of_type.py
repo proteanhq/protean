@@ -65,7 +65,7 @@ def registered_user(test_domain):
 
 @pytest.mark.eventstore
 def test_reading_the_last_event_of_type_with_just_one_message(test_domain):
-    event = test_domain.event_store.last_event_of_type(Registered)
+    event = test_domain.event_store.store._last_event_of_type(Registered)
     assert event is not None
 
 
@@ -77,9 +77,11 @@ def test_reading_the_last_event_of_type_with_other_events_present(
     test_domain.event_store.store.append(registered_user._events[1])
 
     assert isinstance(
-        test_domain.event_store.last_event_of_type(Registered), Registered
+        test_domain.event_store.store._last_event_of_type(Registered), Registered
     )
-    assert isinstance(test_domain.event_store.last_event_of_type(Activated), Activated)
+    assert isinstance(
+        test_domain.event_store.store._last_event_of_type(Activated), Activated
+    )
 
 
 class TestEventStoreEventsOfType:
@@ -102,7 +104,7 @@ class TestEventStoreEventsOfType:
             registered_user.rename(name=f"John Doe {i}")
             test_domain.event_store.store.append(registered_user._events[-1])
 
-        event = test_domain.event_store.last_event_of_type(Renamed)
+        event = test_domain.event_store.store._last_event_of_type(Renamed)
         assert event.name == "John Doe 9"
 
     @pytest.mark.eventstore
@@ -113,7 +115,7 @@ class TestEventStoreEventsOfType:
             registered_user.rename(name=f"John Doe {i}")
             test_domain.event_store.store.append(registered_user._events[-1])
 
-        event = test_domain.event_store.last_event_of_type(Renamed, "test::user")
+        event = test_domain.event_store.store._last_event_of_type(Renamed, "test::user")
         assert event.name == "John Doe 9"
 
     @pytest.mark.eventstore
@@ -124,5 +126,5 @@ class TestEventStoreEventsOfType:
             registered_user.rename(name=f"John Doe {i}")
             test_domain.event_store.store.append(registered_user._events[-1])
 
-        event = test_domain.event_store.last_event_of_type(Renamed, "group")
+        event = test_domain.event_store.store._last_event_of_type(Renamed, "group")
         assert event is None

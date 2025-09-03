@@ -87,6 +87,7 @@ class TestDomainEventDefinition:
                         "asynchronous": True,  # Asynchronous is True by default
                         "expected_version": None,
                     },
+                    "event_store": None,
                 },
                 "email": {
                     "address": "john.doe@gmail.com",
@@ -121,6 +122,7 @@ class TestDomainEventDefinition:
                     "asynchronous": False,
                     "expected_version": None,
                 },
+                "event_store": None,
             },
             "email": {
                 "address": "john.doe@gmail.com",

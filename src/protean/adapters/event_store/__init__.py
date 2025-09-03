@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, DefaultDict, List, Optional, Set, Type
+from typing import TYPE_CHECKING, DefaultDict, List, Optional, Set
 
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
@@ -16,7 +16,6 @@ from protean.core.event_sourced_repository import (
 from protean.core.projector import BaseProjector
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.utils import fqn
-from protean.utils.eventing import Message
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -160,36 +159,3 @@ class EventStore:
             )
 
         return next(iter(handler_methods))[0] if handler_methods else None
-
-    def last_event_of_type(
-        self, event_cls: Type[BaseEvent], stream_category: str = None
-    ) -> BaseEvent:
-        stream_category = stream_category or "$all"
-        events = [
-            event
-            for event in self.domain.event_store.store._read(stream_category)
-            if event["type"] == event_cls.__type__
-        ]
-
-        return Message.from_dict(events[-1]).to_object() if len(events) > 0 else None
-
-    def events_of_type(
-        self, event_cls: Type[BaseEvent], stream_category: str = None
-    ) -> List[BaseEvent]:
-        """Read events of a specific type in a given stream.
-
-        This is a utility method, especially useful for testing purposes, that retrives events of a
-        specific type from the event store.
-
-        If no stream is specified, events of the requested type will be retrieved from all streams.
-
-        :param event_cls: Class of the event type to be retrieved. Subclass of `BaseEvent`.
-        :param stream_category: Stream from which events are to be retrieved. String, optional, default is `None`
-        :return: A list of events of `event_cls` type
-        """
-        stream_category = stream_category or "$all"
-        return [
-            Message.from_dict(event).to_object()
-            for event in self.domain.event_store.store._read(stream_category)
-            if event["type"] == event_cls.__type__
-        ]

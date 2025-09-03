@@ -250,7 +250,6 @@ class TestMessageWithHeaders:
         )
 
         message = Message(
-            stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
@@ -268,7 +267,6 @@ class TestMessageWithHeaders:
     def test_message_creation_without_explicit_headers(self):
         """Test creating Message without explicit headers creates headers from legacy params"""
         message = Message(
-            stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
@@ -288,7 +286,6 @@ class TestMessageWithHeaders:
     def test_message_creation_with_no_headers_or_legacy_params(self):
         """Test creating Message with no headers and no legacy params leaves headers as None"""
         message = Message(
-            stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
                 domain=DomainMeta(fqn="test.Event", kind="EVENT"),
@@ -316,7 +313,6 @@ class TestMessageWithHeaders:
         )
 
         message = Message(
-            stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
@@ -338,7 +334,6 @@ class TestMessageWithHeaders:
     def test_message_to_dict_includes_headers_when_legacy_params_provided(self):
         """Test that to_dict() includes headers when legacy params are provided"""
         message = Message(
-            stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
@@ -536,7 +531,6 @@ class TestMessageWithHeaders:
 
         # Create original message
         original_message = Message(
-            stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
@@ -599,7 +593,6 @@ class TestMessageWithHeaders:
         )
 
         message = Message(
-            stream_name="test-stream",
             data={"field1": "value1"},
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),

@@ -75,7 +75,6 @@ class TestMessageFormatVersioning:
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": ""},
             "headers": {"id": "no-data-msg-1", "type": "test.registered", "time": None},
-            "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
@@ -102,7 +101,7 @@ class TestMessageFormatVersioning:
         message = Message.from_dict(message_dict)
 
         assert message.metadata.envelope.specversion == "1.0"
-        assert message.stream_name == "user-123"
+        assert message.metadata.headers.stream == "user-123"
         assert message.metadata.headers.type == "test.registered"
 
     def test_from_dict_without_format_version_defaults_to_1_0(self):
@@ -111,7 +110,6 @@ class TestMessageFormatVersioning:
         message_dict = {
             "envelope": {"checksum": ""},
             "headers": {"id": "test-id", "type": "test.registered", "time": None},
-            "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
@@ -145,7 +143,6 @@ class TestMessageFormatVersioning:
         message_dict = {
             "envelope": {"specversion": "2.0", "checksum": ""},
             "headers": {"id": "test-id", "type": "test.registered", "time": None},
-            "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
@@ -218,7 +215,10 @@ class TestMessageFormatVersioning:
         assert reconstructed_message.metadata.envelope.specversion == "1.0"
 
         # Verify other fields are preserved
-        assert reconstructed_message.stream_name == original_message.stream_name
+        assert (
+            reconstructed_message.metadata.headers.stream
+            == original_message.metadata.headers.stream
+        )
         assert (
             reconstructed_message.metadata.headers.type
             == original_message.metadata.headers.type
@@ -229,7 +229,6 @@ class TestMessageFormatVersioning:
         """Test creating message with explicit specversion in envelope"""
 
         message = Message(
-            stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="2.5", checksum=""),
@@ -252,7 +251,6 @@ class TestMessageFormatVersioning:
 
         # Test default value
         message = Message(
-            stream_name="test-stream",
             data={},
             metadata=Metadata(
                 envelope=MessageEnvelope(),
@@ -306,7 +304,6 @@ class TestMessageFormatVersioning:
         message_dict = {
             "envelope": {"specversion": "", "checksum": ""},
             "headers": {"id": "test-id", "type": "test.registered", "time": None},
-            "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {
@@ -339,7 +336,6 @@ class TestMessageFormatVersioning:
         message_dict = {
             "envelope": {"specversion": None, "checksum": ""},
             "headers": {"id": "test-id", "type": "test.registered", "time": None},
-            "stream_name": "user-123",
             "type": "test.registered",
             "data": {"id": "123", "email": "test@example.com"},
             "metadata": {

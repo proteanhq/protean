@@ -66,7 +66,9 @@ def test_construct_message_from_event():
 
     # Verify Message Content
     assert message.metadata.headers.type == Registered.__type__
-    assert message.stream_name == f"{User.meta_.stream_category}-{identifier}"
+    assert (
+        message.metadata.headers.stream == f"{User.meta_.stream_category}-{identifier}"
+    )
     assert message.metadata.domain.kind == "EVENT"
     assert message.data == user._events[-1].payload
     assert (
@@ -79,7 +81,10 @@ def test_construct_message_from_event():
 
     assert message_dict["metadata"]["headers"]["type"] == Registered.__type__
     assert message_dict["metadata"]["domain"]["kind"] == "EVENT"
-    assert message_dict["stream_name"] == f"{User.meta_.stream_category}-{identifier}"
+    assert (
+        message_dict["metadata"]["headers"]["stream"]
+        == f"{User.meta_.stream_category}-{identifier}"
+    )
     assert message_dict["data"] == user._events[-1].payload
     assert (
         message_dict["metadata"]["headers"]["time"] is not None
@@ -103,7 +108,10 @@ def test_construct_message_from_command(test_domain):
 
     # Verify Message Content
     assert message.metadata.headers.type == Register.__type__
-    assert message.stream_name == f"{User.meta_.stream_category}:command-{identifier}"
+    assert (
+        message.metadata.headers.stream
+        == f"{User.meta_.stream_category}:command-{identifier}"
+    )
     assert message.metadata.domain.kind == "COMMAND"
     assert message.data == command_with_metadata.payload
     assert message.metadata.headers.time is not None
@@ -113,7 +121,7 @@ def test_construct_message_from_command(test_domain):
     assert message_dict["metadata"]["headers"]["type"] == Register.__type__
     assert message_dict["metadata"]["domain"]["kind"] == "COMMAND"
     assert (
-        message_dict["stream_name"]
+        message_dict["metadata"]["headers"]["stream"]
         == f"{User.meta_.stream_category}:command-{identifier}"
     )
     assert message_dict["data"] == command_with_metadata.payload
@@ -133,7 +141,7 @@ def test_construct_message_from_command_without_identifier(test_domain):
     assert type(message) is Message
 
     message_dict = message.to_dict()
-    identifier = message_dict["stream_name"].split(
+    identifier = message_dict["metadata"]["headers"]["stream"].split(
         f"{SendEmail.meta_.stream_category}:command-", 1
     )[1]
 
@@ -155,7 +163,10 @@ def test_construct_message_from_either_event_or_command(test_domain):
 
     # Verify Message Content
     assert message.metadata.headers.type == Register.__type__
-    assert message.stream_name == f"{User.meta_.stream_category}:command-{identifier}"
+    assert (
+        message.metadata.headers.stream
+        == f"{User.meta_.stream_category}:command-{identifier}"
+    )
     assert message.metadata.domain.kind == "COMMAND"
     assert message.data == command.payload
 
@@ -171,7 +182,9 @@ def test_construct_message_from_either_event_or_command(test_domain):
 
     # Verify Message Content
     assert message.metadata.headers.type == Registered.__type__
-    assert message.stream_name == f"{User.meta_.stream_category}-{identifier}"
+    assert (
+        message.metadata.headers.stream == f"{User.meta_.stream_category}-{identifier}"
+    )
     assert message.metadata.domain.kind == "EVENT"
     assert message.data == event.payload
     assert (

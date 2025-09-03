@@ -77,7 +77,7 @@ def test_construct_command_from_message(test_domain):
 
 
 def test_invalid_message_throws_exception():
-    message = Message(metadata=Metadata(domain=DomainMeta(kind="INVALID")))
+    message = Message(data={}, metadata=Metadata(domain=DomainMeta(kind="INVALID")))
 
     with pytest.raises(DeserializationError) as exc:
         message.to_object()

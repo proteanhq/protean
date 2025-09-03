@@ -74,7 +74,7 @@ def test_reading_a_message(test_domain, registered_user):
 
     message = messages[0]
     assert isinstance(message, Message)
-    assert message.stream_name == f"test::user-{registered_user.id}"
+    assert message.metadata.headers.stream == f"test::user-{registered_user.id}"
     assert message.metadata.domain.kind == "EVENT"
     assert message.data == registered_user._events[-1].payload
     # Compare metadata fields (except envelope which now has checksum in message)
@@ -98,7 +98,7 @@ def test_reading_many_messages(test_domain, activated_user):
 
     assert len(messages) == 2
 
-    assert messages[0].stream_name == f"test::user-{activated_user.id}"
+    assert messages[0].metadata.headers.stream == f"test::user-{activated_user.id}"
     assert messages[0].metadata.domain.kind == "EVENT"
     assert messages[0].data == activated_user._events[0].payload
     # Compare metadata fields (except envelope which now has checksum in message)
@@ -168,7 +168,7 @@ def test_reading_messages_by_category(test_domain, activated_user):
 
     assert len(messages) == 2
 
-    assert messages[0].stream_name == f"test::user-{activated_user.id}"
+    assert messages[0].metadata.headers.stream == f"test::user-{activated_user.id}"
     assert messages[0].metadata.domain.kind == "EVENT"
     assert messages[0].data == activated_user._events[0].payload
     # Compare metadata fields (except envelope which now has checksum in message)

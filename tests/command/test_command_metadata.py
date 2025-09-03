@@ -127,6 +127,7 @@ def test_command_metadata(test_domain):
                     "time": str(command._metadata.headers.time),
                     "traceparent": None,
                 },
+                "event_store": None,
             },
             "user_id": command.user_id,
         }

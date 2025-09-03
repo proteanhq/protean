@@ -96,7 +96,7 @@ class BaseEventStore(metaclass=ABCMeta):
         message = Message.to_message(object)
 
         position = self._write(
-            message.stream_name,
+            message.metadata.headers.stream,
             message.metadata.headers.type,
             message.data,
             metadata=message.metadata.to_dict(),
@@ -198,3 +198,36 @@ class BaseEventStore(metaclass=ABCMeta):
 
         Useful for running tests with a clean slate.
         """
+
+    def _last_event_of_type(
+        self, event_cls: Type[BaseEvent], stream_category: str = None
+    ) -> BaseEvent:
+        stream_category = stream_category or "$all"
+        events = [
+            event
+            for event in self._read(stream_category)
+            if event["type"] == event_cls.__type__
+        ]
+
+        return Message.from_dict(events[-1]).to_object() if len(events) > 0 else None
+
+    def _events_of_type(
+        self, event_cls: Type[BaseEvent], stream_category: str = None
+    ) -> List[BaseEvent]:
+        """Read events of a specific type in a given stream.
+
+        This is a utility method, especially useful for testing purposes, that retrieves events of a
+        specific type from the event store.
+
+        If no stream is specified, events of the requested type will be retrieved from all streams.
+
+        :param event_cls: Class of the event type to be retrieved. Subclass of `BaseEvent`.
+        :param stream_category: Stream from which events are to be retrieved. String, optional, default is `None`
+        :return: A list of events of `event_cls` type
+        """
+        stream_category = stream_category or "$all"
+        return [
+            Message.from_dict(event).to_object()
+            for event in self._read(stream_category)
+            if event["type"] == event_cls.__type__
+        ]

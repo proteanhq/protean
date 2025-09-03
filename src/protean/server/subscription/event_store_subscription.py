@@ -256,7 +256,9 @@ class EventStoreSubscription(BaseSubscription):
                 is_successful = await self.engine.handle_message(self.handler, message)
 
                 # Always update position to avoid reprocessing the message
-                await self.update_read_position(message.global_position)
+                await self.update_read_position(
+                    message.metadata.event_store.global_position
+                )
 
                 # Increment counter only for successful messages
                 if is_successful:

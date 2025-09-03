@@ -1187,7 +1187,7 @@ class Domain:
         origin_stream = None
         if hasattr(g, "message_in_context"):
             if g.message_in_context.metadata.domain.kind == "EVENT":
-                origin_stream = g.message_in_context.stream_name
+                origin_stream = g.message_in_context.metadata.headers.stream
 
         headers = MessageHeaders(
             id=identifier,  # FIXME Double check command ID format and construction

@@ -192,6 +192,7 @@ def test_event_metadata():
                 "time": str(event._metadata.headers.time),
                 "traceparent": None,
             },
+            "event_store": None,
         },
         "user_id": event.user_id,
     }
