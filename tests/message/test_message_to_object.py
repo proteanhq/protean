@@ -57,9 +57,9 @@ def test_construct_event_from_message():
     identifier = str(uuid4())
     user = User(id=identifier, email="john.doe@gmail.com", name="John Doe")
     user.raise_(Registered(id=identifier, email="john.doe@gmail.com", name="John Doe"))
-    message = Message.to_message(user._events[-1])
+    message = Message.from_domain_object(user._events[-1])
 
-    reconstructed_event = message.to_object()
+    reconstructed_event = message.to_domain_object()
     assert isinstance(reconstructed_event, Registered)
     assert reconstructed_event.id == identifier
 
@@ -69,9 +69,9 @@ def test_construct_command_from_message(test_domain):
     command = test_domain._enrich_command(
         Register(id=identifier, email="john.doe@gmail.com", name="John Doe"), True
     )
-    message = Message.to_message(command)
+    message = Message.from_domain_object(command)
 
-    reconstructed_command = message.to_object()
+    reconstructed_command = message.to_domain_object()
     assert isinstance(reconstructed_command, Register)
     assert reconstructed_command.id == identifier
 
@@ -80,7 +80,7 @@ def test_invalid_message_throws_exception():
     message = Message(data={}, metadata=Metadata(domain=DomainMeta(kind="INVALID")))
 
     with pytest.raises(DeserializationError) as exc:
-        message.to_object()
+        message.to_domain_object()
 
     # Check that it's the right exception with enhanced context
     error = exc.value

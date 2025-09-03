@@ -371,8 +371,8 @@ async def test_event_handler_continues_after_exception(robust_test_domain):
     successful_event = EmailSent(id=user_id, email="john.doe@example.com")
 
     # Create messages from events
-    failing_message = Message.to_message(failing_event)
-    successful_message = Message.to_message(successful_event)
+    failing_message = Message.from_domain_object(failing_event)
+    successful_message = Message.from_domain_object(successful_event)
 
     # Process failing message first
     await engine.handle_message(FailingEventHandler, failing_message)
@@ -575,7 +575,7 @@ async def test_subscription_exception_handling_with_position_updates(
         name="Test User",
         password_hash="hash",
     )
-    message = Message.to_message(event)
+    message = Message.from_domain_object(event)
 
     # Mock only update_read_position to track calls
     original_update_read_position = subscription.update_read_position
@@ -625,7 +625,7 @@ async def test_error_handling_directly(robust_test_domain):
     failing_event = Registered(
         id=user_id, email="direct@example.com", name="Direct Test", password_hash="hash"
     )
-    failing_message = Message.to_message(failing_event)
+    failing_message = Message.from_domain_object(failing_event)
 
     # Manually process message - this should not shut down the engine
     await engine.handle_message(FailingEventHandler, failing_message)
@@ -650,7 +650,7 @@ async def test_failing_error_handler_directly(robust_test_domain):
     failing_event = Registered(
         id=user_id, email="direct@example.com", name="Direct Test", password_hash="hash"
     )
-    failing_message = Message.to_message(failing_event)
+    failing_message = Message.from_domain_object(failing_event)
 
     # Manually process message with a handler that has a failing error handler
     await engine.handle_message(FailingErrorHandlerEventHandler, failing_message)

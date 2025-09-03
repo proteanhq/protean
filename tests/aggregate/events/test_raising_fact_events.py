@@ -2,7 +2,6 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import String
-from protean.utils.eventing import Message
 
 
 class User(BaseAggregate):
@@ -27,7 +26,7 @@ def event(test_domain):
     assert len(event_messages) == 1
 
     # Deserialize event
-    event = Message.to_object(event_messages[0])
+    event = event_messages[0].to_domain_object()
 
     return event
 
@@ -58,7 +57,7 @@ def test_fact_event_version_metadata_after_second_edit(test_domain):
     assert len(event_messages) == 2
 
     # Deserialize event
-    event = Message.to_object(event_messages[1])
+    event = event_messages[1].to_domain_object()
 
     assert event._metadata.headers.id.endswith("-1.1")
     assert event._metadata.domain.sequence_id == "1.1"

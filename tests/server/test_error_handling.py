@@ -62,7 +62,7 @@ async def test_that_exception_is_handled_but_engine_continues(test_domain, caplo
             password_hash="hash",
         )
     )
-    message = Message.to_message(user._events[-1])
+    message = Message.from_domain_object(user._events[-1])
 
     engine = Engine(domain=test_domain, test_mode=True)
 
@@ -103,7 +103,9 @@ def test_exceptions_do_not_stop_processing(test_domain, caplog):
     # we'll test that the message handling doesn't shut down the engine
     loop = engine.loop
     loop.run_until_complete(
-        engine.handle_message(UserEventHandler, Message.to_message(user._events[-1]))
+        engine.handle_message(
+            UserEventHandler, Message.from_domain_object(user._events[-1])
+        )
     )
 
     # Verify the engine did not shut down

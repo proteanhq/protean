@@ -59,7 +59,7 @@ def test_construct_message_from_event():
     user.raise_(Registered(id=identifier, email="john.doe@gmail.com", name="John Doe"))
 
     # This simulates the call by UnitOfWork
-    message = Message.to_message(user._events[-1])
+    message = Message.from_domain_object(user._events[-1])
 
     assert message is not None
     assert type(message) is Message
@@ -156,7 +156,7 @@ def test_construct_message_from_either_event_or_command(test_domain):
     command = Register(id=identifier, email="john.doe@gmail.com", name="John Doe")
     command = test_domain._enrich_command(command, True)
 
-    message = Message.to_message(command)
+    message = Message.from_domain_object(command)
 
     assert message is not None
     assert type(message) is Message
@@ -175,7 +175,7 @@ def test_construct_message_from_either_event_or_command(test_domain):
     event = user._events[-1]
 
     # This simulates the call by UnitOfWork
-    message = Message.to_message(event)
+    message = Message.from_domain_object(event)
 
     assert message is not None
     assert type(message) is Message
@@ -194,6 +194,6 @@ def test_construct_message_from_either_event_or_command(test_domain):
 
 def test_object_is_registered_with_domain():
     with pytest.raises(ConfigurationError) as exc:
-        Message.to_message(Activate(id=str(uuid4())))
+        Message.from_domain_object(Activate(id=str(uuid4())))
 
     assert exc.value.args[0] == "`Activate` should be registered with a domain"

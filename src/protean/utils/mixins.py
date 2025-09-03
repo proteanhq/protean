@@ -62,7 +62,7 @@ class HandlerMixin:
         """
 
         # Convert Message to object if necessary
-        item = item.to_object() if isinstance(item, Message) else item
+        item = item.to_domain_object() if isinstance(item, Message) else item
 
         # Use specific handlers if available, or fallback on `$any` if defined
         handlers = cls._handlers[item.__class__.__type__] or cls._handlers["$any"]

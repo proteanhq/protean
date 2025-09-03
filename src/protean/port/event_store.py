@@ -80,7 +80,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
         messages = []
         for raw_message in raw_messages:
-            messages.append(Message.from_dict(raw_message))
+            messages.append(Message.deserialize(raw_message))
 
         return messages
 
@@ -88,12 +88,12 @@ class BaseEventStore(metaclass=ABCMeta):
         # FIXME Rename to read_last_stream_message
         raw_message = self._read_last_message(stream)
         if raw_message:
-            return Message.from_dict(raw_message)
+            return Message.deserialize(raw_message)
 
         return None
 
     def append(self, object: Union[BaseEvent, BaseCommand]) -> int:
-        message = Message.to_message(object)
+        message = Message.from_domain_object(object)
 
         position = self._write(
             message.metadata.headers.stream,
@@ -146,7 +146,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
             events = []
             for event_message in event_stream:
-                event = Message.from_dict(event_message).to_object()
+                event = Message.deserialize(event_message).to_domain_object()
                 aggregate._apply(event)
         else:
             # No snapshot, so initialize aggregate from events
@@ -159,7 +159,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
             events = []
             for event_message in event_stream:
-                events.append(Message.from_dict(event_message).to_object())
+                events.append(Message.deserialize(event_message).to_domain_object())
 
             aggregate = part_of.from_events(events)
 
@@ -209,7 +209,11 @@ class BaseEventStore(metaclass=ABCMeta):
             if event["type"] == event_cls.__type__
         ]
 
-        return Message.from_dict(events[-1]).to_object() if len(events) > 0 else None
+        return (
+            Message.deserialize(events[-1]).to_domain_object()
+            if len(events) > 0
+            else None
+        )
 
     def _events_of_type(
         self, event_cls: Type[BaseEvent], stream_category: str = None
@@ -227,7 +231,7 @@ class BaseEventStore(metaclass=ABCMeta):
         """
         stream_category = stream_category or "$all"
         return [
-            Message.from_dict(event).to_object()
+            Message.deserialize(event).to_domain_object()
             for event in self._read(stream_category)
             if event["type"] == event_cls.__type__
         ]

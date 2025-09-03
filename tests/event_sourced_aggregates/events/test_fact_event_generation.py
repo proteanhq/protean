@@ -3,7 +3,6 @@ import pytest
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.fields import Identifier, String
-from protean.utils.eventing import Message
 
 
 class Registered(BaseEvent):
@@ -60,7 +59,7 @@ def test_generation_of_first_fact_event_on_persistence(test_domain):
     assert len(fact_event_messages) == 1
 
     # Deserialize event
-    event = Message.to_object(fact_event_messages[0])
+    event = fact_event_messages[0].to_domain_object()
     assert event is not None
     assert event.__class__.__name__ == "UserFactEvent"
     assert event.name == "John Doe"
@@ -101,7 +100,7 @@ def test_generation_of_subsequent_fact_events_after_fetch(test_domain):
     assert len(fact_event_messages) == 2
 
     # Deserialize 1st event and verify
-    event = Message.to_object(fact_event_messages[0])
+    event = fact_event_messages[0].to_domain_object()
     assert event is not None
     assert event.__class__.__name__ == "UserFactEvent"
     assert event.name == "John Doe"
@@ -111,7 +110,7 @@ def test_generation_of_subsequent_fact_events_after_fetch(test_domain):
     assert event._version == 0
 
     # Deserialize 2nd event and verify
-    event = Message.to_object(fact_event_messages[1])
+    event = fact_event_messages[1].to_domain_object()
     assert event is not None
     assert event.__class__.__name__ == "UserFactEvent"
     assert event.name == "Jane Doe"
