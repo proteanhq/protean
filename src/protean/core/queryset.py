@@ -250,7 +250,7 @@ class QuerySet:
                     f"{entity.meta_.stream_category}-{identifier}"
                 )
                 if last_message:
-                    entity._event_position = last_message.position
+                    entity._event_position = last_message.metadata.event_store.position
 
             entity_items.append(entity)
 

@@ -79,7 +79,7 @@ def test_that_command_is_persisted_in_message_store(test_domain):
     messages = test_domain.event_store.store.read("user:command")
 
     assert len(messages) == 1
-    assert messages[0].stream_name == f"test::user:command-{identifier}"
+    assert messages[0].metadata.headers.stream == f"test::user:command-{identifier}"
 
 
 def test_command_handler_returns_value_when_processed_synchronously(test_domain):

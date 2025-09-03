@@ -12,7 +12,7 @@ from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
 from protean.utils import Processing
-from protean.utils.eventing import Metadata, DomainMeta, Message
+from protean.utils.eventing import Metadata, DomainMeta, Message, MessageHeaders
 from protean.utils.mixins import handle
 
 # Global variables to track processing
@@ -486,6 +486,9 @@ def test_mixed_error_scenarios(robust_test_domain):
 @pytest.mark.asyncio
 async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
     """Test that subscription properly handles messages with varying asynchronous flags"""
+    # Set domain to process events synchronously
+    robust_test_domain.config["event_processing"] = Processing.SYNC.value
+
     engine = Engine(domain=robust_test_domain, test_mode=True)
 
     # Create a subscription manually
@@ -499,21 +502,48 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
     # Create test messages with different asynchronous flags
     messages = []
 
+    ########
+    # NOTE #
+    ########a
+    # This is an extremely cumbersome way of testing this, but this is the only way because
+    #   we need to set `asynchronous` differently for different events. Protean automatically
+    #   gathers `asynchronous` value from the domain, so we have to go under the hood to set
+    #   asynchronous flags in headers differently.
+
     # Create a synchronous message (should be skipped)
     sync_event = EmailSent(id=str(uuid4()), email="sync@example.com")
-    sync_message = Message.to_message(sync_event)
-
-    # Force-construct a synchronous message
-    domain_meta = DomainMeta(sync_message.metadata.domain.to_dict(), asynchronous=False)
-    sync_message.metadata = Metadata(
-        sync_message.metadata.to_dict(), domain=domain_meta.to_dict()
+    new_headers = MessageHeaders.build(
+        id=sync_event.id,
+        time=sync_event._metadata.headers.time,
+        type=sync_event._metadata.headers.type,
+        stream="test_stream-1",
     )
-    messages.append(sync_message)
+    new_metadata = Metadata(sync_event._metadata.to_dict(), headers=new_headers)
+    new_sync_event = EmailSent(
+        id=sync_event.id, email=sync_event.email, _metadata=new_metadata
+    )
+    robust_test_domain.event_store.store.append(new_sync_event)
 
     # Create an asynchronous message (should be processed)
     async_event = EmailSent(id=str(uuid4()), email="async@example.com")
-    async_message = Message.to_message(async_event)  # Metadata is async by default
-    messages.append(async_message)
+    new_domain_meta = DomainMeta(
+        async_event._metadata.domain.to_dict(), asynchronous=False
+    )
+    new_headers = MessageHeaders.build(
+        id=async_event.id,
+        time=async_event._metadata.headers.time,
+        type=async_event._metadata.headers.type,
+        stream="test_stream-2",
+    )
+    new_metadata = Metadata(
+        async_event._metadata.to_dict(), domain=new_domain_meta, headers=new_headers
+    )
+    new_async_event = EmailSent(
+        id=async_event.id, email=async_event.email, _metadata=new_metadata
+    )
+    robust_test_domain.event_store.store.append(new_async_event)
+
+    messages = robust_test_domain.event_store.store.read("test_stream")
 
     # Process the batch directly
     await subscription.process_batch(messages)
@@ -561,7 +591,12 @@ async def test_subscription_exception_handling_with_position_updates(
     subscription.update_read_position = mock_update_read_position
 
     # Set message's global position for tracking
-    message.global_position = 42
+    from protean.utils.eventing import EventStoreMeta
+
+    # Update metadata with event store position
+    metadata_dict = message.metadata.to_dict()
+    metadata_dict["event_store"] = EventStoreMeta(position=1, global_position=42)
+    message.metadata = Metadata(**metadata_dict)
 
     # Update the asynchronous flag in the domain metadata
     old_domain_meta = message.metadata.domain

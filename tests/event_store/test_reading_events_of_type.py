@@ -65,7 +65,7 @@ def registered_user(test_domain):
 
 @pytest.mark.eventstore
 def test_reading_events_of_type_with_just_one_message(test_domain, registered_user):
-    events = test_domain.event_store.events_of_type(Registered)
+    events = test_domain.event_store.store._events_of_type(Registered)
     assert len(events) == 1
     assert isinstance(events[0], Registered)
 
@@ -75,8 +75,12 @@ def test_reading_events_of_type_with_other_events_present(test_domain, registere
     registered_user.activate()
     test_domain.event_store.store.append(registered_user._events[1])
 
-    assert isinstance(test_domain.event_store.events_of_type(Registered)[0], Registered)
-    assert isinstance(test_domain.event_store.events_of_type(Activated)[0], Activated)
+    assert isinstance(
+        test_domain.event_store.store._events_of_type(Registered)[0], Registered
+    )
+    assert isinstance(
+        test_domain.event_store.store._events_of_type(Activated)[0], Activated
+    )
 
 
 class TestEventStoreEventsOfType:
@@ -93,13 +97,13 @@ class TestEventStoreEventsOfType:
 
     @pytest.mark.eventstore
     def test_reading_events_of_type_with_multiple_events(self, test_domain):
-        events = test_domain.event_store.events_of_type(Renamed)
+        events = test_domain.event_store.store._events_of_type(Renamed)
         assert len(events) == 10
         assert events[-1].name == "John Doe 9"
 
     @pytest.mark.eventstore
     def test_reading_events_of_type_with_multiple_events_in_stream(self, test_domain):
-        events = test_domain.event_store.events_of_type(Renamed, "test::user")
+        events = test_domain.event_store.store._events_of_type(Renamed, "test::user")
         assert len(events) == 10
         assert events[-1].name == "John Doe 9"
 
@@ -107,5 +111,5 @@ class TestEventStoreEventsOfType:
     def test_reading_events_of_type_with_multiple_events_in_different_stream(
         self, test_domain
     ):
-        events = test_domain.event_store.events_of_type(Renamed, "test::group")
+        events = test_domain.event_store.store._events_of_type(Renamed, "test::group")
         assert len(events) == 0

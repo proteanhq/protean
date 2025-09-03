@@ -219,7 +219,7 @@ class Engine:
                 return True
             except Exception as exc:  # Includes handling `ConfigurationError`
                 logger.error(
-                    f"Error handling message {message.stream_name}-{message.metadata.headers.id} "
+                    f"Error handling message {message.metadata.headers.stream}-{message.metadata.headers.id} "
                     f"in {handler_cls.__name__}: {str(exc)}"
                 )
                 # Print the stack trace

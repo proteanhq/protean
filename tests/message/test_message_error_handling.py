@@ -13,6 +13,7 @@ from protean.utils.eventing import (
     MessageHeaders,
     DomainMeta,
     Metadata,
+    EventStoreMeta,
 )
 
 
@@ -86,7 +87,6 @@ class TestMessageErrorHandling:
         """Test that invalid message kind raises DeserializationError with context"""
 
         message = Message(
-            stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
@@ -109,7 +109,7 @@ class TestMessageErrorHandling:
         # Check context information
         context = error.context
         assert context["type"] == "test.invalid"
-        assert context["stream_name"] == "test-stream"
+        assert context.get("stream_name") == "test-stream"
         assert context["metadata_kind"] == "INVALID_KIND"
         assert context["metadata_type"] == "test.invalid"
         assert context["envelope"] is not None  # Envelope should be present
@@ -123,7 +123,6 @@ class TestMessageErrorHandling:
         """Test that unregistered message type raises DeserializationError with context"""
 
         message = Message(
-            stream_name="unregistered-stream",
             data={"id": "123", "data": "test"},
             metadata=Metadata(
                 headers=MessageHeaders(
@@ -148,7 +147,7 @@ class TestMessageErrorHandling:
         # Check context information
         context = error.context
         assert context["type"] == "unregistered.event"
-        assert context["stream_name"] == "unregistered-stream"
+        assert context.get("stream_name") == "unregistered-stream"
         assert context["metadata_kind"] == "EVENT"
         assert context["metadata_type"] == "unregistered.event"
         assert context["original_exception_type"] == "ConfigurationError"
@@ -158,7 +157,6 @@ class TestMessageErrorHandling:
         """Test that malformed message data raises DeserializationError with context"""
 
         message = Message(
-            stream_name="user-123",
             data={"invalid_field": "value"},  # Missing required fields
             metadata=Metadata(
                 headers=MessageHeaders(
@@ -182,7 +180,7 @@ class TestMessageErrorHandling:
         # Check context information
         context = error.context
         assert context["type"] == "test.registered"
-        assert context["stream_name"] == "user-123"
+        assert context.get("stream_name") == "user-123"
         assert context["metadata_kind"] == "EVENT"
         assert context["metadata_type"] == "test.registered"
         assert context["data_keys"] == ["invalid_field"]
@@ -193,8 +191,12 @@ class TestMessageErrorHandling:
         # Create message dict with envelope but without metadata to test from_dict error handling
         message_dict = {
             "envelope": {"specversion": "1.0", "checksum": ""},
-            "headers": {"id": "no-metadata-msg-1", "type": "test.event", "time": None},
-            "stream_name": "test-stream",
+            "headers": {
+                "id": "no-metadata-msg-1",
+                "type": "test.event",
+                "time": None,
+                "stream": "test-stream",
+            },
             "data": {"test": "data"},
             "position": 1,
             "global_position": 1,
@@ -220,7 +222,6 @@ class TestMessageErrorHandling:
             "headers": {"id": "no-data-msg-1", "type": "test.registered", "time": None},
             "id": "no-data-msg-1",
             "type": "test.registered",
-            "stream_name": "user-123",
             "metadata": {
                 "headers": {
                     "id": "no-data-msg-1",
@@ -257,7 +258,6 @@ class TestMessageErrorHandling:
         """Test that message with unknown ID still provides context"""
         # Create a message with a proper ID but unregistered type
         message = Message(
-            stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
                 headers=MessageHeaders(
@@ -280,7 +280,6 @@ class TestMessageErrorHandling:
         """Test that DeserializationError preserves the original exception via chaining"""
 
         message = Message(
-            stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
                 headers=MessageHeaders(
@@ -304,10 +303,7 @@ class TestMessageErrorHandling:
         """Test that error context includes all relevant message fields"""
 
         message = Message(
-            stream_name="context-stream",
             data={"field1": "value1", "field2": "value2"},
-            position=42,
-            global_position=100,
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="2.0", checksum=""),
                 headers=MessageHeaders(
@@ -318,6 +314,10 @@ class TestMessageErrorHandling:
                 domain=DomainMeta(
                     fqn="unregistered.Type",
                     kind="EVENT",
+                ),
+                event_store=EventStoreMeta(
+                    position=42,
+                    global_position=100,
                 ),
             ),
         )
@@ -330,7 +330,7 @@ class TestMessageErrorHandling:
 
         # Verify all expected context fields are present
         assert context["type"] == "unregistered.type"
-        assert context["stream_name"] == "context-stream"
+        assert context.get("stream_name") == "context-stream"
         assert context["metadata_kind"] == "EVENT"
         assert context["metadata_type"] == "unregistered.type"
         assert context["envelope"] is not None  # Envelope should be present
@@ -364,7 +364,6 @@ class TestMessageErrorHandling:
     def test_command_deserialization_error_handling(self, test_domain):
         """Test error handling for command deserialization"""
         message = Message(
-            stream_name="user:command-123",
             data={"test": "data"},
             metadata=Metadata(
                 headers=MessageHeaders(
@@ -388,12 +387,11 @@ class TestMessageErrorHandling:
 
         context = error.context
         assert context["metadata_kind"] == "COMMAND"
-        assert context["stream_name"] == "user:command-123"
+        assert context.get("stream_name") == "user:command-123"
 
     def test_error_handling_with_corrupted_message_fields(self):
         """Test error handling when message has corrupted or unexpected field values"""
         message = Message(
-            stream_name="test-stream",
             data={"test": "data"},
             metadata=Metadata(
                 headers=MessageHeaders(

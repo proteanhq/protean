@@ -33,4 +33,4 @@ def test_raising_event(test_domain):
     messages = test_domain.event_store.store.read("test::authentication")
 
     assert len(messages) == 1
-    assert messages[0].stream_name == f"test::authentication-{identifier}"
+    assert messages[0].metadata.headers.stream == f"test::authentication-{identifier}"

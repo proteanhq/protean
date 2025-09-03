@@ -52,4 +52,4 @@ def test_command_submission(test_domain):
     messages = test_domain.event_store.store.read("test::user:command")
 
     assert len(messages) == 1
-    messages[0].stream_name == f"test::user:command-{identifier}"
+    assert messages[0].metadata.headers.stream == f"test::user:command-{identifier}"

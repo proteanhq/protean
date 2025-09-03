@@ -11,7 +11,7 @@ from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.broker_subscription import BrokerSubscription
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
-from protean.utils.eventing import Message, DomainMeta, Metadata
+from protean.utils.eventing import Message, Metadata
 from protean.utils.mixins import handle
 
 # Set up logger
@@ -157,14 +157,20 @@ def register(test_domain):
 
 def create_event_message(event_cls, user_id, asynchronous=True, **kwargs):
     """Helper function to create an event message"""
+    from protean.utils.eventing import EventStoreMeta
+
     event = event_cls(id=user_id, **kwargs)
     message = Message.to_message(event)
 
+    # Add EventStoreMeta for position tracking
+    metadata_dict = message.metadata.to_dict()
+    metadata_dict["event_store"] = EventStoreMeta(position=1, global_position=1)
+
     # Set asynchronous explicitly
     if not asynchronous:
-        old_domain_meta = message.metadata.domain
-        new_domain_meta = DomainMeta(old_domain_meta.to_dict(), asynchronous=False)
-        message.metadata = Metadata(message.metadata.to_dict(), domain=new_domain_meta)
+        metadata_dict["domain"]["asynchronous"] = False
+
+    message.metadata = Metadata(**metadata_dict)
 
     return message
 

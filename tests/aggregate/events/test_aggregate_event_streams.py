@@ -79,7 +79,7 @@ class TestDeltaEvents:
 
         message = Message.to_message(user._events[0])
 
-        assert message.stream_name == f"test::user-{user.id}"
+        assert message.metadata.headers.stream == f"test::user-{user.id}"
 
     def test_event_metadata_from_stream(self, test_domain):
         user = User(name="John Doe", email="john.doe@example.com")

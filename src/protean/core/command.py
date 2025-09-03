@@ -38,7 +38,7 @@ class BaseCommand(BaseMessageType):
             origin_stream = None
             if hasattr(g, "message_in_context"):
                 if g.message_in_context.metadata.domain.kind == "EVENT":
-                    origin_stream = g.message_in_context.stream_name
+                    origin_stream = g.message_in_context.metadata.headers.stream
 
             # Use existing headers if they have meaningful content, otherwise create new ones
             has_meaningful_headers = (

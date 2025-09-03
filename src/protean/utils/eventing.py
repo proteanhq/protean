@@ -13,8 +13,8 @@ from protean.exceptions import (
     InvalidDataError,
     DeserializationError,
 )
-from protean.fields import Boolean, DateTime, Field, String, ValueObject
-from protean.fields.basic import Auto, Integer, Dict
+from protean.fields import Boolean, DateTime, Field, String, ValueObject, Dict
+from protean.fields.basic import Integer
 from protean.fields.association import Association, Reference
 from protean.utils.container import BaseContainer, OptionsMixin
 from protean.utils.reflection import _ID_FIELD_NAME, declared_fields, fields
@@ -162,33 +162,21 @@ class DomainMeta(BaseValueObject):
     expected_version = Integer()
 
 
-class Metadata(BaseValueObject):
-    headers = ValueObject(MessageHeaders)
-    envelope = ValueObject(MessageEnvelope)
-    domain = ValueObject(DomainMeta)
-
-
-class MessageRecord(BaseContainer):
-    """
-    Base Container holding all fields of a message.
-    """
-
+class EventStoreMeta(BaseValueObject):
     # Primary key. The ordinal position of the message in the entire message store.
     # Global position may have gaps.
-    global_position = Auto(increment=True, identifier=True)
+    global_position = Integer()
 
     # The ordinal position of the message in its stream.
     # Position is gapless.
     position = Integer()
 
-    # Name of stream to which the message is written
-    stream_name = String(max_length=255)
 
-    # JSON representation of the message body
-    data = Dict()
-
-    # JSON representation of the message metadata
-    metadata = ValueObject(Metadata)
+class Metadata(BaseValueObject):
+    headers = ValueObject(MessageHeaders)
+    envelope = ValueObject(MessageEnvelope)
+    domain = ValueObject(DomainMeta)
+    event_store = ValueObject(EventStoreMeta)
 
 
 class BaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
@@ -300,7 +288,7 @@ class BaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         }
 
 
-class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
+class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     """Generic message class
     It provides concrete implementations for:
     - ID generation
@@ -308,6 +296,12 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
     - Serialization and De-serialization
     - Message format versioning for schema evolution
     """
+
+    # JSON representation of the message body
+    data = Dict()
+
+    # JSON representation of the message metadata
+    metadata = ValueObject(Metadata)
 
     @classmethod
     def from_dict(cls, message: dict, validate: bool = True) -> Message:
@@ -343,13 +337,19 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
 
                 metadata_dict["headers"] = MessageHeaders(**headers_kwargs)
 
+            # FIXME We can do this properly if we shift this method into event store port.
+            #    `position` and `global_position` are present in event store message structure alone.
+            # Add EventStoreMeta if position and global_position are present
+            if "position" in message or "global_position" in message:
+                metadata_dict["event_store"] = EventStoreMeta(
+                    position=message.get("position"),
+                    global_position=message.get("global_position"),
+                )
+
             # Create the message object
             msg = Message(
-                stream_name=message["stream_name"],
                 data=message["data"],
                 metadata=metadata_dict,
-                position=message["position"],
-                global_position=message["global_position"],
             )
 
             # Validate integrity if requested and checksum is present
@@ -377,7 +377,9 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                             ),
                             "validation_requested": True,
                             "message_type": message_type,
-                            "stream_name": message.get("stream_name", "unknown"),
+                            "stream_name": metadata_dict.get("headers", {}).get(
+                                "stream", "unknown"
+                            ),
                         },
                     )
 
@@ -397,7 +399,9 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
                 if isinstance(message, dict)
                 else "not_available",
                 "message_type": message_type,
-                "stream_name": message.get("stream_name", "unknown"),
+                "stream_name": message.get("metadata", {})
+                .get("headers", {})
+                .get("stream", "unknown"),
                 "original_exception_type": "KeyError",
             }
 
@@ -470,15 +474,21 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
 
             context = {
                 "type": message_type,
-                "stream_name": getattr(self, "stream_name", "unknown"),
+                "stream_name": self.metadata.headers.stream
+                if self.metadata.headers and self.metadata.headers.stream
+                else "unknown",
                 "metadata_kind": getattr(self.metadata.domain, "kind", "unknown")
                 if hasattr(self, "metadata") and self.metadata.domain
                 else "unknown",
                 "metadata_type": getattr(self.metadata.headers, "type", "unknown")
                 if hasattr(self, "metadata") and self.metadata.headers
                 else "unknown",
-                "position": getattr(self, "position", "unknown"),
-                "global_position": getattr(self, "global_position", "unknown"),
+                "position": self.metadata.event_store.position
+                if self.metadata.event_store
+                else "unknown",
+                "global_position": self.metadata.event_store.global_position
+                if self.metadata.event_store
+                else "unknown",
                 "original_exception_type": type(e).__name__,
                 "has_metadata": hasattr(self, "metadata"),
                 "has_data": hasattr(self, "data"),
@@ -545,9 +555,6 @@ class Message(MessageRecord, OptionsMixin):  # FIXME Remove OptionsMixin
 
         # Create the message
         message = cls(
-            stream_name=metadata_with_envelope.headers.stream
-            if metadata_with_envelope.headers
-            else None,
             data=message_object.payload,
             metadata=metadata_with_envelope,
         )

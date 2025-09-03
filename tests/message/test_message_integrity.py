@@ -8,7 +8,7 @@ from protean.core.event import BaseEvent
 from protean.exceptions import DeserializationError
 from protean.fields import Identifier, String
 from protean.utils.eventing import Message, MessageEnvelope, MessageHeaders
-from protean.utils.eventing import Metadata, DomainMeta
+from protean.utils.eventing import Metadata, DomainMeta, EventStoreMeta
 
 
 class User(BaseAggregate):
@@ -60,7 +60,6 @@ class TestMessageIntegrity:
         """Test that compute_checksum produces consistent results for same data"""
 
         message = Message(
-            stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
@@ -74,9 +73,11 @@ class TestMessageIntegrity:
                     fqn="test.Registered",
                     kind="EVENT",
                 ),
+                event_store=EventStoreMeta(
+                    position=1,
+                    global_position=1,
+                ),
             ),
-            position=1,
-            global_position=1,
         )
 
         # Compute checksum multiple times
@@ -92,7 +93,6 @@ class TestMessageIntegrity:
         """Test that compute_checksum excludes the checksum field itself"""
 
         message = Message(
-            stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
@@ -106,9 +106,11 @@ class TestMessageIntegrity:
                     fqn="test.Registered",
                     kind="EVENT",
                 ),
+                event_store=EventStoreMeta(
+                    position=1,
+                    global_position=1,
+                ),
             ),
-            position=1,
-            global_position=1,
         )
 
         # Compute checksum without setting it
@@ -144,7 +146,6 @@ class TestMessageIntegrity:
         """Test validate_checksum returns False for invalid checksum"""
 
         message = Message(
-            stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 headers=MessageHeaders(
@@ -160,9 +161,11 @@ class TestMessageIntegrity:
                 envelope=MessageEnvelope(
                     specversion="1.0", checksum="invalid_checksum_value"
                 ),
+                event_store=EventStoreMeta(
+                    position=1,
+                    global_position=1,
+                ),
             ),
-            position=1,
-            global_position=1,
         )
 
         # Should fail integrity validation
@@ -172,7 +175,6 @@ class TestMessageIntegrity:
         """Test validate_checksum returns False when no checksum is present"""
 
         message = Message(
-            stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
@@ -186,9 +188,11 @@ class TestMessageIntegrity:
                     fqn="test.Registered",
                     kind="EVENT",
                 ),
+                event_store=EventStoreMeta(
+                    position=1,
+                    global_position=1,
+                ),
             ),
-            position=1,
-            global_position=1,
         )
 
         # No checksum set - should return False
@@ -346,7 +350,6 @@ class TestMessageIntegrity:
         """Test that checksum changes when message data changes"""
 
         base_message = Message(
-            stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
@@ -360,14 +363,15 @@ class TestMessageIntegrity:
                     fqn="test.Registered",
                     kind="EVENT",
                 ),
+                event_store=EventStoreMeta(
+                    position=1,
+                    global_position=1,
+                ),
             ),
-            position=1,
-            global_position=1,
         )
 
         # Modified message with different data
         modified_message = Message(
-            stream_name="user-123",
             data={"id": "123", "email": "different@example.com"},  # Changed email
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
@@ -381,9 +385,11 @@ class TestMessageIntegrity:
                     fqn="test.Registered",
                     kind="EVENT",
                 ),
+                event_store=EventStoreMeta(
+                    position=1,
+                    global_position=1,
+                ),
             ),
-            position=1,
-            global_position=1,
         )
 
         base_checksum = MessageEnvelope.compute_checksum(base_message.data)
@@ -396,7 +402,6 @@ class TestMessageIntegrity:
         """Test that checksum computation includes all relevant message fields"""
 
         message = Message(
-            stream_name="user-123",
             data={"id": "123", "email": "test@example.com"},
             metadata=Metadata(
                 envelope=MessageEnvelope(specversion="1.0", checksum=""),
@@ -411,9 +416,11 @@ class TestMessageIntegrity:
                     kind="EVENT",
                     expected_version=5,
                 ),
+                event_store=EventStoreMeta(
+                    position=1,
+                    global_position=1,
+                ),
             ),
-            position=1,
-            global_position=1,
         )
 
         actual_checksum = MessageEnvelope.compute_checksum(message.data)
