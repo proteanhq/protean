@@ -43,7 +43,7 @@ def register_elements(test_domain):
 
 @pytest.mark.asyncio
 async def test_subscription_test_mode_branch_explicitly(test_domain):
-    """Explicitly test the test_mode branch in Subscription.poll() to cover line 120"""
+    """Explicitly test the test_mode branch in Subscription.poll()"""
     engine = Engine(test_domain, test_mode=True)
     subscription = engine._subscriptions[fqn(UserEventHandler)]
 
@@ -63,7 +63,7 @@ async def test_subscription_test_mode_branch_explicitly(test_domain):
     # Replace tick with our controlled version
     subscription.tick = controlled_tick
 
-    # Run poll directly - this should hit the test mode branch and line 120
+    # Run poll directly - this should hit the test mode branch
     await subscription.poll()
 
     # Verify we completed at least 2 iterations
@@ -72,7 +72,7 @@ async def test_subscription_test_mode_branch_explicitly(test_domain):
 
 @pytest.mark.asyncio
 async def test_broker_subscription_test_mode_branch_explicitly(test_domain):
-    """Explicitly test the test_mode branch in BrokerSubscription.poll() to cover line 411"""
+    """Explicitly test the test_mode branch in BrokerSubscription.poll()"""
     engine = Engine(test_domain, test_mode=True)
     subscription = engine._broker_subscriptions[fqn(DummyTestSubscriber)]
 
@@ -92,7 +92,7 @@ async def test_broker_subscription_test_mode_branch_explicitly(test_domain):
     # Replace tick with our controlled version
     subscription.tick = controlled_tick
 
-    # Run poll directly - this should hit the test mode branch and line 411
+    # Run poll directly - this should hit the test mode branch
     await subscription.poll()
 
     # Verify we completed at least 2 iterations

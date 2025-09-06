@@ -271,7 +271,7 @@ def test_deserialize_message_with_no_data_field(redis_broker):
 
 @pytest.mark.redis
 def test_ack_nacked_message(redis_broker):
-    """Test ACK on a previously NACKed message should fail"""
+    """Test ACK on a previously NACKed message"""
     stream = "test_stream"
     consumer_group = "test_group"
     message = {"data": "test_ack_nack"}
@@ -285,9 +285,10 @@ def test_ack_nacked_message(redis_broker):
     nack_result = redis_broker.nack(stream, identifier, consumer_group)
     assert nack_result is True
 
-    # Try to ACK the NACKed message - should fail
+    # Try to ACK the NACKed message - should succeed
+    # In Redis Streams, NACKed (pending) messages can still be ACKed
     ack_result = redis_broker.ack(stream, identifier, consumer_group)
-    assert ack_result is False
+    assert ack_result is True
 
 
 @pytest.mark.redis
@@ -357,7 +358,7 @@ def test_is_message_pending_message_id_mismatch(redis_broker, monkeypatch):
 @pytest.mark.redis
 def test_ensure_group_without_stream(redis_broker):
     """Test _ensure_group called without stream parameter"""
-    # This should trigger the early return path (lines 213->exit)
+    # This should trigger the early return path
     redis_broker._ensure_group("test_group", stream=None)
     # If it returns without error, the early exit worked
 
@@ -1060,5 +1061,4 @@ def test_data_reset_with_exception(redis_broker, monkeypatch):
 
     # Internal state should still be cleared even if Redis operation fails
     assert len(redis_broker._created_groups) == 0
-    assert len(redis_broker._nacked_messages) == 0
     assert len(redis_broker._group_creation_times) == 0

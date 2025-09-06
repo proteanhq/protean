@@ -8,11 +8,18 @@ from unittest.mock import Mock, patch
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
+from protean.domain import Domain
 from protean.fields import String, Integer
 from protean.server import Engine
 from protean.server.outbox_processor import OutboxProcessor
 from protean.utils.outbox import Outbox, OutboxStatus
-from protean.utils.eventing import Metadata
+from protean.utils.eventing import (
+    Metadata,
+    MessageHeaders,
+    DomainMeta,
+    EventStoreMeta,
+    TraceParent,
+)
 
 
 class MockEngine:
@@ -62,7 +69,11 @@ def persist_outbox_messages(outbox_test_domain):
 
     messages = []
     for i in range(3):
-        metadata = Metadata()
+        # Create metadata with headers containing the message ID
+        headers = MessageHeaders(id=f"msg-{i}", type="DummyEvent", stream="test-stream")
+        domain_meta = DomainMeta(stream_category="test-stream")
+        metadata = Metadata(headers=headers, domain=domain_meta)
+
         message = Outbox.create_message(
             message_id=f"msg-{i}",
             stream_name="test-stream",
@@ -108,7 +119,6 @@ class TestOutboxProcessor:
     ):
         """Test OutboxProcessor initialization with invalid broker provider raises error"""
         # Create a domain with limited broker configuration
-        from protean.domain import Domain
 
         domain = Domain(name="TestInvalidProvider")
         domain.config["brokers"]["default"] = {"provider": "inline"}
@@ -125,7 +135,6 @@ class TestOutboxProcessor:
 
     def test_outbox_processor_initialization_with_invalid_database_provider(self):
         """Test OutboxProcessor initialization with invalid database provider"""
-        from protean.domain import Domain
 
         domain = Domain(name="TestInvalidDBProvider")
         domain.config["enable_outbox"] = True
@@ -180,7 +189,6 @@ class TestOutboxProcessor:
     @pytest.mark.asyncio
     async def test_get_next_batch_of_messages_when_repo_not_initialized(self):
         """Test getting messages when outbox_repo is None"""
-        from protean.domain import Domain
 
         # Create a minimal domain for the mock engine
         domain = Domain(name="TestMinimalDomain")
@@ -303,7 +311,18 @@ class TestOutboxProcessor:
 
         # Mock broker publish to succeed for first message, fail for second
         def mock_publish(stream_name, message_payload):
-            if message_payload["id"] == "msg-0":
+            # Extract the message ID from the metadata structure
+            msg_id = (
+                message_payload["metadata"]["headers"]["id"]
+                if "metadata" in message_payload
+                and "headers" in message_payload["metadata"]
+                else None
+            )
+            # Also check in data for backward compatibility
+            if msg_id is None and "data" in message_payload:
+                msg_id = message_payload["data"].get("message_id")
+
+            if msg_id == "msg-0":
                 return "broker-msg-id"
             else:
                 raise Exception("Broker error")
@@ -414,7 +433,7 @@ class TestOutboxProcessor:
             with patch.object(
                 processor.outbox_repo, "add", side_effect=track_and_fail_add
             ):
-                # This should trigger the nested exception handler on lines 156-157
+                # This should trigger the nested exception handler
                 successful_count = await processor.process_batch([message])
                 assert successful_count == 0
 
@@ -446,7 +465,7 @@ class TestOutboxProcessor:
 
     @pytest.mark.asyncio
     async def test_publish_message_payload_format(self, outbox_test_domain):
-        """Test that message payload is formatted correctly for broker"""
+        """Test that message payload is formatted correctly for broker with Message structure"""
         outbox_messages = persist_outbox_messages(outbox_test_domain)
 
         engine = MockEngine(outbox_test_domain)
@@ -467,13 +486,393 @@ class TestOutboxProcessor:
         call_args = mock_broker.publish.call_args
         stream_name, payload = call_args[0]
 
-        assert stream_name == message.stream_name
-        assert payload["id"] == message.message_id
-        assert payload["type"] == message.type
+        assert stream_name == "test-stream"
+
+        # Verify the standard Message structure with 'data' and 'metadata' top-level keys
+        assert "data" in payload
+        assert "metadata" in payload
+
+        # Data should contain the message payload
         assert payload["data"] == message.data
-        assert payload["correlation_id"] == message.correlation_id
-        assert payload["trace_id"] == message.trace_id
-        assert "created_at" in payload
+
+        # Metadata should be properly structured
+        assert payload["metadata"] == message.metadata.to_dict()
+
+
+@pytest.mark.database
+class TestMessageReconstruction:
+    """Test Message reconstruction and publishing functionality"""
+
+    @pytest.mark.asyncio
+    async def test_message_reconstruction_with_full_metadata(self, outbox_test_domain):
+        """Test that Message is correctly reconstructed with complete metadata"""
+        # Create a comprehensive metadata object
+        headers = MessageHeaders(
+            id="test-msg-id",
+            type="TestDomain.DummyEvent.v1",
+            stream="test-stream",
+            time=datetime.now(timezone.utc),
+        )
+
+        domain_meta = DomainMeta(
+            fqn="TestDomain.DummyEvent",
+            kind="EVENT",
+            origin_stream="original-stream",
+            stream_category="test-stream",
+            version="v1",
+            sequence_id="1.0",
+            asynchronous=True,
+            expected_version=0,
+        )
+
+        event_store_meta = EventStoreMeta(global_position=100, position=5)
+
+        metadata = Metadata(
+            headers=headers, domain=domain_meta, event_store=event_store_meta
+        )
+
+        # Create outbox message with rich metadata
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+        message = Outbox.create_message(
+            message_id="test-msg-id",
+            stream_name="test-stream",
+            message_type="DummyEvent",
+            data={"name": "Test Event", "value": 42},
+            metadata=metadata,
+            priority=5,
+            correlation_id="corr-123",
+            trace_id="trace-456",
+        )
+        outbox_repo.add(message)
+
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        # Mock broker to capture published message
+        published_messages = []
+
+        def capture_message(stream_name, message_dict):
+            published_messages.append((stream_name, message_dict))
+            return "broker-msg-id"
+
+        with patch.object(processor.broker, "publish", side_effect=capture_message):
+            success, error = await processor._publish_message(message)
+            assert success is True
+            assert error is None
+
+        # Verify the published message structure
+        assert len(published_messages) == 1
+        stream_name, published_dict = published_messages[0]
+
+        assert stream_name == "test-stream"
+        assert "data" in published_dict
+        assert "metadata" in published_dict
+
+        # Verify data is preserved
+        assert published_dict["data"] == {"name": "Test Event", "value": 42}
+
+        # Verify metadata is preserved
+        metadata_dict = published_dict["metadata"]
+        assert metadata_dict["headers"]["id"] == "test-msg-id"
+        assert metadata_dict["headers"]["type"] == "TestDomain.DummyEvent.v1"
+        assert metadata_dict["headers"]["stream"] == "test-stream"
+        assert metadata_dict["domain"]["fqn"] == "TestDomain.DummyEvent"
+        assert metadata_dict["domain"]["kind"] == "EVENT"
+        assert metadata_dict["domain"]["expected_version"] == 0
+        assert metadata_dict["event_store"]["global_position"] == 100
+        assert metadata_dict["event_store"]["position"] == 5
+
+    @pytest.mark.asyncio
+    async def test_message_reconstruction_with_minimal_metadata(
+        self, outbox_test_domain
+    ):
+        """Test Message reconstruction with minimal metadata"""
+
+        # Create minimal metadata
+        metadata = Metadata()
+
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+        message = Outbox.create_message(
+            message_id="minimal-msg",
+            stream_name="test-stream",
+            message_type="DummyEvent",
+            data={"simple": "data"},
+            metadata=metadata,
+        )
+        outbox_repo.add(message)
+
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        # Mock broker to capture message
+        published_messages = []
+
+        def capture_message(stream_name, message_dict):
+            published_messages.append(message_dict)
+            return "broker-msg-id"
+
+        with patch.object(processor.broker, "publish", side_effect=capture_message):
+            success, error = await processor._publish_message(message)
+            assert success is True
+
+        # Verify structure
+        published_dict = published_messages[0]
+        assert "data" in published_dict
+        assert "metadata" in published_dict
+        assert published_dict["data"] == {"simple": "data"}
+
+    @pytest.mark.asyncio
+    async def test_message_reconstruction_preserves_traceparent(
+        self, outbox_test_domain
+    ):
+        """Test that TraceParent information is preserved in Message reconstruction"""
+        # Create metadata with traceparent
+        traceparent = TraceParent(
+            trace_id="0af7651916cd43dd8448eb211c80319c",
+            parent_id="b7ad6b7169203331",
+            sampled=True,
+        )
+
+        headers = MessageHeaders(
+            id="trace-test-msg",
+            type="TestDomain.DummyEvent.v1",
+            stream="test-stream",
+            traceparent=traceparent,
+        )
+
+        metadata = Metadata(headers=headers)
+
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+        message = Outbox.create_message(
+            message_id="trace-test-msg",
+            stream_name="test-stream",
+            message_type="DummyEvent",
+            data={"traced": "event"},
+            metadata=metadata,
+            correlation_id="corr-789",
+            trace_id="trace-789",
+        )
+        outbox_repo.add(message)
+
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        # Capture published message
+        published_messages = []
+
+        def capture_message(stream_name, message_dict):
+            published_messages.append(message_dict)
+            return "broker-msg-id"
+
+        with patch.object(processor.broker, "publish", side_effect=capture_message):
+            await processor._publish_message(message)
+
+        # Verify traceparent is preserved
+        published_dict = published_messages[0]
+        headers_dict = published_dict["metadata"]["headers"]
+        traceparent_dict = headers_dict["traceparent"]
+
+        assert traceparent_dict["trace_id"] == "0af7651916cd43dd8448eb211c80319c"
+        assert traceparent_dict["parent_id"] == "b7ad6b7169203331"
+        assert traceparent_dict["sampled"] is True
+
+    @pytest.mark.asyncio
+    async def test_message_reconstruction_handles_complex_data(
+        self, outbox_test_domain
+    ):
+        """Test Message reconstruction with complex nested data structures"""
+
+        complex_data = {
+            "nested": {
+                "level1": {
+                    "level2": {
+                        "value": 123,
+                        "list": [1, 2, 3],
+                        "dict": {"key": "value"},
+                    }
+                }
+            },
+            "array": [{"id": 1, "name": "Item 1"}, {"id": 2, "name": "Item 2"}],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "null_value": None,
+            "boolean": True,
+            "float": 3.14159,
+        }
+
+        metadata = Metadata()
+
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+        message = Outbox.create_message(
+            message_id="complex-msg",
+            stream_name="test-stream",
+            message_type="ComplexEvent",
+            data=complex_data,
+            metadata=metadata,
+        )
+        outbox_repo.add(message)
+
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        # Capture published message
+        published_messages = []
+
+        def capture_message(stream_name, message_dict):
+            published_messages.append(message_dict)
+            return "broker-msg-id"
+
+        with patch.object(processor.broker, "publish", side_effect=capture_message):
+            success, error = await processor._publish_message(message)
+            assert success is True
+
+        # Verify complex data is preserved
+        published_dict = published_messages[0]
+        assert published_dict["data"] == complex_data
+
+        # Verify nested structures
+        nested_data = published_dict["data"]["nested"]["level1"]["level2"]
+        assert nested_data["value"] == 123
+        assert nested_data["list"] == [1, 2, 3]
+        assert nested_data["dict"]["key"] == "value"
+
+    @pytest.mark.asyncio
+    async def test_message_reconstruction_error_handling(self, outbox_test_domain):
+        """Test error handling during Message reconstruction"""
+        metadata = Metadata()
+
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+        message = Outbox.create_message(
+            message_id="error-test-msg",
+            stream_name="test-stream",
+            message_type="DummyEvent",
+            data={"test": "data"},
+            metadata=metadata,
+        )
+        outbox_repo.add(message)
+
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        # Mock Message class to raise exception during reconstruction
+        with patch(
+            "protean.server.outbox_processor.Message",
+            side_effect=Exception("Message reconstruction error"),
+        ):
+            success, error = await processor._publish_message(message)
+
+            assert success is False
+            assert error is not None
+            assert str(error) == "Message reconstruction error"
+
+    @pytest.mark.asyncio
+    async def test_batch_processing_with_message_structure(self, outbox_test_domain):
+        """Test batch processing publishes all messages with correct Message structure"""
+
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+
+        # Create multiple messages with different metadata
+        messages = []
+        for i in range(3):
+            headers = MessageHeaders(
+                id=f"batch-msg-{i}", type=f"Event{i}", stream=f"stream-{i}"
+            )
+            domain_meta = DomainMeta(stream_category=f"stream-{i}")
+            metadata = Metadata(headers=headers, domain=domain_meta)
+
+            message = Outbox.create_message(
+                message_id=f"batch-msg-{i}",
+                stream_name=f"stream-{i}",
+                message_type=f"Event{i}",
+                data={"index": i, "batch": True},
+                metadata=metadata,
+            )
+            outbox_repo.add(message)
+            messages.append(message)
+
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        # Capture all published messages
+        published_messages = []
+
+        def capture_message(stream_name, message_dict):
+            published_messages.append((stream_name, message_dict))
+            return f"broker-msg-id-{len(published_messages)}"
+
+        with patch.object(processor.broker, "publish", side_effect=capture_message):
+            successful_count = await processor.process_batch(messages)
+            assert successful_count == 3
+
+        # Verify all messages were published with correct structure
+        assert len(published_messages) == 3
+
+        for i, (stream_name, published_dict) in enumerate(published_messages):
+            assert stream_name == f"stream-{i}"
+            assert "data" in published_dict
+            assert "metadata" in published_dict
+            assert published_dict["data"]["index"] == i
+            assert published_dict["data"]["batch"] is True
+            assert published_dict["metadata"]["headers"]["id"] == f"batch-msg-{i}"
+            assert published_dict["metadata"]["headers"]["type"] == f"Event{i}"
+
+    @pytest.mark.asyncio
+    async def test_message_dict_structure_validation(self, outbox_test_domain):
+        """Test that published message dict has correct top-level structure"""
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+
+        # Create a message with headers and envelope
+        headers = MessageHeaders(
+            id="struct-test-msg", type="TestEvent", stream="test-stream"
+        )
+
+        metadata = Metadata(headers=headers)
+
+        # Create message
+        message = Outbox.create_message(
+            message_id="struct-test-msg",
+            stream_name="test-stream",
+            message_type="TestEvent",
+            data={"field1": "value1", "field2": 123},
+            metadata=metadata,
+        )
+        outbox_repo.add(message)
+
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        # Capture published message
+        published_messages = []
+
+        def capture_message(stream_name, message_dict):
+            published_messages.append(message_dict)
+            return "broker-msg-id"
+
+        with patch.object(processor.broker, "publish", side_effect=capture_message):
+            success, error = await processor._publish_message(message)
+
+        assert success is True
+        assert error is None
+
+        # Verify the published dict has exactly the expected top-level keys
+        published_dict = published_messages[0]
+        assert set(published_dict.keys()) == {"data", "metadata"}
+
+        # Verify data structure
+        assert isinstance(published_dict["data"], dict)
+        assert published_dict["data"]["field1"] == "value1"
+        assert published_dict["data"]["field2"] == 123
+
+        # Verify metadata structure
+        assert isinstance(published_dict["metadata"], dict)
+        assert "headers" in published_dict["metadata"]
+        assert published_dict["metadata"]["headers"]["id"] == "struct-test-msg"
 
 
 @pytest.mark.database
@@ -482,8 +881,6 @@ class TestOutboxConfiguration:
 
     def test_default_outbox_configuration(self):
         """Test that default outbox configuration is loaded correctly"""
-        from protean.domain import Domain
-
         domain = Domain(name="TestDefaultConfig")
         domain.init(traverse=False)
 
@@ -495,7 +892,6 @@ class TestOutboxConfiguration:
 
     def test_custom_outbox_configuration(self):
         """Test custom outbox configuration is applied correctly"""
-        from protean.domain import Domain
 
         custom_config = {
             "enable_outbox": True,
@@ -520,7 +916,6 @@ class TestOutboxConfiguration:
 
     def test_engine_uses_custom_outbox_configuration(self):
         """Test that Engine uses custom outbox configuration for processors"""
-        from protean.domain import Domain
 
         custom_config = {
             "enable_outbox": True,
@@ -552,7 +947,6 @@ class TestOutboxConfiguration:
 
     def test_engine_validates_broker_exists_in_config(self):
         """Test that Engine validates broker exists when creating outbox processors"""
-        from protean.domain import Domain
 
         invalid_config = {
             "enable_outbox": True,
@@ -578,7 +972,6 @@ class TestOutboxConfiguration:
 
     def test_outbox_disabled_by_default(self):
         """Test that outbox processors are not created when outbox is disabled"""
-        from protean.domain import Domain
 
         domain = Domain(name="TestOutboxDisabled")
         domain.init(traverse=False)
@@ -591,7 +984,6 @@ class TestOutboxConfiguration:
 
     def test_outbox_configuration_with_multiple_brokers(self):
         """Test outbox configuration with multiple brokers but specific broker selection"""
-        from protean.domain import Domain
 
         multi_broker_config = {
             "enable_outbox": True,
@@ -621,7 +1013,6 @@ class TestOutboxConfiguration:
 
     def test_outbox_processor_custom_worker_id(self):
         """Test OutboxProcessor with custom worker ID"""
-        from protean.domain import Domain
 
         domain = Domain(name="TestCustomWorkerID")
         domain.config["enable_outbox"] = True
@@ -642,7 +1033,6 @@ class TestOutboxConfiguration:
 
     def test_outbox_configuration_partial_override(self):
         """Test that partial outbox configuration overrides work correctly"""
-        from protean.domain import Domain
 
         partial_config = {
             "enable_outbox": True,
@@ -661,7 +1051,6 @@ class TestOutboxConfiguration:
 
     def test_engine_error_handling_with_missing_outbox_config_key(self):
         """Test Engine handles missing outbox configuration keys gracefully"""
-        from protean.domain import Domain
 
         incomplete_config = {
             "enable_outbox": True,
@@ -757,7 +1146,6 @@ class TestEngineIntegration:
 
     def test_engine_no_crash_when_no_brokers_configured(self):
         """Test Engine doesn't crash when no brokers are configured"""
-        from protean.domain import Domain
 
         domain = Domain(name="NoBrokerTest")
         # Keep default inline broker but create empty brokers dict after init
@@ -989,9 +1377,20 @@ class TestAtomicTransactionProcessing:
 
         # Mock broker to succeed for first message, fail for second, succeed for third
         def mock_publish(stream_name, message_payload):
-            if message_payload["id"] == "msg-0":
+            # Extract the message ID from the metadata structure
+            msg_id = (
+                message_payload["metadata"]["headers"]["id"]
+                if "metadata" in message_payload
+                and "headers" in message_payload["metadata"]
+                else None
+            )
+            # Also check in data for backward compatibility
+            if msg_id is None and "data" in message_payload:
+                msg_id = message_payload["data"].get("message_id")
+
+            if msg_id == "msg-0":
                 return "broker-msg-0"  # Success
-            elif message_payload["id"] == "msg-1":
+            elif msg_id == "msg-1":
                 raise Exception("Broker error for msg-1")  # Failure
             else:
                 return "broker-msg-2"  # Success
@@ -1019,7 +1418,6 @@ class TestRetryConfiguration:
 
     def test_default_retry_configuration_loading(self):
         """Test that default retry configuration is loaded correctly"""
-        from protean.domain import Domain
 
         domain = Domain(name="TestDefaultRetryConfig")
         domain.init(traverse=False)
@@ -1038,7 +1436,6 @@ class TestRetryConfiguration:
 
     def test_custom_retry_configuration(self):
         """Test that custom retry configuration is applied correctly"""
-        from protean.domain import Domain
 
         custom_config = {
             "enable_outbox": True,
@@ -1072,7 +1469,6 @@ class TestRetryConfiguration:
 
     def test_partial_retry_configuration_override(self):
         """Test that partial retry configuration overrides work correctly"""
-        from protean.domain import Domain
 
         partial_config = {
             "enable_outbox": True,
@@ -1101,7 +1497,6 @@ class TestRetryConfiguration:
 
     def test_retry_delay_calculation_without_jitter(self):
         """Test retry delay calculation without jitter"""
-        from protean.domain import Domain
 
         config = {
             "outbox": {
@@ -1130,7 +1525,6 @@ class TestRetryConfiguration:
 
     def test_retry_delay_calculation_with_jitter(self):
         """Test retry delay calculation with jitter using default jitter factor"""
-        from protean.domain import Domain
 
         config = {
             "outbox": {
@@ -1163,7 +1557,6 @@ class TestRetryConfiguration:
 
     def test_retry_delay_calculation_with_custom_jitter_factor(self):
         """Test retry delay calculation with custom jitter factor"""
-        from protean.domain import Domain
 
         config = {
             "outbox": {
@@ -1196,7 +1589,6 @@ class TestRetryConfiguration:
 
     def test_retry_delay_calculation_with_high_jitter_factor(self):
         """Test retry delay calculation with high jitter factor"""
-        from protean.domain import Domain
 
         config = {
             "outbox": {
@@ -1229,7 +1621,6 @@ class TestRetryConfiguration:
 
     def test_retry_delay_calculation_with_zero_jitter_factor(self):
         """Test retry delay calculation with zero jitter factor (effectively no jitter)"""
-        from protean.domain import Domain
 
         config = {
             "outbox": {
@@ -1259,7 +1650,6 @@ class TestRetryConfiguration:
 
     def test_jitter_factor_configuration_loading(self):
         """Test that jitter factor is correctly loaded from configuration"""
-        from protean.domain import Domain
 
         test_cases = [
             (0.1, "10% jitter factor"),
@@ -1293,7 +1683,6 @@ class TestRetryConfiguration:
 
     def test_jitter_factor_partial_override(self):
         """Test that jitter factor can be overridden independently of other retry settings"""
-        from protean.domain import Domain
 
         partial_config = {
             "enable_outbox": True,
@@ -1319,7 +1708,6 @@ class TestRetryConfiguration:
 
     def test_jitter_factor_minimum_delay_enforcement(self):
         """Test that jitter factor calculation enforces minimum 1 second delay"""
-        from protean.domain import Domain
 
         config = {
             "outbox": {
@@ -1347,7 +1735,6 @@ class TestRetryConfiguration:
 
     def test_should_retry_message_logic(self):
         """Test message retry eligibility logic"""
-        from protean.domain import Domain
 
         config = {
             "outbox": {
@@ -1365,8 +1752,6 @@ class TestRetryConfiguration:
             processor = OutboxProcessor(engine, "default", "default")
 
             # Create a mock message
-            from unittest.mock import Mock
-
             message = Mock()
 
             # Should retry when retry_count < max_attempts
@@ -1385,7 +1770,6 @@ class TestRetryConfiguration:
 
     def test_retry_configuration_integration(self):
         """Test that retry configuration is properly loaded and accessible"""
-        from protean.domain import Domain
 
         custom_config = {
             "enable_outbox": True,
@@ -1439,7 +1823,6 @@ class TestRetryConfiguration:
 
     def test_jitter_factor_with_exponential_backoff_integration(self):
         """Test that jitter factor works correctly with exponential backoff at different retry counts"""
-        from protean.domain import Domain
 
         config = {
             "outbox": {
@@ -1499,8 +1882,6 @@ class TestOutboxCleanup:
 
     def test_cleanup_old_abandoned_messages(self, outbox_test_domain):
         """Test cleanup of old abandoned messages"""
-        from datetime import datetime, timezone, timedelta
-
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
 
         # Create an abandoned message from 31 days ago
@@ -1606,8 +1987,6 @@ class TestOutboxPeriodicCleanup:
             },
         }
 
-        from protean.domain import Domain
-
         domain = Domain(name="TestCleanupConfig", config=custom_config)
         domain.init(traverse=False)
 
@@ -1664,7 +2043,6 @@ class TestOutboxPeriodicCleanup:
     @pytest.mark.asyncio
     async def test_perform_cleanup_functionality(self, outbox_test_domain):
         """Test that _perform_cleanup actually cleans up old messages"""
-        from datetime import datetime, timezone, timedelta
 
         engine = MockEngine(outbox_test_domain)
         processor = OutboxProcessor(engine, "default", "default")
@@ -1735,7 +2113,6 @@ class TestOutboxPeriodicCleanup:
     @pytest.mark.asyncio
     async def test_cleanup_with_no_outbox_repo(self):
         """Test that cleanup handles missing outbox repository gracefully"""
-        from protean.domain import Domain
 
         domain = Domain(name="TestNoRepo")
         domain.init(traverse=False)

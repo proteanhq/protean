@@ -289,7 +289,7 @@ class TestDomainLevelClassResolution:
             domain.register(Comment, part_of=Post)
 
             with pytest.raises(ConfigurationError) as exc:
-                domain.init()
+                domain.init(traverse=False)
 
             assert (
                 exc.value.args[0]["element"]

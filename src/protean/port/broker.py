@@ -49,6 +49,7 @@ class BrokerCapabilities(Flag):
     ACK_NACK = auto()  # Acknowledge successful/failed processing
     DELIVERY_GUARANTEES = auto()  # At-least-once delivery (depends on ACK_NACK)
     MESSAGE_ORDERING = auto()  # Preserve message order (can be independent)
+    BLOCKING_READ = auto()  # Efficient blocking/waiting for new messages
 
     # Tier 4: Advanced Features (Various dependencies)
     DEAD_LETTER_QUEUE = auto()  # Handle failed messages (depends on ACK_NACK)
@@ -65,7 +66,11 @@ class BrokerCapabilities(Flag):
     ORDERED_MESSAGING = RELIABLE_MESSAGING | MESSAGE_ORDERING
 
     ENTERPRISE_STREAMING = (
-        ORDERED_MESSAGING | DEAD_LETTER_QUEUE | REPLAY | STREAM_PARTITIONING
+        ORDERED_MESSAGING
+        | DEAD_LETTER_QUEUE
+        | REPLAY
+        | STREAM_PARTITIONING
+        | BLOCKING_READ
     )
 
 
@@ -464,6 +469,52 @@ class BaseBroker(metaclass=ABCMeta):
         Returns:
             list[tuple[str, dict]]: The list of (identifier, message) tuples
         """
+
+    def read_blocking(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str,
+        timeout_ms: int = 5000,
+        count: int = 1,
+    ) -> list[tuple[str, dict]]:
+        """Read messages from the broker using blocking mode.
+
+        This is an optional method that brokers can implement to support
+        efficient blocking reads for stream-based subscriptions.
+
+        Args:
+            stream (str): The stream from which to read messages
+            consumer_group (str): The consumer group identifier
+            consumer_name (str): The unique consumer name within the group
+            timeout_ms (int): Timeout in milliseconds to wait for messages (0 = block indefinitely)
+            count (int): Maximum number of messages to read
+
+        Returns:
+            list[tuple[str, dict]]: The list of (identifier, message) tuples
+        """
+        # Check if broker supports blocking reads
+        if not self.has_capability(BrokerCapabilities.BLOCKING_READ):
+            # Fall back to regular read for brokers that don't support blocking
+            return self._read(stream, consumer_group, count)
+
+        try:
+            return self._read_blocking(
+                stream, consumer_group, consumer_name, timeout_ms, count
+            )
+        except Exception as e:
+            # Check if this is a connection-related error and attempt recovery
+            if self._is_connection_error(e):
+                logger.warning(f"Connection error during read_blocking: {e}")
+                if self._ensure_connection():
+                    # Retry the operation once after reconnection
+                    return self._read_blocking(
+                        stream, consumer_group, consumer_name, timeout_ms, count
+                    )
+                else:
+                    raise
+            else:
+                raise
 
     @abstractmethod
     def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:

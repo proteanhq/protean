@@ -1,5 +1,3 @@
-"""Test cases for field mixins to cover missing lines"""
-
 import pytest
 
 from protean.fields.mixins import NOT_PROVIDED, FieldCacheMixin, FieldDescriptorMixin

@@ -15,6 +15,7 @@ from protean.utils.eventing import Message
 
 from .subscription.broker_subscription import BrokerSubscription
 from .subscription.event_store_subscription import EventStoreSubscription
+from .subscription.stream_subscription import StreamSubscription
 from .outbox_processor import OutboxProcessor
 
 logging.basicConfig(
@@ -64,37 +65,111 @@ class Engine:
 
         # Gather all handlers
         self._subscriptions = {}
+
+        # Determine subscription type from configuration
+        server_config = self.domain.config.get("server", {})
+        subscription_type = server_config.get("subscription_type", "event_store")
+
+        # Get common server configuration
+        messages_per_tick = server_config.get("messages_per_tick", 10)
+        tick_interval = server_config.get("tick_interval", 1)
+
+        # Get subscription-specific configuration
+        event_store_config = server_config.get("event_store_subscription", {})
+        stream_config = server_config.get("stream_subscription", {})
+
         for handler_name, handler_record in self.domain.registry.event_handlers.items():
-            # Create a subscription for each event handler
-            self._subscriptions[handler_name] = EventStoreSubscription(
-                self,
+            stream_category = (
                 handler_record.cls.meta_.stream_category
-                or handler_record.cls.meta_.part_of.meta_.stream_category,
-                handler_record.cls,
-                origin_stream=handler_record.cls.meta_.source_stream,
+                or handler_record.cls.meta_.part_of.meta_.stream_category
             )
+
+            # Create a subscription for each event handler
+            if subscription_type == "stream":
+                self._subscriptions[handler_name] = StreamSubscription(
+                    self,
+                    stream_category,
+                    handler_record.cls,
+                    messages_per_tick=messages_per_tick,
+                    blocking_timeout_ms=stream_config.get("blocking_timeout_ms", 5000),
+                    max_retries=stream_config.get("max_retries", 3),
+                    retry_delay_seconds=stream_config.get("retry_delay_seconds", 1),
+                    enable_dlq=stream_config.get("enable_dlq", True),
+                )
+            else:
+                self._subscriptions[handler_name] = EventStoreSubscription(
+                    self,
+                    stream_category,
+                    handler_record.cls,
+                    messages_per_tick=messages_per_tick,
+                    position_update_interval=event_store_config.get(
+                        "position_update_interval", 10
+                    ),
+                    origin_stream=handler_record.cls.meta_.source_stream,
+                    tick_interval=tick_interval,
+                )
 
         for (
             handler_name,
             handler_record,
         ) in self.domain.registry.command_handlers.items():
-            # Create a subscription for each command handler
-            self._subscriptions[handler_name] = EventStoreSubscription(
-                self,
-                f"{handler_record.cls.meta_.part_of.meta_.stream_category}:command",
-                handler_record.cls,
+            stream_category = (
+                f"{handler_record.cls.meta_.part_of.meta_.stream_category}:command"
             )
+
+            # Create a subscription for each command handler
+            if subscription_type == "stream":
+                self._subscriptions[handler_name] = StreamSubscription(
+                    self,
+                    stream_category,
+                    handler_record.cls,
+                    messages_per_tick=messages_per_tick,
+                    blocking_timeout_ms=stream_config.get("blocking_timeout_ms", 5000),
+                    max_retries=stream_config.get("max_retries", 3),
+                    retry_delay_seconds=stream_config.get("retry_delay_seconds", 1),
+                    enable_dlq=stream_config.get("enable_dlq", True),
+                )
+            else:
+                self._subscriptions[handler_name] = EventStoreSubscription(
+                    self,
+                    stream_category,
+                    handler_record.cls,
+                    messages_per_tick=messages_per_tick,
+                    position_update_interval=event_store_config.get(
+                        "position_update_interval", 10
+                    ),
+                    tick_interval=tick_interval,
+                )
 
         for handler_name, handler_record in self.domain.registry.projectors.items():
             # Create a subscription for each projector
             for stream_category in handler_record.cls.meta_.stream_categories:
-                self._subscriptions[f"{handler_name}-{stream_category}"] = (
-                    EventStoreSubscription(
+                subscription_key = f"{handler_name}-{stream_category}"
+
+                if subscription_type == "stream":
+                    self._subscriptions[subscription_key] = StreamSubscription(
                         self,
                         stream_category,
                         handler_record.cls,
+                        messages_per_tick=messages_per_tick,
+                        blocking_timeout_ms=stream_config.get(
+                            "blocking_timeout_ms", 5000
+                        ),
+                        max_retries=stream_config.get("max_retries", 3),
+                        retry_delay_seconds=stream_config.get("retry_delay_seconds", 1),
+                        enable_dlq=stream_config.get("enable_dlq", True),
                     )
-                )
+                else:
+                    self._subscriptions[subscription_key] = EventStoreSubscription(
+                        self,
+                        stream_category,
+                        handler_record.cls,
+                        messages_per_tick=messages_per_tick,
+                        position_update_interval=event_store_config.get(
+                            "position_update_interval", 10
+                        ),
+                        tick_interval=tick_interval,
+                    )
 
         # Gather broker subscriptions
         self._broker_subscriptions = {}
