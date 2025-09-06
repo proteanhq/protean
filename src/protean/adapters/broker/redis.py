@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 DATA_FIELD = "data"
 STREAM_ID_START = "0"
 CONSUMER_GROUP_SEPARATOR = ":"
-NEW_MESSAGES_ID = ">"
+NEW_MESSAGES_MARK = ">"
 
 
 class RedisBroker(BaseBroker):
@@ -45,8 +45,8 @@ class RedisBroker(BaseBroker):
 
     @property
     def capabilities(self) -> BrokerCapabilities:
-        """Redis Streams provide ordered messaging with native consumer groups."""
-        return BrokerCapabilities.ORDERED_MESSAGING
+        """Redis Streams provide ordered messaging with native consumer groups and blocking reads."""
+        return BrokerCapabilities.ORDERED_MESSAGING | BrokerCapabilities.BLOCKING_READ
 
     @property
     def _created_groups(self):
@@ -72,7 +72,10 @@ class RedisBroker(BaseBroker):
             # Always try to read new messages first
             # Redis guarantees that each consumer in a group gets different messages
             response = self.redis_instance.xreadgroup(
-                consumer_group, self._consumer_name, {stream: NEW_MESSAGES_ID}, count=1
+                consumer_group,
+                self._consumer_name,
+                {stream: NEW_MESSAGES_MARK},
+                count=1,
             )
 
             # If we got a new message, return it
@@ -157,7 +160,7 @@ class RedisBroker(BaseBroker):
             response = self.redis_instance.xreadgroup(
                 consumer_group,
                 self._consumer_name,
-                {stream: NEW_MESSAGES_ID},
+                {stream: NEW_MESSAGES_MARK},
                 count=no_of_messages,
             )
 
@@ -245,7 +248,7 @@ class RedisBroker(BaseBroker):
             response = self.redis_instance.xreadgroup(
                 consumer_group,
                 consumer_name,
-                {stream: NEW_MESSAGES_ID},
+                {stream: NEW_MESSAGES_MARK},
                 count=count,
                 block=timeout_ms,  # Block for specified milliseconds
             )

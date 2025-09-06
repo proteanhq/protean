@@ -49,6 +49,7 @@ class BrokerCapabilities(Flag):
     ACK_NACK = auto()  # Acknowledge successful/failed processing
     DELIVERY_GUARANTEES = auto()  # At-least-once delivery (depends on ACK_NACK)
     MESSAGE_ORDERING = auto()  # Preserve message order (can be independent)
+    BLOCKING_READ = auto()  # Efficient blocking/waiting for new messages
 
     # Tier 4: Advanced Features (Various dependencies)
     DEAD_LETTER_QUEUE = auto()  # Handle failed messages (depends on ACK_NACK)
@@ -65,7 +66,11 @@ class BrokerCapabilities(Flag):
     ORDERED_MESSAGING = RELIABLE_MESSAGING | MESSAGE_ORDERING
 
     ENTERPRISE_STREAMING = (
-        ORDERED_MESSAGING | DEAD_LETTER_QUEUE | REPLAY | STREAM_PARTITIONING
+        ORDERED_MESSAGING
+        | DEAD_LETTER_QUEUE
+        | REPLAY
+        | STREAM_PARTITIONING
+        | BLOCKING_READ
     )
 
 
@@ -489,9 +494,7 @@ class BaseBroker(metaclass=ABCMeta):
             list[tuple[str, dict]]: The list of (identifier, message) tuples
         """
         # Check if broker supports blocking reads
-        # FIXME: Streamline this behavior to distinguish between brokers that support
-        #   blocking reads and those that don't.
-        if not hasattr(self, "_read_blocking"):
+        if not self.has_capability(BrokerCapabilities.BLOCKING_READ):
             # Fall back to regular read for brokers that don't support blocking
             return self._read(stream, consumer_group, count)
 

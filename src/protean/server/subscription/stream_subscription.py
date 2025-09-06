@@ -25,23 +25,16 @@ class StreamSubscription(BaseSubscription):
     consumption without CPU-intensive polling.
     """
 
-    # Default configuration constants
-    DEFAULT_MESSAGES_PER_TICK = 10
-    DEFAULT_BLOCKING_TIMEOUT_MS = 5000
-    DEFAULT_MAX_RETRIES = 3
-    DEFAULT_RETRY_DELAY_SECONDS = 1
-    DEFAULT_ENABLE_DLQ = True
-
     def __init__(
         self,
         engine,
         stream_category: str,
         handler: Union[BaseEventHandler, BaseCommandHandler],
-        messages_per_tick: int = DEFAULT_MESSAGES_PER_TICK,
-        blocking_timeout_ms: int = DEFAULT_BLOCKING_TIMEOUT_MS,
-        max_retries: int = DEFAULT_MAX_RETRIES,
-        retry_delay_seconds: int = DEFAULT_RETRY_DELAY_SECONDS,
-        enable_dlq: bool = DEFAULT_ENABLE_DLQ,
+        messages_per_tick: Optional[int] = None,
+        blocking_timeout_ms: Optional[int] = None,
+        max_retries: Optional[int] = None,
+        retry_delay_seconds: Optional[int] = None,
+        enable_dlq: Optional[bool] = None,
     ) -> None:
         """
         Initialize the StreamSubscription object.
@@ -50,12 +43,33 @@ class StreamSubscription(BaseSubscription):
             engine: The Protean engine instance.
             stream_category (str): The name of the stream to subscribe to.
             handler (Union[BaseEventHandler, BaseCommandHandler]): The event or command handler.
-            messages_per_tick (int, optional): The number of messages to process per tick. Defaults to 10.
-            blocking_timeout_ms (int, optional): Timeout in milliseconds for blocking reads. Defaults to 5000.
-            max_retries (int, optional): Maximum number of retries before moving to DLQ. Defaults to 3.
-            retry_delay_seconds (int, optional): Delay between retries in seconds. Defaults to 1.
-            enable_dlq (bool, optional): Whether to use a dead letter queue. Defaults to True.
+            messages_per_tick (int, optional): The number of messages to process per tick.
+                Defaults to config value or 10.
+            blocking_timeout_ms (int, optional): Timeout in milliseconds for blocking reads.
+                Defaults to config value or 5000.
+            max_retries (int, optional): Maximum number of retries before moving to DLQ.
+                Defaults to config value or 3.
+            retry_delay_seconds (int, optional): Delay between retries in seconds.
+                Defaults to config value or 1.
+            enable_dlq (bool, optional): Whether to use a dead letter queue.
+                Defaults to config value or True.
         """
+        # Get configuration from domain
+        server_config = engine.domain.config.get("server", {})
+        stream_config = server_config.get("stream_subscription", {})
+
+        # Use provided values or fall back to config, then to hardcoded defaults
+        if messages_per_tick is None:
+            messages_per_tick = server_config.get("messages_per_tick", 10)
+        if blocking_timeout_ms is None:
+            blocking_timeout_ms = stream_config.get("blocking_timeout_ms", 5000)
+        if max_retries is None:
+            max_retries = stream_config.get("max_retries", 3)
+        if retry_delay_seconds is None:
+            retry_delay_seconds = stream_config.get("retry_delay_seconds", 1)
+        if enable_dlq is None:
+            enable_dlq = stream_config.get("enable_dlq", True)
+
         # Since blocking reads handle their own timing, we use tick_interval=0
         # to let the blocking read control the pacing
         super().__init__(engine, messages_per_tick, tick_interval=0)

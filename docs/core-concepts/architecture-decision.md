@@ -55,12 +55,14 @@ Choose **CQRS** when:
 ### Migration Strategies
 
 **From CQRS to Event Sourcing**:
+
 1. Pause writes temporarily
 2. Export current state as synthetic "Imported" event
 3. Resume with normal event capturing
 4. Update projections to handle synthetic events
 
 **From Event Sourcing to CQRS**:
+
 1. Create snapshot from current projection
 2. Switch to state-based storage
 3. Continue event publication via outbox

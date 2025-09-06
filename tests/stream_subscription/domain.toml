@@ -9,12 +9,12 @@ IS_ASYNC = true
 [outbox]
 broker = "default"
 messages_per_tick = 5
-tick_interval = 0.1
+tick_interval = 0.001
 
 [server]
 subscription_type = "stream"
 messages_per_tick = 5
-tick_interval = 0.1
+tick_interval = 0.001
 
 [server.stream_subscription]
 blocking_timeout_ms = 100

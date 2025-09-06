@@ -138,7 +138,33 @@ class TestEndToEndFlow:
         test_domain.init(traverse=False)
 
     @pytest.mark.asyncio
-    async def test_event_to_command_flow(self, test_domain):
+    async def test_stream_subscription_in_engine(self, test_domain):
+        """Test that Engine correctly uses StreamSubscription based on config."""
+        # Verify configuration
+        assert test_domain.config["server"]["subscription_type"] == "stream"
+
+        # Create engine
+        engine = Engine(test_domain, test_mode=True)
+
+        # Check that StreamSubscription was used (not EventStoreSubscription)
+        for subscription in engine._subscriptions.values():
+            assert isinstance(subscription, StreamSubscription)
+
+        # Verify subscription configuration matches domain config
+        server_config = test_domain.config["server"]
+        stream_config = server_config["stream_subscription"]
+        for subscription in engine._subscriptions.values():
+            assert subscription.messages_per_tick == server_config["messages_per_tick"]
+            assert (
+                subscription.blocking_timeout_ms == stream_config["blocking_timeout_ms"]
+            )
+            assert subscription.max_retries == stream_config["max_retries"]
+            assert (
+                subscription.retry_delay_seconds == stream_config["retry_delay_seconds"]
+            )
+            assert subscription.enable_dlq == stream_config["enable_dlq"]
+
+    def test_event_to_command_flow(self, test_domain):
         """Test full flow from event to command processing via streams."""
         # Start the engine in test mode
         engine = Engine(test_domain, test_mode=True)
@@ -155,24 +181,7 @@ class TestEndToEndFlow:
         )
         test_domain.repository_for(User).add(user)
 
-        # Process outbox to publish to Redis stream
-        # In a real scenario, the OutboxProcessor would handle this
-        outbox_processor = engine._outbox_processors.get(
-            "outbox-processor-default-to-default"
-        )
-        if outbox_processor:
-            await outbox_processor.initialize()
-            # Process a few ticks to ensure messages are published
-            for _ in range(3):
-                await outbox_processor.tick()
-
-        # Start subscriptions briefly to process messages
-        for subscription in engine._subscriptions.values():
-            await subscription.initialize()
-            # Process one batch
-            messages = await subscription.get_next_batch_of_messages()
-            if messages:
-                await subscription.process_batch(messages)
+        engine.run()
 
         # Verify notification was created
         notifications = test_domain.repository_for(Notification)._dao.query.all().items
@@ -241,13 +250,14 @@ class TestEndToEndFlow:
 
         handler = test_domain.registry.event_handlers[fqn(FailingHandler)].cls
 
-        # Create subscription with short retry delay
+        # Create subscription with short retry delay and blocking timeout
         subscription = StreamSubscription(
             engine,
             "test",
             handler,
             max_retries=3,
-            retry_delay_seconds=0.1,
+            retry_delay_seconds=0.001,
+            blocking_timeout_ms=100,  # Short timeout for testing
         )
 
         await subscription.initialize()
@@ -267,7 +277,7 @@ class TestEndToEndFlow:
             messages = await subscription.get_next_batch_of_messages()
             if messages:
                 await subscription.process_batch(messages)
-                await asyncio.sleep(0.2)  # Wait for retry delay
+                await asyncio.sleep(0.001)  # Wait for retry delay
 
         # Verify message was eventually processed
         assert failed_count == 2  # Failed twice, succeeded on third
@@ -279,14 +289,15 @@ class TestEndToEndFlow:
 
         handler = test_domain.registry.event_handlers[fqn(AlwaysFailingHandler)].cls
 
-        # Create subscription with DLQ enabled
+        # Create subscription with DLQ enabled and short blocking timeout
         subscription = StreamSubscription(
             engine,
             "failing",
             handler,
             max_retries=2,
-            retry_delay_seconds=0.01,
+            retry_delay_seconds=0.001,
             enable_dlq=True,
+            blocking_timeout_ms=100,  # Short timeout for testing
         )
 
         await subscription.initialize()
@@ -312,7 +323,7 @@ class TestEndToEndFlow:
             messages = await subscription.get_next_batch_of_messages()
             if messages:
                 await subscription.process_batch(messages)
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.001)
 
         # Check DLQ stream
         dlq_messages = broker._read("failing:dlq", "dlq-reader", 10)
@@ -323,30 +334,3 @@ class TestEndToEndFlow:
         assert "_dlq_metadata" in dlq_msg
         assert dlq_msg["_dlq_metadata"]["original_stream"] == "failing"
         assert dlq_msg["_dlq_metadata"]["retry_count"] == 2
-
-    @pytest.mark.asyncio
-    async def test_stream_subscription_in_engine(self, test_domain):
-        """Test that Engine correctly uses StreamSubscription based on config."""
-        # Verify configuration
-        assert test_domain.config["server"]["subscription_type"] == "stream"
-
-        # Create engine
-        engine = Engine(test_domain, test_mode=True)
-
-        # Check that StreamSubscription was used (not EventStoreSubscription)
-        for subscription in engine._subscriptions.values():
-            assert isinstance(subscription, StreamSubscription)
-
-        # Verify subscription configuration matches domain config
-        server_config = test_domain.config["server"]
-        stream_config = server_config["stream_subscription"]
-        for subscription in engine._subscriptions.values():
-            assert subscription.messages_per_tick == server_config["messages_per_tick"]
-            assert (
-                subscription.blocking_timeout_ms == stream_config["blocking_timeout_ms"]
-            )
-            assert subscription.max_retries == stream_config["max_retries"]
-            assert (
-                subscription.retry_delay_seconds == stream_config["retry_delay_seconds"]
-            )
-            assert subscription.enable_dlq == stream_config["enable_dlq"]

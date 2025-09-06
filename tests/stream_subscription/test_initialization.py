@@ -160,27 +160,28 @@ async def test_initialization_fails_without_default_broker(test_domain, engine):
 # Test StreamSubscription Configuration
 @pytest.mark.redis
 def test_default_configuration_values(test_domain, engine):
-    """Test that default configuration values are properly set."""
+    """Test that default configuration values are properly set from domain config."""
     with test_domain.domain_context():
+        # Get expected values from config
+        server_config = test_domain.config.get("server", {})
+        stream_config = server_config.get("stream_subscription", {})
+
         subscription = StreamSubscription(
             engine=engine, stream_category="user", handler=UserEventHandler
         )
 
-        # Verify default values
-        assert (
-            subscription.messages_per_tick
-            == StreamSubscription.DEFAULT_MESSAGES_PER_TICK
+        # Verify values come from config
+        assert subscription.messages_per_tick == server_config.get(
+            "messages_per_tick", 10
         )
-        assert (
-            subscription.blocking_timeout_ms
-            == StreamSubscription.DEFAULT_BLOCKING_TIMEOUT_MS
+        assert subscription.blocking_timeout_ms == stream_config.get(
+            "blocking_timeout_ms", 5000
         )
-        assert subscription.max_retries == StreamSubscription.DEFAULT_MAX_RETRIES
-        assert (
-            subscription.retry_delay_seconds
-            == StreamSubscription.DEFAULT_RETRY_DELAY_SECONDS
+        assert subscription.max_retries == stream_config.get("max_retries", 3)
+        assert subscription.retry_delay_seconds == stream_config.get(
+            "retry_delay_seconds", 1
         )
-        assert subscription.enable_dlq == StreamSubscription.DEFAULT_ENABLE_DLQ
+        assert subscription.enable_dlq == stream_config.get("enable_dlq", True)
 
 
 @pytest.mark.redis
@@ -208,6 +209,27 @@ def test_custom_configuration_values(test_domain, engine):
         assert subscription.max_retries == 5
         assert subscription.retry_delay_seconds == 2
         assert subscription.enable_dlq is False
+
+
+@pytest.mark.redis
+def test_config_values_from_domain_toml(test_domain, engine):
+    """Test that values from domain.toml are properly used."""
+    with test_domain.domain_context():
+        # The test domain loads from domain.toml which has:
+        # blocking_timeout_ms = 100
+        # max_retries = 2
+        # retry_delay_seconds = 0.001
+
+        subscription = StreamSubscription(
+            engine=engine, stream_category="user", handler=UserEventHandler
+        )
+
+        # Verify values from domain.toml
+        assert subscription.messages_per_tick == 5  # From domain.toml
+        assert subscription.blocking_timeout_ms == 100  # From domain.toml
+        assert subscription.max_retries == 2  # From domain.toml
+        assert subscription.retry_delay_seconds == 0.001  # From domain.toml
+        assert subscription.enable_dlq is True  # From domain.toml
 
 
 @pytest.mark.redis
