@@ -166,10 +166,12 @@ class InlineBroker(BaseBroker):
                 )
                 return False
             elif current_state == OperationState.NACKED:
-                logger.warning(
-                    f"Cannot ack message '{identifier}' - already nacked by consumer group '{consumer_group}'"
+                # In consistent behavior with Redis Streams, a NACKed message can still be ACKed
+                # NACK just means the message stays pending and can be processed again
+                logger.debug(
+                    f"Message '{identifier}' was previously nacked, now acknowledging (similar to Redis Streams behavior)"
                 )
-                return False
+                # Continue with ACK processing - don't return False
 
             # Validate consumer group exists
             if not self._validate_consumer_group(consumer_group):
@@ -184,11 +186,26 @@ class InlineBroker(BaseBroker):
                 return False
 
             # Check if message is still in-flight
+            # For NACKed messages, they might be in failed messages queue instead
             if not self._is_in_flight_message(stream, consumer_group, identifier):
-                logger.warning(
-                    f"Message '{identifier}' not found in in-flight status for consumer group '{consumer_group}'"
-                )
-                return False
+                if current_state == OperationState.NACKED:
+                    # For NACKed messages, check if it's in failed messages and move it back to in-flight for ACK
+                    if self._handle_nacked_message_for_ack(
+                        stream, consumer_group, identifier
+                    ):
+                        logger.debug(
+                            f"Moved NACKed message '{identifier}' back to in-flight for acknowledgment"
+                        )
+                    else:
+                        logger.warning(
+                            f"NACKed message '{identifier}' not found in failed messages for consumer group '{consumer_group}'"
+                        )
+                        return False
+                else:
+                    logger.warning(
+                        f"Message '{identifier}' not found in in-flight status for consumer group '{consumer_group}'"
+                    )
+                    return False
 
             # Set operation state to acknowledged
             self._store_operation_state(
@@ -657,6 +674,34 @@ class InlineBroker(BaseBroker):
                 del self._message_ownership[identifier][consumer_group]
             if not self._message_ownership[identifier]:
                 del self._message_ownership[identifier]
+
+    def _handle_nacked_message_for_ack(
+        self, stream: str, consumer_group: str, identifier: str
+    ) -> bool:
+        """Handle acknowledging a previously NACKed message by moving it back to in-flight"""
+        try:
+            group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+            failed_messages = self._failed_messages[group_key]
+
+            # Find the message in failed messages
+            for i, (msg_id, message, retry_count, next_retry_time) in enumerate(
+                failed_messages
+            ):
+                if msg_id == identifier:
+                    # Remove from failed messages
+                    del failed_messages[i]
+
+                    # Move back to in-flight for acknowledgment
+                    self._store_in_flight_message(
+                        stream, consumer_group, identifier, message
+                    )
+
+                    return True
+
+            return False
+        except Exception as e:
+            logger.error(f"Error handling NACKed message for ACK '{identifier}': {e}")
+            return False
 
     def _cleanup_expired_operation_states(self) -> None:
         """Clean up expired operation states"""

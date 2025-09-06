@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 DATA_FIELD = "data"
 STREAM_ID_START = "0"
 CONSUMER_GROUP_SEPARATOR = ":"
-NEW_MESSAGES_ID = ">"
+NEW_MESSAGES_MARK = ">"
 
 
 class RedisBroker(BaseBroker):
@@ -34,7 +34,6 @@ class RedisBroker(BaseBroker):
         self.redis_instance = redis.Redis.from_url(conn_info["URI"])
         self._consumer_name = f"consumer-{int(time.time() * 1000)}"
         self._created_groups_set = set()
-        self._nacked_messages = set()
         self._group_creation_times = {}  # Track creation times for consistency
 
         # Add compatibility attributes for generic tests
@@ -46,8 +45,8 @@ class RedisBroker(BaseBroker):
 
     @property
     def capabilities(self) -> BrokerCapabilities:
-        """Redis Streams provide ordered messaging with native consumer groups."""
-        return BrokerCapabilities.ORDERED_MESSAGING
+        """Redis Streams provide ordered messaging with native consumer groups and blocking reads."""
+        return BrokerCapabilities.ORDERED_MESSAGING | BrokerCapabilities.BLOCKING_READ
 
     @property
     def _created_groups(self):
@@ -61,15 +60,34 @@ class RedisBroker(BaseBroker):
         return self._decode_if_bytes(redis_stream_id)
 
     def _get_next(self, stream: str, consumer_group: str) -> Optional[Tuple[str, dict]]:
-        """Get next message from Redis Stream using consumer group"""
+        """Get next message from Redis Stream using consumer group
+
+        Reads the next available message, prioritizing new messages over pending ones.
+        This method relies on Redis Streams' native behavior where each call to
+        XREADGROUP with ">" returns the next unread message.
+        """
         self._ensure_group(consumer_group, stream)
 
         try:
+            # Always try to read new messages first
+            # Redis guarantees that each consumer in a group gets different messages
             response = self.redis_instance.xreadgroup(
-                consumer_group, self._consumer_name, {stream: NEW_MESSAGES_ID}, count=1
+                consumer_group,
+                self._consumer_name,
+                {stream: NEW_MESSAGES_MARK},
+                count=1,
             )
 
-            return self._extract_message_from_response(response)
+            # If we got a new message, return it
+            extracted = self._extract_message_from_response(response)
+            if extracted:
+                return extracted
+
+            # No new messages, return None
+            # We don't automatically read pending messages here because that would
+            # cause the same message to be returned multiple times without ACK
+            # Pending messages should only be read when explicitly retrying failed messages
+            return None
 
         except redis.ResponseError as e:
             return self._handle_redis_error(e, stream, consumer_group)
@@ -133,24 +151,146 @@ class RedisBroker(BaseBroker):
         self, stream: str, consumer_group: str, no_of_messages: int
     ) -> List[Tuple[str, dict]]:
         """Read multiple messages from Redis Stream"""
-        messages = []
-        for _ in range(no_of_messages):
-            message = self._get_next(stream, consumer_group)
-            if message:
-                messages.append(message)
-            else:
-                break
-        return messages
+        self._ensure_group(consumer_group, stream)
 
-    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        """Acknowledge message using Redis Streams XACK"""
-        nack_key = self._get_nack_key(stream, consumer_group, identifier)
-        if nack_key in self._nacked_messages:
-            logger.debug(f"Cannot ACK message {identifier} - it was previously NACKed")
-            return False
+        messages = []
+        try:
+            # Read all requested messages at once to maintain order
+            # First try to read new messages
+            response = self.redis_instance.xreadgroup(
+                consumer_group,
+                self._consumer_name,
+                {stream: NEW_MESSAGES_MARK},
+                count=no_of_messages,
+            )
+
+            if response and response[0][1]:
+                for message_id, fields in response[0][1]:
+                    if fields:
+                        redis_id_str = self._decode_if_bytes(message_id)
+                        message = self._deserialize_message(fields)
+                        messages.append((redis_id_str, message))
+
+            # If we didn't get enough messages, try reading pending messages
+            if len(messages) < no_of_messages:
+                remaining = no_of_messages - len(messages)
+                response = self.redis_instance.xreadgroup(
+                    consumer_group, self._consumer_name, {stream: "0"}, count=remaining
+                )
+
+                if response and response[0][1]:
+                    seen_ids = {msg[0] for msg in messages}  # Avoid duplicates
+                    for message_id, fields in response[0][1]:
+                        if fields:
+                            redis_id_str = self._decode_if_bytes(message_id)
+                            if redis_id_str not in seen_ids:
+                                message = self._deserialize_message(fields)
+                                messages.append((redis_id_str, message))
+                                seen_ids.add(redis_id_str)
+                                if len(messages) >= no_of_messages:
+                                    break
+
+        except redis.ResponseError as e:
+            logger.error(f"Error reading messages: {e}")
+
+        return messages[:no_of_messages]  # Ensure we don't return more than requested
+
+    def _read_blocking(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str,
+        timeout_ms: int = 5000,
+        count: int = 1,
+    ) -> List[Tuple[str, dict]]:
+        """Read messages from Redis Stream using blocking mode with XREADGROUP.
+
+        This method uses Redis's XREADGROUP with BLOCK parameter for efficient
+        blocking reads, avoiding CPU waste from polling. It first checks for
+        pending messages (from previous failed attempts) before reading new messages.
+
+        Args:
+            stream (str): The stream from which to read messages
+            consumer_group (str): The consumer group identifier
+            consumer_name (str): The unique consumer name within the group
+            timeout_ms (int): Timeout in milliseconds to wait for messages (0 = block indefinitely)
+            count (int): Maximum number of messages to read
+
+        Returns:
+            List[Tuple[str, dict]]: The list of (identifier, message) tuples
+        """
+        self._ensure_group(consumer_group, stream)
 
         try:
+            # First, try to read pending messages (messages that were delivered but not ACKed)
+            # Use "0" to read pending messages for this consumer
+            response = self.redis_instance.xreadgroup(
+                consumer_group,
+                consumer_name,
+                {stream: "0"},  # "0" means read pending messages
+                count=count,
+                block=0,  # Non-blocking for pending messages
+            )
+
+            # If we got pending messages, return them
+            if response:
+                messages = []
+                for stream_name, stream_messages in response:
+                    for message_id, fields in stream_messages:
+                        if fields:  # Pending messages might have None fields if they've been claimed
+                            redis_id_str = self._decode_if_bytes(message_id)
+                            message = self._deserialize_message(fields)
+                            messages.append((redis_id_str, message))
+                if messages:
+                    return messages
+
+            # No pending messages, now try to read new messages with blocking
+            response = self.redis_instance.xreadgroup(
+                consumer_group,
+                consumer_name,
+                {stream: NEW_MESSAGES_MARK},
+                count=count,
+                block=timeout_ms,  # Block for specified milliseconds
+            )
+
+            if not response:
+                # Timeout occurred, no messages available
+                return []
+
+            # Extract messages from response
+            messages = []
+            for stream_name, stream_messages in response:
+                for message_id, fields in stream_messages:
+                    redis_id_str = self._decode_if_bytes(message_id)
+                    message = self._deserialize_message(fields)
+                    messages.append((redis_id_str, message))
+
+            return messages
+
+        except redis.ResponseError as e:
+            if "NOGROUP" in str(e):
+                # Consumer group doesn't exist, create it and retry
+                self._ensure_group(consumer_group, stream)
+                return self._read_blocking(
+                    stream, consumer_group, consumer_name, timeout_ms, count
+                )
+            logger.error(f"Redis error in _read_blocking: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Unexpected error in _read_blocking: {e}")
+            return []
+
+    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+        """Acknowledge message using Redis Streams XACK
+
+        Redis natively handles ACK state - once ACKed, a message is removed from
+        the pending list and cannot be ACKed again.
+        """
+        try:
             result = self.redis_instance.xack(stream, consumer_group, identifier)
+            # result is the number of messages successfully acknowledged
+            # 0 means the message was not pending (already ACKed or doesn't exist)
+            # 1 means the message was successfully acknowledged
             return bool(result)
         except redis.ResponseError as e:
             logger.warning(f"Failed to ack message {identifier} in {stream}: {e}")
@@ -160,19 +300,23 @@ class RedisBroker(BaseBroker):
             return False
 
     def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        """Negative acknowledge - return message to pending list for reprocessing"""
+        """Negative acknowledge - message remains in pending list for reprocessing
+
+        In Redis Streams, NACK is implicit - a message stays pending until ACKed.
+        We just verify the message is indeed pending.
+        """
         try:
             # Ensure the consumer group exists first
             self._ensure_group(consumer_group, stream)
 
+            # Check if the message is actually pending
             if not self._is_message_pending(stream, consumer_group, identifier):
                 return False
 
-            # Track the NACKed message to prevent ACKing it later
-            nack_key = self._get_nack_key(stream, consumer_group, identifier)
-            self._nacked_messages.add(nack_key)
+            # In Redis Streams, the message automatically remains pending
+            # No explicit NACK operation is needed
             logger.debug(
-                f"Message {identifier} in {stream} marked for reprocessing (remains pending)"
+                f"Message {identifier} in {stream} remains pending for reprocessing"
             )
             return True
 
@@ -209,10 +353,6 @@ class RedisBroker(BaseBroker):
             return False
 
         return True
-
-    def _get_nack_key(self, stream: str, consumer_group: str, identifier: str) -> str:
-        """Generate key for tracking NACKed messages"""
-        return f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}{CONSUMER_GROUP_SEPARATOR}{identifier}"
 
     def _ensure_group(self, group_name: str, stream: str) -> None:
         """Create consumer group if it doesn't exist"""
@@ -418,8 +558,9 @@ class RedisBroker(BaseBroker):
                     # Stream might not exist
                     pass
 
-            # Count nacked messages as failed messages for compatibility with generic tests
-            failed_count = len(self._nacked_messages)
+            # Failed messages would be those in DLQ or exceeded retry limits
+            # For now, we don't track failed messages separately
+            failed_count = 0
 
             return {
                 "total_messages": total_messages,
@@ -606,7 +747,6 @@ class RedisBroker(BaseBroker):
         try:
             self.redis_instance.flushall()
             self._created_groups_set.clear()
-            self._nacked_messages.clear()
             self._group_creation_times.clear()
         except Exception as e:
             logger.error(f"Error during data reset: {e}")

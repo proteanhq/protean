@@ -82,6 +82,7 @@ class TestDomainEventDefinition:
                         "fqn": fully_qualified_name(UserAdded),
                         "kind": "EVENT",
                         "origin_stream": None,
+                        "stream_category": None,
                         "version": "v1",
                         "sequence_id": None,
                         "asynchronous": True,  # Asynchronous is True by default
@@ -117,6 +118,7 @@ class TestDomainEventDefinition:
                     "fqn": fully_qualified_name(UserAdded),
                     "kind": "EVENT",
                     "origin_stream": None,
+                    "stream_category": "test::user",
                     "version": "v1",
                     "sequence_id": "0.1",
                     "asynchronous": False,

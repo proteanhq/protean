@@ -68,6 +68,9 @@ class BaseEvent(BaseMessageType):
             kind="EVENT",
             fqn=fqn(self.__class__),
             origin_stream=origin_stream,
+            stream_category=existing_domain.stream_category
+            if existing_domain and existing_domain.stream_category is not None
+            else None,
             version=self.__class__.__version__,  # Was set in `__init_subclass__`
             sequence_id=existing_domain.sequence_id
             if existing_domain and existing_domain.sequence_id is not None

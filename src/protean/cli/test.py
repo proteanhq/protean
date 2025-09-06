@@ -220,6 +220,7 @@ class TestRunner:
         if quiet:
             cmd = cmd + ["--tb=short", "-q"]
 
+        print(f"Running command: {' '.join(cmd)}")
         result = self.run_command(cmd)
         status_icon = "✅" if result == 0 else "❌"
         print(

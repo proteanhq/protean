@@ -521,6 +521,8 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
         # Build domain metadata
         domain_meta = DomainMeta(
             event._metadata.domain.to_dict(),
+            # FIXME Should Fact Events be a different category?
+            stream_category=self._root.meta_.stream_category,
             sequence_id=sequence_id,
             asynchronous=current_domain.config["event_processing"]
             == Processing.ASYNC.value,
@@ -533,7 +535,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
         )
 
         event_with_metadata = event.__class__(
-            event.to_dict(),
+            event.payload,
             _expected_version=self._root._event_position,
             _metadata=metadata,
         )

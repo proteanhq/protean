@@ -71,6 +71,20 @@ def _default_config():
                 "cleanup_interval_ticks": 86400,  # 1 day (24 hours)
             },
         },
+        "server": {
+            "subscription_type": "event_store",  # Options: "stream" or "event_store"
+            "messages_per_tick": 10,  # Common to both subscription types
+            "tick_interval": 1,  # Common to both subscription types
+            "event_store_subscription": {
+                "position_update_interval": 10,  # How often to update position in event store
+            },
+            "stream_subscription": {
+                "blocking_timeout_ms": 5000,  # Timeout for blocking reads
+                "max_retries": 3,  # Max retry attempts before DLQ
+                "retry_delay_seconds": 1,  # Delay between retries
+                "enable_dlq": True,  # Enable dead letter queue
+            },
+        },
         "custom": {},
     }
 

@@ -1,0 +1,23 @@
+enable_outbox = true
+command_processing = "sync"
+
+[brokers.default]
+provider = "redis"
+URI = "redis://127.0.0.1:6379/2"
+IS_ASYNC = true 
+
+[outbox]
+broker = "default"
+messages_per_tick = 5
+tick_interval = 0.001
+
+[server]
+subscription_type = "stream"
+messages_per_tick = 5
+tick_interval = 0.001
+
+[server.stream_subscription]
+blocking_timeout_ms = 100
+max_retries = 2
+retry_delay_seconds = 0.001
+enable_dlq = true

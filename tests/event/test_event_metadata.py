@@ -176,6 +176,7 @@ def test_event_metadata():
                 "fqn": fqn(UserLoggedIn),
                 "kind": "EVENT",
                 "origin_stream": None,
+                "stream_category": "test::user",
                 "version": "v1",
                 "sequence_id": "0",
                 "asynchronous": False,  # Test Domain event_processing is SYNC by default

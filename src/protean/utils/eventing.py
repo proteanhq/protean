@@ -141,6 +141,11 @@ class DomainMeta(BaseValueObject):
     # Name of the stream that originated this event/command
     origin_stream = String()
 
+    # Stream category
+    # For events: the aggregate's stream category (e.g., "user", "order")
+    # For commands: the aggregate's stream category with ":command" suffix
+    stream_category = String()
+
     # Version of the event
     # Can be overridden with `__version__` class attr in event/command class definition
     version = String(default="v1")
@@ -187,7 +192,7 @@ class BaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
     """
 
     # Track Metadata
-    _metadata = ValueObject(Metadata, default=lambda: Metadata())  # pragma: no cover
+    _metadata = ValueObject(Metadata)
 
     def __init_subclass__(subclass) -> None:
         super().__init_subclass__()

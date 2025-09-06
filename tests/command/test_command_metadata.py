@@ -111,6 +111,7 @@ def test_command_metadata(test_domain):
                     "fqn": fqn(Login),
                     "kind": "COMMAND",
                     "origin_stream": None,
+                    "stream_category": None,
                     "version": "v1",
                     "sequence_id": None,
                     "asynchronous": True,
