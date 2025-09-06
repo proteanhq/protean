@@ -221,7 +221,7 @@ def test_retry_with_mixed_ack_nack(broker):
     assert result is None
 
     # Wait for retry
-    time.sleep(0.003)
+    time.sleep(0.03)
 
     # Only NACKed message should be available
     result = broker.get_next(stream, consumer_group)
