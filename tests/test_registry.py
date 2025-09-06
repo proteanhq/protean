@@ -315,7 +315,7 @@ def test_elements_by_name_tracking():
     class AnotherUser(BaseAggregate):
         name = String(max_length=50)
 
-    # Register first User - this should trigger the 'else' branch (line 135)
+    # Register first User - this should trigger the 'else' branch
     register.register_element(User)
     assert len(register._elements_by_name["User"]) == 1
 
@@ -354,11 +354,11 @@ def test_multiple_elements_same_name_different_qualname():
     TestElement.__module__ = "module1"
     AnotherTestElement.__module__ = "module2"
 
-    # Register first element (triggers else branch - line 135)
+    # Register first element (triggers else branch)
     register.register_element(TestElement)
     assert len(register._elements_by_name["SameName"]) == 1
 
-    # Register second element with same name (triggers if branch - line 134)
+    # Register second element with same name (triggers if branch)
     register.register_element(AnotherTestElement)
     assert len(register._elements_by_name["SameName"]) == 2
 

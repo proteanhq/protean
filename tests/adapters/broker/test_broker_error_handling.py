@@ -35,7 +35,7 @@ class TestBrokerErrorHandling:
         with patch.object(broker, "_publish", side_effect=mock_publish):
             with patch.object(broker, "_ensure_connection", return_value=True):
                 with patch.object(broker, "_is_connection_error", return_value=True):
-                    # This should cover line 119 (connection error check)
+                    # This should cover connection error check
                     identifier = broker.publish("test_stream", {"data": "test"})
 
                     assert identifier == "test_id"
@@ -50,7 +50,7 @@ class TestBrokerErrorHandling:
         ):
             with patch.object(broker, "_ensure_connection", return_value=False):
                 with patch.object(broker, "_is_connection_error", return_value=True):
-                    # This should cover line 119 (connection error check)
+                    # This should cover connection error check
                     with pytest.raises(Exception, match="Connection timeout"):
                         broker.publish("test_stream", {"data": "test"})
 
@@ -62,7 +62,7 @@ class TestBrokerErrorHandling:
             broker, "_publish", side_effect=Exception("Non-connection error")
         ):
             with patch.object(broker, "_is_connection_error", return_value=False):
-                # This should cover line 130 (else clause for non-connection errors)
+                # This should cover else clause for non-connection errors
                 with pytest.raises(Exception, match="Non-connection error"):
                     broker.publish("test_stream", {"data": "test"})
 
@@ -74,7 +74,7 @@ class TestBrokerErrorHandling:
             broker, "_health_stats", side_effect=Exception("Health check failed")
         ):
             with patch.object(broker, "ping", side_effect=Exception("Ping failed")):
-                # This should cover lines 231-233 (exception handling in health_stats)
+                # This should cover exception handling in health_stats
                 stats = broker.health_stats()
 
                 assert stats["status"] == "unhealthy"
@@ -100,7 +100,7 @@ class TestBrokerErrorHandling:
         with patch.object(broker, "_get_next", side_effect=mock_get_next):
             with patch.object(broker, "_ensure_connection", return_value=True):
                 with patch.object(broker, "_is_connection_error", return_value=True):
-                    # This should cover lines 330-331 (connection error check in get_next)
+                    # This should cover connection error check in get_next
                     message = broker.get_next("test_stream", "test_group")
 
                     assert message == {"data": "test"}
@@ -115,7 +115,7 @@ class TestBrokerErrorHandling:
         ):
             with patch.object(broker, "_ensure_connection", return_value=False):
                 with patch.object(broker, "_is_connection_error", return_value=True):
-                    # This should cover lines 330-331 (connection error check in get_next)
+                    # This should cover connection error check in get_next
                     with pytest.raises(Exception, match="Connection timeout"):
                         broker.get_next("test_stream", "test_group")
 
@@ -148,7 +148,7 @@ class TestBrokerErrorHandling:
         with patch.object(broker, "_read", side_effect=mock_read):
             with patch.object(broker, "_ensure_connection", return_value=True):
                 with patch.object(broker, "_is_connection_error", return_value=True):
-                    # This should cover lines 366-367 (connection error check in read)
+                    # This should cover connection error check in read
                     messages = broker.read("test_stream", "test_group", 1)
 
                     assert messages == [("id1", {"data": "test"})]
@@ -161,7 +161,7 @@ class TestBrokerErrorHandling:
         with patch.object(broker, "_read", side_effect=Exception("Connection timeout")):
             with patch.object(broker, "_ensure_connection", return_value=False):
                 with patch.object(broker, "_is_connection_error", return_value=True):
-                    # This should cover lines 366-367 (connection error check in read)
+                    # This should cover connection error check in read
                     with pytest.raises(Exception, match="Connection timeout"):
                         broker.read("test_stream", "test_group", 1)
 
@@ -194,7 +194,7 @@ class TestBrokerErrorHandling:
         with patch.object(broker, "_ack", side_effect=mock_ack):
             with patch.object(broker, "_ensure_connection", return_value=True):
                 with patch.object(broker, "_is_connection_error", return_value=True):
-                    # This should cover lines 371-381 (connection error check in ack)
+                    # This should cover connection error check in ack
                     result = broker.ack("test_stream", "test_id", "test_group")
 
                     assert result is True
@@ -207,7 +207,7 @@ class TestBrokerErrorHandling:
         with patch.object(broker, "_ack", side_effect=Exception("Connection timeout")):
             with patch.object(broker, "_ensure_connection", return_value=False):
                 with patch.object(broker, "_is_connection_error", return_value=True):
-                    # This should cover lines 371-381 (connection error check in ack)
+                    # This should cover connection error check in ack
                     with pytest.raises(Exception, match="Connection timeout"):
                         broker.ack("test_stream", "test_id", "test_group")
 
@@ -240,7 +240,7 @@ class TestBrokerErrorHandling:
         with patch.object(broker, "_nack", side_effect=mock_nack):
             with patch.object(broker, "_ensure_connection", return_value=True):
                 with patch.object(broker, "_is_connection_error", return_value=True):
-                    # This should cover lines 403-413 (connection error check in nack)
+                    # This should cover connection error check in nack
                     result = broker.nack("test_stream", "test_id", "test_group")
 
                     assert result is True
@@ -253,7 +253,7 @@ class TestBrokerErrorHandling:
         with patch.object(broker, "_nack", side_effect=Exception("Connection timeout")):
             with patch.object(broker, "_ensure_connection", return_value=False):
                 with patch.object(broker, "_is_connection_error", return_value=True):
-                    # This should cover lines 403-413 (connection error check in nack)
+                    # This should cover connection error check in nack
                     with pytest.raises(Exception, match="Connection timeout"):
                         broker.nack("test_stream", "test_id", "test_group")
 
@@ -265,7 +265,7 @@ class TestBrokerErrorHandling:
             broker, "_nack", side_effect=Exception("Non-connection error")
         ):
             with patch.object(broker, "_is_connection_error", return_value=False):
-                # This should cover lines 435-445 (else clause for non-connection errors in nack)
+                # This should cover else clause for non-connection errors in nack
                 with pytest.raises(Exception, match="Non-connection error"):
                     broker.nack("test_stream", "test_id", "test_group")
 

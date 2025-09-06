@@ -1,5 +1,3 @@
-"""Test cases to cover uncovered lines in domain_discovery.py"""
-
 import os
 import sys
 import tempfile

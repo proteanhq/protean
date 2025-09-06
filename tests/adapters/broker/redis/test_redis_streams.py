@@ -358,7 +358,7 @@ def test_is_message_pending_message_id_mismatch(redis_broker, monkeypatch):
 @pytest.mark.redis
 def test_ensure_group_without_stream(redis_broker):
     """Test _ensure_group called without stream parameter"""
-    # This should trigger the early return path (lines 213->exit)
+    # This should trigger the early return path
     redis_broker._ensure_group("test_group", stream=None)
     # If it returns without error, the early exit worked
 

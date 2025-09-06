@@ -17,7 +17,7 @@ def test_callback_function():
     """Test the callback function is called when app is invoked"""
     runner = CliRunner()
     # The callback function is called when the app is invoked
-    # This test ensures line 20 (callback function) is covered
+    # This test ensures callback function is covered
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
 

@@ -92,9 +92,8 @@ def test_find_domain_by_string_returns_correct_domain_instance(mock_module):
     )
 
 
-# New tests to cover missing lines
 def test_find_domain_by_string_with_non_callable_function(mock_module):
-    """Test coverage for lines 71-72: when function is not callable"""
+    """Test coverage for when function is not callable"""
     mock_module.not_callable = "not a function"
     with pytest.raises(NoDomainException) as exc_info:
         find_domain_by_string(mock_module, "not_callable()")
@@ -102,7 +101,7 @@ def test_find_domain_by_string_with_non_callable_function(mock_module):
 
 
 def test_find_domain_by_string_with_nonexistent_function():
-    """Test coverage for lines 86-90: when function doesn't exist"""
+    """Test coverage for when function doesn't exist"""
 
     # Create a real module-like object that raises AttributeError
     class MockModule:
@@ -121,7 +120,7 @@ def test_find_domain_by_string_with_nonexistent_function():
 
 
 def test_find_domain_by_string_with_function_returning_non_domain(mock_module):
-    """Test coverage for line 98: when function returns non-Domain object"""
+    """Test coverage for when function returns non-Domain object"""
     mock_module.bad_function = MagicMock(return_value="not a domain")
     with pytest.raises(NoDomainException) as exc_info:
         find_domain_by_string(mock_module, "bad_function()")

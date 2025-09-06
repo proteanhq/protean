@@ -15,7 +15,7 @@ class TestRedisEdgeCases:
     """Test edge cases and error scenarios for Redis broker."""
 
     def test_get_next_handle_redis_error_other_than_nogroup(self, test_domain):
-        """Test _get_next handling of non-NOGROUP Redis errors (line 90, 117-118)."""
+        """Test _get_next handling of non-NOGROUP Redis errors."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -38,7 +38,7 @@ class TestRedisEdgeCases:
         mock_redis.xreadgroup.assert_called_once()
 
     def test_get_next_response_with_empty_inner_messages(self, test_domain):
-        """Test _get_next when response has empty inner messages (line 102)."""
+        """Test _get_next when response has empty inner messages."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -58,7 +58,7 @@ class TestRedisEdgeCases:
         assert result is None
 
     def test_read_with_fields_none(self, test_domain):
-        """Test _read when response contains None fields (line 166->165)."""
+        """Test _read when response contains None fields."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -94,7 +94,7 @@ class TestRedisEdgeCases:
         assert messages[1][1]["test"] == "data2"
 
     def test_read_pending_with_none_fields(self, test_domain):
-        """Test _read with pending messages having None fields (line 181->180)."""
+        """Test _read with pending messages having None fields."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -134,7 +134,7 @@ class TestRedisEdgeCases:
         assert messages[1][1]["test"] == "data2"
 
     def test_read_respects_message_limit(self, test_domain):
-        """Test _read stops when reaching message limit (lines 184-191)."""
+        """Test _read stops when reaching message limit."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -179,7 +179,7 @@ class TestRedisEdgeCases:
         assert messages[2][1]["test"] == "data3"
 
     def test_read_avoids_duplicates(self, test_domain):
-        """Test _read avoids duplicate message IDs (lines 183-186)."""
+        """Test _read avoids duplicate message IDs."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -226,7 +226,7 @@ class TestRedisEdgeCases:
         assert messages[1][1]["test"] == "data2"
 
     def test_read_blocking_with_pending_messages(self, test_domain):
-        """Test _read_blocking returns pending messages first (line 233->245)."""
+        """Test _read_blocking returns pending messages first."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -264,7 +264,7 @@ class TestRedisEdgeCases:
         assert mock_redis.xreadgroup.call_count == 1
 
     def test_read_blocking_pending_with_none_fields(self, test_domain):
-        """Test _read_blocking skips pending messages with None fields (line 237->236)."""
+        """Test _read_blocking skips pending messages with None fields."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -300,7 +300,7 @@ class TestRedisEdgeCases:
         assert messages[1][1]["test"] == "pending2"
 
     def test_read_blocking_nogroup_error(self, test_domain, caplog):
-        """Test _read_blocking handling NOGROUP error (lines 267-278)."""
+        """Test _read_blocking handling NOGROUP error."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -334,7 +334,7 @@ class TestRedisEdgeCases:
         mock_redis.xgroup_create.assert_called_once()
 
     def test_read_blocking_other_response_error(self, test_domain, caplog):
-        """Test _read_blocking handling non-NOGROUP ResponseError (line 274)."""
+        """Test _read_blocking handling non-NOGROUP ResponseError."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -359,7 +359,7 @@ class TestRedisEdgeCases:
         assert "Redis error in _read_blocking" in caplog.text
 
     def test_read_blocking_unexpected_error(self, test_domain, caplog):
-        """Test _read_blocking handling unexpected exceptions (lines 276-278)."""
+        """Test _read_blocking handling unexpected exceptions."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -382,7 +382,7 @@ class TestRedisEdgeCases:
         assert "Unexpected error in _read_blocking" in caplog.text
 
     def test_ensure_group_existing_group_tracking(self, test_domain):
-        """Test _ensure_group tracks creation time for existing groups (lines 374->exit)."""
+        """Test _ensure_group tracks creation time for existing groups."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -407,7 +407,7 @@ class TestRedisEdgeCases:
         assert "test-stream:test-group" in broker._created_groups_set
 
     def test_get_streams_to_check_with_no_separator(self, test_domain):
-        """Test _get_streams_to_check skips entries without separator (line 424->423)."""
+        """Test _get_streams_to_check skips entries without separator."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -435,7 +435,7 @@ class TestRedisEdgeCases:
         assert "also-invalid" not in streams
 
     def test_extract_group_data_non_dict(self, test_domain):
-        """Test _extract_group_data skips non-dict entries (line 441->436)."""
+        """Test _extract_group_data skips non-dict entries."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -469,7 +469,7 @@ class TestRedisEdgeCases:
         assert len(stream_info) == 2
 
     def test_get_field_value_conversion_failure(self, test_domain, caplog):
-        """Test _get_field_value when int conversion fails (lines 511-515)."""
+        """Test _get_field_value when int conversion fails."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -485,7 +485,7 @@ class TestRedisEdgeCases:
         assert "Failed to convert not-a-number to int" in caplog.text
 
     def test_calculate_message_counts_xinfo_groups_error(self, test_domain):
-        """Test _calculate_message_counts when xinfo_groups fails (lines 545->544, 550-552)."""
+        """Test _calculate_message_counts when xinfo_groups fails."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -507,7 +507,7 @@ class TestRedisEdgeCases:
         assert counts["in_flight"] == 0  # No pending since groups info failed
 
     def test_calculate_streams_info_stream_doesnt_exist(self, test_domain):
-        """Test _calculate_streams_info when xlen fails for non-existent stream (lines 581->579, 583-585)."""
+        """Test _calculate_streams_info when xlen fails for non-existent stream."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -539,7 +539,7 @@ class TestRedisEdgeCases:
         assert "another-missing" not in streams_info["names"]
 
     def test_calculate_consumer_groups_info_no_separator(self, test_domain):
-        """Test _calculate_consumer_groups_info skips entries without separator (line 602->601)."""
+        """Test _calculate_consumer_groups_info skips entries without separator."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -559,7 +559,7 @@ class TestRedisEdgeCases:
         assert len(groups_info["names"]) == 2
 
     def test_ensure_connection_reconnect_failure(self, test_domain, caplog):
-        """Test _ensure_connection when reconnection fails (lines 734-737)."""
+        """Test _ensure_connection when reconnection fails."""
         broker = RedisBroker(
             "test_redis", test_domain, {"URI": "redis://localhost:6379/0"}
         )
@@ -581,3 +581,86 @@ class TestRedisEdgeCases:
         assert "Failed to create new Redis connection" in caplog.text
         assert "Cannot create connection" in caplog.text
         assert "Failed to ensure Redis connection after 3 attempts" in caplog.text
+
+
+@pytest.mark.redis
+def test_read_blocking_connection_error_with_successful_retry(test_domain, caplog):
+    """Test read_blocking connection error handling with successful retry."""
+    stream = "test_stream"
+    consumer_group = "test_consumer_group"
+    consumer_name = "test_consumer"
+
+    # Publish a test message
+    broker = test_domain.brokers["default"]
+    broker.publish(stream, {"test": "data", "id": 1})
+
+    # Store original methods
+    original_read_blocking = broker._read_blocking
+    original_ensure_connection = broker._ensure_connection
+
+    # Track method calls
+    read_blocking_calls = []
+    ensure_connection_calls = []
+
+    def mock_read_blocking(*args, **kwargs):
+        read_blocking_calls.append((args, kwargs))
+        if len(read_blocking_calls) == 1:
+            # First call raises a connection error
+            raise redis.ConnectionError("Connection lost to Redis server")
+        else:
+            # Second call succeeds after recovery
+            return original_read_blocking(*args, **kwargs)
+
+    def mock_ensure_connection():
+        ensure_connection_calls.append(True)
+        # Simulate successful reconnection
+        return True
+
+    # Replace methods
+    broker._read_blocking = mock_read_blocking
+    broker._ensure_connection = mock_ensure_connection
+
+    try:
+        with caplog.at_level("WARNING"):
+            # This should trigger error, recovery, and retry
+            result = broker.read_blocking(
+                stream=stream,
+                consumer_group=consumer_group,
+                consumer_name=consumer_name,
+                timeout_ms=1000,
+                count=1,
+            )
+
+            # Verify the sequence of calls
+            assert len(read_blocking_calls) == 2, (
+                "Should have called _read_blocking twice (initial + retry)"
+            )
+            assert len(ensure_connection_calls) == 1, (
+                "Should have called _ensure_connection once"
+            )
+
+            # Verify arguments were preserved on retry
+            first_call_args = read_blocking_calls[0]
+            second_call_args = read_blocking_calls[1]
+
+            # Check that both calls have the same arguments
+            assert first_call_args[0] == second_call_args[0], (
+                "Args should be the same on retry"
+            )
+            assert first_call_args[1] == second_call_args[1], (
+                "Kwargs should be the same on retry"
+            )
+
+            # Verify we got the message
+            assert isinstance(result, list)
+            assert len(result) == 1
+            assert result[0][1]["test"] == "data"
+
+            # Verify warning was logged
+            assert "Connection error during read_blocking" in caplog.text
+            assert "Connection lost to Redis server" in caplog.text
+
+    finally:
+        # Restore original methods
+        broker._read_blocking = original_read_blocking
+        broker._ensure_connection = original_ensure_connection

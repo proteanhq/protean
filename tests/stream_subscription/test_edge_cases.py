@@ -37,7 +37,7 @@ class TestStreamSubscriptionEdgeCases:
     """Test edge cases and error scenarios in StreamSubscription."""
 
     async def test_ensure_group_failure(self, test_domain):
-        """Test handling of _ensure_group failure during initialization (lines 136-138)."""
+        """Test handling of _ensure_group failure during initialization."""
         engine = Engine(test_domain, test_mode=True)
         subscription = StreamSubscription(
             engine=engine,
@@ -57,7 +57,7 @@ class TestStreamSubscriptionEdgeCases:
             await subscription.initialize()
 
     async def test_poll_exits_when_not_keep_going(self, test_domain):
-        """Test that poll exits when keep_going is False (line 162->155)."""
+        """Test that poll exits when keep_going is False."""
         engine = Engine(test_domain, test_mode=True)
         subscription = StreamSubscription(
             engine=engine,
@@ -82,7 +82,7 @@ class TestStreamSubscriptionEdgeCases:
             mock_get_next.assert_not_called()
 
     async def test_poll_test_mode_yields_control(self, test_domain):
-        """Test that poll yields control in test mode (line 162-163)."""
+        """Test that poll yields control in test mode."""
         engine = Engine(test_domain, test_mode=True)
         subscription = StreamSubscription(
             engine=engine,
@@ -121,7 +121,7 @@ class TestStreamSubscriptionEdgeCases:
         assert 0 in sleep_called, "asyncio.sleep(0) should be called in test mode"
 
     async def test_get_next_batch_broker_not_initialized(self, test_domain, caplog):
-        """Test get_next_batch_of_messages when broker is not initialized (lines 175-177)."""
+        """Test get_next_batch_of_messages when broker is not initialized."""
         engine = Engine(test_domain, test_mode=True)
         subscription = StreamSubscription(
             engine=engine,
@@ -139,7 +139,7 @@ class TestStreamSubscriptionEdgeCases:
         assert "Broker not initialized" in caplog.text
 
     async def test_get_next_batch_read_blocking_exception(self, test_domain, caplog):
-        """Test get_next_batch_of_messages when read_blocking raises exception (lines 189-191)."""
+        """Test get_next_batch_of_messages when read_blocking raises exception."""
         engine = Engine(test_domain, test_mode=True)
         subscription = StreamSubscription(
             engine=engine,
@@ -163,7 +163,7 @@ class TestStreamSubscriptionEdgeCases:
         assert "Read blocking failed" in caplog.text
 
     async def test_acknowledge_message_failure(self, test_domain, caplog):
-        """Test when message acknowledgment fails (line 252)."""
+        """Test when message acknowledgment fails."""
         engine = Engine(test_domain, test_mode=True)
         subscription = StreamSubscription(
             engine=engine,
@@ -186,7 +186,7 @@ class TestStreamSubscriptionEdgeCases:
         assert "Failed to acknowledge message test-message-id" in caplog.text
 
     async def test_process_batch_skip_failed_deserialization(self, test_domain):
-        """Test process_batch skips messages that fail deserialization (line 212)."""
+        """Test process_batch skips messages that fail deserialization."""
         engine = Engine(test_domain, test_mode=True)
         subscription = StreamSubscription(
             engine=engine,
@@ -238,7 +238,7 @@ class TestStreamSubscriptionEdgeCases:
         assert result == 1  # Only one successful
 
     async def test_move_to_dlq_publish_failure(self, test_domain, caplog):
-        """Test move_to_dlq when publish to DLQ fails (lines 317-318)."""
+        """Test move_to_dlq when publish to DLQ fails."""
         engine = Engine(test_domain, test_mode=True)
         subscription = StreamSubscription(
             engine=engine,
@@ -262,7 +262,7 @@ class TestStreamSubscriptionEdgeCases:
         assert "DLQ publish failed" in caplog.text
 
     async def test_move_to_dlq_success(self, test_domain, caplog):
-        """Test successful move_to_dlq (line 316)."""
+        """Test successful move_to_dlq."""
         engine = Engine(test_domain, test_mode=True)
         subscription = StreamSubscription(
             engine=engine,

@@ -21,7 +21,7 @@ def register_elements(test_domain):
 
 
 def test_update_all_returns_count_outside_uow(test_domain):
-    """Test that update_all returns correct count when not in UoW (line 462)"""
+    """Test that update_all returns correct count when not in UoW"""
     # Create test entities
     entity1 = UpdateTestEntity(name="Test1", category="A", value=10)
     entity2 = UpdateTestEntity(name="Test2", category="A", value=20)
@@ -36,7 +36,7 @@ def test_update_all_returns_count_outside_uow(test_domain):
     # Update all entities in category A
     update_count = dao._update_all(Q(category="A"), value=999)
 
-    # Should return count of 2 (line 462)
+    # Should return count of 2
     assert update_count == 2
 
     # Verify the updates were applied

@@ -433,7 +433,7 @@ class TestOutboxProcessor:
             with patch.object(
                 processor.outbox_repo, "add", side_effect=track_and_fail_add
             ):
-                # This should trigger the nested exception handler on lines 156-157
+                # This should trigger the nested exception handler
                 successful_count = await processor.process_batch([message])
                 assert successful_count == 0
 
