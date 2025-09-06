@@ -71,7 +71,8 @@ def persist_outbox_messages(outbox_test_domain):
     for i in range(3):
         # Create metadata with headers containing the message ID
         headers = MessageHeaders(id=f"msg-{i}", type="DummyEvent", stream="test-stream")
-        metadata = Metadata(headers=headers)
+        domain_meta = DomainMeta(stream_category="test-stream")
+        metadata = Metadata(headers=headers, domain=domain_meta)
 
         message = Outbox.create_message(
             message_id=f"msg-{i}",
@@ -485,7 +486,7 @@ class TestOutboxProcessor:
         call_args = mock_broker.publish.call_args
         stream_name, payload = call_args[0]
 
-        assert stream_name == message.stream_name
+        assert stream_name == "test-stream"
 
         # Verify the standard Message structure with 'data' and 'metadata' top-level keys
         assert "data" in payload
@@ -517,6 +518,7 @@ class TestMessageReconstruction:
             fqn="TestDomain.DummyEvent",
             kind="EVENT",
             origin_stream="original-stream",
+            stream_category="test-stream",
             version="v1",
             sequence_id="1.0",
             asynchronous=True,
@@ -779,7 +781,8 @@ class TestMessageReconstruction:
             headers = MessageHeaders(
                 id=f"batch-msg-{i}", type=f"Event{i}", stream=f"stream-{i}"
             )
-            metadata = Metadata(headers=headers)
+            domain_meta = DomainMeta(stream_category=f"stream-{i}")
+            metadata = Metadata(headers=headers, domain=domain_meta)
 
             message = Outbox.create_message(
                 message_id=f"batch-msg-{i}",

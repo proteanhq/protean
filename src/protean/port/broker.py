@@ -465,6 +465,54 @@ class BaseBroker(metaclass=ABCMeta):
             list[tuple[str, dict]]: The list of (identifier, message) tuples
         """
 
+    def read_blocking(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str,
+        timeout_ms: int = 5000,
+        count: int = 1,
+    ) -> list[tuple[str, dict]]:
+        """Read messages from the broker using blocking mode.
+
+        This is an optional method that brokers can implement to support
+        efficient blocking reads for stream-based subscriptions.
+
+        Args:
+            stream (str): The stream from which to read messages
+            consumer_group (str): The consumer group identifier
+            consumer_name (str): The unique consumer name within the group
+            timeout_ms (int): Timeout in milliseconds to wait for messages (0 = block indefinitely)
+            count (int): Maximum number of messages to read
+
+        Returns:
+            list[tuple[str, dict]]: The list of (identifier, message) tuples
+        """
+        # Check if broker supports blocking reads
+        # FIXME: Streamline this behavior to distinguish between brokers that support
+        #   blocking reads and those that don't.
+        if not hasattr(self, "_read_blocking"):
+            # Fall back to regular read for brokers that don't support blocking
+            return self._read(stream, consumer_group, count)
+
+        try:
+            return self._read_blocking(
+                stream, consumer_group, consumer_name, timeout_ms, count
+            )
+        except Exception as e:
+            # Check if this is a connection-related error and attempt recovery
+            if self._is_connection_error(e):
+                logger.warning(f"Connection error during read_blocking: {e}")
+                if self._ensure_connection():
+                    # Retry the operation once after reconnection
+                    return self._read_blocking(
+                        stream, consumer_group, consumer_name, timeout_ms, count
+                    )
+                else:
+                    raise
+            else:
+                raise
+
     @abstractmethod
     def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
         """Acknowledge successful processing of a message.

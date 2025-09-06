@@ -102,7 +102,7 @@ class UnitOfWork:
                         message_id=event._metadata.headers.id,
                         stream_name=event._metadata.headers.stream,
                         message_type=event._metadata.headers.type,
-                        data=event.to_dict(),
+                        data=event.payload,
                         metadata=event._metadata,
                     )
                     outbox_repo._dao.save(outbox_message)
