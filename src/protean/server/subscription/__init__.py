@@ -63,27 +63,10 @@ class BaseSubscription(ABC):
         Returns:
             None
         """
-        import time
-
-        tick_count = 0
-        start_time = time.time()
-        last_log_time = start_time
-
         while self.keep_going and not self.engine.shutting_down:
             with self.engine.domain.domain_context():
                 # Process messages
                 await self.tick()
-                tick_count += 1
-
-                # Log throughput periodically (every 5 seconds instead of every 100 ticks)
-                current_time = time.time()
-                if current_time - last_log_time >= 5.0:
-                    elapsed = current_time - start_time
-                    rate = tick_count / elapsed if elapsed > 0 else 0
-                    logger.debug(
-                        f"Subscription [{getattr(self, 'subscription_id', 'subscription')}]: {tick_count} ticks, {rate:.1f} ticks/s"
-                    )
-                    last_log_time = current_time
 
                 # Use minimal sleep for cooperative multitasking
                 # This ensures interleaving without blocking

@@ -590,7 +590,14 @@ class TestMessageReconstruction:
         """Test Message reconstruction with minimal metadata"""
 
         # Create minimal metadata
-        metadata = Metadata()
+        metadata = Metadata(
+            headers=MessageHeaders(
+                id="minimal-msg",
+                type="DummyEvent",
+                time=datetime.now(timezone.utc),
+                stream="test-stream",
+            )
+        )
 
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
         message = Outbox.create_message(
@@ -702,7 +709,14 @@ class TestMessageReconstruction:
             "float": 3.14159,
         }
 
-        metadata = Metadata()
+        metadata = Metadata(
+            headers=MessageHeaders(
+                id="complex-msg",
+                type="ComplexEvent",
+                time=datetime.now(timezone.utc),
+                stream="test-stream",
+            )
+        )
 
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
         message = Outbox.create_message(
@@ -742,7 +756,14 @@ class TestMessageReconstruction:
     @pytest.mark.asyncio
     async def test_message_reconstruction_error_handling(self, outbox_test_domain):
         """Test error handling during Message reconstruction"""
-        metadata = Metadata()
+        metadata = Metadata(
+            headers=MessageHeaders(
+                id="error-msg",
+                type="DummyEvent",
+                time=datetime.now(timezone.utc),
+                stream="test-stream",
+            )
+        )
 
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
         message = Outbox.create_message(
@@ -1201,7 +1222,14 @@ class TestOutboxProcessorEndToEnd:
         # Create multiple outbox messages
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
         for i in range(5):
-            metadata = Metadata()
+            metadata = Metadata(
+                headers=MessageHeaders(
+                    id=f"batch-msg-{i}",
+                    type="DummyEvent",
+                    time=datetime.now(timezone.utc),
+                    stream="test-stream",
+                )
+            )
             message = Outbox.create_message(
                 message_id=f"batch-msg-{i}",
                 stream_name="test-stream",
@@ -1227,7 +1255,14 @@ class TestOutboxProcessorEndToEnd:
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
 
         # Create low priority message first
-        metadata_low = Metadata()
+        metadata_low = Metadata(
+            headers=MessageHeaders(
+                id="low-priority",
+                type="DummyEvent",
+                time=datetime.now(timezone.utc),
+                stream="test-stream",
+            )
+        )
         message_low = Outbox.create_message(
             message_id="low-priority",
             stream_name="test-stream",
@@ -1239,7 +1274,14 @@ class TestOutboxProcessorEndToEnd:
         outbox_repo.add(message_low)
 
         # Create high priority message second
-        metadata_high = Metadata()
+        metadata_high = Metadata(
+            headers=MessageHeaders(
+                id="high-priority",
+                type="DummyEvent",
+                time=datetime.now(timezone.utc),
+                stream="test-stream",
+            )
+        )
         message_high = Outbox.create_message(
             message_id="high-priority",
             stream_name="test-stream",

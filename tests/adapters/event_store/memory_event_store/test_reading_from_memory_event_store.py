@@ -1,6 +1,21 @@
+def _create_test_metadata(stream_name, message_type, message_id=None):
+    """Helper to create metadata with required headers for tests."""
+    return {
+        "domain": {"kind": "EVENT"},
+        "headers": {
+            "id": message_id or f"{stream_name}-{message_type}",
+            "type": message_type,
+            "stream": stream_name,
+        },
+    }
+
+
 def test_reading_stream_message(test_domain):
     test_domain.event_store.store._write(
-        "testStream-123", "Event1", {"foo": "bar"}, {"domain": {"kind": "EVENT"}}
+        "testStream-123",
+        "Event1",
+        {"foo": "bar"},
+        _create_test_metadata("testStream-123", "Event1"),
     )
 
     messages = test_domain.event_store.store._read("testStream-123")
@@ -16,7 +31,7 @@ def test_reading_multiple_stream_messages(test_domain):
             "testStream-123",
             "Event1",
             {"foo": f"bar{i}"},
-            {"domain": {"kind": "EVENT"}},
+            _create_test_metadata("testStream-123", "Event1", f"msg-{i}"),
         )
 
     messages = test_domain.event_store.store._read("testStream-123")
@@ -27,7 +42,10 @@ def test_reading_multiple_stream_messages(test_domain):
 
 def test_reading_category_message(test_domain):
     test_domain.event_store.store._write(
-        "testStream-123", "Event1", {"foo": "bar"}, {"domain": {"kind": "EVENT"}}
+        "testStream-123",
+        "Event1",
+        {"foo": "bar"},
+        _create_test_metadata("testStream-123", "Event1"),
     )
 
     messages = test_domain.event_store.store._read("testStream")
@@ -43,7 +61,7 @@ def test_reading_multiple_category_messages(test_domain):
             "testStream-123",
             "Event1",
             {"foo": f"bar{i}"},
-            {"domain": {"kind": "EVENT"}},
+            _create_test_metadata("testStream-123", "Event1", f"cat-msg-{i}"),
         )
 
     messages = test_domain.event_store.store._read("testStream")
@@ -58,14 +76,14 @@ def test_reading_targeted_stream_messages(test_domain):
             "testStream-123",
             "Event1",
             {"foo": f"bar{i}"},
-            {"domain": {"kind": "EVENT"}},
+            _create_test_metadata("testStream-123", "Event1", f"stream1-msg-{i}"),
         )
     for i in range(5):
         test_domain.event_store.store._write(
             "testStream-456",
             "Event1",
             {"foo": f"baz{i}"},
-            {"domain": {"kind": "EVENT"}},
+            _create_test_metadata("testStream-456", "Event1", f"stream2-msg-{i}"),
         )
 
     messages = test_domain.event_store.store._read("testStream-456")
@@ -80,7 +98,7 @@ def test_read_last_message(test_domain):
             "testStream-123",
             "Event1",
             {"foo": f"bar{i}"},
-            {"domain": {"kind": "EVENT"}},
+            _create_test_metadata("testStream-123", "Event1", f"last-msg-{i}"),
         )
 
     message = test_domain.event_store.store._read_last_message("testStream-123")

@@ -246,11 +246,7 @@ class Engine:
             except Exception as exc:
                 logger.exception(f"Error in {subscriber_cls.__name__}: {exc}")
                 try:
-                    # Attempt to call error handler if it exists
-                    if hasattr(subscriber_cls, "handle_error") and callable(
-                        subscriber_cls.handle_error
-                    ):
-                        subscriber_cls.handle_error(exc, message)
+                    subscriber_cls.handle_error(exc, message)
                 except Exception as error_exc:
                     logger.exception(f"Error handler failed: {error_exc}")
                 # Continue processing instead of shutting down
@@ -282,18 +278,13 @@ class Engine:
             try:
                 handler_cls._handle(message)
 
-                # Safe logging of message details
-                message_type = "unknown"
+                # Build safe message ID for logging
                 message_id = "unknown"
-                if message and message.metadata and message.metadata.headers:
-                    message_type = message.metadata.headers.type or "unknown"
-                    message_id = (
-                        message.metadata.headers.id[:8]
-                        if message.metadata.headers.id
-                        else "unknown"
-                    )
-
-                logger.debug(f"Processed {message_type} (ID: {message_id}...)")
+                if message.metadata.headers.id:
+                    message_id = f"{message.metadata.headers.id[:8]}..."
+                logger.debug(
+                    f"Processed {message.metadata.headers.type} (ID: {message_id})"
+                )
                 return True
             except Exception as exc:  # Includes handling `ConfigurationError`
                 # Build a safe error message even if metadata/headers are None
