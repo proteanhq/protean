@@ -138,8 +138,14 @@ class Outbox(BaseAggregate):
             return False, ProcessingResult.MAX_RETRIES_EXCEEDED
 
         # Check if enough time has passed for retry
-        if self.next_retry_at and datetime.now(timezone.utc) < self.next_retry_at:
-            return False, ProcessingResult.RETRY_NOT_DUE
+        if self.next_retry_at:
+            current_time = datetime.now(timezone.utc)
+            retry_time = self.next_retry_at
+            if retry_time.tzinfo is None:
+                # If next_retry_at is naive, make it aware (assume UTC)
+                retry_time = retry_time.replace(tzinfo=timezone.utc)
+            if current_time < retry_time:
+                return False, ProcessingResult.RETRY_NOT_DUE
 
         # Acquire lock and mark as processing
         self.status = OutboxStatus.PROCESSING.value
@@ -249,8 +255,15 @@ class Outbox(BaseAggregate):
             return False
 
         # Check if enough time has passed for retry
-        if self.next_retry_at and datetime.now(timezone.utc) < self.next_retry_at:
-            return False
+        if self.next_retry_at:
+            # Ensure both datetimes are timezone-aware for comparison
+            current_time = datetime.now(timezone.utc)
+            retry_time = self.next_retry_at
+            if retry_time.tzinfo is None:
+                # If next_retry_at is naive, make it aware (assume UTC)
+                retry_time = retry_time.replace(tzinfo=timezone.utc)
+            if current_time < retry_time:
+                return False
 
         return True
 

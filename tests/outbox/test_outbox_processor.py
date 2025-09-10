@@ -887,8 +887,8 @@ class TestOutboxConfiguration:
         # Default outbox config should be present
         assert "outbox" in domain.config
         assert domain.config["outbox"]["broker"] == "default"
-        assert domain.config["outbox"]["messages_per_tick"] == 10
-        assert domain.config["outbox"]["tick_interval"] == 1
+        assert domain.config["outbox"]["messages_per_tick"] == 50
+        assert domain.config["outbox"]["tick_interval"] == 0.01
 
     def test_custom_outbox_configuration(self):
         """Test custom outbox configuration is applied correctly"""
@@ -1037,7 +1037,7 @@ class TestOutboxConfiguration:
         partial_config = {
             "enable_outbox": True,
             "outbox": {
-                "messages_per_tick": 50,  # Only override one parameter
+                "messages_per_tick": 100,  # Only override one parameter
             },
         }
 
@@ -1045,8 +1045,8 @@ class TestOutboxConfiguration:
         domain.init(traverse=False)
 
         # Should use custom messages_per_tick but default values for others
-        assert domain.config["outbox"]["messages_per_tick"] == 50
-        assert domain.config["outbox"]["tick_interval"] == 1  # Default
+        assert domain.config["outbox"]["messages_per_tick"] == 100
+        assert domain.config["outbox"]["tick_interval"] == 0.01  # Default
         assert domain.config["outbox"]["broker"] == "default"  # Default
 
     def test_engine_error_handling_with_missing_outbox_config_key(self):
@@ -1067,8 +1067,8 @@ class TestOutboxConfiguration:
             if engine._outbox_processors:
                 processor = list(engine._outbox_processors.values())[0]
                 assert processor.broker_provider_name == "default"
-                assert processor.messages_per_tick == 10
-                assert processor.tick_interval == 1
+                assert processor.messages_per_tick == 50
+                assert processor.tick_interval == 0.01
 
 
 @pytest.mark.database
@@ -1428,8 +1428,8 @@ class TestRetryConfiguration:
 
             retry_config = processor.get_retry_config()
             assert retry_config["max_attempts"] == 3
-            assert retry_config["base_delay_seconds"] == 60
-            assert retry_config["max_backoff_seconds"] == 3600
+            assert retry_config["base_delay_seconds"] == 1
+            assert retry_config["max_backoff_seconds"] == 60
             assert retry_config["backoff_multiplier"] == 2
             assert retry_config["jitter"] is True
             assert retry_config["jitter_factor"] == 0.25
@@ -1490,7 +1490,7 @@ class TestRetryConfiguration:
             retry_config = processor.get_retry_config()
             assert retry_config["max_attempts"] == 7  # Custom
             assert retry_config["base_delay_seconds"] == 120  # Custom
-            assert retry_config["max_backoff_seconds"] == 3600  # Default
+            assert retry_config["max_backoff_seconds"] == 60  # Default
             assert retry_config["backoff_multiplier"] == 2  # Default
             assert retry_config["jitter"] is True  # Default
             assert retry_config["jitter_factor"] == 0.25  # Default
@@ -1703,7 +1703,7 @@ class TestRetryConfiguration:
             retry_config = processor.get_retry_config()
             assert retry_config["jitter_factor"] == 0.15  # Custom
             assert retry_config["max_attempts"] == 3  # Default
-            assert retry_config["base_delay_seconds"] == 60  # Default
+            assert retry_config["base_delay_seconds"] == 1  # Default
             assert retry_config["jitter"] is True  # Default
 
     def test_jitter_factor_minimum_delay_enforcement(self):

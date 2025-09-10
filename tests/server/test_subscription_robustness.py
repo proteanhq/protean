@@ -278,7 +278,7 @@ async def test_subscription_process_batch_exception_handling(test_domain, caplog
         assert result == 0  # But no messages were processed successfully
 
         # Verify error was reported and logged
-        assert "Error handling message" in caplog.text
+        assert "Failed to process" in caplog.text
         assert "Unhandled exception in event handler" in caplog.text
 
         # Check if position was still updated in the event store despite the error
@@ -327,7 +327,7 @@ async def test_broker_subscription_process_batch_exception_handling(
         assert error_handler_counter >= 2  # Once for each message
 
         # Verify error was logged
-        assert "Error handling message in FailingSubscriber" in caplog.text
+        assert "Error in FailingSubscriber" in caplog.text
         assert "Intentional exception for testing" in caplog.text
 
 
@@ -379,7 +379,7 @@ async def test_subscription_with_mixed_success_and_failure(test_domain, caplog):
         assert result == 1
 
         # Verify error was logged for the failing message
-        assert "Error handling message" in caplog.text
+        assert "Failed to process" in caplog.text
         assert "Intentional exception for testing" in caplog.text
 
         # Verify handler counter reflects the succeeded message

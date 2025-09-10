@@ -18,12 +18,6 @@ from .subscription.event_store_subscription import EventStoreSubscription
 from .subscription.stream_subscription import StreamSubscription
 from .outbox_processor import OutboxProcessor
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s,%(msecs)d %(levelname)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
-
 logger = logging.getLogger(__name__)
 
 
@@ -195,6 +189,7 @@ class Engine:
         # Create an outbox processor for each database provider to each broker provider
         # Only if outbox is enabled in the domain
         if self.domain.config.get("enable_outbox", False):
+            logger.debug("Outbox enabled, initializing processors")
             # Get the broker provider name from the config with validation
             outbox_config = self.domain.config.get("outbox", {})
             broker_provider_name = outbox_config.get("broker", "default")
@@ -206,10 +201,14 @@ class Engine:
 
             messages_per_tick = outbox_config.get("messages_per_tick", 10)
             tick_interval = outbox_config.get("tick_interval", 1)
+            logger.debug(
+                f"Outbox configuration: batch_size={messages_per_tick}, interval={tick_interval}s"
+            )
 
             # Create an outbox processor for each database provider
             for database_provider_name in self.domain.providers.keys():
                 processor_name = f"outbox-processor-{database_provider_name}-to-{broker_provider_name}"
+                logger.debug(f"Creating outbox processor: {processor_name}")
                 self._outbox_processors[processor_name] = OutboxProcessor(
                     self,
                     database_provider_name,
@@ -217,6 +216,8 @@ class Engine:
                     messages_per_tick=messages_per_tick,
                     tick_interval=tick_interval,
                 )
+        else:
+            logger.debug("Outbox disabled")
 
     async def handle_broker_message(
         self, subscriber_cls: Type[BaseSubscriber], message: dict
@@ -240,16 +241,10 @@ class Engine:
                 subscriber = subscriber_cls()
                 subscriber(message)
 
-                logger.info(
-                    f"{subscriber_cls.__name__} processed message successfully."
-                )
+                logger.debug(f"Message processed by {subscriber_cls.__name__}")
                 return True
             except Exception as exc:
-                logger.error(
-                    f"Error handling message in {subscriber_cls.__name__}: {str(exc)}"
-                )
-                # Print the stack trace
-                logger.error(traceback.format_exc())
+                logger.exception(f"Error in {subscriber_cls.__name__}: {exc}")
                 try:
                     # Attempt to call error handler if it exists
                     if hasattr(subscriber_cls, "handle_error") and callable(
@@ -257,8 +252,7 @@ class Engine:
                     ):
                         subscriber_cls.handle_error(exc, message)
                 except Exception as error_exc:
-                    logger.error(f"Error in error handler: {str(error_exc)}")
-                    logger.error(traceback.format_exc())
+                    logger.exception(f"Error handler failed: {error_exc}")
                 # Continue processing instead of shutting down
                 return False
 
@@ -288,23 +282,40 @@ class Engine:
             try:
                 handler_cls._handle(message)
 
-                logger.info(
-                    f"{handler_cls.__name__} processed {message.metadata.headers.type}-{message.metadata.headers.id} successfully."
-                )
+                # Safe logging of message details
+                message_type = "unknown"
+                message_id = "unknown"
+                if message and message.metadata and message.metadata.headers:
+                    message_type = message.metadata.headers.type or "unknown"
+                    message_id = (
+                        message.metadata.headers.id[:8]
+                        if message.metadata.headers.id
+                        else "unknown"
+                    )
+
+                logger.debug(f"Processed {message_type} (ID: {message_id}...)")
                 return True
             except Exception as exc:  # Includes handling `ConfigurationError`
-                logger.error(
-                    f"Error handling message {message.metadata.headers.stream}-{message.metadata.headers.id} "
-                    f"in {handler_cls.__name__}: {str(exc)}"
+                # Build a safe error message even if metadata/headers are None
+                message_type = "unknown"
+                message_id = "unknown"
+                if message and message.metadata and message.metadata.headers:
+                    message_type = message.metadata.headers.type or "unknown"
+                    message_id = (
+                        message.metadata.headers.id[:8]
+                        if message.metadata.headers.id
+                        else "unknown"
+                    )
+
+                logger.exception(
+                    f"Failed to process {message_type} "
+                    f"(ID: {message_id}...) in {handler_cls.__name__}: {exc}"
                 )
-                # Print the stack trace
-                logger.error(traceback.format_exc())
                 try:
                     # Call the error handler if it exists
                     handler_cls.handle_error(exc, message)
                 except Exception as error_exc:
-                    logger.error(f"Error in error handler: {str(error_exc)}")
-                    logger.error(traceback.format_exc())
+                    logger.exception(f"Error handler failed: {error_exc}")
                 # Continue processing instead of shutting down
                 # Reset message context
                 g.pop("message_in_context", None)
@@ -348,9 +359,16 @@ class Engine:
             )
             for s in signals:
                 try:
-                    self.loop.add_signal_handler(
-                        s, lambda s=s: asyncio.create_task(self.shutdown(signal=s))
-                    )
+                    # Create a proper signal handler that ensures task creation works
+                    # even when called from a signal context
+                    def handle_signal(sig=s):
+                        if not self.shutting_down:
+                            # Ensure we create the task in the proper context
+                            self.loop.call_soon_threadsafe(
+                                lambda: asyncio.create_task(self.shutdown(signal=sig))
+                            )
+
+                    self.loop.add_signal_handler(s, handle_signal)
                 except (OSError, ValueError) as e:
                     # Some signals may not be available on all platforms
                     logger.debug(f"Signal {s} not available on this platform: {e}")
@@ -424,7 +442,7 @@ class Engine:
 
             # Cancel outstanding tasks
             [task.cancel() for task in tasks]
-            logger.info(f"Cancelling {len(tasks)} outstanding tasks")
+            logger.debug(f"Cancelling {len(tasks)} tasks")
             await asyncio.gather(*tasks, return_exceptions=True)
 
             # Wait for subscriptions to shut down
@@ -481,38 +499,69 @@ class Engine:
             logger.info("No subscriptions to start. Exiting...")
             return
 
-        subscription_tasks = [
-            self.loop.create_task(subscription.start())
-            for _, subscription in self._subscriptions.items()
-        ]
+        # Create all tasks with names for better debugging
+        subscription_tasks = []
+        for name, subscription in self._subscriptions.items():
+            task = self.loop.create_task(subscription.start())
+            task.set_name(f"subscription-{name}")
+            subscription_tasks.append(task)
+            logger.debug(f"Started subscription: {name}")
 
-        broker_subscription_tasks = [
-            self.loop.create_task(subscription.start())
-            for _, subscription in self._broker_subscriptions.items()
-        ]
+        broker_subscription_tasks = []
+        for name, subscription in self._broker_subscriptions.items():
+            task = self.loop.create_task(subscription.start())
+            task.set_name(f"broker-{name}")
+            broker_subscription_tasks.append(task)
+            logger.debug(f"Started broker subscription: {name}")
 
-        outbox_processor_tasks = [
-            self.loop.create_task(processor.start())
-            for _, processor in self._outbox_processors.items()
-        ]
+        outbox_processor_tasks = []
+        for name, processor in self._outbox_processors.items():
+            task = self.loop.create_task(processor.start())
+            task.set_name(f"outbox-{name}")
+            outbox_processor_tasks.append(task)
+            logger.debug(f"Started outbox processor: {name}")
 
         try:
             if self.test_mode:
-                # If in test mode, run until all tasks complete
-                self.loop.run_until_complete(
-                    asyncio.gather(
-                        *subscription_tasks,
-                        *broker_subscription_tasks,
-                        *outbox_processor_tasks,
+                # In test mode, run the loop multiple times to ensure all messages are processed
+                # This is necessary for multi-step flows where handlers generate new messages
+                async def run_test_cycles():
+                    # Start all tasks
+                    all_tasks = (
+                        subscription_tasks
+                        + broker_subscription_tasks
+                        + outbox_processor_tasks
                     )
-                )
+
+                    # Run for a few cycles to allow message propagation
+                    # Each cycle gives time for: outbox -> broker -> handler -> new messages -> repeat
+                    for cycle in range(3):
+                        logger.debug(f"Test mode cycle {cycle + 1}/3")
+                        # Give tasks time to process messages
+                        await asyncio.sleep(0.1)
+
+                        # Check if all tasks are still running
+                        still_running = [t for t in all_tasks if not t.done()]
+                        if not still_running:
+                            logger.debug("All tasks completed")
+                            break
+
+                    # Cancel remaining tasks
+                    for task in all_tasks:
+                        if not task.done():
+                            task.cancel()
+
+                    # Wait for cancellation to complete
+                    await asyncio.gather(*all_tasks, return_exceptions=True)
+
+                self.loop.run_until_complete(run_test_cycles())
                 # Then immediately call and await the shutdown directly
                 self.loop.run_until_complete(self.shutdown())
             else:
-                logger.info("Protean Engine is running...")
+                logger.info("Engine started successfully")
                 self.loop.run_forever()
         finally:
             # Clean up signal handlers before closing the loop
             self._cleanup_signal_handlers()
             self.loop.close()
-            logger.info("Protean Engine has stopped.")
+            logger.info("Engine stopped")

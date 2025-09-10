@@ -15,6 +15,6 @@ class User:
 domain.init(traverse=False)
 
 
-with domain.domain_context().push():
+with domain.domain_context():
     # Access an active, connected instance of User Repository
     user_repo = current_domain.repository_for(User)
