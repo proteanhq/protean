@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import List, Optional
 
@@ -89,6 +90,10 @@ class OutboxProcessor(BaseSubscription):
 
         This method initializes the broker connection and outbox repository.
         """
+        logger.debug(
+            f"Initializing outbox processor: {self.database_provider_name} -> {self.broker_provider_name}"
+        )
+
         # Get the broker for this provider
         if self.broker_provider_name not in self.engine.domain.brokers:
             raise ValueError(
@@ -96,6 +101,7 @@ class OutboxProcessor(BaseSubscription):
             )
 
         self.broker = self.engine.domain.brokers[self.broker_provider_name]
+        logger.debug(f"Using broker: {self.broker.__class__.__name__}")
 
         # Get the outbox repository for this database provider
         self.outbox_repo = self.engine.domain._get_outbox_repo(
@@ -107,11 +113,13 @@ class OutboxProcessor(BaseSubscription):
                 f"Outbox repository for database provider '{self.database_provider_name}' not found in domain"
             )
 
+        logger.debug(f"Using outbox repository: {self.outbox_repo.__class__.__name__}")
+
         # Set the subscriber to the custom Outbox aggregate name
         self.subscriber_name = self.outbox_repo.meta_.part_of.__name__
 
         logger.debug(
-            f"Initialized OutboxProcessor for database '{self.database_provider_name}' to broker '{self.broker_provider_name}'"
+            f"Outbox processor initialized: {self.database_provider_name} -> {self.broker_provider_name}"
         )
 
     async def get_next_batch_of_messages(self) -> List[Outbox]:
@@ -122,10 +130,18 @@ class OutboxProcessor(BaseSubscription):
             List[Outbox]: The next batch of outbox messages ready for processing.
         """
         if not self.outbox_repo:
+            logger.warning("Outbox repository not available")
             return []
 
-        messages = self.outbox_repo.find_unprocessed(limit=self.messages_per_tick)
-        logger.debug(f"Found {len(messages)} unprocessed outbox messages")
+        # Run the database query in a thread pool to avoid blocking the event loop
+        # This allows other async tasks to run concurrently
+        messages = await asyncio.to_thread(
+            self.outbox_repo.find_unprocessed, limit=self.messages_per_tick
+        )
+        if messages:
+            logger.debug(f"Found {len(messages)} messages to process")
+        else:
+            pass  # No logging needed for empty batches
 
         return messages
 
@@ -142,14 +158,17 @@ class OutboxProcessor(BaseSubscription):
         Returns:
             int: The number of messages processed successfully.
         """
-        logger.debug(f"Processing {len(messages)} outbox messages...")
         successful_count = 0
 
         for message in messages:
             success = await self._process_single_message(message)
             if success:
                 successful_count += 1
+            # Yield control after each message for better interleaving
+            await asyncio.sleep(0)
 
+        if len(messages) > 0:
+            logger.debug(f"Outbox batch: {successful_count}/{len(messages)} processed")
         return successful_count
 
     async def tick(self):
@@ -163,7 +182,12 @@ class OutboxProcessor(BaseSubscription):
 
         # Increment tick counter and check if cleanup is due
         self.tick_count += 1
-        if self.tick_count >= self.cleanup_config["cleanup_interval_ticks"]:
+        # Adjust cleanup interval for continuous processing
+        # (cleanup_interval_ticks is too high for fast ticking)
+        cleanup_check_interval = min(
+            self.cleanup_config["cleanup_interval_ticks"], 10000
+        )
+        if self.tick_count >= cleanup_check_interval:
             await self._perform_cleanup()
             self.tick_count = 0  # Reset counter
 
@@ -187,14 +211,12 @@ class OutboxProcessor(BaseSubscription):
 
                 if cleanup_result["total"] > 0:
                     logger.info(
-                        f"Cleaned up {cleanup_result['total']} old outbox messages: "
-                        f"{cleanup_result['published']} published, {cleanup_result['abandoned']} abandoned"
+                        f"Outbox cleanup: removed {cleanup_result['total']} messages "
+                        f"({cleanup_result['published']} published, {cleanup_result['abandoned']} abandoned)"
                     )
-                else:
-                    logger.debug("No old outbox messages to clean up")
 
         except Exception as exc:
-            logger.error(f"Error during outbox cleanup: {str(exc)}")
+            logger.exception(f"Outbox cleanup failed: {exc}")
 
     async def _process_single_message(self, message: Outbox) -> bool:
         """
@@ -209,6 +231,7 @@ class OutboxProcessor(BaseSubscription):
         Returns:
             bool: True if message was processed successfully, False otherwise.
         """
+        # Start processing single message
         try:
             # Use UnitOfWork for atomic transaction management
             # This ensures all operations (lock, publish, status update) are atomic
@@ -217,18 +240,18 @@ class OutboxProcessor(BaseSubscription):
                 success, result = message.start_processing(self.worker_id)
                 if not success:
                     # Log the specific reason why message was skipped
-                    reason_messages = {
-                        ProcessingResult.NOT_ELIGIBLE: f"Message {message.message_id} not eligible (status: {message.status})",
-                        ProcessingResult.ALREADY_LOCKED: f"Message {message.message_id} already locked by {message.locked_by} until {message.locked_until}",
-                        ProcessingResult.MAX_RETRIES_EXCEEDED: f"Message {message.message_id} exceeded max retries ({message.retry_count}/{message.max_retries})",
-                        ProcessingResult.RETRY_NOT_DUE: f"Message {message.message_id} retry not due until {message.next_retry_at}",
-                    }
-                    logger.info(
-                        reason_messages.get(
-                            result,
-                            f"Message {message.message_id} skipped for unknown reason: {result}",
+                    if result != ProcessingResult.NOT_ELIGIBLE:
+                        reason_messages = {
+                            ProcessingResult.ALREADY_LOCKED: f"Message {message.message_id} already locked",
+                            ProcessingResult.MAX_RETRIES_EXCEEDED: f"Message {message.message_id} exceeded max retries",
+                            ProcessingResult.RETRY_NOT_DUE: f"Message {message.message_id} retry not due yet",
+                        }
+                        logger.debug(
+                            reason_messages.get(
+                                result,
+                                f"Message {message.message_id[:8]}... skipped: {result}",
+                            )
                         )
-                    )
                     return False
 
                 # Save the lock acquisition (PROCESSING status)
@@ -240,13 +263,13 @@ class OutboxProcessor(BaseSubscription):
                 # Update final status based on broker publish result
                 if publish_success:
                     message.mark_published()
-                    logger.info(
-                        f"Successfully published outbox message {message.message_id} to {message.stream_name}"
+                    logger.debug(
+                        f"Published to {message.stream_name}: {message.message_id[:8]}..."
                     )
                 else:
                     self._mark_message_failed(message, publish_error)
-                    logger.error(
-                        f"Failed to publish outbox message {message.message_id}: {publish_error}"
+                    logger.warning(
+                        f"Publish failed for {message.message_id[:8]}...: {publish_error}"
                     )
 
                 # Save the final status
@@ -256,8 +279,8 @@ class OutboxProcessor(BaseSubscription):
                 return publish_success
 
         except Exception as exc:
-            logger.error(
-                f"Error processing outbox message {message.message_id}: {str(exc)}"
+            logger.exception(
+                f"Error processing message {message.message_id[:8]}...: {exc}"
             )
             # Transaction automatically rolls back on exception
 

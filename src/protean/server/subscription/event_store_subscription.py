@@ -2,7 +2,10 @@ import logging
 import os
 import secrets
 import socket
+
+from datetime import datetime, timezone
 from typing import List, Union
+from uuid import uuid4
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
@@ -174,10 +177,16 @@ class EventStoreSubscription(BaseSubscription):
             "Read",
             {"position": position},
             metadata={
+                "headers": {
+                    "id": str(uuid4()),
+                    "type": "Read",
+                    "time": datetime.now(timezone.utc).isoformat(),
+                    "stream": self.subscriber_stream_name,
+                },
                 "domain": {
                     "kind": MessageType.READ_POSITION.value,
                     "origin_stream": self.stream_category,
-                }
+                },
             },
         )
 

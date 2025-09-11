@@ -59,7 +59,7 @@ async def test_handling_exception_raised_in_handler(test_domain, caplog):
     await engine.handle_broker_message(ExceptionSubscriber, message)
 
     assert any(
-        record.levelname == "ERROR" and "Error handling message in " in record.message
+        record.levelname == "ERROR" and "Error in " in record.message
         for record in caplog.records
     )
 

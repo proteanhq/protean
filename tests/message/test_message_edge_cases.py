@@ -317,7 +317,13 @@ class TestMessageSafeGetAttr:
         """Test _safe_get_attr handles AttributeError gracefully."""
         message = Message(
             data={"test": "data"},
-            metadata={},
+            metadata={
+                "headers": MessageHeaders(
+                    id=str(uuid4()),
+                    type="test.Event",
+                    time=datetime.now(timezone.utc),
+                )
+            },
         )
 
         # Try to access a deeply nested path that doesn't exist
@@ -407,11 +413,16 @@ class TestMessageFromDomainObjectEdgeCases:
 
         # Create metadata with domain kind set to COMMAND
         metadata_dict = {
+            "headers": MessageHeaders(
+                id=str(uuid4()),
+                type="test.Register",
+                time=datetime.now(timezone.utc),
+            ),
             "domain": DomainMeta(
                 fqn="test.Register",
                 kind=MessageType.COMMAND.value,
                 version="v1",
-            )
+            ),
         }
         # Use object.__setattr__ to bypass immutability check
         object.__setattr__(cmd, "_metadata", Metadata(**metadata_dict))
@@ -434,11 +445,16 @@ class TestMessageFromDomainObjectEdgeCases:
 
         # Simulate a fact event (name ends with FactEvent)
         metadata_dict = {
+            "headers": MessageHeaders(
+                id=str(uuid4()),
+                type="test.UserFactEvent",
+                time=datetime.now(timezone.utc),
+            ),
             "domain": DomainMeta(
                 fqn="test.UserFactEvent",
                 kind=MessageType.EVENT.value,
                 version="v1",
-            )
+            ),
         }
 
         # Create an instance with the mocked class

@@ -245,12 +245,16 @@ class RedisBroker(BaseBroker):
                     return messages
 
             # No pending messages, now try to read new messages with blocking
+            # Limit blocking timeout to 1000ms (1 second) to ensure signal responsiveness
+            # This allows the event loop to process signals more frequently
+            effective_timeout = min(timeout_ms, 1000)
+
             response = self.redis_instance.xreadgroup(
                 consumer_group,
                 consumer_name,
                 {stream: NEW_MESSAGES_MARK},
                 count=count,
-                block=timeout_ms,  # Block for specified milliseconds
+                block=effective_timeout,  # Block for at most 1 second
             )
 
             if not response:

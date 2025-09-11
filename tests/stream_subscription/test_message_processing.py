@@ -24,17 +24,31 @@ from protean.utils.eventing import Message
 class Order(BaseAggregate):
     """Test aggregate for message processing tests."""
 
-    order_id = Identifier(required=True)
+    order_id = Identifier(required=True, identifier=True)
     customer_id = String()
     amount = Integer()
+
+    def place_order(self):
+        """Place an order and raise an event."""
+        self.raise_(
+            OrderEvent(
+                order_id=self.order_id, customer_id=self.customer_id, amount=self.amount
+            )
+        )
 
 
 class Payment(BaseAggregate):
     """Test aggregate for message processing tests."""
 
-    payment_id = Identifier(required=True)
+    payment_id = Identifier(required=True, identifier=True)
     order_id = Identifier(required=True)
     amount = Integer()
+
+    def process_payment(self):
+        """Process a payment by issuing a command."""
+        # Commands are typically not raised from aggregates, but for testing
+        # we can simulate the command creation
+        pass
 
 
 class OrderEvent(BaseEvent):
@@ -121,8 +135,11 @@ def payment_command_handler():
 @pytest.fixture
 def valid_order_message(test_domain):
     """Create a valid order event message."""
-    order_event = OrderEvent(order_id=str(uuid4()), customer_id="cust-456", amount=100)
-    return Message.from_domain_object(order_event)
+    order_id = str(uuid4())
+    order = Order(order_id=order_id, customer_id="cust-456", amount=100)
+    order.place_order()
+    # Get the raised event and create a message from it
+    return Message.from_domain_object(order._events[-1])
 
 
 @pytest.fixture
@@ -133,7 +150,9 @@ def valid_payment_message(test_domain):
         order_id=str(uuid4()),
         amount=200,
     )
-    return Message.from_domain_object(payment_command)
+    # Enrich the command to get proper metadata
+    enriched_command = test_domain._enrich_command(payment_command, track_source=True)
+    return Message.from_domain_object(enriched_command)
 
 
 # Test Message Deserialization
@@ -257,10 +276,9 @@ async def test_process_batch_with_mixed_messages(
         subscription.broker.ack = mock_ack
 
         # Create mixed batch
-        order_event_2 = OrderEvent(
-            order_id=str(uuid4()), customer_id="cust-2", amount=200
-        )
-        valid_message_2 = Message.from_domain_object(order_event_2)
+        order_2 = Order(order_id=str(uuid4()), customer_id="cust-2", amount=200)
+        order_2.place_order()
+        valid_message_2 = Message.from_domain_object(order_2._events[-1])
 
         messages = [
             ("msg-1", valid_order_message.to_dict()),

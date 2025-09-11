@@ -590,7 +590,14 @@ class TestMessageReconstruction:
         """Test Message reconstruction with minimal metadata"""
 
         # Create minimal metadata
-        metadata = Metadata()
+        metadata = Metadata(
+            headers=MessageHeaders(
+                id="minimal-msg",
+                type="DummyEvent",
+                time=datetime.now(timezone.utc),
+                stream="test-stream",
+            )
+        )
 
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
         message = Outbox.create_message(
@@ -702,7 +709,14 @@ class TestMessageReconstruction:
             "float": 3.14159,
         }
 
-        metadata = Metadata()
+        metadata = Metadata(
+            headers=MessageHeaders(
+                id="complex-msg",
+                type="ComplexEvent",
+                time=datetime.now(timezone.utc),
+                stream="test-stream",
+            )
+        )
 
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
         message = Outbox.create_message(
@@ -742,7 +756,14 @@ class TestMessageReconstruction:
     @pytest.mark.asyncio
     async def test_message_reconstruction_error_handling(self, outbox_test_domain):
         """Test error handling during Message reconstruction"""
-        metadata = Metadata()
+        metadata = Metadata(
+            headers=MessageHeaders(
+                id="error-msg",
+                type="DummyEvent",
+                time=datetime.now(timezone.utc),
+                stream="test-stream",
+            )
+        )
 
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
         message = Outbox.create_message(
@@ -887,8 +908,8 @@ class TestOutboxConfiguration:
         # Default outbox config should be present
         assert "outbox" in domain.config
         assert domain.config["outbox"]["broker"] == "default"
-        assert domain.config["outbox"]["messages_per_tick"] == 10
-        assert domain.config["outbox"]["tick_interval"] == 1
+        assert domain.config["outbox"]["messages_per_tick"] == 50
+        assert domain.config["outbox"]["tick_interval"] == 0.01
 
     def test_custom_outbox_configuration(self):
         """Test custom outbox configuration is applied correctly"""
@@ -1037,7 +1058,7 @@ class TestOutboxConfiguration:
         partial_config = {
             "enable_outbox": True,
             "outbox": {
-                "messages_per_tick": 50,  # Only override one parameter
+                "messages_per_tick": 100,  # Only override one parameter
             },
         }
 
@@ -1045,8 +1066,8 @@ class TestOutboxConfiguration:
         domain.init(traverse=False)
 
         # Should use custom messages_per_tick but default values for others
-        assert domain.config["outbox"]["messages_per_tick"] == 50
-        assert domain.config["outbox"]["tick_interval"] == 1  # Default
+        assert domain.config["outbox"]["messages_per_tick"] == 100
+        assert domain.config["outbox"]["tick_interval"] == 0.01  # Default
         assert domain.config["outbox"]["broker"] == "default"  # Default
 
     def test_engine_error_handling_with_missing_outbox_config_key(self):
@@ -1067,8 +1088,8 @@ class TestOutboxConfiguration:
             if engine._outbox_processors:
                 processor = list(engine._outbox_processors.values())[0]
                 assert processor.broker_provider_name == "default"
-                assert processor.messages_per_tick == 10
-                assert processor.tick_interval == 1
+                assert processor.messages_per_tick == 50
+                assert processor.tick_interval == 0.01
 
 
 @pytest.mark.database
@@ -1201,7 +1222,14 @@ class TestOutboxProcessorEndToEnd:
         # Create multiple outbox messages
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
         for i in range(5):
-            metadata = Metadata()
+            metadata = Metadata(
+                headers=MessageHeaders(
+                    id=f"batch-msg-{i}",
+                    type="DummyEvent",
+                    time=datetime.now(timezone.utc),
+                    stream="test-stream",
+                )
+            )
             message = Outbox.create_message(
                 message_id=f"batch-msg-{i}",
                 stream_name="test-stream",
@@ -1227,7 +1255,14 @@ class TestOutboxProcessorEndToEnd:
         outbox_repo = outbox_test_domain._get_outbox_repo("default")
 
         # Create low priority message first
-        metadata_low = Metadata()
+        metadata_low = Metadata(
+            headers=MessageHeaders(
+                id="low-priority",
+                type="DummyEvent",
+                time=datetime.now(timezone.utc),
+                stream="test-stream",
+            )
+        )
         message_low = Outbox.create_message(
             message_id="low-priority",
             stream_name="test-stream",
@@ -1239,7 +1274,14 @@ class TestOutboxProcessorEndToEnd:
         outbox_repo.add(message_low)
 
         # Create high priority message second
-        metadata_high = Metadata()
+        metadata_high = Metadata(
+            headers=MessageHeaders(
+                id="high-priority",
+                type="DummyEvent",
+                time=datetime.now(timezone.utc),
+                stream="test-stream",
+            )
+        )
         message_high = Outbox.create_message(
             message_id="high-priority",
             stream_name="test-stream",
@@ -1428,8 +1470,8 @@ class TestRetryConfiguration:
 
             retry_config = processor.get_retry_config()
             assert retry_config["max_attempts"] == 3
-            assert retry_config["base_delay_seconds"] == 60
-            assert retry_config["max_backoff_seconds"] == 3600
+            assert retry_config["base_delay_seconds"] == 1
+            assert retry_config["max_backoff_seconds"] == 60
             assert retry_config["backoff_multiplier"] == 2
             assert retry_config["jitter"] is True
             assert retry_config["jitter_factor"] == 0.25
@@ -1490,7 +1532,7 @@ class TestRetryConfiguration:
             retry_config = processor.get_retry_config()
             assert retry_config["max_attempts"] == 7  # Custom
             assert retry_config["base_delay_seconds"] == 120  # Custom
-            assert retry_config["max_backoff_seconds"] == 3600  # Default
+            assert retry_config["max_backoff_seconds"] == 60  # Default
             assert retry_config["backoff_multiplier"] == 2  # Default
             assert retry_config["jitter"] is True  # Default
             assert retry_config["jitter_factor"] == 0.25  # Default
@@ -1703,7 +1745,7 @@ class TestRetryConfiguration:
             retry_config = processor.get_retry_config()
             assert retry_config["jitter_factor"] == 0.15  # Custom
             assert retry_config["max_attempts"] == 3  # Default
-            assert retry_config["base_delay_seconds"] == 60  # Default
+            assert retry_config["base_delay_seconds"] == 1  # Default
             assert retry_config["jitter"] is True  # Default
 
     def test_jitter_factor_minimum_delay_enforcement(self):

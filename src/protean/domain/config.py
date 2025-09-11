@@ -55,12 +55,12 @@ def _default_config():
         "enable_outbox": False,
         "outbox": {
             "broker": "default",
-            "messages_per_tick": 10,
-            "tick_interval": 1,
+            "messages_per_tick": 50,  # Process outbox in efficient batches
+            "tick_interval": 0.01,  # 10ms check interval for outbox
             "retry": {
                 "max_attempts": 3,
-                "base_delay_seconds": 60,
-                "max_backoff_seconds": 3600,
+                "base_delay_seconds": 1,  # Faster initial retry
+                "max_backoff_seconds": 60,  # Lower max backoff for responsiveness
                 "backoff_multiplier": 2,
                 "jitter": True,
                 "jitter_factor": 0.25,
@@ -73,13 +73,13 @@ def _default_config():
         },
         "server": {
             "subscription_type": "event_store",  # Options: "stream" or "event_store"
-            "messages_per_tick": 10,  # Common to both subscription types
-            "tick_interval": 1,  # Common to both subscription types
+            "messages_per_tick": 100,  # Optimal batch size for throughput vs latency
+            "tick_interval": 0,  # Disable tick-based polling, use pure blocking reads
             "event_store_subscription": {
                 "position_update_interval": 10,  # How often to update position in event store
             },
             "stream_subscription": {
-                "blocking_timeout_ms": 5000,  # Timeout for blocking reads
+                "blocking_timeout_ms": 100,  # 100ms blocking read - balance between responsiveness and CPU
                 "max_retries": 3,  # Max retry attempts before DLQ
                 "retry_delay_seconds": 1,  # Delay between retries
                 "enable_dlq": True,  # Enable dead letter queue

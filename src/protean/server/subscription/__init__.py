@@ -2,12 +2,6 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s,%(msecs)d %(levelname)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
-
 logger = logging.getLogger(__name__)
 
 
@@ -51,7 +45,7 @@ class BaseSubscription(ABC):
         Returns:
             None
         """
-        logger.debug(f"Starting {self.subscriber_name}")
+        logger.debug(f"Starting subscription: {self.subscriber_name}")
 
         # Perform backend-specific initialization
         await self.initialize()
@@ -64,22 +58,23 @@ class BaseSubscription(ABC):
         Polling loop for processing messages.
 
         This method continuously polls for new messages and processes them by calling the `tick` method.
-        It sleeps for the specified `tick_interval` between each tick.
+        It uses cooperative multitasking to ensure smooth interleaving with other tasks.
 
         Returns:
             None
         """
         while self.keep_going and not self.engine.shutting_down:
-            await self.tick()
+            with self.engine.domain.domain_context():
+                # Process messages
+                await self.tick()
 
-            # Keep control of the loop if in test mode
-            #   Otherwise `asyncio.sleep` will give away control and
-            #   the loop will be able to be stopped with `shutdown()`
-            if not self.engine.test_mode:
-                await asyncio.sleep(self.tick_interval)
-            else:
-                # In test mode, yield control briefly to allow shutdown
-                await asyncio.sleep(0)
+                # Use minimal sleep for cooperative multitasking
+                # This ensures interleaving without blocking
+                if self.tick_interval > 0:
+                    await asyncio.sleep(self.tick_interval)
+                else:
+                    # Always yield control to allow other tasks to run
+                    await asyncio.sleep(0)
 
     async def tick(self):
         """
@@ -104,7 +99,7 @@ class BaseSubscription(ABC):
         """
         self.keep_going = False  # Signal to stop polling
         await self.cleanup()
-        logger.debug(f"Shutting down subscription {self.subscriber_name}")
+        logger.info(f"Shutting down subscription: {self.subscriber_name}")
 
     async def initialize(self) -> None:
         """

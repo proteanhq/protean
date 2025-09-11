@@ -8,6 +8,7 @@ from werkzeug.local import LocalProxy, LocalStack
 
 if TYPE_CHECKING:
     from protean import Domain, UnitOfWork
+import traceback
 
 _domain_ctx_err_msg = """\
 Working outside of domain context.
@@ -32,6 +33,9 @@ def _lookup_domain_object(name) -> Any | None:
 def _find_domain() -> Domain | None:
     top = _domain_context_stack.top
     if top is None:
+        print("=======NO ACTIVE DOMAIN - STACK TRACE - START=======")
+        traceback.print_stack()
+        print("=======NO ACTIVE DOMAIN - STACK TRACE - END=======")
         warnings.warn(
             _domain_ctx_err_msg,
             stacklevel=3,

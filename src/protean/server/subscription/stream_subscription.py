@@ -70,8 +70,8 @@ class StreamSubscription(BaseSubscription):
         if enable_dlq is None:
             enable_dlq = stream_config.get("enable_dlq", True)
 
-        # Since blocking reads handle their own timing, we use tick_interval=0
-        # to let the blocking read control the pacing
+        # Use zero tick interval for blocking reads
+        # The blocking read timeout will control the actual pacing
         super().__init__(engine, messages_per_tick, tick_interval=0)
 
         self.handler = handler
@@ -137,30 +137,50 @@ class StreamSubscription(BaseSubscription):
             logger.error(f"Failed to ensure consumer group {self.consumer_group}: {e}")
             raise
 
-        logger.info(
-            f"Initialized StreamSubscription for {self.subscriber_name} "
-            f"on stream {self.stream_category}"
+        logger.debug(
+            f"Initialized subscription for {self.subscriber_name} "
+            f"on stream '{self.stream_category}' with consumer group '{self.consumer_group}'"
         )
 
     async def poll(self) -> None:
         """
-        Override poll to use blocking reads instead of sleep-based polling.
+        High-performance continuous message processing loop.
 
-        This method continuously reads messages using blocking mode, which is more
-        efficient than periodic polling.
-
-        Returns:
-            None
+        Uses blocking reads with no polling overhead for maximum efficiency.
+        Implements backpressure by processing messages as fast as possible
+        while yielding control periodically for other tasks.
         """
-        while self.keep_going and not self.engine.shutting_down:
-            # Use blocking read to get messages
-            messages = await self.get_next_batch_of_messages()
-            if messages:
-                await self.process_batch(messages)
+        batches_processed = 0
 
-            # In test mode, yield control briefly to allow shutdown
-            if self.engine.test_mode:
-                await asyncio.sleep(0)
+        while self.keep_going and not self.engine.shutting_down:
+            try:
+                # Blocking read - no CPU spinning
+                messages = await self.get_next_batch_of_messages()
+
+                if messages:
+                    await self.process_batch(messages)
+                    batches_processed += 1
+
+                    # Yield control only after processing a batch
+                    # This maximizes throughput while maintaining responsiveness
+                    if batches_processed % 10 == 0:  # Yield every 10 batches
+                        await asyncio.sleep(0)
+                else:
+                    # No messages available, the blocking read timed out
+                    # This is normal, just yield control
+                    await asyncio.sleep(0)
+
+            except asyncio.CancelledError:
+                logger.info(f"Subscription cancelled: {self.subscriber_name}")
+                break
+            except Exception as e:
+                logger.exception(
+                    f"Error processing messages for {self.subscriber_name}: {e}"
+                )
+                # Exponential backoff on errors
+                await asyncio.sleep(
+                    min(0.1 * (2 ** min(batches_processed % 5, 4)), 1.0)
+                )
 
     async def get_next_batch_of_messages(self) -> List[tuple[str, dict]]:
         """
@@ -177,7 +197,10 @@ class StreamSubscription(BaseSubscription):
             return []
 
         try:
-            messages = self.broker.read_blocking(
+            # Run the blocking Redis call in a thread pool to avoid blocking the event loop
+            # This allows other async tasks to run concurrently
+            messages = await asyncio.to_thread(
+                self.broker.read_blocking,
                 stream=self.stream_category,
                 consumer_group=self.consumer_group,
                 consumer_name=self.consumer_name,
@@ -203,7 +226,9 @@ class StreamSubscription(BaseSubscription):
         Returns:
             int: The number of messages processed successfully.
         """
-        logger.debug(f"Processing {len(messages)} messages...")
+        logger.debug(
+            f"Processing batch of {len(messages)} messages for {self.subscriber_name}"
+        )
         successful_count = 0
 
         for identifier, payload in messages:
@@ -211,8 +236,8 @@ class StreamSubscription(BaseSubscription):
             if not message:
                 continue  # Message was moved to DLQ during deserialization
 
-            logger.info(
-                f"{message.metadata.headers.type}-{message.metadata.headers.id} : {message.to_dict()}"
+            logger.debug(
+                f"Processing {message.metadata.headers.type} (ID: {message.metadata.headers.id})"
             )
 
             # Process the message
@@ -233,9 +258,7 @@ class StreamSubscription(BaseSubscription):
         try:
             return Message.deserialize(payload)
         except Exception as e:
-            logger.error(
-                f"Failed to deserialize message {identifier}: {e}. Moving to DLQ."
-            )
+            logger.error(f"Deserialization failed for message {identifier}: {e}")
             await self.move_to_dlq(identifier, payload)
             return None
 
@@ -276,9 +299,9 @@ class StreamSubscription(BaseSubscription):
 
     async def _retry_message(self, identifier: str, retry_count: int) -> None:
         """Retry a failed message after delay."""
-        logger.warning(
-            f"Message {identifier} failed (attempt {retry_count}/{self.max_retries}). "
-            f"Retrying after {self.retry_delay_seconds}s..."
+        logger.debug(
+            f"Retrying message {identifier} (attempt {retry_count}/{self.max_retries}) "
+            f"after {self.retry_delay_seconds}s delay"
         )
         await asyncio.sleep(self.retry_delay_seconds)
 
@@ -287,9 +310,8 @@ class StreamSubscription(BaseSubscription):
 
     async def _exhaust_retries(self, identifier: str, payload: dict) -> None:
         """Handle a message that has exhausted all retries."""
-        logger.error(
-            f"Message {identifier} failed after {self.max_retries} attempts. "
-            f"Moving to DLQ..."
+        logger.warning(
+            f"Message {identifier} exhausted retries ({self.max_retries} attempts), moving to DLQ"
         )
         await self.move_to_dlq(identifier, payload)
 
@@ -315,7 +337,7 @@ class StreamSubscription(BaseSubscription):
             self.broker.publish(self.dlq_stream, dlq_message)
             logger.info(f"Moved message {identifier} to DLQ stream {self.dlq_stream}")
         except Exception as e:
-            logger.error(f"Failed to move message {identifier} to DLQ: {e}")
+            logger.exception(f"Failed to move message {identifier} to DLQ: {e}")
 
     def _create_dlq_message(self, identifier: str, payload: dict) -> dict:
         """Create a DLQ message with failure metadata."""
@@ -342,4 +364,4 @@ class StreamSubscription(BaseSubscription):
         """
         # Clear retry counts
         self.retry_counts.clear()
-        logger.debug(f"Cleaned up StreamSubscription for {self.subscriber_name}")
+        logger.debug(f"Cleanup completed for subscription: {self.subscriber_name}")

@@ -15,7 +15,6 @@ Why does this file exist, and why not put this in __main__?
   Also see (1) from http://click.pocoo.org/5/setuptools/#setuptools-integration
 """
 
-import logging
 from typing import Optional
 
 import typer
@@ -31,8 +30,9 @@ from protean.cli.test import app as test_app
 from protean.exceptions import NoDomainException
 from protean.server.engine import Engine
 from protean.utils.domain_discovery import derive_domain
+from protean.utils.logging import configure_logging, get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Create the Typer app
 #   `no_args_is_help=True` will show the help message when no arguments are passed
@@ -73,6 +73,9 @@ def server(
     debug: Annotated[Optional[bool], typer.Option()] = False,
 ):
     """Run Async Background Server"""
+    # Configure logging based on debug flag
+    configure_logging(level="DEBUG" if debug else "INFO")
+
     # FIXME Accept MAX_WORKERS as command-line input as well
     try:
         domain = derive_domain(domain)

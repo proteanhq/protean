@@ -349,7 +349,7 @@ class IdentityMixin:
                 {
                     "_entity": [
                         f"Multiple identifier fields found in entity {new_class.__name__}. "
-                        f"Only one identifier field is allowed."
+                        "Only one identifier field is allowed."
                     ]
                 }
             )

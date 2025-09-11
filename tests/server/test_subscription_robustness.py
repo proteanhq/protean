@@ -29,6 +29,22 @@ class User(BaseAggregate):
     name = String()
     password_hash = String()
 
+    def register(self, event_cls=None):
+        """Register user and raise appropriate event."""
+        if event_cls == SyncRegistered:
+            self.raise_(SyncRegistered(id=self.id, email=self.email, name=self.name))
+        elif event_cls == EmailSent:
+            self.raise_(EmailSent(id=self.id, email=self.email))
+        else:
+            self.raise_(
+                Registered(
+                    id=self.id,
+                    email=self.email,
+                    name=self.name,
+                    password_hash=self.password_hash,
+                )
+            )
+
 
 class Registered(BaseEvent):
     id = Identifier()
@@ -159,7 +175,12 @@ def create_event_message(event_cls, user_id, asynchronous=True, **kwargs):
     """Helper function to create an event message"""
     from protean.utils.eventing import EventStoreMeta
 
-    event = event_cls(id=user_id, **kwargs)
+    # Create a user aggregate and raise the event through it
+    user = User(id=user_id, **kwargs)
+    user.register(event_cls if event_cls in [SyncRegistered, EmailSent] else None)
+
+    # Get the raised event and create a message from it
+    event = user._events[-1]
     message = Message.from_domain_object(event)
 
     # Add EventStoreMeta for position tracking
@@ -167,8 +188,7 @@ def create_event_message(event_cls, user_id, asynchronous=True, **kwargs):
     metadata_dict["event_store"] = EventStoreMeta(position=1, global_position=1)
 
     # Set asynchronous explicitly
-    if not asynchronous:
-        metadata_dict["domain"]["asynchronous"] = False
+    metadata_dict["domain"]["asynchronous"] = asynchronous
 
     message.metadata = Metadata(**metadata_dict)
 
@@ -278,7 +298,7 @@ async def test_subscription_process_batch_exception_handling(test_domain, caplog
         assert result == 0  # But no messages were processed successfully
 
         # Verify error was reported and logged
-        assert "Error handling message" in caplog.text
+        assert "Failed to process" in caplog.text
         assert "Unhandled exception in event handler" in caplog.text
 
         # Check if position was still updated in the event store despite the error
@@ -327,7 +347,7 @@ async def test_broker_subscription_process_batch_exception_handling(
         assert error_handler_counter >= 2  # Once for each message
 
         # Verify error was logged
-        assert "Error handling message in FailingSubscriber" in caplog.text
+        assert "Error in FailingSubscriber" in caplog.text
         assert "Intentional exception for testing" in caplog.text
 
 
@@ -379,7 +399,7 @@ async def test_subscription_with_mixed_success_and_failure(test_domain, caplog):
         assert result == 1
 
         # Verify error was logged for the failing message
-        assert "Error handling message" in caplog.text
+        assert "Failed to process" in caplog.text
         assert "Intentional exception for testing" in caplog.text
 
         # Verify handler counter reflects the succeeded message

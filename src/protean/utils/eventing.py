@@ -178,7 +178,7 @@ class EventStoreMeta(BaseValueObject):
 
 
 class Metadata(BaseValueObject):
-    headers = ValueObject(MessageHeaders)
+    headers = ValueObject(MessageHeaders, required=True)
     envelope = ValueObject(MessageEnvelope)
     domain = ValueObject(DomainMeta)
     event_store = ValueObject(EventStoreMeta)
