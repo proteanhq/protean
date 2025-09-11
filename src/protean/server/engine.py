@@ -278,29 +278,14 @@ class Engine:
             try:
                 handler_cls._handle(message)
 
-                # Build safe message ID for logging
-                message_id = "unknown"
-                if message.metadata.headers.id:
-                    message_id = f"{message.metadata.headers.id[:8]}..."
                 logger.debug(
-                    f"Processed {message.metadata.headers.type} (ID: {message_id})"
+                    f"Processed {message.metadata.headers.type} (ID: {message.metadata.headers.id[:8]}...)"
                 )
                 return True
             except Exception as exc:  # Includes handling `ConfigurationError`
-                # Build a safe error message even if metadata/headers are None
-                message_type = "unknown"
-                message_id = "unknown"
-                if message and message.metadata and message.metadata.headers:
-                    message_type = message.metadata.headers.type or "unknown"
-                    message_id = (
-                        message.metadata.headers.id[:8]
-                        if message.metadata.headers.id
-                        else "unknown"
-                    )
-
                 logger.exception(
-                    f"Failed to process {message_type} "
-                    f"(ID: {message_id}...) in {handler_cls.__name__}: {exc}"
+                    f"Failed to process {message.metadata.headers.type} "
+                    f"(ID: {message.metadata.headers.id[:8]}...) in {handler_cls.__name__}: {exc}"
                 )
                 try:
                     # Call the error handler if it exists

@@ -45,6 +45,21 @@ class User(BaseAggregate):
     name = String()
     password_hash = String()
 
+    def register(self):
+        """Register user and raise event."""
+        self.raise_(
+            Registered(
+                id=self.id,
+                email=self.email,
+                name=self.name,
+                password_hash=self.password_hash,
+            )
+        )
+
+    def send_email(self):
+        """Send email and raise event."""
+        self.raise_(EmailSent(id=self.id, email=self.email))
+
 
 class Registered(BaseEvent):
     id = Identifier()
@@ -364,11 +379,14 @@ async def test_event_handler_continues_after_exception(robust_test_domain):
 
     # Create events
     user_id = str(uuid4())
-    failing_event = Registered(
+    user = User(
         id=user_id, email="john.doe@example.com", name="John Doe", password_hash="hash"
     )
+    user.register()
+    failing_event = user._events[-1]
 
-    successful_event = EmailSent(id=user_id, email="john.doe@example.com")
+    user.send_email()
+    successful_event = user._events[-1]
 
     # Create messages from events
     failing_message = Message.from_domain_object(failing_event)
@@ -569,13 +587,14 @@ async def test_subscription_exception_handling_with_position_updates(
     )
 
     # Create a test message
-    event = Registered(
+    user = User(
         id=str(uuid4()),
         email="test@example.com",
         name="Test User",
         password_hash="hash",
     )
-    message = Message.from_domain_object(event)
+    user.register()
+    message = Message.from_domain_object(user._events[-1])
 
     # Mock only update_read_position to track calls
     original_update_read_position = subscription.update_read_position
@@ -622,9 +641,11 @@ async def test_error_handling_directly(robust_test_domain):
 
     # Create a failing message
     user_id = str(uuid4())
-    failing_event = Registered(
+    user = User(
         id=user_id, email="direct@example.com", name="Direct Test", password_hash="hash"
     )
+    user.register()
+    failing_event = user._events[-1]
     failing_message = Message.from_domain_object(failing_event)
 
     # Manually process message - this should not shut down the engine
@@ -647,9 +668,11 @@ async def test_failing_error_handler_directly(robust_test_domain):
 
     # Create a failing message
     user_id = str(uuid4())
-    failing_event = Registered(
+    user = User(
         id=user_id, email="direct@example.com", name="Direct Test", password_hash="hash"
     )
+    user.register()
+    failing_event = user._events[-1]
     failing_message = Message.from_domain_object(failing_event)
 
     # Manually process message with a handler that has a failing error handler

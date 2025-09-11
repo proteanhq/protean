@@ -214,8 +214,6 @@ class OutboxProcessor(BaseSubscription):
                         f"Outbox cleanup: removed {cleanup_result['total']} messages "
                         f"({cleanup_result['published']} published, {cleanup_result['abandoned']} abandoned)"
                     )
-                else:
-                    pass  # No logging for no-op cleanup
 
         except Exception as exc:
             logger.exception(f"Outbox cleanup failed: {exc}")
