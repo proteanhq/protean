@@ -1,0 +1,2680 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://docs.proteanhq.com/guides/domain-definition/fields/arguments/">
+      
+      
+        <link rel="prev" href="../association-fields/">
+      
+      
+        <link rel="next" href="../../aggregates/">
+      
+      
+      <link rel="icon" href="../../../../assets/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.19">
+    
+    
+      
+        <title>Common Arguments - Protean</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.7e37652d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        
+        <link rel="stylesheet" href="../../../../assets/external/fonts.googleapis.com/css.90ef4c13.css">
+        <style>:root{--md-text-font:"Lato";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#common-arguments" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../../.." title="Protean" class="md-header__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../../assets/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Protean
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Common Arguments
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../.." class="md-tabs__link">
+          
+  
+  
+    
+  
+  Protean
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../core-concepts/ddd/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Core Concepts
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../adapters/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Adapters
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../patterns/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Patterns
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../../glossary/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Glossary
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../community/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../../.." title="Protean" class="md-nav__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../../assets/logo.png" alt="logo">
+
+    </a>
+    Protean
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../.." class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Protean
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Guides
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Guides
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Installation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Essentials
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            Essentials
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../object-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Object Model
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../identity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Identity
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Domain Model
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            Domain Model
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../compose-a-domain/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Compose a Domain
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_2" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    Define Concepts
+    
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2_3_2" id="__nav_2_3_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_3_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            Define Concepts
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_2_2" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    Fields
+    
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2_3_2_2" id="__nav_2_3_2_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_2_3_2_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_3_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            Fields
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../simple-fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Simple Fields
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../container-fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Container Fields
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../association-fields/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Association Fields
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Common Arguments
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Common Arguments
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#description" class="md-nav__link">
+    <span class="md-ellipsis">
+      description
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#required" class="md-nav__link">
+    <span class="md-ellipsis">
+      required
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#identifier" class="md-nav__link">
+    <span class="md-ellipsis">
+      identifier
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#default" class="md-nav__link">
+    <span class="md-ellipsis">
+      default
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="default">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mutable-object-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      Mutable object defaults
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lambda-expressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Lambda expressions
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#unique" class="md-nav__link">
+    <span class="md-ellipsis">
+      unique
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choices" class="md-nav__link">
+    <span class="md-ellipsis">
+      choices
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#referenced_as" class="md-nav__link">
+    <span class="md-ellipsis">
+      referenced_as
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validators" class="md-nav__link">
+    <span class="md-ellipsis">
+      validators
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error_messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      error_messages
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../aggregates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Aggregates
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../entities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Entities
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../relationships/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Expressing Relationships
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../value-objects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Value Objects
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deciding-between-elements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Deciding Between Elements
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../events/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Events
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../domain-behavior/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Add Behavior
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_4" id="__nav_2_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    App Layer
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_4">
+            <span class="md-nav__icon md-icon"></span>
+            App Layer
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../change-state/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Change State
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../change-state/persist-aggregates/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Persist State
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../consume-state/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Consume State Changes
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_5" id="__nav_2_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Utilities
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_5">
+            <span class="md-nav__icon md-icon"></span>
+            Utilities
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../cli/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    CLI
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../server/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Server
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../../../core-concepts/ddd/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Core Concepts
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../../adapters/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Adapters
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../../patterns/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Patterns
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Glossary
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../../community/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Community
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#description" class="md-nav__link">
+    <span class="md-ellipsis">
+      description
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#required" class="md-nav__link">
+    <span class="md-ellipsis">
+      required
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#identifier" class="md-nav__link">
+    <span class="md-ellipsis">
+      identifier
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#default" class="md-nav__link">
+    <span class="md-ellipsis">
+      default
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="default">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mutable-object-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      Mutable object defaults
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lambda-expressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Lambda expressions
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#unique" class="md-nav__link">
+    <span class="md-ellipsis">
+      unique
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choices" class="md-nav__link">
+    <span class="md-ellipsis">
+      choices
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#referenced_as" class="md-nav__link">
+    <span class="md-ellipsis">
+      referenced_as
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validators" class="md-nav__link">
+    <span class="md-ellipsis">
+      validators
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error_messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      error_messages
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="common-arguments">Common Arguments</h1>
+<h2 id="description"><code>description</code></h2>
+<p>A long form description of the field. This value can be used by database
+adapters to provide additional context to a field.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Building</span><span class="p">:</span>
+<span class="hll">    <span class="n">permit</span> <span class="o">=</span> <span class="n">List</span><span class="p">(</span>
+</span>        <span class="n">content_type</span><span class="o">=</span><span class="n">String</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Licences and Approvals&quot;</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+</code></pre></div>
+<h2 id="required"><code>required</code></h2>
+<p>Indicates if the field is required (must have a value). If <code>True</code>, the field
+is not allowed to be blank. Default is <code>False</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Person</span><span class="p">:</span>
+<span class="hll">    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Leaving the field blank or not specifying a value will raise a
+<code>ValidationError</code>:</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Person<span class="o">()</span>
+ERROR:<span class="w"> </span>Error<span class="w"> </span>during<span class="w"> </span>initialization:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;name&#39;</span>:<span class="w"> </span><span class="o">[</span><span class="s1">&#39;is required&#39;</span><span class="o">]}</span>
+...
+<span class="hll">ValidationError:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;name&#39;</span>:<span class="w"> </span><span class="o">[</span><span class="s1">&#39;is required&#39;</span><span class="o">]}</span>
+</span></code></pre></div>
+<h2 id="identifier"><code>identifier</code></h2>
+<p>If True, the field is an identifier for the entity (a la <em>primary key</em>
+in RDBMS).</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Person</span><span class="p">:</span>
+<span class="hll">    <span class="n">email</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">identifier</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span>    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+<p>The field is validated to be unique and non-blank:</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span>from<span class="w"> </span>protean.reflection<span class="w"> </span>import<span class="w"> </span>declared_fields
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span><span class="nv">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Person<span class="o">(</span><span class="nv">email</span><span class="o">=</span><span class="s1">&#39;john.doe@example.com&#39;</span>,<span class="w"> </span><span class="nv">name</span><span class="o">=</span><span class="s1">&#39;John Doe&#39;</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span>declared_fields<span class="o">(</span>p<span class="o">)</span>
+<span class="hll">Out<span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;email&#39;</span>:<span class="w"> </span>String<span class="o">(</span><span class="nv">identifier</span><span class="o">=</span>True<span class="o">)</span>,<span class="w"> </span><span class="s1">&#39;name&#39;</span>:<span class="w"> </span>String<span class="o">(</span><span class="nv">required</span><span class="o">=</span>True<span class="o">)}</span>
+</span>
+In<span class="w"> </span><span class="o">[</span><span class="m">4</span><span class="o">]</span>:<span class="w"> </span><span class="nv">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Person<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s1">&#39;John Doe&#39;</span><span class="o">)</span>
+ERROR:<span class="w"> </span>Error<span class="w"> </span>during<span class="w"> </span>initialization:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;email&#39;</span>:<span class="w"> </span><span class="o">[</span><span class="s1">&#39;is required&#39;</span><span class="o">]}</span>
+...
+<span class="hll">ValidationError:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;email&#39;</span>:<span class="w"> </span><span class="o">[</span><span class="s1">&#39;is required&#39;</span><span class="o">]}</span>
+</span></code></pre></div>
+<p>Aggregates and Entities need at least one field to be marked as an identifier.
+If you don’t specify one, Protean will automatically add a field called <code>id</code>
+to act as the primary identifier. This means that you don’t need to explicitly
+set <code>identifier=True</code> on any of your fields unless you want to override the
+default behavior or the name of the field.</p>
+<p>Alternatively, you can use <a href="#identifier-field"><code>Identifier</code></a> field type for
+primary identifier fields.</p>
+<p>By default, Protean dynamically generates UUIDs as values of identifier fields
+unless explicitly provided. You can customize the type of value accepted with
+<code>identity-strategy</code> config parameter. More details are in
+<a href="../../../configuration/">Configuration</a> section.</p>
+<h2 id="default"><code>default</code></h2>
+<p>The default value for the field if no value is provided.</p>
+<p>This can be a value or a callable object. If callable, the function will be
+called every time a new object is created.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timezone</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.domain</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">DateTime</span><span class="p">,</span> <span class="n">String</span>
+
+<span class="n">publishing</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">utc_now</span><span class="p">():</span>
+    <span class="k">return</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span>
+
+
+<span class="nd">@publishing</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Post</span><span class="p">:</span>
+    <span class="n">title</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+<span class="hll">    <span class="n">created_at</span> <span class="o">=</span> <span class="n">DateTime</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="n">utc_now</span><span class="p">)</span>
+</span></code></pre></div>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">post</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Post<span class="o">(</span><span class="nv">title</span><span class="o">=</span><span class="s1">&#39;Foo&#39;</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>post.to_dict<span class="o">()</span>
+Out<span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>
+<span class="o">{</span><span class="s1">&#39;title&#39;</span>:<span class="w"> </span><span class="s1">&#39;Foo&#39;</span>,
+<span class="hll"><span class="w"> </span><span class="s1">&#39;created_at&#39;</span>:<span class="w"> </span><span class="s1">&#39;2024-05-09 00:58:10.781744+00:00&#39;</span>,
+</span><span class="w"> </span><span class="s1">&#39;id&#39;</span>:<span class="w"> </span><span class="s1">&#39;4f6b1fef-bc60-44c2-9ba6-6f844e0d31b0&#39;</span><span class="o">}</span>
+</code></pre></div>
+<h3 id="mutable-object-defaults">Mutable object defaults</h3>
+<p><strong>IMPORTANT</strong>: The default cannot be a mutable object (list, set, dict, entity
+instance, etc.), because the reference to the same object would be used as the
+default in all instances. Instead, wrap the desired default in a callable.</p>
+<p>For example, to specify a default <code>list</code> for <code>List</code> field, use a function:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">protean.domain</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">standard_topics</span><span class="p">():</span>
+    <span class="k">return</span> <span class="p">[</span><span class="s2">&quot;Music&quot;</span><span class="p">,</span> <span class="s2">&quot;Cinema&quot;</span><span class="p">,</span> <span class="s2">&quot;Politics&quot;</span><span class="p">]</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="hll"><span class="k">class</span><span class="w"> </span><span class="nc">Adult</span><span class="p">:</span>
+</span>    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">255</span><span class="p">)</span>
+    <span class="n">topics</span> <span class="o">=</span> <span class="n">List</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="n">standard_topics</span><span class="p">)</span>
+</code></pre></div>
+<p>Initializing an Adult aggregate will populate the defaults correctly:</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">adult</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Adult<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s2">&quot;John Doe&quot;</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>adult.to_dict<span class="o">()</span>
+Out<span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>
+<span class="o">{</span><span class="s1">&#39;name&#39;</span>:<span class="w"> </span><span class="s1">&#39;John Doe&#39;</span>,
+<span class="w"> </span><span class="s1">&#39;topics&#39;</span>:<span class="w"> </span><span class="o">[</span><span class="s1">&#39;Music&#39;</span>,<span class="w"> </span><span class="s1">&#39;Cinema&#39;</span>,<span class="w"> </span><span class="s1">&#39;Politics&#39;</span><span class="o">]</span>,
+<span class="w"> </span><span class="s1">&#39;id&#39;</span>:<span class="w"> </span><span class="s1">&#39;14381a6f-b62a-4135-a1d7-d50f68e2afba&#39;</span><span class="o">}</span>
+</code></pre></div>
+<h3 id="lambda-expressions">Lambda expressions</h3>
+<p>You can use lambda expressions to specify an anonymous function:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.domain</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">Integer</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="n">dice_sides</span> <span class="o">=</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">20</span><span class="p">]</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Dice</span><span class="p">:</span>
+<span class="hll">    <span class="n">sides</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">dice_sides</span><span class="p">))</span>
+</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">throw</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">sides</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">dice</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Dice<span class="o">()</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>dice.to_dict<span class="o">()</span>
+<span class="hll">Out<span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;sides&#39;</span>:<span class="w"> </span><span class="m">6</span>,<span class="w"> </span><span class="s1">&#39;id&#39;</span>:<span class="w"> </span><span class="s1">&#39;0536ade5-f3a4-4e94-8139-8024756659a7&#39;</span><span class="o">}</span>
+</span>
+In<span class="w"> </span><span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span>dice.throw<span class="o">()</span>
+Out<span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span><span class="m">3</span>
+</code></pre></div>
+<p>This is a great option when you want to pass parameters to a function.</p>
+<h2 id="unique"><code>unique</code></h2>
+<p>Indicates if the field values must be unique within the repository. If <code>True</code>,
+this field's value is validated to be unique among all entities.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Person</span><span class="p">:</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="hll">    <span class="n">email</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">unique</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Obviously, this field's integrity is enforced at the database layer when an
+entity is persisted. If an entity instance specifies a duplicate value in a
+field marked <code>unique</code>, a <code>ValidationError</code> will be raised:</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">p1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Person<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s1">&#39;John Doe&#39;</span>,<span class="w"> </span><span class="nv">email</span><span class="o">=</span><span class="s1">&#39;john.doe@example.com&#39;</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>domain.repository_for<span class="o">(</span>Person<span class="o">)</span>.add<span class="o">(</span>p1<span class="o">)</span>
+Out<span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>&lt;Person:<span class="w"> </span>Person<span class="w"> </span>object<span class="w"> </span><span class="o">(</span>id:<span class="w"> </span>b2c592d5-bd78-4e1e-a9d1-eea20ab5374a<span class="o">)</span>&gt;
+
+In<span class="w"> </span><span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span><span class="nv">p2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Person<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;Jane Doe&#39;</span>,<span class="w"> </span><span class="nv">email</span><span class="o">=</span><span class="s1">&#39;john.doe@example.com&#39;</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">4</span><span class="o">]</span>:<span class="w"> </span>domain.repository_for<span class="o">(</span>Person<span class="o">)</span>.add<span class="o">(</span>p2<span class="o">)</span>
+ERROR:<span class="w"> </span>Failed<span class="w"> </span>saving<span class="w"> </span>entity<span class="w"> </span>because<span class="w"> </span><span class="o">{</span><span class="s1">&#39;email&#39;</span>:<span class="w"> </span><span class="o">[</span><span class="s2">&quot;Person with email &#39;john.doe@example.com&#39; is already present.&quot;</span><span class="o">]}</span>
+...
+<span class="hll">ValidationError:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;email&#39;</span>:<span class="w"> </span><span class="o">[</span><span class="s2">&quot;Person with email &#39;john.doe@example.com&#39; is already present.&quot;</span><span class="o">]}</span>
+</span></code></pre></div>
+<p>We will explore more about persistence in Application Layer guide.</p>
+<!-- FIXME Add link to database persistence and aggregate lifecycle -->
+
+<h2 id="choices"><code>choices</code></h2>
+<p>A set of allowed choices for the field value. When supplied as an <code>Enum</code>, the
+value of the field is validated to be one among the specified options.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">Enum</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">Integer</span><span class="p">,</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+
+
+<span class="hll"><span class="k">class</span><span class="w"> </span><span class="nc">BuildingStatus</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
+</span><span class="hll">    <span class="n">WIP</span> <span class="o">=</span> <span class="s2">&quot;WIP&quot;</span>
+</span><span class="hll">    <span class="n">DONE</span> <span class="o">=</span> <span class="s2">&quot;DONE&quot;</span>
+</span>
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Building</span><span class="p">:</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+    <span class="n">floors</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">()</span>
+<span class="hll">    <span class="n">status</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">choices</span><span class="o">=</span><span class="n">BuildingStatus</span><span class="p">)</span>
+</span></code></pre></div>
+<p>The choices are enforced when the field is initialized or updated:</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">building</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Building<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s2">&quot;Atlantis&quot;</span>,<span class="w"> </span><span class="nv">floors</span><span class="o">=</span><span class="m">3</span>,<span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="s2">&quot;WIP&quot;</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>building.to_dict<span class="o">()</span>
+Out<span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>
+<span class="o">{</span><span class="s1">&#39;name&#39;</span>:<span class="w"> </span><span class="s1">&#39;Atlantis&#39;</span>,
+<span class="w"> </span><span class="s1">&#39;floors&#39;</span>:<span class="w"> </span><span class="m">3</span>,
+<span class="hll"><span class="w"> </span><span class="s1">&#39;status&#39;</span>:<span class="w"> </span><span class="s1">&#39;WIP&#39;</span>,
+</span><span class="w"> </span><span class="s1">&#39;id&#39;</span>:<span class="w"> </span><span class="s1">&#39;c803c763-32d7-403f-b432-8835a258430e&#39;</span><span class="o">}</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span>building.status<span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;COMPLETED&quot;</span>
+ERROR:<span class="w"> </span>Error<span class="w"> </span>during<span class="w"> </span>initialization:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;status&#39;</span>:<span class="w"> </span><span class="o">[</span><span class="s2">&quot;Value `&#39;COMPLETED&#39;` is not a valid choice. Must be among [&#39;WIP&#39;, &#39;DONE&#39;]&quot;</span><span class="o">]}</span>
+...
+<span class="hll">ValidationError:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;status&#39;</span>:<span class="w"> </span><span class="o">[</span><span class="s2">&quot;Value `&#39;COMPLETED&#39;` is not a valid choice. Must be among [&#39;WIP&#39;, &#39;DONE&#39;]&quot;</span><span class="o">]}</span>
+</span></code></pre></div>
+<h2 id="referenced_as"><code>referenced_as</code></h2>
+<p>The name of the field as referenced in the database or external systems.
+Defaults to the field's name.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Person</span><span class="p">:</span>
+    <span class="n">email</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">unique</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="hll">    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">referenced_as</span><span class="o">=</span><span class="s2">&quot;fullname&quot;</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Protean will now persist the value under <code>fullname</code> instead of <code>name</code>.</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span>from<span class="w"> </span>protean.reflection<span class="w"> </span>import<span class="w"> </span>declared_fields,<span class="w"> </span>attributes
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>declared_fields<span class="o">(</span>Person<span class="o">)</span>
+Out<span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>
+<span class="o">{</span><span class="s1">&#39;email&#39;</span>:<span class="w"> </span>String<span class="o">()</span>,
+<span class="hll"><span class="w"> </span><span class="s1">&#39;name&#39;</span>:<span class="w"> </span>String<span class="o">(</span><span class="nv">required</span><span class="o">=</span>True,<span class="w"> </span><span class="nv">referenced_as</span><span class="o">=</span><span class="s1">&#39;fullname&#39;</span><span class="o">)</span>,
+</span><span class="w"> </span><span class="s1">&#39;id&#39;</span>:<span class="w"> </span>Auto<span class="o">(</span><span class="nv">identifier</span><span class="o">=</span>True<span class="o">)}</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span>attributes<span class="o">(</span>Person<span class="o">)</span>
+Out<span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span>
+<span class="o">{</span><span class="s1">&#39;_version&#39;</span>:<span class="w"> </span>Integer<span class="o">(</span><span class="nv">default</span><span class="o">=</span>-1<span class="o">)</span>,
+<span class="w"> </span><span class="s1">&#39;email&#39;</span>:<span class="w"> </span>String<span class="o">()</span>,
+<span class="hll"><span class="w"> </span><span class="s1">&#39;fullname&#39;</span>:<span class="w"> </span>String<span class="o">(</span><span class="nv">required</span><span class="o">=</span>True,<span class="w"> </span><span class="nv">referenced_as</span><span class="o">=</span><span class="s1">&#39;fullname&#39;</span><span class="o">)</span>,
+</span><span class="w"> </span><span class="s1">&#39;id&#39;</span>:<span class="w"> </span>Auto<span class="o">(</span><span class="nv">identifier</span><span class="o">=</span>True<span class="o">)}</span>
+</code></pre></div>
+<h2 id="validators"><code>validators</code></h2>
+<p>Additional validators to apply to the field value.</p>
+<p>Validators are
+<a href="https://docs.python.org/3/reference/datamodel.html#class-instances">callable <code>Class</code> instances</a>
+that are invoked whenever a field's value is changed. Protean's <code>String</code> field,
+for example, has two default validators: <code>MinLengthValidator</code> and
+<code>MaxLenghtValidator</code> classes associated with <code>min_length</code> and <code>max_length</code>
+attributes.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ValidationError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+
+<span class="hll">
+</span><span class="hll"><span class="k">class</span><span class="w"> </span><span class="nc">EmailDomainValidator</span><span class="p">:</span>
+</span><span class="hll">    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="s2">&quot;example.com&quot;</span><span class="p">):</span>
+</span><span class="hll">        <span class="bp">self</span><span class="o">.</span><span class="n">domain</span> <span class="o">=</span> <span class="n">domain</span>
+</span><span class="hll">        <span class="bp">self</span><span class="o">.</span><span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Email does not belong to </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">domain</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span class="hll">
+</span><span class="hll">    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+</span><span class="hll">        <span class="k">if</span> <span class="ow">not</span> <span class="n">value</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">domain</span><span class="p">):</span>
+</span>            <span class="k">raise</span> <span class="n">ValidationError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">message</span><span class="p">)</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="hll"><span class="k">class</span><span class="w"> </span><span class="nc">Employee</span><span class="p">:</span>
+</span>    <span class="n">email</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">identifier</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">validators</span><span class="o">=</span><span class="p">[</span><span class="n">EmailDomainValidator</span><span class="p">(</span><span class="s2">&quot;mydomain.com&quot;</span><span class="p">)])</span>
+</code></pre></div>
+<p>If the value fails to satisfy the validation, a <code>ValidationError</code> will be
+thrown with the custom error message.</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">e</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Employee<span class="o">(</span><span class="nv">email</span><span class="o">=</span><span class="s2">&quot;john@mydomain.com&quot;</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>e.to_dict<span class="o">()</span>
+Out<span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;email&#39;</span>:<span class="w"> </span><span class="s1">&#39;john@mydomain.com&#39;</span><span class="o">}</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span><span class="nv">e2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Employee<span class="o">(</span><span class="nv">email</span><span class="o">=</span><span class="s2">&quot;john@otherdomain.com&quot;</span><span class="o">)</span>
+ERROR:<span class="w"> </span>Error<span class="w"> </span>during<span class="w"> </span>initialization:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;email&#39;</span>:<span class="w"> </span><span class="o">[</span><span class="s1">&#39;Email does not belong to mydomain.com&#39;</span><span class="o">]}</span>
+...
+<span class="hll">ValidationError:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;email&#39;</span>:<span class="w"> </span><span class="o">[</span><span class="s1">&#39;Email does not belong to mydomain.com&#39;</span><span class="o">]}</span>
+</span></code></pre></div>
+<h2 id="error_messages"><code>error_messages</code></h2>
+<p>Custom error messages for different kinds of errors. If supplied, the default
+messages that the field will raise will be overridden. Default error message
+keys that apply to all field types are <code>required</code>, <code>invalid</code>, <code>unique</code>, and
+<code>invalid_choice</code>. Each field may have additional error message keys as
+detailed in their documentation.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">Integer</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Building</span><span class="p">:</span>
+<span class="hll">    <span class="n">doors</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span>
+</span><span class="hll">        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">error_messages</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="s2">&quot;Every building needs some!&quot;</span><span class="p">}</span>
+</span><span class="hll">    <span class="p">)</span>
+</span></code></pre></div>
+<p>Now the custom message will be available in <code>ValidationError</code>:</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span>Building<span class="o">()</span>
+ERROR:<span class="w"> </span>Error<span class="w"> </span>during<span class="w"> </span>initialization:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;doors&#39;</span>:<span class="w"> </span><span class="o">[</span><span class="s1">&#39;Every building needs doors.&#39;</span><span class="o">]}</span>
+...
+<span class="hll">ValidationError:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;doors&#39;</span>:<span class="w"> </span><span class="o">[</span><span class="s1">&#39;Every building needs some!&#39;</span><span class="o">]}</span>
+</span></code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../association-fields/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Association Fields">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Association Fields
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../aggregates/" class="md-footer__link md-footer__link--next" aria-label="Next: Aggregates">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Aggregates
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2019 - 2025 Subhash Bhushan
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../../../..", "features": ["content.code.annotate", "content.code.copy", "content.code.select", "content.tabs.link", "content.tooltips", "navigation.expand", "navigation.footer", "navigation.indexes", "navigation.instant", "navigation.instant.prefetch", "navigation.instant.progress", "navigation.path", "navigation.prune", "navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../../assets/javascripts/bundle.92b07e13.min.js"></script>
+      
+    
+  </body>
+</html>

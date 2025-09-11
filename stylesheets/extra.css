@@ -1,0 +1,90 @@
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color:        #1D3557;
+  --md-primary-bg-color-light:  #457B9D;
+
+  --md-accent-fg-color:         #E76F51;
+
+  --md-typeset-a-color:         var(--md-accent-fg-color);
+
+  color-scheme: light;
+}
+
+p {
+  line-height: 1.5em;
+}
+
+/* Don't change link color on visits */
+a, a:hover, a:visited {
+  text-decoration: none;
+}
+
+/* Bold links */
+p a, article ul li a {
+  font-weight: 600;
+}
+
+.md-content__inner p, ul li, ol li {
+  font-size: 0.9em;
+}
+
+.md-typeset code {
+  font-size: 0.80em;
+}
+
+.md-typeset pre code {
+  border: 1px solid #e0e0e0;
+  border-radius: 0.25em;
+  padding: 0.1em 0.25em;
+}
+
+/* Primary color and tighter space */
+.md-typeset h1, .md-typeset h2, .md-typeset h3, .md-typeset h4 {
+  color: var(--md-primary-fg-color);
+  letter-spacing: -.025em;
+}
+
+/* Heavier fonts */
+.md-typeset h1 {
+  font-weight: 800;
+}
+
+.md-typeset h2 {
+  font-weight: 400;
+}
+
+.md-typeset h1 {
+  font-size: 1.875em;
+}
+
+.md-typeset h2 {
+  font-size: 1.5em;
+}
+
+.md-typeset h3 {
+  font-size: 1.25em;
+}
+
+/* Spacing between nav links */
+.md-nav {
+  line-height: 1.5em;
+}
+
+/* Change nav links color on the left nav bar */
+.md-nav--primary .md-nav__item--section label.md-nav__link,
+.md-nav--lifted>.md-nav__list>.md-nav__item>[for] {
+  color: var(--md-primary-fg-color);
+}
+
+/* Change nav title color */
+.md-nav__title {
+  color: var(--md-primary-fg-color) !important;
+}
+
+.md-tabs {
+  background-color: var(--md-primary-bg-color-light);
+}
+
+/* Logo Height */
+.md-header__button.md-logo img, .md-header__button.md-logo svg {
+  height: 2rem;
+}

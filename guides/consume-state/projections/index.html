@@ -1,0 +1,3228 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://docs.proteanhq.com/guides/consume-state/projections/">
+      
+      
+        <link rel="prev" href="../event-handlers/">
+      
+      
+        <link rel="next" href="../../cli/">
+      
+      
+      <link rel="icon" href="../../../assets/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.19">
+    
+    
+      
+        <title>Managing Projections - Protean</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.7e37652d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        
+        <link rel="stylesheet" href="../../../assets/external/fonts.googleapis.com/css.90ef4c13.css">
+        <style>:root{--md-text-font:"Lato";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#managing-projections" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Protean" class="md-header__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Protean
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Managing Projections
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../.." class="md-tabs__link">
+          
+  
+  
+    
+  
+  Protean
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../core-concepts/ddd/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Core Concepts
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../adapters/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Adapters
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../patterns/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Patterns
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../glossary/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Glossary
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../community/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Protean" class="md-nav__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+    Protean
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../.." class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Protean
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Guides
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Guides
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Installation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Essentials
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            Essentials
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../object-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Object Model
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../identity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Identity
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Domain Model
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            Domain Model
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../compose-a-domain/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Compose a Domain
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../domain-definition/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Define Concepts
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../domain-behavior/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Add Behavior
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_4" id="__nav_2_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    App Layer
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_4">
+            <span class="md-nav__icon md-icon"></span>
+            App Layer
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../change-state/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Change State
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../change-state/persist-aggregates/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Persist State
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    Consume State Changes
+    
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2_4_3" id="__nav_2_4_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_4_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_4_3">
+            <span class="md-nav__icon md-icon"></span>
+            Consume State Changes
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../event-handlers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Event Handlers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Managing Projections
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Managing Projections
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#projections" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projections
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Projections">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#defining-a-projection" class="md-nav__link">
+    <span class="md-ellipsis">
+      Defining a Projection
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#projection-configuration-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projection Configuration Options
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Projection Configuration Options">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#storage-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Storage Options
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#additional-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Additional Options
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#querying-projections" class="md-nav__link">
+    <span class="md-ellipsis">
+      Querying Projections
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#projectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projectors
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Projectors">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#defining-a-projector" class="md-nav__link">
+    <span class="md-ellipsis">
+      Defining a Projector
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#projector-configuration-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projector Configuration Options
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Projector Configuration Options">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Required Configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-source-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Event Source Configuration
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-handling-with-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      Event Handling with @on
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multiple-event-handlers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Multiple Event Handlers
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#projector-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projector Registration
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Projector Registration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decorator-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Decorator Registration
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handling-in-projectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      Error Handling in Projectors
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#projector-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projector Workflow
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#projection-update-strategies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projection Update Strategies
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Workflow
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-field-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      Supported Field Types
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      Best Practices
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Best Practices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#idempotency" class="md-nav__link">
+    <span class="md-ellipsis">
+      Idempotency
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-ordering" class="md-nav__link">
+    <span class="md-ellipsis">
+      Event Ordering
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Advanced Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Advanced Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cross-aggregate-projections" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cross-Aggregate Projections
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stream-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      Stream Categories
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complete-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      Complete Example
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-projectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      Testing Projectors
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Testing Projectors">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#unit-testing-projector-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      Unit Testing Projector Methods
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration-testing-with-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      Integration Testing with Events
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#testing-error-scenarios" class="md-nav__link">
+    <span class="md-ellipsis">
+      Testing Error Scenarios
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_5" id="__nav_2_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Utilities
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_5">
+            <span class="md-nav__icon md-icon"></span>
+            Utilities
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../cli/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    CLI
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../server/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Server
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../../core-concepts/ddd/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Core Concepts
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../adapters/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Adapters
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../patterns/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Patterns
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Glossary
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../community/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Community
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#projections" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projections
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Projections">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#defining-a-projection" class="md-nav__link">
+    <span class="md-ellipsis">
+      Defining a Projection
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#projection-configuration-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projection Configuration Options
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Projection Configuration Options">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#storage-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Storage Options
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#additional-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Additional Options
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#querying-projections" class="md-nav__link">
+    <span class="md-ellipsis">
+      Querying Projections
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#projectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projectors
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Projectors">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#defining-a-projector" class="md-nav__link">
+    <span class="md-ellipsis">
+      Defining a Projector
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#projector-configuration-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projector Configuration Options
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Projector Configuration Options">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Required Configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-source-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Event Source Configuration
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-handling-with-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      Event Handling with @on
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multiple-event-handlers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Multiple Event Handlers
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#projector-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projector Registration
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Projector Registration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decorator-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Decorator Registration
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handling-in-projectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      Error Handling in Projectors
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#projector-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projector Workflow
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#projection-update-strategies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Projection Update Strategies
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Workflow
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-field-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      Supported Field Types
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      Best Practices
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Best Practices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#idempotency" class="md-nav__link">
+    <span class="md-ellipsis">
+      Idempotency
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-ordering" class="md-nav__link">
+    <span class="md-ellipsis">
+      Event Ordering
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Advanced Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Advanced Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cross-aggregate-projections" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cross-Aggregate Projections
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stream-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      Stream Categories
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complete-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      Complete Example
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-projectors" class="md-nav__link">
+    <span class="md-ellipsis">
+      Testing Projectors
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Testing Projectors">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#unit-testing-projector-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      Unit Testing Projector Methods
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#integration-testing-with-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      Integration Testing with Events
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#testing-error-scenarios" class="md-nav__link">
+    <span class="md-ellipsis">
+      Testing Error Scenarios
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="managing-projections">Managing Projections</h1>
+<p>Projections, a.k.a Read models, are representations of data optimized for querying
+and reading purposes. Projections are designed to provide data in a format that is
+easy and efficient to read, often tailored to the specific needs of a
+particular view or user interface.</p>
+<p>Projections are typically populated in response to Domain Events raised in the
+domain model.</p>
+<h2 id="projections">Projections</h2>
+<h3 id="defining-a-projection">Defining a Projection</h3>
+<p>Projections are defined with the <code>Domain.projection</code> decorator.</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="sd">&quot;&quot;&quot;Projection for product inventory data optimized for querying.&quot;&quot;&quot;</span>
+
+    <span class="n">product_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">identifier</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">Text</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">price</span> <span class="o">=</span> <span class="n">Float</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">stock_quantity</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">last_updated</span> <span class="o">=</span> <span class="n">DateTime</span><span class="p">()</span>
+</code></pre></div>
+<h3 id="projection-configuration-options">Projection Configuration Options</h3>
+<p>Projections in Protean can be configured with several options passed directly to the projection decorator:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projection</span><span class="p">(</span>
+    <span class="n">provider</span><span class="o">=</span><span class="s2">&quot;postgres&quot;</span><span class="p">,</span>      <span class="c1"># Database provider to use</span>
+    <span class="n">schema_name</span><span class="o">=</span><span class="s2">&quot;product_inventory&quot;</span><span class="p">,</span>  <span class="c1"># Custom schema/table name</span>
+    <span class="n">limit</span><span class="o">=</span><span class="mi">50</span>                  <span class="c1"># Default limit for queries</span>
+<span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProductInventory</span><span class="p">:</span>
+    <span class="c1"># Projection fields and methods</span>
+    <span class="k">pass</span>
+</code></pre></div>
+<h4 id="storage-options">Storage Options</h4>
+<p>Projections can be stored in either a database or a cache, but not both simultaneously:</p>
+<ul>
+<li>
+<p><strong>Database Storage</strong>: Use the <code>provider</code> parameter to specify which database provider to use.
+  <div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projection</span><span class="p">(</span><span class="n">provider</span><span class="o">=</span><span class="s2">&quot;postgres&quot;</span><span class="p">)</span>  <span class="c1"># Connect to a PostgreSQL database</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProductInventory</span><span class="p">:</span>
+    <span class="c1"># Projection fields and methods</span>
+    <span class="k">pass</span>
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Cache Storage</strong>: Use the <code>cache</code> parameter to specify which cache provider to use.
+  <div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projection</span><span class="p">(</span><span class="n">cache</span><span class="o">=</span><span class="s2">&quot;redis&quot;</span><span class="p">)</span>  <span class="c1"># Store projection data in Redis cache</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProductInventory</span><span class="p">:</span>
+    <span class="c1"># Projection fields and methods</span>
+    <span class="k">pass</span>
+</code></pre></div></p>
+</li>
+</ul>
+<p>When both <code>cache</code> and <code>provider</code> parameters are specified, the <code>cache</code> parameter takes precedence
+and the <code>provider</code> parameter is ignored.</p>
+<h4 id="additional-options">Additional Options</h4>
+<p>All options are passed directly to the projection decorator:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projection</span><span class="p">(</span>
+    <span class="n">abstract</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>          <span class="c1"># If True, indicates this projection is an abstract base class</span>
+    <span class="n">database_model</span><span class="o">=</span><span class="s2">&quot;custom_model&quot;</span><span class="p">,</span>    <span class="c1"># Custom model name for storage</span>
+    <span class="n">order_by</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,),</span>      <span class="c1"># Default ordering for query results</span>
+    <span class="n">schema_name</span><span class="o">=</span><span class="s2">&quot;inventory&quot;</span><span class="p">,</span> <span class="c1"># Custom schema/table name</span>
+    <span class="n">limit</span><span class="o">=</span><span class="mi">100</span>                <span class="c1"># Default query result limit (set to None for no limit)</span>
+<span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProductInventory</span><span class="p">:</span>
+    <span class="c1"># Projection fields and methods</span>
+    <span class="k">pass</span>
+</code></pre></div>
+<h3 id="querying-projections">Querying Projections</h3>
+<p>Projections are optimized for querying. You can use the repository pattern to query projections:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Get a single projection record by ID</span>
+<span class="n">inventory</span> <span class="o">=</span> <span class="n">repository</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">ProductInventory</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="c1"># Query projection with filters</span>
+<span class="n">low_stock_items</span> <span class="o">=</span> <span class="n">repository</span><span class="o">.</span><span class="n">_dao</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+    <span class="n">ProductInventory</span><span class="p">,</span> 
+    <span class="n">quantity__lt</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="n">limit</span><span class="o">=</span><span class="mi">20</span>
+<span class="p">)</span>
+</code></pre></div>
+<!-- FIXME Add note that one can use anything to query projections, and that
+repositories are essentially write-side artifacts. -->
+
+<h2 id="projectors">Projectors</h2>
+<p>Projectors are specialized event handlers responsible for maintaining projections by listening to domain events and updating projection data accordingly. They provide the bridge between your domain events and read models, ensuring projections stay synchronized with changes in your domain.</p>
+<h3 id="defining-a-projector">Defining a Projector</h3>
+<p>Projectors are defined using the <code>Domain.projector</code> decorator and must be associated with a specific projection:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projector</span><span class="p">(</span><span class="n">projector_for</span><span class="o">=</span><span class="n">ProductInventory</span><span class="p">,</span> <span class="n">aggregates</span><span class="o">=</span><span class="p">[</span><span class="n">Product</span><span class="p">])</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProductInventoryProjector</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Projector that maintains the ProductInventory projection.&quot;&quot;&quot;</span>
+
+    <span class="nd">@on</span><span class="p">(</span><span class="n">ProductAdded</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_product_added</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">ProductAdded</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create inventory record when a new product is added.&quot;&quot;&quot;</span>
+        <span class="n">repository</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductInventory</span><span class="p">)</span>
+
+        <span class="n">inventory</span> <span class="o">=</span> <span class="n">ProductInventory</span><span class="p">(</span>
+            <span class="n">product_id</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">product_id</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+            <span class="n">description</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">description</span><span class="p">,</span>
+            <span class="n">price</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">price</span><span class="p">,</span>
+<span class="hll">            <span class="n">stock_quantity</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">stock_quantity</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">last_updated</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">_metadata</span><span class="o">.</span><span class="n">timestamp</span><span class="p">,</span>
+</span><span class="hll">        <span class="p">)</span>
+</span><span class="hll">
+</span><span class="hll">        <span class="n">repository</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">inventory</span><span class="p">)</span>
+</span>
+    <span class="nd">@on</span><span class="p">(</span><span class="n">StockAdjusted</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_stock_adjusted</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">StockAdjusted</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Update inventory when stock levels change.&quot;&quot;&quot;</span>
+        <span class="n">repository</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductInventory</span><span class="p">)</span>
+        <span class="n">inventory</span> <span class="o">=</span> <span class="n">repository</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">event</span><span class="o">.</span><span class="n">product_id</span><span class="p">)</span>
+
+        <span class="n">inventory</span><span class="o">.</span><span class="n">stock_quantity</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="n">new_stock_quantity</span>
+        <span class="n">inventory</span><span class="o">.</span><span class="n">last_updated</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="n">_metadata</span><span class="o">.</span><span class="n">timestamp</span>
+
+        <span class="n">repository</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">inventory</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="projector-configuration-options">Projector Configuration Options</h3>
+<p>Projectors can be configured with several options:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projector</span><span class="p">(</span>
+    <span class="n">projector_for</span><span class="o">=</span><span class="n">ProductInventory</span><span class="p">,</span>     <span class="c1"># Required: The projection to maintain</span>
+    <span class="n">aggregates</span><span class="o">=</span><span class="p">[</span><span class="n">Product</span><span class="p">,</span> <span class="n">Order</span><span class="p">],</span>        <span class="c1"># Aggregates to listen to</span>
+    <span class="n">stream_categories</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;product&quot;</span><span class="p">,</span> <span class="s2">&quot;order&quot;</span><span class="p">]</span>  <span class="c1"># Alternative to aggregates</span>
+<span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProductInventoryProjector</span><span class="p">:</span>
+    <span class="c1"># Event handler methods</span>
+    <span class="k">pass</span>
+</code></pre></div>
+<h4 id="required-configuration">Required Configuration</h4>
+<ul>
+<li><strong><code>projector_for</code></strong>: The projection class that this projector maintains. This parameter is mandatory and establishes the relationship between the projector and its target projection.</li>
+</ul>
+<h4 id="event-source-configuration">Event Source Configuration</h4>
+<p>You must specify either <code>aggregates</code> or <code>stream_categories</code> (but not both):</p>
+<ul>
+<li>
+<p><strong><code>aggregates</code></strong>: A list of aggregate classes whose events this projector should handle. Protean automatically derives the stream categories from the specified aggregates.</p>
+</li>
+<li>
+<p><strong><code>stream_categories</code></strong>: A list of stream category names to listen to. This provides more fine-grained control over which event streams the projector monitors.</p>
+</li>
+</ul>
+<h3 id="event-handling-with-on">Event Handling with <code>@on</code></h3>
+<p>Projectors use the <code>@on</code> decorator (an alias for <code>@handle</code>) to specify which events they respond to:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projector</span><span class="p">(</span><span class="n">projector_for</span><span class="o">=</span><span class="n">ProductInventory</span><span class="p">,</span> <span class="n">aggregates</span><span class="o">=</span><span class="p">[</span><span class="n">Product</span><span class="p">])</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProductInventoryProjector</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Projector that maintains the ProductInventory projection.&quot;&quot;&quot;</span>
+
+    <span class="nd">@on</span><span class="p">(</span><span class="n">ProductAdded</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_product_added</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">ProductAdded</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create inventory record when a new product is added.&quot;&quot;&quot;</span>
+        <span class="n">repository</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductInventory</span><span class="p">)</span>
+
+        <span class="n">inventory</span> <span class="o">=</span> <span class="n">ProductInventory</span><span class="p">(</span>
+            <span class="n">product_id</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">product_id</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+            <span class="n">description</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">description</span><span class="p">,</span>
+            <span class="n">price</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">price</span><span class="p">,</span>
+<span class="hll">            <span class="n">stock_quantity</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">stock_quantity</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">last_updated</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">_metadata</span><span class="o">.</span><span class="n">timestamp</span><span class="p">,</span>
+</span><span class="hll">        <span class="p">)</span>
+</span><span class="hll">
+</span><span class="hll">        <span class="n">repository</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">inventory</span><span class="p">)</span>
+</span>
+    <span class="nd">@on</span><span class="p">(</span><span class="n">StockAdjusted</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_stock_adjusted</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">StockAdjusted</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Update inventory when stock levels change.&quot;&quot;&quot;</span>
+        <span class="n">repository</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductInventory</span><span class="p">)</span>
+        <span class="n">inventory</span> <span class="o">=</span> <span class="n">repository</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">event</span><span class="o">.</span><span class="n">product_id</span><span class="p">)</span>
+
+        <span class="n">inventory</span><span class="o">.</span><span class="n">stock_quantity</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="n">new_stock_quantity</span>
+        <span class="n">inventory</span><span class="o">.</span><span class="n">last_updated</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="n">_metadata</span><span class="o">.</span><span class="n">timestamp</span>
+
+        <span class="n">repository</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">inventory</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="multiple-event-handlers">Multiple Event Handlers</h3>
+<p>A single projector can handle multiple events, and multiple projectors can handle the same event:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projector</span><span class="p">(</span><span class="n">projector_for</span><span class="o">=</span><span class="n">OrderSummary</span><span class="p">,</span> <span class="n">aggregates</span><span class="o">=</span><span class="p">[</span><span class="n">Order</span><span class="p">])</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">OrderSummaryProjector</span><span class="p">:</span>
+    <span class="nd">@on</span><span class="p">(</span><span class="n">OrderCreated</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_order_created</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">OrderCreated</span><span class="p">):</span>
+        <span class="c1"># Create order summary</span>
+        <span class="k">pass</span>
+
+    <span class="nd">@on</span><span class="p">(</span><span class="n">OrderShipped</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_order_shipped</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">OrderShipped</span><span class="p">):</span>
+        <span class="c1"># Update shipping status</span>
+        <span class="k">pass</span>
+
+    <span class="nd">@on</span><span class="p">(</span><span class="n">OrderCancelled</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_order_cancelled</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">OrderCancelled</span><span class="p">):</span>
+        <span class="c1"># Mark as cancelled</span>
+        <span class="k">pass</span>
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">projector</span><span class="p">(</span><span class="n">projector_for</span><span class="o">=</span><span class="n">ShippingReport</span><span class="p">,</span> <span class="n">aggregates</span><span class="o">=</span><span class="p">[</span><span class="n">Order</span><span class="p">])</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ShippingReportProjector</span><span class="p">:</span>
+    <span class="nd">@on</span><span class="p">(</span><span class="n">OrderShipped</span><span class="p">)</span>  <span class="c1"># Same event, different projector</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_order_shipped</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">OrderShipped</span><span class="p">):</span>
+        <span class="c1"># Update shipping metrics</span>
+        <span class="k">pass</span>
+</code></pre></div>
+<h3 id="projector-registration">Projector Registration</h3>
+<p>Projectors can be registered with the domain with the <code>Domain.projector</code> decorator:</p>
+<h4 id="decorator-registration">Decorator Registration</h4>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projector</span><span class="p">(</span><span class="n">projector_for</span><span class="o">=</span><span class="n">ProductInventory</span><span class="p">,</span> <span class="n">aggregates</span><span class="o">=</span><span class="p">[</span><span class="n">Product</span><span class="p">])</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProductInventoryProjector</span><span class="p">:</span>
+    <span class="c1"># Event handler methods</span>
+    <span class="k">pass</span>
+</code></pre></div>
+<h3 id="error-handling-in-projectors">Error Handling in Projectors</h3>
+<p>Projectors should handle errors gracefully to ensure system resilience:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projector</span><span class="p">(</span><span class="n">projector_for</span><span class="o">=</span><span class="n">ProductInventory</span><span class="p">,</span> <span class="n">aggregates</span><span class="o">=</span><span class="p">[</span><span class="n">Product</span><span class="p">])</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProductInventoryProjector</span><span class="p">:</span>
+    <span class="nd">@on</span><span class="p">(</span><span class="n">ProductAdded</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_product_added</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">ProductAdded</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">repository</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductInventory</span><span class="p">)</span>
+
+            <span class="c1"># Check if inventory already exists</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">existing</span> <span class="o">=</span> <span class="n">repository</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">event</span><span class="o">.</span><span class="n">product_id</span><span class="p">)</span>
+                <span class="c1"># Handle duplicate case</span>
+                <span class="k">return</span>
+            <span class="k">except</span> <span class="n">NotFoundError</span><span class="p">:</span>
+                <span class="k">pass</span>  <span class="c1"># Expected case - create new inventory</span>
+
+            <span class="n">inventory</span> <span class="o">=</span> <span class="n">ProductInventory</span><span class="p">(</span>
+                <span class="n">product_id</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">product_id</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                <span class="n">price</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">price</span><span class="p">,</span>
+                <span class="n">stock_quantity</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">stock_quantity</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="n">repository</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">inventory</span><span class="p">)</span>
+
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># Log error and potentially raise for retry mechanisms</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to process ProductAdded event: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">raise</span>
+</code></pre></div>
+<h3 id="projector-workflow">Projector Workflow</h3>
+<p>The projector workflow follows this sequence:</p>
+<pre class="mermaid"><code>sequenceDiagram
+  autonumber
+  Aggregate-&gt;&gt;Event Store: Publish Event
+  Event Store-&gt;&gt;Projector: Deliver Event
+  Projector-&gt;&gt;Projector: Process Event
+  Projector-&gt;&gt;Repository: Load Projection
+  Repository--&gt;&gt;Projector: Return Projection
+  Projector-&gt;&gt;Projector: Update Projection
+  Projector-&gt;&gt;Repository: Save Projection
+  Repository--&gt;&gt;Projector: Confirm Save</code></pre>
+<ol>
+<li><strong>Aggregate Publishes Event</strong>: Domain events are published when aggregates change state</li>
+<li><strong>Event Store Delivers Event</strong>: The event store routes events to registered projectors</li>
+<li><strong>Projector Processes Event</strong>: The projector receives and begins processing the event</li>
+<li><strong>Load Projection</strong>: If updating existing data, the projector loads the current projection</li>
+<li><strong>Update Projection</strong>: The projector applies changes based on the event data</li>
+<li><strong>Save Projection</strong>: The updated projection is persisted to storage</li>
+</ol>
+<h2 id="projection-update-strategies">Projection Update Strategies</h2>
+<p>There are different strategies for keeping projections up-to-date with your domain model:</p>
+<ol>
+<li><strong>Event-driven</strong>: Respond to domain events to update projections (recommended)</li>
+<li><strong>Periodic Refresh</strong>: Schedule periodic rebuilding of projections from source data</li>
+<li><strong>On-demand Calculation</strong>: Generate projections when they are requested </li>
+</ol>
+<p>The event-driven approach is usually preferred as it ensures projections are updated in near real-time.</p>
+<h2 id="workflow">Workflow</h2>
+<p><code>ManageInventory</code> Command Handler handles <code>AdjustStock</code> command, loads the
+product and updates it, and then persists the product, generating domain
+events.</p>
+<pre class="mermaid"><code>sequenceDiagram
+  autonumber
+  App-&gt;&gt;Manage Inventory: AdjustStock object
+  Manage Inventory-&gt;&gt;Manage Inventory: Extract data and load product
+  Manage Inventory-&gt;&gt;product: adjust stock
+  product-&gt;&gt;product: Mutate
+  product--&gt;&gt;Manage Inventory: 
+  Manage Inventory-&gt;&gt;Repository: Persist product
+  Repository-&gt;&gt;Broker: Publish events</code></pre>
+<p>The events are then consumed by a projector that loads the <code>inventory</code> projection
+record and updates it.</p>
+<pre class="mermaid"><code>sequenceDiagram
+  autonumber
+  Broker--&gt;&gt;Sync Inventory: Pull events
+  Sync Inventory-&gt;&gt;Sync Inventory: Extract data and load inventory record
+  Sync Inventory-&gt;&gt;inventory: update
+  inventory-&gt;&gt;inventory: Mutate
+  inventory--&gt;&gt;Sync Inventory: 
+  Sync Inventory-&gt;&gt;Repository: Persist inventory record</code></pre>
+<h2 id="supported-field-types">Supported Field Types</h2>
+<p>Projections can only contain basic field types. References, Associations, and ValueObjects 
+are not supported in projections. This is because projections are designed to be flattened, 
+denormalized representations of data.</p>
+<h2 id="best-practices">Best Practices</h2>
+<p>When working with projectors, consider these best practices:</p>
+<h3 id="idempotency">Idempotency</h3>
+<p>Projectors should be idempotent to handle duplicate events gracefully:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projector</span><span class="p">(</span><span class="n">projector_for</span><span class="o">=</span><span class="n">UserProfile</span><span class="p">,</span> <span class="n">aggregates</span><span class="o">=</span><span class="p">[</span><span class="n">User</span><span class="p">])</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">UserProfileProjector</span><span class="p">:</span>
+    <span class="nd">@on</span><span class="p">(</span><span class="n">UserRegistered</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_user_registered</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">UserRegistered</span><span class="p">):</span>
+        <span class="n">repository</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">UserProfile</span><span class="p">)</span>
+
+        <span class="c1"># Check if profile already exists</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">existing_profile</span> <span class="o">=</span> <span class="n">repository</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">event</span><span class="o">.</span><span class="n">user_id</span><span class="p">)</span>
+            <span class="c1"># Profile already exists, skip creation</span>
+            <span class="k">return</span>
+        <span class="k">except</span> <span class="n">NotFoundError</span><span class="p">:</span>
+            <span class="k">pass</span>  <span class="c1"># Expected case - create new profile</span>
+
+        <span class="n">profile</span> <span class="o">=</span> <span class="n">UserProfile</span><span class="p">(</span>
+            <span class="n">user_id</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">user_id</span><span class="p">,</span>
+            <span class="n">email</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">email</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">name</span>
+        <span class="p">)</span>
+        <span class="n">repository</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">profile</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="event-ordering">Event Ordering</h3>
+<p>Be aware that events may not always arrive in the expected order. Design projectors to handle out-of-order events:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projector</span><span class="p">(</span><span class="n">projector_for</span><span class="o">=</span><span class="n">OrderStatus</span><span class="p">,</span> <span class="n">aggregates</span><span class="o">=</span><span class="p">[</span><span class="n">Order</span><span class="p">])</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">OrderStatusProjector</span><span class="p">:</span>
+    <span class="nd">@on</span><span class="p">(</span><span class="n">OrderCreated</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_order_created</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">OrderCreated</span><span class="p">):</span>
+        <span class="n">repository</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">OrderStatus</span><span class="p">)</span>
+
+        <span class="c1"># Use event timestamp to handle ordering</span>
+        <span class="n">status</span> <span class="o">=</span> <span class="n">OrderStatus</span><span class="p">(</span>
+            <span class="n">order_id</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">order_id</span><span class="p">,</span>
+            <span class="n">status</span><span class="o">=</span><span class="s2">&quot;CREATED&quot;</span><span class="p">,</span>
+            <span class="n">last_updated</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">_metadata</span><span class="o">.</span><span class="n">timestamp</span>
+        <span class="p">)</span>
+        <span class="n">repository</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">status</span><span class="p">)</span>
+
+    <span class="nd">@on</span><span class="p">(</span><span class="n">OrderShipped</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_order_shipped</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">OrderShipped</span><span class="p">):</span>
+        <span class="n">repository</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">OrderStatus</span><span class="p">)</span>
+        <span class="n">status</span> <span class="o">=</span> <span class="n">repository</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">event</span><span class="o">.</span><span class="n">order_id</span><span class="p">)</span>
+
+        <span class="c1"># Only update if this event is newer</span>
+        <span class="k">if</span> <span class="n">event</span><span class="o">.</span><span class="n">_metadata</span><span class="o">.</span><span class="n">timestamp</span> <span class="o">&gt;</span> <span class="n">status</span><span class="o">.</span><span class="n">last_updated</span><span class="p">:</span>
+            <span class="n">status</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;SHIPPED&quot;</span>
+            <span class="n">status</span><span class="o">.</span><span class="n">last_updated</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="n">_metadata</span><span class="o">.</span><span class="n">timestamp</span>
+            <span class="n">repository</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">status</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="advanced-usage">Advanced Usage</h2>
+<h3 id="cross-aggregate-projections">Cross-Aggregate Projections</h3>
+<p>Projectors can listen to events from multiple aggregates to create comprehensive views:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projector</span><span class="p">(</span>
+    <span class="n">projector_for</span><span class="o">=</span><span class="n">CustomerOrderSummary</span><span class="p">,</span> 
+    <span class="n">aggregates</span><span class="o">=</span><span class="p">[</span><span class="n">Customer</span><span class="p">,</span> <span class="n">Order</span><span class="p">,</span> <span class="n">Payment</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">CustomerOrderSummaryProjector</span><span class="p">:</span>
+    <span class="nd">@on</span><span class="p">(</span><span class="n">CustomerRegistered</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_customer_registered</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">CustomerRegistered</span><span class="p">):</span>
+        <span class="c1"># Initialize customer summary</span>
+        <span class="k">pass</span>
+
+    <span class="nd">@on</span><span class="p">(</span><span class="n">OrderPlaced</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_order_placed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">OrderPlaced</span><span class="p">):</span>
+        <span class="c1"># Update order count and total</span>
+        <span class="k">pass</span>
+
+    <span class="nd">@on</span><span class="p">(</span><span class="n">PaymentProcessed</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_payment_processed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">PaymentProcessed</span><span class="p">):</span>
+        <span class="c1"># Update payment status</span>
+        <span class="k">pass</span>
+</code></pre></div>
+<h3 id="stream-categories">Stream Categories</h3>
+<p>For more granular control, use stream categories instead of aggregates:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">projector</span><span class="p">(</span>
+    <span class="n">projector_for</span><span class="o">=</span><span class="n">SystemMetrics</span><span class="p">,</span>
+    <span class="n">stream_categories</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;order&quot;</span><span class="p">,</span> <span class="s2">&quot;payment&quot;</span><span class="p">,</span> <span class="s2">&quot;inventory&quot;</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">SystemMetricsProjector</span><span class="p">:</span>
+    <span class="nd">@on</span><span class="p">(</span><span class="n">UserRegistered</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_user_registered</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">UserRegistered</span><span class="p">):</span>
+        <span class="c1"># Update user metrics</span>
+        <span class="k">pass</span>
+
+    <span class="nd">@on</span><span class="p">(</span><span class="n">OrderPlaced</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_order_placed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">OrderPlaced</span><span class="p">):</span>
+        <span class="c1"># Update order metrics</span>
+        <span class="k">pass</span>
+</code></pre></div>
+<h2 id="complete-example">Complete Example</h2>
+<p>Below is a comprehensive example showing projections and projectors working together to maintain multiple read models from a single aggregate:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.core.projector</span><span class="w"> </span><span class="kn">import</span> <span class="n">on</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">DateTime</span><span class="p">,</span> <span class="n">Float</span><span class="p">,</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">Integer</span><span class="p">,</span> <span class="n">String</span><span class="p">,</span> <span class="n">Text</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+
+<span class="c1"># Process events and commands synchronously for demonstration</span>
+<span class="n">domain</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;command_processing&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;sync&quot;</span>
+<span class="n">domain</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;event_processing&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;sync&quot;</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Product</span><span class="p">:</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">Text</span><span class="p">()</span>
+    <span class="n">price</span> <span class="o">=</span> <span class="n">Float</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">stock_quantity</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">adjust_stock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">quantity</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stock_quantity</span> <span class="o">+=</span> <span class="n">quantity</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">raise_</span><span class="p">(</span>
+            <span class="n">StockAdjusted</span><span class="p">(</span>
+                <span class="n">product_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+                <span class="n">quantity</span><span class="o">=</span><span class="n">quantity</span><span class="p">,</span>
+                <span class="n">new_stock_quantity</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">stock_quantity</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">description</span><span class="p">,</span> <span class="n">price</span><span class="p">,</span> <span class="n">stock_quantity</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="n">product</span> <span class="o">=</span> <span class="bp">cls</span><span class="p">(</span>
+            <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+            <span class="n">description</span><span class="o">=</span><span class="n">description</span><span class="p">,</span>
+            <span class="n">price</span><span class="o">=</span><span class="n">price</span><span class="p">,</span>
+            <span class="n">stock_quantity</span><span class="o">=</span><span class="n">stock_quantity</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">product</span><span class="o">.</span><span class="n">raise_</span><span class="p">(</span>
+            <span class="n">ProductAdded</span><span class="p">(</span>
+                <span class="n">product_id</span><span class="o">=</span><span class="n">product</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="n">product</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                <span class="n">description</span><span class="o">=</span><span class="n">product</span><span class="o">.</span><span class="n">description</span><span class="p">,</span>
+                <span class="n">price</span><span class="o">=</span><span class="n">product</span><span class="o">.</span><span class="n">price</span><span class="p">,</span>
+                <span class="n">stock_quantity</span><span class="o">=</span><span class="n">product</span><span class="o">.</span><span class="n">stock_quantity</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">product</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">event</span><span class="p">(</span><span class="n">part_of</span><span class="o">=</span><span class="n">Product</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProductAdded</span><span class="p">:</span>
+    <span class="n">product_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">Text</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">price</span> <span class="o">=</span> <span class="n">Float</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">stock_quantity</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">event</span><span class="p">(</span><span class="n">part_of</span><span class="o">=</span><span class="n">Product</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">StockAdjusted</span><span class="p">:</span>
+    <span class="n">product_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">quantity</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">new_stock_quantity</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">projection</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProductInventory</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Projection for product inventory data optimized for querying.&quot;&quot;&quot;</span>
+
+    <span class="n">product_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">identifier</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">description</span> <span class="o">=</span> <span class="n">Text</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">price</span> <span class="o">=</span> <span class="n">Float</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">stock_quantity</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">last_updated</span> <span class="o">=</span> <span class="n">DateTime</span><span class="p">()</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">projection</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProductCatalog</span><span class="p">:</span>
+<span class="hll"><span class="w">    </span><span class="sd">&quot;&quot;&quot;Projection for product catalog data optimized for browsing.&quot;&quot;&quot;</span>
+</span><span class="hll">
+</span><span class="hll">    <span class="n">product_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">identifier</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span class="hll">    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span class="hll">    <span class="n">description</span> <span class="o">=</span> <span class="n">Text</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span class="hll">    <span class="n">price</span> <span class="o">=</span> <span class="n">Float</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span class="hll">    <span class="n">in_stock</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;YES&quot;</span><span class="p">,</span> <span class="s2">&quot;NO&quot;</span><span class="p">],</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;YES&quot;</span><span class="p">)</span>
+</span>
+<span class="hll">
+</span><span class="hll"><span class="nd">@domain</span><span class="o">.</span><span class="n">projector</span><span class="p">(</span><span class="n">projector_for</span><span class="o">=</span><span class="n">ProductInventory</span><span class="p">,</span> <span class="n">aggregates</span><span class="o">=</span><span class="p">[</span><span class="n">Product</span><span class="p">])</span>
+</span><span class="hll"><span class="k">class</span><span class="w"> </span><span class="nc">ProductInventoryProjector</span><span class="p">:</span>
+</span><span class="hll"><span class="w">    </span><span class="sd">&quot;&quot;&quot;Projector that maintains the ProductInventory projection.&quot;&quot;&quot;</span>
+</span><span class="hll">
+</span><span class="hll">    <span class="nd">@on</span><span class="p">(</span><span class="n">ProductAdded</span><span class="p">)</span>
+</span><span class="hll">    <span class="k">def</span><span class="w"> </span><span class="nf">on_product_added</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">ProductAdded</span><span class="p">):</span>
+</span><span class="w">        </span><span class="sd">&quot;&quot;&quot;Create inventory record when a new product is added.&quot;&quot;&quot;</span>
+<span class="hll">        <span class="n">repository</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductInventory</span><span class="p">)</span>
+</span><span class="hll">
+</span><span class="hll">        <span class="n">inventory</span> <span class="o">=</span> <span class="n">ProductInventory</span><span class="p">(</span>
+</span><span class="hll">            <span class="n">product_id</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">product_id</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">name</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">description</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">description</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">price</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">price</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">stock_quantity</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">stock_quantity</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">last_updated</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">_metadata</span><span class="o">.</span><span class="n">timestamp</span><span class="p">,</span>
+</span><span class="hll">        <span class="p">)</span>
+</span><span class="hll">
+</span><span class="hll">        <span class="n">repository</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">inventory</span><span class="p">)</span>
+</span><span class="hll">
+</span><span class="hll">    <span class="nd">@on</span><span class="p">(</span><span class="n">StockAdjusted</span><span class="p">)</span>
+</span><span class="hll">    <span class="k">def</span><span class="w"> </span><span class="nf">on_stock_adjusted</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">StockAdjusted</span><span class="p">):</span>
+</span><span class="hll"><span class="w">        </span><span class="sd">&quot;&quot;&quot;Update inventory when stock levels change.&quot;&quot;&quot;</span>
+</span><span class="hll">        <span class="n">repository</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductInventory</span><span class="p">)</span>
+</span><span class="hll">        <span class="n">inventory</span> <span class="o">=</span> <span class="n">repository</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">event</span><span class="o">.</span><span class="n">product_id</span><span class="p">)</span>
+</span><span class="hll">
+</span><span class="hll">        <span class="n">inventory</span><span class="o">.</span><span class="n">stock_quantity</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="n">new_stock_quantity</span>
+</span><span class="hll">        <span class="n">inventory</span><span class="o">.</span><span class="n">last_updated</span> <span class="o">=</span> <span class="n">event</span><span class="o">.</span><span class="n">_metadata</span><span class="o">.</span><span class="n">timestamp</span>
+</span><span class="hll">
+</span><span class="hll">        <span class="n">repository</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">inventory</span><span class="p">)</span>
+</span><span class="hll">
+</span><span class="hll">
+</span><span class="hll"><span class="nd">@domain</span><span class="o">.</span><span class="n">projector</span><span class="p">(</span><span class="n">projector_for</span><span class="o">=</span><span class="n">ProductCatalog</span><span class="p">,</span> <span class="n">aggregates</span><span class="o">=</span><span class="p">[</span><span class="n">Product</span><span class="p">])</span>
+</span><span class="hll"><span class="k">class</span><span class="w"> </span><span class="nc">ProductCatalogProjector</span><span class="p">:</span>
+</span><span class="hll"><span class="w">    </span><span class="sd">&quot;&quot;&quot;Projector that maintains the ProductCatalog projection.&quot;&quot;&quot;</span>
+</span><span class="hll">
+</span><span class="hll">    <span class="nd">@on</span><span class="p">(</span><span class="n">ProductAdded</span><span class="p">)</span>
+</span><span class="hll">    <span class="k">def</span><span class="w"> </span><span class="nf">on_product_added</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">ProductAdded</span><span class="p">):</span>
+</span><span class="hll"><span class="w">        </span><span class="sd">&quot;&quot;&quot;Create catalog entry when a new product is added.&quot;&quot;&quot;</span>
+</span><span class="hll">        <span class="n">repository</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductCatalog</span><span class="p">)</span>
+</span><span class="hll">
+</span><span class="hll">        <span class="n">catalog_entry</span> <span class="o">=</span> <span class="n">ProductCatalog</span><span class="p">(</span>
+</span><span class="hll">            <span class="n">product_id</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">product_id</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">name</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">description</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">description</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">price</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">price</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">in_stock</span><span class="o">=</span><span class="s2">&quot;YES&quot;</span> <span class="k">if</span> <span class="n">event</span><span class="o">.</span><span class="n">stock_quantity</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="s2">&quot;NO&quot;</span><span class="p">,</span>
+</span><span class="hll">        <span class="p">)</span>
+</span>
+<span class="hll">        <span class="n">repository</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">catalog_entry</span><span class="p">)</span>
+</span><span class="hll">
+</span><span class="hll">    <span class="nd">@on</span><span class="p">(</span><span class="n">StockAdjusted</span><span class="p">)</span>
+</span><span class="hll">    <span class="k">def</span><span class="w"> </span><span class="nf">on_stock_adjusted</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">StockAdjusted</span><span class="p">):</span>
+</span><span class="hll"><span class="w">        </span><span class="sd">&quot;&quot;&quot;Update catalog availability when stock changes.&quot;&quot;&quot;</span>
+</span><span class="hll">        <span class="n">repository</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductCatalog</span><span class="p">)</span>
+</span><span class="hll">        <span class="n">catalog_entry</span> <span class="o">=</span> <span class="n">repository</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">event</span><span class="o">.</span><span class="n">product_id</span><span class="p">)</span>
+</span><span class="hll">
+</span><span class="hll">        <span class="n">catalog_entry</span><span class="o">.</span><span class="n">in_stock</span> <span class="o">=</span> <span class="s2">&quot;YES&quot;</span> <span class="k">if</span> <span class="n">event</span><span class="o">.</span><span class="n">new_stock_quantity</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="s2">&quot;NO&quot;</span>
+</span><span class="hll">
+</span><span class="hll">        <span class="n">repository</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">catalog_entry</span><span class="p">)</span>
+</span><span class="hll">
+</span><span class="hll">
+</span><span class="hll"><span class="c1"># Initialize the domain</span>
+</span><span class="hll"><span class="n">domain</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">traverse</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</span><span class="hll">
+</span><span class="hll"><span class="c1"># Demonstrate the projector workflow</span>
+</span><span class="hll"><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+</span><span class="hll">    <span class="k">with</span> <span class="n">domain</span><span class="o">.</span><span class="n">domain_context</span><span class="p">():</span>
+</span><span class="hll">        <span class="c1"># Create a new product</span>
+</span><span class="hll">        <span class="n">product</span> <span class="o">=</span> <span class="n">Product</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+</span><span class="hll">            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Laptop&quot;</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">description</span><span class="o">=</span><span class="s2">&quot;High-performance laptop&quot;</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">price</span><span class="o">=</span><span class="mf">999.99</span><span class="p">,</span>
+</span><span class="hll">            <span class="n">stock_quantity</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+</span><span class="hll">        <span class="p">)</span>
+</span><span class="hll">
+</span><span class="hll">        <span class="c1"># Persist the product (this will trigger ProductAdded event)</span>
+</span><span class="hll">        <span class="n">product_repo</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">Product</span><span class="p">)</span>
+</span>        <span class="n">product_repo</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">product</span><span class="p">)</span>
+
+        <span class="c1"># Verify projections were updated</span>
+        <span class="n">inventory_repo</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductInventory</span><span class="p">)</span>
+        <span class="n">catalog_repo</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductCatalog</span><span class="p">)</span>
+
+        <span class="n">inventory</span> <span class="o">=</span> <span class="n">inventory_repo</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">product</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+        <span class="n">catalog</span> <span class="o">=</span> <span class="n">catalog_repo</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">product</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=== After Product Creation ===&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Product: </span><span class="si">{</span><span class="n">product</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> (Stock: </span><span class="si">{</span><span class="n">product</span><span class="o">.</span><span class="n">stock_quantity</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Inventory Projection: </span><span class="si">{</span><span class="n">inventory</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> (Stock: </span><span class="si">{</span><span class="n">inventory</span><span class="o">.</span><span class="n">stock_quantity</span><span class="si">}</span><span class="s2">)&quot;</span>
+        <span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Catalog Projection: </span><span class="si">{</span><span class="n">catalog</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> (In Stock: </span><span class="si">{</span><span class="n">catalog</span><span class="o">.</span><span class="n">in_stock</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Adjust stock (this will trigger StockAdjusted event)</span>
+        <span class="n">product</span><span class="o">.</span><span class="n">adjust_stock</span><span class="p">(</span><span class="o">-</span><span class="mi">30</span><span class="p">)</span>  <span class="c1"># Sell 30 units</span>
+        <span class="n">product_repo</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">product</span><span class="p">)</span>
+
+        <span class="c1"># Verify projections were updated again</span>
+        <span class="n">inventory</span> <span class="o">=</span> <span class="n">inventory_repo</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">product</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+        <span class="n">catalog</span> <span class="o">=</span> <span class="n">catalog_repo</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">product</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">=== After Stock Adjustment ===&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Product: </span><span class="si">{</span><span class="n">product</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> (Stock: </span><span class="si">{</span><span class="n">product</span><span class="o">.</span><span class="n">stock_quantity</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Inventory Projection: </span><span class="si">{</span><span class="n">inventory</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> (Stock: </span><span class="si">{</span><span class="n">inventory</span><span class="o">.</span><span class="n">stock_quantity</span><span class="si">}</span><span class="s2">)&quot;</span>
+        <span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Catalog Projection: </span><span class="si">{</span><span class="n">catalog</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> (In Stock: </span><span class="si">{</span><span class="n">catalog</span><span class="o">.</span><span class="n">in_stock</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Sell all remaining stock</span>
+        <span class="n">product</span><span class="o">.</span><span class="n">adjust_stock</span><span class="p">(</span><span class="o">-</span><span class="mi">20</span><span class="p">)</span>  <span class="c1"># Sell remaining 20 units</span>
+        <span class="n">product_repo</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">product</span><span class="p">)</span>
+
+        <span class="c1"># Verify out-of-stock status</span>
+        <span class="n">inventory</span> <span class="o">=</span> <span class="n">inventory_repo</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">product</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+        <span class="n">catalog</span> <span class="o">=</span> <span class="n">catalog_repo</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">product</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">=== After Selling All Stock ===&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Product: </span><span class="si">{</span><span class="n">product</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> (Stock: </span><span class="si">{</span><span class="n">product</span><span class="o">.</span><span class="n">stock_quantity</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Inventory Projection: </span><span class="si">{</span><span class="n">inventory</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> (Stock: </span><span class="si">{</span><span class="n">inventory</span><span class="o">.</span><span class="n">stock_quantity</span><span class="si">}</span><span class="s2">)&quot;</span>
+        <span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Catalog Projection: </span><span class="si">{</span><span class="n">catalog</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> (In Stock: </span><span class="si">{</span><span class="n">catalog</span><span class="o">.</span><span class="n">in_stock</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Assertions for testing</span>
+        <span class="k">assert</span> <span class="n">inventory</span><span class="o">.</span><span class="n">stock_quantity</span> <span class="o">==</span> <span class="mi">0</span>
+        <span class="k">assert</span> <span class="n">catalog</span><span class="o">.</span><span class="n">in_stock</span> <span class="o">==</span> <span class="s2">&quot;NO&quot;</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">✅ All projections updated correctly!&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>This example demonstrates:</p>
+<ul>
+<li><strong>Multiple Projections</strong>: <code>ProductInventory</code> for detailed inventory tracking and <code>ProductCatalog</code> for simplified browsing</li>
+<li><strong>Multiple Projectors</strong>: Each projection has its own dedicated projector</li>
+<li><strong>Event Handling</strong>: Both projectors respond to the same events but update different projections</li>
+<li><strong>Real-time Updates</strong>: Projections are automatically updated when domain events occur</li>
+<li><strong>Different Data Formats</strong>: Each projection optimizes data for its specific use case</li>
+</ul>
+<h2 id="testing-projectors">Testing Projectors</h2>
+<p>Testing projectors is straightforward since they respond to domain events. Here's how to test them effectively:</p>
+<h3 id="unit-testing-projector-methods">Unit Testing Projector Methods</h3>
+<p>Test individual projector methods by creating events and calling the methods directly:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">test_product_inventory_projector_on_product_added</span><span class="p">():</span>
+    <span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+    <span class="c1"># ... register domain elements</span>
+
+    <span class="k">with</span> <span class="n">domain</span><span class="o">.</span><span class="n">domain_context</span><span class="p">():</span>
+        <span class="c1"># Create test event</span>
+        <span class="n">event</span> <span class="o">=</span> <span class="n">ProductAdded</span><span class="p">(</span>
+            <span class="n">product_id</span><span class="o">=</span><span class="s2">&quot;test-123&quot;</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Test Product&quot;</span><span class="p">,</span>
+            <span class="n">description</span><span class="o">=</span><span class="s2">&quot;A test product&quot;</span><span class="p">,</span>
+            <span class="n">price</span><span class="o">=</span><span class="mf">99.99</span><span class="p">,</span>
+            <span class="n">stock_quantity</span><span class="o">=</span><span class="mi">10</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Create projector instance</span>
+        <span class="n">projector</span> <span class="o">=</span> <span class="n">ProductInventoryProjector</span><span class="p">()</span>
+
+        <span class="c1"># Call the handler method</span>
+        <span class="n">projector</span><span class="o">.</span><span class="n">on_product_added</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>
+
+        <span class="c1"># Verify projection was created</span>
+        <span class="n">repository</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductInventory</span><span class="p">)</span>
+        <span class="n">inventory</span> <span class="o">=</span> <span class="n">repository</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;test-123&quot;</span><span class="p">)</span>
+
+        <span class="k">assert</span> <span class="n">inventory</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;Test Product&quot;</span>
+        <span class="k">assert</span> <span class="n">inventory</span><span class="o">.</span><span class="n">stock_quantity</span> <span class="o">==</span> <span class="mi">10</span>
+</code></pre></div>
+<h3 id="integration-testing-with-events">Integration Testing with Events</h3>
+<p>Test the complete flow by raising events from aggregates:</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">test_projector_integration</span><span class="p">():</span>
+    <span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+    <span class="c1"># ... register domain elements</span>
+
+    <span class="k">with</span> <span class="n">domain</span><span class="o">.</span><span class="n">domain_context</span><span class="p">():</span>
+        <span class="c1"># Create and persist aggregate</span>
+        <span class="n">product</span> <span class="o">=</span> <span class="n">Product</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Integration Test Product&quot;</span><span class="p">,</span>
+            <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Testing projector integration&quot;</span><span class="p">,</span>
+            <span class="n">price</span><span class="o">=</span><span class="mf">149.99</span><span class="p">,</span>
+            <span class="n">stock_quantity</span><span class="o">=</span><span class="mi">25</span>
+        <span class="p">)</span>
+
+        <span class="n">product_repo</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">Product</span><span class="p">)</span>
+        <span class="n">product_repo</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">product</span><span class="p">)</span>  <span class="c1"># This triggers events</span>
+
+        <span class="c1"># Verify projections were updated</span>
+        <span class="n">inventory_repo</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductInventory</span><span class="p">)</span>
+        <span class="n">catalog_repo</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">ProductCatalog</span><span class="p">)</span>
+
+        <span class="n">inventory</span> <span class="o">=</span> <span class="n">inventory_repo</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">product</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+        <span class="n">catalog</span> <span class="o">=</span> <span class="n">catalog_repo</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">product</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+
+        <span class="k">assert</span> <span class="n">inventory</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;Integration Test Product&quot;</span>
+        <span class="k">assert</span> <span class="n">catalog</span><span class="o">.</span><span class="n">in_stock</span> <span class="o">==</span> <span class="s2">&quot;YES&quot;</span>
+</code></pre></div>
+<h3 id="testing-error-scenarios">Testing Error Scenarios</h3>
+<p>Test how projectors handle error conditions:</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">test_projector_handles_missing_projection</span><span class="p">():</span>
+    <span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+    <span class="c1"># ... register domain elements</span>
+
+    <span class="k">with</span> <span class="n">domain</span><span class="o">.</span><span class="n">domain_context</span><span class="p">():</span>
+        <span class="n">event</span> <span class="o">=</span> <span class="n">StockAdjusted</span><span class="p">(</span>
+            <span class="n">product_id</span><span class="o">=</span><span class="s2">&quot;non-existent&quot;</span><span class="p">,</span>
+            <span class="n">quantity</span><span class="o">=-</span><span class="mi">5</span><span class="p">,</span>
+            <span class="n">new_stock_quantity</span><span class="o">=</span><span class="mi">0</span>
+        <span class="p">)</span>
+
+        <span class="n">projector</span> <span class="o">=</span> <span class="n">ProductInventoryProjector</span><span class="p">()</span>
+
+        <span class="c1"># Should handle missing projection gracefully</span>
+        <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="n">NotFoundError</span><span class="p">):</span>
+            <span class="n">projector</span><span class="o">.</span><span class="n">on_stock_adjusted</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../event-handlers/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Event Handlers">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Event Handlers
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../cli/" class="md-footer__link md-footer__link--next" aria-label="Next: CLI">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                CLI
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2019 - 2025 Subhash Bhushan
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../../..", "features": ["content.code.annotate", "content.code.copy", "content.code.select", "content.tabs.link", "content.tooltips", "navigation.expand", "navigation.footer", "navigation.indexes", "navigation.instant", "navigation.instant.prefetch", "navigation.instant.progress", "navigation.path", "navigation.prune", "navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.92b07e13.min.js"></script>
+      
+    
+  </body>
+</html>
