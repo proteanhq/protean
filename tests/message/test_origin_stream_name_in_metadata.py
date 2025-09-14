@@ -8,7 +8,7 @@ from protean.core.event import BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier
 from protean.utils.globals import g
-from protean.utils.eventing import Message
+from protean.utils.eventing import DomainMeta, Message, Metadata
 
 
 class User(BaseAggregate):
@@ -91,7 +91,6 @@ def test_origin_stream_in_event_from_command_with_origin_stream(
     command_message = register_command_message
 
     # Create a new Metadata with updated origin_stream in domain metadata
-    from protean.utils.eventing import DomainMeta, Metadata
 
     command_message.metadata = Metadata(
         headers=command_message.metadata.headers,
@@ -147,7 +146,6 @@ def test_origin_stream_in_aggregate_event_from_command_with_origin_stream(
     command_message = register_command_message
 
     # Create a new Metadata with updated origin_stream in domain metadata
-    from protean.utils.eventing import DomainMeta, Metadata
 
     command_message.metadata = Metadata(
         headers=command_message.metadata.headers,

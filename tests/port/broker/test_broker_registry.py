@@ -1,5 +1,7 @@
 """Tests for the BrokerRegistry plugin system."""
 
+import logging
+
 import pytest
 from unittest.mock import Mock, patch
 
@@ -167,8 +169,6 @@ class TestBrokerRegistry:
 
     def test_discover_plugins_handles_failed_plugins(self, caplog):
         """Test that failed plugin loading doesn't break discovery."""
-        import logging
-
         # Set logging level to DEBUG to capture the debug messages
         caplog.set_level(logging.DEBUG, logger="protean.port.broker")
 
@@ -206,8 +206,6 @@ class TestBrokerRegistry:
 
     def test_discover_plugins_handles_registration_function_error(self, caplog):
         """Test handling when the registration function itself raises an error."""
-        import logging
-
         caplog.set_level(logging.DEBUG, logger="protean.port.broker")
 
         # Create entry point where the registration function raises an error
@@ -239,8 +237,6 @@ class TestBrokerRegistry:
 
     def test_discover_plugins_handles_attribute_error(self, caplog):
         """Test handling when entry point load raises AttributeError."""
-        import logging
-
         caplog.set_level(logging.DEBUG, logger="protean.port.broker")
 
         mock_entry = Mock()
@@ -263,8 +259,6 @@ class TestBrokerRegistry:
 
     def test_discover_plugins_continues_after_multiple_failures(self, caplog):
         """Test that discovery continues processing after multiple failures."""
-        import logging
-
         caplog.set_level(logging.DEBUG, logger="protean.port.broker")
 
         # Create multiple entry points with various failure modes
@@ -427,60 +421,6 @@ class TestBrokerRegistryIntegration:
         except ImportError:
             # Redis not available, skip this test
             pytest.skip("Redis package not available")
-
-    def test_redis_broker_registration_without_redis(self, caplog):
-        """Test that Redis broker doesn't register without redis package and logs appropriately."""
-        import logging
-
-        caplog.set_level(logging.DEBUG, logger="protean.adapters.broker")
-
-        # Directly test the register function logic without importing the whole module
-        from protean.adapters.broker.redis import logger as redis_logger
-
-        def test_register():
-            """Simulate the register function when redis is not available."""
-            try:
-                # This will raise ImportError
-                raise ImportError("No module named 'redis'")
-            except ImportError as e:
-                # This is what the actual register function does
-                redis_logger.debug(
-                    f"Redis broker not registered: redis package not available ({e})"
-                )
-
-        test_register()
-
-        # Check debug log message
-        assert "Redis broker not registered" in caplog.text
-        assert "redis package not available" in caplog.text
-        assert "No module named 'redis'" in caplog.text
-
-    def test_redis_pubsub_broker_registration_without_redis(self, caplog):
-        """Test that Redis PubSub broker doesn't register without redis package and logs appropriately."""
-        import logging
-
-        caplog.set_level(logging.DEBUG, logger="protean.adapters.broker")
-
-        # Directly test the register function logic without importing the whole module
-        from protean.adapters.broker.redis_pubsub import logger as redis_pubsub_logger
-
-        def test_register():
-            """Simulate the register function when redis is not available."""
-            try:
-                # This will raise ImportError
-                raise ImportError("No module named 'redis'")
-            except ImportError as e:
-                # This is what the actual register function does
-                redis_pubsub_logger.debug(
-                    f"Redis PubSub broker not registered: redis package not available ({e})"
-                )
-
-        test_register()
-
-        # Check debug log message
-        assert "Redis PubSub broker not registered" in caplog.text
-        assert "redis package not available" in caplog.text
-        assert "No module named 'redis'" in caplog.text
 
     def test_multiple_broker_registration(self):
         """Test registering multiple brokers."""
