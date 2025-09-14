@@ -233,11 +233,76 @@ make generate-docker  # Generate docker-compose for infrastructure
 ### Docker Commands
 
 ```bash
+# Infrastructure services
 make docker-up        # Start Docker services
 make docker-down      # Stop Docker services
 make docker-logs      # View Docker logs
 make docker-clean     # Clean Docker volumes
+make docker-ps        # List running containers
+make docker-restart   # Restart all services
+
+# Application containers
+make docker-build     # Build production Docker image
+make docker-build-dev # Build development Docker image
+make docker-run       # Run application in Docker
+make docker-shell     # Open shell in application container
+make docker-rebuild   # Rebuild and restart all services
+
+# Production deployment
+make docker-prod      # Run production stack
+make docker-prod-logs # View production logs
+make docker-prod-down # Stop production stack
 ```
+
+### Docker Setup
+
+This project includes comprehensive Docker support for both development and production environments.
+
+#### Development with Docker
+
+1. **Start all services including the application:**
+   ```bash
+   docker-compose up -d
+   ```
+
+2. **View application logs:**
+   ```bash
+   docker-compose logs -f app
+   ```
+
+3. **Open a shell in the application container:**
+   ```bash
+   make docker-shell
+   ```
+
+#### Production Deployment
+
+1. **Build the production image:**
+   ```bash
+   make docker-build
+   ```
+
+2. **Run the production stack:**
+   ```bash
+   make docker-prod
+   ```
+
+The production setup includes:
+- Multi-stage Docker build for optimized images
+- Non-root user for security
+- Health checks for all services
+- Nginx reverse proxy
+- Automatic service dependencies
+- Volume mounts for logs persistence
+
+#### Docker Files
+
+- `Dockerfile` - Production multi-stage build
+- `Dockerfile.dev` - Development image with hot reload
+- `docker-compose.yml` - Base infrastructure services
+- `docker-compose.override.yml` - Development overrides (auto-loaded)
+- `docker-compose.prod.yml` - Production configuration
+- `.dockerignore` - Optimize build context
 
 ### Development Commands
 

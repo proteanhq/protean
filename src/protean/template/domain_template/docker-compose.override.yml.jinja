@@ -1,0 +1,83 @@
+# Docker Compose override for local development with application container
+# This file is automatically loaded by docker-compose along with docker-compose.yml
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./pyproject.toml:/app/pyproject.toml
+      - ./poetry.lock:/app/poetry.lock
+      - ./.env:/app/.env
+      - ./logs:/app/logs
+    ports:
+      - "8000:8000"  # Application port
+      - "5678:5678"  # Debugger port
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      - PYTHONPATH=/app
+    depends_on:
+{%- if database == "postgresql" %}
+      - postgres
+{%- endif %}
+{%- if database == "mssql" %}
+      - mssql
+{%- endif %}
+{%- if database == "elasticsearch" %}
+      - elasticsearch
+{%- endif %}
+{%- if event_store == "message-db" %}
+      - message-db
+{%- endif %}
+{%- if broker in ["redis", "redis-pubsub"] or cache == "redis" %}
+      - redis
+{%- endif %}
+    command: >
+      sh -c "
+        echo 'Waiting for services to be ready...' &&
+        sleep 5 &&
+        echo 'Starting application...' &&
+        python -m protean server --domain src.{{ package_name }}.domain:{{ domain_name }} --reload
+      "
+
+  # Optional: Protean shell service for interactive development
+  shell:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    profiles: ["tools"]
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./pyproject.toml:/app/pyproject.toml
+      - ./poetry.lock:/app/poetry.lock
+      - ./.env:/app/.env
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      - PYTHONPATH=/app
+    depends_on:
+{%- if database == "postgresql" %}
+      - postgres
+{%- endif %}
+{%- if database == "mssql" %}
+      - mssql
+{%- endif %}
+{%- if database == "elasticsearch" %}
+      - elasticsearch
+{%- endif %}
+{%- if event_store == "message-db" %}
+      - message-db
+{%- endif %}
+{%- if broker in ["redis", "redis-pubsub"] or cache == "redis" %}
+      - redis
+{%- endif %}
+    stdin_open: true
+    tty: true
+    command: python -m protean shell --domain src.{{ package_name }}.domain:{{ domain_name }}

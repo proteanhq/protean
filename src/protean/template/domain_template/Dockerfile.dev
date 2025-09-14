@@ -1,0 +1,49 @@
+# Development Dockerfile with hot reload and debugging support
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    POETRY_VERSION=1.7.1 \
+    POETRY_HOME="/opt/poetry" \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1 \
+    ENVIRONMENT=development
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    make \
+    libpq-dev \
+    git \
+    curl \
+    vim \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+RUN pip install --no-cache-dir poetry==${POETRY_VERSION}
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml poetry.lock* ./
+
+# Install all dependencies (including dev dependencies)
+RUN poetry install --with dev,test,types,lint
+
+# Copy application code (will be overridden by volume mount in development)
+COPY . /app/
+
+# Create logs directory
+RUN mkdir -p /app/logs
+
+# Expose ports for debugging
+EXPOSE 5678 8000
+
+# Install debugpy for remote debugging
+RUN pip install debugpy
+
+# Default command for development (with hot reload)
+CMD ["python", "-m", "protean", "server", "--domain", "src.{{ package_name }}.domain:{{ domain_name }}", "--reload"]

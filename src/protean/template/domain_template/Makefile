@@ -71,6 +71,44 @@ docker-logs: ## View Docker logs
 docker-clean: ## Clean Docker volumes
 	docker-compose down -v
 
+docker-build: ## Build application Docker image
+	docker build -t {{ package_name }}:latest .
+
+docker-build-dev: ## Build development Docker image
+	docker build -f Dockerfile.dev -t {{ package_name }}:dev .
+
+docker-run: ## Run application in Docker
+	docker-compose up app
+
+docker-run-detached: ## Run application in Docker (detached)
+	docker-compose up -d app
+
+docker-shell: ## Open shell in application container
+	docker-compose run --rm app /bin/bash
+
+docker-exec: ## Execute command in running container
+	docker-compose exec app $(cmd)
+
+docker-ps: ## List running containers
+	docker-compose ps
+
+docker-restart: ## Restart all services
+	docker-compose restart
+
+docker-rebuild: ## Rebuild and restart all services
+	docker-compose down
+	docker-compose build --no-cache
+	docker-compose up -d
+
+docker-prod: ## Run production stack
+	docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+docker-prod-logs: ## View production logs
+	docker-compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+
+docker-prod-down: ## Stop production stack
+	docker-compose -f docker-compose.yml -f docker-compose.prod.yml down
+
 # Development
 dev: docker-up ## Start development environment (Docker services only)
 

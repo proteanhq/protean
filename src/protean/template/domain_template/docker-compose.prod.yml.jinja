@@ -1,0 +1,80 @@
+# Production Docker Compose configuration
+version: "3.8"
+
+services:
+  app:
+    image: {{ package_name }}:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+{%- if database == "postgresql" %}
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/{{ package_name }}_db
+{%- endif %}
+{%- if database == "mssql" %}
+      - DATABASE_URL=mssql+pyodbc://sa:YourStrong@Passw0rd@mssql:1433/{{ package_name }}_db?driver=ODBC+Driver+17+for+SQL+Server
+{%- endif %}
+{%- if database == "elasticsearch" %}
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+{%- endif %}
+{%- if event_store == "message-db" %}
+      - MESSAGE_DB_URL=postgresql://message_store:message_store@message-db:5432/message_store
+{%- endif %}
+{%- if broker in ["redis", "redis-pubsub"] or cache == "redis" %}
+      - REDIS_URL=redis://redis:6379
+{%- endif %}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+{%- if database == "postgresql" %}
+      postgres:
+        condition: service_healthy
+{%- endif %}
+{%- if database == "mssql" %}
+      mssql:
+        condition: service_healthy
+{%- endif %}
+{%- if database == "elasticsearch" %}
+      elasticsearch:
+        condition: service_healthy
+{%- endif %}
+{%- if event_store == "message-db" %}
+      message-db:
+        condition: service_healthy
+{%- endif %}
+{%- if broker in ["redis", "redis-pubsub"] or cache == "redis" %}
+      redis:
+        condition: service_healthy
+{%- endif %}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Nginx reverse proxy for production
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+
+# Networks for production isolation
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
