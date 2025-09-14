@@ -180,8 +180,10 @@ addopts = [
     "--cov-report=xml",
 ]
 markers = [
+    "domain: Domain layer tests (pure business logic)",
+    "application: Application layer tests (handlers, services)",
+    "integration: Integration tests (external dependencies)",
     "unit: Unit tests",
-    "integration: Integration tests",
     "slow: Slow tests",
     "database: Database tests",
     "broker: Broker tests",
@@ -223,9 +225,18 @@ precision = 2
 show_missing = true
 skip_covered = false
 skip_empty = true
+fail_under = 85  # Overall minimum coverage
 
 [tool.coverage.html]
 directory = "htmlcov"
 
 [tool.coverage.xml]
 output = "coverage.xml"
+
+# Coverage requirements per category
+# Use with: pytest tests/{{package_name}}/domain --cov-fail-under=100
+# Or create custom scripts/commands for each category
+[tool.coverage.paths]
+domain = ["src/{{package_name}}/**/aggregate.py", "src/{{package_name}}/**/entities.py", "src/{{package_name}}/**/value_objects.py", "src/{{package_name}}/**/domain_services.py"]
+application = ["src/{{package_name}}/**/*_handlers.py", "src/{{package_name}}/**/*_services.py", "src/{{package_name}}/**/repository.py"]
+integration = ["src/{{package_name}}/**/api/*.py", "src/{{package_name}}/**/subscribers/*.py"]

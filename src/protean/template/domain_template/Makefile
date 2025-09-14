@@ -18,17 +18,29 @@ install-pre-commit: ## Install pre-commit hooks
 test: ## Run all tests
 	poetry run pytest
 
-test-unit: ## Run unit tests only
-	poetry run pytest tests/unit/
+test-domain: ## Run domain layer tests (100% coverage required)
+	poetry run pytest tests/{{package_name}}/domain/ --cov=src/{{package_name}} --cov-fail-under=100 --cov-report=term-missing
 
-test-integration: ## Run integration tests only
-	poetry run pytest tests/integration/
+test-application: ## Run application layer tests (100% coverage required)
+	poetry run pytest tests/{{package_name}}/application/ --cov=src/{{package_name}} --cov-fail-under=100 --cov-report=term-missing
 
-test-bdd: ## Run BDD tests only
-	poetry run pytest tests/bdd/
+test-integration: ## Run integration tests (90% coverage required)
+	poetry run pytest tests/{{package_name}}/integration/ --cov=src/{{package_name}} --cov-fail-under=90 --cov-report=term-missing
 
-test-cov: ## Run tests with coverage report
-	poetry run pytest --cov={{package_name}} --cov-report=term-missing --cov-report=html
+test-fast: ## Run fast tests (domain + application)
+	poetry run pytest tests/{{package_name}}/domain/ tests/{{package_name}}/application/ -m "not slow"
+
+test-cov: ## Run all tests with full coverage report
+	poetry run pytest --cov=src/{{package_name}} --cov-report=term-missing --cov-report=html --cov-report=xml
+
+test-cov-domain: ## Run domain tests with coverage report
+	poetry run pytest tests/{{package_name}}/domain/ --cov=src/{{package_name}} --cov-report=term-missing --cov-report=html:htmlcov/domain
+
+test-cov-application: ## Run application tests with coverage report
+	poetry run pytest tests/{{package_name}}/application/ --cov=src/{{package_name}} --cov-report=term-missing --cov-report=html:htmlcov/application
+
+test-cov-integration: ## Run integration tests with coverage report
+	poetry run pytest tests/{{package_name}}/integration/ --cov=src/{{package_name}} --cov-report=term-missing --cov-report=html:htmlcov/integration
 
 test-watch: ## Run tests in watch mode
 	poetry run pytest-watch
