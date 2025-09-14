@@ -71,7 +71,7 @@ class TestBrokerRegistry:
     def test_get_registered_broker(self):
         """Test getting a registered broker class."""
         # Create a mock broker class
-        with patch("protean.port.broker.importlib.import_module") as mock_import:
+        with patch("protean.port.broker.import_module") as mock_import:
             mock_module = Mock()
             mock_broker_class = Mock()
             mock_module.TestBroker = mock_broker_class
@@ -106,7 +106,7 @@ class TestBrokerRegistry:
 
     def test_get_broker_with_attribute_error(self):
         """Test that missing broker class in module raises proper error."""
-        with patch("protean.port.broker.importlib.import_module") as mock_import:
+        with patch("protean.port.broker.import_module") as mock_import:
             mock_module = Mock(spec=[])  # Module without the expected class
             mock_import.return_value = mock_module
 
@@ -195,7 +195,7 @@ class TestBrokerRegistry:
             # Set up a registered broker to avoid ConfigurationError
             registry._brokers["test"] = "path.to.Test"
 
-            with patch("protean.port.broker.importlib.import_module") as mock_import:
+            with patch("protean.port.broker.import_module") as mock_import:
                 mock_module = Mock()
                 mock_module.Test = Mock()
                 mock_import.return_value = mock_module
