@@ -28,15 +28,25 @@ database:
     Memory: memory
     PostgreSQL: postgresql
     SQLite: sqlite
-    ElasticSearch: elasticsearch
+    MS SQL Server: mssql
+    Elasticsearch: elasticsearch
+  default: memory
+
+event_store:
+  type: str
+  choices:
+    Memory: memory
+    MessageDB (PostgreSQL): message-db
   default: memory
 
 broker:
   type: str
   choices:
+    Inline (Synchronous): inline
     Memory: memory
-    Redis: redis
-  default: memory
+    Redis Stream: redis
+    Redis Pub/Sub: redis-pubsub
+  default: inline
 
 cache:
   type: str
@@ -44,3 +54,8 @@ cache:
     Memory: memory
     Redis: redis
   default: memory
+
+include_example:
+  type: bool
+  default: true
+  help: Include example aggregate code to demonstrate the project structure

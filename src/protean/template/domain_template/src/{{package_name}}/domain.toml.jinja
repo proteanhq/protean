@@ -1,24 +1,123 @@
 debug = true
-testing = true
+testing = false
 secret_key = ${SECRET_KEY|{{ 999999999999999999999999999999999|ans_random|hash('sha256') }}}
 identity_strategy = "uuid"
 identity_type = "string"
 event_processing = "sync"
 command_processing = "sync"
 
+# Default Database Configuration
 [databases.default]
-provider = "memory"
+provider = "{{ database }}"
+{%- if database == "postgresql" %}
+database_uri = ${DATABASE_URL|"postgresql://postgres:postgres@localhost:5432/{{ package_name }}_db"}
+{%- elif database == "sqlite" %}
+database = "sqlite"
+database_uri = ${DATABASE_URL|"sqlite:///./{{ package_name }}.db"}
+{%- elif database == "mssql" %}
+database_uri = ${DATABASE_URL|"mssql+pyodbc://sa:YourStrong@Passw0rd@localhost:1433/{{ package_name }}_db?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"}
+{%- elif database == "elasticsearch" %}
+host = ${ELASTICSEARCH_HOST|"localhost"}
+port = ${ELASTICSEARCH_PORT|9200}
+username = ${ELASTICSEARCH_USERNAME|}
+password = ${ELASTICSEARCH_PASSWORD|}
+{%- endif %}
 
+# Memory Database (for testing)
 [databases.memory]
 provider = "memory"
 
+{%- if database == "sqlite" %}
+# SQLite Database
 [databases.sqlite]
 provider = "sqlalchemy"
 database = "sqlite"
-database_uri = "sqlite:///test.db"
+database_uri = ${DATABASE_URL|"sqlite:///./{{ package_name }}.db"}
+{%- endif %}
 
+{%- if database == "postgresql" or event_store == "message-db" %}
+# PostgreSQL Database
+[databases.postgresql]
+provider = "sqlalchemy"
+database = "postgresql"
+database_uri = ${DATABASE_URL|"postgresql://postgres:postgres@localhost:5432/{{ package_name }}_db"}
+{%- endif %}
+
+{%- if database == "mssql" %}
+# MS SQL Server Database
+[databases.mssql]
+provider = "sqlalchemy"
+database = "mssql"
+database_uri = ${DATABASE_URL|"mssql+pyodbc://sa:YourStrong@Passw0rd@localhost:1433/{{ package_name }}_db?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"}
+{%- endif %}
+
+{%- if database == "elasticsearch" %}
+# Elasticsearch Database
+[databases.elasticsearch]
+provider = "elasticsearch"
+host = ${ELASTICSEARCH_HOST|"localhost"}
+port = ${ELASTICSEARCH_PORT|9200}
+username = ${ELASTICSEARCH_USERNAME|}
+password = ${ELASTICSEARCH_PASSWORD|}
+{%- endif %}
+
+# Default Event Store Configuration
+[event_stores.default]
+provider = "{{ event_store }}"
+{%- if event_store == "message-db" %}
+database_uri = ${MESSAGE_DB_URL|"postgresql://message_store:message_store@localhost:5433/message_store"}
+{%- endif %}
+
+{%- if event_store == "message-db" %}
+# MessageDB Event Store
+[event_stores.message_db]
+provider = "message_db"
+database_uri = ${MESSAGE_DB_URL|"postgresql://message_store:message_store@localhost:5433/message_store"}
+{%- endif %}
+
+# Default Broker Configuration
 [brokers.default]
+provider = "{{ broker }}"
+{%- if broker == "redis" %}
+redis_url = ${REDIS_URL|"redis://localhost:6379/0"}
+{%- elif broker == "redis-pubsub" %}
+redis_url = ${REDIS_URL|"redis://localhost:6379/0"}
+channel = "{{ package_name }}"
+{%- endif %}
+
+# Inline Broker (Synchronous)
+[brokers.inline]
 provider = "inline"
 
+{%- if broker in ["redis", "redis-pubsub"] or cache == "redis" %}
+# Redis Stream Broker
+[brokers.redis]
+provider = "redis"
+redis_url = ${REDIS_URL|"redis://localhost:6379/0"}
+
+# Redis Pub/Sub Broker
+[brokers.redis_pubsub]
+provider = "redis_pubsub"
+redis_url = ${REDIS_URL|"redis://localhost:6379/0"}
+channel = "{{ package_name }}"
+{%- endif %}
+
+# Default Cache Configuration
 [caches.default]
+provider = "{{ cache }}"
+{%- if cache == "redis" %}
+redis_url = ${REDIS_URL|"redis://localhost:6379/1"}
+ttl = ${CACHE_TTL|3600}
+{%- endif %}
+
+# Memory Cache
+[caches.memory]
 provider = "memory"
+
+{%- if cache == "redis" %}
+# Redis Cache
+[caches.redis]
+provider = "redis"
+redis_url = ${REDIS_URL|"redis://localhost:6379/1"}
+ttl = ${CACHE_TTL|3600}
+{%- endif %}

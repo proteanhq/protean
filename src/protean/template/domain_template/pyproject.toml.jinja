@@ -9,6 +9,7 @@ classifiers=[
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3 :: Only",
 ]
 
@@ -16,29 +17,51 @@ classifiers=[
 python = "^3.11"
 
 {%- set extras = [] -%}
+
+{# Database adapters #}
 {%- if database != "memory" -%}
   {%- if database == "postgresql" -%}
     {%- set _ = extras.append("postgresql") -%}
   {%- elif database == "sqlite" -%}
     {%- set _ = extras.append("sqlite") -%}
+  {%- elif database == "mssql" -%}
+    {%- set _ = extras.append("mssql") -%}
   {%- elif database == "elasticsearch" -%}
     {%- set _ = extras.append("elasticsearch") -%}
   {%- endif -%}
 {%- endif -%}
-{%- if broker != "memory" -%}
-  {%- if broker == "redis" -%}
-    {%- set _ = extras.append("redis") -%}
-  {%- elif broker == "celery" -%}
-    {%- set _ = extras.append("celery") -%}
+
+{# Event Store adapters #}
+{%- if event_store == "message-db" -%}
+  {%- set _ = extras.append("message-db") -%}
+  {# MessageDB requires PostgreSQL #}
+  {%- if "postgresql" not in extras -%}
+    {%- set _ = extras.append("postgresql") -%}
   {%- endif -%}
 {%- endif -%}
-{%- if cache != "memory" -%}
-  {# Don't add redis is already present #}
-  {%- if cache == "redis" and "redis" not in extras -%}
+
+{# Broker adapters #}
+{%- if broker in ["redis", "redis-pubsub"] -%}
+  {%- if "redis" not in extras -%}
     {%- set _ = extras.append("redis") -%}
   {%- endif -%}
-{%- endif %}
+{%- endif -%}
+
+{# Cache adapters #}
+{%- if cache == "redis" and "redis" not in extras -%}
+  {%- set _ = extras.append("redis") -%}
+{%- endif -%}
+
 protean = {version = "0.14.2", extras={{ extras }} }
+python-dotenv = "^1.0.0"
+
+[tool.poetry.group.dev]
+optional = true
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^3.6.0"
+ipython = "^8.20.0"
+ipdb = "^0.13.13"
 
 [tool.poetry.group.test]
 optional = true
@@ -46,7 +69,161 @@ optional = true
 [tool.poetry.group.test.dependencies]
 pytest = "^8.2.1"
 pytest-bdd = "^7.1.2"
+pytest-cov = "^4.1.0"
+pytest-asyncio = "^0.23.0"
+pytest-mock = "^3.12.0"
+pytest-watch = "^4.2.0"
+factory-boy = "^3.3.0"
+faker = "^22.0.0"
+
+[tool.poetry.group.types]
+optional = true
+
+[tool.poetry.group.types.dependencies]
+mypy = "^1.8.0"
+types-python-dateutil = "^2.8.19"
+types-requests = "^2.31.0"
+
+[tool.poetry.group.lint]
+optional = true
+
+[tool.poetry.group.lint.dependencies]
+ruff = "^0.3.0"
+
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
+mkdocs = "^1.5.3"
+mkdocs-material = "^9.5.0"
+mkdocs-mermaid2-plugin = "^1.1.1"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+# Ruff configuration
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+fix = true
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "ARG",  # flake8-unused-arguments
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function call in argument defaults
+    "C901",   # too complex
+    "W191",   # indentation contains tabs
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["ARG", "S101"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint.isort]
+known-first-party = ["{{ package_name }}"]
+
+# MyPy configuration
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+no_implicit_reexport = true
+namespace_packages = true
+show_error_codes = true
+show_column_numbers = true
+pretty = true
+
+# Allow untyped calls for third-party libraries without stubs
+[[tool.mypy.overrides]]
+module = [
+    "protean.*",
+    "factory.*",
+    "faker.*",
+]
+ignore_missing_imports = true
+
+# Pytest configuration
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov-branch",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=html",
+    "--cov-report=xml",
+]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "slow: Slow tests",
+    "database: Database tests",
+    "broker: Broker tests",
+    "eventstore: Event store tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["src"]
+branch = true
+parallel = true
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__init__.py",
+    "*/conftest.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "def __str__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "if typing.TYPE_CHECKING:",
+    "@abstractmethod",
+    "@abc.abstractmethod",
+    "except ImportError:",
+    "# nocov",
+]
+precision = 2
+show_missing = true
+skip_covered = false
+skip_empty = true
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"

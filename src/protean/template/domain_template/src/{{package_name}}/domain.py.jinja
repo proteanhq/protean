@@ -1,7 +1,13 @@
+"""Domain initialization and configuration."""
+
 from protean.domain import Domain
 
 # Domain Composition Root
-{{ package_name }} = Domain(name="{{ project_name }}")
+{{ domain_name }} = Domain(name="{{ domain_name }}")
 
-# Initialize and load all domain elements under the composition root
-{{ package_name }}.init()
+# Initialize and load all domain elements
+# This will auto-discover all decorated domain elements in:
+# - aggregate folders (e.g., example/, user/, order/)
+# - shared/ folder for shared value objects and exceptions
+# - projections/ folder for read models
+{{ domain_name }}.init()

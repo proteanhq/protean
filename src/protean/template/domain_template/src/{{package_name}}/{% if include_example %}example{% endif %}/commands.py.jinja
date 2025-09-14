@@ -1,0 +1,27 @@
+"""Commands for the Example aggregate."""
+
+from protean.fields import Identifier, String
+
+from {{ package_name }}.domain import {{ domain_name }}
+
+
+@{{ domain_name }}.command(part_of="Example")
+class CreateExample:
+    """Command to create a new Example."""
+
+    name = String(required=True, max_length=100)
+    description = String(max_length=500)
+
+
+@{{ domain_name }}.command(part_of="Example")
+class ActivateExample:
+    """Command to activate an Example."""
+
+    example_id = Identifier(required=True)
+
+
+@{{ domain_name }}.command(part_of="Example")
+class ArchiveExample:
+    """Command to archive an Example."""
+
+    example_id = Identifier(required=True)

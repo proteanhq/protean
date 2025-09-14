@@ -1,51 +1,127 @@
-version: "3"
+version: "3.8"
 
 services:
-  {% if database == "elasticsearch" -%}
-  es:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.2
-    container_name: es
-    command: ["bin/elasticsearch", "-Ediscovery.type=single-node"]
-    ports:
-      - 9200:9200
-    environment:
-      - "ES_JAVA_OPTS=-Xms256m -Xmx512m"
-
-  kibana:
-    image: docker.elastic.co/kibana/kibana:7.10.2
-    environment:
-      ELASTICSEARCH_HOSTS: http://es:9200
-    ports:
-      - 5601:5601
-  {% elif database == "postgresql" -%}
-
-  db:
-    image: postgres:12.3-alpine
+{%- if database == "postgresql" %}
+  postgres:
+    image: postgres:15-alpine
     restart: unless-stopped
     ports:
-      - 5432:5432
+      - "5432:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      POSTGRES_DB: {{ package_name }}_db
     volumes:
-      - db-data:/var/lib/postgresql/data
-    command: ["postgres", "-c", "log_destination=stderr"]
-  {% endif -%}
-  {% if broker in ["redis", "celery"] or cache == "redis" -%}
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+{%- endif %}
 
-  redis:
-    image: redis:latest
+{%- if database == "mssql" %}
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
     restart: unless-stopped
     ports:
-      - 6379:6379
-  {% endif -%}
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "YourStrong@Passw0rd"
+      MSSQL_PID: Developer
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "YourStrong@Passw0rd", "-Q", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+{%- endif %}
 
-  message-db:
-    image: ethangarofolo/message-db:1.2.6
+{%- if database == "elasticsearch" %}
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    restart: unless-stopped
     ports:
-      - 5433:5432
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+{%- endif %}
+
+{%- if event_store == "message-db" %}
+  message-db:
+    image: ethangarofolo/message-db:1.3.0
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_PASSWORD: message_store
+      MESSAGE_STORE_POSTGRES_PASSWORD: message_store
+    volumes:
+      - message-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U message_store"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+{%- endif %}
+
+{%- if broker in ["redis", "redis-pubsub"] or cache == "redis" %}
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+{%- endif %}
 
 volumes:
-  db-data:
+{%- if database == "postgresql" or event_store == "message-db" %}
+  postgres-data:
     driver: local
+{%- endif %}
+{%- if database == "mssql" %}
+  mssql-data:
+    driver: local
+{%- endif %}
+{%- if database == "elasticsearch" %}
+  elasticsearch-data:
+    driver: local
+{%- endif %}
+{%- if event_store == "message-db" %}
+  message-db-data:
+    driver: local
+{%- endif %}
+{%- if broker in ["redis", "redis-pubsub"] or cache == "redis" %}
+  redis-data:
+    driver: local
+{%- endif %}

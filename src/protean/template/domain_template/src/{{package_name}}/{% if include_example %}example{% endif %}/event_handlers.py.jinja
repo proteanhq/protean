@@ -1,0 +1,32 @@
+"""Event handlers for the Example aggregate."""
+
+from protean import handle
+
+from {{ package_name }}.domain import {{ domain_name }}
+from .events import ExampleActivated, ExampleArchived, ExampleCreated
+
+
+@{{ domain_name }}.event_handler(part_of="Example")
+class ExampleEventHandler:
+    """Handle events from the Example aggregate."""
+
+    @handle(ExampleCreated)
+    def on_example_created(self, event: ExampleCreated) -> None:
+        """React to Example creation."""
+        # Add your event handling logic here
+        # For example: send notifications, update external systems, etc.
+        pass
+
+    @handle(ExampleActivated)
+    def on_example_activated(self, event: ExampleActivated) -> None:
+        """React to Example activation."""
+        # Add your event handling logic here
+        # For example: notify subscribers, trigger workflows, etc.
+        pass
+
+    @handle(ExampleArchived)
+    def on_example_archived(self, event: ExampleArchived) -> None:
+        """React to Example archival."""
+        # Add your event handling logic here
+        # For example: cleanup related data, send archive notifications, etc.
+        pass

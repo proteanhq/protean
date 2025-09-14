@@ -1,0 +1,57 @@
+"""Unit tests for Example aggregate."""
+
+import pytest
+from datetime import datetime
+
+from {{ package_name }}.example.aggregate import Example
+
+
+class TestExampleAggregate:
+    """Test cases for Example aggregate."""
+
+    def test_create_example(self):
+        """Test creating a new Example."""
+        example = Example(
+            name="Test Example",
+            description="Test description",
+        )
+
+        assert example.name == "Test Example"
+        assert example.description == "Test description"
+        assert example.status == "DRAFT"
+        assert example.created_at is not None
+        assert example.updated_at is not None
+
+    def test_activate_example(self):
+        """Test activating an Example."""
+        example = Example(
+            name="Test Example",
+            status="DRAFT",
+        )
+
+        example.activate()
+
+        assert example.status == "ACTIVE"
+        assert example.updated_at is not None
+
+    def test_cannot_activate_archived_example(self):
+        """Test that archived Examples cannot be activated."""
+        example = Example(
+            name="Test Example",
+            status="ARCHIVED",
+        )
+
+        with pytest.raises(ValueError, match="Cannot activate an archived example"):
+            example.activate()
+
+    def test_archive_example(self):
+        """Test archiving an Example."""
+        example = Example(
+            name="Test Example",
+            status="ACTIVE",
+        )
+
+        example.archive()
+
+        assert example.status == "ARCHIVED"
+        assert example.updated_at is not None

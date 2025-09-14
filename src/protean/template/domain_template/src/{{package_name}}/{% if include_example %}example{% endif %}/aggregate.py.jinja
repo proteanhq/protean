@@ -1,0 +1,71 @@
+"""Example aggregate demonstrating the pattern."""
+
+from datetime import datetime
+
+from protean.fields import DateTime, String
+
+from {{ package_name }}.domain import {{ domain_name }}
+from .events import ExampleActivated, ExampleArchived, ExampleCreated
+
+
+@{{ domain_name }}.aggregate
+class Example:
+    """Example aggregate root.
+
+    This is a sample aggregate to demonstrate the project structure.
+    Replace this with your actual domain aggregates.
+    """
+
+    # Fields
+    name = String(required=True, max_length=100)
+    description = String(max_length=500)
+    status = String(
+        default="DRAFT",
+        choices=["DRAFT", "ACTIVE", "ARCHIVED"],
+    )
+    created_at = DateTime(default=lambda: datetime.now())
+    updated_at = DateTime(default=lambda: datetime.now())
+
+    # Business methods
+    @classmethod
+    def create(cls, name: str, description: str = None) -> "Example":
+        """Create a new Example and raise creation event."""
+        example = cls(name=name, description=description)
+
+        example.raise_(
+            ExampleCreated(
+                example_id=example.id,
+                name=example.name,
+                description=example.description,
+                created_at=example.created_at,
+            )
+        )
+
+        return example
+
+    def activate(self) -> None:
+        """Activate the example."""
+        if self.status == "ARCHIVED":
+            raise ValueError("Cannot activate an archived example")
+
+        self.status = "ACTIVE"
+        self.updated_at = datetime.now()
+
+        self.raise_(
+            ExampleActivated(
+                example_id=self.id,
+                activated_at=self.updated_at,
+            )
+        )
+
+    def archive(self) -> None:
+        """Archive the example."""
+        self.status = "ARCHIVED"
+        self.updated_at = datetime.now()
+
+        self.raise_(
+            ExampleArchived(
+                example_id=self.id,
+                archived_at=self.updated_at,
+            )
+        )

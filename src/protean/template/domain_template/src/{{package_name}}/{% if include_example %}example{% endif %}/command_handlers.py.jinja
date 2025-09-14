@@ -1,0 +1,51 @@
+"""Command handlers for the Example aggregate."""
+
+from protean import handle
+
+from {{ package_name }}.domain import {{ domain_name }}
+from .aggregate import Example
+from .commands import ActivateExample, ArchiveExample, CreateExample
+
+
+@{{ domain_name }}.command_handler(part_of="Example")
+class ExampleCommandHandler:
+    """Handle commands for the Example aggregate."""
+
+    @handle(CreateExample)
+    def handle_create_example(self, command: CreateExample) -> None:
+        """Handle creation of a new Example."""
+        # Use the factory method that raises the event internally
+        example = Example.create(
+            name=command.name,
+            description=command.description,
+        )
+
+        # Save the aggregate
+        repo = {{ domain_name }}.repository_for(Example)
+        repo.add(example)
+
+    @handle(ActivateExample)
+    def handle_activate_example(self, command: ActivateExample) -> None:
+        """Handle activation of an Example."""
+        repo = {{ domain_name }}.repository_for(Example)
+        example = repo.get(command.example_id)
+
+        if not example:
+            raise ValueError(f"Example with id {command.example_id} not found")
+
+        # The activate method raises the event internally
+        example.activate()
+        repo.add(example)
+
+    @handle(ArchiveExample)
+    def handle_archive_example(self, command: ArchiveExample) -> None:
+        """Handle archiving of an Example."""
+        repo = {{ domain_name }}.repository_for(Example)
+        example = repo.get(command.example_id)
+
+        if not example:
+            raise ValueError(f"Example with id {command.example_id} not found")
+
+        # The archive method raises the event internally
+        example.archive()
+        repo.add(example)
