@@ -1,0 +1,212 @@
+"""Logging configuration for {{ project_name }}.
+
+This module provides structured logging with:
+- JSON formatting for production
+- Readable formatting for development
+- Log rotation support
+- Environment-specific log levels
+"""
+
+import logging
+import logging.handlers
+import os
+import sys
+from pathlib import Path
+from typing import Any, Dict
+
+import structlog
+
+
+def get_log_level() -> str:
+    """Get log level based on environment."""
+    env = os.getenv("ENVIRONMENT", "development").lower()
+
+    # Environment-specific defaults
+    level_map = {
+        "production": "INFO",
+        "staging": "INFO",
+        "development": "DEBUG",
+        "test": "WARNING",
+    }
+
+    # Allow override via LOG_LEVEL env var
+    return os.getenv("LOG_LEVEL", level_map.get(env, "INFO"))
+
+
+def setup_stdlib_logging() -> None:
+    """Configure standard library logging."""
+    log_level = get_log_level()
+
+    # Create logs directory if it doesn't exist
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+
+    # Remove default handlers
+    root_logger.handlers = []
+
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(log_level)
+
+    # File handler with rotation
+    file_handler = logging.handlers.RotatingFileHandler(
+        filename=log_dir / "{{ package_name }}.log",
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=5,
+        encoding="utf-8",
+    )
+    file_handler.setLevel(log_level)
+
+    # Error file handler (errors only)
+    error_handler = logging.handlers.RotatingFileHandler(
+        filename=log_dir / "{{ package_name }}_error.log",
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=5,
+        encoding="utf-8",
+    )
+    error_handler.setLevel(logging.ERROR)
+
+    # Add handlers to root logger
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(error_handler)
+
+    # Configure logging for noisy libraries
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("asyncio").setLevel(logging.WARNING)
+
+
+def setup_structlog() -> None:
+    """Configure structlog for structured logging."""
+    env = os.getenv("ENVIRONMENT", "development").lower()
+
+    # Common processors
+    processors = [
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.CallsiteParameterAdder(
+            parameters=[
+                structlog.processors.CallsiteParameter.FILENAME,
+                structlog.processors.CallsiteParameter.LINENO,
+                structlog.processors.CallsiteParameter.FUNC_NAME,
+            ]
+        ),
+    ]
+
+    # Environment-specific rendering
+    if env in ["production", "staging"]:
+        # JSON output for production/staging
+        processors.append(structlog.processors.JSONRenderer())
+    else:
+        # Human-readable output for development/test
+        processors.append(
+            structlog.dev.ConsoleRenderer(
+                colors=True,
+                exception_formatter=structlog.dev.RichTracebackFormatter(
+                    show_locals=True,
+                    max_frames=2,
+                ),
+            )
+        )
+
+    structlog.configure(
+        processors=processors,
+        wrapper_class=structlog.stdlib.BoundLogger,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+
+def configure_logging() -> None:
+    """Configure all logging for the application."""
+    setup_stdlib_logging()
+    setup_structlog()
+
+
+def get_logger(name: str) -> structlog.stdlib.BoundLogger:
+    """Get a configured logger instance.
+
+    Args:
+        name: Logger name (usually __name__)
+
+    Returns:
+        Configured structlog logger
+    """
+    return structlog.get_logger(name)
+
+
+def add_context(**kwargs: Any) -> None:
+    """Add context variables that will be included in all subsequent log messages.
+
+    Args:
+        **kwargs: Key-value pairs to add to context
+    """
+    structlog.contextvars.bind_contextvars(**kwargs)
+
+
+def clear_context() -> None:
+    """Clear all context variables."""
+    structlog.contextvars.clear_contextvars()
+
+
+def log_method_call(func):
+    """Decorator to log method calls with arguments and return values.
+
+    Useful for debugging and tracing command/event handlers.
+    """
+    import functools
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        logger = get_logger(func.__module__)
+
+        # Log method entry
+        logger.debug(
+            "method_call_start",
+            method=func.__name__,
+            args=args[1:] if args else [],  # Skip self
+            kwargs=kwargs,
+        )
+
+        try:
+            result = func(*args, **kwargs)
+            # Log successful completion
+            logger.debug(
+                "method_call_end",
+                method=func.__name__,
+                result=result,
+            )
+            return result
+        except Exception as e:
+            # Log exception
+            logger.exception(
+                "method_call_error",
+                method=func.__name__,
+                error=str(e),
+            )
+            raise
+
+    return wrapper
+
+
+# Environment-specific configuration
+def configure_for_testing() -> None:
+    """Configure logging for test environment."""
+    # Reduce verbosity during tests
+    logging.getLogger().setLevel(logging.WARNING)
+
+    # Disable file handlers during tests
+    for handler in logging.getLogger().handlers[:]:
+        if isinstance(handler, logging.FileHandler):
+            logging.getLogger().removeHandler(handler)

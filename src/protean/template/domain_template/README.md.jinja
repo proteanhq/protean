@@ -367,7 +367,52 @@ Use environment variables or `.env` files for sensitive configuration:
 SECRET_KEY=your-secret-key
 DATABASE_URL=postgresql://user:pass@localhost/dbname
 REDIS_URL=redis://localhost:6379
+ENVIRONMENT=development  # production, staging, development, test
+LOG_LEVEL=INFO          # DEBUG, INFO, WARNING, ERROR, CRITICAL (optional)
 ```
+
+### Logging Configuration
+
+This project includes comprehensive structured logging with:
+
+#### Features
+- **Structured logging** with JSON output for production
+- **Human-readable** console output for development
+- **Automatic log rotation** with size and time-based policies
+- **Environment-specific** log levels
+- **Context propagation** for tracing requests
+
+#### Usage
+
+```python
+from {{ package_name }}.shared.logging import get_logger, add_context, log_method_call
+
+# Get a logger
+logger = get_logger(__name__)
+
+# Basic logging
+logger.info("Processing request", user_id=123, action="create")
+
+# Add context that persists across log messages
+add_context(request_id="abc-123", user_id=456)
+logger.info("Starting process")  # Will include request_id and user_id
+
+# Use decorator for automatic method logging
+@log_method_call
+def process_order(order_id: str):
+    # Method entry, exit, and errors are logged automatically
+    return {"status": "processed"}
+```
+
+#### Configuration Files
+- `logging.toml` - Logging configuration (optional)
+- `logs/` - Directory for log files (auto-created)
+  - `{{ package_name }}.log` - Main application log
+  - `{{ package_name }}_error.log` - Error-only log
+
+#### Environment Variables
+- `ENVIRONMENT` - Sets default log level (production=INFO, development=DEBUG)
+- `LOG_LEVEL` - Override default log level
 
 ## Contributing
 

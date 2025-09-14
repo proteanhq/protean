@@ -2,8 +2,17 @@
 
 from protean.domain import Domain
 
+from .shared.logging import configure_logging, get_logger
+
+# Configure logging for the application
+configure_logging()
+
+# Get logger for this module
+logger = get_logger(__name__)
+
 # Domain Composition Root
 {{ domain_name }} = Domain(name="{{ domain_name }}")
+logger.info("Initializing domain", domain="{{ domain_name }}")
 
 # Initialize and load all domain elements
 # This will auto-discover all decorated domain elements in:
@@ -11,3 +20,4 @@ from protean.domain import Domain
 # - shared/ folder for shared value objects and exceptions
 # - projections/ folder for read models
 {{ domain_name }}.init()
+logger.info("Domain initialized successfully", domain="{{ domain_name }}")
