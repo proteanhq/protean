@@ -1,0 +1,2254 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://docs.proteanhq.com/guides/consume-state/event-handlers/">
+      
+      
+        <link rel="prev" href="../">
+      
+      
+        <link rel="next" href="../projections/">
+      
+      
+      <link rel="icon" href="../../../assets/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.19">
+    
+    
+      
+        <title>Event Handlers - Protean</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.7e37652d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        
+        <link rel="stylesheet" href="../../../assets/external/fonts.googleapis.com/css.90ef4c13.css">
+        <style>:root{--md-text-font:"Lato";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#event-handlers" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Protean" class="md-header__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Protean
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Event Handlers
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../.." class="md-tabs__link">
+          
+  
+  
+    
+  
+  Protean
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../core-concepts/ddd/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Core Concepts
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../adapters/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Adapters
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../patterns/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Patterns
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../glossary/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Glossary
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../community/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Protean" class="md-nav__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+    Protean
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../.." class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Protean
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Guides
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Guides
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Installation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Essentials
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            Essentials
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../object-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Object Model
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../identity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Identity
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Domain Model
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            Domain Model
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../compose-a-domain/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Compose a Domain
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../domain-definition/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Define Concepts
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../domain-behavior/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Add Behavior
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_4" id="__nav_2_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    App Layer
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_4">
+            <span class="md-nav__icon md-icon"></span>
+            App Layer
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../change-state/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Change State
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../change-state/persist-aggregates/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Persist State
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    Consume State Changes
+    
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2_4_3" id="__nav_2_4_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_4_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_4_3">
+            <span class="md-nav__icon md-icon"></span>
+            Consume State Changes
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Event Handlers
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Event Handlers
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#defining-an-event-handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      Defining an Event Handler
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#event-handler-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Event Handler Workflow
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#return-values-from-event-handlers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Return Values from Event Handlers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration Options
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      Error Handling
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Error Handling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-handle_error-method" class="md-nav__link">
+    <span class="md-ellipsis">
+      The handle_error Method
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      How It Works
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handler-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      Error Handler Failures
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Managing Projections
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_5" id="__nav_2_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Utilities
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_5">
+            <span class="md-nav__icon md-icon"></span>
+            Utilities
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../cli/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    CLI
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../server/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Server
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../../core-concepts/ddd/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Core Concepts
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../adapters/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Adapters
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../patterns/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Patterns
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Glossary
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../community/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Community
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#defining-an-event-handler" class="md-nav__link">
+    <span class="md-ellipsis">
+      Defining an Event Handler
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#event-handler-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Event Handler Workflow
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#return-values-from-event-handlers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Return Values from Event Handlers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration Options
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      Error Handling
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Error Handling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-handle_error-method" class="md-nav__link">
+    <span class="md-ellipsis">
+      The handle_error Method
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      How It Works
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handler-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      Error Handler Failures
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="event-handlers">Event Handlers</h1>
+<p>Event handlers consume events raised in an aggregate and help sync the state of
+the aggregate with other aggregates and other systems. They are the preferred
+mechanism to update multiple aggregates.</p>
+<h2 id="defining-an-event-handler">Defining an Event Handler</h2>
+<p>Event Handlers are defined with the <code>Domain.event_handler</code> decorator. Below is
+a simplified example of an Event Handler connected to <code>Inventory</code> aggregate
+syncing stock levels corresponding to changes in the <code>Order</code> aggregate.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span><span class="p">,</span> <span class="n">handle</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">Integer</span><span class="p">,</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+<span class="n">domain</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;event_processing&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;sync&quot;</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">event</span><span class="p">(</span><span class="n">part_of</span><span class="o">=</span><span class="s2">&quot;Order&quot;</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">OrderShipped</span><span class="p">:</span>
+    <span class="n">order_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">book_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">quantity</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">total_amount</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Order</span><span class="p">:</span>
+    <span class="n">book_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">quantity</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">total_amount</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">status</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;PENDING&quot;</span><span class="p">,</span> <span class="s2">&quot;SHIPPED&quot;</span><span class="p">,</span> <span class="s2">&quot;DELIVERED&quot;</span><span class="p">],</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;PENDING&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">ship_order</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;SHIPPED&quot;</span>
+
+<span class="hll">        <span class="bp">self</span><span class="o">.</span><span class="n">raise_</span><span class="p">(</span>  <span class="c1"># (1)</span>
+</span><span class="hll">            <span class="n">OrderShipped</span><span class="p">(</span>
+</span>                <span class="n">order_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+                <span class="n">book_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">book_id</span><span class="p">,</span>
+                <span class="n">quantity</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">quantity</span><span class="p">,</span>
+                <span class="n">total_amount</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">total_amount</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Inventory</span><span class="p">:</span>
+    <span class="n">book_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">in_stock</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">event_handler</span><span class="p">(</span><span class="n">part_of</span><span class="o">=</span><span class="n">Inventory</span><span class="p">,</span> <span class="n">stream_category</span><span class="o">=</span><span class="s2">&quot;order&quot;</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ManageInventory</span><span class="p">:</span>
+<span class="hll">    <span class="nd">@handle</span><span class="p">(</span><span class="n">OrderShipped</span><span class="p">)</span>
+</span>    <span class="k">def</span><span class="w"> </span><span class="nf">reduce_stock_level</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="n">OrderShipped</span><span class="p">):</span>
+        <span class="n">repo</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">Inventory</span><span class="p">)</span>
+        <span class="n">inventory</span> <span class="o">=</span> <span class="n">repo</span><span class="o">.</span><span class="n">_dao</span><span class="o">.</span><span class="n">find_by</span><span class="p">(</span><span class="n">book_id</span><span class="o">=</span><span class="n">event</span><span class="o">.</span><span class="n">book_id</span><span class="p">)</span>
+
+        <span class="n">inventory</span><span class="o">.</span><span class="n">in_stock</span> <span class="o">-=</span> <span class="n">event</span><span class="o">.</span><span class="n">quantity</span>  <span class="c1"># (2)</span>
+
+        <span class="n">repo</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">inventory</span><span class="p">)</span>
+
+
+<span class="n">domain</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
+<span class="k">with</span> <span class="n">domain</span><span class="o">.</span><span class="n">domain_context</span><span class="p">():</span>
+    <span class="c1"># Persist Order</span>
+    <span class="n">order</span> <span class="o">=</span> <span class="n">Order</span><span class="p">(</span><span class="n">book_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">quantity</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">total_amount</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+    <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">Order</span><span class="p">)</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">order</span><span class="p">)</span>
+
+    <span class="c1"># Persist Inventory</span>
+    <span class="n">inventory</span> <span class="o">=</span> <span class="n">Inventory</span><span class="p">(</span><span class="n">book_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">in_stock</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+    <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">Inventory</span><span class="p">)</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">inventory</span><span class="p">)</span>
+
+    <span class="c1"># Ship Order</span>
+    <span class="n">order</span><span class="o">.</span><span class="n">ship_order</span><span class="p">()</span>
+    <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">Order</span><span class="p">)</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">order</span><span class="p">)</span>
+
+    <span class="c1"># Verify that Inventory Level has been reduced</span>
+    <span class="n">stock</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">Inventory</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">inventory</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">stock</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+    <span class="k">assert</span> <span class="n">stock</span><span class="o">.</span><span class="n">in_stock</span> <span class="o">==</span> <span class="mi">90</span>
+</code></pre></div>
+<ol>
+<li>
+<p><code>Order</code> aggregate fires <code>OrderShipped</code> event on book being shipped.</p>
+</li>
+<li>
+<p>Event handler picks up the event and updates stock levels in <code>Inventory</code>
+aggregate.</p>
+</li>
+</ol>
+<p>Simulating a hypothetical example, we can see that the stock levels were
+decreased in response to the <code>OrderShipped</code> event.</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">order</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Order<span class="o">(</span><span class="nv">book_id</span><span class="o">=</span><span class="m">1</span>,<span class="w"> </span><span class="nv">quantity</span><span class="o">=</span><span class="m">10</span>,<span class="w"> </span><span class="nv">total_amount</span><span class="o">=</span><span class="m">100</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>domain.repository_for<span class="o">(</span>Order<span class="o">)</span>.add<span class="o">(</span>order<span class="o">)</span>
+Out<span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>&lt;Order:<span class="w"> </span>Order<span class="w"> </span>object<span class="w"> </span><span class="o">(</span>id:<span class="w"> </span>62f8fa8d-2963-4539-bd21-860d3bab639e<span class="o">)</span>&gt;
+
+In<span class="w"> </span><span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span><span class="nv">inventory</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Inventory<span class="o">(</span><span class="nv">book_id</span><span class="o">=</span><span class="m">1</span>,<span class="w"> </span><span class="nv">in_stock</span><span class="o">=</span><span class="m">100</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">4</span><span class="o">]</span>:<span class="w"> </span>domain.repository_for<span class="o">(</span>Inventory<span class="o">)</span>.add<span class="o">(</span>inventory<span class="o">)</span>
+Out<span class="o">[</span><span class="m">4</span><span class="o">]</span>:<span class="w"> </span>&lt;Inventory:<span class="w"> </span>Inventory<span class="w"> </span>object<span class="w"> </span><span class="o">(</span>id:<span class="w"> </span>9272d70f-b796-417d-8f30-e01302d9f1a9<span class="o">)</span>&gt;
+
+In<span class="w"> </span><span class="o">[</span><span class="m">5</span><span class="o">]</span>:<span class="w"> </span>order.ship_order<span class="o">()</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">6</span><span class="o">]</span>:<span class="w"> </span>domain.repository_for<span class="o">(</span>Order<span class="o">)</span>.add<span class="o">(</span>order<span class="o">)</span>
+Out<span class="o">[</span><span class="m">6</span><span class="o">]</span>:<span class="w"> </span>&lt;Order:<span class="w"> </span>Order<span class="w"> </span>object<span class="w"> </span><span class="o">(</span>id:<span class="w"> </span>62f8fa8d-2963-4539-bd21-860d3bab639e<span class="o">)</span>&gt;
+
+In<span class="w"> </span><span class="o">[</span><span class="m">7</span><span class="o">]</span>:<span class="w"> </span><span class="nv">stock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>domain.repository_for<span class="o">(</span>Inventory<span class="o">)</span>.get<span class="o">(</span>inventory.id<span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">8</span><span class="o">]</span>:<span class="w"> </span>stock.to_dict<span class="o">()</span>
+Out<span class="o">[</span><span class="m">8</span><span class="o">]</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w"> </span><span class="s1">&#39;book_id&#39;</span>:<span class="w"> </span><span class="s1">&#39;1&#39;</span>,
+<span class="hll"><span class="w"> </span><span class="s1">&#39;in_stock&#39;</span>:<span class="w"> </span><span class="m">90</span>,
+</span><span class="w"> </span><span class="s1">&#39;id&#39;</span>:<span class="w"> </span><span class="s1">&#39;9272d70f-b796-417d-8f30-e01302d9f1a9&#39;</span>
+<span class="w"> </span><span class="o">}</span>
+</code></pre></div>
+<h2 id="event-handler-workflow">Event Handler Workflow</h2>
+<p>Event handlers follow an asynchronous, fire-and-forget pattern. When an event is published, event handlers process it without returning any values to the caller.</p>
+<pre class="mermaid"><code>sequenceDiagram
+  autonumber
+  Aggregate-&gt;&gt;Domain: Publish Event
+  Domain-&gt;&gt;Event Store: Store Event
+  Event Store--&gt;&gt;Domain: 
+  Domain--&gt;&gt;Aggregate: 
+
+  Note over Domain,Event Handler: Asynchronous Processing
+
+  Event Store-&gt;&gt;Event Handler: Deliver Event
+  Event Handler-&gt;&gt;Event Handler: Process Event
+  Event Handler-&gt;&gt;Repository: Load/Update Aggregates
+  Repository--&gt;&gt;Event Handler: 
+  Event Handler-&gt;&gt;Event Handler: Perform Side Effects
+  Event Handler-&gt;&gt;Repository: Persist Aggregates</code></pre>
+<ol>
+<li><strong>Aggregate Publishes Event</strong>: An action in an aggregate triggers an event to be published.</li>
+<li><strong>Domain Stores Event</strong>: The domain stores the event in the event store.</li>
+<li><strong>Event Store Confirms Storage</strong>: The event store confirms the event has been stored.</li>
+<li><strong>Domain Returns to Aggregate</strong>: The domain returns control to the aggregate.</li>
+<li><strong>Event Store Delivers Event</strong>: Asynchronously, the event store delivers the event to all subscribed event handlers.</li>
+<li><strong>Event Handler Processes Event</strong>: The event handler receives and processes the event.</li>
+<li><strong>Event Handler Loads/Updates Aggregates</strong>: If needed, the event handler loads and updates relevant aggregates.</li>
+<li><strong>Repository Returns Data</strong>: The repository returns requested data to the event handler.</li>
+<li><strong>Event Handler Performs Side Effects</strong>: The event handler may perform additional side effects (sending emails, updating other systems, etc.).</li>
+<li><strong>Event Handler Persists Data and Optionally Raises Events</strong>: The event handler persists the mutated aggregate, which can also raise events.</li>
+</ol>
+<h2 id="return-values-from-event-handlers">Return Values from Event Handlers</h2>
+<p>Event handlers in Protean follow the standard CQRS pattern where event handlers do not return values to the caller. This deliberate design choice ensures:</p>
+<ol>
+<li><strong>Decoupling</strong>: The publisher of events remains completely decoupled from the consumers.</li>
+<li><strong>Asynchronous Processing</strong>: Events can be processed in the background without blocking.</li>
+<li><strong>Multiple Consumers</strong>: Multiple event handlers can process the same event independently.</li>
+</ol>
+<p>If an event handler needs to communicate information as part of its processing, it should:</p>
+<ul>
+<li>Emit new events </li>
+<li>Update relevant aggregates that can be queried later</li>
+<li>Log information for monitoring purposes</li>
+</ul>
+<h2 id="configuration-options">Configuration Options</h2>
+<ul>
+<li><strong><code>part_of</code></strong>: The aggregate to which the event handler is connected.</li>
+<li><strong><code>stream_category</code></strong>: The event handler listens to events on this stream
+category. The stream category defaults to
+<a href="../../domain-definition/aggregates/#stream_category">the category of the aggregate</a>
+associated with the handler.</li>
+</ul>
+<p>An Event Handler can be part of an aggregate, and have the stream category of
+  a different aggregate. This is the mechanism for an aggregate to listen to
+  another aggregate's events to sync its own state.
+- <strong><code>source_stream</code></strong>: When specified, the event handler only consumes events
+generated in response to events or commands from this original stream.
+For example, <code>EmailNotifications</code> event handler listening to <code>OrderShipped</code>
+events can be configured to generate a <code>NotificationSent</code> event only when the
+<code>OrderShipped</code> event (in stream <code>orders</code>) is generated in response to a
+<code>ShipOrder</code> (in stream <code>manage_order</code>) command.</p>
+<h2 id="error-handling">Error Handling</h2>
+<p>Protean provides a robust error handling mechanism for event handlers through the optional <code>handle_error</code> method. This method allows event handlers to gracefully recover from exceptions without disrupting the overall event processing pipeline.</p>
+<h3 id="the-handle_error-method">The <code>handle_error</code> Method</h3>
+<p>You can add a <code>handle_error</code> class method to your event handler to implement custom error handling:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">event_handler</span><span class="p">(</span><span class="n">part_of</span><span class="o">=</span><span class="n">Inventory</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">InventoryEventHandler</span><span class="p">:</span>
+    <span class="nd">@handle</span><span class="p">(</span><span class="n">OrderShipped</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">update_inventory</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">):</span>
+        <span class="c1"># Event handling logic that might raise exceptions</span>
+        <span class="o">...</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_error</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">exc</span><span class="p">:</span> <span class="ne">Exception</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Custom error handling for event processing failures&quot;&quot;&quot;</span>
+        <span class="c1"># Log the error</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to process event </span><span class="si">{</span><span class="n">message</span><span class="o">.</span><span class="n">type</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Perform recovery operations</span>
+        <span class="c1"># Example: store failed events for retry, trigger compensating actions, etc.</span>
+        <span class="o">...</span>
+</code></pre></div>
+<h3 id="how-it-works">How It Works</h3>
+<ol>
+<li>When an exception occurs during event processing, the Protean Engine catches it.</li>
+<li>The engine logs detailed error information including stack traces.</li>
+<li>The engine calls the event handler's <code>handle_error</code> method, passing:</li>
+<li>The original exception that was raised</li>
+<li>The event message being processed when the exception occurred</li>
+<li>After <code>handle_error</code> completes, processing continues with subsequent events.</li>
+</ol>
+<h3 id="error-handler-failures">Error Handler Failures</h3>
+<p>If an exception occurs within the <code>handle_error</code> method itself, the Protean Engine will catch and log that exception as well, ensuring that the event processing pipeline continues to function. This provides an additional layer of resilience:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@classmethod</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">handle_error</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">exc</span><span class="p">:</span> <span class="ne">Exception</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># Error handling logic that might itself fail</span>
+        <span class="o">...</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">error_exc</span><span class="p">:</span>
+        <span class="c1"># The engine will catch and log this secondary exception</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error handler failed: </span><span class="si">{</span><span class="n">error_exc</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="c1"># Processing continues regardless</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../" class="md-footer__link md-footer__link--prev" aria-label="Previous: Consume State Changes">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Consume State Changes
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../projections/" class="md-footer__link md-footer__link--next" aria-label="Next: Managing Projections">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Managing Projections
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2019 - 2025 Subhash Bhushan
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../../..", "features": ["content.code.annotate", "content.code.copy", "content.code.select", "content.tabs.link", "content.tooltips", "navigation.expand", "navigation.footer", "navigation.indexes", "navigation.instant", "navigation.instant.prefetch", "navigation.instant.progress", "navigation.path", "navigation.prune", "navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.92b07e13.min.js"></script>
+      
+    
+  </body>
+</html>

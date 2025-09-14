@@ -1,0 +1,2582 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://docs.proteanhq.com/guides/change-state/retrieve-aggregates/">
+      
+      
+        <link rel="prev" href="../unit-of-work/">
+      
+      
+        <link rel="next" href="../../consume-state/">
+      
+      
+      <link rel="icon" href="../../../assets/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.19">
+    
+    
+      
+        <title>Retreiving Aggregates - Protean</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.7e37652d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        
+        <link rel="stylesheet" href="../../../assets/external/fonts.googleapis.com/css.90ef4c13.css">
+        <style>:root{--md-text-font:"Lato";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#retreiving-aggregates" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Protean" class="md-header__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Protean
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Retreiving Aggregates
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../.." class="md-tabs__link">
+          
+  
+  
+    
+  
+  Protean
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../core-concepts/ddd/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Core Concepts
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../adapters/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Adapters
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../patterns/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Patterns
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../glossary/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Glossary
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../community/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Protean" class="md-nav__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+    Protean
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../.." class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Protean
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Guides
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Guides
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Installation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Essentials
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            Essentials
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../object-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Object Model
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../identity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Identity
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Domain Model
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            Domain Model
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../compose-a-domain/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Compose a Domain
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../domain-definition/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Define Concepts
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../domain-behavior/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Add Behavior
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_4" id="__nav_2_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    App Layer
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_4">
+            <span class="md-nav__icon md-icon"></span>
+            App Layer
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Change State
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_4_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_4_2" id="__nav_2_4_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Persist State
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_4_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            Persist State
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../persist-aggregates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Persist Aggregates
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../unit-of-work/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Unit of Work
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Retreiving Aggregates
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Retreiving Aggregates
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#custom-repositories" class="md-nav__link">
+    <span class="md-ellipsis">
+      Custom Repositories
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-access-objects-dao" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data Access Objects (DAO)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#queryset" class="md-nav__link">
+    <span class="md-ellipsis">
+      QuerySet
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="QuerySet">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-queryset-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Basic QuerySet Operations
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#queryset-attributes-and-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      QuerySet Attributes and Methods
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#chaining-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Chaining Operations
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-querysets-in-repository-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using QuerySets in Repository Methods
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#controlling-result-size-with-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      Controlling Result Size with Limits
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Controlling Result Size with Limits">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setting-default-limit-during-element-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Setting Default Limit During Element Registration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#applying-limit-to-a-queryset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Applying Limit to a QuerySet
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#combining-limit-with-offset-for-pagination" class="md-nav__link">
+    <span class="md-ellipsis">
+      Combining Limit with Offset for Pagination
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optimization-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Optimization Considerations
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      Filtering
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Filtering">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#finding-by-multiple-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      Finding by multiple fields
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filtering-by-multiple-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      Filtering by multiple fields
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advanced-filtering-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      Advanced filtering criteria
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sorting-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sorting results
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resultset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Resultset
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../consume-state/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Consume State Changes
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_5" id="__nav_2_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Utilities
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_5">
+            <span class="md-nav__icon md-icon"></span>
+            Utilities
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../cli/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    CLI
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../server/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Server
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../../core-concepts/ddd/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Core Concepts
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../adapters/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Adapters
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../patterns/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Patterns
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Glossary
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../community/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Community
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#custom-repositories" class="md-nav__link">
+    <span class="md-ellipsis">
+      Custom Repositories
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-access-objects-dao" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data Access Objects (DAO)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#queryset" class="md-nav__link">
+    <span class="md-ellipsis">
+      QuerySet
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="QuerySet">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-queryset-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Basic QuerySet Operations
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#queryset-attributes-and-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      QuerySet Attributes and Methods
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#chaining-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Chaining Operations
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-querysets-in-repository-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using QuerySets in Repository Methods
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#controlling-result-size-with-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      Controlling Result Size with Limits
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Controlling Result Size with Limits">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setting-default-limit-during-element-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Setting Default Limit During Element Registration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#applying-limit-to-a-queryset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Applying Limit to a QuerySet
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#combining-limit-with-offset-for-pagination" class="md-nav__link">
+    <span class="md-ellipsis">
+      Combining Limit with Offset for Pagination
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optimization-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Optimization Considerations
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      Filtering
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Filtering">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#finding-by-multiple-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      Finding by multiple fields
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filtering-by-multiple-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      Filtering by multiple fields
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advanced-filtering-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      Advanced filtering criteria
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sorting-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sorting results
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resultset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Resultset
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="retreiving-aggregates">Retreiving Aggregates</h1>
+<p>An aggregate can be retreived with the repository's <code>get</code> method, if you know
+its identity:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Person</span><span class="p">:</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+    <span class="n">email</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">254</span><span class="p">)</span>
+
+
+<span class="n">domain</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">traverse</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="k">with</span> <span class="n">domain</span><span class="o">.</span><span class="n">domain_context</span><span class="p">():</span>
+    <span class="n">person</span> <span class="o">=</span> <span class="n">Person</span><span class="p">(</span>
+<span class="hll">        <span class="nb">id</span><span class="o">=</span><span class="s2">&quot;1&quot;</span><span class="p">,</span>  <span class="c1"># (1)</span>
+</span>        <span class="n">name</span><span class="o">=</span><span class="s2">&quot;John Doe&quot;</span><span class="p">,</span>
+        <span class="n">email</span><span class="o">=</span><span class="s2">&quot;john.doe@localhost&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+<span class="hll">    <span class="n">domain</span><span class="o">.</span><span class="n">repository_for</span><span class="p">(</span><span class="n">Person</span><span class="p">)</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">person</span><span class="p">)</span>
+</span></code></pre></div>
+<ol>
+<li>Identity is explicitly set to <strong>1</strong>.</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="hll">In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span>domain.repository_for<span class="o">(</span>Person<span class="o">)</span>.get<span class="o">(</span><span class="s2">&quot;1&quot;</span><span class="o">)</span>
+</span>Out<span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span>&lt;Person:<span class="w"> </span>Person<span class="w"> </span>object<span class="w"> </span><span class="o">(</span>id:<span class="w"> </span><span class="m">1</span><span class="o">)</span>&gt;
+</code></pre></div>
+<p>Finding an aggregate by a field value is also possible, but requires a custom
+repository to be defined with a business-oriented method.</p>
+<h2 id="custom-repositories">Custom Repositories</h2>
+<p>Protean needs anything beyond a simple <code>get</code> to be defined in a
+repository. A repository is to be treated as part of the domain layer, and is
+expected to enclose methods that represent business queries.</p>
+<p>Defining a custom repository is straight-forward:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">Integer</span><span class="p">,</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Person</span><span class="p">:</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+    <span class="n">email</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">254</span><span class="p">)</span>
+    <span class="n">age</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">21</span><span class="p">)</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">repository</span><span class="p">(</span><span class="n">part_of</span><span class="o">=</span><span class="n">Person</span><span class="p">)</span>  <span class="c1"># (1)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">CustomPersonRepository</span><span class="p">:</span>
+<span class="hll">    <span class="k">def</span><span class="w"> </span><span class="nf">find_by_email</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">email</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Person</span><span class="p">:</span>
+</span>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dao</span><span class="o">.</span><span class="n">find_by</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">email</span><span class="p">)</span>
+</code></pre></div>
+<ol>
+<li>The repository is connected to <code>Person</code> aggregate through the <code>part_of</code>
+parameter.</li>
+</ol>
+<p>Protean now returns <code>CustomPersonRepository</code> upon fetching the repository for
+<code>Person</code> aggregate.</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">person1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Person<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s2">&quot;John Doe&quot;</span>,<span class="w"> </span><span class="nv">email</span><span class="o">=</span><span class="s2">&quot;john.doe@example.com&quot;</span>,<span class="w"> </span><span class="nv">age</span><span class="o">=</span><span class="m">22</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span><span class="nv">person2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>Person<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s2">&quot;Jane Doe&quot;</span>,<span class="w"> </span><span class="nv">email</span><span class="o">=</span><span class="s2">&quot;jane.doe@example.com&quot;</span>,<span class="w"> </span><span class="nv">age</span><span class="o">=</span><span class="m">20</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span><span class="nv">repository</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>domain.repository_for<span class="o">(</span>Person<span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">4</span><span class="o">]</span>:<span class="w"> </span>repository
+Out<span class="o">[</span><span class="m">4</span><span class="o">]</span>:<span class="w"> </span>&lt;CustomPersonRepository<span class="w"> </span>at<span class="w"> </span>0x1079af290&gt;
+
+In<span class="w"> </span><span class="o">[</span><span class="m">5</span><span class="o">]</span>:<span class="w"> </span>repository.add<span class="o">(</span>person1<span class="o">)</span>
+<span class="hll">Out<span class="o">[</span><span class="m">5</span><span class="o">]</span>:<span class="w"> </span>&lt;Person:<span class="w"> </span>Person<span class="w"> </span>object<span class="w"> </span><span class="o">(</span>id:<span class="w"> </span>9ba6a890-e783-455e-9a6b-a0a16c0514df<span class="o">)</span>&gt;
+</span>
+In<span class="w"> </span><span class="o">[</span><span class="m">6</span><span class="o">]</span>:<span class="w"> </span>repository.add<span class="o">(</span>person2<span class="o">)</span>
+<span class="hll">Out<span class="o">[</span><span class="m">6</span><span class="o">]</span>:<span class="w"> </span>&lt;Person:<span class="w"> </span>Person<span class="w"> </span>object<span class="w"> </span><span class="o">(</span>id:<span class="w"> </span>edc78a03-aba6-47fc-a4a7-308eed3f7c67<span class="o">)</span>&gt;
+</span>
+In<span class="w"> </span><span class="o">[</span><span class="m">7</span><span class="o">]</span>:<span class="w"> </span><span class="nv">retreived_person</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>repository.find_by_email<span class="o">(</span><span class="s2">&quot;john.doe@example.com&quot;</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">8</span><span class="o">]</span>:<span class="w"> </span>retreived_person.to_dict<span class="o">()</span>
+Out<span class="o">[</span><span class="m">8</span><span class="o">]</span>:<span class="w"> </span>
+<span class="o">{</span><span class="s1">&#39;name&#39;</span>:<span class="w"> </span><span class="s1">&#39;John Doe&#39;</span>,
+<span class="w"> </span><span class="s1">&#39;email&#39;</span>:<span class="w"> </span><span class="s1">&#39;john.doe@example.com&#39;</span>,
+<span class="w"> </span><span class="s1">&#39;age&#39;</span>:<span class="w"> </span><span class="m">22</span>,
+<span class="w"> </span><span class="s1">&#39;id&#39;</span>:<span class="w"> </span><span class="s1">&#39;9ba6a890-e783-455e-9a6b-a0a16c0514df&#39;</span><span class="o">}</span>
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Methods in the repository should be named for the business queries they
+perform. <code>adults</code> is a good name for a method that fetches persons
+over the age of 18.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+</div>
+<p>A repository can be connected to a specific persistence store by specifying
+   the <code>database</code> parameter.</p>
+<h2 id="data-access-objects-dao">Data Access Objects (DAO)</h2>
+<p>You would have observed the query in the repository above was performed on a
+<code>_dao</code> object. This is a DAO object that is automatically generated for every
+repository, and internally used by Protean to access the persistence layer.</p>
+<p>At first glance, repositories and Data Access Objects may seem similar.
+But a repository leans towards the domain in its functionality. It contains
+methods and implementations that clearly identify what the domain is trying to
+ask/do with the persistence store. Data Access Objects, on the other hand,
+talk the language of the database. A repository works in conjunction with the
+DAO layer to access and manipulate on the persistence store.</p>
+<h2 id="queryset">QuerySet</h2>
+<p>A QuerySet represents a collection of objects from your database that can be filtered and ordered. When you perform a query through the DAO layer, it returns a QuerySet object that provides convenient methods to work with the results.</p>
+<p>QuerySets are lazy, meaning they don't access the database until you actually need the data. This allows you to chain multiple filtering operations efficiently without hitting the database repeatedly.</p>
+<h3 id="basic-queryset-operations">Basic QuerySet Operations</h3>
+<p>Here's an example of using QuerySet methods:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Get a reference to the DAO through the repository</span>
+<span class="n">dao</span> <span class="o">=</span> <span class="n">repository</span><span class="o">.</span><span class="n">_dao</span>
+
+<span class="c1"># Create a queryset</span>
+<span class="n">queryset</span> <span class="o">=</span> <span class="n">dao</span><span class="o">.</span><span class="n">query</span>
+
+<span class="c1"># Chain operations on the queryset</span>
+<span class="n">filtered_query</span> <span class="o">=</span> <span class="n">queryset</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">country</span><span class="o">=</span><span class="s2">&quot;CA&quot;</span><span class="p">)</span>
+<span class="n">ordered_query</span> <span class="o">=</span> <span class="n">filtered_query</span><span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">&quot;age&quot;</span><span class="p">)</span>
+
+<span class="c1"># Execute the query and get results</span>
+<span class="n">results</span> <span class="o">=</span> <span class="n">ordered_query</span><span class="o">.</span><span class="n">all</span><span class="p">()</span><span class="o">.</span><span class="n">items</span>
+
+<span class="c1"># Print the names of people from Canada, ordered by age</span>
+<span class="k">for</span> <span class="n">person</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">person</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">person</span><span class="o">.</span><span class="n">age</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="queryset-attributes-and-methods">QuerySet Attributes and Methods</h3>
+<p>QuerySets expose several attributes and methods:</p>
+<ul>
+<li><strong><code>filter()</code></strong>: Narrows down the query results based on specified conditions</li>
+<li><strong><code>exclude()</code></strong>: Removes matching objects from the queryset</li>
+<li><strong><code>all()</code></strong>: Returns a ResultSet containing all objects</li>
+<li><strong><code>order_by()</code></strong>: Orders the queryset results by specified fields</li>
+<li><strong><code>first()</code></strong>: Returns the first object matching the query</li>
+<li><strong><code>count()</code></strong>: Returns the number of objects matching the query</li>
+</ul>
+<h3 id="chaining-operations">Chaining Operations</h3>
+<p>One of the most powerful features of QuerySets is the ability to chain operations:</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">adults_in_ca</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>repository._dao.query.filter<span class="o">(</span><span class="nv">age__gte</span><span class="o">=</span><span class="m">18</span><span class="o">)</span>.filter<span class="o">(</span><span class="nv">country</span><span class="o">=</span><span class="s2">&quot;CA&quot;</span><span class="o">)</span>.order_by<span class="o">(</span><span class="s2">&quot;name&quot;</span><span class="o">)</span>.all<span class="o">()</span>.items
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span><span class="o">[</span>f<span class="s2">&quot;{person.name}, {person.age}&quot;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>person<span class="w"> </span><span class="k">in</span><span class="w"> </span>adults_in_ca<span class="o">]</span>
+Out<span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span><span class="o">[</span><span class="s1">&#39;Jane Doe, 36&#39;</span>,<span class="w"> </span><span class="s1">&#39;John Doe, 38&#39;</span><span class="o">]</span>
+</code></pre></div>
+<h3 id="using-querysets-in-repository-methods">Using QuerySets in Repository Methods</h3>
+<p>In a real application, you would typically wrap these QuerySet operations in repository methods:</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">PersonRepository</span><span class="p">(</span><span class="n">Repository</span><span class="p">):</span>
+    <span class="n">part_of</span> <span class="o">=</span> <span class="n">Person</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">adults_in_country</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">country_code</span><span class="p">):</span>
+<span class="hll"><span class="w">        </span><span class="sd">&quot;&quot;&quot;Find all adults in the specified country.&quot;&quot;&quot;</span>
+</span><span class="hll">        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dao</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+</span><span class="hll">            <span class="n">age__gte</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">country</span><span class="o">=</span><span class="n">country_code</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span><span class="o">.</span><span class="n">items</span>
+</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">children_by_age</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">country_code</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="hll"><span class="w">        </span><span class="sd">&quot;&quot;&quot;Find all children ordered by age.&quot;&quot;&quot;</span>
+</span><span class="hll">        <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dao</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">age__lt</span><span class="o">=</span><span class="mi">18</span><span class="p">)</span>
+</span><span class="hll">        <span class="k">if</span> <span class="n">country_code</span><span class="p">:</span>
+</span>            <span class="n">query</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">country</span><span class="o">=</span><span class="n">country_code</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">query</span><span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="s2">&quot;age&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span><span class="o">.</span><span class="n">items</span>
+</code></pre></div>
+<h3 id="controlling-result-size-with-limits">Controlling Result Size with Limits</h3>
+<p>By default, Protean limits the number of records returned by a query to 100. You can control this behavior in several ways:</p>
+<h4 id="setting-default-limit-during-element-registration">Setting Default Limit During Element Registration</h4>
+<p>You can override the default limit when registering an element:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">limit</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+<span class="hll"><span class="k">class</span><span class="w"> </span><span class="nc">Person</span><span class="p">:</span>
+</span>    <span class="c1"># This aggregate&#39;s queries will return at most 50 records by default</span>
+    <span class="nb">id</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">Integer</span><span class="p">(</span><span class="n">identifier</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">String</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+</code></pre></div>
+<p>Setting the limit to <code>None</code> or a negative number removes the limit entirely:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">entity</span><span class="p">(</span><span class="n">part_of</span><span class="o">=</span><span class="n">Person</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>  <span class="c1"># No limit</span>
+<span class="hll"><span class="k">class</span><span class="w"> </span><span class="nc">Address</span><span class="p">:</span>
+</span>    <span class="nb">id</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">Integer</span><span class="p">(</span><span class="n">identifier</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">street</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">String</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">person</span> <span class="o">=</span> <span class="n">field</span><span class="o">.</span><span class="n">Reference</span><span class="p">(</span><span class="n">Person</span><span class="p">)</span>
+</code></pre></div>
+<h4 id="applying-limit-to-a-queryset">Applying Limit to a QuerySet</h4>
+<p>You can also control the limit at query time using the <code>limit()</code> method:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Limit to 10 records</span>
+<span class="n">limited_query</span> <span class="o">=</span> <span class="n">repository</span><span class="o">.</span><span class="n">_dao</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+
+<span class="c1"># Remove limit entirely</span>
+<span class="n">unlimited_query</span> <span class="o">=</span> <span class="n">repository</span><span class="o">.</span><span class="n">_dao</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+</code></pre></div>
+<p>Here's a complete example:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Repository method that retrieves records with flexible limit</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_people_by_country</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">country_code</span><span class="p">,</span> <span class="n">max_results</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Find people from a specific country with optional limit.&quot;&quot;&quot;</span>
+    <span class="n">query</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dao</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">country</span><span class="o">=</span><span class="n">country_code</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">max_results</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="n">query</span><span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="n">max_results</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">query</span><span class="o">.</span><span class="n">all</span><span class="p">()</span><span class="o">.</span><span class="n">items</span>
+</code></pre></div>
+<h4 id="combining-limit-with-offset-for-pagination">Combining Limit with Offset for Pagination</h4>
+<p>You can combine <code>limit</code> with <code>offset</code> for implementing pagination:</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_page</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">page_number</span><span class="p">,</span> <span class="n">page_size</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get a specific page of results.&quot;&quot;&quot;</span>
+    <span class="n">offset</span> <span class="o">=</span> <span class="p">(</span><span class="n">page_number</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">page_size</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dao</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">offset</span><span class="p">(</span><span class="n">offset</span><span class="p">)</span><span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="n">page_size</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If you set a limit during element registration, it becomes the default for all queries on that element. You can always override it at query time using the <code>limit()</code> method.</p>
+</div>
+<h3 id="optimization-considerations">Optimization Considerations</h3>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>QuerySets are evaluated when you iterate over them, slice them, or convert them to lists. This is when the database query actually executes.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>When working with large datasets, be mindful of query performance. Use specific filters early in your query chain to reduce the data being processed.</p>
+</div>
+<h2 id="filtering">Filtering</h2>
+<p>For all other filtering needs, the DAO exposes a method <code>filter</code> that can
+accept advanced filtering criteria.</p>
+<p>For the purposes of this guide, assume that the following <code>Person</code> aggregates
+exist in the database:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">Integer</span><span class="p">,</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">()</span>
+
+
+<span class="hll"><span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+</span><span class="hll"><span class="k">class</span><span class="w"> </span><span class="nc">Person</span><span class="p">:</span>
+</span><span class="hll">    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+</span><span class="hll">    <span class="n">age</span> <span class="o">=</span> <span class="n">Integer</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">21</span><span class="p">)</span>
+</span><span class="hll">    <span class="n">country</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+</span></code></pre></div>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">repository</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>domain.repository_for<span class="o">(</span>Person<span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span><span class="k">for</span><span class="w"> </span>person<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="o">[</span>
+<span class="w">   </span>...:<span class="w">     </span>Person<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s2">&quot;John Doe&quot;</span>,<span class="w"> </span><span class="nv">age</span><span class="o">=</span><span class="m">38</span>,<span class="w"> </span><span class="nv">country</span><span class="o">=</span><span class="s2">&quot;CA&quot;</span><span class="o">)</span>,
+<span class="w">   </span>...:<span class="w">     </span>Person<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s2">&quot;John Roe&quot;</span>,<span class="w"> </span><span class="nv">age</span><span class="o">=</span><span class="m">41</span>,<span class="w"> </span><span class="nv">country</span><span class="o">=</span><span class="s2">&quot;US&quot;</span><span class="o">)</span>,
+<span class="w">   </span>...:<span class="w">     </span>Person<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s2">&quot;Jane Doe&quot;</span>,<span class="w"> </span><span class="nv">age</span><span class="o">=</span><span class="m">36</span>,<span class="w"> </span><span class="nv">country</span><span class="o">=</span><span class="s2">&quot;CA&quot;</span><span class="o">)</span>,
+<span class="w">   </span>...:<span class="w">     </span>Person<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s2">&quot;Baby Doe&quot;</span>,<span class="w"> </span><span class="nv">age</span><span class="o">=</span><span class="m">3</span>,<span class="w"> </span><span class="nv">country</span><span class="o">=</span><span class="s2">&quot;CA&quot;</span><span class="o">)</span>,
+<span class="w">   </span>...:<span class="w">     </span>Person<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s2">&quot;Boy Doe&quot;</span>,<span class="w"> </span><span class="nv">age</span><span class="o">=</span><span class="m">8</span>,<span class="w"> </span><span class="nv">country</span><span class="o">=</span><span class="s2">&quot;CA&quot;</span><span class="o">)</span>,
+<span class="w">   </span>...:<span class="w">     </span>Person<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s2">&quot;Girl Doe&quot;</span>,<span class="w"> </span><span class="nv">age</span><span class="o">=</span><span class="m">11</span>,<span class="w"> </span><span class="nv">country</span><span class="o">=</span><span class="s2">&quot;CA&quot;</span><span class="o">)</span>,
+<span class="w">   </span>...:<span class="w"> </span><span class="o">]</span>:
+<span class="w">   </span>...:<span class="w">     </span>repository.add<span class="o">(</span>person<span class="o">)</span>
+<span class="w">   </span>...:<span class="w"> </span>
+</code></pre></div>
+<p>Queries below can be placed in repository methods.</p>
+<h3 id="finding-by-multiple-fields">Finding by multiple fields</h3>
+<p>Used when you want to find a single aggregate. Throws <code>ObjectNotFoundError</code> if
+no aggregates are found, and <code>TooManyObjectsError</code> when more than one
+aggregates are found.</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">person</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>repository._dao.find_by<span class="o">(</span><span class="nv">age</span><span class="o">=</span><span class="m">36</span>,<span class="w"> </span><span class="nv">country</span><span class="o">=</span><span class="s2">&quot;CA&quot;</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>person.name
+Out<span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span><span class="s1">&#39;Jane Doe&#39;</span>
+</code></pre></div>
+<h3 id="filtering-by-multiple-fields">Filtering by multiple fields</h3>
+<p>You can filter for more than one aggregate at a time, with a similar mechanism:</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">people</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>repository._dao.query.filter<span class="o">(</span><span class="nv">age__gte</span><span class="o">=</span><span class="m">18</span>,<span class="w"> </span><span class="nv">country</span><span class="o">=</span><span class="s2">&quot;CA&quot;</span><span class="o">)</span>.all<span class="o">()</span>.items
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span><span class="o">[</span>person.name<span class="w"> </span><span class="k">for</span><span class="w"> </span>person<span class="w"> </span><span class="k">in</span><span class="w"> </span>people<span class="o">]</span>
+Out<span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span><span class="o">[</span><span class="s1">&#39;John Doe&#39;</span>,<span class="w"> </span><span class="s1">&#39;Jane Doe&#39;</span><span class="o">]</span>
+</code></pre></div>
+<h3 id="advanced-filtering-criteria">Advanced filtering criteria</h3>
+<p>You would have observed that the query above contained a special annotation,
+<code>_gte</code>, to signify that the age should be greater than or equal to 18. There
+are many other annotations that can be used to filter results:</p>
+<ul>
+<li><strong><code>exact</code>:</strong> Match exact string</li>
+<li><strong><code>iexact</code>:</strong> Match exact string, case-insensitive</li>
+<li><strong><code>contains</code>:</strong> Match strings containing value</li>
+<li><strong><code>icontains</code>:</strong> Match strings containing value, case-insensitive</li>
+<li><strong><code>gt</code>:</strong> Match integer vales greater than value</li>
+<li><strong><code>gte</code>:</strong> Match integer vales greater than or equal to value</li>
+<li><strong><code>lt</code>:</strong> Match integer vales less than value</li>
+<li><strong><code>lte</code>:</strong> Match integer vales less than or equal to value</li>
+<li><strong><code>in</code>:</strong> Match value to be among list of values</li>
+<li><strong><code>any</code>:</strong> Match any of given values to be among list of values</li>
+</ul>
+<p>These annotations have database-specific implementations. Refer to your chosen
+adapter's documentation for supported advanced filtering criteria.</p>
+<h2 id="sorting-results">Sorting results</h2>
+<p>The <code>filter</code> method supports a param named <code>order_by</code> to specify the sort order
+of the results.</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">people</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>repository._dao.query.order_by<span class="o">(</span><span class="s2">&quot;-age&quot;</span><span class="o">)</span>.all<span class="o">()</span>.items
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span><span class="o">[(</span>person.name,<span class="w"> </span>person.age<span class="o">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>person<span class="w"> </span><span class="k">in</span><span class="w"> </span>people<span class="o">]</span>
+Out<span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>
+<span class="o">[(</span><span class="s1">&#39;John Roe&#39;</span>,<span class="w"> </span><span class="m">41</span><span class="o">)</span>,
+<span class="w"> </span><span class="o">(</span><span class="s1">&#39;John Doe&#39;</span>,<span class="w"> </span><span class="m">38</span><span class="o">)</span>,
+<span class="w"> </span><span class="o">(</span><span class="s1">&#39;Jane Doe&#39;</span>,<span class="w"> </span><span class="m">36</span><span class="o">)</span>,
+<span class="w"> </span><span class="o">(</span><span class="s1">&#39;Girl Doe&#39;</span>,<span class="w"> </span><span class="m">11</span><span class="o">)</span>,
+<span class="w"> </span><span class="o">(</span><span class="s1">&#39;Boy Doe&#39;</span>,<span class="w"> </span><span class="m">8</span><span class="o">)</span>,
+<span class="w"> </span><span class="o">(</span><span class="s1">&#39;Baby Doe&#39;</span>,<span class="w"> </span><span class="m">3</span><span class="o">)]</span>
+</code></pre></div>
+<p>The <code>-</code> in the column name reversed the sort direction in the above example.</p>
+<h2 id="resultset">Resultset</h2>
+<p>The <code>filter(...).all()</code> method returns a <code>RecordSet</code> instance.</p>
+<p>This class prevents DAO-specific data structures from leaking into the domain
+layer. It exposes basic aspects of the returned results for inspection and
+later use:</p>
+<ul>
+<li><strong><code>total</code>:</strong> Total number of aggregates matching the query</li>
+<li><strong><code>items</code>:</strong> List of query results</li>
+<li><strong><code>limit</code>:</strong> Number of aggregates to be fetched</li>
+<li><strong><code>offset</code>:</strong> Number of aggregates to skip</li>
+</ul>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>repository._dao.query.all<span class="o">()</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>result
+Out<span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>&lt;ResultSet:<span class="w"> </span><span class="m">6</span><span class="w"> </span>items&gt;
+
+In<span class="w"> </span><span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span>result.to_dict<span class="o">()</span>
+Out<span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span>
+<span class="o">{</span><span class="s1">&#39;offset&#39;</span>:<span class="w"> </span><span class="m">0</span>,
+<span class="w"> </span><span class="s1">&#39;limit&#39;</span>:<span class="w"> </span><span class="m">1000</span>,
+<span class="w"> </span><span class="s1">&#39;total&#39;</span>:<span class="w"> </span><span class="m">6</span>,
+<span class="w"> </span><span class="s1">&#39;items&#39;</span>:<span class="w"> </span><span class="o">[</span>&lt;Person:<span class="w"> </span>Person<span class="w"> </span>object<span class="w"> </span><span class="o">(</span>id:<span class="w"> </span>84cac5ae-8272-4936-aa45-9342abe05513<span class="o">)</span>&gt;,
+<span class="w">  </span>&lt;Person:<span class="w"> </span>Person<span class="w"> </span>object<span class="w"> </span><span class="o">(</span>id:<span class="w"> </span>aec03bb7-a97d-4722-9e10-fa5c324aa69b<span class="o">)</span>&gt;,
+<span class="w">  </span>&lt;Person:<span class="w"> </span>Person<span class="w"> </span>object<span class="w"> </span><span class="o">(</span>id:<span class="w"> </span>0b6314e9-e9b0-4456-bf04-1b0e05af1bf2<span class="o">)</span>&gt;,
+<span class="w">  </span>&lt;Person:<span class="w"> </span>Person<span class="w"> </span>object<span class="w"> </span><span class="o">(</span>id:<span class="w"> </span>1be4b9cd-deb0-4c07-bdfc-b2dba119f7a0<span class="o">)</span>&gt;,
+<span class="w">  </span>&lt;Person:<span class="w"> </span>Person<span class="w"> </span>object<span class="w"> </span><span class="o">(</span>id:<span class="w"> </span>c5730eb0-9638-4d9d-8617-c2b3270be859<span class="o">)</span>&gt;,
+<span class="w">  </span>&lt;Person:<span class="w"> </span>Person<span class="w"> </span>object<span class="w"> </span><span class="o">(</span>id:<span class="w"> </span>4683a592-ffd5-4f01-84bc-02401c785922<span class="o">)</span>&gt;<span class="o">]}</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../unit-of-work/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Unit of Work">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Unit of Work
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../consume-state/" class="md-footer__link md-footer__link--next" aria-label="Next: Consume State Changes">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Consume State Changes
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2019 - 2025 Subhash Bhushan
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../../..", "features": ["content.code.annotate", "content.code.copy", "content.code.select", "content.tabs.link", "content.tooltips", "navigation.expand", "navigation.footer", "navigation.indexes", "navigation.instant", "navigation.instant.prefetch", "navigation.instant.progress", "navigation.path", "navigation.prune", "navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.92b07e13.min.js"></script>
+      
+    
+  </body>
+</html>

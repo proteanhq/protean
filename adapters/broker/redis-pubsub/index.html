@@ -1,0 +1,2739 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://docs.proteanhq.com/adapters/broker/redis-pubsub/">
+      
+      
+        <link rel="prev" href="../redis/">
+      
+      
+        <link rel="next" href="../custom-brokers/">
+      
+      
+      <link rel="icon" href="../../../assets/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.19">
+    
+    
+      
+        <title>Redis PubSub Broker - Protean</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.7e37652d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        
+        <link rel="stylesheet" href="../../../assets/external/fonts.googleapis.com/css.90ef4c13.css">
+        <style>:root{--md-text-font:"Lato";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#redis-pubsub-broker" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Protean" class="md-header__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Protean
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Redis PubSub Broker
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../.." class="md-tabs__link">
+          
+  
+  
+    
+  
+  Protean
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../guides/getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../core-concepts/ddd/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Core Concepts
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Adapters
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../patterns/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Patterns
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../glossary/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Glossary
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../community/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Protean" class="md-nav__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+    Protean
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../.." class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Protean
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../guides/getting-started/installation/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Guides
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../../core-concepts/ddd/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Core Concepts
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    Adapters
+    
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Adapters
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../internals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Internals
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../database/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    Database
+    
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_3" id="__nav_4_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_3">
+            <span class="md-nav__icon md-icon"></span>
+            Database
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../database/postgresql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    PostgreSQL
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../database/elasticsearch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Elasticsearch
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    Brokers
+    
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_4" id="__nav_4_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            Brokers
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../inline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Inline Broker
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../redis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Redis Stream Broker
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Redis PubSub Broker
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Redis PubSub Broker
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Installation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configuration-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration Options
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      Capabilities
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Usage Examples
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Usage Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-publishing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Basic Publishing
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#subscribing-to-channels" class="md-nav__link">
+    <span class="md-ellipsis">
+      Subscribing to Channels
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#message-distribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Distribution
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      Use Cases
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Use Cases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-real-time-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Real-time Notifications
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-cache-invalidation" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Cache Invalidation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-metrics-and-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Metrics and Monitoring
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limitations-and-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations and Considerations
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Limitations and Considerations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#limited-persistence" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limited Persistence
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-acknowledgment-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      No Acknowledgment Support
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simple-consumer-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      Simple Consumer Groups
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#position-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      Position Tracking
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Performance Considerations
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Considerations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#message-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Size
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#channel-naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      Channel Naming
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#message-processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Processing
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-and-debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      Monitoring and Debugging
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Monitoring and Debugging">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#redis-cli-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      Redis CLI Commands
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      Logging
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#health-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Health Checks
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migration-strategies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Migration Strategies
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Migration Strategies">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#to-redis-streams" class="md-nav__link">
+    <span class="md-ellipsis">
+      To Redis Streams
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-redis-pubsub" class="md-nav__link">
+    <span class="md-ellipsis">
+      From Redis PubSub
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      Best Practices
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Best Practices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-use-for-simple-queuing" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Use for Simple Queuing
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-implement-circuit-breakers" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Implement Circuit Breakers
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-keep-messages-small" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Keep Messages Small
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-monitor-subscriber-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Monitor Subscriber Count
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparison-with-other-brokers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Comparison with Other Brokers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      Next Steps
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../custom-brokers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Custom Brokers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cache/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    Caches
+    
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_5" id="__nav_4_5_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            Caches
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cache/redis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Redis
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../eventstore/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    Event Stores
+    
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4_6" id="__nav_4_6_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            Event Stores
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../eventstore/message-db/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Message DB
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../patterns/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Patterns
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Glossary
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../community/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Community
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Installation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configuration-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration Options
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      Capabilities
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Usage Examples
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Usage Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-publishing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Basic Publishing
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#subscribing-to-channels" class="md-nav__link">
+    <span class="md-ellipsis">
+      Subscribing to Channels
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#message-distribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Distribution
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      Use Cases
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Use Cases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-real-time-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Real-time Notifications
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-cache-invalidation" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Cache Invalidation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-metrics-and-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Metrics and Monitoring
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limitations-and-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limitations and Considerations
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Limitations and Considerations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#limited-persistence" class="md-nav__link">
+    <span class="md-ellipsis">
+      Limited Persistence
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-acknowledgment-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      No Acknowledgment Support
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simple-consumer-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      Simple Consumer Groups
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#position-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      Position Tracking
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Performance Considerations
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Considerations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#message-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Size
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#channel-naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      Channel Naming
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#message-processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Processing
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-and-debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      Monitoring and Debugging
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Monitoring and Debugging">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#redis-cli-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      Redis CLI Commands
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      Logging
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#health-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Health Checks
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migration-strategies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Migration Strategies
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Migration Strategies">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#to-redis-streams" class="md-nav__link">
+    <span class="md-ellipsis">
+      To Redis Streams
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-redis-pubsub" class="md-nav__link">
+    <span class="md-ellipsis">
+      From Redis PubSub
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#best-practices" class="md-nav__link">
+    <span class="md-ellipsis">
+      Best Practices
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Best Practices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-use-for-simple-queuing" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Use for Simple Queuing
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-implement-circuit-breakers" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Implement Circuit Breakers
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-keep-messages-small" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Keep Messages Small
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-monitor-subscriber-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Monitor Subscriber Count
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparison-with-other-brokers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Comparison with Other Brokers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      Next Steps
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="redis-pubsub-broker">Redis PubSub Broker</h1>
+<p>The Redis PubSub broker uses Redis Lists for simple queuing with consumer groups. Despite its name, it doesn't use Redis's native Pub/Sub mechanism but implements a queue-based messaging system.</p>
+<h2 id="overview">Overview</h2>
+<p>This broker uses Redis Lists as queues where:</p>
+<ul>
+<li><strong>Publishers</strong> append messages to Redis lists using <code>rpush</code></li>
+<li><strong>Subscribers</strong> read messages from lists using <code>lindex</code> with position tracking</li>
+<li><strong>Messages are persisted</strong> in Redis lists until Redis is flushed</li>
+<li><strong>Consumer groups</strong> track their position in each list independently</li>
+</ul>
+<h2 id="installation">Installation</h2>
+<p>The Redis PubSub broker requires the <code>redis</code> Python package:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Install Protean with Redis support</span>
+pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;protean[redis]&quot;</span>
+
+<span class="c1"># Or install Redis package separately</span>
+pip<span class="w"> </span>install<span class="w"> </span>redis&gt;<span class="o">=</span><span class="m">2</span>.0.0
+</code></pre></div>
+<h2 id="configuration">Configuration</h2>
+<div class="highlight"><pre><span></span><code><span class="k">[brokers.notifications]</span>
+<span class="n">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;redis_pubsub&quot;</span>
+<span class="n">URI</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;redis://localhost:6379/0&quot;</span>
+<span class="n">IS_ASYNC</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">  </span><span class="c1"># Optional: Use async processing (default: false)</span>
+</code></pre></div>
+<h3 id="configuration-options">Configuration Options</h3>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>provider</code></td>
+<td>Required</td>
+<td>Must be <code>"redis_pubsub"</code> for Redis PubSub broker</td>
+</tr>
+<tr>
+<td><code>URI</code></td>
+<td>Required</td>
+<td>Redis connection string</td>
+</tr>
+<tr>
+<td><code>IS_ASYNC</code></td>
+<td><code>false</code></td>
+<td>Enable asynchronous message processing</td>
+</tr>
+</tbody>
+</table>
+<h2 id="capabilities">Capabilities</h2>
+<p>The Redis PubSub broker provides simple queuing capabilities:</p>
+<ul>
+<li>❌ <strong>BASIC_PUBSUB</strong> - Not supported</li>
+<li>✅ <strong>SIMPLE_QUEUING</strong> - Consumer groups with position tracking</li>
+<li>❌ <strong>RELIABLE_MESSAGING</strong> - No acknowledgments (ack/nack not supported)</li>
+<li>❌ <strong>ORDERED_MESSAGING</strong> - No ordering guarantees</li>
+<li>❌ <strong>ENTERPRISE_STREAMING</strong> - Not supported</li>
+</ul>
+<h2 id="usage-examples">Usage Examples</h2>
+<h3 id="basic-publishing">Basic Publishing</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+<span class="n">domain</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;brokers&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;notifications&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">&#39;provider&#39;</span><span class="p">:</span> <span class="s1">&#39;redis_pubsub&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;URI&#39;</span><span class="p">:</span> <span class="s1">&#39;redis://localhost:6379/0&#39;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+<span class="n">domain</span><span class="o">.</span><span class="n">init</span><span class="p">()</span>
+
+<span class="c1"># Publish a notification</span>
+<span class="n">domain</span><span class="o">.</span><span class="n">brokers</span><span class="p">[</span><span class="s1">&#39;notifications&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span>
+    <span class="n">stream</span><span class="o">=</span><span class="s2">&quot;user:notifications&quot;</span><span class="p">,</span>  <span class="c1"># Channel name in Redis</span>
+    <span class="n">message</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;notification&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;user_id&quot;</span><span class="p">:</span> <span class="s2">&quot;123&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="s2">&quot;New Message&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;body&quot;</span><span class="p">:</span> <span class="s2">&quot;You have a new message!&quot;</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+</code></pre></div>
+<h3 id="subscribing-to-channels">Subscribing to Channels</h3>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">subscriber</span><span class="p">(</span>
+    <span class="n">stream</span><span class="o">=</span><span class="s2">&quot;user:notifications&quot;</span><span class="p">,</span>
+    <span class="n">broker</span><span class="o">=</span><span class="s2">&quot;notifications&quot;</span>
+<span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">NotificationSubscriber</span><span class="p">:</span>
+    <span class="nd">@handle</span><span class="p">(</span><span class="s2">&quot;notification&quot;</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">send_push_notification</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+        <span class="c1"># Send push notification to user&#39;s device</span>
+        <span class="n">push_service</span><span class="o">.</span><span class="n">send</span><span class="p">(</span>
+            <span class="n">user_id</span><span class="o">=</span><span class="n">message</span><span class="p">[</span><span class="s2">&quot;user_id&quot;</span><span class="p">],</span>
+            <span class="n">title</span><span class="o">=</span><span class="n">message</span><span class="p">[</span><span class="s2">&quot;title&quot;</span><span class="p">],</span>
+            <span class="n">body</span><span class="o">=</span><span class="n">message</span><span class="p">[</span><span class="s2">&quot;body&quot;</span><span class="p">]</span>
+        <span class="p">)</span>
+</code></pre></div>
+<h3 id="message-distribution">Message Distribution</h3>
+<p>Useful for distributing messages across consumer groups:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># WebSocket handler example</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ChatRoom</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">room_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">room_id</span> <span class="o">=</span> <span class="n">room_id</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">channel</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;chat:</span><span class="si">{</span><span class="n">room_id</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">send_message</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">user_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="c1"># Broadcast to all connected clients</span>
+        <span class="n">domain</span><span class="o">.</span><span class="n">brokers</span><span class="p">[</span><span class="s1">&#39;notifications&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span>
+            <span class="n">stream</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">channel</span><span class="p">,</span>
+            <span class="n">message</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;chat.message&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;user_id&quot;</span><span class="p">:</span> <span class="n">user_id</span><span class="p">,</span>
+                <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="n">message</span><span class="p">,</span>
+                <span class="s2">&quot;timestamp&quot;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">utcnow</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+<span class="c1"># Subscribe to chat messages</span>
+<span class="nd">@domain</span><span class="o">.</span><span class="n">subscriber</span><span class="p">(</span>
+    <span class="n">stream</span><span class="o">=</span><span class="s2">&quot;chat:*&quot;</span><span class="p">,</span>
+    <span class="n">broker</span><span class="o">=</span><span class="s2">&quot;notifications&quot;</span>
+<span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ChatSubscriber</span><span class="p">:</span>
+    <span class="nd">@handle</span><span class="p">(</span><span class="s2">&quot;chat.message&quot;</span><span class="p">)</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">relay_to_websocket</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+        <span class="c1"># Send to WebSocket clients</span>
+        <span class="k">await</span> <span class="n">websocket_manager</span><span class="o">.</span><span class="n">broadcast</span><span class="p">(</span>
+            <span class="n">room</span><span class="o">=</span><span class="n">message</span><span class="p">[</span><span class="s2">&quot;stream&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">],</span>
+            <span class="n">data</span><span class="o">=</span><span class="n">message</span>
+        <span class="p">)</span>
+</code></pre></div>
+<h2 id="use-cases">Use Cases</h2>
+<h3 id="1-real-time-notifications">1. Real-time Notifications</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># User notification system</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">NotificationService</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">notify_user</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">user_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">notification</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="n">domain</span><span class="o">.</span><span class="n">brokers</span><span class="p">[</span><span class="s1">&#39;notifications&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span>
+            <span class="n">stream</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;user:</span><span class="si">{</span><span class="n">user_id</span><span class="si">}</span><span class="s2">:notifications&quot;</span><span class="p">,</span>
+            <span class="n">message</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;notification&quot;</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">notification</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">notify_followers</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">user_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">update</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="c1"># Notify all followers about user activity</span>
+        <span class="k">for</span> <span class="n">follower_id</span> <span class="ow">in</span> <span class="n">get_followers</span><span class="p">(</span><span class="n">user_id</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">notify_user</span><span class="p">(</span><span class="n">follower_id</span><span class="p">,</span> <span class="n">update</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="2-cache-invalidation">2. Cache Invalidation</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Coordinate cache invalidation across services</span>
+<span class="nd">@domain</span><span class="o">.</span><span class="n">subscriber</span><span class="p">(</span><span class="n">stream</span><span class="o">=</span><span class="s2">&quot;cache:invalidation&quot;</span><span class="p">,</span> <span class="n">broker</span><span class="o">=</span><span class="s2">&quot;notifications&quot;</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">CacheInvalidator</span><span class="p">:</span>
+    <span class="nd">@handle</span><span class="p">(</span><span class="s2">&quot;invalidate&quot;</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clear_cache</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+        <span class="n">cache_key</span> <span class="o">=</span> <span class="n">message</span><span class="p">[</span><span class="s2">&quot;key&quot;</span><span class="p">]</span>
+        <span class="n">cache</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">cache_key</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalidated cache key: </span><span class="si">{</span><span class="n">cache_key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Trigger cache invalidation</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">update_user_profile</span><span class="p">(</span><span class="n">user_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+    <span class="c1"># Update database</span>
+    <span class="n">user_repo</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+
+    <span class="c1"># Broadcast cache invalidation</span>
+    <span class="n">domain</span><span class="o">.</span><span class="n">brokers</span><span class="p">[</span><span class="s1">&#39;notifications&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span>
+        <span class="n">stream</span><span class="o">=</span><span class="s2">&quot;cache:invalidation&quot;</span><span class="p">,</span>
+        <span class="n">message</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;invalidate&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;user:</span><span class="si">{</span><span class="n">user_id</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+</code></pre></div>
+<h3 id="3-metrics-and-monitoring">3. Metrics and Monitoring</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Collect metrics from distributed services</span>
+<span class="nd">@domain</span><span class="o">.</span><span class="n">subscriber</span><span class="p">(</span><span class="n">stream</span><span class="o">=</span><span class="s2">&quot;metrics:*&quot;</span><span class="p">,</span> <span class="n">broker</span><span class="o">=</span><span class="s2">&quot;notifications&quot;</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">MetricsCollector</span><span class="p">:</span>
+    <span class="nd">@handle</span><span class="p">(</span><span class="s2">&quot;metric&quot;</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">collect_metric</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+        <span class="n">metric_name</span> <span class="o">=</span> <span class="n">message</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">]</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">message</span><span class="p">[</span><span class="s2">&quot;value&quot;</span><span class="p">]</span>
+        <span class="n">tags</span> <span class="o">=</span> <span class="n">message</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;tags&quot;</span><span class="p">,</span> <span class="p">{})</span>
+
+        <span class="c1"># Send to monitoring system</span>
+        <span class="n">statsd</span><span class="o">.</span><span class="n">gauge</span><span class="p">(</span><span class="n">metric_name</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="n">tags</span><span class="p">)</span>
+
+<span class="c1"># Emit metrics</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">track_api_latency</span><span class="p">(</span><span class="n">endpoint</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">duration</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
+    <span class="n">domain</span><span class="o">.</span><span class="n">brokers</span><span class="p">[</span><span class="s1">&#39;notifications&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span>
+        <span class="n">stream</span><span class="o">=</span><span class="s2">&quot;metrics:api&quot;</span><span class="p">,</span>
+        <span class="n">message</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;metric&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;api.latency&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">duration</span><span class="p">,</span>
+            <span class="s2">&quot;tags&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;endpoint&quot;</span><span class="p">:</span> <span class="n">endpoint</span><span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+</code></pre></div>
+<h2 id="limitations-and-considerations">Limitations and Considerations</h2>
+<h3 id="limited-persistence">Limited Persistence</h3>
+<p>Messages are stored in Redis lists but have no durability guarantees:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Messages persist in Redis lists, but lost if Redis restarts without persistence</span>
+<span class="n">domain</span><span class="o">.</span><span class="n">brokers</span><span class="p">[</span><span class="s1">&#39;notifications&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span>
+    <span class="n">stream</span><span class="o">=</span><span class="s2">&quot;important-events&quot;</span><span class="p">,</span>
+    <span class="n">message</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;critical&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="s2">&quot;Stored in Redis list&quot;</span><span class="p">}</span>
+<span class="p">)</span>
+
+<span class="c1"># For better durability, use Redis Streams with AOF persistence</span>
+<span class="n">domain</span><span class="o">.</span><span class="n">brokers</span><span class="p">[</span><span class="s1">&#39;reliable&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span>  <span class="c1"># Redis Stream broker</span>
+    <span class="n">stream</span><span class="o">=</span><span class="s2">&quot;important-events&quot;</span><span class="p">,</span>
+    <span class="n">message</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;critical&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="s2">&quot;More durable with Redis Streams&quot;</span><span class="p">}</span>
+<span class="p">)</span>
+</code></pre></div>
+<h3 id="no-acknowledgment-support">No Acknowledgment Support</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Messages cannot be acknowledged or rejected</span>
+<span class="c1"># The broker doesn&#39;t track if messages were successfully processed</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">brokers</span><span class="p">[</span><span class="s1">&#39;notifications&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span>
+    <span class="n">stream</span><span class="o">=</span><span class="s2">&quot;notifications&quot;</span><span class="p">,</span>
+    <span class="n">message</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;alert&quot;</span><span class="p">}</span>
+<span class="p">)</span>
+<span class="c1"># result is just a message identifier, no delivery confirmation</span>
+</code></pre></div>
+<h3 id="simple-consumer-groups">Simple Consumer Groups</h3>
+<p>Consumer groups are supported but with limitations:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Consumer groups track position in the list independently</span>
+<span class="nd">@domain</span><span class="o">.</span><span class="n">subscriber</span><span class="p">(</span><span class="n">stream</span><span class="o">=</span><span class="s2">&quot;orders&quot;</span><span class="p">,</span> <span class="n">broker</span><span class="o">=</span><span class="s2">&quot;notifications&quot;</span><span class="p">,</span> <span class="n">consumer_group</span><span class="o">=</span><span class="s2">&quot;group1&quot;</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">OrderProcessor1</span><span class="p">:</span>
+    <span class="nd">@handle</span><span class="p">(</span><span class="s2">&quot;order.created&quot;</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Group 1 processing&quot;</span><span class="p">)</span>
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">subscriber</span><span class="p">(</span><span class="n">stream</span><span class="o">=</span><span class="s2">&quot;orders&quot;</span><span class="p">,</span> <span class="n">broker</span><span class="o">=</span><span class="s2">&quot;notifications&quot;</span><span class="p">,</span> <span class="n">consumer_group</span><span class="o">=</span><span class="s2">&quot;group2&quot;</span><span class="p">)</span>  
+<span class="k">class</span><span class="w"> </span><span class="nc">OrderProcessor2</span><span class="p">:</span>
+    <span class="nd">@handle</span><span class="p">(</span><span class="s2">&quot;order.created&quot;</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Group 2 processing&quot;</span><span class="p">)</span>  <span class="c1"># Different group, processes same messages</span>
+</code></pre></div>
+<h3 id="position-tracking">Position Tracking</h3>
+<p>Consumer groups track their position, but positions can be lost:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Implement reconnection logic</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ResilientSubscriber</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connected</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reconnect_attempts</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">connect</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">reconnect_attempts</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># Subscribe to channel</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">subscribe</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">connected</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="k">break</span>
+            <span class="k">except</span> <span class="ne">ConnectionError</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">reconnect_attempts</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">2</span> <span class="o">**</span> <span class="bp">self</span><span class="o">.</span><span class="n">reconnect_attempts</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="performance-considerations">Performance Considerations</h2>
+<h3 id="message-size">Message Size</h3>
+<p>Keep messages small for optimal performance:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Bad: Large message</span>
+<span class="n">domain</span><span class="o">.</span><span class="n">brokers</span><span class="p">[</span><span class="s1">&#39;notifications&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span>
+    <span class="n">stream</span><span class="o">=</span><span class="s2">&quot;updates&quot;</span><span class="p">,</span>
+    <span class="n">message</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;update&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="n">large_binary_data</span>  <span class="c1"># Avoid!</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+
+<span class="c1"># Good: Reference to data</span>
+<span class="n">domain</span><span class="o">.</span><span class="n">brokers</span><span class="p">[</span><span class="s1">&#39;notifications&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span>
+    <span class="n">stream</span><span class="o">=</span><span class="s2">&quot;updates&quot;</span><span class="p">,</span>
+    <span class="n">message</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;update&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;data_url&quot;</span><span class="p">:</span> <span class="s2">&quot;s3://bucket/key&quot;</span><span class="p">,</span>  <span class="c1"># Reference instead</span>
+        <span class="s2">&quot;size_bytes&quot;</span><span class="p">:</span> <span class="mi">1024</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+</code></pre></div>
+<h3 id="channel-naming">Channel Naming</h3>
+<p>Use hierarchical channel names for efficient pattern matching:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Good channel naming</span>
+<span class="s2">&quot;user:123:notifications&quot;</span>     <span class="c1"># User-specific</span>
+<span class="s2">&quot;chat:room:456&quot;</span>              <span class="c1"># Chat room</span>
+<span class="s2">&quot;system:alerts:critical&quot;</span>     <span class="c1"># System alerts</span>
+<span class="s2">&quot;metrics:api:latency&quot;</span>        <span class="c1"># API metrics</span>
+
+<span class="c1"># Pattern subscriptions</span>
+<span class="s2">&quot;user:*:notifications&quot;</span>       <span class="c1"># All user notifications</span>
+<span class="s2">&quot;chat:room:*&quot;</span>                <span class="c1"># All chat rooms</span>
+<span class="s2">&quot;system:alerts:*&quot;</span>            <span class="c1"># All system alerts</span>
+<span class="s2">&quot;metrics:*&quot;</span>                  <span class="c1"># All metrics</span>
+</code></pre></div>
+<h3 id="message-processing">Message Processing</h3>
+<p>Messages are processed sequentially per consumer group. Each group maintains its own position counter in Redis.</p>
+<h2 id="monitoring-and-debugging">Monitoring and Debugging</h2>
+<h3 id="redis-cli-commands">Redis CLI Commands</h3>
+<p>Monitor Pub/Sub activity:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># List active channels</span>
+redis-cli<span class="w"> </span>PUBSUB<span class="w"> </span>CHANNELS
+
+<span class="c1"># Count subscribers for a channel</span>
+redis-cli<span class="w"> </span>PUBSUB<span class="w"> </span>NUMSUB<span class="w"> </span>user:123:notifications
+
+<span class="c1"># Monitor all Pub/Sub activity</span>
+redis-cli<span class="w"> </span>MONITOR<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;PUBLISH|SUBSCRIBE&quot;</span>
+
+<span class="c1"># Subscribe to a channel for debugging</span>
+redis-cli<span class="w"> </span>SUBSCRIBE<span class="w"> </span>user:notifications
+</code></pre></div>
+<h3 id="logging">Logging</h3>
+<p>Enable debug logging:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+
+<span class="c1"># Enable Redis PubSub broker logging</span>
+<span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;protean.adapters.broker.redis_pubsub&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+
+<span class="c1"># Log all published messages</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">LoggingPubSubBroker</span><span class="p">(</span><span class="n">RedisPubSubBroker</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_publish</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Publishing to </span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">_publish</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Delivered to </span><span class="si">{</span><span class="n">result</span><span class="si">}</span><span class="s2"> subscribers&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span>
+</code></pre></div>
+<h3 id="health-checks">Health Checks</h3>
+<p>Monitor broker health:</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">health_check</span><span class="p">():</span>
+    <span class="n">broker</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">brokers</span><span class="p">[</span><span class="s1">&#39;notifications&#39;</span><span class="p">]</span>
+
+    <span class="c1"># Test connectivity</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">broker</span><span class="o">.</span><span class="n">ping</span><span class="p">():</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;unhealthy&quot;</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;Connection failed&quot;</span><span class="p">}</span>
+
+    <span class="c1"># Get health statistics</span>
+    <span class="n">stats</span> <span class="o">=</span> <span class="n">broker</span><span class="o">.</span><span class="n">health_stats</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">stats</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;healthy&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;healthy&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;connected_clients&quot;</span><span class="p">:</span> <span class="n">stats</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;connected_clients&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
+            <span class="s2">&quot;used_memory&quot;</span><span class="p">:</span> <span class="n">stats</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;used_memory_human&#39;</span><span class="p">,</span> <span class="s1">&#39;unknown&#39;</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;degraded&quot;</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="n">stats</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;error&#39;</span><span class="p">,</span> <span class="s1">&#39;Unknown&#39;</span><span class="p">)}</span>
+</code></pre></div>
+<h2 id="migration-strategies">Migration Strategies</h2>
+<h3 id="to-redis-streams">To Redis Streams</h3>
+<p>When you need persistence and reliability:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Before: Redis PubSub</span>
+<span class="p">[</span><span class="n">brokers</span><span class="o">.</span><span class="n">notifications</span><span class="p">]</span>
+<span class="n">provider</span> <span class="o">=</span> <span class="s2">&quot;redis_pubsub&quot;</span>
+<span class="n">URI</span> <span class="o">=</span> <span class="s2">&quot;redis://localhost:6379/0&quot;</span>
+
+<span class="c1"># After: Redis Streams</span>
+<span class="p">[</span><span class="n">brokers</span><span class="o">.</span><span class="n">notifications</span><span class="p">]</span>
+<span class="n">provider</span> <span class="o">=</span> <span class="s2">&quot;redis&quot;</span>  <span class="c1"># Redis Streams</span>
+<span class="n">URI</span> <span class="o">=</span> <span class="s2">&quot;redis://localhost:6379/0&quot;</span>
+<span class="n">MAXLEN</span> <span class="o">=</span> <span class="mi">10000</span>  <span class="c1"># Keep last 10k messages</span>
+</code></pre></div>
+<p>Key differences to handle:
+1. Add consumer group parameter to subscribers
+2. Implement message acknowledgment
+3. Handle message IDs returned from publish</p>
+<h3 id="from-redis-pubsub">From Redis PubSub</h3>
+<p>When migrating from Redis PubSub to other brokers:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Compatibility layer</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">BrokerCompatibilityLayer</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">old_broker</span><span class="p">,</span> <span class="n">new_broker</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">old_broker</span> <span class="o">=</span> <span class="n">old_broker</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">new_broker</span> <span class="o">=</span> <span class="n">new_broker</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">migration_mode</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">publish</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="c1"># Publish to both during migration</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">migration_mode</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">old_broker</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">new_broker</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">complete_migration</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">migration_mode</span> <span class="o">=</span> <span class="kc">False</span>
+</code></pre></div>
+<h2 id="best-practices">Best Practices</h2>
+<h3 id="1-use-for-simple-queuing">1. Use for Simple Queuing</h3>
+<p>Redis PubSub broker is suitable for:
+- Simple message distribution
+- Development and testing
+- Scenarios where ack/nack isn't needed
+- Basic consumer group functionality</p>
+<p>Not suitable for:
+- Critical business events requiring acknowledgment
+- Complex message routing
+- Scenarios requiring message replay
+- High-throughput production systems</p>
+<h3 id="2-implement-circuit-breakers">2. Implement Circuit Breakers</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">circuit_breaker</span><span class="w"> </span><span class="kn">import</span> <span class="n">CircuitBreaker</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ResilientPubSubBroker</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">broker</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">broker</span> <span class="o">=</span> <span class="n">broker</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">breaker</span> <span class="o">=</span> <span class="n">CircuitBreaker</span><span class="p">(</span>
+            <span class="n">failure_threshold</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+            <span class="n">recovery_timeout</span><span class="o">=</span><span class="mi">60</span>
+        <span class="p">)</span>
+
+    <span class="nd">@circuit_breaker</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">publish</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">broker</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="3-keep-messages-small">3. Keep Messages Small</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Compress large messages</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">zlib</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">publish_compressed</span><span class="p">(</span><span class="n">broker</span><span class="p">,</span> <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+    <span class="n">serialized</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">serialized</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1024</span><span class="p">:</span>  <span class="c1"># Compress if &gt; 1KB</span>
+        <span class="n">compressed</span> <span class="o">=</span> <span class="n">zlib</span><span class="o">.</span><span class="n">compress</span><span class="p">(</span><span class="n">serialized</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+        <span class="n">broker</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="p">{</span>
+            <span class="s2">&quot;compressed&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="n">compressed</span><span class="o">.</span><span class="n">hex</span><span class="p">()</span>
+        <span class="p">})</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">broker</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="4-monitor-subscriber-count">4. Monitor Subscriber Count</h3>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">ensure_subscribers</span><span class="p">(</span><span class="n">broker</span><span class="p">,</span> <span class="n">stream</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">min_subscribers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Ensure minimum subscribers before publishing critical messages.&quot;&quot;&quot;</span>
+    <span class="n">subscriber_count</span> <span class="o">=</span> <span class="n">broker</span><span class="o">.</span><span class="n">get_subscriber_count</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">subscriber_count</span> <span class="o">&lt;</span> <span class="n">min_subscribers</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Only </span><span class="si">{</span><span class="n">subscriber_count</span><span class="si">}</span><span class="s2"> subscribers for </span><span class="si">{</span><span class="n">stream</span><span class="si">}</span><span class="s2">, &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;expected at least </span><span class="si">{</span><span class="n">min_subscribers</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="kc">True</span>
+</code></pre></div>
+<h2 id="comparison-with-other-brokers">Comparison with Other Brokers</h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Redis PubSub</th>
+<th>Redis Streams</th>
+<th>Inline</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Persistence</td>
+<td>Redis Lists</td>
+<td>Yes (durable)</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Delivery Guarantee</td>
+<td>None</td>
+<td>At-least-once</td>
+<td>Best-effort</td>
+</tr>
+<tr>
+<td>Consumer Groups</td>
+<td>Basic</td>
+<td>Advanced</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Message Ordering</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Acknowledgments</td>
+<td>No</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Performance</td>
+<td>High</td>
+<td>High</td>
+<td>Very High</td>
+</tr>
+<tr>
+<td>Use Case</td>
+<td>Simple Queuing</td>
+<td>Event Streaming</td>
+<td>Development</td>
+</tr>
+</tbody>
+</table>
+<h2 id="next-steps">Next Steps</h2>
+<ul>
+<li>Learn about <a href="../redis/">Redis Streams broker</a> for reliable messaging</li>
+<li>Understand <a href="../#broker-capabilities">broker capabilities</a> in detail</li>
+<li>Explore <a href="../custom-brokers/">custom broker development</a></li>
+<li>Read about <a href="../../patterns/real-time-messaging.md">real-time patterns</a></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../redis/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Redis Stream Broker">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Redis Stream Broker
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../custom-brokers/" class="md-footer__link md-footer__link--next" aria-label="Next: Custom Brokers">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Custom Brokers
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2019 - 2025 Subhash Bhushan
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../../..", "features": ["content.code.annotate", "content.code.copy", "content.code.select", "content.tabs.link", "content.tooltips", "navigation.expand", "navigation.footer", "navigation.indexes", "navigation.instant", "navigation.instant.prefetch", "navigation.instant.progress", "navigation.path", "navigation.prune", "navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.92b07e13.min.js"></script>
+      
+    
+  </body>
+</html>

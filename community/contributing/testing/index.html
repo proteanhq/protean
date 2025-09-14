@@ -1,0 +1,1686 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://docs.proteanhq.com/community/contributing/testing/">
+      
+      
+        <link rel="prev" href="../setup/">
+      
+      
+        <link rel="next" href="../adapters/">
+      
+      
+      <link rel="icon" href="../../../assets/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.19">
+    
+    
+      
+        <title>Testing Protean - Protean</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.7e37652d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        
+        <link rel="stylesheet" href="../../../assets/external/fonts.googleapis.com/css.90ef4c13.css">
+        <style>:root{--md-text-font:"Lato";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#testing-protean" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Protean" class="md-header__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Protean
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Testing Protean
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../.." class="md-tabs__link">
+          
+  
+  
+    
+  
+  Protean
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../guides/getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../core-concepts/ddd/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Core Concepts
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../adapters/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Adapters
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../patterns/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Patterns
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../glossary/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Glossary
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Protean" class="md-nav__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+    Protean
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../.." class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Protean
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../guides/getting-started/installation/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Guides
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../../core-concepts/ddd/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Core Concepts
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../adapters/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Adapters
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../patterns/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Patterns
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Glossary
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    Community
+    
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            Community
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Setting up Protean locally
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Testing Protean
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Testing Protean
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#protean-test-command-and-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      protean test Command and Options
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docker-containers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Docker Containers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tests-organization" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tests Organization
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tests Organization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#distribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      Distribution
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#local-fixtures" class="md-nav__link">
+    <span class="md-ellipsis">
+      Local Fixtures
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pytest-markers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pytest Markers
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#important-fixtures" class="md-nav__link">
+    <span class="md-ellipsis">
+      Important Fixtures
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Important Fixtures">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#test_domain" class="md-nav__link">
+    <span class="md-ellipsis">
+      test_domain
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db" class="md-nav__link">
+    <span class="md-ellipsis">
+      db
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run_around_tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      run_around_tests
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#register_elements" class="md-nav__link">
+    <span class="md-ellipsis">
+      register_elements
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#auto_set_and_close_loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      auto_set_and_close_loop
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      db_config
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#store_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      store_config
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#code-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Code Coverage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Code Coverage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      Constraints
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#github-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Github Actions
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Building Adapters
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#protean-test-command-and-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      protean test Command and Options
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docker-containers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Docker Containers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tests-organization" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tests Organization
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tests Organization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#distribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      Distribution
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#local-fixtures" class="md-nav__link">
+    <span class="md-ellipsis">
+      Local Fixtures
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pytest-markers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pytest Markers
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#important-fixtures" class="md-nav__link">
+    <span class="md-ellipsis">
+      Important Fixtures
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Important Fixtures">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#test_domain" class="md-nav__link">
+    <span class="md-ellipsis">
+      test_domain
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db" class="md-nav__link">
+    <span class="md-ellipsis">
+      db
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run_around_tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      run_around_tests
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#register_elements" class="md-nav__link">
+    <span class="md-ellipsis">
+      register_elements
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#auto_set_and_close_loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      auto_set_and_close_loop
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      db_config
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#store_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      store_config
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#code-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      Code Coverage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Code Coverage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      Constraints
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#github-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Github Actions
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="testing-protean">Testing Protean</h1>
+<p>Protean places a high emphasis on testing to ensure the framework's stability, correctness, and reliability. The project follows test-driven development practices, and all new features or bug fixes should be accompanied by appropriate tests.</p>
+<p>Protean uses <code>pytest</code> as the testing tool, because it allows for simple unit tests as well as complex functional testing. Protean leverages <code>pytest</code> fixtures to manage test setup and teardown, ensuring tests are isolated and repeatable. The use of <code>pytest</code> also enables easy integration with other tools and plugins, such as coverage reporting and parallel test execution.</p>
+<h2 id="protean-test-command-and-options"><code>protean test</code> Command and Options</h2>
+<p>Protean provides a built-in command for running tests:</p>
+<div class="highlight"><pre><span></span><code>protean<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+</code></pre></div>
+<p>Options:</p>
+<ul>
+<li><code>-c, --category [CORE|EVENTSTORE|DATABASE|COVERAGE|FULL]</code>: Specifies which category of tests to run</li>
+</ul>
+<p>Categories:</p>
+<ul>
+<li><code>CORE</code>: Runs core tests without external dependencies (default)</li>
+<li><code>EVENTSTORE</code>: Runs tests for all configured event store adapters</li>
+<li><code>DATABASE</code>: Runs tests for all configured database adapters</li>
+<li><code>FULL</code>: Runs the complete test suite for all adapters</li>
+<li><code>COVERAGE</code>: Runs the complete test suite with all adapters and generates coverage report</li>
+</ul>
+<p>Example:</p>
+<div class="highlight"><pre><span></span><code>protean<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-c<span class="w"> </span>DATABASE
+</code></pre></div>
+<blockquote>
+<p><strong>Note</strong>: Ensure that the underlying database services are running within Docker before executing tests in the <code>DATABASE</code>, <code>EVENTSTORE</code>, or <code>FULL</code> categories. Use the <code>make up</code> command to start the necessary services.</p>
+</blockquote>
+<p>This will run database tests against multiple adapters (MEMORY, POSTGRESQL, SQLITE).</p>
+<h2 id="docker-containers">Docker Containers</h2>
+<p>Protean uses Docker Compose to provide a consistent development and testing environment. The included <code>docker-compose.yml</code> file defines services for all supported adapters:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">elasticsearch</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">elasticsearch:8.7.0</span>
+<span class="w">    </span><span class="c1"># configuration...</span>
+
+<span class="w">  </span><span class="nt">redis</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">redis:7.0.11</span>
+<span class="w">    </span><span class="c1"># configuration...</span>
+
+<span class="w">  </span><span class="nt">postgres</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">postgres:15.2</span>
+<span class="w">    </span><span class="c1"># configuration...</span>
+
+<span class="w">  </span><span class="nt">message-db</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ethangarofolo/message-db:1.2.6</span>
+<span class="w">    </span><span class="c1"># configuration...</span>
+
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span>
+</code></pre></div>
+<p>The development environment includes:</p>
+<ul>
+<li>PostgreSQL for relational database testing</li>
+<li>Elasticsearch for document store testing</li>
+<li>Redis for caching and simple key-value storage</li>
+<li>Message-DB for event sourcing and messaging</li>
+</ul>
+<p>To start the development environment, Protean provides easy <code>make</code> commands:</p>
+<div class="highlight"><pre><span></span><code>make<span class="w"> </span>up
+</code></pre></div>
+<p>Refer to <code>Makefile</code> for a full list of supported <code>make</code> commands.</p>
+<p>These containers are also used in CI pipelines to ensure consistent testing across environments.</p>
+<h2 id="tests-organization">Tests Organization</h2>
+<p>Protean follows a systematic approach to test organization and naming:</p>
+<ul>
+<li>Test files are named with a <code>test_</code> prefix (e.g., <code>test_domain.py</code>) or a <code>_test</code> suffix (e.g., <code>domain_test.py</code>).</li>
+<li>Test functions within these files should also be prefixed with <code>test_</code> followed by a descriptive name of what's being tested.</li>
+<li>Test classes should be named with <code>Test</code> prefix followed by the name of the component being tested (e.g., <code>TestDomain</code>).</li>
+<li>The test organization mirrors the package structure, with each core component having its own test directory.</li>
+</ul>
+<h3 id="configuration">Configuration</h3>
+<p>Protean uses <code>domain.toml</code> configuration files to define test domains. The main <code>tests/domain.toml</code> provides default settings (sample below):</p>
+<div class="highlight"><pre><span></span><code><span class="n">debug</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">testing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">secret_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;secret-key&quot;</span>
+<span class="n">identity_strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;uuid&quot;</span>
+<span class="n">identity_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
+<span class="n">event_processing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;sync&quot;</span>
+<span class="n">command_processing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;sync&quot;</span>
+
+<span class="k">[databases.default]</span>
+<span class="n">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;memory&quot;</span>
+
+<span class="k">[databases.memory]</span>
+<span class="n">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;memory&quot;</span>
+
+<span class="k">[databases.sqlite]</span>
+<span class="n">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;sqlite&quot;</span>
+<span class="n">database_uri</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;sqlite:///test.db&quot;</span>
+
+<span class="k">[brokers.default]</span>
+<span class="n">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;inline&quot;</span>
+
+<span class="k">[caches.default]</span>
+<span class="n">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;memory&quot;</span>
+</code></pre></div>
+<p>This configuration establishes a consistent testing environment, setting key parameters like:</p>
+<ul>
+<li>Enabling debug and test modes</li>
+<li>Setting up default database providers (memory and SQLite)</li>
+<li>Configuring default brokers and caches</li>
+<li>Setting identity and event processing strategies for a dev environment</li>
+</ul>
+<p>The root <code>conftest.py</code> file provides common test fixtures and configuration for the entire test suite. It includes:</p>
+<ul>
+<li>Global pytest configuration</li>
+<li>Command-line options for specific test types (e.g., <code>--slow</code>, <code>--database</code>, <code>--postgresql</code>)</li>
+<li>Fixtures for database and event store configuration</li>
+<li>The critical <code>test_domain</code> fixture that creates a clean test domain for each test</li>
+<li>The <code>db</code> fixture that creates and drops database artifacts for tests</li>
+<li>The <code>run_around_tests</code> fixture that resets data after tests complete</li>
+</ul>
+<h3 id="distribution">Distribution</h3>
+<p>The Protean test suite is organized into specialized directories matching the framework's architecture:</p>
+<ul>
+<li>Each core element has its own test directory (e.g., <code>tests/aggregate/</code>, <code>tests/entity/</code>, <code>tests/repository/</code>)</li>
+<li>Common utility tests are in the tests root (e.g., <code>test_registry.py</code>, <code>test_utils.py</code>)</li>
+<li>Integration tests that span multiple components are organized by functionality</li>
+</ul>
+<p>Within each core element's test directory, the tests are further divided:</p>
+<ul>
+<li>Each aspect of functionality is tested separately</li>
+<li>Complex components are tested in dedicated files for better organization</li>
+<li>Tests progressively build complexity, starting with simple unit tests and progressing to more complex integration scenarios</li>
+</ul>
+<p>For example, in the <code>tests/domain/</code> directory, different aspects of domain functionality are split into individual files:</p>
+<ul>
+<li><code>test_domain_config.py</code></li>
+<li><code>test_domain_traversal.py</code></li>
+<li><code>test_domain_shell_context.py</code></li>
+</ul>
+<h3 id="local-fixtures">Local Fixtures</h3>
+<p>For specialized test requirements, you can create local <code>conftest.py</code> files within test subdirectories. These local configurations:</p>
+<ul>
+<li>Override fixtures defined in the root <code>conftest.py</code></li>
+<li>Define fixtures specific to tests in that directory</li>
+<li>Create test data relevant to the component being tested</li>
+<li>Allow for specialized domain configurations without affecting other tests</li>
+</ul>
+<p>Local <code>domain.toml</code> files can also be created to customize domain configuration for specific test directories. The resolution order follows pytest's fixture resolution, with more specific configurations (closer to the test) taking precedence.</p>
+<h3 id="pytest-markers">Pytest Markers</h3>
+<p>Pytest markers are used to categorize tests and control their execution. Protean uses the following markers:</p>
+<ul>
+<li><code>slow</code>: Tests that take longer to run and may be skipped during development</li>
+<li><code>pending</code>: Tests that are not yet fully implemented or are waiting for a feature</li>
+<li><code>sqlite</code>, <code>postgresql</code>, <code>elasticsearch</code>, <code>redis</code>, <code>message_db</code>, <code>sendgrid</code>: Tests for specific adapters</li>
+<li><code>database</code>: Tests that require database interaction</li>
+<li><code>broker_common</code>: Tests for message broker functionality</li>
+<li><code>eventstore</code>: Tests for event store functionality</li>
+<li><code>no_test_domain</code>: Tests that should not use the default test domain</li>
+</ul>
+<p>These markers can be used with pytest's <code>-m</code> option to selectively run tests for a specific database, e.g., <code>pytest -m database --db=POSTGRESQL --ignore=tests/support/</code>.</p>
+<p>Refer to <code>tests/conftest.py</code> for other database options.</p>
+<h2 id="important-fixtures">Important Fixtures</h2>
+<p>Protean provides several important fixtures to simplify test setup and make tests more consistent:</p>
+<h3 id="test_domain"><code>test_domain</code></h3>
+<p>The <code>test_domain</code> fixture creates a fresh Protean domain for each test. It:</p>
+<ul>
+<li>Creates a new Domain instance with test configuration</li>
+<li>Configures the domain with database and event store settings</li>
+<li>Initializes the domain and provides a domain context</li>
+<li>Is automatically used in all tests unless the <code>no_test_domain</code> marker is applied</li>
+</ul>
+<p>Example usage:</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">test_domain_initialization</span><span class="p">(</span><span class="n">test_domain</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="n">test_domain</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;Test&quot;</span>
+    <span class="k">assert</span> <span class="n">test_domain</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;testing&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">True</span>
+</code></pre></div>
+<h3 id="db"><code>db</code></h3>
+<p>The <code>db</code> fixture handles database setup and teardown:</p>
+<ul>
+<li>Automatically associated with tests marked with <code>database</code></li>
+<li>Creates all database artifacts (tables, collections, etc.) before tests</li>
+<li>Drops all artifacts after tests complete</li>
+<li>Resets the registry to ensure a clean state for subsequent tests</li>
+</ul>
+<h3 id="run_around_tests"><code>run_around_tests</code></h3>
+<p>The <code>run_around_tests</code> fixture runs automatically for all tests and:</p>
+<ul>
+<li>Resets data in all providers after each test</li>
+<li>Ensures tests don't interfere with each other</li>
+<li>Maintains test isolation even when using memory providers</li>
+</ul>
+<h3 id="register_elements"><code>register_elements</code></h3>
+<p>This fixture registers domain elements for testing:</p>
+<ul>
+<li>Registers aggregates, entities, value objects, etc. with the test domain</li>
+<li>Creates a clean environment with only the elements needed for the specific test</li>
+<li>Helps isolate tests and prevent unexpected interactions</li>
+</ul>
+<h3 id="auto_set_and_close_loop"><code>auto_set_and_close_loop</code></h3>
+<p>For asynchronous tests, this fixture:</p>
+<ul>
+<li>Sets up an event loop for testing async code</li>
+<li>Ensures the loop is properly closed after tests</li>
+<li>Works with pytest-asyncio to simplify async testing</li>
+</ul>
+<h3 id="db_config"><code>db_config</code></h3>
+<p>The <code>protean test</code> command leverages fixtures to target different adapters. The below fixtures are present in <code>tests/conftest.py</code>:</p>
+<p>The <code>db_config</code> fixture is used by <code>protean test</code> command and configures database adapters based on command-line options:</p>
+<ul>
+<li>Returns configuration for MEMORY, POSTGRESQL, ELASTICSEARCH, or SQLITE</li>
+<li>Used to dynamically select the database to test against</li>
+<li>Works with the <code>--db</code> option to specify the database type</li>
+</ul>
+<p>If you want to configure Protean to use a local database on your system, this is the place to edit connection settings.</p>
+<h3 id="store_config"><code>store_config</code></h3>
+<p>The <code>store_config</code> fixture does the same for event stores:</p>
+<ul>
+<li>Returns configuration for MEMORY or MESSAGE_DB</li>
+<li>Used to dynamically select the event store to test against</li>
+<li>Works with the <code>--store</code> option to specify the store type</li>
+</ul>
+<h2 id="code-coverage">Code Coverage</h2>
+<p>Protean uses Coverage.py to track test coverage. <code>coverage</code> configuration is maintained in <code>pyproject.toml</code>.</p>
+<p>When running the full test suite with <code>protean test -c FULL</code>, coverage data is automatically collected and combined from tests across multiple adapters:</p>
+<ol>
+<li>Each test run generates a <code>.coverage</code> file</li>
+<li>The <code>coverage combine</code> command merges these files</li>
+<li>The <code>coverage report</code> command generates a summary</li>
+</ol>
+<p>You can also view coverage diffs and look for lines missing coverage with the <code>protean test -c COVERAGE</code>. The command generates an HTML report that visually represents the coverage data, making it easy to identify untested code paths.</p>
+<p>It compares the current branch's coverage against the main branch to highlight changes in coverage, which is especially useful for pull request reviews. Unless tests completely cover all changes, CodeCov will fail the PR.</p>
+<h3 id="constraints">Constraints</h3>
+<p>Protean enforces coverage constraints to ensure code quality:</p>
+<ul>
+<li>Pull requests cannot reduce overall code coverage</li>
+<li>New features must have adequate test coverage</li>
+<li>Coverage is checked as part of the CI pipeline</li>
+</ul>
+<p>If a PR introduces code that lacks sufficient test coverage:</p>
+<ol>
+<li>The CI pipeline will fail</li>
+<li>A coverage report will show which lines need tests</li>
+<li>The PR author should add tests to cover the new code</li>
+</ol>
+<p>To avoid coverage failures:</p>
+<ul>
+<li>Write tests alongside new code</li>
+<li>Test all code paths, including error cases</li>
+<li>Use pytest parametrization to test multiple scenarios efficiently</li>
+</ul>
+<h2 id="github-actions">Github Actions</h2>
+<p>Protean uses GitHub Actions to enforce code quality in pull requests (sample below):</p>
+<div class="highlight"><pre><span></span><code><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CI</span>
+<span class="nt">on</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">push</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">branches</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">main</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">pull_request</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">branches</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">main</span><span class="p p-Indicator">]</span>
+
+<span class="nt">jobs</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">test</span><span class="p">:</span>
+<span class="w">    </span><span class="c1"># Test configuration...</span>
+<span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+<span class="w">      </span><span class="c1"># Setup steps...</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Tests</span>
+<span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">protean test -c FULL</span>
+
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CodeCOV</span>
+<span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">codecov/codecov-action@v4.0.1</span>
+<span class="w">        </span><span class="nt">with</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ secrets.CODECOV_TOKEN }}</span>
+</code></pre></div>
+<p>The CI pipeline:</p>
+<ul>
+<li>Runs on each pull request and push to main</li>
+<li>Tests against multiple Python versions (3.11, 3.12, ...)</li>
+<li>Sets up all required services (PostgreSQL, Redis, Elasticsearch, Message-DB, ...)</li>
+<li>Runs the full test suite with coverage</li>
+<li>Reports coverage to Codecov</li>
+</ul>
+<p>Pull requests cannot be merged until tests pass. This ensures:</p>
+<ul>
+<li>All features work as expected</li>
+<li>No regressions are introduced</li>
+<li>Code coverage remains high</li>
+<li>Tests run on all supported Python versions</li>
+</ul>
+<p>The pipeline also deploys documentation updates when changes are merged to the main branch.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../setup/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Setting up Protean locally">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Setting up Protean locally
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../adapters/" class="md-footer__link md-footer__link--next" aria-label="Next: Building Adapters">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Building Adapters
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2019 - 2025 Subhash Bhushan
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../../..", "features": ["content.code.annotate", "content.code.copy", "content.code.select", "content.tabs.link", "content.tooltips", "navigation.expand", "navigation.footer", "navigation.indexes", "navigation.instant", "navigation.instant.prefetch", "navigation.instant.progress", "navigation.path", "navigation.prune", "navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.92b07e13.min.js"></script>
+      
+    
+  </body>
+</html>

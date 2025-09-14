@@ -1,0 +1,2915 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://docs.proteanhq.com/guides/domain-definition/events/">
+      
+      
+        <link rel="prev" href="../deciding-between-elements/">
+      
+      
+        <link rel="next" href="../../domain-behavior/">
+      
+      
+      <link rel="icon" href="../../../assets/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.19">
+    
+    
+      
+        <title>Events - Protean</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.7e37652d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        
+        <link rel="stylesheet" href="../../../assets/external/fonts.googleapis.com/css.90ef4c13.css">
+        <style>:root{--md-text-font:"Lato";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#events" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Protean" class="md-header__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Protean
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Events
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../.." class="md-tabs__link">
+          
+  
+  
+    
+  
+  Protean
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../core-concepts/ddd/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Core Concepts
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../adapters/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Adapters
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../patterns/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Patterns
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../glossary/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Glossary
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../community/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Protean" class="md-nav__button md-logo" aria-label="Protean" data-md-component="logo">
+      
+  <img src="../../../assets/logo.png" alt="logo">
+
+    </a>
+    Protean
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/proteanhq/protean" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    proteanhq/protean
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../.." class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Protean
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Guides
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Guides
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Installation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Essentials
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            Essentials
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../object-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Object Model
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../identity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Identity
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Configuration
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Domain Model
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            Domain Model
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../compose-a-domain/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Compose a Domain
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3_2" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    Define Concepts
+    
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2_3_2" id="__nav_2_3_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_2_3_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            Define Concepts
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../fields/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Fields
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../aggregates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Aggregates
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../entities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Entities
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relationships/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Expressing Relationships
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../value-objects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Value Objects
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deciding-between-elements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Deciding Between Elements
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Events
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Events
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#defining-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      Defining Events
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synchronous-vs-asynchronous-processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Synchronous vs Asynchronous Processing
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Synchronous vs Asynchronous Processing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#domain-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Domain Configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-processing-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      Event Processing Workflows
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Event Processing Workflows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#synchronous-event-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Synchronous Event Flow
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#asynchronous-event-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Asynchronous Event Flow
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-asynchronous-processing-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      How Asynchronous Processing Works
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use-each-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      When to use each mode
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#relationship-with-command-processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Relationship with Command Processing
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#event-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Event Structure
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Event Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#headers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Headers
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Headers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#trace_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      trace_id
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      Metadata
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Metadata">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#id" class="md-nav__link">
+    <span class="md-ellipsis">
+      id
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#type" class="md-nav__link">
+    <span class="md-ellipsis">
+      type
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fqn" class="md-nav__link">
+    <span class="md-ellipsis">
+      fqn
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kind" class="md-nav__link">
+    <span class="md-ellipsis">
+      kind
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      stream
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#origin_stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      origin_stream
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#timestamp" class="md-nav__link">
+    <span class="md-ellipsis">
+      timestamp
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#version" class="md-nav__link">
+    <span class="md-ellipsis">
+      version
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sequence_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      sequence_id
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#payload" class="md-nav__link">
+    <span class="md-ellipsis">
+      Payload
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      Versioning
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fact-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      Fact Events
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#immutability" class="md-nav__link">
+    <span class="md-ellipsis">
+      Immutability
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../domain-behavior/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Add Behavior
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_4" id="__nav_2_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    App Layer
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_4">
+            <span class="md-nav__icon md-icon"></span>
+            App Layer
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../change-state/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Change State
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../change-state/persist-aggregates/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Persist State
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../consume-state/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Consume State Changes
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_5" id="__nav_2_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Utilities
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_5">
+            <span class="md-nav__icon md-icon"></span>
+            Utilities
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../cli/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    CLI
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../server/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Server
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../../core-concepts/ddd/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Core Concepts
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../adapters/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Adapters
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../patterns/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Patterns
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Glossary
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../community/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    Community
+    
+  </span>
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#defining-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      Defining Events
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#synchronous-vs-asynchronous-processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Synchronous vs Asynchronous Processing
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Synchronous vs Asynchronous Processing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#domain-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Domain Configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#event-processing-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      Event Processing Workflows
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Event Processing Workflows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#synchronous-event-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Synchronous Event Flow
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#asynchronous-event-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      Asynchronous Event Flow
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-asynchronous-processing-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      How Asynchronous Processing Works
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use-each-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      When to use each mode
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#relationship-with-command-processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Relationship with Command Processing
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#event-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Event Structure
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Event Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#headers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Headers
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Headers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#trace_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      trace_id
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      Metadata
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Metadata">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#id" class="md-nav__link">
+    <span class="md-ellipsis">
+      id
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#type" class="md-nav__link">
+    <span class="md-ellipsis">
+      type
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fqn" class="md-nav__link">
+    <span class="md-ellipsis">
+      fqn
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kind" class="md-nav__link">
+    <span class="md-ellipsis">
+      kind
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      stream
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#origin_stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      origin_stream
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#timestamp" class="md-nav__link">
+    <span class="md-ellipsis">
+      timestamp
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#version" class="md-nav__link">
+    <span class="md-ellipsis">
+      version
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sequence_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      sequence_id
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#payload" class="md-nav__link">
+    <span class="md-ellipsis">
+      Payload
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      Versioning
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fact-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      Fact Events
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#immutability" class="md-nav__link">
+    <span class="md-ellipsis">
+      Immutability
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="events">Events</h1>
+<p>Most applications have a definite state - they reflect past user input and
+interactions in their current state. It is advantageous to model these past
+changes as a series of discrete events. Domain events happen to be those
+activities that domain experts care about and represent what happened as-is.</p>
+<p>In Protean, an <code>Event</code> is an immutable object that represents a significant
+occurrence or change in the domain. Events are raised by aggregates to signal
+that something noteworthy has happened, allowing other parts of the system to
+react - and sync - to these changes in a decoupled manner.</p>
+<h2 id="defining-events">Defining Events</h2>
+<p>Event names should be descriptive and convey the specific change or occurrence
+in the domain clearly, ensuring that the purpose of the event is immediately
+understandable.  Events are named as past-tense verbs to clearly indicate
+that an event has already occurred, such as <code>OrderPlaced</code> or <code>PaymentProcessed</code>.</p>
+<p>You can define an event with the <code>Domain.event</code> decorator:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">Enum</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;Authentication&quot;</span><span class="p">)</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">UserStatus</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
+    <span class="n">ACTIVE</span> <span class="o">=</span> <span class="s2">&quot;ACTIVE&quot;</span>
+    <span class="n">ARCHIVED</span> <span class="o">=</span> <span class="s2">&quot;ARCHIVED&quot;</span>
+
+
+<span class="hll"><span class="nd">@domain</span><span class="o">.</span><span class="n">event</span><span class="p">(</span><span class="n">part_of</span><span class="o">=</span><span class="s2">&quot;User&quot;</span><span class="p">)</span>
+</span><span class="hll"><span class="k">class</span><span class="w"> </span><span class="nc">UserActivated</span><span class="p">:</span>
+</span><span class="hll">    <span class="n">user_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span>
+
+<span class="hll"><span class="nd">@domain</span><span class="o">.</span><span class="n">event</span><span class="p">(</span><span class="n">part_of</span><span class="o">=</span><span class="s2">&quot;User&quot;</span><span class="p">)</span>
+</span><span class="hll"><span class="k">class</span><span class="w"> </span><span class="nc">UserRenamed</span><span class="p">:</span>
+</span><span class="hll">    <span class="n">user_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span class="hll">    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+</span>
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">User</span><span class="p">:</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">max_length</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">email</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">status</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">choices</span><span class="o">=</span><span class="n">UserStatus</span><span class="p">)</span>
+
+<span class="hll">    <span class="k">def</span><span class="w"> </span><span class="nf">activate</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span class="hll">        <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="n">UserStatus</span><span class="o">.</span><span class="n">ACTIVE</span><span class="o">.</span><span class="n">value</span>
+</span><span class="hll">        <span class="bp">self</span><span class="o">.</span><span class="n">raise_</span><span class="p">(</span><span class="n">UserActivated</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">id</span><span class="p">))</span>
+</span>
+<span class="hll">    <span class="k">def</span><span class="w"> </span><span class="nf">change_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span class="hll">        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+</span><span class="hll">        <span class="bp">self</span><span class="o">.</span><span class="n">raise_</span><span class="p">(</span><span class="n">UserRenamed</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">))</span>
+</span></code></pre></div>
+<p>Events are always connected to an Aggregate class, specified with the
+<code>part_of</code> param in the decorator. An exception to this rule is when the
+Event class has been marked <em>Abstract</em>.</p>
+<h2 id="synchronous-vs-asynchronous-processing">Synchronous vs Asynchronous Processing</h2>
+<p>Events in Protean can be processed either synchronously or asynchronously:</p>
+<ul>
+<li><strong>Synchronous processing</strong>: The event is processed immediately when raised. Event handlers are called in the same execution flow, and the operation is blocked until all event handlers have completed.</li>
+<li><strong>Asynchronous processing</strong>: The event is stored in the event store and processed later by a background worker. The operation continues without waiting for event handlers to complete.</li>
+</ul>
+<h3 id="domain-configuration">Domain Configuration</h3>
+<p>You can configure the event processing mode through the domain configuration:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Configure events to be processed synchronously</span>
+<span class="n">domain</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;event_processing&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;sync&quot;</span>  <span class="c1"># or &quot;async&quot;</span>
+</code></pre></div>
+<p>In domain.toml:</p>
+<div class="highlight"><pre><span></span><code>event_processing = &quot;sync&quot;  # or &quot;async&quot;
+</code></pre></div>
+<p>By default, Protean sets <code>event_processing</code> to <code>async</code> in the domain configuration.</p>
+<h3 id="event-processing-workflows">Event Processing Workflows</h3>
+<p>The workflow for event processing differs based on whether synchronous or asynchronous mode is used:</p>
+<h4 id="synchronous-event-flow">Synchronous Event Flow</h4>
+<pre class="mermaid"><code>sequenceDiagram
+    autonumber
+    Aggregate-&gt;&gt;Aggregate: Raise event
+    Aggregate-&gt;&gt;Event Store: Store event (asynchronous=False)
+    Aggregate-&gt;&gt;Domain: Process event immediately
+    Domain-&gt;&gt;Event Handler: Process event
+    Event Handler-&gt;&gt;Event Handler: Handle event
+    Event Handler--&gt;&gt;Domain: Return result
+    Domain--&gt;&gt;Aggregate: Continue execution</code></pre>
+<h4 id="asynchronous-event-flow">Asynchronous Event Flow</h4>
+<pre class="mermaid"><code>sequenceDiagram
+    autonumber
+    Aggregate-&gt;&gt;Aggregate: Raise event 
+    Aggregate-&gt;&gt;Event Store: Store event (asynchronous=True)
+    Aggregate--&gt;&gt;Client: Continue execution immediately
+
+    Note over Protean Server: Later, asynchronously...
+
+    Protean Server-&gt;&gt;Event Store: Poll for unprocessed events
+    Event Store--&gt;&gt;Protean Server: Return event
+    Protean Server-&gt;&gt;Event Handler: Process event
+    Event Handler-&gt;&gt;Event Handler: Handle event
+    Protean Server-&gt;&gt;Event Store: Update processed position</code></pre>
+<h3 id="how-asynchronous-processing-works">How Asynchronous Processing Works</h3>
+<p>Asynchronous event processing in Protean uses the server/engine component that:</p>
+<ol>
+<li>Creates subscriptions for event handlers to listen to their respective event streams</li>
+<li>Polls the event store for new events that haven't been processed yet</li>
+<li>Dispatches those events to the appropriate handlers</li>
+</ol>
+<p>To run the Protean server for processing asynchronous events, use the CLI:</p>
+<div class="highlight"><pre><span></span><code>protean<span class="w"> </span>server<span class="w"> </span>--domain<span class="w"> </span>path/to/domain.py
+</code></pre></div>
+<p>See <a href="../../cli/">CLI documentation</a> for more details about the server command and other available CLI options.</p>
+<p>The server continually polls the event store for new events that have the <code>asynchronous</code> flag set to <code>True</code> in their metadata. When found, it dispatches them to the appropriate handlers, keeping track of processed events to avoid duplicate processing.</p>
+<h3 id="when-to-use-each-mode">When to use each mode</h3>
+<ul>
+<li><strong>Synchronous processing</strong> is useful when:</li>
+<li>You need immediate consistency between different parts of your system</li>
+<li>Event handlers perform essential operations that must complete before continuing</li>
+<li>
+<p>The operation is part of a transaction that needs to complete atomically</p>
+</li>
+<li>
+<p><strong>Asynchronous processing</strong> is beneficial when:</p>
+</li>
+<li>You want to improve system responsiveness by not blocking the execution flow</li>
+<li>Event handlers might take a long time to process</li>
+<li>You want to distribute load across background workers</li>
+<li>You're implementing event-driven or reactive architectures</li>
+</ul>
+<h3 id="relationship-with-command-processing">Relationship with Command Processing</h3>
+<p>Protean offers similar configuration options for commands through:
+- The <code>command_processing</code> domain configuration setting
+- The ability to specify the <code>asynchronous</code> parameter when processing commands</p>
+<p>Both events and commands in Protean follow similar processing patterns, enabling you to build consistent, predictable workflows. You can configure both to suit your specific domain needs:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Domain-wide configuration</span>
+<span class="n">domain</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;event_processing&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;async&quot;</span>   <span class="c1"># or &quot;sync&quot;</span>
+<span class="n">domain</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;command_processing&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;sync&quot;</span>  <span class="c1"># or &quot;async&quot;</span>
+</code></pre></div>
+<p>This flexibility allows you to implement various architectural patterns like CQRS, Event Sourcing, and Event-Driven Architecture within your Protean applications.</p>
+<h2 id="event-structure">Event Structure</h2>
+<p>An event is made of three parts:</p>
+<h3 id="headers">Headers</h3>
+<h4 id="trace_id"><code>trace_id</code></h4>
+<p>The <code>trace_id</code> is a unique identifier of UUID format, that connects all
+processing originating from a request. Trace IDs provide a detailed view of
+the request's journey through the system. It helps in understanding the
+complete flow of a request, showing each service interaction, the time taken,
+and where any delays occur.</p>
+<h3 id="metadata">Metadata</h3>
+<p>An event's metadata provides additional context about the event.</p>
+<p>Sample metadata from an event:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;test::user-411b2ceb-9513-45d7-9e03-bbc0846fae93-0&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Test.UserLoggedIn.v1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;fqn&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;tests.event.test_event_metadata.UserLoggedIn&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;EVENT&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;stream&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;test::user-411b2ceb-9513-45d7-9e03-bbc0846fae93&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;origin_stream&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2024-08-16 15:30:27.977101+00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;v1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sequence_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+<h4 id="id"><code>id</code></h4>
+<p>The unique identifier of the event. The event ID is a structured string, of the
+format <code>&lt;domain-name&gt;::&lt;aggregate-name&gt;-&lt;aggregate-id&gt;-&lt;sequence_id&gt;</code>.</p>
+<p>The <code>id</code> value is simply an extension of the event's stream combined with the
+<code>sequence_id</code>. Read the section on <code>sequence_id</code> to understand possible values.</p>
+<h4 id="type"><code>type</code></h4>
+<p>Type of the event. Format is <code>&lt;domain-name&gt;.&lt;event-class-name&gt;.&lt;event-version&gt;</code>.
+For e.g. <code>Shipping.OrderShipped.v1</code>.</p>
+<h4 id="fqn"><code>fqn</code></h4>
+<p>Internal. The fully qualified name of the event. This is used by Protean to
+resconstruct objects from messages.</p>
+<h4 id="kind"><code>kind</code></h4>
+<p>Internal. Represents the kind of object enclosed in an event store message.
+Value is <code>EVENT</code> for Events. <code>Metadata</code> class is shared between Events and
+Commands, so possible values are <code>EVENT</code> and <code>COMMAND</code>.</p>
+<h4 id="stream"><code>stream</code></h4>
+<p>Name of the event stream. E.g. Stream <code>auth::user-1234</code> encloses messages
+related to <code>User</code> aggregate in the <code>Auth</code> domain with identity <code>1234</code>.</p>
+<h4 id="origin_stream"><code>origin_stream</code></h4>
+<p>Name of the stream that originated this event or command. <code>origin_stream</code> comes
+handy when correlating related events or understanding causality.</p>
+<h4 id="timestamp"><code>timestamp</code></h4>
+<p>The timestamp of event generation in ISO 8601 format.</p>
+<h4 id="version"><code>version</code></h4>
+<p>The version of the event class used to generate the event.</p>
+<h4 id="sequence_id"><code>sequence_id</code></h4>
+<p>The sequence ID is the version of the aggregate when the event was generated,
+along with the sequence number of the event within the update.</p>
+<p>For example, if the aggregate was updated twice, the first update would have a
+sequence ID of <code>1.1</code>, and the second update would have a sequence ID of <code>2.1</code>.
+If the next update generated two events, then the sequence ID of the second
+event would be <code>3.2</code>.</p>
+<p>If the aggregate is event-sourced, the <code>sequence_id</code> is a single integer of the
+position of the event in its stream.</p>
+<h2 id="payload">Payload</h2>
+<p>The payload is a dictionary of key-value pairs that convey the information
+about the event.</p>
+<p>The payload is made available as the body of the event, which also includes
+the event metadata. If you want to extract just the payload, you can use the
+<code>payload</code> property of the event.</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>User<span class="o">(</span><span class="nv">id</span><span class="o">=</span><span class="s2">&quot;1&quot;</span>,<span class="w"> </span><span class="nv">email</span><span class="o">=</span><span class="s2">&quot;&lt;EMAIL&gt;&quot;</span>,<span class="w"> </span><span class="nv">name</span><span class="o">=</span><span class="s2">&quot;&lt;NAME&gt;&quot;</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span>user.login<span class="o">()</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span><span class="nv">event</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>user._events<span class="o">[</span><span class="m">0</span><span class="o">]</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">4</span><span class="o">]</span>:<span class="w"> </span>event
+Out<span class="o">[</span><span class="m">4</span><span class="o">]</span>:<span class="w"> </span>&lt;UserLoggedIn:<span class="w"> </span>UserLoggedIn<span class="w"> </span>object<span class="w"> </span><span class="o">({</span><span class="s1">&#39;_metadata&#39;</span>:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;id&#39;</span>:<span class="w"> </span><span class="s1">&#39;002::user-1-0.1&#39;</span>,<span class="w"> </span><span class="s1">&#39;type&#39;</span>:<span class="w"> </span><span class="s1">&#39;002.UserLoggedIn.v1&#39;</span>,<span class="w"> </span><span class="s1">&#39;fqn&#39;</span>:<span class="w"> </span><span class="s1">&#39;002.UserLoggedIn&#39;</span>,<span class="w"> </span><span class="s1">&#39;kind&#39;</span>:<span class="w"> </span><span class="s1">&#39;EVENT&#39;</span>,<span class="w"> </span><span class="s1">&#39;stream&#39;</span>:<span class="w"> </span><span class="s1">&#39;002::user-1&#39;</span>,<span class="w"> </span><span class="s1">&#39;origin_stream&#39;</span>:<span class="w"> </span>None,<span class="w"> </span><span class="s1">&#39;timestamp&#39;</span>:<span class="w"> </span><span class="s1">&#39;2024-07-18 22:02:32.522360+00:00&#39;</span>,<span class="w"> </span><span class="s1">&#39;version&#39;</span>:<span class="w"> </span><span class="s1">&#39;v1&#39;</span>,<span class="w"> </span><span class="s1">&#39;sequence_id&#39;</span>:<span class="w"> </span><span class="s1">&#39;0.1&#39;</span><span class="o">}</span>,<span class="w"> </span><span class="s1">&#39;user_id&#39;</span>:<span class="w"> </span><span class="s1">&#39;1&#39;</span><span class="o">})</span>&gt;
+
+In<span class="w"> </span><span class="o">[</span><span class="m">5</span><span class="o">]</span>:<span class="w"> </span>event.to_dict<span class="o">()</span>
+Out<span class="o">[</span><span class="m">5</span><span class="o">]</span>:<span class="w"> </span>
+<span class="o">{</span><span class="s1">&#39;_metadata&#39;</span>:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;id&#39;</span>:<span class="w"> </span><span class="s1">&#39;002::user-1-0.1&#39;</span>,
+<span class="w">  </span><span class="s1">&#39;type&#39;</span>:<span class="w"> </span><span class="s1">&#39;002.UserLoggedIn.v1&#39;</span>,
+<span class="w">  </span><span class="s1">&#39;fqn&#39;</span>:<span class="w"> </span><span class="s1">&#39;002.UserLoggedIn&#39;</span>,
+<span class="w">  </span><span class="s1">&#39;kind&#39;</span>:<span class="w"> </span><span class="s1">&#39;EVENT&#39;</span>,
+<span class="w">  </span><span class="s1">&#39;stream&#39;</span>:<span class="w"> </span><span class="s1">&#39;002::user-1&#39;</span>,
+<span class="w">  </span><span class="s1">&#39;origin_stream&#39;</span>:<span class="w"> </span>None,
+<span class="w">  </span><span class="s1">&#39;timestamp&#39;</span>:<span class="w"> </span><span class="s1">&#39;2024-07-18 22:02:32.522360+00:00&#39;</span>,
+<span class="w">  </span><span class="s1">&#39;version&#39;</span>:<span class="w"> </span><span class="s1">&#39;v1&#39;</span>,
+<span class="w">  </span><span class="s1">&#39;sequence_id&#39;</span>:<span class="w"> </span><span class="s1">&#39;0.1&#39;</span><span class="o">}</span>,
+<span class="w"> </span><span class="s1">&#39;user_id&#39;</span>:<span class="w"> </span><span class="s1">&#39;1&#39;</span><span class="o">}</span>
+<span class="hll">
+</span>In<span class="w"> </span><span class="o">[</span><span class="m">6</span><span class="o">]</span>:<span class="w"> </span>event.payload
+<span class="hll">Out<span class="o">[</span><span class="m">6</span><span class="o">]</span>:<span class="w"> </span><span class="o">{</span><span class="s1">&#39;user_id&#39;</span>:<span class="w"> </span><span class="s1">&#39;1&#39;</span><span class="o">}</span>
+</span></code></pre></div>
+<h2 id="versioning">Versioning</h2>
+<p>Because events serve as API contracts of an aggregate with the rest of the
+ecosystem, they are versioned to signal changes to contract.</p>
+<p>Events have a default version of <strong>v1</strong>.</p>
+<p>You can override and customize the version with the <code>__version__</code> class
+attribute:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@domain</span><span class="o">.</span><span class="n">event</span><span class="p">(</span><span class="n">part_of</span><span class="o">=</span><span class="n">User</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">UserActivated</span><span class="p">:</span>
+<span class="hll">    <span class="n">__version__</span> <span class="o">=</span> <span class="s2">&quot;v2&quot;</span>
+</span>
+    <span class="n">user_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">activated_at</span> <span class="o">=</span> <span class="n">DateTime</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+<p>The configured version is reflected in <code>version</code> and <code>type</code> attributes of the
+generated event's metadata:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timezone</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseEvent</span><span class="p">,</span> <span class="n">Domain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">protean.fields</span><span class="w"> </span><span class="kn">import</span> <span class="n">DateTime</span><span class="p">,</span> <span class="n">Identifier</span><span class="p">,</span> <span class="n">String</span>
+
+<span class="n">domain</span> <span class="o">=</span> <span class="n">Domain</span><span class="p">(</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Authentication&quot;</span><span class="p">)</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">aggregate</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">User</span><span class="p">:</span>
+    <span class="nb">id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">identifier</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">email</span> <span class="o">=</span> <span class="n">String</span><span class="p">()</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">String</span><span class="p">()</span>
+    <span class="n">status</span> <span class="o">=</span> <span class="n">String</span><span class="p">(</span><span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;INACTIVE&quot;</span><span class="p">,</span> <span class="s2">&quot;ACTIVE&quot;</span><span class="p">,</span> <span class="s2">&quot;ARCHIVED&quot;</span><span class="p">],</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;INACTIVE&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">login</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">raise_</span><span class="p">(</span><span class="n">UserLoggedIn</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">id</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">activate</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;ACTIVE&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">raise_</span><span class="p">(</span><span class="n">UserActivated</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">id</span><span class="p">))</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">event</span><span class="p">(</span><span class="n">part_of</span><span class="o">=</span><span class="s2">&quot;User&quot;</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">UserLoggedIn</span><span class="p">(</span><span class="n">BaseEvent</span><span class="p">):</span>
+    <span class="n">user_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">identifier</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+
+<span class="nd">@domain</span><span class="o">.</span><span class="n">event</span><span class="p">(</span><span class="n">part_of</span><span class="o">=</span><span class="s2">&quot;User&quot;</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">UserActivated</span><span class="p">:</span>
+<span class="hll">    <span class="n">__version__</span> <span class="o">=</span> <span class="s2">&quot;v2&quot;</span>
+</span>
+    <span class="n">user_id</span> <span class="o">=</span> <span class="n">Identifier</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">activated_at</span> <span class="o">=</span> <span class="n">DateTime</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">))</span>
+
+
+<span class="n">domain</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">traverse</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="k">with</span> <span class="n">domain</span><span class="o">.</span><span class="n">domain_context</span><span class="p">():</span>
+    <span class="n">user</span> <span class="o">=</span> <span class="n">User</span><span class="p">(</span><span class="nb">id</span><span class="o">=</span><span class="s2">&quot;1&quot;</span><span class="p">,</span> <span class="n">email</span><span class="o">=</span><span class="s2">&quot;&lt;EMAIL&gt;&quot;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;&lt;NAME&gt;&quot;</span><span class="p">)</span>
+
+    <span class="n">user</span><span class="o">.</span><span class="n">login</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">user</span><span class="o">.</span><span class="n">_events</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(),</span> <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">))</span>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot; Output:</span>
+<span class="sd">    {</span>
+<span class="sd">        &quot;_metadata&quot;: {</span>
+<span class="sd">            &quot;id&quot;: &quot;authentication::user-1-0.1&quot;,</span>
+<span class="hll"><span class="sd">            &quot;type&quot;: &quot;Authentication.UserLoggedIn.v1&quot;,</span>
+</span><span class="sd">            &quot;fqn&quot;: &quot;__main__.UserLoggedIn&quot;,</span>
+<span class="sd">            &quot;kind&quot;: &quot;EVENT&quot;,</span>
+<span class="sd">            &quot;stream&quot;: &quot;authentication::user-1&quot;,</span>
+<span class="sd">            &quot;origin_stream&quot;: null,</span>
+<span class="sd">            &quot;timestamp&quot;: &quot;2024-07-18 22:06:10.148226+00:00&quot;,</span>
+<span class="hll"><span class="sd">            &quot;version&quot;: &quot;v1&quot;,</span>
+</span><span class="sd">            &quot;sequence_id&quot;: &quot;0.1&quot;</span>
+<span class="sd">        },</span>
+<span class="sd">        &quot;user_id&quot;: &quot;1&quot;</span>
+<span class="sd">    }</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">user</span><span class="o">.</span><span class="n">activate</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">user</span><span class="o">.</span><span class="n">_events</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(),</span> <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">))</span>
+
+<span class="w">    </span><span class="sd">&quot;&quot;&quot; Output:</span>
+<span class="sd">    {</span>
+<span class="sd">        &quot;_metadata&quot;: {</span>
+<span class="sd">            &quot;id&quot;: &quot;authentication::user-1-0.2&quot;,</span>
+<span class="sd">            &quot;type&quot;: &quot;Authentication.UserActivated.v2&quot;,</span>
+<span class="hll"><span class="sd">            &quot;fqn&quot;: &quot;__main__.UserActivated&quot;,</span>
+</span><span class="sd">            &quot;kind&quot;: &quot;EVENT&quot;,</span>
+<span class="sd">            &quot;stream&quot;: &quot;authentication::user-1&quot;,</span>
+<span class="sd">            &quot;origin_stream&quot;: null,</span>
+<span class="sd">            &quot;timestamp&quot;: &quot;2024-07-18 22:06:10.155603+00:00&quot;,</span>
+<span class="sd">            &quot;version&quot;: &quot;v2&quot;,</span>
+<span class="hll"><span class="sd">            &quot;sequence_id&quot;: &quot;0.2&quot;</span>
+</span><span class="sd">        },</span>
+<span class="sd">        &quot;user_id&quot;: &quot;1&quot;,</span>
+<span class="sd">        &quot;activated_at&quot;: &quot;2024-07-18 22:06:10.155694+00:00&quot;</span>
+<span class="sd">    }</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+</code></pre></div>
+<h2 id="fact-events">Fact Events</h2>
+<p>A fact event encloses the entire state of the aggregate at that specific point
+in time. It contains all of the attributes and values necessary to completely
+describe the fact in the context of your business. You can think of a fact
+event similarly to how you may think of a row in a database: a complete set of
+data pertaining to the row at that point in time.</p>
+<p>Fact events enable a pattern known as <strong>Event-carried State Transfer</strong>, which is
+one of the best ways to asynchronously distribute immutable state to all
+consumers who need it. With fact events, consumers do not have to build up the
+state themselves from multiple delta event types, which can be risky and
+error-prone, especially as data schemas evolve and change over time. Instead,
+they rely on the owning service to compute and produce a fully detailed fact
+event.</p>
+<p>Fact events are generated automatically by the framework with the
+<code>fact_events=True</code> option in the <code>domain.aggregate</code> decorator.</p>
+<p>Read about generating fact events in the section on
+<a href="../../domain-behavior/raising-events/#fact-events">raising events</a>.</p>
+<h2 id="immutability">Immutability</h2>
+<p>Event objects are immutable - they cannot be changed once created. This is
+important because events are meant to be used as a snapshot of the domain
+state at a specific point in time.</p>
+<div class="highlight"><pre><span></span><code>In<span class="w"> </span><span class="o">[</span><span class="m">1</span><span class="o">]</span>:<span class="w"> </span><span class="nv">user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>User<span class="o">(</span><span class="nv">name</span><span class="o">=</span><span class="s1">&#39;John Doe&#39;</span>,<span class="w"> </span><span class="nv">email</span><span class="o">=</span><span class="s1">&#39;john@doe.com&#39;</span>,<span class="w"> </span><span class="nv">status</span><span class="o">=</span><span class="s1">&#39;ACTIVE&#39;</span><span class="o">)</span>
+
+In<span class="w"> </span><span class="o">[</span><span class="m">2</span><span class="o">]</span>:<span class="w"> </span><span class="nv">renamed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>UserRenamed<span class="o">(</span><span class="nv">user_id</span><span class="o">=</span>user.id,<span class="w"> </span><span class="nv">name</span><span class="o">=</span><span class="s2">&quot;John Doe Jr.&quot;</span><span class="o">)</span>
+
+<span class="hll">In<span class="w"> </span><span class="o">[</span><span class="m">3</span><span class="o">]</span>:<span class="w"> </span>renamed.name<span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;John Doe Sr.&quot;</span>
+</span>...
+<span class="hll">IncorrectUsageError:<span class="w"> </span><span class="s1">&#39;Event/Command Objects are immutable and cannot be modified once created&#39;</span>
+</span></code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../deciding-between-elements/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Deciding Between Elements">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Deciding Between Elements
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../domain-behavior/" class="md-footer__link md-footer__link--next" aria-label="Next: Adding Rules and Behavior">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Adding Rules and Behavior
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2019 - 2025 Subhash Bhushan
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../../..", "features": ["content.code.annotate", "content.code.copy", "content.code.select", "content.tabs.link", "content.tooltips", "navigation.expand", "navigation.footer", "navigation.indexes", "navigation.instant", "navigation.instant.prefetch", "navigation.instant.progress", "navigation.path", "navigation.prune", "navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.tracking", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.92b07e13.min.js"></script>
+      
+    
+  </body>
+</html>
