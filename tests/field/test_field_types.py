@@ -283,6 +283,26 @@ class TestAutoField:
         add_info = Auto(required=True)
         add_info._load(None)
 
+    def test_as_dict_with_falsy_values(self):
+        """Test Auto.as_dict with falsy values like 0 and empty string"""
+        auto_field = Auto()
+
+        # Test with 0 (falsy but not None)
+        assert auto_field.as_dict(0) is None
+
+        # Test with empty string (falsy)
+        assert auto_field.as_dict("") is None
+
+        # Test with False (falsy)
+        assert auto_field.as_dict(False) is None
+
+        # Test with None
+        assert auto_field.as_dict(None) is None
+
+        # Test with truthy values
+        assert auto_field.as_dict(1) == 1
+        assert auto_field.as_dict("test") == "test"
+
 
 class TestDateField:
     """Test the Date Field Implementation"""

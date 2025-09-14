@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import redis
 
-from protean.port.broker import BaseBroker, BrokerCapabilities
+from protean.port.broker import BaseBroker, BrokerCapabilities, registry
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -754,3 +754,17 @@ class RedisBroker(BaseBroker):
             self._group_creation_times.clear()
         except Exception as e:
             logger.error(f"Error during data reset: {e}")
+
+
+# Self-registration function for entry point
+def register():
+    """Register Redis broker with Protean if redis is available."""
+    try:
+        import redis  # noqa: F401
+
+        registry.register("redis", "protean.adapters.broker.redis.RedisBroker")
+        logger.debug("Redis broker registered successfully")
+    except ImportError as e:
+        # Redis not available, skip registration
+        logger.debug(f"Redis broker not registered: redis package not available ({e})")
+        pass

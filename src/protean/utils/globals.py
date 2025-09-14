@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import traceback
 import warnings
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -8,7 +10,8 @@ from werkzeug.local import LocalProxy, LocalStack
 
 if TYPE_CHECKING:
     from protean import Domain, UnitOfWork
-import traceback
+
+logger = logging.getLogger(__name__)
 
 _domain_ctx_err_msg = """\
 Working outside of domain context.
@@ -33,9 +36,9 @@ def _lookup_domain_object(name) -> Any | None:
 def _find_domain() -> Domain | None:
     top = _domain_context_stack.top
     if top is None:
-        print("=======NO ACTIVE DOMAIN - STACK TRACE - START=======")
-        traceback.print_stack()
-        print("=======NO ACTIVE DOMAIN - STACK TRACE - END=======")
+        logger.debug("=======NO ACTIVE DOMAIN - STACK TRACE - START=======")
+        logger.debug("".join(traceback.format_stack()))
+        logger.debug("=======NO ACTIVE DOMAIN - STACK TRACE - END=======")
         warnings.warn(
             _domain_ctx_err_msg,
             stacklevel=3,

@@ -113,6 +113,20 @@ class TestShadowField:
         # The method should complete without error
         assert True
 
+    def test_shadow_field_cast_to_type_returns_value_as_is(self):
+        """Test ShadowField._cast_to_type returns value as is"""
+        shadow_field = _ShadowField(
+            owner=None, field_name="test_field", field_obj=String()
+        )
+
+        # Test with various value types - should return as is
+        assert shadow_field._cast_to_type("test") == "test"
+        assert shadow_field._cast_to_type(123) == 123
+        assert shadow_field._cast_to_type(None) is None
+        assert shadow_field._cast_to_type({"key": "value"}) == {"key": "value"}
+        assert shadow_field._cast_to_type([1, 2, 3]) == [1, 2, 3]
+        assert shadow_field._cast_to_type(True) is True
+
 
 class TestValueObjectField:
     """Test cases to cover missing ValueObject field methods"""
@@ -219,3 +233,28 @@ class TestValueObjectFieldEdgeCases:
         # Test as_dict with None value
         result = vo_field.as_dict(None)
         assert result is None
+
+    def test_value_object_field_cast_to_type_with_invalid_value(self, test_domain):
+        """Test ValueObject._cast_to_type fails with invalid value type"""
+        from protean.exceptions import ValidationError
+
+        @test_domain.value_object
+        class Address(BaseValueObject):
+            street = String()
+            city = String()
+
+        vo_field = ValueObject(Address)
+
+        # Test with invalid value type (not dict or Address instance)
+        with pytest.raises(ValidationError) as exc_info:
+            vo_field._cast_to_type("invalid_value")
+
+        # The error message should be set
+        assert "unlinked" in exc_info.value.messages
+
+        # Test with other invalid types
+        with pytest.raises(ValidationError):
+            vo_field._cast_to_type(123)
+
+        with pytest.raises(ValidationError):
+            vo_field._cast_to_type([1, 2, 3])

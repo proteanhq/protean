@@ -1,29 +1,17 @@
 from __future__ import annotations
 
 import collections.abc
-import importlib
 import logging
 from typing import TYPE_CHECKING, Any, Iterator
 
 from protean.exceptions import ConfigurationError
-from protean.port.broker import BaseBroker
+from protean.port.broker import BaseBroker, registry
 from protean.utils.globals import current_uow
-
-from .inline import InlineBroker
-from .redis import RedisBroker
-from .redis_pubsub import RedisPubSubBroker
 
 if TYPE_CHECKING:
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
-
-
-BROKER_PROVIDERS = {
-    "inline": "protean.adapters.InlineBroker",
-    "redis": "protean.adapters.broker.RedisBroker",
-    "redis_pubsub": "protean.adapters.broker.RedisPubSubBroker",
-}
 
 
 class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
@@ -58,12 +46,8 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
                 raise ConfigurationError("You must define a 'default' broker")
 
             for broker_name, conn_info in configured_brokers.items():
-                broker_full_path = BROKER_PROVIDERS[conn_info["provider"]]
-                broker_module, broker_class = broker_full_path.rsplit(".", maxsplit=1)
-
-                broker_cls = getattr(
-                    importlib.import_module(broker_module), broker_class
-                )
+                provider = conn_info["provider"]
+                broker_cls = registry.get(provider)
                 broker_objects[broker_name] = broker_cls(
                     broker_name, self.domain, conn_info
                 )
@@ -102,4 +86,7 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
                 broker.publish(stream, message)
 
 
-__all__ = ["InlineBroker", "RedisBroker", "RedisPubSubBroker"]
+# No exports - this module only provides internal domain infrastructure
+# Brokers should be accessed via domain.brokers, not imported directly
+# Registry should be imported from protean.port.broker
+__all__ = []

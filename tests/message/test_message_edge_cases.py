@@ -7,6 +7,7 @@ from uuid import uuid4
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.command import BaseCommand
+from protean.exceptions import DeserializationError
 from protean.fields import Identifier, String
 from protean.utils.eventing import (
     Message,
@@ -502,7 +503,6 @@ class TestMessageToDomainObjectValidation:
 
     def test_to_domain_object_with_unsupported_kind(self, test_domain):
         """Test that to_domain_object raises error for unsupported message kind."""
-        from protean.exceptions import DeserializationError
 
         message = Message(
             data={"test": "data"},
@@ -530,7 +530,6 @@ class TestMessageToDomainObjectValidation:
 
     def test_to_domain_object_with_unregistered_type(self, test_domain):
         """Test that to_domain_object raises error for unregistered message type."""
-        from protean.exceptions import DeserializationError
 
         message = Message(
             data={"test": "data"},

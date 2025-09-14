@@ -1,6 +1,6 @@
 import pytest
 
-from protean.adapters.broker import RedisPubSubBroker
+from protean.adapters.broker.redis_pubsub import RedisPubSubBroker
 
 
 @pytest.mark.redis

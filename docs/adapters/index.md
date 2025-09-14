@@ -47,7 +47,14 @@ facilitating asynchronous processing and decoupling.
 
 Current Implementations:
 
-- [Redis](./broker/redis.md)
+- [Inline](./broker/inline.md) - In-memory broker for development and testing
+- [Redis Streams](./broker/redis.md) - Durable message streaming with consumer groups
+- [Redis PubSub](./broker/redis-pubsub.md) - Simple queuing with Redis Lists
+
+Learn more:
+
+- [Broker Capabilities](./broker/index.md#broker-capabilities) - Understanding what each broker can do
+- [Custom Brokers](./broker/custom-brokers.md) - Create your own broker adapters
 
 ## Cache
 
