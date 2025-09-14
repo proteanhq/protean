@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Dict
 
 import redis
 
-from protean.port.broker import BaseBroker, BrokerCapabilities
+from protean.port.broker import BaseBroker, BrokerCapabilities, registry
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -262,3 +262,17 @@ class RedisPubSubBroker(BaseBroker):
             self._consumer_groups.clear()
         except Exception as e:
             logger.error(f"Error during data reset: {e}")
+
+
+# Self-registration function for entry point
+def register():
+    """Register Redis PubSub broker with Protean if redis is available."""
+    try:
+        import redis  # noqa: F401
+
+        registry.register(
+            "redis_pubsub", "protean.adapters.broker.redis_pubsub.RedisPubSubBroker"
+        )
+    except ImportError:
+        # Redis not available, skip registration
+        pass

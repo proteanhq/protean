@@ -137,6 +137,11 @@ types-Werkzeug = ">=1.0.5"
 [tool.poetry.scripts]
 protean = "protean.cli:app"
 
+[tool.poetry.plugins."protean.brokers"]
+inline = "protean.adapters.broker.inline:register"
+redis = "protean.adapters.broker.redis:register"
+redis_pubsub = "protean.adapters.broker.redis_pubsub:register"
+
 ##################
 # Configurations #
 ##################

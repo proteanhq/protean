@@ -245,7 +245,10 @@ nav:
       - adapters/database/elasticsearch.md
     - Brokers:
       - adapters/broker/index.md
+      - adapters/broker/inline.md
       - adapters/broker/redis.md
+      - adapters/broker/redis-pubsub.md
+      - adapters/broker/custom-brokers.md
     - Caches:
       - adapters/cache/index.md
       - adapters/cache/redis.md

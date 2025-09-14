@@ -4,7 +4,7 @@ import uuid
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
-from protean.port.broker import BaseBroker, BrokerCapabilities, OperationState
+from protean.port.broker import BaseBroker, BrokerCapabilities, OperationState, registry
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -902,3 +902,12 @@ class InlineBroker(BaseBroker):
             bool: Always True for inline broker
         """
         return True
+
+
+# Self-registration function for entry point
+def register():
+    """Register InlineBroker with Protean.
+
+    InlineBroker is always available as it has no external dependencies.
+    """
+    registry.register("inline", "protean.adapters.broker.inline.InlineBroker")
