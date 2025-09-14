@@ -273,6 +273,10 @@ def register():
         registry.register(
             "redis_pubsub", "protean.adapters.broker.redis_pubsub.RedisPubSubBroker"
         )
-    except ImportError:
+        logger.debug("Redis PubSub broker registered successfully")
+    except ImportError as e:
         # Redis not available, skip registration
+        logger.debug(
+            f"Redis PubSub broker not registered: redis package not available ({e})"
+        )
         pass

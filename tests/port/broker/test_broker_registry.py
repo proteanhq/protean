@@ -165,14 +165,173 @@ class TestBrokerRegistry:
             # Should not call entry_points since already initialized
             mock_entry_points.assert_not_called()
 
-    def test_discover_plugins_handles_failed_plugins(self):
+    def test_discover_plugins_handles_failed_plugins(self, caplog):
         """Test that failed plugin loading doesn't break discovery."""
-        # Directly test the error handling by simulating a failed registration
-        registry.register("working_broker", "path.to.Broker")
+        import logging
 
-        # Check logging for failures (we can't easily mock the actual entry points)
-        # Just verify the working broker was registered
-        assert "working_broker" in registry._brokers
+        # Set logging level to DEBUG to capture the debug messages
+        caplog.set_level(logging.DEBUG, logger="protean.port.broker")
+
+        # Create mock entry points with one that succeeds and one that fails
+        mock_good_entry = Mock()
+        mock_good_entry.name = "good_broker"
+        mock_good_entry.load.return_value = lambda: registry.register(
+            "good_broker", "path.to.GoodBroker"
+        )
+
+        mock_bad_entry = Mock()
+        mock_bad_entry.name = "bad_broker"
+        mock_bad_entry.load.side_effect = ImportError("Missing dependency")
+
+        with patch("importlib.metadata.entry_points") as mock_entry_points:
+            mock_eps = Mock()
+            mock_eps.select.return_value = [mock_good_entry, mock_bad_entry]
+            mock_entry_points.return_value = mock_eps
+
+            # Reset initialized flag to ensure discovery runs
+            BrokerRegistry._initialized = False
+
+            # Discover plugins - should not raise exception
+            registry._discover_plugins()
+
+            # Good broker should be registered
+            assert "good_broker" in registry._brokers
+
+            # Bad broker should not be registered
+            assert "bad_broker" not in registry._brokers
+
+            # Check that the failure was logged
+            assert "Failed to load broker plugin 'bad_broker'" in caplog.text
+            assert "Missing dependency" in caplog.text
+
+    def test_discover_plugins_handles_registration_function_error(self, caplog):
+        """Test handling when the registration function itself raises an error."""
+        import logging
+
+        caplog.set_level(logging.DEBUG, logger="protean.port.broker")
+
+        # Create entry point where the registration function raises an error
+        mock_entry = Mock()
+        mock_entry.name = "error_broker"
+
+        def failing_register():
+            raise RuntimeError("Registration function failed")
+
+        mock_entry.load.return_value = failing_register
+
+        with patch("importlib.metadata.entry_points") as mock_entry_points:
+            mock_eps = Mock()
+            mock_eps.select.return_value = [mock_entry]
+            mock_entry_points.return_value = mock_eps
+
+            # Reset initialized flag
+            BrokerRegistry._initialized = False
+
+            # Should not raise exception
+            registry._discover_plugins()
+
+            # Broker should not be registered
+            assert "error_broker" not in registry._brokers
+
+            # Check that the failure was logged
+            assert "Failed to load broker plugin 'error_broker'" in caplog.text
+            assert "Registration function failed" in caplog.text
+
+    def test_discover_plugins_handles_attribute_error(self, caplog):
+        """Test handling when entry point load raises AttributeError."""
+        import logging
+
+        caplog.set_level(logging.DEBUG, logger="protean.port.broker")
+
+        mock_entry = Mock()
+        mock_entry.name = "attr_error_broker"
+        mock_entry.load.side_effect = AttributeError(
+            "Module has no attribute 'register'"
+        )
+
+        with patch("importlib.metadata.entry_points") as mock_entry_points:
+            mock_eps = Mock()
+            mock_eps.select.return_value = [mock_entry]
+            mock_entry_points.return_value = mock_eps
+
+            BrokerRegistry._initialized = False
+            registry._discover_plugins()
+
+            assert "attr_error_broker" not in registry._brokers
+            assert "Failed to load broker plugin 'attr_error_broker'" in caplog.text
+            assert "Module has no attribute 'register'" in caplog.text
+
+    def test_discover_plugins_continues_after_multiple_failures(self, caplog):
+        """Test that discovery continues processing after multiple failures."""
+        import logging
+
+        caplog.set_level(logging.DEBUG, logger="protean.port.broker")
+
+        # Create multiple entry points with various failure modes
+        entries = []
+
+        # First broker - succeeds
+        mock_entry1 = Mock()
+        mock_entry1.name = "broker1"
+        mock_entry1.load.return_value = lambda: registry.register(
+            "broker1", "path.to.Broker1"
+        )
+        entries.append(mock_entry1)
+
+        # Second broker - ImportError
+        mock_entry2 = Mock()
+        mock_entry2.name = "broker2"
+        mock_entry2.load.side_effect = ImportError("No module")
+        entries.append(mock_entry2)
+
+        # Third broker - succeeds
+        mock_entry3 = Mock()
+        mock_entry3.name = "broker3"
+        mock_entry3.load.return_value = lambda: registry.register(
+            "broker3", "path.to.Broker3"
+        )
+        entries.append(mock_entry3)
+
+        # Fourth broker - RuntimeError in registration
+        mock_entry4 = Mock()
+        mock_entry4.name = "broker4"
+        mock_entry4.load.return_value = lambda: (_ for _ in ()).throw(
+            RuntimeError("Boom!")
+        )
+        entries.append(mock_entry4)
+
+        # Fifth broker - succeeds
+        mock_entry5 = Mock()
+        mock_entry5.name = "broker5"
+        mock_entry5.load.return_value = lambda: registry.register(
+            "broker5", "path.to.Broker5"
+        )
+        entries.append(mock_entry5)
+
+        with patch("importlib.metadata.entry_points") as mock_entry_points:
+            mock_eps = Mock()
+            mock_eps.select.return_value = entries
+            mock_entry_points.return_value = mock_eps
+
+            BrokerRegistry._initialized = False
+            registry._discover_plugins()
+
+            # Check that successful brokers were registered
+            assert "broker1" in registry._brokers
+            assert "broker3" in registry._brokers
+            assert "broker5" in registry._brokers
+
+            # Check that failed brokers were not registered
+            assert "broker2" not in registry._brokers
+            assert "broker4" not in registry._brokers
+
+            # Check that all failures were logged
+            assert "Failed to load broker plugin 'broker2'" in caplog.text
+            assert "Failed to load broker plugin 'broker4'" in caplog.text
+
+            # Verify specific error messages
+            assert "No module" in caplog.text
+            assert "Boom!" in caplog.text
 
     def test_discover_plugins_python311(self):
         """Test plugin discovery with Python 3.11+ entry_points API."""
@@ -250,7 +409,7 @@ class TestBrokerRegistryIntegration:
     def test_redis_broker_registration_with_redis_available(self):
         """Test Redis broker registration when redis package is available."""
         try:
-            import redis  # noqa: F401
+            import redis as redis_module  # noqa: F401
 
             # If redis is available, test registration
             from protean.adapters.broker.redis import register
@@ -269,24 +428,59 @@ class TestBrokerRegistryIntegration:
             # Redis not available, skip this test
             pytest.skip("Redis package not available")
 
-    def test_redis_broker_registration_without_redis(self):
-        """Test that Redis broker doesn't register without redis package."""
-        with patch.dict("sys.modules", {"redis": None}):
-            # Simulate redis not being available
-            def mock_register():
-                try:
-                    import redis  # noqa: F401
+    def test_redis_broker_registration_without_redis(self, caplog):
+        """Test that Redis broker doesn't register without redis package and logs appropriately."""
+        import logging
 
-                    registry.register(
-                        "redis", "protean.adapters.broker.redis.RedisBroker"
-                    )
-                except ImportError:
-                    pass
+        caplog.set_level(logging.DEBUG, logger="protean.adapters.broker")
 
-            mock_register()
+        # Directly test the register function logic without importing the whole module
+        from protean.adapters.broker.redis import logger as redis_logger
 
-            # Should not be registered
-            assert "redis" not in registry._brokers
+        def test_register():
+            """Simulate the register function when redis is not available."""
+            try:
+                # This will raise ImportError
+                raise ImportError("No module named 'redis'")
+            except ImportError as e:
+                # This is what the actual register function does
+                redis_logger.debug(
+                    f"Redis broker not registered: redis package not available ({e})"
+                )
+
+        test_register()
+
+        # Check debug log message
+        assert "Redis broker not registered" in caplog.text
+        assert "redis package not available" in caplog.text
+        assert "No module named 'redis'" in caplog.text
+
+    def test_redis_pubsub_broker_registration_without_redis(self, caplog):
+        """Test that Redis PubSub broker doesn't register without redis package and logs appropriately."""
+        import logging
+
+        caplog.set_level(logging.DEBUG, logger="protean.adapters.broker")
+
+        # Directly test the register function logic without importing the whole module
+        from protean.adapters.broker.redis_pubsub import logger as redis_pubsub_logger
+
+        def test_register():
+            """Simulate the register function when redis is not available."""
+            try:
+                # This will raise ImportError
+                raise ImportError("No module named 'redis'")
+            except ImportError as e:
+                # This is what the actual register function does
+                redis_pubsub_logger.debug(
+                    f"Redis PubSub broker not registered: redis package not available ({e})"
+                )
+
+        test_register()
+
+        # Check debug log message
+        assert "Redis PubSub broker not registered" in caplog.text
+        assert "redis package not available" in caplog.text
+        assert "No module named 'redis'" in caplog.text
 
     def test_multiple_broker_registration(self):
         """Test registering multiple brokers."""

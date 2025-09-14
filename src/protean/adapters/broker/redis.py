@@ -763,6 +763,8 @@ def register():
         import redis  # noqa: F401
 
         registry.register("redis", "protean.adapters.broker.redis.RedisBroker")
-    except ImportError:
+        logger.debug("Redis broker registered successfully")
+    except ImportError as e:
         # Redis not available, skip registration
+        logger.debug(f"Redis broker not registered: redis package not available ({e})")
         pass
