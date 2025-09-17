@@ -1,6 +1,7 @@
 """Module with repository implementation for SQLAlchemy"""
 
 import copy
+import importlib.util
 import json
 import logging
 import uuid
@@ -53,6 +54,19 @@ from protean.utils.reflection import attributes, id_field
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
+
+
+def check_psycopg2_availability():
+    """Check if psycopg2 or psycopg2-binary is available"""
+    psycopg2_spec = importlib.util.find_spec("psycopg2")
+    psycopg2_binary_spec = importlib.util.find_spec("psycopg2_binary")
+
+    if psycopg2_spec is not None:
+        return "psycopg2"
+    elif psycopg2_binary_spec is not None:
+        return "psycopg2-binary"
+    else:
+        return None
 
 
 class GUID(TypeDecorator):
@@ -907,6 +921,16 @@ class SAProvider(BaseProvider):
 
 class PostgresqlProvider(SAProvider):
     __database__ = SAProvider.databases.postgresql.value
+
+    def __init__(self, name, domain, conn_info: dict):
+        psycopg2_package = check_psycopg2_availability()
+        if not psycopg2_package:
+            logger.warning(
+                "PostgreSQL provider requires psycopg2 or psycopg2-binary. Please refer https://www.psycopg.org/docs/install.html#install-from-source for installation"
+            )
+        else:
+            logger.info(f"Using {psycopg2_package} for PostgreSQL connection.")
+        super().__init__(name, domain, conn_info)
 
     def _get_database_specific_engine_args(self) -> dict:
         """Supplies additional database-specific arguments to SQLAlchemy Engine.

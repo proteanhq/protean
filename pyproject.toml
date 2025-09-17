@@ -73,6 +73,7 @@ elasticsearch = {version = "~7.17.9", optional = true}
 elasticsearch-dsl = {version = "~7.4.1", optional = true}
 redis = {version = ">=5.0.7,<6.5.0", optional = true}
 sqlalchemy = {version = "~2.0.30", optional = true}
+psycopg2-binary = {version = ">=2.9.9", optional = true}
 psycopg2 = {version = ">=2.9.9", optional = true}
 pyodbc = {version = ">=5.0.0", optional = true}
 flask = {version = ">=1.1.1", optional = true}
@@ -82,7 +83,8 @@ message-db-py = {version = ">=0.2.0", optional = true}
 [tool.poetry.extras]
 elasticsearch = ["elasticsearch", "elasticsearch-dsl"]
 redis = ["redis"]
-postgresql = ["sqlalchemy", "psycopg2"]
+postgresql = ["sqlalchemy", "psycopg2-binary"]
+postgresql-dev = ["sqlalchemy", "psycopg2"]
 sqlite = ["sqlalchemy"]
 mssql = ["sqlalchemy", "pyodbc"]
 message-db = ["message-db-py"]
