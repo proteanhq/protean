@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "{{ short_description }}"
 authors = ["{{ author_name }} <{{ author_email }}>"]
 readme = "README.md"
+packages = [{include = "{{ package_name }}", from = "src"}]
 classifiers=[
     # complete classifier list: http://pypi.python.org/pypi?%3Aaction=list_classifiers
     "Programming Language :: Python",
@@ -50,7 +51,7 @@ python = "^3.11"
 {# Cache adapters #}
 {%- if cache == "redis" and "redis" not in extras -%}
   {%- set _ = extras.append("redis") -%}
-{%- endif -%}
+{%- endif %}
 
 protean = {version = "0.14.2", extras={{ extras }} }
 python-dotenv = "^1.0.0"
@@ -174,10 +175,6 @@ addopts = [
     "-ra",
     "--strict-markers",
     "--strict-config",
-    "--cov-branch",
-    "--cov-report=term-missing:skip-covered",
-    "--cov-report=html",
-    "--cov-report=xml",
 ]
 markers = [
     "domain: Domain layer tests (pure business logic)",
