@@ -459,9 +459,7 @@ class ESProvider(BaseProvider):
             model_cls = self.domain.get_model(element_record.cls)
             if provider.conn_info[
                 "DATABASE"
-            ] == Database.ELASTICSEARCH.value and conn.indices.exists(
-                model_cls._index._name
-            ):
+            ] == Database.ELASTICSEARCH.value and conn.indices.exists(index=model_cls._index._name):
                 conn.delete_by_query(
                     refresh=True,
                     index=model_cls._index._name,
@@ -501,7 +499,7 @@ class ESProvider(BaseProvider):
             if provider.conn_info[
                 "DATABASE"
             ] == Database.ELASTICSEARCH.value and model_cls._index.exists(using=conn):
-                conn.indices.delete(model_cls._index._name)
+                conn.indices.delete(index=model_cls._index._name)
 
 
 class DefaultLookup(BaseLookup):
