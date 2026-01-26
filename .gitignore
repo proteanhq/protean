@@ -146,7 +146,8 @@ tester*.py
 tester-*
 *.patch
 
-# Temporary Docs folder
+# Temporary folders
 docs-old/*
+tmp/*
 
 CLAUDE.md

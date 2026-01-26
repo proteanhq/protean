@@ -1,0 +1,27 @@
+"""Repository for the Example aggregate."""
+
+from typing import List, Optional
+
+from {{ package_name }}.domain import {{ domain_name }}
+from .aggregate import Example
+
+
+@{{ domain_name }}.repository(part_of=Example)
+class ExampleRepository:
+    """Repository for Example aggregate.
+
+    The base repository provides standard CRUD operations.
+    Add custom query methods here as needed.
+    """
+
+    def find_by_name(self, name: str) -> Optional[Example]:
+        """Find an Example by name."""
+        return self._dao.find_by(name=name).first
+
+    def find_active(self) -> List[Example]:
+        """Find all active Examples."""
+        return self._dao.filter(status="ACTIVE").all()
+
+    def find_by_status(self, status: str) -> List[Example]:
+        """Find Examples by status."""
+        return self._dao.filter(status=status).all()

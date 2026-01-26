@@ -2,5 +2,512 @@
 
 **Version 0.1.0**
 
-{{ description }}
+{{ short_description }}
 
+{%- if include_example %}
+
+> **Note**: This project includes example code demonstrating the recommended project structure and patterns.
+> The `example` aggregate is provided as a reference implementation. Feel free to modify or remove it as you build your domain.
+{%- endif %}
+
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Development Setup](#development-setup)
+- [Project Structure](#project-structure)
+- [Development Tools](#development-tools)
+- [Available Commands](#available-commands)
+- [Testing](#testing)
+- [Code Quality](#code-quality)
+- [Configuration](#configuration)
+- [Contributing](#contributing)
+
+## Prerequisites
+
+- Python 3.11 or higher
+- Poetry (for dependency management)
+- Docker and Docker Compose (for infrastructure services)
+- Make (optional, for convenience commands)
+
+## Installation
+
+### Quick Start
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd {{ package_name }}
+
+# Install dependencies
+make install
+
+# Set up pre-commit hooks
+make install-pre-commit
+
+# Start infrastructure services
+make docker-up
+```
+
+### Manual Installation
+
+```bash
+# Install all dependencies
+poetry install --with dev,test,docs,types,lint
+
+# Install pre-commit hooks
+poetry run pre-commit install
+
+# Start Docker services
+docker-compose up -d
+```
+
+## Development Setup
+
+### Environment Variables
+
+Copy the `.env.example` file to `.env` and update the values:
+
+```bash
+cp .env.example .env
+```
+
+### Pre-commit Hooks
+
+This project uses pre-commit hooks to ensure code quality. The hooks will run automatically before each commit. To run them manually:
+
+```bash
+make pre-commit
+```
+
+## Project Structure
+
+```
+{{ package_name }}/
+├── src/
+│   └── {{ package_name }}/
+│       ├── domain.py              # Domain initialization
+│       ├── domain.toml            # Domain configuration
+│       ├── __init__.py
+│       │
+│       # Each aggregate gets its own folder with all related components
+{%- if include_example %}
+│       ├── example/               # Example aggregate (included as reference)
+│       │   ├── __init__.py
+│       │   ├── aggregate.py       # The aggregate root
+│       │   ├── entities.py        # Related entities (if any)
+│       │   ├── value_objects.py   # Value objects
+│       │   ├── commands.py        # Commands for this aggregate
+│       │   ├── events.py          # Events emitted by this aggregate
+│       │   ├── handlers.py        # Command/Event handlers
+│       │   ├── repository.py      # Repository interface & implementation
+│       │   └── services.py        # Domain services (if needed)
+│       │
+{%- else %}
+│       # Add your aggregates here, e.g., user/, order/, product/
+│       # Each aggregate folder should contain:
+│       # - aggregate.py: The aggregate root
+│       # - entities.py: Related entities
+│       # - value_objects.py: Value objects
+│       # - commands.py: Commands
+│       # - events.py: Events
+│       # - handlers.py: Command/Event handlers
+│       # - repository.py: Repository
+│       # - services.py: Domain services
+│       │
+{%- endif %}
+│       # Shared/Cross-cutting concerns
+│       ├── shared/                 # Shared value objects, exceptions, etc.
+│       │   ├── __init__.py
+│       │   ├── value_objects.py
+│       │   └── exceptions.py
+│       │
+│       # Application layer (if using application services)
+│       ├── application/            # Application services that orchestrate
+│       │   ├── __init__.py        # use cases across aggregates
+│       │   └── services.py
+│       │
+│       # Infrastructure projections
+│       └── projections/            # Read models/projections
+│           ├── __init__.py
+{%- if include_example %}
+│           └── example_summary.py # Example projection
+{%- else %}
+│           └── # Add your projections here
+{%- endif %}
+│
+├── tests/
+│   ├── unit/                      # Unit tests
+{%- if include_example %}
+│   │   └── example/               # Example aggregate tests
+│   │       └── test_aggregate.py
+{%- else %}
+│   │   └── # Mirror the src structure for your aggregates
+{%- endif %}
+│   ├── integration/                # Integration tests
+│   ├── bdd/                        # BDD tests
+│   └── conftest.py                # Pytest configuration
+│
+├── Makefile                        # Convenience commands
+├── pyproject.toml                 # Project configuration
+├── docker-compose.yml             # Infrastructure services
+└── .pre-commit-config.yaml       # Pre-commit hooks
+```
+
+## Development Tools
+
+This project comes pre-configured with modern Python development tools:
+
+### Code Formatting & Linting
+
+- **Ruff**: Fast Python linter and formatter
+  - Configuration in `pyproject.toml` under `[tool.ruff]`
+  - Run: `make format` (formatting) or `make lint` (linting)
+
+### Type Checking
+
+- **MyPy**: Static type checker for Python
+  - Configuration in `pyproject.toml` under `[tool.mypy]`
+  - Run: `make typecheck`
+
+### Testing
+
+- **Pytest**: Testing framework with extensive plugin support
+  - Configuration in `pyproject.toml` under `[tool.pytest.ini_options]`
+  - Includes: pytest-cov, pytest-bdd, pytest-asyncio, pytest-mock
+  - Run: `make test` or `make test-cov` (with coverage)
+
+### Code Coverage
+
+- **Coverage.py**: Code coverage measurement
+  - Configuration in `pyproject.toml` under `[tool.coverage]`
+  - Generates HTML, XML, and terminal reports
+  - Run: `make test-cov`
+
+### Pre-commit Hooks
+
+Automated checks before each commit:
+- Trailing whitespace removal
+- End-of-file fixing
+- YAML/TOML validation
+- Large file detection
+- Merge conflict detection
+- Ruff linting and formatting
+- MyPy type checking
+
+### Commit Message Convention
+
+This project uses [Conventional Commits](https://www.conventionalcommits.org/):
+- `feat:` New feature
+- `fix:` Bug fix
+- `docs:` Documentation changes
+- `style:` Code style changes
+- `refactor:` Code refactoring
+- `test:` Test changes
+- `chore:` Maintenance tasks
+
+## Available Commands
+
+Run `make help` to see all available commands:
+
+### Core Commands
+
+```bash
+make install           # Install all dependencies
+make test             # Run all tests
+make test-cov         # Run tests with coverage
+make lint             # Run linting checks
+make format           # Format code
+make typecheck        # Run type checking
+make check            # Run all checks (lint, typecheck, test)
+```
+
+### Protean Commands
+
+```bash
+make shell            # Start Protean interactive shell
+make server           # Start Protean message processing server
+make generate-docker  # Generate docker-compose for infrastructure
+```
+
+### Docker Commands
+
+```bash
+# Infrastructure services
+make docker-up        # Start Docker services
+make docker-down      # Stop Docker services
+make docker-logs      # View Docker logs
+make docker-clean     # Clean Docker volumes
+make docker-ps        # List running containers
+make docker-restart   # Restart all services
+
+# Application containers
+make docker-build     # Build production Docker image
+make docker-build-dev # Build development Docker image
+make docker-run       # Run application in Docker
+make docker-shell     # Open shell in application container
+make docker-rebuild   # Rebuild and restart all services
+
+# Production deployment
+make docker-prod      # Run production stack
+make docker-prod-logs # View production logs
+make docker-prod-down # Stop production stack
+```
+
+### Docker Setup
+
+This project includes comprehensive Docker support for both development and production environments.
+
+#### Development with Docker
+
+1. **Start all services including the application:**
+   ```bash
+   docker-compose up -d
+   ```
+
+2. **View application logs:**
+   ```bash
+   docker-compose logs -f app
+   ```
+
+3. **Open a shell in the application container:**
+   ```bash
+   make docker-shell
+   ```
+
+#### Production Deployment
+
+1. **Build the production image:**
+   ```bash
+   make docker-build
+   ```
+
+2. **Run the production stack:**
+   ```bash
+   make docker-prod
+   ```
+
+The production setup includes:
+- Multi-stage Docker build for optimized images
+- Non-root user for security
+- Health checks for all services
+- Nginx reverse proxy
+- Automatic service dependencies
+- Volume mounts for logs persistence
+
+#### Docker Files
+
+- `Dockerfile` - Production multi-stage build
+- `Dockerfile.dev` - Development image with hot reload
+- `docker-compose.yml` - Base infrastructure services
+- `docker-compose.override.yml` - Development overrides (auto-loaded)
+- `docker-compose.prod.yml` - Production configuration
+- `.dockerignore` - Optimize build context
+
+### Development Commands
+
+```bash
+make dev              # Start development environment (Docker services)
+make clean            # Clean generated files and caches
+make pre-commit       # Run pre-commit hooks manually
+make docs             # Build documentation
+make docs-serve       # Serve documentation locally
+```
+
+## Testing
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run specific test suites
+make test-unit         # Unit tests only
+make test-integration  # Integration tests only
+make test-bdd         # BDD tests only
+
+# Run with coverage
+make test-cov
+
+# Run in watch mode
+poetry run pytest-watch
+```
+
+### Test Organization
+
+- **Unit tests**: Test individual components in isolation
+- **Integration tests**: Test component interactions
+- **BDD tests**: Business behavior specifications using Gherkin syntax
+
+### Test Markers
+
+Tests can be marked for selective execution:
+
+```python
+@pytest.mark.unit
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.database
+@pytest.mark.broker
+@pytest.mark.eventstore
+```
+
+Run marked tests:
+```bash
+pytest -m "unit"           # Run only unit tests
+pytest -m "not slow"       # Skip slow tests
+```
+
+## Code Quality
+
+### Formatting
+
+```bash
+# Format all code
+make format
+
+# Check formatting without changes
+poetry run ruff format --check src/ tests/
+```
+
+### Linting
+
+```bash
+# Run linting
+make lint
+
+# Fix auto-fixable issues
+poetry run ruff check --fix src/ tests/
+```
+
+### Type Checking
+
+```bash
+# Run type checking
+make typecheck
+
+# Type check specific files
+poetry run mypy src/{{ package_name }}/specific_file.py
+```
+
+### Pre-commit Checks
+
+```bash
+# Run all pre-commit hooks
+make pre-commit
+
+# Run specific hook
+poetry run pre-commit run ruff --all-files
+```
+
+## Configuration
+
+### Domain Configuration
+
+Domain settings are in `src/{{ package_name }}/domain.toml`:
+
+```toml
+debug = true
+testing = false
+event_processing = "sync"
+command_processing = "sync"
+
+[databases.default]
+provider = "{{ database }}"
+
+[brokers.default]
+provider = "{{ broker }}"
+
+[caches.default]
+provider = "{{ cache }}"
+```
+
+### Environment-specific Configuration
+
+Use environment variables or `.env` files for sensitive configuration:
+
+```bash
+# .env
+SECRET_KEY=your-secret-key
+DATABASE_URL=postgresql://user:pass@localhost/dbname
+REDIS_URL=redis://localhost:6379
+ENVIRONMENT=development  # production, staging, development, test
+LOG_LEVEL=INFO          # DEBUG, INFO, WARNING, ERROR, CRITICAL (optional)
+```
+
+### Logging Configuration
+
+This project includes comprehensive structured logging with:
+
+#### Features
+- **Structured logging** with JSON output for production
+- **Human-readable** console output for development
+- **Automatic log rotation** with size and time-based policies
+- **Environment-specific** log levels
+- **Context propagation** for tracing requests
+
+#### Usage
+
+```python
+from {{ package_name }}.shared.logging import get_logger, add_context, log_method_call
+
+# Get a logger
+logger = get_logger(__name__)
+
+# Basic logging
+logger.info("Processing request", user_id=123, action="create")
+
+# Add context that persists across log messages
+add_context(request_id="abc-123", user_id=456)
+logger.info("Starting process")  # Will include request_id and user_id
+
+# Use decorator for automatic method logging
+@log_method_call
+def process_order(order_id: str):
+    # Method entry, exit, and errors are logged automatically
+    return {"status": "processed"}
+```
+
+#### Configuration Files
+- `logging.toml` - Logging configuration (optional)
+- `logs/` - Directory for log files (auto-created)
+  - `{{ package_name }}.log` - Main application log
+  - `{{ package_name }}_error.log` - Error-only log
+
+#### Environment Variables
+- `ENVIRONMENT` - Sets default log level (production=INFO, development=DEBUG)
+- `LOG_LEVEL` - Override default log level
+
+## Contributing
+
+### Development Workflow
+
+1. Create a feature branch
+2. Make your changes
+3. Ensure all tests pass: `make check`
+4. Commit using conventional commits
+5. Push and create a pull request
+
+### Code Style
+
+- Follow PEP 8 guidelines
+- Use type hints for all functions
+- Write docstrings for modules, classes, and functions
+- Keep line length under 120 characters
+- Use meaningful variable and function names
+
+### Testing Requirements
+
+- Write tests for all new features
+- Maintain or improve code coverage
+- Ensure all tests pass before committing
+- Use appropriate test markers
+
+## License
+
+[Add your license information here]
+
+## Support
+
+[Add support contact information or links]

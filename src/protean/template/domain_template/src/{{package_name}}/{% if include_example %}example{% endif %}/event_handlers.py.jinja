@@ -1,0 +1,56 @@
+"""Event handlers for the Example aggregate."""
+
+from protean import handle
+
+from {{ package_name }}.domain import {{ domain_name }}
+from {{ package_name }}.shared.logging import add_context, clear_context, get_logger
+from .events import ExampleActivated, ExampleArchived, ExampleCreated
+
+logger = get_logger(__name__)
+
+
+@{{ domain_name }}.event_handler(part_of="Example")
+class ExampleEventHandler:
+    """Handle events from the Example aggregate."""
+
+    @handle(ExampleCreated)
+    def on_example_created(self, event: ExampleCreated) -> None:
+        """React to Example creation."""
+        # Add context for all subsequent log messages in this handler
+        add_context(example_id=str(event.example_id), event_type="ExampleCreated")
+
+        logger.info(
+            "Processing example created event",
+            name=event.name,
+            created_at=event.created_at.isoformat(),
+        )
+
+        # Add your event handling logic here
+        # For example: send notifications, update external systems, etc.
+
+        # Clear context when done
+        clear_context()
+
+    @handle(ExampleActivated)
+    def on_example_activated(self, event: ExampleActivated) -> None:
+        """React to Example activation."""
+        logger.info(
+            "Processing example activated event",
+            example_id=str(event.example_id),
+            activated_at=event.activated_at.isoformat(),
+        )
+
+        # Add your event handling logic here
+        # For example: notify subscribers, trigger workflows, etc.
+
+    @handle(ExampleArchived)
+    def on_example_archived(self, event: ExampleArchived) -> None:
+        """React to Example archival."""
+        logger.info(
+            "Processing example archived event",
+            example_id=str(event.example_id),
+            archived_at=event.archived_at.isoformat(),
+        )
+
+        # Add your event handling logic here
+        # For example: cleanup related data, send archive notifications, etc.

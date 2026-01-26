@@ -1,7 +1,23 @@
+"""Domain initialization and configuration."""
+
 from protean.domain import Domain
 
-# Domain Composition Root
-{{ package_name }} = Domain(name="{{ project_name }}")
+from .shared.logging import configure_logging, get_logger
 
-# Initialize and load all domain elements under the composition root
-{{ package_name }}.init()
+# Configure logging for the application
+configure_logging()
+
+# Get logger for this module
+logger = get_logger(__name__)
+
+# Domain Composition Root
+{{ domain_name }} = Domain(name="{{ domain_name }}")
+logger.info("Initializing domain", domain="{{ domain_name }}")
+
+# Initialize and load all domain elements
+# This will auto-discover all decorated domain elements in:
+# - aggregate folders (e.g., example/, user/, order/)
+# - shared/ folder for shared value objects and exceptions
+# - projections/ folder for read models
+{{ domain_name }}.init()
+logger.info("Domain initialized successfully", domain="{{ domain_name }}")

@@ -1,7 +1,7 @@
 
 # `protean new`
 
-The `protean new` command initializes a new project with a given name. 
+The `protean new` command initializes a new project with a given name.
 
 ## Usage
 
@@ -25,7 +25,16 @@ created. If not provided, the current directory is used.
     Combine with `--force` to overwrite existing directory.
 
 - `--data`, `-d`: Accepts one or more key-value pairs to be included in
-the project's configuration.
+the project's configuration. Available configuration options include:
+    - `author_name`: Project author name
+    - `author_email`: Project author email
+    - `short_description`: Brief project description
+    - `database`: Database choice (`memory`, `postgresql`, `sqlite`, `elasticsearch`)
+    - `broker`: Message broker choice (`inline`, `redis`, `redis-pubsub`)
+    - `include_example`: Include example domain code (`true`/`false`)
+
+- `--defaults`: Use default values for all prompts without interaction
+- `--skip-setup`: Skip running setup commands (useful for testing)
 - `--help`: Shows the help message and exits.
 
 ### Behavior Modifiers
@@ -34,6 +43,123 @@ the project's configuration.
 would be done without making any changes.
 - `--force`, `-f`: Forces the command to run even if it would overwrite
 existing files.
+
+## Generated Project Structure
+
+The command creates a complete project structure with the following components:
+
+### Root Files
+
+- `pyproject.toml` - Python project configuration with Poetry
+- `README.md` - Project documentation
+- `Makefile` - Common development tasks
+- `.gitignore` - Git ignore patterns
+- `.pre-commit-config.yaml` - Pre-commit hooks configuration
+- `.env.example` - Environment variables template
+- `logging.toml` - Logging configuration
+- `.dockerignore` - Docker ignore patterns
+
+### Docker Configuration
+
+- `Dockerfile` - Production Docker image
+- `Dockerfile.dev` - Development Docker image
+- `docker-compose.yml` - Base docker-compose configuration
+- `docker-compose.override.yml` - Local development overrides
+- `docker-compose.prod.yml` - Production configuration
+- `nginx.conf` - Nginx configuration for production
+
+### Activation Scripts
+
+The `scripts/` directory contains virtual environment activation scripts for different shells:
+
+- `scripts/activate.sh` - Bash/Zsh activation
+- `scripts/activate.fish` - Fish shell activation
+- `scripts/activate.bat` - Windows batch activation
+
+### Source Code Structure
+
+```
+src/
+└── <package_name>/
+    ├── __init__.py
+    ├── domain.py          # Domain initialization
+    ├── domain.toml        # Domain configuration
+    ├── shared/            # Shared utilities
+    │   ├── __init__.py
+    │   ├── logging.py     # Structured logging setup
+    │   ├── exceptions.py  # Domain exceptions
+    │   └── value_objects.py
+    ├── example/           # Optional example code
+    │   ├── __init__.py
+    │   ├── aggregate.py
+    │   ├── commands.py
+    │   ├── command_handlers.py
+    │   ├── events.py
+    │   ├── event_handlers.py
+    │   ├── repository.py
+    │   └── value_objects.py
+    └── projections/       # Read models
+        ├── __init__.py
+        ├── example_projector.py
+        └── example_summary.py
+```
+
+### Test Structure
+
+```
+tests/
+├── README.md
+└── <package_name>/
+    ├── conftest.py         # Pytest configuration
+    ├── domain/            # Domain logic tests
+    │   └── __init__.py
+    ├── application/       # Application layer tests
+    │   └── __init__.py
+    └── integration/       # Integration tests
+        └── __init__.py
+```
+
+### CI/CD Configuration
+
+- `.github/workflows/ci.yml` - GitHub Actions CI pipeline
+
+## Generated Modules
+
+### Logging Module (`shared/logging.py`)
+
+The generated logging module provides structured logging with:
+
+- **JSON formatting** for production environments
+- **Readable formatting** for development
+- **Log rotation support** with size-based rotation
+- **Environment-specific log levels** (DEBUG, INFO, WARNING, ERROR)
+
+**Key Features:**
+
+- `get_logger(name)` - Get a configured structlog logger
+- `add_context(**kwargs)` - Add context variables to all subsequent logs
+- `clear_context()` - Clear all context variables
+- `log_method_call` - Decorator for logging method calls
+- `configure_for_testing()` - Reduce verbosity during tests
+
+**Environment Configuration:**
+
+The logging level is determined by the `ENVIRONMENT` variable:
+- `production`/`staging`: INFO level
+- `development`: DEBUG level
+- `test`: WARNING level
+
+Override with the `LOG_LEVEL` environment variable.
+
+### Exceptions Module (`shared/exceptions.py`)
+
+Domain-specific exception hierarchy:
+
+- `DomainException` - Base exception for all domain errors
+- `InvalidStateException` - Operation attempted in invalid state
+- `NotFoundException` - Requested resource not found
+- `DuplicateException` - Duplicate resource creation attempt
+- `ValidationException` - Domain validation failure
 
 ## Examples
 
@@ -55,8 +181,30 @@ protean new authentication -o /path/to/directory
 
 ### Using Configuration Data
 
-To pass key-value pairs for project configuration:
+To create a project with PostgreSQL and Redis:
 
 ```shell
-protean new authentication -d key1 value1 -d key2 value2
+protean new authentication \
+  -d author_name="John Doe" \
+  -d author_email=john@example.com \
+  -d database=postgresql \
+  -d broker=redis
+```
+
+### Creating a Project with Example Code
+
+To include example domain code (aggregate, commands, events, handlers):
+
+```shell
+protean new authentication \
+  -d include_example=true \
+  --defaults
+```
+
+### Quick Setup with Defaults
+
+To quickly create a project with default options:
+
+```shell
+protean new my_project --defaults
 ```

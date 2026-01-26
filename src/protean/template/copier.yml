@@ -1,8 +1,12 @@
 _templates_suffix: .jinja
 _subdirectory: 'domain_template'
 
+# Quick test generation:
+# protean new myproject --defaults --data "author_name=Test" --data "author_email=test@test.com"
+
 project_name:
   type: str
+  default: "test-protean-project"
 
 short_description:
   type: str
@@ -10,9 +14,11 @@ short_description:
 
 author_name:
   type: str
+  default: "Test Author"
 
 author_email:
   type: str
+  default: "test@example.com"
 
 package_name:
   type: str
@@ -28,15 +34,24 @@ database:
     Memory: memory
     PostgreSQL: postgresql
     SQLite: sqlite
-    ElasticSearch: elasticsearch
+    MS SQL Server: mssql
+    Elasticsearch: elasticsearch
+  default: memory
+
+event_store:
+  type: str
+  choices:
+    Memory: memory
+    MessageDB (PostgreSQL): message-db
   default: memory
 
 broker:
   type: str
   choices:
-    Memory: memory
-    Redis: redis
-  default: memory
+    Inline (Synchronous): inline
+    Redis Stream: redis
+    Redis Pub/Sub: redis-pubsub
+  default: inline
 
 cache:
   type: str
@@ -44,3 +59,19 @@ cache:
     Memory: memory
     Redis: redis
   default: memory
+
+include_example:
+  type: bool
+  default: true
+  help: Include example aggregate code to demonstrate the project structure
+
+_skip_if_exists:
+  - "**/__pycache__"
+
+_exclude:
+  - "**/__pycache__"
+  - "**/*.pyc"
+  - "**/*.pyo"
+  - "**/*.pyd"
+  - "**/.Python"
+  - "**/*.so"

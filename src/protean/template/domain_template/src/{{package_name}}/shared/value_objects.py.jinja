@@ -1,0 +1,37 @@
+"""Shared value objects used across multiple aggregates."""
+
+from protean.fields import Float, String
+
+from {{ package_name }}.domain import {{ domain_name }}
+
+
+@{{ domain_name }}.value_object
+class Money:
+    """Value object representing monetary values."""
+
+    amount = Float(required=True)
+    currency = String(max_length=3, default="USD")
+
+    def add(self, other: "Money") -> "Money":
+        """Add two money values."""
+        if self.currency != other.currency:
+            raise ValueError("Cannot add money with different currencies")
+        return Money(amount=self.amount + other.amount, currency=self.currency)
+
+    def subtract(self, other: "Money") -> "Money":
+        """Subtract money values."""
+        if self.currency != other.currency:
+            raise ValueError("Cannot subtract money with different currencies")
+        return Money(amount=self.amount - other.amount, currency=self.currency)
+
+
+@{{ domain_name }}.value_object
+class EmailAddress:
+    """Value object for email addresses."""
+
+    email = String(required=True, max_length=254)
+
+    def __post_init__(self):
+        """Validate email format."""
+        if "@" not in self.email:
+            raise ValueError(f"Invalid email address: {self.email}")

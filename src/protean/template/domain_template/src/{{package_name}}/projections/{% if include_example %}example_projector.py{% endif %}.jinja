@@ -1,0 +1,67 @@
+"""Projector for updating ExampleSummary projection."""
+
+from datetime import datetime
+
+from protean import on
+
+from {{ package_name }}.domain import {{ domain_name }}
+from {{ package_name }}.example.events import ExampleActivated, ExampleArchived, ExampleCreated
+from .example_summary import ExampleSummary
+
+
+@{{ domain_name }}.projector(projector_for=ExampleSummary, aggregates=["Example"])
+class ExampleProjector:
+    """Update ExampleSummary projection based on Example events."""
+
+    @on(ExampleCreated)
+    def on_example_created(self, event: ExampleCreated) -> None:
+        """Create a new projection when Example is created."""
+        days_since = 0  # Just created
+        is_active = 0  # Starts as DRAFT, not active
+
+        projection = ExampleSummary(
+            example_id=event.example_id,
+            name=event.name,
+            status="DRAFT",
+            created_at=event.created_at,
+            updated_at=event.created_at,
+            days_since_creation=days_since,
+            is_active=is_active,
+        )
+
+        repo = {{ domain_name }}.repository_for(ExampleSummary)
+        repo.add(projection)
+
+    @on(ExampleActivated)
+    def on_example_activated(self, event: ExampleActivated) -> None:
+        """Update projection when Example is activated."""
+        repo = {{ domain_name }}.repository_for(ExampleSummary)
+        projection = repo.get(event.example_id)
+
+        if projection:
+            projection.status = "ACTIVE"
+            projection.is_active = 1
+            projection.updated_at = event.activated_at
+
+            # Recalculate days since creation
+            days_since = (datetime.now() - projection.created_at).days
+            projection.days_since_creation = days_since
+
+            repo.add(projection)
+
+    @on(ExampleArchived)
+    def on_example_archived(self, event: ExampleArchived) -> None:
+        """Update projection when Example is archived."""
+        repo = {{ domain_name }}.repository_for(ExampleSummary)
+        projection = repo.get(event.example_id)
+
+        if projection:
+            projection.status = "ARCHIVED"
+            projection.is_active = 0
+            projection.updated_at = event.archived_at
+
+            # Recalculate days since creation
+            days_since = (datetime.now() - projection.created_at).days
+            projection.days_since_creation = days_since
+
+            repo.add(projection)

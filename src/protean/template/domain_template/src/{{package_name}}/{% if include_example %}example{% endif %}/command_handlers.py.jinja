@@ -1,0 +1,68 @@
+"""Command handlers for the Example aggregate."""
+
+from protean import handle
+
+from {{ package_name }}.domain import {{ domain_name }}
+from {{ package_name }}.shared.logging import get_logger
+from .aggregate import Example
+from .commands import ActivateExample, ArchiveExample, CreateExample
+
+logger = get_logger(__name__)
+
+
+@{{ domain_name }}.command_handler(part_of="Example")
+class ExampleCommandHandler:
+    """Handle commands for the Example aggregate."""
+
+    @handle(CreateExample)
+    def handle_create_example(self, command: CreateExample) -> None:
+        """Handle creation of a new Example."""
+        logger.info("Creating new example", name=command.name)
+
+        # Use the factory method that raises the event internally
+        example = Example.create(
+            name=command.name,
+            description=command.description,
+        )
+
+        # Save the aggregate
+        repo = {{ domain_name }}.repository_for(Example)
+        repo.add(example)
+
+        logger.info("Example created successfully", example_id=str(example.id), name=example.name)
+
+    @handle(ActivateExample)
+    def handle_activate_example(self, command: ActivateExample) -> None:
+        """Handle activation of an Example."""
+        logger.debug("Activating example", example_id=str(command.example_id))
+
+        repo = {{ domain_name }}.repository_for(Example)
+        example = repo.get(command.example_id)
+
+        if not example:
+            logger.error("Example not found", example_id=str(command.example_id))
+            raise ValueError(f"Example with id {command.example_id} not found")
+
+        # The activate method raises the event internally
+        example.activate()
+        repo.add(example)
+
+        logger.info("Example activated", example_id=str(example.id), status=example.status)
+
+    @handle(ArchiveExample)
+    def handle_archive_example(self, command: ArchiveExample) -> None:
+        """Handle archiving of an Example."""
+        logger.debug("Archiving example", example_id=str(command.example_id))
+
+        repo = {{ domain_name }}.repository_for(Example)
+        example = repo.get(command.example_id)
+
+        if not example:
+            logger.error("Example not found", example_id=str(command.example_id))
+            raise ValueError(f"Example with id {command.example_id} not found")
+
+        # The archive method raises the event internally
+        example.archive()
+        repo.add(example)
+
+        logger.info("Example archived", example_id=str(example.id), status=example.status)

@@ -1,5 +1,6 @@
 import os
 import pytest
+from pathlib import Path
 
 
 def pytest_addoption(parser):
@@ -20,6 +21,24 @@ def pytest_sessionstart(session):
 
     from {{ package_name }}.domain import {{ package_name }}
     {{ package_name }}.domain_context().push()
+
+
+def pytest_collection_modifyitems(config, items):
+    """Automatically mark tests based on their directory location."""
+    for item in items:
+        # Get the test file path relative to the tests directory
+        test_path = Path(item.fspath)
+
+        # Mark tests based on their directory
+        if "/domain/" in str(test_path):
+            item.add_marker(pytest.mark.domain)
+        elif "/application/" in str(test_path):
+            item.add_marker(pytest.mark.application)
+        elif "/integration/" in str(test_path):
+            item.add_marker(pytest.mark.integration)
+            # Integration tests are often slower
+            if not any(m.name == "fast" for m in item.iter_markers()):
+                item.add_marker(pytest.mark.slow)
 
 
 @pytest.fixture(autouse=True)

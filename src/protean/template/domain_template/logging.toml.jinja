@@ -1,0 +1,55 @@
+# Logging configuration for {{ project_name }}
+# This file can be used as an alternative to programmatic configuration
+
+[general]
+# Default log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+level = "INFO"
+
+# Log directory
+log_dir = "logs"
+
+# Maximum log file size in bytes (10MB)
+max_bytes = 10485760
+
+# Number of backup files to keep
+backup_count = 5
+
+# Environments and their default log levels
+[environments]
+production = "INFO"
+staging = "INFO"
+development = "DEBUG"
+test = "WARNING"
+
+# Logger-specific configuration
+[loggers]
+# Reduce verbosity for noisy libraries
+"urllib3" = "WARNING"
+"asyncio" = "WARNING"
+"elasticsearch" = "WARNING"
+"redis" = "WARNING"
+
+# Application-specific loggers
+"{{ package_name }}" = "DEBUG"
+"{{ package_name }}.commands" = "INFO"
+"{{ package_name }}.events" = "INFO"
+"{{ package_name }}.projections" = "INFO"
+
+# Output formats
+[formats]
+# Production format (JSON)
+production = "json"
+
+# Development format (human-readable)
+development = "console"
+
+# Log rotation settings
+[rotation]
+# When to rotate (midnight, W0-W6 for weekdays, or interval)
+when = "midnight"
+
+# Interval for rotation (if when is not midnight or weekday)
+interval = 1
+
+# Backup count for time-based rotation
+backup_count = 7
