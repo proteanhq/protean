@@ -107,15 +107,11 @@ class Engine:
             handler_name,
             handler_record,
         ) in self.domain.registry.command_handlers.items():
-            stream_category = (
-                f"{handler_record.cls.meta_.part_of.meta_.stream_category}:command"
-            )
-
             # Create a subscription for each command handler
             if subscription_type == "stream":
                 self._subscriptions[handler_name] = StreamSubscription(
                     self,
-                    stream_category,
+                    handler_record.cls.meta_.stream_category,
                     handler_record.cls,
                     messages_per_tick=messages_per_tick,
                     blocking_timeout_ms=stream_config.get("blocking_timeout_ms", 5000),
@@ -126,7 +122,7 @@ class Engine:
             else:
                 self._subscriptions[handler_name] = EventStoreSubscription(
                     self,
-                    stream_category,
+                    handler_record.cls.meta_.stream_category,
                     handler_record.cls,
                     messages_per_tick=messages_per_tick,
                     position_update_interval=event_store_config.get(
