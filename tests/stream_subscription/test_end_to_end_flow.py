@@ -121,6 +121,9 @@ class TestEndToEndFlow:
     @pytest.fixture(autouse=True)
     def setup(self, test_domain):
         """Setup test domain with stream subscriptions."""
+        # Configure server to use stream subscriptions
+        test_domain.config["server"]["default_subscription_type"] = "stream"
+
         # Register aggregates
         test_domain.register(User)
         test_domain.register(Notification)
@@ -141,7 +144,7 @@ class TestEndToEndFlow:
     async def test_stream_subscription_in_engine(self, test_domain):
         """Test that Engine correctly uses StreamSubscription based on config."""
         # Verify configuration
-        assert test_domain.config["server"]["subscription_type"] == "stream"
+        assert test_domain.config["server"]["default_subscription_type"] == "stream"
 
         # Create engine
         engine = Engine(test_domain, test_mode=True)

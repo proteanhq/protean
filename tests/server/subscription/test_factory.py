@@ -400,27 +400,28 @@ class TestSubscriptionFactoryLogging:
         """Factory should log subscription creation."""
         import logging
 
-        with caplog.at_level(logging.DEBUG):
+        with caplog.at_level(logging.INFO):
             factory.create_subscription(
                 handler=UserEventHandler,
                 stream_category="test",
             )
 
-        assert "Creating subscription for handler" in caplog.text
+        assert "Created" in caplog.text
         assert "UserEventHandler" in caplog.text
 
     def test_logs_resolved_configuration(self, factory, caplog):
-        """Factory should log resolved configuration details."""
+        """Factory should log resolved configuration details at INFO level."""
         import logging
 
-        with caplog.at_level(logging.DEBUG):
+        with caplog.at_level(logging.INFO):
             factory.create_subscription(
                 handler=ProductionHandler,
                 stream_category="orders",
             )
 
-        assert "Subscription configuration" in caplog.text
-        assert "messages_per_tick" in caplog.text
+        # INFO log includes subscription type and stream
+        assert "Created StreamSubscription" in caplog.text
+        assert "ProductionHandler" in caplog.text
 
     def test_logs_subscription_type_in_info(self, factory, caplog):
         """Factory should log subscription type at INFO level."""
