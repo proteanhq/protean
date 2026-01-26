@@ -7,5 +7,8 @@
     "python.testing.pytestEnabled": true,
     "python.analysis.extraPaths": [
         "./docs_src"
+    ],
+    "cursorpyright.analysis.extraPaths": [
+        "./docs_src"
     ]
 }
