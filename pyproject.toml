@@ -207,7 +207,10 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 precision = 2
-omit = ["*migrations*"]
+omit = [
+    "*migrations*",
+    "*/template/*",  # Exclude template files - they're copied, not executed
+]
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:"
