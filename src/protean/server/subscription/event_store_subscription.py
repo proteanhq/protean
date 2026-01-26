@@ -1,19 +1,25 @@
+from __future__ import annotations
+
 import logging
 import os
 import secrets
 import socket
 
 from datetime import datetime, timezone
-from typing import List, Union
+from typing import TYPE_CHECKING, List, Union
 from uuid import uuid4
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
+from protean.exceptions import ConfigurationError
 from protean.port.event_store import BaseEventStore
 from protean.utils.eventing import Message, MessageType
 from protean.utils import fqn
 
 from . import BaseSubscription
+
+if TYPE_CHECKING:
+    from .profiles import SubscriptionConfig
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +81,59 @@ class EventStoreSubscription(BaseSubscription):
         )
         self.current_position: int = -1
         self.messages_since_last_position_write: int = 0
+
+    @classmethod
+    def from_config(
+        cls,
+        engine,
+        stream_category: str,
+        handler: Union[BaseEventHandler, BaseCommandHandler],
+        config: SubscriptionConfig,
+    ) -> "EventStoreSubscription":
+        """Create an EventStoreSubscription instance from a SubscriptionConfig.
+
+        This factory method creates an EventStoreSubscription using configuration
+        values from a SubscriptionConfig object. It validates that the config
+        is appropriate for an event store subscription.
+
+        Args:
+            engine: The Protean engine instance.
+            stream_category: The name of the stream to subscribe to.
+            handler: The event or command handler.
+            config: The subscription configuration object.
+
+        Returns:
+            A configured EventStoreSubscription instance.
+
+        Raises:
+            ConfigurationError: If config.subscription_type is not EVENT_STORE.
+
+        Example:
+            >>> config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
+            >>> subscription = EventStoreSubscription.from_config(
+            ...     engine, "$all", ProjectionHandler, config
+            ... )
+        """
+        # Import here to avoid circular imports
+        from .profiles import SubscriptionType
+
+        # Validate subscription type
+        if config.subscription_type != SubscriptionType.EVENT_STORE:
+            raise ConfigurationError(
+                f"Cannot create EventStoreSubscription from config with "
+                f"subscription_type={config.subscription_type.value}. "
+                f"Expected subscription_type=event_store."
+            )
+
+        return cls(
+            engine=engine,
+            stream_category=stream_category,
+            handler=handler,
+            messages_per_tick=config.messages_per_tick,
+            position_update_interval=config.position_update_interval,
+            origin_stream=config.origin_stream,
+            tick_interval=config.tick_interval,
+        )
 
     async def initialize(self) -> None:
         """

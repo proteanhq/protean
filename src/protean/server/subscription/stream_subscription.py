@@ -1,17 +1,23 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
 import secrets
 import socket
-from typing import Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
+from protean.exceptions import ConfigurationError
 from protean.port.broker import BaseBroker
 from protean.utils import fqn
 from protean.utils.eventing import Message
 
 from . import BaseSubscription
+
+if TYPE_CHECKING:
+    from .profiles import SubscriptionConfig
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +108,60 @@ class StreamSubscription(BaseSubscription):
 
         # Get broker from domain
         self.broker: Optional[BaseBroker] = None
+
+    @classmethod
+    def from_config(
+        cls,
+        engine,
+        stream_category: str,
+        handler: Union[BaseEventHandler, BaseCommandHandler],
+        config: SubscriptionConfig,
+    ) -> "StreamSubscription":
+        """Create a StreamSubscription instance from a SubscriptionConfig.
+
+        This factory method creates a StreamSubscription using configuration
+        values from a SubscriptionConfig object. It validates that the config
+        is appropriate for a stream subscription.
+
+        Args:
+            engine: The Protean engine instance.
+            stream_category: The name of the stream to subscribe to.
+            handler: The event or command handler.
+            config: The subscription configuration object.
+
+        Returns:
+            A configured StreamSubscription instance.
+
+        Raises:
+            ConfigurationError: If config.subscription_type is not STREAM.
+
+        Example:
+            >>> config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
+            >>> subscription = StreamSubscription.from_config(
+            ...     engine, "orders", OrderEventHandler, config
+            ... )
+        """
+        # Import here to avoid circular imports
+        from .profiles import SubscriptionType
+
+        # Validate subscription type
+        if config.subscription_type != SubscriptionType.STREAM:
+            raise ConfigurationError(
+                f"Cannot create StreamSubscription from config with "
+                f"subscription_type={config.subscription_type.value}. "
+                f"Expected subscription_type=stream."
+            )
+
+        return cls(
+            engine=engine,
+            stream_category=stream_category,
+            handler=handler,
+            messages_per_tick=config.messages_per_tick,
+            blocking_timeout_ms=config.blocking_timeout_ms,
+            max_retries=config.max_retries,
+            retry_delay_seconds=config.retry_delay_seconds,
+            enable_dlq=config.enable_dlq,
+        )
 
     def _generate_subscription_id(self) -> str:
         """Generate a unique subscription ID."""
