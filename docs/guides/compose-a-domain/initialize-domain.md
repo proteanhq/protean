@@ -1,6 +1,6 @@
 # Initialize the domain
 
-The domain is initialized by calling the `init` method. 
+The domain is initialized by calling the `init` method.
 
 ```python
 domain.init()
@@ -36,7 +36,7 @@ exposes them in a registry.
 ### 3. Initialize dependencies
 
 Calling `domain.init()` establishes connectivity with the underlying infra,
-testing access, and making them available for use by the rest of the system. 
+testing access, and making them available for use by the rest of the system.
 
 By default, a protean domain is configured to use in-memory replacements for
 infrastructure, like databases, brokers, and caches. They are useful for
@@ -51,7 +51,7 @@ In the example above, the domain activates an SQLite database repository and
 makes it available for domain elements for further use.
 
 <!-- FIXME Add link to accessing active/configured dependencies -->
-Refer to [Configuration handling](../configuration.md) to understand the different ways to configure
+Refer to [Configuration handling](../essentials/configuration.md) to understand the different ways to configure
 the domain.
 
 ### 4. Validate Domain Model

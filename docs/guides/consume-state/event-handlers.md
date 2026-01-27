@@ -91,27 +91,73 @@ Event handlers in Protean follow the standard CQRS pattern where event handlers 
 
 If an event handler needs to communicate information as part of its processing, it should:
 
-- Emit new events 
+- Emit new events
 - Update relevant aggregates that can be queried later
 - Log information for monitoring purposes
 
 ## Configuration Options
 
-- **`part_of`**: The aggregate to which the event handler is connected.
-- **`stream_category`**: The event handler listens to events on this stream
-category. The stream category defaults to
-[the category of the aggregate](../domain-definition/aggregates.md#stream_category)
-associated with the handler.
+### Handler Options
 
-  An Event Handler can be part of an aggregate, and have the stream category of
-  a different aggregate. This is the mechanism for an aggregate to listen to
-  another aggregate's events to sync its own state.
+- **`part_of`**: The aggregate to which the event handler is connected.
+- **`stream_category`**: The event handler listens to events on this [stream
+category](../essentials/stream-categories.md). The stream category defaults to the category of the aggregate associated with the handler.
+
+    An Event Handler can be part of an aggregate, and have the stream category of
+    a different aggregate. This is the mechanism for an aggregate to listen to
+    another aggregate's events to sync its own state. Learn more in the
+    [Stream Categories](../essentials/stream-categories.md) guide.
+
 - **`source_stream`**: When specified, the event handler only consumes events
 generated in response to events or commands from this original stream.
 For example, `EmailNotifications` event handler listening to `OrderShipped`
 events can be configured to generate a `NotificationSent` event only when the
 `OrderShipped` event (in stream `orders`) is generated in response to a
 `ShipOrder` (in stream `manage_order`) command.
+
+### Subscription Options
+
+Event handlers can be configured with subscription options that control how
+messages are consumed when running the [Protean server](../server/index.md):
+
+- **`subscription_type`**: Type of subscription to use:
+    - `"stream"`: Uses Redis Streams with consumer groups (recommended for
+      production)
+    - `"event_store"`: Reads directly from event store (for projections/replay)
+
+- **`subscription_profile`**: Pre-configured profile for common scenarios:
+    - `"production"`: High throughput with reliability guarantees
+    - `"fast"`: Low-latency processing
+    - `"batch"`: High-volume batch processing
+    - `"debug"`: Development and debugging
+    - `"projection"`: Building read models (uses event_store type)
+
+- **`subscription_config`**: Dictionary of specific configuration options:
+    - `messages_per_tick`: Messages to process per batch
+    - `blocking_timeout_ms`: Timeout for blocking reads (stream only)
+    - `max_retries`: Retry attempts before DLQ (stream only)
+    - `enable_dlq`: Enable dead letter queue (stream only)
+    - `position_update_interval`: Position update frequency (event_store only)
+
+#### Example with Subscription Configuration
+
+```python
+@domain.event_handler(
+    part_of=Order,
+    subscription_profile="production",
+    subscription_config={
+        "messages_per_tick": 100,
+        "enable_dlq": True,
+    }
+)
+class OrderEventHandler:
+    @handle(OrderCreated)
+    def send_confirmation(self, event):
+        ...
+```
+
+See [Server → Configuration](../server/configuration.md) for detailed
+configuration options and the priority hierarchy.
 
 ## Error Handling
 

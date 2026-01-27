@@ -1,173 +1,134 @@
-# Protean FastAPI Server
+# Async Message Processing
 
-The Protean framework provides a built-in FastAPI server that allows you to quickly expose your domain through a REST API. This guide covers how to start, access, and customize the server for your application.
+The Protean Server is an asynchronous message processing engine that handles
+events, commands, and external messages in your domain. It provides reliable,
+scalable message consumption with support for multiple subscription types,
+configuration profiles, and the transactional outbox pattern.
 
-## Starting the Server
+## Overview
 
-Protean provides a CLI command called `server` that starts a FastAPI server. You can run it from the command line:
+When you run `protean server`, Protean starts the **Engine**, an async runtime
+that:
+
+- **Processes domain events** through event handlers
+- **Processes commands** through command handlers
+- **Builds projections** through projectors
+- **Consumes external messages** through broker subscribers
+- **Publishes outbox messages** to message brokers
+
+```mermaid
+graph TB
+    subgraph "Protean Engine"
+        SS[Stream<br/>Subscription]
+        BS[Broker<br/>Subscription]
+        OP[Outbox<br/>Processor]
+        BR[(Message Broker)]
+    end
+
+    subgraph "Handlers"
+        EH[Event Handlers]
+        CH[Command Handlers]
+        PR[Projectors]
+        SUB[Subscribers]
+    end
+
+    BR --> SS
+    BR --> BS
+    OP --> BR
+
+    SS --> EH
+    SS --> CH
+    SS --> PR
+    BS --> SUB
+```
+
+## Configuration to Use the Server
+
+Protean supports three processing flags that control how work is dispatched and handled:
+
+- `event_processing`: Controls how domain events are processed.
+- `command_processing`: Controls how commands are processed.
+- `message_processing`: Controls how standalone messages from brokers (such as Redis Streams or Pub/Sub) are handled.
+
+Set any of these to `"async"` in your domain configuration to process the respective tasks asynchronously using the server. When set to `"async"`, the Protean server will run the corresponding background workers to handle these tasks outside of the main request flow.
+
+### Example Configuration
+
+```toml
+# domain.toml
+event_processing = "async"
+command_processing = "async"
+
+[event_store]
+provider = "message_db"
+database_uri = "postgresql://message_store@localhost:5433/message_store"
+
+[brokers.default]
+provider = "redis"
+URI = "redis://localhost:6379/0"
+```
+
+With this configuration, events, commands, and broker messages are all processed asynchronously by the server, enabling scalable, out-of-band handling of all message types.
+
+## Quick Start
 
 ```bash
-protean server --domain=path/to/domain --port=8000
+# Start the server with your domain
+protean server --domain=your_domain
+
+# Start with debug logging
+protean server --domain=your_domain --debug
+
+# Run in test mode (processes pending events/commands/messages and exits)
+protean server --domain=your_domain --test-mode
 ```
 
-### Command Parameters
+## Key Concepts
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--domain` | Path to the domain | `.` (current directory) |
-| `--host` | Host to bind to | `0.0.0.0` |
-| `--port` | Port to bind to | `8000` |
-| `--debug` | Enable debug mode | `False` |
-| `--cors` | Enable CORS | `True` |
-| `--cors-origins` | Comma-separated list of allowed CORS origins | `*` |
+### Subscriptions
 
-### Domain Discovery
+Subscriptions use the Observer pattern to connect your handlers (observers) to message sources (subjects or publishers). This allows your handlers to automatically receive and react to new messages as they arrive. Protean supports two
+subscription types:
 
-The `--domain` parameter can be specified in several formats:
+- **StreamSubscription**: Uses Redis Streams for production workloads with
+  consumer groups, retries, and dead letter queues
+- **EventStoreSubscription**: Reads directly from the event store, suitable for
+  projections and event replay
 
-- **Module in current folder**: `--domain=my_domain`
-- **Module in a subfolder**: `--domain=src/my_domain`
-- **Module string**: `--domain=my_package.my_domain`
-- **Specific instance**: `--domain=my_domain:app2`
+Learn more in [Subscription Types](subscription-types.md).
 
-The server attempts to locate your domain in the following order:
+### Configuration Profiles
 
-1. Check the `PROTEAN_DOMAIN` environment variable (if set)
-2. Use the path provided in the `--domain` parameter
-3. Look for a `domain.py` or `subdomain.py` file in the current directory
+Profiles provide pre-configured settings optimized for common use cases:
 
-When a module is found, the server looks for a domain in the following order:
+| Profile | Subscription Type | Use Case |
+| ------- | ----------------- | -------- |
+| `production` | Stream | High throughput with reliability guarantees |
+| `fast` | Stream | Low-latency processing |
+| `batch` | Stream | High-volume batch processing |
+| `debug` | Stream | Development and debugging |
+| `projection` | Event Store | Building read models |
 
-1. Variable named `domain` or `subdomain`
-2. Any variable that is an instance of `Domain`
-3. If multiple instances are found, an error is raised
+Learn more in [Configuration](configuration.md).
 
-Example:
+### Outbox Pattern
 
-```bash
-# Using a specific module
-protean server --domain=my_app.domain
+The outbox pattern ensures reliable message delivery by:
 
-# Using a specific instance in a module
-protean server --domain=my_app.domain:my_domain_instance
+1. Storing messages and business data in the database as part of a single transaction
+2. Publishing messages to the broker in a separate process
+3. Guaranteeing at-least-once delivery
 
-# Using environment variable (alternative)
-export PROTEAN_DOMAIN=my_app.domain
-protean server
-```
+Learn more in [Outbox Pattern](outbox.md).
 
-## Accessing the FastAPI Server
+## In This Section
 
-Once the server is running, you can access the root endpoint at `http://localhost:8000/` (or whatever host and port you've configured). This endpoint returns basic information about your domain:
-
-```json
-{
-  "status": "success",
-  "message": "Protean API server running with domain: YourDomainName",
-  "data": {
-    "domain": {
-      "name": "YourDomainName",
-      "normalized_name": "your_domain_name"
-    }
-  }
-}
-```
-
-## Customizing the FastAPI App
-
-The Protean server is built on FastAPI, which means you can leverage all FastAPI features for your API. You can customize the FastAPI application using the `create_app` factory function:
-
-```python
-from protean.server.fastapi_server import create_app
-from protean.utils.domain_discovery import derive_domain
-
-# Get your domain
-domain = derive_domain("./my_domain")
-
-# Create the FastAPI app
-app = create_app(
-    domain=domain,
-    debug=True,
-    enable_cors=True,
-    cors_origins=["http://localhost:3000"]
-)
-
-# Add custom routes, middleware, etc.
-@app.get("/custom")
-async def custom_endpoint():
-    return {"message": "Custom endpoint"}
-
-# Add custom middleware
-@app.middleware("http")
-async def custom_middleware(request, call_next):
-    # Do something before the request is processed
-    response = await call_next(request)
-    # Do something after the request is processed
-    return response
-
-# Run with uvicorn
-import uvicorn
-uvicorn.run(app, host="0.0.0.0", port=8000)
-```
-
-This approach gives you full control over the FastAPI application while still ensuring the Protean domain context is properly set up.
-
-## Server Functionality
-
-The Protean FastAPI server provides several important functions:
-
-1. **Domain Context**: The server sets up a domain context for each request, ensuring that domain operations execute in the correct context.
-
-2. **CORS Support**: Built-in CORS middleware that can be configured based on your application's needs.
-
-3. **API Documentation**: Since it's built on FastAPI, you automatically get interactive API documentation at `/docs` and `/redoc` endpoints.
-
-4. **Error Handling**: The server provides consistent error responses for domain exceptions.
-
-## Advanced Configuration
-
-For more advanced use cases, you might want to configure logging, add authentication middleware, or integrate with other FastAPI extensions. These can all be accomplished by accessing the underlying FastAPI application.
-
-## Event Handling and Message Processing
-
-The Protean server plays a crucial role in the event-driven architecture by managing subscriptions and processing messages:
-
-### Subscription Management
-
-When the server starts, it automatically:
-
-1. **Collects Subscriptions**: The server scans your domain for defined event and command handlers.
-
-2. **Initializes Subscribers**: Each handler is initialized as a polling subscriber and registered with the event store.
-
-3. **Manages Subscription Lifecycle**: The server handles the lifecycle of subscriptions, including starting, stopping, and error handling.
-
-### Event Store Polling
-
-The server continuously polls the event store for new messages:
-
-1. **Command Processing**: Incoming commands are routed to their appropriate handlers.
-
-2. **Event Handling**: Domain events are distributed to all interested handlers.
-
-3. **Message Ordering**: Messages are processed in the order they were published to maintain consistency.
-
-### Configuring Subscription Behavior
-
-You can configure how subscriptions work through your domain configuration:
-
-```python
-# Example domain configuration
-domain = Domain(
-    name="example",
-    # Configure event store and its subscriptions
-    config={
-        "event_store": {
-            "provider": "message_db",
-            "database_uri": "postgresql://message_store@localhost:5433/message_store",
-            "polling_interval": 1.0,  # Poll interval in seconds
-            "max_retry_count": 3,     # Number of retries for failed processing
-        }
-    }
-)
-```
+- [Engine Architecture](engine.md) - How the engine manages subscriptions and
+  lifecycle
+- [Subscriptions](subscriptions.md) - How handlers connect to message sources
+- [Subscription Types](subscription-types.md) - StreamSubscription vs
+  EventStoreSubscription
+- [Configuration](configuration.md) - Configuring subscriptions with profiles
+  and options
+- [Outbox Pattern](outbox.md) - Reliable message publishing
+- [Running the Server](running.md) - CLI options and deployment

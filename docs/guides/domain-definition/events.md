@@ -192,10 +192,20 @@ Internal. Represents the kind of object enclosed in an event store message.
 Value is `EVENT` for Events. `Metadata` class is shared between Events and
 Commands, so possible values are `EVENT` and `COMMAND`.
 
-#### `stream`
+#### `stream` {#stream-category}
 
 Name of the event stream. E.g. Stream `auth::user-1234` encloses messages
 related to `User` aggregate in the `Auth` domain with identity `1234`.
+
+The stream name follows the pattern `<domain>::<stream_category>-<aggregate_id>`, where:
+
+- `domain` is the normalized domain name
+- `stream_category` is the aggregate's [stream category](../essentials/stream-categories.md)
+- `aggregate_id` is the unique identifier of the aggregate instance
+
+All events for a specific aggregate instance are stored in its dedicated stream, enabling event sourcing and message ordering guarantees.
+
+See the [Stream Categories](../essentials/stream-categories.md) guide for comprehensive details on how stream categories organize and route messages.
 
 #### `origin_stream`
 

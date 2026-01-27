@@ -441,10 +441,26 @@ class Engine:
         finally:
             self.loop.stop()
 
-    def run(self):
+    def run(self) -> None:
         """
-        Start the Protean Engine and run the subscriptions.
+        Start the Protean Engine and run all registered subscriptions.
+
+        This method sets up the custom event loop for the engine, attaches signal and
+        exception handlers, and launches all subscription coroutines for event handlers,
+        command handlers, broker subscribers, and outbox processors.
+
+        For regular operation, the engine will run indefinitely until a shutdown signal is received.
+        For test mode, the engine will step through several processing cycles, ensuring propagation
+        of events and messages, before performing a graceful shutdown.
+
+        On shutdown, all running subscriptions and processors are stopped cleanly and
+        the event loop is closed.
+
+        Raises:
+            Any unhandled exceptions are propagated to the custom exception handler, which will
+            trigger a graceful shutdown.
         """
+
         # Set the loop we created as the current event loop
         # This ensures we use our own loop instead of any existing one
         asyncio.set_event_loop(self.loop)

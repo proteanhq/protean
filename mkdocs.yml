@@ -51,6 +51,10 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
+extra_javascript:
+  - https://unpkg.com/mermaid@10/dist/mermaid.min.js
+  - javascripts/mermaid-init.js
+
 plugins:
   - privacy
 markdown_extensions:
@@ -81,11 +85,6 @@ nav:
   - Guides:
     - guides/getting-started/installation.md
     #  - guides/getting-started/quickstart.md
-
-    - Essentials:
-      - guides/object-model.md
-      - guides/identity.md
-      - guides/configuration.md
 
     - Domain Model:
       - Compose a Domain:
@@ -131,6 +130,12 @@ nav:
         - guides/consume-state/index.md
         - guides/consume-state/event-handlers.md
         - guides/consume-state/projections.md
+
+    - Essentials:
+      - guides/essentials/object-model.md
+      - guides/essentials/identity.md
+      - guides/essentials/stream-categories.md
+      - guides/essentials/configuration.md
 
     #   - guides/consume-state/events-across-contexts.md
     # - Application Layer:
@@ -179,6 +184,12 @@ nav:
         - guides/cli/test.md
       - Server:
         - guides/server/index.md
+        - guides/server/engine.md
+        - guides/server/subscriptions.md
+        - guides/server/subscription-types.md
+        - guides/server/configuration.md
+        - guides/server/outbox.md
+        - guides/server/running.md
   # - Advanced:
   #   - advanced/index.md
   #   - advanced/multi-domain.md

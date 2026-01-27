@@ -24,7 +24,7 @@ depending upon the element being registered.
 In the above example, the `User` aggregate's default stream category **`user`**
 is customized to **`account`**.
 
-Review the [object model](../object-model.md) to understand
+Review the [object model](../essentials/object-model.md) to understand
 multiple ways to pass these options. Refer to each domain element's
 documentation to understand the additional options supported by that element.
 

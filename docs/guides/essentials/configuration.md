@@ -22,7 +22,7 @@ Protean searches for configuration files in the following order:
 
 ### Generating a new configuration file
 
-When initializing a new Protean application using the [`new`](./cli/new.md) command, a `domain.toml` configuration file is automatically generated with sensible defaults.
+When initializing a new Protean application using the [`new`](../cli/new.md) command, a `domain.toml` configuration file is automatically generated with sensible defaults.
 
 A sample configuration file is below:
 
@@ -126,7 +126,7 @@ c4bf0121035265bf44657217c33a7d041fe9e505961fc7da5d976aa0eaf5cf94
 ### `identity_strategy`
 
 The default strategy to use to generate an identity value. Can be overridden
-at the [`Auto`](./domain-definition/fields/simple-fields.md#auto) field level.
+at the [`Auto`](../domain-definition/fields/simple-fields.md#auto) field level.
 
 Supported options are `uuid` and `function`.
 
@@ -138,7 +138,7 @@ Default: `uuid`
 ### `identity_type`
 
 The type of the identity value. Can be overridden
-at the [`Auto`](./domain-definition/fields/simple-fields.md#auto) field level.
+at the [`Auto`](../domain-definition/fields/simple-fields.md#auto) field level.
 
 Supported options are `integer`, `string`, and `uuid`.
 
@@ -148,7 +148,7 @@ Default: `string`
 
 Whether to process commands synchronously or asynchronously.
 
-Supported options are `sync` and `async`. 
+Supported options are `sync` and `async`.
 
 Default: `sync`
 
@@ -156,7 +156,7 @@ Default: `sync`
 
 Whether to process events synchronously or asynchronously.
 
-Supported options are `sync` and `async`. 
+Supported options are `sync` and `async`.
 
 Default: `sync`
 
@@ -264,6 +264,83 @@ Note that there can only be only event store defined per domain.
 Default provider: `memory`
 
 Read more in [Adapters → Event Store](../adapters/eventstore/index.md) section.
+
+### `server`
+
+This section configures the Protean server (async message processing engine).
+It controls subscription behavior, outbox processing, and handler-specific
+settings.
+
+```toml
+[server]
+# Default subscription settings
+default_subscription_type = "stream"      # "stream" or "event_store"
+default_subscription_profile = "production"  # Profile for defaults
+messages_per_tick = 100                   # Messages per processing cycle
+
+# StreamSubscription defaults
+[server.stream_subscription]
+blocking_timeout_ms = 5000    # Blocking read timeout
+max_retries = 3               # Retries before DLQ
+retry_delay_seconds = 1       # Delay between retries
+enable_dlq = true             # Enable dead letter queue
+
+# EventStoreSubscription defaults
+[server.event_store_subscription]
+position_update_interval = 10  # Messages between position writes
+
+# Handler-specific overrides
+[server.subscriptions.OrderEventHandler]
+profile = "fast"
+messages_per_tick = 50
+
+[server.subscriptions.InventoryProjector]
+subscription_type = "event_store"
+profile = "projection"
+```
+
+#### Subscription Profiles
+
+Pre-configured settings for common scenarios:
+
+| Profile | Type | Use Case |
+| ------- | ---- | -------- |
+| `production` | stream | High throughput with reliability |
+| `fast` | stream | Low-latency processing |
+| `batch` | stream | High-volume batch processing |
+| `debug` | stream | Development and debugging |
+| `projection` | event_store | Building read models |
+
+Read more in [Server → Configuration](../server/configuration.md) section.
+
+### `outbox`
+
+This section configures the transactional outbox pattern for reliable message
+delivery.
+
+```toml
+enable_outbox = true  # Enable outbox processing
+
+[outbox]
+broker = "default"         # Target broker for publishing
+messages_per_tick = 10     # Messages per processing cycle
+tick_interval = 1          # Seconds between cycles
+
+# Retry configuration
+[outbox.retry]
+max_attempts = 3           # Maximum retry attempts
+base_delay_seconds = 60    # Initial retry delay
+max_backoff_seconds = 3600 # Maximum retry delay
+backoff_multiplier = 2     # Exponential backoff multiplier
+jitter = true              # Add randomization to delays
+
+# Cleanup configuration
+[outbox.cleanup]
+published_retention_hours = 168   # Keep published for 7 days
+abandoned_retention_hours = 720   # Keep abandoned for 30 days
+```
+
+Read more in [Server → Outbox Pattern](../server/outbox.md) section.
 
 ## Custom Attributes
 
