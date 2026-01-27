@@ -686,6 +686,72 @@ class TestConfigResolverCommandHandler:
         assert config.messages_per_tick == 75
 
 
+class TestConfigResolverHandlerWithNoMeta:
+    """Tests for handler with no meta_ attribute."""
+
+    def test_get_handler_meta_config_returns_empty_for_no_meta(self, test_domain):
+        """_get_handler_meta_config returns empty dict when handler has no meta_."""
+
+        class NoMetaHandler:
+            pass
+
+        resolver = ConfigResolver(test_domain)
+        config = resolver._get_handler_meta_config(NoMetaHandler)
+
+        assert config == {}
+
+
+class TestConfigResolverUnknownProfileAndType:
+    """Tests for unknown profile and subscription type resolution."""
+
+    def test_resolve_unknown_profile_string_falls_back(self, test_domain, caplog):
+        """_resolve_profile logs warning and returns PRODUCTION for unknown profile string."""
+        resolver = ConfigResolver(test_domain)
+
+        with caplog.at_level(
+            logging.WARNING, logger="protean.server.subscription.config_resolver"
+        ):
+            result = resolver._resolve_profile("nonexistent_profile")
+
+        assert result == SubscriptionProfile.PRODUCTION
+        assert any(
+            "Unknown subscription profile" in record.message
+            for record in caplog.records
+        )
+
+    def test_resolve_non_string_non_enum_profile_falls_back(self, test_domain):
+        """_resolve_profile returns PRODUCTION for non-string, non-enum input."""
+        resolver = ConfigResolver(test_domain)
+
+        result = resolver._resolve_profile(12345)  # type: ignore
+        assert result == SubscriptionProfile.PRODUCTION
+
+    def test_resolve_unknown_subscription_type_string_falls_back(
+        self, test_domain, caplog
+    ):
+        """_resolve_subscription_type logs warning and returns EVENT_STORE for unknown type string."""
+        resolver = ConfigResolver(test_domain)
+
+        with caplog.at_level(
+            logging.WARNING, logger="protean.server.subscription.config_resolver"
+        ):
+            result = resolver._resolve_subscription_type("nonexistent_type")
+
+        assert result == SubscriptionType.EVENT_STORE
+        assert any(
+            "Unknown subscription type" in record.message for record in caplog.records
+        )
+
+    def test_resolve_non_string_non_enum_subscription_type_falls_back(
+        self, test_domain
+    ):
+        """_resolve_subscription_type returns EVENT_STORE for non-string, non-enum input."""
+        resolver = ConfigResolver(test_domain)
+
+        result = resolver._resolve_subscription_type(12345)  # type: ignore
+        assert result == SubscriptionType.EVENT_STORE
+
+
 class TestConfigResolverDebugLogging:
     """Tests for debug logging in configuration resolution."""
 

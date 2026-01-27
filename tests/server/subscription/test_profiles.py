@@ -454,6 +454,48 @@ class TestSubscriptionConfigValidation:
             exc_info.value
         )
 
+    def test_from_profile_with_invalid_profile_not_in_defaults(self):
+        """from_profile should raise ConfigurationError for profile not in PROFILE_DEFAULTS."""
+        from unittest.mock import MagicMock
+
+        fake_profile = MagicMock(spec=SubscriptionProfile)
+        # MagicMock with spec won't be `in PROFILE_DEFAULTS` since it's not a real enum member
+        with pytest.raises(ConfigurationError, match="Unknown subscription profile"):
+            SubscriptionConfig.from_profile(fake_profile)
+
+    def test_resolve_profile_returns_enum_directly(self):
+        """_resolve_profile should return the enum directly when given a SubscriptionProfile."""
+        result = SubscriptionConfig._resolve_profile(SubscriptionProfile.PRODUCTION)
+        assert result is SubscriptionProfile.PRODUCTION
+
+    def test_resolve_profile_returns_each_enum_variant(self):
+        """_resolve_profile should return the same enum for all SubscriptionProfile variants."""
+        for profile in SubscriptionProfile:
+            result = SubscriptionConfig._resolve_profile(profile)
+            assert result is profile
+
+    def test_from_dict_falls_back_to_profile_defaults_for_missing_keys(self):
+        """from_dict should use profile defaults for keys not in config_dict."""
+        config = SubscriptionConfig.from_dict(
+            {
+                "profile": "production",
+                "messages_per_tick": 42,
+            }
+        )
+        assert config.messages_per_tick == 42
+        prod_defaults = PROFILE_DEFAULTS[SubscriptionProfile.PRODUCTION]
+        assert config.blocking_timeout_ms == prod_defaults["blocking_timeout_ms"]
+        assert config.max_retries == prod_defaults["max_retries"]
+        assert config.enable_dlq == prod_defaults["enable_dlq"]
+
+    def test_from_dict_with_bool_type_coercion(self):
+        """from_dict should coerce truthy values to bool for enable_dlq."""
+        config = SubscriptionConfig.from_dict({"enable_dlq": 1})
+        assert config.enable_dlq is True
+
+        config_false = SubscriptionConfig.from_dict({"enable_dlq": 0})
+        assert config_false.enable_dlq is False
+
 
 class TestSubscriptionConfigToDict:
     """Tests for SubscriptionConfig.to_dict() method."""

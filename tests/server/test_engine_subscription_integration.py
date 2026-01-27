@@ -401,6 +401,42 @@ class TestEngineInferStreamCategory:
         with pytest.raises(ValueError, match="Cannot infer stream category"):
             engine._infer_stream_category(OrphanHandler)
 
+    def test_infer_stream_category_raises_when_no_meta(self, test_domain):
+        """Should raise ValueError when handler has no meta_ attribute."""
+        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(UserRegistered, part_of=User)
+        test_domain.register(UserEventHandler, part_of=User)
+        test_domain.init(traverse=False)
+
+        engine = Engine(test_domain, test_mode=True)
+
+        class NoMetaHandler:
+            pass
+
+        with pytest.raises(ValueError, match="has no meta_ attribute"):
+            engine._infer_stream_category(NoMetaHandler)
+
+    def test_infer_stream_category_from_part_of_aggregate_meta(self, test_domain):
+        """Should infer stream_category from part_of aggregate's meta_ when handler has no explicit stream_category."""
+        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(UserRegistered, part_of=User)
+        test_domain.register(UserEventHandler, part_of=User)
+        test_domain.init(traverse=False)
+
+        engine = Engine(test_domain, test_mode=True)
+
+        # Create a mock handler with meta_ that has no stream_category but has part_of
+        class MockHandlerMeta:
+            stream_category = None
+            part_of = User
+
+        class MockHandler:
+            __name__ = "MockHandler"
+            meta_ = MockHandlerMeta()
+
+        result = engine._infer_stream_category(MockHandler)
+        assert result == User.meta_.stream_category
+
 
 class TestEngineSubscriptionAttributes:
     """Tests for subscription attributes set by engine."""

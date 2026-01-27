@@ -145,3 +145,40 @@ def test_handle_exception_while_running(engine):
         )
         mock_print_stack.assert_called_once()
         mock_shutdown.assert_called_once_with(exit_code=1)
+
+
+def test_exception_handler_skips_shutdown_when_already_shutting_down(engine):
+    """
+    Test that the exception handler skips creating a shutdown task when
+    the engine is already in the process of shutting down.
+
+    This verifies the guard `if loop.is_running() and not self.shutting_down`
+    does not trigger shutdown when shutting_down is already True.
+    """
+    loop = engine.loop
+
+    with (
+        mock.patch.object(engine, "shutdown") as mock_shutdown,
+        mock.patch("traceback.print_stack") as mock_print_stack,
+        mock.patch("protean.server.engine.logger.error") as mock_logger_error,
+    ):
+        # Create a faulty task that raises an exception
+        async def faulty_task():
+            raise Exception("Test exception during shutdown")
+
+        async def run_engine():
+            # Set shutting_down BEFORE the exception is handled
+            engine.shutting_down = True
+            loop.create_task(faulty_task())
+            engine.run()
+
+        loop.run_until_complete(run_engine())
+
+        # The error should be logged
+        mock_logger_error.assert_any_call(
+            "Caught exception: Test exception during shutdown"
+        )
+        # print_stack should still be called
+        mock_print_stack.assert_called()
+        # But shutdown should NOT be called since shutting_down was already True
+        mock_shutdown.assert_not_called()

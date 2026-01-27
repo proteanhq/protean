@@ -325,3 +325,142 @@ class TestSignalHandling:
                     "Signal" in record.message and "not available" in record.message
                     for record in caplog.records
                 )
+
+    @patch("platform.system")
+    def test_unix_signal_handler_callback_triggers_shutdown(
+        self, mock_platform, test_domain
+    ):
+        """Test that Unix signal handler callback calls loop.call_soon_threadsafe."""
+        mock_platform.return_value = "Linux"
+
+        engine = Engine(domain=test_domain, test_mode=True)
+
+        # Capture the callbacks passed to add_signal_handler
+        captured_callbacks = {}
+
+        def mock_add_handler(sig, callback):
+            captured_callbacks[sig] = callback
+
+        with patch.object(
+            engine.loop, "add_signal_handler", side_effect=mock_add_handler
+        ):
+            engine._setup_signal_handlers()
+
+        # Verify callback was captured for SIGTERM
+        assert signal.SIGTERM in captured_callbacks
+
+        # Call the captured callback and verify it triggers call_soon_threadsafe
+        with patch.object(engine.loop, "call_soon_threadsafe") as mock_call_soon:
+            captured_callbacks[signal.SIGTERM]()
+            mock_call_soon.assert_called_once()
+
+    @patch("platform.system")
+    def test_unix_signal_handler_skips_when_shutting_down(
+        self, mock_platform, test_domain
+    ):
+        """Test that Unix signal handler callback skips when already shutting down."""
+        mock_platform.return_value = "Linux"
+
+        engine = Engine(domain=test_domain, test_mode=True)
+
+        captured_callbacks = {}
+
+        def mock_add_handler(sig, callback):
+            captured_callbacks[sig] = callback
+
+        with patch.object(
+            engine.loop, "add_signal_handler", side_effect=mock_add_handler
+        ):
+            engine._setup_signal_handlers()
+
+        # Set shutting_down before calling callback
+        engine.shutting_down = True
+
+        with patch.object(engine.loop, "call_soon_threadsafe") as mock_call_soon:
+            captured_callbacks[signal.SIGTERM]()
+            # Should NOT trigger call_soon_threadsafe when already shutting down
+            mock_call_soon.assert_not_called()
+
+    @patch("platform.system")
+    def test_unix_signal_setup_handles_oserror(
+        self, mock_platform, test_domain, caplog
+    ):
+        """Test that Unix signal handler setup handles OSError gracefully."""
+        mock_platform.return_value = "Linux"
+
+        engine = Engine(domain=test_domain, debug=True)
+
+        def add_handler_side_effect(sig, callback):
+            raise OSError("Signal not available on this platform")
+
+        with patch.object(
+            engine.loop,
+            "add_signal_handler",
+            side_effect=add_handler_side_effect,
+        ):
+            with caplog.at_level("DEBUG"):
+                engine._setup_signal_handlers()
+
+        assert any("not available" in record.message for record in caplog.records)
+
+    @patch("platform.system")
+    def test_windows_signal_cleanup_handles_oserror(self, mock_platform, test_domain):
+        """Test that Windows signal cleanup handles OSError gracefully."""
+        mock_platform.return_value = "Windows"
+
+        engine = Engine(domain=test_domain)
+
+        engine._original_signal_handlers = {
+            signal.SIGINT: Mock(),
+            signal.SIGTERM: Mock(),
+        }
+
+        with patch("signal.signal", side_effect=OSError("Cannot restore")):
+            # Should not raise - errors are silently ignored during cleanup
+            engine._cleanup_signal_handlers()
+
+    @patch("platform.system")
+    def test_unix_signal_cleanup_handles_oserror(self, mock_platform, test_domain):
+        """Test that Unix signal cleanup handles OSError gracefully."""
+        mock_platform.return_value = "Linux"
+
+        engine = Engine(domain=test_domain)
+
+        with patch.object(
+            engine.loop,
+            "remove_signal_handler",
+            side_effect=OSError("Cannot remove"),
+        ):
+            # Should not raise - errors are silently ignored during cleanup
+            engine._cleanup_signal_handlers()
+
+    @patch("platform.system")
+    def test_windows_signal_handler_skips_when_shutting_down(
+        self, mock_platform, test_domain
+    ):
+        """Test that Windows signal handler skips when already shutting down."""
+        mock_platform.return_value = "Windows"
+
+        engine = Engine(domain=test_domain, test_mode=True)
+
+        # Capture the signal handler
+        captured_handler = None
+
+        def mock_signal_func(sig, handler):
+            nonlocal captured_handler
+            if sig == signal.SIGTERM:
+                captured_handler = handler
+            return Mock()
+
+        with patch("signal.signal", side_effect=mock_signal_func):
+            engine._setup_signal_handlers()
+
+        # Set shutting_down before calling callback
+        engine.shutting_down = True
+
+        with patch("asyncio.run_coroutine_threadsafe") as mock_run_coroutine:
+            with patch.object(engine.loop, "is_running", return_value=True):
+                if captured_handler:
+                    captured_handler(signal.SIGTERM)
+                # Should NOT call run_coroutine_threadsafe when shutting down
+                mock_run_coroutine.assert_not_called()
