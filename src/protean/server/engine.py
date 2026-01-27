@@ -14,8 +14,7 @@ from protean.utils.globals import g
 from protean.utils.eventing import Message
 
 from .subscription.broker_subscription import BrokerSubscription
-from .subscription.event_store_subscription import EventStoreSubscription
-from .subscription.stream_subscription import StreamSubscription
+from .subscription.factory import SubscriptionFactory
 from .outbox_processor import OutboxProcessor
 
 logger = logging.getLogger(__name__)
@@ -57,113 +56,12 @@ class Engine:
         # This avoids fragility when the caller already has a running loop
         self.loop = asyncio.new_event_loop()
 
-        # Gather all handlers
+        # Initialize subscription factory for creating subscriptions
+        self._subscription_factory = SubscriptionFactory(self)
+
+        # Gather all handler subscriptions
         self._subscriptions = {}
-
-        # Determine subscription type from configuration
-        server_config = self.domain.config.get("server", {})
-        subscription_type = server_config.get("subscription_type", "event_store")
-
-        # Get common server configuration
-        messages_per_tick = server_config.get("messages_per_tick", 10)
-        tick_interval = server_config.get("tick_interval", 1)
-
-        # Get subscription-specific configuration
-        event_store_config = server_config.get("event_store_subscription", {})
-        stream_config = server_config.get("stream_subscription", {})
-
-        for handler_name, handler_record in self.domain.registry.event_handlers.items():
-            stream_category = (
-                handler_record.cls.meta_.stream_category
-                or handler_record.cls.meta_.part_of.meta_.stream_category
-            )
-
-            # Create a subscription for each event handler
-            if subscription_type == "stream":
-                self._subscriptions[handler_name] = StreamSubscription(
-                    self,
-                    stream_category,
-                    handler_record.cls,
-                    messages_per_tick=messages_per_tick,
-                    blocking_timeout_ms=stream_config.get("blocking_timeout_ms", 5000),
-                    max_retries=stream_config.get("max_retries", 3),
-                    retry_delay_seconds=stream_config.get("retry_delay_seconds", 1),
-                    enable_dlq=stream_config.get("enable_dlq", True),
-                )
-            else:
-                self._subscriptions[handler_name] = EventStoreSubscription(
-                    self,
-                    stream_category,
-                    handler_record.cls,
-                    messages_per_tick=messages_per_tick,
-                    position_update_interval=event_store_config.get(
-                        "position_update_interval", 10
-                    ),
-                    origin_stream=handler_record.cls.meta_.source_stream,
-                    tick_interval=tick_interval,
-                )
-
-        for (
-            handler_name,
-            handler_record,
-        ) in self.domain.registry.command_handlers.items():
-            stream_category = (
-                f"{handler_record.cls.meta_.part_of.meta_.stream_category}:command"
-            )
-
-            # Create a subscription for each command handler
-            if subscription_type == "stream":
-                self._subscriptions[handler_name] = StreamSubscription(
-                    self,
-                    stream_category,
-                    handler_record.cls,
-                    messages_per_tick=messages_per_tick,
-                    blocking_timeout_ms=stream_config.get("blocking_timeout_ms", 5000),
-                    max_retries=stream_config.get("max_retries", 3),
-                    retry_delay_seconds=stream_config.get("retry_delay_seconds", 1),
-                    enable_dlq=stream_config.get("enable_dlq", True),
-                )
-            else:
-                self._subscriptions[handler_name] = EventStoreSubscription(
-                    self,
-                    stream_category,
-                    handler_record.cls,
-                    messages_per_tick=messages_per_tick,
-                    position_update_interval=event_store_config.get(
-                        "position_update_interval", 10
-                    ),
-                    tick_interval=tick_interval,
-                )
-
-        for handler_name, handler_record in self.domain.registry.projectors.items():
-            # Create a subscription for each projector
-            for stream_category in handler_record.cls.meta_.stream_categories:
-                subscription_key = f"{handler_name}-{stream_category}"
-
-                if subscription_type == "stream":
-                    self._subscriptions[subscription_key] = StreamSubscription(
-                        self,
-                        stream_category,
-                        handler_record.cls,
-                        messages_per_tick=messages_per_tick,
-                        blocking_timeout_ms=stream_config.get(
-                            "blocking_timeout_ms", 5000
-                        ),
-                        max_retries=stream_config.get("max_retries", 3),
-                        retry_delay_seconds=stream_config.get("retry_delay_seconds", 1),
-                        enable_dlq=stream_config.get("enable_dlq", True),
-                    )
-                else:
-                    self._subscriptions[subscription_key] = EventStoreSubscription(
-                        self,
-                        stream_category,
-                        handler_record.cls,
-                        messages_per_tick=messages_per_tick,
-                        position_update_interval=event_store_config.get(
-                            "position_update_interval", 10
-                        ),
-                        tick_interval=tick_interval,
-                    )
+        self._register_handler_subscriptions()
 
         # Gather broker subscriptions
         self._broker_subscriptions = {}
@@ -218,6 +116,119 @@ class Engine:
                 )
         else:
             logger.debug("Outbox disabled")
+
+    @property
+    def subscription_factory(self) -> SubscriptionFactory:
+        """Get the subscription factory used to create subscriptions."""
+        return self._subscription_factory
+
+    def _register_handler_subscriptions(self) -> None:
+        """Register subscriptions for all event handlers, command handlers, and projectors.
+
+        This method iterates through all registered handlers and creates appropriate
+        subscriptions using the SubscriptionFactory. The factory handles configuration
+        resolution and subscription type selection.
+        """
+        # Register event handler subscriptions
+        for handler_name, handler_record in self.domain.registry.event_handlers.items():
+            handler_cls = handler_record.cls
+            stream_category = self._infer_stream_category(handler_cls)
+
+            self._subscriptions[handler_name] = (
+                self._subscription_factory.create_subscription(
+                    handler=handler_cls,
+                    stream_category=stream_category,
+                )
+            )
+            logger.debug(
+                f"Registered subscription for event handler '{handler_name}' "
+                f"on stream '{stream_category}'"
+            )
+
+        # Register command handler subscriptions
+        for (
+            handler_name,
+            handler_record,
+        ) in self.domain.registry.command_handlers.items():
+            handler_cls = handler_record.cls
+            stream_category = self._infer_stream_category(handler_cls)
+
+            self._subscriptions[handler_name] = (
+                self._subscription_factory.create_subscription(
+                    handler=handler_cls,
+                    stream_category=stream_category,
+                )
+            )
+            logger.debug(
+                f"Registered subscription for command handler '{handler_name}' "
+                f"on stream '{stream_category}'"
+            )
+
+        # Register projector subscriptions (one per stream category)
+        for handler_name, handler_record in self.domain.registry.projectors.items():
+            handler_cls = handler_record.cls
+
+            # Projectors may subscribe to multiple stream categories
+            for stream_category in handler_cls.meta_.stream_categories:
+                subscription_key = f"{handler_name}-{stream_category}"
+
+                self._subscriptions[subscription_key] = (
+                    self._subscription_factory.create_subscription(
+                        handler=handler_cls,
+                        stream_category=stream_category,
+                    )
+                )
+                logger.debug(
+                    f"Registered subscription for projector '{handler_name}' "
+                    f"on stream '{stream_category}'"
+                )
+
+    def _infer_stream_category(
+        self, handler_cls: Type[Union[BaseCommandHandler, BaseEventHandler]]
+    ) -> str:
+        """Infer the stream category for a handler.
+
+        Resolution priority:
+        1. Handler Meta.stream_category (explicit)
+        2. Associated aggregate's stream_category (via part_of)
+        3. Raise error if cannot infer
+
+        Args:
+            handler_cls: The handler class to infer stream category for.
+
+        Returns:
+            The inferred stream category.
+
+        Raises:
+            ValueError: If stream category cannot be inferred.
+        """
+        meta = getattr(handler_cls, "meta_", None)
+        if meta is None:
+            raise ValueError(
+                f"Handler '{handler_cls.__name__}' has no meta_ attribute. "
+                f"Cannot infer stream category."
+            )
+
+        # Priority 1: Explicit stream_category on handler
+        stream_category = getattr(meta, "stream_category", None)
+        if stream_category:
+            return stream_category
+
+        # Priority 2: Infer from part_of aggregate
+        part_of = getattr(meta, "part_of", None)
+        if part_of:
+            aggregate_meta = getattr(part_of, "meta_", None)
+            if aggregate_meta:
+                aggregate_stream = getattr(aggregate_meta, "stream_category", None)
+                if aggregate_stream:
+                    return aggregate_stream
+
+        # Cannot infer - raise error
+        raise ValueError(
+            f"Cannot infer stream category for handler '{handler_cls.__name__}'. "
+            f"Either set 'stream_category' on the handler or associate it with an "
+            f"aggregate using 'part_of'."
+        )
 
     async def handle_broker_message(
         self, subscriber_cls: Type[BaseSubscriber], message: dict
@@ -430,10 +441,26 @@ class Engine:
         finally:
             self.loop.stop()
 
-    def run(self):
+    def run(self) -> None:
         """
-        Start the Protean Engine and run the subscriptions.
+        Start the Protean Engine and run all registered subscriptions.
+
+        This method sets up the custom event loop for the engine, attaches signal and
+        exception handlers, and launches all subscription coroutines for event handlers,
+        command handlers, broker subscribers, and outbox processors.
+
+        For regular operation, the engine will run indefinitely until a shutdown signal is received.
+        For test mode, the engine will step through several processing cycles, ensuring propagation
+        of events and messages, before performing a graceful shutdown.
+
+        On shutdown, all running subscriptions and processors are stopped cleanly and
+        the event loop is closed.
+
+        Raises:
+            Any unhandled exceptions are propagated to the custom exception handler, which will
+            trigger a graceful shutdown.
         """
+
         # Set the loop we created as the current event loop
         # This ensures we use our own loop instead of any existing one
         asyncio.set_event_loop(self.loop)

@@ -69,7 +69,7 @@ This would output something like:
 ```
 
 You see an `id` attribute appear in the results. We discuss **identity**
-deeply in the [identity](../identity.md) section.
+deeply in the [identity](../essentials/identity.md) section.
 
 ## Inheritance
 
@@ -182,14 +182,39 @@ the aggregate.
 
 ### `stream_category`
 
-The stream to which the aggregate outpus events and processes commands from.
-The category is automatically derived as the `underscore` version of the
-aggregate's name, but can be overridden. E.g. `User` has `user` as the
-automatic stream category, `OrderItem` will have `order_item`.
+The [stream category](../essentials/stream-categories.md) defines the logical grouping for all messages (events and commands) related to an aggregate. It serves as the foundation for message routing, subscription management, and event sourcing in Protean.
 
-The stream category is used by all elements in the aggregate's cluster,
-including Command Handlers and Event Handlers to determine the event or command
-stream to listen to.
+By default, the stream category is automatically derived as the snake_case version of the aggregate's class name:
+
+```python
+@domain.aggregate
+class User:
+    ...
+# Stream category: "user"
+
+@domain.aggregate
+class OrderItem:
+    ...
+# Stream category: "order_item"
+```
+
+You can explicitly specify a stream category:
+
+```python
+@domain.aggregate(stream_category="customer_orders")
+class Order:
+    ...
+# Stream category: "customer_orders"
+```
+
+The stream category is used by:
+
+- **Handlers** to determine which message streams to subscribe to
+- **Event Store** to organize events for event sourcing
+- **Subscriptions** to poll for new messages
+- **Brokers** to route messages to the correct destinations
+
+For a comprehensive understanding of stream categories, including message organization, handler subscriptions, cross-aggregate patterns, and best practices, see the [Stream Categories](../essentials/stream-categories.md) guide.
 
 ## Associations
 

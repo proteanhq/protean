@@ -1,0 +1,123 @@
+# Engine Architecture
+
+The `Engine` class is the core of Protean's async message processing system. It
+manages subscriptions, coordinates message handling, and provides graceful
+lifecycle management.
+
+## Responsibilities
+
+The Engine is responsible for:
+
+1. **Registering handler subscriptions** - Creating subscriptions for event
+   handlers, command handlers, and projectors
+2. **Managing broker subscriptions** - Handling external message consumers
+3. **Running outbox processors** - Publishing messages from the transactional
+   outbox
+4. **Coordinating lifecycle** - Starting, running, and gracefully shutting down
+   all components
+
+## Engine Initialization
+
+When you create an Engine instance, it automatically discovers and registers all
+handlers from your domain:
+
+```python
+from protean.server import Engine
+
+# Create an engine for your domain
+engine = Engine(domain)
+
+# Or with options
+engine = Engine(
+    domain,
+    test_mode=False,  # Set True for deterministic testing
+    debug=False,      # Set True for verbose logging
+)
+```
+
+## Subscription Registration
+
+The Engine associates subscriptions with each handler during initialization. The factory determines the subscription type based on the [configuration hierarchy](#configuration-hierarchy).
+
+### Handler Subscriptions
+
+For each event handler, command handler, and projector, the Engine:
+
+1. Infers the stream category from handler metadata or associated aggregate
+2. Resolves subscription configuration using the priority hierarchy
+3. Initializes the right [Subscription Type](subscription-types.md), either
+a `StreamSubscription` or an `EventStoreSubscription`, for the handler.
+
+```python
+# Example: How the engine registers an event handler
+handler_cls = OrderEventHandler
+stream_category = engine._infer_stream_category(handler_cls)  # e.g., "orders"
+
+subscription = engine.subscription_factory.create_subscription(
+    handler=handler_cls,
+    stream_category=stream_category,
+)
+```
+
+### Broker Subscriptions
+
+For external message subscribers, the Engine creates `BrokerSubscription`
+instances that connect to the configured message broker:
+
+```python
+@domain.subscriber(broker="default", stream="external_events")
+class ExternalEventSubscriber:
+    @handle("OrderCreated")
+    def handle_order_created(self, event):
+        ...
+```
+
+### Outbox Processors
+
+When `enable_outbox = true`, the Engine creates an `OutboxProcessor` for each
+database provider to publish messages to the configured broker:
+
+```python
+# Configuration in domain.toml
+enable_outbox = true
+
+[outbox]
+broker = "default"
+messages_per_tick = 10
+tick_interval = 1
+```
+
+## Configuration Hierarchy
+
+When registering subscriptions, the Engine consults a hierarchy of configuration sources to determine the appropriate subscription type and options for each handler. The resolution process typically follows this order of precedence:
+
+1. **Handler-level configuration**: Explicit parameters set on the handler, such as stream name, broker, or processing options.
+2. **Domain element metadata**: Values inferred from associated aggregate, event, or command definitions.
+3. **Profile or role defaults**: Settings derived from the active configuration profile (e.g., "production", "projection") or handler role (such as projector vs. handler).
+4. **Domain/global configuration**: Defaults specified in the domain configuration files (`domain.toml` or equivalent).
+
+This means that explicit intent at the handler level takes priority, but system-wide defaults provide sensible behavior when specifics are not set.
+
+For example, if a handler specifies a custom stream name, it will be used; otherwise, the engine will infer the relevant category from the handler’s associated aggregate or fall back to profile/domain defaults.
+
+## Running the Engine
+
+For comprehensive information on how to start, configure, and operate the engine, including:
+
+- CLI commands and options
+- Test mode for deterministic testing
+- Debug mode for troubleshooting
+- Programmatic usage
+- Production deployment strategies
+- Signal handling and graceful shutdown
+- Monitoring and health checks
+
+See the [Running the Server](running.md) guide.
+
+## Next Steps
+
+- [Subscriptions](subscriptions.md): Learn how handlers connect to message sources and react to events.
+- [Subscription Types](subscription-types.md): Compare StreamSubscription and EventStoreSubscription, and choose the right one for your workload.
+- [Configuration](configuration.md): Dive deeper into configuring engine profiles, subscriptions, and runtime options.
+- [Outbox Pattern](outbox.md): Understand reliable message publishing and transactional outbox processing.
+- [Running the Server](running.md): Explore how to deploy, operate, and monitor the server in different environments.

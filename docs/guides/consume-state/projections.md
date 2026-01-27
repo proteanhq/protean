@@ -127,9 +127,9 @@ class ProductInventoryProjector:
 
 You must specify either `aggregates` or `stream_categories` (but not both):
 
-- **`aggregates`**: A list of aggregate classes whose events this projector should handle. Protean automatically derives the stream categories from the specified aggregates.
+- **`aggregates`**: A list of aggregate classes whose events this projector should handle. Protean automatically derives the [stream categories](../essentials/stream-categories.md) from the specified aggregates.
 
-- **`stream_categories`**: A list of stream category names to listen to. This provides more fine-grained control over which event streams the projector monitors.
+- **`stream_categories`**: A list of [stream category](../essentials/stream-categories.md) names to listen to. This provides more fine-grained control over which event streams the projector monitors.
 
 ### Event Handling with `@on`
 
@@ -285,8 +285,8 @@ sequenceDiagram
 
 ## Supported Field Types
 
-Projections can only contain basic field types. References, Associations, and ValueObjects 
-are not supported in projections. This is because projections are designed to be flattened, 
+Projections can only contain basic field types. References, Associations, and ValueObjects
+are not supported in projections. This is because projections are designed to be flattened,
 denormalized representations of data.
 
 ## Best Practices
@@ -381,7 +381,7 @@ class CustomerOrderSummaryProjector:
 
 ### Stream Categories
 
-For more granular control, use stream categories instead of aggregates:
+For more granular control, use [stream categories](../essentials/stream-categories.md) instead of aggregates:
 
 ```python
 @domain.projector(

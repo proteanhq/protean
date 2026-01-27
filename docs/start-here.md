@@ -17,15 +17,16 @@ the [Guides](./guides/getting-started/installation.md) section.
 
 - Craft rich domain models that capture your business concepts and rules in [Domain Model](./guides/compose-a-domain/index.md).
 
-- Bridge between your domain and the outside world in the section on [Application Layer](./guides/configuration.md).
+- Bridge between your domain and the outside world in the section on [Application Layer](./guides/essentials/configuration.md).
 
 - Protean is batteries included - it comes pre-packaged with adapters for many popular databases, messaging systems, and other technologies. The [Infrastructure](./adapters/index.md) section will show you how to make your application rock-solid.
 
-## Patterns
 Looking for best practices? The [Patterns](./patterns/index.md) section covers common design patterns and strategies to help you use Protean effectively. Learn from tried-and-true methods to elevate your projects.
 
 ## Glossary
+
 Stuck on a term? There is a comprehensive [Glossary](glossary.md) to help you find clear definitions for all the concepts and jargon you'll encounter as you navigate Protean.
 
 ## Community
+
 You're not alone on this journey. Join our [Community](./community/index.md) to connect with fellow Protean users, share experiences, and get your questions answered. Together, we can make Protean even better!

@@ -12,7 +12,7 @@ helps fulfill this goal.
 ## Configuration
 
 Identity options are specified at the Domain level with
-[configuration attributes](./configuration.md#domain-configuration-attributes). A combination of
+[configuration attributes](configuration.md#domain-configuration-attributes). A combination of
 identity strategy and identity type work together to generate identity values.
 
 ```toml
@@ -37,7 +37,7 @@ The following strategies are supported for identity generation:
 - **uuid** - Identity is a uuid4 identifier. This is the default and preferred
 strategy.
 - **function** - A function is invoked to generate identity values, supplied
-as [`identity_function`](./compose-a-domain/index.md#identity_function) when constructing
+as [`identity_function`](../compose-a-domain/index.md#identity_function) when constructing
 the domain object.
 
 ### Type

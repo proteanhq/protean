@@ -65,7 +65,7 @@ primary identifier fields.
 By default, Protean dynamically generates UUIDs as values of identifier fields
 unless explicitly provided. You can customize the type of value accepted with
 `identity-strategy` config parameter. More details are in
-[Configuration](../../configuration.md) section.
+[Configuration](../../essentials/configuration.md) section.
 
 ## `default`
 

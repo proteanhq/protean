@@ -23,6 +23,25 @@ Command Handlers are defined with the `Domain.command_handler` decorator:
 {! docs_src/guides/change_state_007.py !}
 ```
 
+### Stream Category {#stream-category}
+
+Command handlers automatically subscribe to commands in their associated aggregate's [stream category](../essentials/stream-categories.md). When a command is processed, it's routed to the appropriate handler based on the command's target aggregate and its stream category.
+
+For example, if an `Order` aggregate has a stream category of `order`, its command handler will listen for commands on the `order` stream category. Commands are stored in streams following the pattern `<domain>::<stream_category>-<aggregate_id>`.
+
+You can also configure a command handler to listen to a different stream category using the `stream_category` parameter:
+
+```python
+@domain.command_handler(part_of=Order, stream_category="customer_orders")
+class OrderCommandHandler:
+    # Subscribes to commands in the "customer_orders" stream category
+    ...
+```
+
+This is useful for cross-aggregate coordination patterns or when you want multiple aggregates to share a command stream.
+
+Learn more about stream categories and message routing in the [Stream Categories](../essentials/stream-categories.md) guide.
+
 ## Workflow
 
 ```mermaid

@@ -323,6 +323,7 @@ class Domain:
         self._initialize()
 
         # Initialize outbox DAOs for all providers
+        # FIXME Should this flag be set automatically based on Subscription Types?
         if self.config.get("enable_outbox", False):
             self._initialize_outbox()
 

@@ -14,7 +14,7 @@ The Domain maintains a registry of all domain elements, including entities, valu
 
 #### Configuration Storage
 
-Your Domain stores configuration settings that define how your application behaves. These settings can include database connection parameters, feature flags, environment-specific values, and other application-wide settings. Read more at [Configuration](../configuration.md).
+Your Domain stores configuration settings that define how your application behaves. These settings can include database connection parameters, feature flags, environment-specific values, and other application-wide settings. Read more at [Configuration](../essentials/configuration.md).
 
 #### Adapter Activation
 
@@ -75,7 +75,7 @@ This is handled even under various execution contexts:
 
 ### `name`
 
-The name of the domain. 
+The name of the domain.
 
 Optional and defaults to the module name where the domain is instantiated.
 
@@ -108,7 +108,7 @@ domain = Domain(config={
 domain = Domain()
 ```
 
-Refer to [Configuration](../configuration.md) to understand configuration file structure and parameters.
+Refer to [Configuration](../essentials/configuration.md) to understand configuration file structure and parameters.
 
 ### `identity_function`
 

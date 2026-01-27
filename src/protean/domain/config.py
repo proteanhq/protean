@@ -72,18 +72,41 @@ def _default_config():
             },
         },
         "server": {
-            "subscription_type": "event_store",  # Options: "stream" or "event_store"
+            # Default subscription settings
+            # These are used when handlers don't specify their own configuration
+            "default_subscription_type": "event_store",  # Options: "stream" or "event_store"
+            # event_store: Simpler, good for development and getting started
+            # stream: Production-ready with scaling, retries, DLQ (requires Redis)
+            "default_subscription_profile": None,  # Profile name or None for defaults
+            # Common settings (can be overridden by subscription-specific settings)
             "messages_per_tick": 100,  # Optimal batch size for throughput vs latency
             "tick_interval": 0,  # Disable tick-based polling, use pure blocking reads
+            # Event store subscription settings
+            # Used when subscription_type is "event_store"
             "event_store_subscription": {
                 "position_update_interval": 10,  # How often to update position in event store
             },
+            # Stream subscription settings
+            # Used when subscription_type is "stream"
             "stream_subscription": {
                 "blocking_timeout_ms": 100,  # 100ms blocking read - balance between responsiveness and CPU
                 "max_retries": 3,  # Max retry attempts before DLQ
                 "retry_delay_seconds": 1,  # Delay between retries
                 "enable_dlq": True,  # Enable dead letter queue
             },
+            # Handler-specific subscription configurations
+            # Keys are handler names (e.g., "OrderEventHandler")
+            # Values are dicts with any of: profile, stream_category, subscription_type,
+            # and any subscription config options
+            # Example:
+            #   subscriptions:
+            #     OrderEventHandler:
+            #       profile: "production"
+            #       stream_category: "order"
+            #     NotificationHandler:
+            #       profile: "fast"
+            #       messages_per_tick: 200
+            "subscriptions": {},
         },
         "custom": {},
     }
