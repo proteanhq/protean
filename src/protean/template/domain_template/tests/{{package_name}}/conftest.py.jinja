@@ -7,7 +7,7 @@ def pytest_addoption(parser):
     parser.addoption(
         "--env",
         action="store",
-        default="TESTING",
+        default="test",
         help="Config environment to run tests on",
     )
 
@@ -20,6 +20,9 @@ def pytest_sessionstart(session):
     os.environ["PROTEAN_ENV"] = session.config.option.env
 
     from {{ package_name }}.domain import {{ package_name }}
+
+    {{ package_name }}.config = {{ package_name }}.load_config()
+    {{ package_name }}.init()
     {{ package_name }}.domain_context().push()
 
 

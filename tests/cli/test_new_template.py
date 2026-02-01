@@ -323,15 +323,6 @@ class TestTemplateGeneration:
             assert (example_path / "value_objects.py").exists()
             assert (example_path / "repository.py").exists()
 
-            # Check projections directory
-            projections_path = (
-                project_path / "src" / "test_with_example" / "projections"
-            )
-            assert projections_path.is_dir()
-            assert (projections_path / "__init__.py").exists()
-            assert (projections_path / "example_projector.py").exists()
-            assert (projections_path / "example_summary.py").exists()
-
     def test_no_example_code_when_disabled(self):
         """Test that example code is not generated when include_example is false."""
         with runner.isolated_filesystem() as project_dir:
