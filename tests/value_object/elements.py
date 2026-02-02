@@ -1,8 +1,7 @@
-from collections import defaultdict
 from enum import Enum
 
+from protean import invariant
 from protean.core.aggregate import BaseAggregate
-from protean.core.entity import invariant
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import Float, Identifier, Integer, String, ValueObject
@@ -104,11 +103,10 @@ class Building(BaseValueObject):
             else:
                 self.status = BuildingStatus.WIP.value
 
-    def _postcheck(self):
-        errors = defaultdict(list)
+    @invariant.post
+    def check_building_status_based_on_floors(self):
         if self.floors >= 4 and self.status != BuildingStatus.DONE.value:
-            errors["status"].append("should be DONE")
-        return errors
+            raise ValidationError({"status": ["should be DONE"]})
 
 
 class PolymorphicConnection(BaseValueObject):

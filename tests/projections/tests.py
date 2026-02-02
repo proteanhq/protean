@@ -1,4 +1,3 @@
-from collections import defaultdict
 from enum import Enum
 from uuid import uuid4
 
@@ -118,14 +117,6 @@ class Building(BaseProjection):
                 self.status = BuildingStatus.DONE.value
             else:
                 self.status = BuildingStatus.WIP.value
-
-    def _postcheck(self):
-        errors = defaultdict(list)
-
-        if self.floors >= 4 and self.status != BuildingStatus.DONE.value:
-            errors["status"].append("should be DONE")
-
-        return errors
 
 
 @pytest.fixture(autouse=True)

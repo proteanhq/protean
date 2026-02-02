@@ -392,17 +392,19 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                 ):
                     setattr(self, attr_name, None)
 
-        self._initialized = True
-
-        # `_postcheck()` will return a `defaultdict(list)` if errors are to be raised
-        custom_errors = self._postcheck(return_errors=True) or {}
-        for field in custom_errors:
-            self.errors[field].extend(custom_errors[field])
+        # Only run invariant checks if there are no field validation errors
+        if not self.errors:
+            # `_postcheck()` will return a `defaultdict(list)` if errors are to be raised
+            custom_errors = self._postcheck(return_errors=True) or {}
+            for field in custom_errors:
+                self.errors[field].extend(custom_errors[field])
 
         # Raise any errors found during load
         if self.errors:
             logger.error(f"Error during initialization: {dict(self.errors)}")
             raise ValidationError(self.errors)
+
+        self._initialized = True
 
     def defaults(self):
         """Placeholder method for defaults.
@@ -411,7 +413,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
 
     def _run_invariants(self, stage, return_errors=False):
         """Run invariants for a given stage."""
-        if self._initialized and not self._disable_invariant_checks:
+        if not self._disable_invariant_checks:
             errors = defaultdict(list)
 
             for invariant_method in self._invariants[stage].values():
@@ -435,7 +437,7 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                             ):
                                 item_errors = item._precheck(return_errors=True)
                             else:
-                                item_errors = item._postcheck(return_errors=True)
+                                item_errors = item._postcheck()
                             if item_errors:
                                 for sub_field_name, error_list in item_errors.items():
                                     errors[sub_field_name].extend(error_list)

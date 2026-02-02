@@ -1,9 +1,12 @@
+import pytest
+
 from protean.fields import Auto, Integer, String
 from protean.utils.container import Options
 from protean.utils.reflection import attributes, declared_fields
 
 from .elements import (
     AbstractPerson,
+    Account,
     Adult,
     ConcretePerson,
     DbPerson,
@@ -14,13 +17,26 @@ from .elements import (
 )
 
 
-class TestOptions:
+@pytest.fixture(autouse=True)
+def register_elements(test_domain):
+    test_domain.register(Account)
+    test_domain.register(AbstractPerson, abstract=True)
+    test_domain.register(ConcretePerson, part_of=Account)
+    test_domain.register(Person, part_of=Account)
+    test_domain.register(PersonAutoSSN, part_of=Account)
+    test_domain.register(Relative, part_of=Account)
+    test_domain.register(SqlPerson, part_of=Account, schema_name="people")
+    test_domain.register(DbPerson, part_of=Account, schema_name="pepes")
+    test_domain.register(Adult, part_of=Account, schema_name="adults")
+    test_domain.init(traverse=False)
+
+
+class TestEntityMeta:
     def test_entity_meta_structure(self):
         assert hasattr(Person, "meta_")
         assert type(Person.meta_) is Options
 
         # Persistence attributes
-        # FIXME Should these be present as part of Entities, or a separate Model?
         assert hasattr(Person.meta_, "abstract")
         assert hasattr(Person.meta_, "schema_name")
         assert hasattr(Person.meta_, "provider")
@@ -41,17 +57,19 @@ class TestOptions:
         assert type(declared_fields(Person)["age"]) is Integer
         assert type(declared_fields(Person)["id"]) is Auto
 
-    def test_default_and_overridden_abstract_flag_in_meta(self):
+    def test_default_and_overridden_abstract_flags(self):
+        # Entity is not abstract by default
         assert getattr(Person.meta_, "abstract") is False
+
+        # Entity can be marked explicitly as abstract
         assert getattr(AbstractPerson.meta_, "abstract") is True
 
-    def test_abstract_can_be_overridden_from_entity_abstract_class(self):
-        """Test that `abstract` flag can be overridden"""
-
+        # Derived Entity is not abstract by default
         assert hasattr(ConcretePerson.meta_, "abstract")
         assert getattr(ConcretePerson.meta_, "abstract") is False
 
     def test_default_and_overridden_schema_name_in_meta(self):
+        # Default
         assert getattr(Person.meta_, "schema_name") == "person"
         assert getattr(DbPerson.meta_, "schema_name") == "pepes"
 

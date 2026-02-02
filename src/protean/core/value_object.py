@@ -145,19 +145,20 @@ class BaseValueObject(BaseContainer, OptionsMixin):
 
         self.defaults()
 
-        # `_postcheck()` will return a `defaultdict(list)` if errors are to be raised
-        custom_errors = self._postcheck() or {}
-        for field in custom_errors:
-            self.errors[field].extend(custom_errors[field])
-
-        # If we made it this far, the Value Object is initialized
-        #   and should be marked as such
-        self._initialized = True
+        if not self.errors:
+            # `_postcheck()` will return a `defaultdict(list)` if errors are to be raised
+            custom_errors = self._postcheck() or {}
+            for field in custom_errors:
+                self.errors[field].extend(custom_errors[field])
 
         # Raise any errors found during load
         if self.errors:
             logger.error(self.errors)
             raise ValidationError(self.errors)
+
+        # If we made it this far, the Value Object is initialized
+        #   and should be marked as such
+        self._initialized = True
 
     def __setattr__(self, name, value):
         if not hasattr(self, "_initialized") or not self._initialized:
@@ -167,7 +168,7 @@ class BaseValueObject(BaseContainer, OptionsMixin):
                 "Value Objects are immutable and cannot be modified once created"
             )
 
-    def _postcheck(self, return_errors=False):
+    def _postcheck(self):
         """Invariant checks performed after initialization"""
         errors = defaultdict(list)
 
@@ -178,11 +179,7 @@ class BaseValueObject(BaseContainer, OptionsMixin):
                 for field_name in err.messages:
                     errors[field_name].extend(err.messages[field_name])
 
-        if return_errors:
-            return errors
-
-        if errors:
-            raise ValidationError(errors)
+        return errors
 
 
 def value_object_factory(element_cls, domain, **opts):
