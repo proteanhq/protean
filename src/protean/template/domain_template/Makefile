@@ -19,28 +19,28 @@ test: ## Run all tests
 	poetry run pytest
 
 test-domain: ## Run domain layer tests (100% coverage required)
-	poetry run pytest tests/{{package_name}}/domain/ --cov=src/{{package_name}} --cov-fail-under=100 --cov-report=term-missing
+	poetry run pytest tests/{{ package_name }}/domain/ --cov=src/{{ package_name }} --cov-fail-under=100 --cov-report=term-missing
 
 test-application: ## Run application layer tests (100% coverage required)
-	poetry run pytest tests/{{package_name}}/application/ --cov=src/{{package_name}} --cov-fail-under=100 --cov-report=term-missing
+	poetry run pytest tests/{{ package_name }}/application/ --cov=src/{{ package_name }} --cov-fail-under=100 --cov-report=term-missing
 
 test-integration: ## Run integration tests (90% coverage required)
-	poetry run pytest tests/{{package_name}}/integration/ --cov=src/{{package_name}} --cov-fail-under=90 --cov-report=term-missing
+	poetry run pytest tests/{{ package_name }}/integration/ --cov=src/{{ package_name }} --cov-fail-under=90 --cov-report=term-missing
 
 test-fast: ## Run fast tests (domain + application)
-	poetry run pytest tests/{{package_name}}/domain/ tests/{{package_name}}/application/ -m "not slow"
+	poetry run pytest tests/{{ package_name }}/domain/ tests/{{ package_name }}/application/ -m "not slow"
 
 test-cov: ## Run all tests with full coverage report
-	poetry run pytest --cov=src/{{package_name}} --cov-report=term-missing --cov-report=html --cov-report=xml
+	poetry run pytest --cov=src/{{ package_name }} --cov-report=term-missing --cov-report=html --cov-report=xml
 
 test-cov-domain: ## Run domain tests with coverage report
-	poetry run pytest tests/{{package_name}}/domain/ --cov=src/{{package_name}} --cov-report=term-missing --cov-report=html:htmlcov/domain
+	poetry run pytest tests/{{ package_name }}/domain/ --cov=src/{{ package_name }} --cov-report=term-missing --cov-report=html:htmlcov/domain
 
 test-cov-application: ## Run application tests with coverage report
-	poetry run pytest tests/{{package_name}}/application/ --cov=src/{{package_name}} --cov-report=term-missing --cov-report=html:htmlcov/application
+	poetry run pytest tests/{{ package_name }}/application/ --cov=src/{{ package_name }} --cov-report=term-missing --cov-report=html:htmlcov/application
 
 test-cov-integration: ## Run integration tests with coverage report
-	poetry run pytest tests/{{package_name}}/integration/ --cov=src/{{package_name}} --cov-report=term-missing --cov-report=html:htmlcov/integration
+	poetry run pytest tests/{{ package_name }}/integration/ --cov=src/{{ package_name }} --cov-report=term-missing --cov-report=html:htmlcov/integration
 
 test-watch: ## Run tests in watch mode
 	poetry run pytest-watch
