@@ -82,10 +82,12 @@ nav:
     - features.md
     - core-concepts/philosophy.md
 
-  - Guides:
+  - Getting Started:
     - guides/getting-started/installation.md
-    #  - guides/getting-started/quickstart.md
+    - guides/getting-started/quickstart.md
+    - guides/getting-started/tutorial.md
 
+  - Guides:
     - Domain Model:
       - Compose a Domain:
         - guides/compose-a-domain/index.md
@@ -116,72 +118,23 @@ nav:
         - guides/domain-behavior/raising-events.md
         - guides/domain-behavior/domain-services.md
 
-    - App Layer:
-      - Change State:
-        - guides/change-state/index.md
-        - guides/change-state/application-services.md
-        - guides/change-state/commands.md
-        - guides/change-state/command-handlers.md
-      - Persist State:
-        - guides/change-state/persist-aggregates.md
-        - guides/change-state/unit-of-work.md
-        - guides/change-state/retrieve-aggregates.md
-      - Consume State Changes:
-        - guides/consume-state/index.md
-        - guides/consume-state/event-handlers.md
-        - guides/consume-state/projections.md
+    - Application Layer:
+      - guides/change-state/index.md
+      - guides/change-state/application-services.md
+      - guides/change-state/commands.md
+      - guides/change-state/command-handlers.md
+      - guides/change-state/persist-aggregates.md
+      - guides/change-state/retrieve-aggregates.md
+      # - guides/change-state/subscribers.md
 
-    - Essentials:
-      - guides/essentials/object-model.md
-      - guides/essentials/identity.md
-      - guides/essentials/stream-categories.md
+    - Reactive Layer:
+      - guides/consume-state/index.md
+      - guides/consume-state/event-handlers.md
+      - guides/consume-state/projections.md
+
+    - Infrastructure:
       - guides/essentials/configuration.md
-
-    #   - guides/consume-state/events-across-contexts.md
-    # - Application Layer:
-    #   - guides/app-layer/index.md
-    #   - guides/app-layer/application-services.md
-    #   - guides/domain-definition/subscribers.md
-    # - Infrastructure:
-    #   - guides/app-layer/index.md (ports-and-adapters)
-    #   - guides/app-layer/persisting-data.md (unit-of-work)
-    #   - guides/app-layer/projections.md
-    #   - guides/app-layer/providers.md
-    #   - guides/app-layer/models.md
-    #   - guides/app-layer/brokers.md
-    #   - guides/app-layer/caches.md
-    #   - guides/app-layer/event-stores.md
-    # - Adapters (Port Definition):
-    #   - guides/adapters/index.md
-    #   - guides/adapters/database.md
-    #   - guides/adapters/message-brokers.md
-    #   - guides/adapters/caches.md
-    #   - guides/adapters/event-stores.md
-    # - CQRS:
-    #   - guides/command-handling/index.md (flow)
-    #   - guides/command-handling/commands.md
-    #   - guides/command-handling/command-handlers.md
-    #   - guides/event-handling/event-handlers.md
-    # - Event Sourcing:
-    #   - guides/event-sourcing/index.md
-    #   - guides/event-sourcing/event-sourced-aggregates.md
-    #   - guides/event-sourcing/snapshots.md
-    #   - guides/event-sourcing/projections.md
-    #   - guides/event-sourcing/flow.md
-    # - Testing:
-    #   - guides/testing/index.md (100% testability)
-    #   - guides/testing/unit-testing.md
-    #   - guides/testing/integration-testing.md
-    #   - guides/testing/functional-testing.md
-    #   - guides/testing/acceptance-testing.md
-    - Utilities:
-      - CLI:
-        - guides/cli/index.md
-        - guides/cli/discovery.md
-        - guides/cli/new.md
-        - guides/cli/shell.md
-        - guides/cli/docs.md
-        - guides/cli/test.md
+      # - guides/infrastructure/database-models.md
       - Server:
         - guides/server/index.md
         - guides/server/engine.md
@@ -190,6 +143,25 @@ nav:
         - guides/server/configuration.md
         - guides/server/outbox.md
         - guides/server/running.md
+      - CLI:
+        - guides/cli/index.md
+        - guides/cli/discovery.md
+        - guides/cli/new.md
+        - guides/cli/shell.md
+        - guides/cli/docs.md
+        - guides/cli/test.md
+
+    - Essentials:
+      - guides/essentials/object-model.md
+      - guides/essentials/identity.md
+      - guides/essentials/stream-categories.md
+      - guides/change-state/unit-of-work.md
+
+    - Testing:
+      - guides/testing/index.md
+      # - guides/testing/unit-testing.md
+      # - guides/testing/integration-testing.md
+
   # - Advanced:
   #   - advanced/index.md
   #   - advanced/multi-domain.md
@@ -199,30 +171,13 @@ nav:
   #   - advanced/monitoring.md
   #   - advanced/integration.md
   #   - advanced/troubleshooting.md
-  # - API:
-  #   - api/index.md
-  # - Examples:
-  #   - examples/index.md
-  #   - examples/quickstart.md
-  # - faq.md
 
   - Core Concepts:
-    # - core-concepts/analysis-model.md
-    # - core-concepts/streams.md
-    # - core-concepts/identity.md
-    # - core-concepts/changing-state.md
     - Architecture Patterns:
       - core-concepts/ddd.md
       - core-concepts/cqrs.md
       - core-concepts/event-sourcing.md
       - core-concepts/architecture-decision.md
-    # - Domain-Driven Design:
-    #   - core-concepts/domain-driven-design/index.md
-    #   - core-concepts/domain-driven-design/ubiquitous-language.md
-    #   - core-concepts/domain-driven-design/bounded-contexts.md
-    #   - core-concepts/domain-driven-design/contexts-and-subdomains.md
-    #   - core-concepts/domain-driven-design/strategic-design.md
-    #   - core-concepts/domain-driven-design/tactical-design.md
     - Building Blocks:
       - core-concepts/domain-elements/index.md
       - core-concepts/domain-elements/aggregates.md
@@ -232,20 +187,8 @@ nav:
       - core-concepts/domain-elements/events.md
       - core-concepts/domain-elements/commands.md
       - core-concepts/domain-elements/command-handlers.md
-    #   - core-concepts/domain-elements/event-handlers.md
-    #   - core-concepts/domain-elements/repositories.md
-    #   - core-concepts/domain-elements/models.md
-    #   - core-concepts/domain-elements/projection-models.md
-    # - Command-Query Responsibility Segregation:
-    #   - core-concepts/command-query-responsibility-segregation/index.md
-    #   - core-concepts/command-query-responsibility-segregation/commands.md
-    #   - core-concepts/command-query-responsibility-segregation/queries.md
-    #   - core-concepts/command-query-responsibility-segregation/events.md
-    # - Event Sourcing:
-    #   - core-concepts/event-sourcing/index.md
-    #   - core-concepts/event-sourcing/events.md
-    #   - core-concepts/event-sourcing/snapshots.md
-    #   - core-concepts/event-sourcing/projections.md
+      # - core-concepts/domain-elements/event-handlers.md
+      # - core-concepts/domain-elements/repositories.md
 
   - Adapters:
     - adapters/index.md
@@ -266,11 +209,13 @@ nav:
     - Event Stores:
       - adapters/eventstore/index.md
       - adapters/eventstore/message-db.md
-  - Patterns:
+
+  - Patterns & Recipes:
     - patterns/index.md
+
   - glossary.md
-  # - changelog.md
-  - Community: 
+
+  - Community:
     - community/index.md
     - community/contributing/setup.md
     - community/contributing/testing.md

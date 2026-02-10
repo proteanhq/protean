@@ -151,3 +151,4 @@ docs-old/*
 tmp/*
 
 CLAUDE.md
+*.code-workspace
