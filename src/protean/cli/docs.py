@@ -1,4 +1,5 @@
 import subprocess
+import sys
 
 import typer
 
@@ -24,6 +25,15 @@ def callback():
 def preview():
     """Run a live preview server"""
     try:
-        subprocess.call(["mkdocs", "serve", "--dev-addr=0.0.0.0:8000"])
+        subprocess.call(
+            [
+                sys.executable,
+                "-m",
+                "mkdocs",
+                "serve",
+                "--livereload",
+                "--dev-addr=0.0.0.0:8000",
+            ]
+        )
     except KeyboardInterrupt:
         pass
