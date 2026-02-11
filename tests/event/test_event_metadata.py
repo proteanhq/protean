@@ -192,6 +192,7 @@ def test_event_metadata():
                 "stream": f"test::user-{user.id}",
                 "time": str(event._metadata.headers.time),
                 "traceparent": None,
+                "idempotency_key": None,
             },
             "event_store": None,
         },

@@ -127,6 +127,7 @@ def test_command_metadata(test_domain):
                     "stream": f"test::user:command-{identifier}",
                     "time": str(command._metadata.headers.time),
                     "traceparent": None,
+                    "idempotency_key": None,
                 },
                 "event_store": None,
             },

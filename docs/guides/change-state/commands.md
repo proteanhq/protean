@@ -45,6 +45,83 @@ In [1]: command = PublishArticle(article_id="1")
 In [2]: publishing.process(command)
 ```
 
+## Idempotency
+
+In distributed systems, the same command can arrive more than once due to
+network retries, broker redelivery, user double-clicks, or saga retries.
+Protean provides built-in support for **command idempotency** -- ensuring that
+processing the same command multiple times produces the same effect as
+processing it once.
+
+### Idempotency Keys
+
+When submitting a command, you can provide an **idempotency key** -- a unique
+token that identifies the specific request:
+
+```python
+domain.process(
+    PlaceOrder(order_id="ord-42", items=items),
+    idempotency_key="req-abc-123",
+)
+```
+
+If the same idempotency key is submitted again, `domain.process()` returns the
+cached result from the first processing without invoking the handler again.
+This makes retries safe -- a client that re-sends a request due to a timeout
+gets the same response regardless of whether the original succeeded.
+
+The idempotency key is stored in the command's metadata headers, not in the
+command payload. This keeps the command's domain data clean:
+
+```python
+# In a handler, the key is accessible via metadata
+key = command._metadata.headers.idempotency_key
+```
+
+!!!note
+    Idempotency keys are **caller-provided**, following the model established
+    by Stripe and other well-designed APIs. Protean does not auto-derive keys
+    from command data -- only the caller knows whether a submission is a retry
+    or a new intent.
+
+### Duplicate Behavior
+
+By default, duplicate submissions are silently acknowledged -- the caller
+receives the same result as the first submission. When explicit feedback is
+needed, use `raise_on_duplicate=True`:
+
+```python
+from protean.exceptions import DuplicateCommandError
+
+try:
+    domain.process(
+        PlaceOrder(order_id="ord-42", items=items),
+        idempotency_key="req-abc-123",
+        raise_on_duplicate=True,
+    )
+except DuplicateCommandError as exc:
+    original_result = exc.original_result
+```
+
+### Requirements
+
+Submission-level deduplication requires a Redis instance. Configure the
+connection in `domain.toml`:
+
+```toml
+[idempotency]
+redis_url = "redis://localhost:6379/5"
+ttl = 86400       # Success entries: 24 hours (default)
+error_ttl = 60    # Error entries: 60 seconds (default)
+```
+
+Without Redis configured, `domain.process()` works normally -- no
+deduplication occurs, and no errors are raised.
+
+For a comprehensive treatment of idempotency patterns, including
+subscription-level deduplication and handler-level strategies, see the
+[Command Idempotency](../../patterns/command-idempotency.md) pattern guide.
+
 ## Synchronous vs Asynchronous Processing
 
 Commands in Protean can be processed either synchronously or asynchronously:

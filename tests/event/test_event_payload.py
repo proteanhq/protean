@@ -52,6 +52,7 @@ def test_event_payload():
                 "stream": f"test::user-{user_id}",
                 "time": str(event._metadata.headers.time),
                 "traceparent": None,
+                "idempotency_key": None,
             },
             "domain": {
                 "fqn": fqn(UserLoggedIn),

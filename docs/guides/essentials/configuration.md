@@ -342,6 +342,30 @@ abandoned_retention_hours = 720   # Keep abandoned for 30 days
 
 Read more in [Server → Outbox Pattern](../server/outbox.md) section.
 
+### `idempotency`
+
+This section configures command idempotency deduplication. When configured with
+a Redis instance, `domain.process()` can detect and deduplicate repeated
+command submissions using caller-provided idempotency keys.
+
+```toml
+[idempotency]
+redis_url = "redis://localhost:6379/5"  # Redis connection URL
+ttl = 86400                              # Success entry TTL in seconds (default: 24 hours)
+error_ttl = 60                           # Error entry TTL in seconds (default: 60s)
+```
+
+| Key | Description | Default |
+| --- | ----------- | ------- |
+| `redis_url` | Redis connection URL for the idempotency cache. When `None`, deduplication is disabled. | `None` |
+| `ttl` | Time-to-live for successful idempotency entries (seconds). After expiry, the same key can be reused. | `86400` (24 hours) |
+| `error_ttl` | Time-to-live for error entries (seconds). Short TTL allows retries after transient failures. | `60` |
+
+Without `redis_url` configured, idempotency deduplication is disabled and
+`domain.process()` works normally with no errors.
+
+Read more in [Command Idempotency](../../patterns/command-idempotency.md).
+
 ## Custom Attributes
 
 Custom attributes can be defined in toml under the `[custom]` section (or

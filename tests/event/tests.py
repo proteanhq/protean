@@ -77,6 +77,7 @@ class TestDomainEventDefinition:
                         "stream": None,  # Stream is none here because of the same reason as above
                         "time": str(raw_event._metadata.headers.time),
                         "traceparent": None,
+                        "idempotency_key": None,
                     },
                     "domain": {
                         "fqn": fully_qualified_name(UserAdded),
@@ -113,6 +114,7 @@ class TestDomainEventDefinition:
                     "stream": f"test::user-{user.id}",
                     "time": str(raised_event._metadata.headers.time),
                     "traceparent": None,
+                    "idempotency_key": None,
                 },
                 "domain": {
                     "fqn": fully_qualified_name(UserAdded),

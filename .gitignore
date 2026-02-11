@@ -152,3 +152,4 @@ tmp/*
 
 CLAUDE.md
 *.code-workspace
+.claude/
