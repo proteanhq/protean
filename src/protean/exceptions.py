@@ -114,6 +114,18 @@ class TransactionError(ProteanException):
     """Raised when a transaction fails to commit or encounters an error during processing"""
 
 
+class DuplicateCommandError(ProteanException):
+    """Raised when a command with a duplicate idempotency key is submitted
+    and raise_on_duplicate=True is specified.
+
+    Carries the original result from the first successful processing.
+    """
+
+    def __init__(self, message: str, original_result: Any = None, **kwargs):
+        super().__init__(message, **kwargs)
+        self.original_result = original_result
+
+
 class DeserializationError(ProteanException):
     """Exception raised when message deserialization fails.
 

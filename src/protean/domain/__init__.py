@@ -30,6 +30,7 @@ from protean.core.repository import BaseRepository
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import (
     ConfigurationError,
+    DuplicateCommandError,
     IncorrectUsageError,
     NotSupportedError,
 )
@@ -44,6 +45,7 @@ from protean.utils import (
 from protean.utils.container import Element
 from protean.utils.eventing import Metadata, MessageEnvelope, MessageHeaders, DomainMeta
 from protean.utils.globals import g
+from protean.utils.idempotency import IdempotencyStore
 from protean.utils.outbox import Outbox, OutboxRepository
 from protean.utils.reflection import declared_fields, has_fields, id_field
 
@@ -234,6 +236,26 @@ class Domain:
 
         # Store outbox DAOs per provider
         self._outbox_repos = {}
+
+        # Lazy-initialized idempotency store
+        self._idempotency_store = None
+
+    @property
+    def idempotency_store(self):
+        """Lazily initialize and return the idempotency store.
+
+        The store is created on first access using the ``idempotency``
+        section of the domain config. Returns an ``IdempotencyStore``
+        instance (which may be inactive if no Redis URL is configured).
+        """
+        if self._idempotency_store is None:
+            idem_config = self.config.get("idempotency", {})
+            self._idempotency_store = IdempotencyStore(
+                redis_url=idem_config.get("redis_url"),
+                ttl=idem_config.get("ttl", 86400),
+                error_ttl=idem_config.get("error_ttl", 60),
+            )
+        return self._idempotency_store
 
     @property
     @lru_cache()
@@ -1174,7 +1196,12 @@ class Domain:
     #####################
     # Handling Commands #
     #####################
-    def _enrich_command(self, command: BaseCommand, asynchronous: bool) -> BaseCommand:
+    def _enrich_command(
+        self,
+        command: BaseCommand,
+        asynchronous: bool,
+        idempotency_key: Optional[str] = None,
+    ) -> BaseCommand:
         # Enrich Command
         identifier = None
         identity_field = id_field(command)
@@ -1197,6 +1224,7 @@ class Domain:
             time=command._metadata.headers.time
             if (command._metadata.headers and command._metadata.headers.time)
             else None,
+            idempotency_key=idempotency_key,
         )
 
         # Compute envelope with checksum for integrity validation
@@ -1234,7 +1262,11 @@ class Domain:
         return command_with_metadata
 
     def process(
-        self, command: BaseCommand, asynchronous: Optional[bool] = None
+        self,
+        command: BaseCommand,
+        asynchronous: Optional[bool] = None,
+        idempotency_key: Optional[str] = None,
+        raise_on_duplicate: bool = False,
     ) -> Optional[Any]:
         """Process command and return results based on specified preference.
 
@@ -1246,6 +1278,11 @@ class Domain:
             command (BaseCommand): Command to process
             asynchronous (Boolean, optional): Specifies if the command should be processed asynchronously.
                 Defaults to True.
+            idempotency_key (str, optional): Caller-provided key for command deduplication.
+                When provided, enables submission-level dedup via the idempotency store.
+            raise_on_duplicate (bool): If ``True``, raises :class:`DuplicateCommandError`
+                when a duplicate idempotency key is detected. If ``False`` (default),
+                silently returns the cached result.
 
         Returns:
             Optional[Any]: Returns either the command handler's return value or nothing, based on preference.
@@ -1262,7 +1299,23 @@ class Domain:
                 f"Element {command.__class__.__name__} is not registered in domain {self.name}"
             )
 
-        command_with_metadata = self._enrich_command(command, asynchronous)
+        # --- Idempotency: check for existing result ---
+        store = self.idempotency_store
+        if idempotency_key and store.is_active:
+            existing = store.check(idempotency_key)
+            if existing and existing.get("status") == "success":
+                cached_result = existing.get("result")
+                if raise_on_duplicate:
+                    raise DuplicateCommandError(
+                        f"Command with idempotency key '{idempotency_key}' "
+                        f"has already been processed",
+                        original_result=cached_result,
+                    )
+                return cached_result
+
+        command_with_metadata = self._enrich_command(
+            command, asynchronous, idempotency_key=idempotency_key
+        )
         position = self.event_store.store.append(command_with_metadata)
 
         if (
@@ -1271,8 +1324,22 @@ class Domain:
         ):
             handler_class = self.command_handler_for(command)
             if handler_class:
-                result = handler_class._handle(command_with_metadata)
+                try:
+                    result = handler_class._handle(command_with_metadata)
+                except Exception:
+                    # Record failure with short TTL to allow retry
+                    if idempotency_key and store.is_active:
+                        store.record_error(idempotency_key, "handler_failed")
+                    raise
+
+                # Record success
+                if idempotency_key and store.is_active:
+                    store.record_success(idempotency_key, result)
                 return result
+
+        # Async path: cache the position as the result
+        if idempotency_key and store.is_active:
+            store.record_success(idempotency_key, position)
 
         return position
 

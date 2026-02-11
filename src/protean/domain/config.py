@@ -108,6 +108,11 @@ def _default_config():
             #       messages_per_tick: 200
             "subscriptions": {},
         },
+        "idempotency": {
+            "redis_url": None,  # e.g. "redis://localhost:6379/5"
+            "ttl": 86400,  # Default TTL for success entries: 24 hours (in seconds)
+            "error_ttl": 60,  # TTL for error entries: 60 seconds
+        },
         "custom": {},
     }
 

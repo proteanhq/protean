@@ -144,6 +144,40 @@ command_processing = "sync"  # or "async"
 
 When set to "sync", all commands will be processed synchronously by default unless explicitly specified as asynchronous, and vice versa.
 
+## Idempotency in Handlers
+
+When a command is submitted with an idempotency key (via
+`domain.process(command, idempotency_key="...")`), the key is available in the
+handler through the command's metadata:
+
+```python
+@domain.command_handler(part_of=Account)
+class AccountCommandHandler:
+    @handle(ChargeCard)
+    def charge(self, command: ChargeCard):
+        key = command._metadata.headers.idempotency_key
+
+        # Pass through to external APIs that support idempotency
+        stripe.PaymentIntent.create(
+            amount=command.amount,
+            currency="usd",
+            idempotency_key=key,
+        )
+```
+
+This is useful for:
+
+- **Pass-through to external APIs**: Many services (Stripe, payment processors)
+  accept idempotency keys natively. Passing the same key ensures end-to-end
+  retry safety.
+- **Handler-level deduplication**: For additive operations (incrementing
+  counters, adding items), the handler can check the key against a set of
+  previously processed keys stored on the aggregate.
+
+For detailed patterns including natural idempotency, check-then-act, and
+event-sourced aggregate strategies, see the
+[Command Idempotency](../../patterns/command-idempotency.md) pattern guide.
+
 ## Unit of Work
 
 Command handler methods always execute within a `UnitOfWork` context by

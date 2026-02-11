@@ -122,6 +122,13 @@ class MessageHeaders(BaseValueObject):
     #   Serves as a container for Correlation and Causation IDs as well
     traceparent = ValueObject(TraceParent)
 
+    ################
+    # Idempotency  #
+    ################
+    # Caller-provided key for command deduplication.
+    # When present, enables submission-level and subscription-level dedup.
+    idempotency_key = String()
+
     @classmethod
     def build(cls, **kwargs) -> MessageHeaders:
         headers = kwargs.copy()
@@ -328,6 +335,7 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
                 "time": headers_data.get("time", message.get("time", None)),
                 "type": headers_data.get("type", message.get("type", None)),
                 "stream": headers_data.get("stream", message.get("stream", None)),
+                "idempotency_key": headers_data.get("idempotency_key", None),
             }
 
             traceparent_data = headers_data.get("traceparent")

@@ -236,6 +236,7 @@ nav:
 
   - Patterns & Recipes:
     - patterns/index.md
+    - patterns/command-idempotency.md
 
   - glossary.md
 
