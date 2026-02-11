@@ -214,7 +214,7 @@ A read-optimized, denormalized view of data constructed by processing one or mor
 
 A component that consumes messages from external message brokers or other systems outside the domain boundary. Subscribers bridge the gap between external messaging infrastructure and the domain's internal event handling. In Protean, subscribers are defined with the `@domain.subscriber` decorator.
 
-[Learn more →](guides/server/subscriptions.md) | **See also**: [Broker](#broker), [Event Handler](#event-handler)
+[Learn more →](guides/consume-state/subscribers.md) | **See also**: [Broker](#broker), [Event Handler](#event-handler)
 
 ---
 

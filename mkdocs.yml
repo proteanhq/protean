@@ -147,12 +147,11 @@ nav:
       - guides/change-state/command-handlers.md
       - guides/change-state/persist-aggregates.md
       - guides/change-state/retrieve-aggregates.md
-      # - guides/change-state/subscribers.md
-
     - Reactive Layer:
       - guides/consume-state/index.md
       - guides/consume-state/event-handlers.md
       - guides/consume-state/projections.md
+      - guides/consume-state/subscribers.md
 
     - Infrastructure:
       - guides/essentials/configuration.md
