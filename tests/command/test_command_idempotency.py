@@ -1,12 +1,6 @@
-"""Tests for command idempotency key propagation and submission-level dedup.
+"""Tests for command idempotency key propagation and submission-level dedup."""
 
-Phase 1: Verify that the idempotency_key flows through MessageHeaders,
-domain.process(), event store serialization, and back through deserialization.
-
-Phase 2 (unit tests): Verify DuplicateCommandError, no-Redis fallback,
-and raise_on_duplicate behavior without Redis.
-"""
-
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -16,7 +10,10 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import DuplicateCommandError
 from protean.fields import Identifier, String
+from protean.utils.idempotency import IdempotencyStore
 from protean.utils.mixins import handle
+
+REDIS_IDEMPOTENCY_URL = "redis://localhost:6379/5"
 
 
 class User(BaseAggregate):
@@ -134,11 +131,6 @@ class TestIdempotencyKeyInHeaders:
         assert enriched._metadata.headers.idempotency_key is None
 
 
-# ==============================================================================
-# Phase 2 unit tests — no Redis needed
-# ==============================================================================
-
-
 class TestDuplicateCommandError:
     def test_duplicate_command_error_has_original_result(self):
         """DuplicateCommandError should carry the original result."""
@@ -194,3 +186,132 @@ class TestNoRedisIdempotencyBehavior:
         # Both should process — no Redis means no dedup
         assert result1 is not None
         assert result2 is not None
+
+
+class TestIdempotencyStoreWithoutRedis:
+    """Test IdempotencyStore when no redis_url is configured."""
+
+    def test_is_active_is_false(self):
+        store = IdempotencyStore(redis_url=None)
+        assert store.is_active is False
+
+    def test_check_returns_none(self):
+        store = IdempotencyStore(redis_url=None)
+        assert store.check("any-key") is None
+
+    def test_record_success_is_noop(self):
+        store = IdempotencyStore(redis_url=None)
+        store.record_success("any-key", {"result": True})
+        # Should not raise, should be a no-op
+        assert store.check("any-key") is None
+
+    def test_record_error_is_noop(self):
+        store = IdempotencyStore(redis_url=None)
+        store.record_error("any-key", "some error")
+        assert store.check("any-key") is None
+
+    def test_flush_is_noop(self):
+        store = IdempotencyStore(redis_url=None)
+        store.flush()  # Should not raise
+
+    def test_key_formatting(self):
+        store = IdempotencyStore(redis_url=None)
+        assert store._key("abc-123") == "idempotency:abc-123"
+
+
+class TestIdempotencyStoreInvalidUrl:
+    """Test IdempotencyStore when Redis connection fails."""
+
+    def test_invalid_url_falls_back_gracefully(self):
+        store = IdempotencyStore(redis_url="redis://invalid-host:9999/0")
+        assert store.is_active is False
+
+    def test_invalid_url_check_returns_none(self):
+        store = IdempotencyStore(redis_url="redis://invalid-host:9999/0")
+        assert store.check("any-key") is None
+
+
+class TestIdempotencyStoreWithRedis:
+    """Test IdempotencyStore against a real Redis instance."""
+
+    pytestmark = pytest.mark.redis
+
+    @pytest.fixture(autouse=True)
+    def store(self):
+        store = IdempotencyStore(redis_url=REDIS_IDEMPOTENCY_URL)
+        yield store
+        store.flush()
+
+    def test_is_active_when_connected(self, store):
+        assert store.is_active is True
+
+    def test_check_returns_none_on_cache_miss(self, store):
+        assert store.check("nonexistent-key") is None
+
+    def test_record_success_and_check(self, store):
+        store.record_success("key-1", {"counter": 1})
+        result = store.check("key-1")
+        assert result == {"status": "success", "result": {"counter": 1}}
+
+    def test_record_success_with_custom_ttl(self, store):
+        store.record_success("key-ttl", "result", ttl=120)
+        result = store.check("key-ttl")
+        assert result == {"status": "success", "result": "result"}
+
+    def test_record_error_and_check(self, store):
+        store.record_error("key-err", "handler_failed")
+        result = store.check("key-err")
+        assert result == {"status": "error", "error": "handler_failed"}
+
+    def test_record_error_with_custom_ttl(self, store):
+        store.record_error("key-err-ttl", "handler_failed", ttl=5)
+        result = store.check("key-err-ttl")
+        assert result == {"status": "error", "error": "handler_failed"}
+
+    def test_flush_clears_entries(self, store):
+        store.record_success("key-flush", "data")
+        assert store.check("key-flush") is not None
+
+        store.flush()
+        assert store.check("key-flush") is None
+
+
+class TestIdempotencyStoreErrorHandling:
+    """Test IdempotencyStore error-handling paths using a mocked Redis client.
+
+    These paths can only be exercised by injecting failures into the Redis
+    connection — they cannot be reliably tested against a live Redis server.
+    """
+
+    def _make_store_with_mock(self) -> tuple[IdempotencyStore, MagicMock]:
+        store = IdempotencyStore(redis_url=None)
+        mock_redis = MagicMock()
+        store._redis = mock_redis  # Inject a mock Redis connection
+        return store, mock_redis
+
+    def test_check_returns_none_on_redis_error(self):
+        store, mock_redis = self._make_store_with_mock()
+        mock_redis.get.side_effect = ConnectionError("Redis down")
+
+        assert store.check("key-1") is None
+
+    def test_record_success_handles_redis_error(self):
+        store, mock_redis = self._make_store_with_mock()
+        mock_redis.setex.side_effect = ConnectionError("Redis down")
+
+        # Should not raise
+        store.record_success("key-1", "result")
+
+    def test_record_error_handles_redis_error(self):
+        store, mock_redis = self._make_store_with_mock()
+        mock_redis.setex.side_effect = ConnectionError("Redis down")
+
+        # Should not raise
+        store.record_error("key-1", "handler_failed")
+
+    def test_flush_handles_redis_error(self):
+        store, mock_redis = self._make_store_with_mock()
+        mock_redis.flushdb.side_effect = ConnectionError("Redis down")
+
+        # Should not raise
+        store.flush()

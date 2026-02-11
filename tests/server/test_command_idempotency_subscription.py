@@ -4,7 +4,7 @@ Verifies that EventStoreSubscription.process_batch() skips messages
 that have already been processed (recorded in the idempotency store),
 and records success after processing new commands.
 
-All tests require Redis (``--redis`` flag).
+All tests require a running Redis instance and the ``--redis`` pytest flag.
 """
 
 from uuid import uuid4
@@ -21,9 +21,9 @@ from protean.server.subscription.event_store_subscription import (
 )
 from protean.utils.mixins import handle
 
-REDIS_IDEMPOTENCY_URL = "redis://localhost:6379/5"
-
 pytestmark = pytest.mark.redis
+
+REDIS_IDEMPOTENCY_URL = "redis://localhost:6379/5"
 
 
 # ---------------------------------------------------------------------------
