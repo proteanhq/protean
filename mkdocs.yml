@@ -85,7 +85,29 @@ nav:
   - Getting Started:
     - guides/getting-started/installation.md
     - guides/getting-started/quickstart.md
-    - guides/getting-started/tutorial.md
+    - Tutorial:
+      - guides/getting-started/tutorial/index.md
+      - "Part I - Getting Started":
+        - "1. Your First Aggregate": guides/getting-started/tutorial/01-your-first-aggregate.md
+        - "2. Fields and Identity": guides/getting-started/tutorial/02-fields-and-identity.md
+      - "Part II - The Domain Model":
+        - "3. Value Objects": guides/getting-started/tutorial/03-value-objects.md
+        - "4. Entities and Associations": guides/getting-started/tutorial/04-entities-and-associations.md
+        - "5. Business Rules": guides/getting-started/tutorial/05-business-rules.md
+      - "Part III - Commands and Events":
+        - "6. Commands": guides/getting-started/tutorial/06-commands.md
+        - "7. Domain Events": guides/getting-started/tutorial/07-events.md
+        - "8. Event Handlers": guides/getting-started/tutorial/08-event-handlers.md
+      - "Part IV - Services and Read Models":
+        - "9. Application Services": guides/getting-started/tutorial/09-application-services.md
+        - "10. Domain Services": guides/getting-started/tutorial/10-domain-services.md
+        - "11. Projections": guides/getting-started/tutorial/11-projections.md
+      - "Part V - Infrastructure":
+        - "12. Persistence": guides/getting-started/tutorial/12-persistence.md
+        - "13. Async Processing": guides/getting-started/tutorial/13-async-processing.md
+        - "14. Event Sourcing": guides/getting-started/tutorial/14-event-sourcing.md
+      - "Part VI - Quality":
+        - "15. Testing": guides/getting-started/tutorial/15-testing.md
 
   - Guides:
     - Domain Model:

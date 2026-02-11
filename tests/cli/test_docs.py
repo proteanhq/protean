@@ -1,3 +1,4 @@
+import sys
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -30,7 +31,14 @@ def test_preview_command(mock_subprocess_call):
 
     # Verify subprocess.call was called with correct arguments
     mock_subprocess_call.assert_called_once_with(
-        ["mkdocs", "serve", "--dev-addr=0.0.0.0:8000"]
+        [
+            sys.executable,
+            "-m",
+            "mkdocs",
+            "serve",
+            "--livereload",
+            "--dev-addr=0.0.0.0:8000",
+        ]
     )
     assert result.exit_code == 0
 
@@ -46,6 +54,13 @@ def test_preview_command_keyboard_interrupt(mock_subprocess_call):
 
     # The command should handle KeyboardInterrupt and exit gracefully
     mock_subprocess_call.assert_called_once_with(
-        ["mkdocs", "serve", "--dev-addr=0.0.0.0:8000"]
+        [
+            sys.executable,
+            "-m",
+            "mkdocs",
+            "serve",
+            "--livereload",
+            "--dev-addr=0.0.0.0:8000",
+        ]
     )
     assert result.exit_code == 0
