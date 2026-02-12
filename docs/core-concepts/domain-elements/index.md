@@ -8,6 +8,69 @@ can focus on domain semantics rather than infrastructure plumbing.
 The elements are organized into four layers, each with a distinct
 responsibility.
 
+```mermaid
+graph TB
+    subgraph EXT["External World"]
+        API["API / CLI / Job"]
+        Broker["Message Broker"]
+    end
+
+    subgraph APP["Application Layer"]
+        AS["Application Service"]
+        Cmd["Command"]
+        CH["Command Handler"]
+    end
+
+    subgraph DOM["Domain Model"]
+        Agg["Aggregate"]
+        Ent["Entity"]
+        VO["Value Object"]
+        DS["Domain Service"]
+    end
+
+    subgraph REACT["Reactive Layer"]
+        Evt["Event"]
+        EH["Event Handler"]
+        Proj["Projection"]
+        Pjr["Projector"]
+        Sub["Subscriber"]
+    end
+
+    subgraph PERSIST["Persistence"]
+        Repo["Repository"]
+    end
+
+    API -->|"use case"| AS
+    API -->|"submit"| Cmd
+    Cmd -->|"handled by"| CH
+
+    AS -->|"invoke"| Agg
+    AS -->|"invoke"| DS
+    CH -->|"invoke"| Agg
+
+    Agg -->|"contains"| Ent
+    Agg -->|"contains"| VO
+    DS -->|"operates on"| Agg
+
+    Agg -->|"raises"| Evt
+    Evt -->|"consumed by"| EH
+    Evt -->|"consumed by"| Pjr
+    Pjr -->|"maintains"| Proj
+
+    Broker -->|"delivers to"| Sub
+    Sub -->|"triggers"| Agg
+
+    Repo -->|"persists"| Agg
+
+    EH -->|"modifies"| Agg
+
+    style EXT fill:#f5f5f5,stroke:#9e9e9e
+    style APP fill:#e3f2fd,stroke:#1e88e5
+    style DOM fill:#e8f5e9,stroke:#43a047
+    style REACT fill:#fff3e0,stroke:#fb8c00
+    style PERSIST fill:#f3e5f5,stroke:#8e24aa
+```
+
 ## Domain Model
 
 The domain model is the heart of the system. It captures the essential

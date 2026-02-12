@@ -6,79 +6,203 @@
 [![Build Status](https://github.com/proteanhq/protean/actions/workflows/ci.yml/badge.svg)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/proteanhq/protean/graph/badge.svg?token=0sFuFdLBOx)](https://codecov.io/gh/proteanhq/protean)
 
-Protean is an open-source python framework designed to build ambitious
-applications that scale and evolve with your business.
+Build domain-driven Python applications with clean architecture.
+Protean gives you DDD, CQRS, and Event Sourcing — with pluggable
+infrastructure and zero boilerplate.
 
-## Overview
+[Get Started](./guides/getting-started/quickstart.md){ .md-button .md-button--primary }
+[Tutorial](./guides/getting-started/tutorial/index.md){ .md-button }
 
-![Protean Framework](./images/protean-core.png)
+---
 
-**Protean helps you build applications architected for *change* and *growth*.**
+## See It in Action
 
-Protean offers the tools and patterns necessary for creating sustainable,
-domain-driven codebases, utilizing CQRS and Event-Sourcing to tackle complexity
-in high-stakes domains.
+```python
+from protean import Domain, handle
+from protean.fields import Identifier, String, Text
+from protean.utils.globals import current_domain
 
-At its core, Protean adopts a Domain-Driven Design (DDD) approach to
-development, with support for patterns to succinctly and precisely express
-your domain without worrying about technology aspects. When you are ready,
-you can seamlessly plugin technologies like databases, message brokers, and
-caches, and Protean will take care of the rest.
+domain = Domain()
 
-Protean is loosely based on three paradigms:
+@domain.aggregate
+class Post:
+    title = String(max_length=100, required=True)
+    body = Text(required=True)
+    status = String(max_length=20, default="DRAFT")
 
-- **Service-Oriented**: Develop your application as one or more subdomains
-that can run independently as Microservices
-- **Event-Driven**: Use events to propagate changes across aggregates and
-subdomains to sync state within and across Bounded Contexts.
-- **Adapter-Based**: A configuration-driven approach to specify technology
-adapters, with multiple adapters supported out of the box.
+    def publish(self):
+        self.status = "PUBLISHED"
+        self.raise_(PostPublished(post_id=self.id, title=self.title))
 
-## Features
+@domain.event(part_of="Post")
+class PostPublished:
+    post_id = Identifier(required=True)
+    title = String(required=True)
+
+@domain.command(part_of="Post")
+class CreatePost:
+    title = String(max_length=100, required=True)
+    body = Text(required=True)
+
+@domain.command_handler(part_of=Post)
+class PostCommandHandler:
+    @handle(CreatePost)
+    def create_post(self, command: CreatePost):
+        post = Post(title=command.title, body=command.body)
+        current_domain.repository_for(Post).add(post)
+        return post.id
+```
+
+Aggregates, commands, events, and handlers — all in pure Python, with
+decorators that wire everything together. No infrastructure required
+to get started.
+
+---
+
+## Why Protean?
 
 <div class="grid cards" markdown>
 
--   __:material-run-fast: Rapid Prototyping__
+-   __:material-domain: Domain-First__
 
     ---
 
-    Prototype and rapidly iterate your domain model with core DDD tactical
-    patterns. [:material-arrow-right-box:](features.md#rapid-prototyping)
+    Model your business in pure Python. No ORM inheritance, no framework
+    lock-in. Your domain code reads like the business, enabling
+    collaboration between developers and domain experts.
 
--   __:material-database-plus-outline: Technology Agnostic__
-
-    ---
-
-    Model your domain without worrying about technology choice. Delay your
-    decisions until the last responsible moment. [:material-arrow-right-box:](features.md#technology-independence)
-
--   __:material-power-plug-battery-outline: Pluggable Adapters__
+-   __:material-power-plug-battery-outline: Plug In Infrastructure Later__
 
     ---
 
-    Use a Configuration-based approach to specify your application's
-    infrastructure. Decouple your application from your technology. [:material-arrow-right-box:](features.md#ports-and-adapters)
+    Start with in-memory adapters — no database, no broker, no setup.
+    When you're ready, swap in PostgreSQL, Redis, Elasticsearch, or
+    MessageDB through configuration. No code changes.
 
--   __:material-card-multiple-outline: Multi-domain Codebase__
-    
-    ---
-
-    Evolve and structure your application's bounded contexts over time as you
-    understand better. [:material-arrow-right-box:](features.md#multi-domain-codebase)
-
--   __:material-star-shooting-outline: Event-centric Communication__
+-   __:material-call-split: Three Architectural Paths__
 
     ---
 
-    Use Domain Events to sync state across Aggregates and Bounded contexts,
-    creating a loosely-coupled, highly-scalable ecosystem. [:material-arrow-right-box:](features.md#event-centric-communication)
+    Begin with DDD, evolve to CQRS, adopt Event Sourcing — all within
+    the same framework. Mix patterns per aggregate. Pragmatism over
+    purity.
 
--   __:material-check-outline: 100% Coverage__
+-   __:material-test-tube: Test Everything__
 
     ---
 
-    Completely cover your domain model with tests that can run in memory or
-    with your chosen technlogies. [:material-arrow-right-box:](features.md#testability)
+    Run your full domain test suite in-memory in seconds. Add
+    integration tests for specific adapters when ready. Built-in pytest
+    and pytest-bdd support.
 
 </div>
 
+---
+
+## Choose Your Path
+
+Protean supports three architectural approaches. Each builds on the one
+before it — start simple and add sophistication as your needs evolve.
+
+```mermaid
+graph LR
+    DDD["<strong>Domain-Driven Design</strong><br/>Application Services<br/>Repositories<br/>Events"]
+    CQRS["<strong>CQRS</strong><br/>Commands & Handlers<br/>Projections<br/>Read/Write Separation"]
+    ES["<strong>Event Sourcing</strong><br/>Event Replay<br/>Temporal Queries<br/>Full Audit Trail"]
+
+    DDD --> CQRS --> ES
+
+    style DDD fill:#e8f5e9,stroke:#43a047
+    style CQRS fill:#e3f2fd,stroke:#1e88e5
+    style ES fill:#fce4ec,stroke:#e53935
+```
+
+<div class="grid cards" markdown>
+
+-   __:material-shield-outline: Domain-Driven Design__
+
+    ---
+
+    Clean domain modeling with application services, repositories, and
+    event-driven side effects. The simplest way to start.
+
+    [:material-arrow-right-box: DDD Pathway](./guides/pathways/ddd.md)
+
+-   __:material-call-split: CQRS__
+
+    ---
+
+    Separate reads from writes with commands, command handlers, and
+    read-optimized projections.
+
+    [:material-arrow-right-box: CQRS Pathway](./guides/pathways/cqrs.md)
+
+-   __:material-history: Event Sourcing__
+
+    ---
+
+    Derive state from event replay. Full audit trail, temporal queries,
+    and complete traceability.
+
+    [:material-arrow-right-box: Event Sourcing Pathway](./guides/pathways/event-sourcing.md)
+
+</div>
+
+Not sure which to pick? Start with DDD — you can evolve later. See
+[Choose a Path](./guides/pathways/index.md) for guidance.
+
+---
+
+## Explore the Documentation
+
+<div class="grid cards" markdown>
+
+-   __:material-rocket-launch-outline: Quickstart__
+
+    ---
+
+    Build a domain in 5 minutes — no infrastructure required.
+
+    [:material-arrow-right-box: Quickstart](./guides/getting-started/quickstart.md)
+
+-   __:material-school-outline: Tutorial__
+
+    ---
+
+    15-part guide from your first aggregate to production.
+
+    [:material-arrow-right-box: Tutorial](./guides/getting-started/tutorial/index.md)
+
+-   __:material-book-open-page-variant-outline: Guides__
+
+    ---
+
+    Deep reference for every concept, pattern, and technique.
+
+    [:material-arrow-right-box: Guides](./guides/index.md)
+
+-   __:material-lightbulb-outline: Core Concepts__
+
+    ---
+
+    DDD, CQRS, and Event Sourcing explained.
+
+    [:material-arrow-right-box: Core Concepts](./core-concepts/ddd.md)
+
+-   __:material-puzzle-outline: Adapters__
+
+    ---
+
+    PostgreSQL, Redis, Elasticsearch, MessageDB, and more.
+
+    [:material-arrow-right-box: Adapters](./adapters/index.md)
+
+-   __:material-flask-outline: Patterns & Recipes__
+
+    ---
+
+    Battle-tested solutions for common challenges.
+
+    [:material-arrow-right-box: Patterns](./patterns/index.md)
+
+</div>

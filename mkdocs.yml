@@ -2,7 +2,7 @@ site_name: Protean
 site_url: https://docs.proteanhq.com
 repo_name: proteanhq/protean
 repo_url: https://github.com/proteanhq/protean
-copyright: Copyright &copy; 2019 - 2025 Subhash Bhushan
+copyright: Copyright &copy; 2019 - 2026 Subhash Bhushan
 
 theme:
   name: material
@@ -79,7 +79,6 @@ nav:
   - Protean:
     - index.md
     - start-here.md
-    - features.md
     - core-concepts/philosophy.md
 
   - Getting Started:
