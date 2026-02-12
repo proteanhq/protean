@@ -1,5 +1,8 @@
 # Adding Rules and Behavior
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Domain-Driven Design emphasizes the importance of building a rich domain model that accurately captures business rules and behaviors. Protean provides a comprehensive set of mechanisms to define and enforce these rules in your domain model.
 
 ## Core Concepts in Domain Behavior

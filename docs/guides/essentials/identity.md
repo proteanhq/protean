@@ -1,5 +1,8 @@
 # Identity
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Protean generates identities close to the point of element creation. Generating
 an identity at the point of creation is a best practice as it ensures
 consistency, aligns with domain rules, simplifies logic, and supports

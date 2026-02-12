@@ -1,5 +1,8 @@
 # Compose a Domain
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 In Protean, the Domain serves as the central composition root of your application, providing a structured way to organize and manage your domain elements, configuration, and adapters.
 
 ## Domain as a Composition Root

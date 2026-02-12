@@ -1,5 +1,8 @@
 # Invariants
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Invariants are business rules or constraints that always need to be true within
 a specific domain concept. They define the fundamental and consistent state of
 the concept, ensuring it remains unchanged even as other aspects evolve play a

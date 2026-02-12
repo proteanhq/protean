@@ -1,5 +1,8 @@
 # Commands
 
+!!! abstract "Applies to: CQRS · Event Sourcing"
+
+
 Commands represent actions or operations that change the state of the system.
 They encapsulate the intent to perform a specific task, often containing data necessary for the action, and are (typically) processed by command handlers to
 ensure business rules and invariants are upheld.

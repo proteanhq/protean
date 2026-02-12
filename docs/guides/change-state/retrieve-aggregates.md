@@ -1,5 +1,8 @@
 # Retreiving Aggregates
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 An aggregate can be retreived with the repository's `get` method, if you know
 its identity:
 

@@ -1,5 +1,8 @@
 # Simple Fields
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 ## String
 
 A string field, for small- to large-sized strings. For large amounts of text,

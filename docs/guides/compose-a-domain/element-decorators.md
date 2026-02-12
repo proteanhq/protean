@@ -1,5 +1,8 @@
 # Decorators
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Protean provides decorators to help you construct elements of your domain model.
 Below is a sneak-preview into the various domain elements supported by Protean.
 Each element is explored in detail in its own section.

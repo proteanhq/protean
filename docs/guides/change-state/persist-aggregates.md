@@ -1,5 +1,8 @@
 # Persist Aggregates
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Aggregates are saved into the configured database using `add` method of the
 repository.
 

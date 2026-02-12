@@ -1,5 +1,8 @@
 # Fields
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Fields are fundamental components that define the structure and behavior of
 data within domain models such as Aggregates, Entities, and Value Objects.
 This section provides a comprehensive guide to the various types of fields

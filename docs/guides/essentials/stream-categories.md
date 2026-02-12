@@ -1,5 +1,8 @@
 # Stream Categories
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Stream categories are a fundamental concept in Protean that organize and route messages (events and commands) throughout your application. They provide the foundation for message subscriptions, event sourcing, and cross-aggregate coordination.
 
 ## What is a Stream Category?

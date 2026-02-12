@@ -110,6 +110,12 @@ nav:
         - "15. Testing": guides/getting-started/tutorial/15-testing.md
 
   - Guides:
+    - guides/index.md
+    - Choose a Path:
+      - guides/pathways/index.md
+      - guides/pathways/ddd.md
+      - guides/pathways/cqrs.md
+      - guides/pathways/event-sourcing.md
     - Domain Model:
       - Compose a Domain:
         - guides/compose-a-domain/index.md
@@ -184,6 +190,8 @@ nav:
       - guides/testing/application-tests.md
       - guides/testing/integration-tests.md
       - guides/testing/fixtures-and-patterns.md
+
+    - How Do I...?: guides/how-do-i.md
 
   # - Advanced:
   #   - advanced/index.md

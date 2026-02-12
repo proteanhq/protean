@@ -13,15 +13,27 @@ Get to know the driving principles and core ideas that shape this framework in [
 ## Building with Protean
 
 Everything you need to know to build ambitious applications with Protean is in
-the [Guides](./guides/getting-started/installation.md) section.
+the [Guides](./guides/index.md) section.
 
-- Craft rich domain models that capture your business concepts and rules in [Domain Model](./guides/compose-a-domain/index.md).
+Protean supports three architectural approaches, each building on the one
+before it:
 
-- Bridge between your domain and the outside world in the section on [Application Layer](./guides/essentials/configuration.md).
+- **[Domain-Driven Design](./guides/pathways/ddd.md)** — Model your domain
+  with application services, repositories, and events. The simplest way to
+  start.
+- **[CQRS](./guides/pathways/cqrs.md)** — Separate reads from writes with
+  commands, command handlers, and projections.
+- **[Event Sourcing](./guides/pathways/event-sourcing.md)** — Derive state
+  from event replay for full audit trails and temporal queries.
 
-- Protean is batteries included - it comes pre-packaged with adapters for many popular databases, messaging systems, and other technologies. The [Infrastructure](./adapters/index.md) section will show you how to make your application rock-solid.
+Not sure which to pick? Start with DDD — you can evolve later. See
+[Choose a Path](./guides/pathways/index.md) for guidance.
 
-Looking for best practices? The [Patterns](./patterns/index.md) section covers common design patterns and strategies to help you use Protean effectively. Learn from tried-and-true methods to elevate your projects.
+Within the guides, you'll find everything from crafting rich
+[domain models](./guides/compose-a-domain/index.md) to configuring
+[infrastructure adapters](./adapters/index.md). Looking for best practices?
+The [Patterns](./patterns/index.md) section covers common design patterns
+and strategies.
 
 ## Glossary
 

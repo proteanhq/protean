@@ -1,5 +1,8 @@
 # Define Domain Concepts
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Domain-driven Design (DDD) is all about identifying and naming domain concepts
 and translating them as closely as possible - terminology, structure, and
 behavior - in code. Protean supports the tactical patterns outlined by DDD

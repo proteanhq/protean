@@ -1,5 +1,8 @@
 # Fixtures and Patterns
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 This guide covers reusable pytest fixtures and `conftest.py` recipes for
 Protean projects. A well-organized fixture hierarchy keeps your tests focused,
 fast, and free of boilerplate.

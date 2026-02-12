@@ -1,5 +1,8 @@
 # Integration Tests
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Integration tests verify that your application works correctly with real
 infrastructure — databases, message brokers, event stores, and caches. They
 exercise the same code paths as production, giving you confidence that your

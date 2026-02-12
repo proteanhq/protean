@@ -1,5 +1,8 @@
 # Activate the domain
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Once a domain is initialized, the next step is to activate it.
 
 A `Domain` in protean is always associated with a domain context, which can be

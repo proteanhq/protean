@@ -1,5 +1,8 @@
 # Unit of Work
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Protean encloses all changes to aggregates in a single transaction
 automatically, within a `UnitOfWork` [context manager](https://docs.python.org/3/library/stdtypes.html#context-manager-types).
 

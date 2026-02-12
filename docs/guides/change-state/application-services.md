@@ -1,5 +1,8 @@
 # Application Services
 
+!!! abstract "Applies to: DDD"
+
+
 Application services act as a bridge between the external API layer and the
 domain model, orchestrating business logic and use cases without exposing the
 underlying domain complexity. They encapsulate and coordinate operations,

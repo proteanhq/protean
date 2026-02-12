@@ -1,5 +1,8 @@
 # Mutating Aggregates
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 The primary mechanism to modify the current state of a domain - to reflect
 some action or event that has happened - is by mutating its state. Since
 aggregates encapsulate all data and behavior of concepts in domain,

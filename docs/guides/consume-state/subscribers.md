@@ -1,5 +1,8 @@
 # Subscribers
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Subscribers consume messages from external message brokers and other systems
 outside the domain boundary. They bridge external messaging infrastructure and
 the domain's internal handling, serving as the entry point for inter-system

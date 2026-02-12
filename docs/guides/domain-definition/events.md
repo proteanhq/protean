@@ -1,5 +1,8 @@
 # Events
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Most applications have a definite state - they reflect past user input and
 interactions in their current state. It is advantageous to model these past
 changes as a series of discrete events. Domain events happen to be those

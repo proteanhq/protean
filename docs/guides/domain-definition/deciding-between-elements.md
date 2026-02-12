@@ -1,5 +1,8 @@
 # Deciding Between Elements
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 One of the most critical decisions in Domain-Driven Design is choosing the right domain element type for your concepts. This guide provides practical checklists, examples, and decision flows to help you determine whether a domain concept should be modeled as an **Aggregate**, an **Entity**, or a **Value Object**.
 
 ## Understanding the Core Differences

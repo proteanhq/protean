@@ -1,5 +1,8 @@
 # Expressing Relationships
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Protean provides a comprehensive relationship system that allows you to model complex associations between domain entities while maintaining clean separation of concerns. Relationships in Protean are expressed through association fields (`HasOne`, `HasMany`) and their corresponding reference fields (`Reference`), which work together to establish bidirectional linkages.
 
 ## Relationship Types

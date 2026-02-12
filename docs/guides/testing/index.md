@@ -1,5 +1,8 @@
 # Testing
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Protean is designed with testability at its core. By isolating the domain model
 from infrastructure, you can achieve comprehensive test coverage using fast,
 in-memory adapters and swap in real technologies only when needed.

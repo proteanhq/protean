@@ -1,5 +1,8 @@
 # Event Handlers
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Event handlers consume events raised in an aggregate and help sync the state of
 the aggregate with other aggregates and other systems. They are the preferred
 mechanism to update multiple aggregates.

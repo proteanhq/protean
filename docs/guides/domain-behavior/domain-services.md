@@ -1,5 +1,8 @@
 # Domain Services
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Domain services act as orchestrators, centralizing complex domain logic that
 doesn't neatly fit within an entity or aggregate. They encapsulate business
 rules and domain decisions that need multiple aggregates as input.

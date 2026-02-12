@@ -1,5 +1,8 @@
 # Register elements
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 The domain object is used by the domain's elements to register themselves with
 the domain.
 

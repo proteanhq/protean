@@ -1,5 +1,8 @@
 # Managing Projections
 
+!!! abstract "Applies to: CQRS · Event Sourcing"
+
+
 Projections, a.k.a Read models, are representations of data optimized for querying
 and reading purposes. Projections are designed to provide data in a format that is
 easy and efficient to read, often tailored to the specific needs of a

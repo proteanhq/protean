@@ -1,5 +1,8 @@
 # Raising Events
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 An aggregate rarely exists in isolation - it's state changes often mean
 that other parts of the system of the system have to sync up. In DDD, the
 mechanism to accomplish this is through Domain Events.

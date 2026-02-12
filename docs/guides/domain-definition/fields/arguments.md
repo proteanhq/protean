@@ -1,5 +1,8 @@
 # Common Arguments
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 ## `description`
 
 A long form description of the field. This value can be used by database

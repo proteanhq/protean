@@ -1,5 +1,8 @@
 # Initialize the domain
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 The domain is initialized by calling the `init` method.
 
 ```python

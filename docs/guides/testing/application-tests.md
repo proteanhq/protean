@@ -1,5 +1,8 @@
 # Application Tests
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Application tests validate the **orchestration layer** — commands, command
 handlers, event handlers, and application services. They naturally follow a
 BDD structure: *Given* a domain state, *When* a command is processed, *Then*

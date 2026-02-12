@@ -1,5 +1,8 @@
 # When to compose
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 The `Domain` class in Protean acts as a composition root. It manages external
 dependencies and injects them into objects during application startup.
 

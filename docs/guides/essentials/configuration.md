@@ -1,5 +1,8 @@
 # Configuration
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Protean's configuration is managed through the Domain object, which can be configured in multiple ways:
 
 ## Direct Configuration

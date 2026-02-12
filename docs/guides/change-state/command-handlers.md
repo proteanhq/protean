@@ -1,5 +1,8 @@
 # Command Handlers
 
+!!! abstract "Applies to: CQRS · Event Sourcing"
+
+
 Command handlers are responsible for executing commands and persisting system
 state. They typically interact with aggregate roots to perform the required
 operations, ensuring that all business rules and invariants are upheld.

@@ -1,5 +1,8 @@
 # Container Fields
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 ## `ValueObject`
 
 Represents a field that holds a value object. This field is used to embed a

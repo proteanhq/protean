@@ -1,5 +1,8 @@
 # Object Model
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Domain elements in Protean have a common structure and share a few behavioral
 traits.
 

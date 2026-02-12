@@ -1,5 +1,8 @@
 # Value Objects
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Value Objects represent distinct domain concepts, with attributes, behavior and
 validations built into them. They don't have distinct identities, so they are
 *identified* by attributes values. They tend to act primarily as data

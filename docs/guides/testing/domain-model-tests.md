@@ -1,5 +1,8 @@
 # Domain Model Tests
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Domain model tests are **unit tests** that validate your aggregates, entities,
 value objects, invariants, and domain services. They are the foundation of your
 test suite — fast, isolated, and focused on business rules.

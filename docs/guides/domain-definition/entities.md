@@ -1,5 +1,8 @@
 # Entities
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Aggregates cluster multiple domain elements together to represent a concept.
 They are usually composed of two kinds of elements - those with unique
 identities (**Entities**) and those without (**Value Objects**).

@@ -1,5 +1,8 @@
 # Association Fields
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 Association fields in Protean are designed to represent and manage
 relationships between different domain models. They facilitate the modeling of
 complex relationships, while encapsulating the technical aspects of persisting

@@ -1,5 +1,8 @@
 # Basic Validations
 
+!!! abstract "Applies to: DDD · CQRS · Event Sourcing"
+
+
 There are many hygiene aspects that need to be enforced in a domain's data
 and behavior, even before we get to the point of defining a domain's rules.
 These basic aspects can be codified in the form of field types and its options,
