@@ -12,6 +12,7 @@ infrastructure and zero boilerplate.
 
 [Get Started](./guides/getting-started/quickstart.md){ .md-button .md-button--primary }
 [Tutorial](./guides/getting-started/tutorial/index.md){ .md-button }
+[All Contents](./contents.md){ .md-button }
 
 ---
 
@@ -204,5 +205,13 @@ Not sure which to pick? Start with DDD — you can evolve later. See
     Battle-tested solutions for common challenges.
 
     [:material-arrow-right-box: Patterns](./patterns/index.md)
+
+-   __:material-magnify: How Do I...?__
+
+    ---
+
+    Find the right guide by what you're trying to accomplish.
+
+    [:material-arrow-right-box: How Do I...?](./how-do-i.md)
 
 </div>

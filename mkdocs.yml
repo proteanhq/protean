@@ -80,6 +80,8 @@ nav:
     - index.md
     - start-here.md
     - core-concepts/philosophy.md
+    - contents.md
+    - how-do-i.md
 
   - Getting Started:
     - guides/getting-started/installation.md
@@ -190,8 +192,6 @@ nav:
       - guides/testing/integration-tests.md
       - guides/testing/fixtures-and-patterns.md
 
-    - How Do I...?: guides/how-do-i.md
-
   # - Advanced:
   #   - advanced/index.md
   #   - advanced/multi-domain.md
@@ -246,7 +246,25 @@ nav:
 
   - Patterns & Recipes:
     - patterns/index.md
-    - patterns/command-idempotency.md
+    - Aggregate Design:
+      - patterns/design-small-aggregates.md
+      - patterns/one-aggregate-per-transaction.md
+      - patterns/encapsulate-state-changes.md
+      - patterns/replace-primitives-with-value-objects.md
+    - Event-Driven Patterns:
+      - patterns/design-events-for-consumers.md
+      - patterns/idempotent-event-handlers.md
+      - patterns/event-versioning-and-evolution.md
+      - patterns/command-idempotency.md
+    - Architecture & Quality:
+      - patterns/validation-layering.md
+      - patterns/thin-handlers-rich-domain.md
+      - patterns/testing-domain-logic-in-isolation.md
+    - Identity & Communication:
+      - patterns/creating-identities-early.md
+      - patterns/connect-concepts-across-domains.md
+      - patterns/consuming-events-from-other-domains.md
+      - patterns/sharing-event-classes-across-domains.md
 
   - glossary.md
 
