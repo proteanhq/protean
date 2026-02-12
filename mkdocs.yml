@@ -218,8 +218,12 @@ nav:
       - core-concepts/domain-elements/events.md
       - core-concepts/domain-elements/commands.md
       - core-concepts/domain-elements/command-handlers.md
-      # - core-concepts/domain-elements/event-handlers.md
-      # - core-concepts/domain-elements/repositories.md
+      - core-concepts/domain-elements/event-handlers.md
+      - core-concepts/domain-elements/application-services.md
+      - core-concepts/domain-elements/repositories.md
+      - core-concepts/domain-elements/subscribers.md
+      - core-concepts/domain-elements/projections.md
+      - core-concepts/domain-elements/projectors.md
 
   - Adapters:
     - adapters/index.md

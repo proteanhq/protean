@@ -1,7 +1,8 @@
 # Entities
 
-Entities are very similar to Aggregates in nature and purpose. In fact,
-an Aggregate is nothing but an entity chosen to represent the entire cluster.
+Entities are very similar to [Aggregates](./aggregates.md) in nature and
+purpose. In fact, an Aggregate is nothing but an entity chosen to represent
+the entire cluster.
 
 Entities are mutable and encapsulate both state and behavior. They have
 distinct identity. This identity remains consistent throughout
@@ -20,9 +21,9 @@ This mutability is essential for modeling real-world objects that undergo
 various state changes.
 
 ### Entities can contain other entities or value objects. { data-toc-label="Composition" }
-Entities can compose other entities and value objects, enabling the modeling of
-complex domain relationships. However, care should be taken to manage the
-complexity and maintain the boundaries of aggregates.
+Entities can compose other entities and [value objects](./value-objects.md),
+enabling the modeling of complex domain relationships. However, care should be
+taken to manage the complexity and maintain the boundaries of aggregates.
 
 ### Entities enforce business rules. { data-toc-label="Business Rules" }
 Entities are responsible for ensuring that business rules and invariants are

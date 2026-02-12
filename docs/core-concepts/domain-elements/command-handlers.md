@@ -29,18 +29,21 @@ ensures that the command handling logic is focused and manageable.
 Methods in a command handler should only deal with managing the lifecycle of
 the aggregate associated with it. Any state change beyong an aggregate's
 boundary should be performed by eventual consistency mechanisms, like raising
-an event and consuming it in the event handler of the other aggregate.
+an [event](./events.md) and consuming it in the
+[event handler](./event-handlers.md) of the other aggregate.
 
 ### Command handlers invoke domain logic. { data-toc-label="Invoke Domain Logic" }
 
 Command handlers do not contain business logic themselves. Instead, they invoke
-methods on aggregates or domain services to perform the necessary actions.
+methods on [aggregates](./aggregates.md) or
+[domain services](./domain-services.md) to perform the necessary actions.
 
 ### Command handlers coordinate actions. { data-toc-label="Coordinate Actions" }
 
 Command handlers coordinate multiple actions related to each command. Primarily,
 this involves hydrating (fetching) the aggregate, invoking methods to perform
-state changes and persisting changes through a repository.
+state changes and persisting changes through a
+[repository](./repositories.md).
 
 ### Command handlers can return values. { data-toc-label="Return Values" }
 
@@ -48,8 +51,9 @@ When processed synchronously, command handlers can return values to the caller. 
 is useful for scenarios like authentication where you need to return a token, or when
 you need to return the ID of a newly created resource.
 
-Unlike event handlers (which can have multiple handlers for a single event and don't return values), 
-a command can only be handled by a single handler, allowing the return value to be passed back to the caller.
+Unlike [event handlers](./event-handlers.md) (which can have multiple handlers
+for a single event and don't return values), a command can only be handled by
+a single handler, allowing the return value to be passed back to the caller.
 This is consistent with the command pattern, where a command represents an intent to perform an action
 and may need to provide immediate feedback.
 

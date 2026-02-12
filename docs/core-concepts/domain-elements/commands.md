@@ -21,8 +21,9 @@ They can only hold simple fields and Value Objects.
 Commands should be designed to be immutable once created. This ensures that the intention they represent cannot be altered after they are sent.
 
 ### Commands trigger domain logic. { data-toc-label="Domain Logic" }
-Commands are handled by application services or command handlers, which then
-interact with the domain model to execute the intended action.
+Commands are handled by [application services](./application-services.md) or
+[command handlers](./command-handlers.md), which then interact with the domain
+model to execute the intended action.
 
 ### Commands are named with verbs. { data-toc-label="Naming" }
 Commands should be named clearly and concisely, typically using verbs to

@@ -1,8 +1,9 @@
 # Domain Services
 
 Domain services encapsulate domain logic that doesn't naturally fit within an
-aggregate, entity or value object. Domain services are used to model operations
-and behaviors that involve multiple entities.
+[aggregate](./aggregates.md), [entity](./entities.md) or
+[value object](./value-objects.md). Domain services are used to model
+operations and behaviors that involve multiple entities.
 
 Domain services help to maintain a clean and organized domain model by
 offloading operations that don't belong to any specific entity.
@@ -39,5 +40,8 @@ business functionality. These interfaces describe the operations that the
 service provides, making the service's role and capabilities clear.
 
 ### Domain Services are invoked by application services. { data-toc-label="Used by Application Services" }
-Services in the application layer, like Application services, Command handlers,
-or Event handlers, invoke domain services to perform domain operations.
+Services in the application layer, like
+[application services](./application-services.md),
+[command handlers](./command-handlers.md), or
+[event handlers](./event-handlers.md), invoke domain services to perform
+domain operations.

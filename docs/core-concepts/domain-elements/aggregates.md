@@ -15,8 +15,8 @@ within which invariants must be maintained.
 
 ### Aggregates are black boxes. { data-toc-label="Black Boxes" }
 The external world communicates with aggregates solely through their published
-API. Aggregates, in turn, communicate with the external world through domain
-events.
+API. Aggregates, in turn, communicate with the external world through
+[domain events](./events.md).
 
 ### Aggregates are versioned. { data-toc-label="Versioning" }
 The version is a simple incrementing number. Every aggregate instance's version
@@ -32,7 +32,8 @@ is aborted.
 Aggregates contain invariants that should always be satisfied - they
 are checked before and after every change to the aggregate. Invariants can be
 specified at the level of an aggregate's fields, the entire aggregate cluster,
-individual entities, or domain services that operate on multiple aggregates.
+individual [entities](./entities.md), or
+[domain services](./domain-services.md) that operate on multiple aggregates.
 
 ## Object Graphs
 
@@ -41,8 +42,9 @@ other objects and so on infinitely, though it is recommended to not go beyond
 2 levels.
 
 ### Aggregates can hold two types of objects - Entities and Value Objects. { data-toc-label="Types of Objects" }
-Entities are objects with an identity. Value objects don't have identity; their
-data defines their identity.
+[Entities](./entities.md) are objects with an identity.
+[Value objects](./value-objects.md) don't have identity; their data defines
+their identity.
 
 ### Entities are accessible only via aggregates. { data-toc-label="Entity Access" }
 Entities within aggregates are loaded and accessible only through the aggregate.
@@ -55,10 +57,10 @@ They internally load and manage the objects within their cluster.
 
 ### Aggregates persist data with the help of Repositories. { data-toc-label="Repositories" }
 
-Aggregates are persisted and retrieved with the help of repositories.
-Repositories are collection-oriented - they mimic how a collection data type,
-like list, dictionary, and set, would work. Repositories can be augmented with
-custom methods to perform business queries.
+Aggregates are persisted and retrieved with the help of
+[repositories](./repositories.md). Repositories are collection-oriented - they
+mimic how a collection data type, like list, dictionary, and set, would work.
+Repositories can be augmented with custom methods to perform business queries.
 
 ### Aggregates are transaction boundaries.  { data-toc-label="Transactions" }
 

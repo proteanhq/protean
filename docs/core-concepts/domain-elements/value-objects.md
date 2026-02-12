@@ -29,13 +29,14 @@ attributes. They ensure that the values they hold are always valid and
 consistent.
 
 ### Value Objects are nested within entities. { data-toc-label="Enclosed in Entities" }
-Value objects are enclosed within aggregates and entities to represent
-complex attributes.
+Value objects are enclosed within [aggregates](./aggregates.md) and
+[entities](./entities.md) to represent complex attributes.
 
 ### Value Objects are persisted with entities. { data-toc-label="Persisted within Entities" }
-Value objects are typically persisted as part of the entities or aggregates
-they belong to. Their persistence is managed implicitly through the enclosing
-entity or aggregate.
+Value objects are typically persisted as part of the
+[entities](./entities.md) or [aggregates](./aggregates.md) they belong to.
+Their persistence is managed implicitly through the enclosing entity or
+aggregate.
 
 When an entity is persisted, any value objects it contains
 are also persisted. This ensures that the complete state of the entity,

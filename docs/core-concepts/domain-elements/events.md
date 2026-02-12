@@ -141,7 +141,7 @@ are only published if the transaction is successful.
 ### Events trigger side effects. { data-toc-label="Side Effects" }
 Events often lead to side effects, such as updating read models, triggering
 workflows, or invoking external systems. These side effects are managed by
-event handlers.
+[event handlers](./event-handlers.md) and [projectors](./projectors.md).
 
 ### Events can be used to build local state in a different bounded context. { data-toc-label="Read-only Models" }
 Other bounded contexts should be listen to interested events and construct
