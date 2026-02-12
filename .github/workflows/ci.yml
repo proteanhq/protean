@@ -89,15 +89,22 @@ jobs:
           sudo sysctl -w fs.file-max=262144
           sudo sysctl -w vm.max_map_count=262144
 
-      - name: Setup Elasticsearch
-        uses: getong/elasticsearch-action@v1.3
-        with:
-          elasticsearch version: '7.12.0'
-          host port: 9200
-          container port: 9200
-          host node port: 9300
-          node port: 9300
-          discovery type: 'single-node'
+      - name: Run Elasticsearch
+        run: |
+          docker run -d \
+            --name elasticsearch \
+            -p 9200:9200 \
+            -p 9300:9300 \
+            -e "discovery.type=single-node" \
+            -e "xpack.security.enabled=false" \
+            -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
+            elasticsearch:7.12.0
+
+      - name: Wait for Elasticsearch
+        run: |
+          echo "Waiting for Elasticsearch to be ready..."
+          timeout 60 bash -c 'until curl -s http://localhost:9200/_cluster/health | grep -q "yellow\|green"; do sleep 2; done'
+          echo "Elasticsearch is ready!"
 
       - uses: actions/setup-python@v5
         with:
