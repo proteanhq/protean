@@ -65,8 +65,8 @@ class TestHasMany:
         post = Post(
             content="Lorem Ipsum",
             comments=[
-                Comment(id=101, content="First Comment"),
-                Comment(id=102, content="Second Comment"),
+                Comment(id="101", content="First Comment"),
+                Comment(id="102", content="Second Comment"),
             ],
         )
         test_domain.repository_for(Post).add(post)
@@ -79,7 +79,7 @@ class TestHasMany:
 
         assert isinstance(refreshed_post.comments, list)
         assert all(
-            comment.id in [101, 102] for comment in refreshed_post.comments
+            comment.id in ["101", "102"] for comment in refreshed_post.comments
         )  # `__iter__` magic here
 
     def test_adding_multiple_associations_at_the_same_time_before_aggregate_save(
@@ -88,8 +88,8 @@ class TestHasMany:
         post = Post(content="Lorem Ipsum")
         post.add_comments(
             [
-                Comment(id=101, content="First Comment"),
-                Comment(id=102, content="Second Comment"),
+                Comment(id="101", content="First Comment"),
+                Comment(id="102", content="Second Comment"),
             ],
         )
         test_domain.repository_for(Post).add(post)
@@ -102,7 +102,7 @@ class TestHasMany:
 
         assert isinstance(refreshed_post.comments, list)
         assert all(
-            comment.id in [101, 102] for comment in refreshed_post.comments
+            comment.id in ["101", "102"] for comment in refreshed_post.comments
         )  # `__iter__` magic here
 
     def test_adding_multiple_associations_at_the_same_time(self, test_domain):
@@ -110,8 +110,8 @@ class TestHasMany:
         # Save the aggregate first, which is what happens in reality
         test_domain.repository_for(Post).add(post)
 
-        comment1 = Comment(id=101, content="First Comment")
-        comment2 = Comment(id=102, content="Second Comment")
+        comment1 = Comment(id="101", content="First Comment")
+        comment2 = Comment(id="102", content="Second Comment")
 
         # Comments follow later
         post.add_comments([comment1, comment2])
@@ -125,7 +125,7 @@ class TestHasMany:
 
         assert isinstance(refreshed_post.comments, list)
         assert all(
-            comment.id in [101, 102] for comment in refreshed_post.comments
+            comment.id in ["101", "102"] for comment in refreshed_post.comments
         )  # `__iter__` magic here
 
 

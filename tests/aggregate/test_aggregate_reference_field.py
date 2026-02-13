@@ -70,9 +70,8 @@ class TestReferenceFieldAssociation:
         test_domain.repository_for(Account)._dao.save(account)
 
         author = Author(first_name="John", last_name="Doe")
-        assert (
-            any(key in author.__dict__ for key in ["account", "account_email"]) is False
-        )
+        assert "account" not in author.__dict__
+        assert author.account_email is None
 
         # Explicitly assign value to reference field
         author.account = account

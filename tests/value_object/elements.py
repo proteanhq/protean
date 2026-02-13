@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Annotated
+from uuid import uuid4
 
 from pydantic import Field, field_validator
 
 from protean import invariant
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
-from protean.fields import String, ValueObject
+from protean.fields import ValueObject
 
 
 class Email(BaseValueObject):
@@ -48,8 +49,12 @@ class Email(BaseValueObject):
 
 
 class User(BaseAggregate):
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
     email = ValueObject(Email, required=True)
-    name = String(max_length=255)
+    name: Annotated[str, Field(max_length=255)] | None = None
 
 
 class MyOrgEmail(Email):
@@ -98,8 +103,12 @@ class Balance(BaseValueObject):
 
 
 class Account(BaseAggregate):
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
     balance = ValueObject(Balance, required=True)
-    kind = String(max_length=15, required=True)
+    kind: Annotated[str, Field(max_length=15)]
 
 
 class BuildingStatus(Enum):
@@ -151,4 +160,8 @@ class PolymorphicConnection(BaseValueObject):
 
 
 class PolymorphicOwner(BaseAggregate):
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
     connector = ValueObject(PolymorphicConnection)
