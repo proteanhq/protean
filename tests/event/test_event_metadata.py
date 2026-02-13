@@ -57,7 +57,7 @@ def test_metadata_can_be_overridden():
 class TestMetadataType:
     def test_metadata_has_type_field(self):
         metadata_field = fields(UserLoggedIn)["_metadata"]
-        assert hasattr(metadata_field.value_object_cls, "headers")
+        assert "headers" in metadata_field.value_object_cls.model_fields
 
     def test_command_metadata_type_default(self):
         assert hasattr(UserLoggedIn, "__type__")
@@ -72,8 +72,8 @@ class TestMetadataType:
 class TestMetadataVersion:
     def test_metadata_has_event_version(self):
         metadata_field = fields(UserLoggedIn)["_metadata"]
-        assert hasattr(metadata_field.value_object_cls, "domain")
-        assert hasattr(DomainMeta, "version")
+        assert "domain" in metadata_field.value_object_cls.model_fields
+        assert "version" in DomainMeta.model_fields
 
     def test_event_metadata_version_default(self):
         event = UserLoggedIn(user_id=str(uuid4()))
@@ -129,8 +129,8 @@ class TestMetadataVersion:
 class TestMetadataAsynchronous:
     def test_metadata_has_asynchronous_field(self):
         metadata_field = fields(UserLoggedIn)["_metadata"]
-        assert hasattr(metadata_field.value_object_cls, "domain")
-        assert hasattr(DomainMeta, "asynchronous")
+        assert "domain" in metadata_field.value_object_cls.model_fields
+        assert "asynchronous" in DomainMeta.model_fields
 
     def test_event_metadata_asynchronous_default(self):
         event = UserLoggedIn(user_id=str(uuid4()))

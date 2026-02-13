@@ -241,10 +241,12 @@ class _PydanticFieldShim:
             self.identifier = extra.get("identifier", False)
             self.referenced_as = extra.get("referenced_as")
             self.unique = extra.get("unique", False)
+            self.increment = extra.get("increment", False)
         else:
             self.identifier = False
             self.referenced_as = None
             self.unique = False
+            self.increment = False
 
         # Identifiers are always unique (matching legacy Field behavior)
         if self.identifier:
@@ -288,10 +290,12 @@ class _PydanticFieldShim:
         """Return JSON-compatible value of self."""
         if value is None:
             return None
-        if hasattr(value, "model_dump"):
-            return value.model_dump()
+        # Prefer custom to_dict() over Pydantic model_dump() — our VOs
+        # serialize datetime/nested types to JSON-compatible strings.
         if hasattr(value, "to_dict"):
             return value.to_dict()
+        if hasattr(value, "model_dump"):
+            return value.model_dump()
         if isinstance(value, datetime):
             return str(value)
         return value

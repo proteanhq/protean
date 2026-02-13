@@ -1,8 +1,10 @@
 from datetime import UTC, datetime
 from typing import Any, Dict, List
+from uuid import uuid4
 
-from protean import fields
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.port.event_store import BaseEventStore
 from protean.utils.globals import current_domain
@@ -12,29 +14,32 @@ from protean.utils.eventing import Metadata
 class MemoryMessage(BaseAggregate):
     # Primary key. The ordinal position of the message in the entire message store.
     # Global position may have gaps.
-    global_position = fields.Auto(increment=True, identifier=True)
+    global_position: int | None = Field(
+        default=None,
+        json_schema_extra={"identifier": True, "increment": True},
+    )
 
     # The ordinal position of the message in its stream.
     # Position is gapless.
-    position = fields.Integer()
+    position: int | None = None
 
     # Message creation time
-    time = fields.DateTime()
+    time: datetime | None = None
 
     # Unique ID of the message
-    id = fields.Auto()
+    id: str = Field(default_factory=lambda: str(uuid4()))
 
     # Name of stream to which the message is written
-    stream_name = fields.String(max_length=255)
+    stream_name: str | None = None
 
     # The type of the message
-    type = fields.String()
+    type: str | None = None
 
     # JSON representation of the message body
-    data = fields.Dict()
+    data: dict | None = None
 
     # JSON representation of the message metadata
-    metadata = fields.ValueObject(Metadata)
+    metadata: Metadata | None = None
 
 
 class MemoryMessageRepository(BaseRepository):

@@ -13,6 +13,7 @@ from protean.exceptions import (
     TooManyObjectsError,
     ValidationError,
 )
+from protean.core.value_object import _PydanticFieldShim
 from protean.fields import Auto, Field
 from protean.port.provider import BaseProvider
 from protean.utils import DomainObjects
@@ -330,7 +331,11 @@ class BaseDAO(metaclass=ABCMeta):
 
             # Reverse update auto fields into entity
             for field_name, field_obj in declared_fields(entity_obj).items():
-                if isinstance(field_obj, Auto) and not getattr(entity_obj, field_name):
+                is_auto = isinstance(field_obj, Auto) or (
+                    isinstance(field_obj, _PydanticFieldShim)
+                    and getattr(field_obj, "increment", False)
+                )
+                if is_auto and not getattr(entity_obj, field_name):
                     if isinstance(model_obj, dict):
                         field_val = model_obj[field_name]
                     else:

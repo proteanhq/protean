@@ -117,11 +117,10 @@ class _LegacyBaseCommand(_LegacyBaseMessageType):
                     **{**headers.to_dict(), "stream": existing_stream}
                 )
 
-            self._metadata = Metadata(
-                headers=headers,
-                envelope=existing_envelope,
-                domain=domain_meta,
-            )
+            metadata_kwargs = {"headers": headers, "domain": domain_meta}
+            if existing_envelope is not None:
+                metadata_kwargs["envelope"] = existing_envelope
+            self._metadata = Metadata(**metadata_kwargs)
 
             # Finally lock the command and make it immutable
             self._initialized = True
@@ -246,11 +245,10 @@ class BaseCommand(BaseMessageType):
         if existing_stream:
             headers = MessageHeaders(**{**headers.to_dict(), "stream": existing_stream})
 
-        self._metadata = Metadata(
-            headers=headers,
-            envelope=existing_envelope,
-            domain=domain_meta,
-        )
+        metadata_kwargs = {"headers": headers, "domain": domain_meta}
+        if existing_envelope is not None:
+            metadata_kwargs["envelope"] = existing_envelope
+        self._metadata = Metadata(**metadata_kwargs)
 
 
 # ---------------------------------------------------------------------------

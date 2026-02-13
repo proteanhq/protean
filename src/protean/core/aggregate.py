@@ -290,11 +290,13 @@ class BaseAggregate(BaseEntity):
         envelope = MessageEnvelope.build(event.payload)
 
         domain_meta = DomainMeta(
-            event._metadata.domain.to_dict(),
-            stream_category=self.meta_.stream_category,
-            sequence_id=sequence_id,
-            asynchronous=current_domain.config["event_processing"]
-            == Processing.ASYNC.value,
+            **{
+                **event._metadata.domain.to_dict(),
+                "stream_category": self.meta_.stream_category,
+                "sequence_id": sequence_id,
+                "asynchronous": current_domain.config["event_processing"]
+                == Processing.ASYNC.value,
+            }
         )
 
         metadata = Metadata(

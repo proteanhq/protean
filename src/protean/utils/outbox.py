@@ -3,9 +3,12 @@ from datetime import datetime, timezone, timedelta
 from enum import Enum
 from typing import List, Optional, Tuple
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from uuid import uuid4
+
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
-from protean import fields
 from protean.utils.eventing import Metadata
 
 
@@ -33,41 +36,46 @@ class Outbox(BaseAggregate):
     Outbox is a collection of messages that are to be sent to the event store.
     """
 
+    id: str = Field(
+        default_factory=lambda: str(uuid4()),
+        json_schema_extra={"identifier": True},
+    )
+
     # Fields to be pushed to broker
-    message_id = fields.String(required=True)
-    stream_name = fields.String(required=True)
-    type = fields.String(required=True)
-    data = fields.Dict(required=True)
-    metadata = fields.ValueObject(Metadata, required=True)
-    created_at = fields.DateTime(default=lambda: datetime.now(timezone.utc))
-    published_at = fields.DateTime()
-    retry_count = fields.Integer(default=0)
+    message_id: str
+    stream_name: str
+    type: str
+    data: dict
+    metadata: Metadata
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    published_at: datetime | None = None
+    retry_count: int = 0
 
     # Last processed timestamp and error details
-    last_processed_at = fields.DateTime()
-    last_error = fields.Dict()
+    last_processed_at: datetime | None = None
+    last_error: dict | None = None
 
-    status = fields.String(choices=OutboxStatus, default=OutboxStatus.PENDING.value)
+    status: str = OutboxStatus.PENDING.value
 
     # Maximum retry attempts before abandoning
-    max_retries = fields.Integer(default=3)
+    max_retries: int = 3
 
     # When to attempt next retry (for exponential backoff)
-    next_retry_at = fields.DateTime()
+    next_retry_at: datetime | None = None
 
     # Lock mechanism to prevent concurrent processing
-    locked_until = fields.DateTime()
-    locked_by = fields.String()  # Worker/process identifier
+    locked_until: datetime | None = None
+    locked_by: str | None = None  # Worker/process identifier
 
     # For maintaining message order within a stream
-    sequence_number = fields.Integer()
+    sequence_number: int | None = None
 
     # For distributed tracing
-    correlation_id = fields.String()
-    trace_id = fields.String()
+    correlation_id: str | None = None
+    trace_id: str | None = None
 
     # Message priority for processing order
-    priority = fields.Integer(default=0)  # Higher = more important
+    priority: int = 0  # Higher = more important
 
     @classmethod
     def create_message(
