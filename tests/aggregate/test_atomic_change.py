@@ -2,7 +2,7 @@
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate, atomic_change
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate, atomic_change
 from protean.core.entity import invariant
 from protean.exceptions import ValidationError
 from protean.fields import Integer

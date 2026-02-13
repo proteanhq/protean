@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Any, Dict, List
 
 from protean import fields
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.port.event_store import BaseEventStore
 from protean.utils.globals import current_domain

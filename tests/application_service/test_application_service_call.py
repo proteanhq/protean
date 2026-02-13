@@ -1,4 +1,4 @@
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.application_service import BaseApplicationService, use_case
 from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.fields import Identifier, String

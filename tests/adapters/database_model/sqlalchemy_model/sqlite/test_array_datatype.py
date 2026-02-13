@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import types as sa_types
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.exceptions import ValidationError
 from protean.fields import (
     Auto,

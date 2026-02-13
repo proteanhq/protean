@@ -1,7 +1,7 @@
 import re
 from typing import List
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import invariant
 from protean.core.repository import BaseRepository

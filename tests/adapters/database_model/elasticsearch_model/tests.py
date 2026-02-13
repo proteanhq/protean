@@ -2,7 +2,7 @@ import pytest
 from elasticsearch_dsl import Keyword, Text
 
 from protean.adapters.repository.elasticsearch import ElasticsearchModel
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.fields import String
 
 from .elements import (

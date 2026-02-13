@@ -370,7 +370,7 @@ class TestCloneClass:
 
     def test_clone_domain_aggregate(self):
         """Test cloning an actual Protean domain aggregate."""
-        from protean.core.aggregate import BaseAggregate
+        from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
         from protean.fields import String, Integer, DateTime
         from datetime import datetime
 

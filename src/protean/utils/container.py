@@ -330,6 +330,8 @@ class IdentityMixin:
             "BaseAggregate",
             "BaseEntity",
             "BaseEventSourcedAggregate",
+            "_LegacyBaseAggregate",
+            "_LegacyBaseEntity",
         ]:
             subclass.__set_id_field()
 

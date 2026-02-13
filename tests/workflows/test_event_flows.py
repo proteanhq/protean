@@ -10,10 +10,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.command import _LegacyBaseCommand as BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.core.entity import BaseEntity
+from protean.core.entity import _LegacyBaseEntity as BaseEntity
 from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.projection import BaseProjection

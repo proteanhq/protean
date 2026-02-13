@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.entity import BaseEntity
+from protean.core.entity import _LegacyBaseEntity as BaseEntity
 from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Float, HasMany, String

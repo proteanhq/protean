@@ -1,4 +1,4 @@
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.fields import Auto, DateTime, Identifier, Integer, String
 from protean.utils import utcnow_func
 from protean.utils.reflection import declared_fields, fields, id_field

@@ -5,7 +5,7 @@ including Meta attribute reading, setting via decorator and register(), and
 combined usage with stream_category.
 """
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.server.subscription.profiles import (

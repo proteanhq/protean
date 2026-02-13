@@ -1,7 +1,7 @@
 import pytest
 
-from protean.core.aggregate import BaseAggregate
-from protean.core.entity import BaseEntity, invariant
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.entity import _LegacyBaseEntity as BaseEntity, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Float, Integer, String
 

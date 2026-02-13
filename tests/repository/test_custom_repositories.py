@@ -2,7 +2,7 @@ from typing import List
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.fields import Integer, String
 from protean.utils import fully_qualified_name

@@ -1,4 +1,4 @@
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.fields import Integer, String
 

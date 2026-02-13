@@ -1,7 +1,7 @@
 import pytest
 
-from protean.core.aggregate import BaseAggregate
-from protean.core.entity import BaseEntity
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.entity import _LegacyBaseEntity as BaseEntity
 from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.fields import HasOne, Identifier, String
 from protean.utils.eventing import Message

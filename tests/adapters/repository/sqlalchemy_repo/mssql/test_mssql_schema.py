@@ -5,7 +5,7 @@ from sqlalchemy import inspect
 
 from protean import Domain
 from protean.adapters.repository.sqlalchemy import MssqlProvider
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.fields import String, Integer, Dict, List
 
 

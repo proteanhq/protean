@@ -3,8 +3,8 @@ from datetime import datetime
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
-from protean.core.entity import BaseEntity
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.entity import _LegacyBaseEntity as BaseEntity
 from protean.exceptions import NotSupportedError, ValidationError
 from protean.utils import fully_qualified_name
 from protean.utils.reflection import attributes, declared_fields
@@ -26,7 +26,7 @@ class TestAggregateStructure:
         with pytest.raises(NotSupportedError) as exc:
             BaseAggregate()
 
-        assert str(exc.value) == "BaseAggregate cannot be instantiated"
+        assert "cannot be instantiated" in str(exc.value)
 
     def test_aggregate_inheritance(self):
         assert issubclass(Role, BaseEntity)

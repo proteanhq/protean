@@ -1,4 +1,4 @@
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.fields.basic import String
 from protean.utils.globals import current_domain
 

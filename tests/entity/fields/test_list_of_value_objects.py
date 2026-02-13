@@ -1,7 +1,7 @@
 import pytest
 
-from protean.core.aggregate import BaseAggregate
-from protean.core.entity import BaseEntity
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.entity import _LegacyBaseEntity as BaseEntity
 from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
 from protean.fields import HasOne, List, String, ValueObject
 

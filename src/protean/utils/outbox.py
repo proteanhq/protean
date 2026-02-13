@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from enum import Enum
 from typing import List, Optional, Tuple
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.repository import BaseRepository
 from protean import fields
 from protean.utils.eventing import Metadata

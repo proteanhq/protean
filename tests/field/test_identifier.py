@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from protean import Domain
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.fields import Identifier, String
 from protean.utils import IdentityType
