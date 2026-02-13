@@ -1,46 +1,39 @@
 """Projection Functionality and Classes"""
 
+from __future__ import annotations
+
 import logging
+from typing import Any, ClassVar
+
+from pydantic import BaseModel, ConfigDict, PrivateAttr
+from pydantic import ValidationError as PydanticValidationError
 
 from protean.core.entity import _EntityState
-from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.core.value_object import _PydanticFieldShim, _convert_pydantic_errors
+from protean.exceptions import (
+    IncorrectUsageError,
+    NotSupportedError,
+    ValidationError,
+)
 from protean.fields import Field, Reference, ValueObject
 from protean.fields.association import Association
 from protean.utils import DomainObjects, derive_element_class, inflection
 from protean.utils.container import BaseContainer, OptionsMixin
-from protean.utils.reflection import _ID_FIELD_NAME, declared_fields, id_field
+from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, declared_fields, id_field
 
 logger = logging.getLogger(__name__)
 
 
-class BaseProjection(BaseContainer, OptionsMixin):
+# ---------------------------------------------------------------------------
+# Legacy BaseProjection (old BaseContainer-based implementation)
+# ---------------------------------------------------------------------------
+class _LegacyBaseProjection(BaseContainer, OptionsMixin):
     element_type = DomainObjects.PROJECTION
 
     def __new__(cls, *args, **kwargs):
-        if cls is BaseProjection:
-            raise NotSupportedError("BaseProjection cannot be instantiated")
+        if cls is _LegacyBaseProjection:
+            raise NotSupportedError("_LegacyBaseProjection cannot be instantiated")
         return super().__new__(cls)
-
-    """
-    Projection Options:
-    
-    Projections support the following options to configure their behavior:
-    
-    These options are specified directly in the @domain.projection decorator:
-    
-    @domain.projection(
-        abstract=False,         # If True, this projection is an abstract base class and won't be registered as a concrete projection
-        cache="redis",          # Name of the cache provider to use for storing projection data
-        database_model="custom_model",   # Custom model name to use for storage
-        order_by=("field_name",), # Default ordering for query results
-        provider="default",     # Name of the database provider to use for storing projection data
-        schema_name="custom_name", # Name of the schema/table to use in the database
-        limit=100               # Default query result limit
-    )
-    
-    Important note: When both `cache` and `provider` are specified, the `cache` option takes precedence
-    and the `provider` option is ignored, as projections can only connect to one data source at a time.
-    """
 
     @classmethod
     def _default_options(cls):
@@ -64,8 +57,6 @@ class BaseProjection(BaseContainer, OptionsMixin):
     @classmethod
     def __assign_id_field(subclass):
         """Lookup the id field for this projection and assign"""
-        # FIXME What does it mean when there are no declared fields?
-        #   Does it translate to an abstract projection?
         if declared_fields(subclass):
             try:
                 id_field = next(
@@ -77,8 +68,6 @@ class BaseProjection(BaseContainer, OptionsMixin):
                 setattr(subclass, _ID_FIELD_NAME, id_field.field_name)
 
             except StopIteration:
-                # Projection does not have an ID field. An error will be thrown
-                #   on registering the projection, in the factory method.
                 pass
 
     @classmethod
@@ -98,15 +87,6 @@ class BaseProjection(BaseContainer, OptionsMixin):
 
     def __eq__(self, other):
         """Equivalence check to be based only on Identity"""
-
-        # FIXME Enhanced Equality Checks
-        #   * Ensure IDs have values and both of them are not null
-        #   * Ensure that the ID is of the right type
-        #   * Ensure that Objects belong to the same `type`
-        #   * Check Reference equality
-
-        # FIXME Check if `==` and `in` operator work with __eq__
-
         if type(other) is type(self):
             self_id = getattr(self, id_field(self).field_name)
             other_id = getattr(other, id_field(other).field_name)
@@ -117,22 +97,198 @@ class BaseProjection(BaseContainer, OptionsMixin):
 
     def __hash__(self):
         """Overrides the default implementation and bases hashing on identity"""
-
-        # FIXME Add Object Class Type to hash
         return hash(getattr(self, id_field(self).field_name))
 
 
+# ---------------------------------------------------------------------------
+# New Pydantic-based BaseProjection
+# ---------------------------------------------------------------------------
+class BaseProjection(BaseModel, OptionsMixin):
+    """Pydantic-based base class for Projection domain elements.
+
+    Mutable, identity-based equality, with basic field types only.
+    Uses Pydantic v2 BaseModel with ``validate_assignment=True`` for field
+    declaration, validation, and mutation.
+
+    Fields are declared using standard Python type annotations with optional
+    ``pydantic.Field`` constraints. Identity fields must be annotated with
+    ``json_schema_extra={"identifier": True}``.
+    """
+
+    element_type: ClassVar[str] = DomainObjects.PROJECTION
+
+    model_config = ConfigDict(
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    # Internal state (PrivateAttr — excluded from model_dump/schema)
+    _state: _EntityState = PrivateAttr(default_factory=_EntityState)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> BaseProjection:
+        if cls is BaseProjection:
+            raise NotSupportedError("BaseProjection cannot be instantiated")
+        return super().__new__(cls)
+
+    @classmethod
+    def _default_options(cls) -> list[tuple[str, Any]]:
+        return [
+            ("abstract", False),
+            ("cache", None),
+            ("database_model", None),
+            ("order_by", ()),
+            ("provider", "default"),
+            ("schema_name", inflection.underscore(cls.__name__)),
+            ("limit", 100),
+        ]
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Set empty __container_fields__ as placeholder
+        setattr(cls, _FIELDS, {})
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """Called by Pydantic AFTER model_fields are fully populated."""
+        super().__pydantic_init_subclass__(**kwargs)
+
+        # Build __container_fields__ bridge from Pydantic model_fields
+        fields_dict: dict[str, _PydanticFieldShim] = {}
+        for fname, finfo in cls.model_fields.items():
+            fields_dict[fname] = _PydanticFieldShim(fname, finfo, finfo.annotation)
+        setattr(cls, _FIELDS, fields_dict)
+
+        # Track identity field
+        if not cls.meta_.abstract:
+            cls.__track_id_field()
+
+    @classmethod
+    def __track_id_field(cls) -> None:
+        """Find the field marked ``identifier=True`` and record its name."""
+        try:
+            id_fld = next(
+                field
+                for _, field in getattr(cls, _FIELDS, {}).items()
+                if getattr(field, "identifier", False)
+            )
+            setattr(cls, _ID_FIELD_NAME, id_fld.field_name)
+        except StopIteration:
+            pass
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        # Support template dict pattern: Projection({"key": "val"}, key2="val2")
+        if args:
+            for template in args:
+                if not isinstance(template, dict):
+                    raise AssertionError(
+                        f"Positional argument {template} passed must be a dict. "
+                        f"This argument serves as a template for loading common "
+                        f"values.",
+                    )
+                kwargs.update(template)
+
+        try:
+            super().__init__(**kwargs)
+        except PydanticValidationError as e:
+            raise ValidationError(_convert_pydantic_errors(e))
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.meta_.abstract is True:
+            raise NotSupportedError(
+                f"{self.__class__.__name__} class has been marked abstract"
+                f" and cannot be instantiated"
+            )
+
+        self.defaults()
+
+    def defaults(self) -> None:
+        """Placeholder for defaults.
+
+        Override in subclass when an attribute's default depends on other
+        attribute values.
+        """
+
+    # ------------------------------------------------------------------
+    # Mutation with Pydantic error conversion
+    # ------------------------------------------------------------------
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in self.__class__.model_fields:
+            try:
+                super().__setattr__(name, value)
+            except PydanticValidationError as e:
+                raise ValidationError(_convert_pydantic_errors(e))
+        else:
+            super().__setattr__(name, value)
+
+    # ------------------------------------------------------------------
+    # Identity-based equality
+    # ------------------------------------------------------------------
+    def __eq__(self, other: object) -> bool:
+        if type(other) is not type(self):
+            return False
+
+        id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
+        if id_field_name is None:
+            return False
+
+        return getattr(self, id_field_name) == getattr(other, id_field_name)
+
+    def __hash__(self) -> int:
+        id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
+        if id_field_name is None:
+            return id(self)
+        return hash(getattr(self, id_field_name))
+
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
+    def to_dict(self) -> dict[str, Any]:
+        """Return projection data as a dictionary."""
+        result: dict[str, Any] = {}
+        for fname, shim in getattr(self, _FIELDS, {}).items():
+            result[fname] = shim.as_dict(getattr(self, fname, None))
+        return result
+
+    @property
+    def state_(self) -> _EntityState:
+        """Access projection lifecycle state."""
+        return self._state
+
+    @state_.setter
+    def state_(self, value: _EntityState) -> None:
+        self._state = value
+
+    def __repr__(self) -> str:
+        return "<%s: %s>" % (self.__class__.__name__, self)
+
+    def __str__(self) -> str:
+        return "%s object (%s)" % (
+            self.__class__.__name__,
+            "{}".format(self.to_dict()),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Factory
+# ---------------------------------------------------------------------------
 def projection_factory(element_cls, domain, **opts):
     """Factory method to create a projection class.
 
-    This method is used to create a projection class. It is called during domain registration.
+    This method is used to create a projection class. It is called during
+    domain registration.
     """
     # If opts has a `limit` key and it is negative, set it to None
     if "limit" in opts and opts["limit"] is not None and opts["limit"] < 0:
         opts["limit"] = None
 
+    # Determine the correct base class
+    if issubclass(element_cls, BaseProjection):
+        base_cls = BaseProjection
+    else:
+        base_cls = _LegacyBaseProjection
+
     # Derive the projection class from the base projection class
-    element_cls = derive_element_class(element_cls, BaseProjection, **opts)
+    element_cls = derive_element_class(element_cls, base_cls, **opts)
 
     if not element_cls.meta_.abstract and not hasattr(element_cls, _ID_FIELD_NAME):
         raise IncorrectUsageError(

@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.projection import BaseProjection
+from protean.core.projection import _LegacyBaseProjection as BaseProjection
 from protean.fields import Identifier, Integer, String
 
 

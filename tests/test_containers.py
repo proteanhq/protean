@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.projection import BaseProjection
+from protean.core.projection import _LegacyBaseProjection as BaseProjection
 from protean.exceptions import InvalidDataError, NotSupportedError
 from protean.fields import Integer, String
 from protean.utils.container import BaseContainer, OptionsMixin
