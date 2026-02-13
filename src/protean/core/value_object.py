@@ -197,32 +197,92 @@ class _LegacyBaseValueObject(BaseContainer, OptionsMixin):
 # ---------------------------------------------------------------------------
 # Pydantic Field Shim (compatibility bridge)
 # ---------------------------------------------------------------------------
+_SHIM_ERROR_MESSAGES: dict[str, str] = {
+    "unique": "{entity_name} with {field_name} '{value}' is already present.",
+    "required": "is required",
+}
+
+
 class _PydanticFieldShim:
     """Wraps a Pydantic FieldInfo to satisfy the FieldBase interface.
 
-    This allows the reflection module (declared_fields, fields, attributes)
-    and the ValueObject embedding field (embedded.py) to work with
-    Pydantic-based VOs through the __container_fields__ bridge.
+    This allows the reflection module (declared_fields, fields, attributes),
+    the ValueObject embedding field (embedded.py), and the persistence layer
+    (adapters, DAO) to work with Pydantic-based elements through the
+    ``__container_fields__`` bridge.
+
+    Attributes extracted from Pydantic's ``FieldInfo``:
+    - ``required``: True when field has no default/default_factory
+    - ``default``: default value (None if undefined)
+    - ``max_length``: from ``annotated_types.MaxLen`` in metadata
+    - ``min_value`` / ``max_value``: from ``Ge``/``Gt``/``Le``/``Lt``
+    - ``identifier``: from ``json_schema_extra``
+    - ``unique``: from ``json_schema_extra`` (True if identifier)
+    - ``referenced_as``: from ``json_schema_extra``
     """
 
     def __init__(
         self, field_name: str, field_info: Any, python_type: type | None
     ) -> None:
+        from pydantic_core import PydanticUndefined
+
         self.field_name = field_name
         self.attribute_name = field_name
-        self.unique = False
         self._python_type = python_type
+        self._field_info = field_info
 
         # Extract metadata from json_schema_extra if present
-        extra = getattr(field_info, "json_schema_extra", None) or {}
+        extra = (
+            getattr(field_info, "json_schema_extra", None) or {}
+            if field_info is not None
+            else {}
+        )
         if isinstance(extra, dict):
             self.identifier = extra.get("identifier", False)
             self.referenced_as = extra.get("referenced_as")
+            self.unique = extra.get("unique", False)
         else:
             self.identifier = False
             self.referenced_as = None
+            self.unique = False
+
+        # Identifiers are always unique (matching legacy Field behavior)
+        if self.identifier:
+            self.unique = True
+
         if self.referenced_as:
             self.attribute_name = self.referenced_as
+
+        # Extract required from FieldInfo
+        self.required = field_info.is_required() if field_info is not None else False
+
+        # Extract default from FieldInfo
+        self.default = None
+        if field_info is not None and field_info.default is not PydanticUndefined:
+            self.default = field_info.default
+
+        # Extract constraint metadata from FieldInfo.metadata
+        self.max_length: int | None = None
+        self.min_value: Any = None
+        self.max_value: Any = None
+        if field_info is not None:
+            try:
+                from annotated_types import Ge, Gt, Le, Lt, MaxLen
+            except ImportError:  # pragma: no cover
+                MaxLen = Ge = Gt = Le = Lt = None  # type: ignore[assignment,misc]
+
+            if MaxLen is not None:
+                for m in field_info.metadata:
+                    if isinstance(m, MaxLen):
+                        self.max_length = m.max_length
+                    elif isinstance(m, Ge):
+                        self.min_value = m.ge
+                    elif isinstance(m, Gt):
+                        self.min_value = m.gt
+                    elif isinstance(m, Le):
+                        self.max_value = m.le
+                    elif isinstance(m, Lt):
+                        self.max_value = m.lt
 
     def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self."""
@@ -238,6 +298,16 @@ class _PydanticFieldShim:
 
     def get_attribute_name(self) -> str:
         return self.referenced_as or self.field_name
+
+    def fail(self, key: str, **kwargs: Any) -> None:
+        """Raise a ValidationError with a formatted message.
+
+        Matches the ``Field.fail()`` interface used by
+        ``BaseDAO._validate_unique()``.
+        """
+        msg = _SHIM_ERROR_MESSAGES.get(key, f"Validation failed: {key}")
+        msg = msg.format(**kwargs)
+        raise ValidationError({self.field_name: [msg]})
 
 
 # ---------------------------------------------------------------------------

@@ -927,9 +927,15 @@ class BaseEntity(BaseModel, OptionsMixin):
     # Serialization
     # ------------------------------------------------------------------
     def to_dict(self) -> dict[str, Any]:
-        """Return entity data as a dictionary."""
+        """Return entity data as a dictionary.
+
+        Internal fields (prefixed with ``_``, e.g. ``_version``) are excluded,
+        matching the legacy ``data_fields()`` behavior.
+        """
         result: dict[str, Any] = {}
         for fname, shim in getattr(self, _FIELDS, {}).items():
+            if fname.startswith("_"):
+                continue
             result[fname] = shim.as_dict(getattr(self, fname, None))
         return result
 
