@@ -19,8 +19,9 @@ from protean.exceptions import (
     NotSupportedError,
     ValidationError,
 )
-from protean.fields import Auto, HasMany, Reference, ValueObject
-from protean.fields.association import Association
+from protean.fields import Auto, HasMany, HasOne, Reference, ValueObject
+from protean.fields.association import Association, _ReferenceField
+from protean.fields.embedded import _ShadowField
 from protean.utils import (
     DomainObjects,
     Processing,
@@ -34,6 +35,7 @@ from protean.utils.globals import current_domain
 from protean.utils.reflection import (
     _FIELDS,
     _ID_FIELD_NAME,
+    association_fields,
     reference_fields,
     data_fields,
     declared_fields,
@@ -43,6 +45,10 @@ from protean.utils.reflection import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Descriptor types that should bypass Pydantic's __setattr__ and be routed
+# through the Python descriptor protocol via object.__setattr__().
+_DESCRIPTOR_TYPES = (Association, Reference, ValueObject, _ReferenceField, _ShadowField)
 
 
 class _FieldsCacheDescriptor:
@@ -685,6 +691,7 @@ class BaseEntity(BaseModel, OptionsMixin):
     model_config = ConfigDict(
         validate_assignment=True,
         extra="forbid",
+        ignored_types=(HasOne, HasMany, Reference, ValueObject),
     )
 
     # Internal state (PrivateAttr — excluded from model_dump/schema)
@@ -732,6 +739,16 @@ class BaseEntity(BaseModel, OptionsMixin):
         fields_dict: dict[str, _PydanticFieldShim] = {}
         for fname, finfo in cls.model_fields.items():
             fields_dict[fname] = _PydanticFieldShim(fname, finfo, finfo.annotation)
+
+        # Add association and VO descriptors from the full MRO
+        for klass in cls.__mro__:
+            for name, attr in vars(klass).items():
+                if (
+                    isinstance(attr, (Association, Reference, ValueObject))
+                    and name not in fields_dict
+                ):
+                    fields_dict[name] = attr
+
         setattr(cls, _FIELDS, fields_dict)
 
         # Track identity field
@@ -751,10 +768,51 @@ class BaseEntity(BaseModel, OptionsMixin):
         except StopIteration:
             pass
 
+    @staticmethod
+    def _get_class_descriptor(cls: type, name: str) -> Any:
+        """Look up a descriptor on the class MRO without triggering __get__.
+
+        ``getattr(cls, name)`` invokes the data descriptor protocol, which
+        may return ``None`` or ``[]`` for association descriptors.  Scanning
+        ``__dict__`` directly returns the raw descriptor object.
+        """
+        for klass in cls.__mro__:
+            if name in vars(klass):
+                attr = vars(klass)[name]
+                if isinstance(attr, _DESCRIPTOR_TYPES):
+                    return attr
+        return None
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         # Pop internal kwargs that should not reach Pydantic
         owner = kwargs.pop("_owner", None)
         root = kwargs.pop("_root", None)
+
+        # Pop association/VO descriptor kwargs and shadow field kwargs before
+        # Pydantic init.  Shadow fields (e.g. order_id, billing_address_street)
+        # are set dynamically during domain resolution and must not be passed
+        # to Pydantic's __init__ which rejects them with extra="forbid".
+        descriptor_kwargs: dict[str, Any] = {}
+        shadow_kwargs: dict[str, Any] = {}
+
+        # Build the set of known shadow field names from descriptors in
+        # __container_fields__.  This prevents silently swallowing truly
+        # unknown kwargs that Pydantic should reject.
+        _shadow_field_names: set[str] = set()
+        for _, fobj in getattr(type(self), _FIELDS, {}).items():
+            if isinstance(fobj, Reference):
+                attr_name = fobj.get_attribute_name()
+                if attr_name:
+                    _shadow_field_names.add(attr_name)
+            elif isinstance(fobj, ValueObject):
+                for sf in fobj.embedded_fields.values():
+                    _shadow_field_names.add(sf.attribute_name)
+
+        for name in list(kwargs):
+            if self._get_class_descriptor(type(self), name) is not None:
+                descriptor_kwargs[name] = kwargs.pop(name)
+            elif name in _shadow_field_names:
+                shadow_kwargs[name] = kwargs.pop(name)
 
         # Support template dict pattern: Entity({"key": "val"}, key2="val2")
         if args:
@@ -765,6 +823,12 @@ class BaseEntity(BaseModel, OptionsMixin):
                         f"This argument serves as a template for loading common "
                         f"values.",
                     )
+                # Also separate descriptor and shadow kwargs from template dicts
+                for tname in list(template):
+                    if self._get_class_descriptor(type(self), tname) is not None:
+                        descriptor_kwargs[tname] = template.pop(tname)
+                    elif tname in _shadow_field_names:
+                        shadow_kwargs[tname] = template.pop(tname)
                 kwargs.update(template)
 
         try:
@@ -780,6 +844,32 @@ class BaseEntity(BaseModel, OptionsMixin):
         if root is not None:
             self._root = root
 
+        # Restore shadow field values directly into __dict__ (they bypass Pydantic)
+        for name, value in shadow_kwargs.items():
+            self.__dict__[name] = value
+
+        # Reconstruct ValueObjects from shadow kwargs when the VO itself
+        # wasn't explicitly provided (e.g. during repository retrieval).
+        for field_name, field_obj in value_object_fields(self).items():
+            if field_name not in descriptor_kwargs and not getattr(
+                self, field_name, None
+            ):
+                # Gather shadow field values from shadow_kwargs
+                vo_kwargs = {}
+                for embedded_field in field_obj.embedded_fields.values():
+                    vo_kwargs[embedded_field.field_name] = shadow_kwargs.get(
+                        embedded_field.attribute_name
+                    )
+                # Only reconstruct if at least one value is not None
+                if any(v is not None for v in vo_kwargs.values()):
+                    descriptor_kwargs[field_name] = field_obj.value_object_cls(
+                        **vo_kwargs
+                    )
+
+        # Set association/VO values via descriptors (triggers __set__)
+        for name, value in descriptor_kwargs.items():
+            setattr(self, name, value)
+
     def model_post_init(self, __context: Any) -> None:
         if self.meta_.abstract is True:
             raise NotSupportedError(
@@ -791,6 +881,31 @@ class BaseEntity(BaseModel, OptionsMixin):
         self._discover_invariants()
 
         self.defaults()
+
+        # Initialize VO shadow fields to None when the VO itself is not set
+        for field_obj in value_object_fields(self).values():
+            for _, shadow_field in field_obj.get_shadow_fields():
+                attr_name = shadow_field.attribute_name
+                if attr_name not in self.__dict__:
+                    self.__dict__[attr_name] = None
+
+        # Initialize Reference shadow fields to None when not already set
+        for field_obj in reference_fields(self).values():
+            shadow_name, shadow = field_obj.get_shadow_field()
+            if shadow_name not in self.__dict__:
+                self.__dict__[shadow_name] = None
+
+        # Setup association pseudo-methods (add_*, remove_*, get_one_from_*, filter_*)
+        for field_name, field_obj in association_fields(self).items():
+            getattr(self, field_name)  # Initialize/refresh associations
+
+            if isinstance(field_obj, HasMany):
+                setattr(self, f"add_{field_name}", partial(field_obj.add, self))
+                setattr(self, f"remove_{field_name}", partial(field_obj.remove, self))
+                setattr(
+                    self, f"get_one_from_{field_name}", partial(field_obj.get, self)
+                )
+                setattr(self, f"filter_{field_name}", partial(field_obj.filter, self))
 
         # Run post-invariants after init
         errors = self._run_invariants("post", return_errors=True) or {}
@@ -871,6 +986,18 @@ class BaseEntity(BaseModel, OptionsMixin):
 
             # Mark entity state as changed
             self._state.mark_changed()
+        elif getattr(self, "_initialized", False) and (
+            self._get_class_descriptor(type(self), name) is not None
+        ):
+            # Descriptor field: use object.__setattr__ to trigger descriptor protocol
+            target = self._root if self._root is not None else self
+            target._precheck()
+            object.__setattr__(self, name, value)
+            target._postcheck()
+            self._state.mark_changed()
+        elif name.startswith(("add_", "remove_", "get_one_from_", "filter_")):
+            # Association pseudo-methods set during model_post_init
+            object.__setattr__(self, name, value)
         else:
             super().__setattr__(name, value)
 
@@ -880,11 +1007,22 @@ class BaseEntity(BaseModel, OptionsMixin):
     def _set_root_and_owner(self, root: Any, owner: Any) -> None:
         """Set the root and owner entities.
 
-        New Pydantic entities do not support associations, so no recursive
-        descent into child entities is needed.
+        Recursively descends into child entities to propagate the aggregate
+        root reference.  Uses ``getattr`` so that descriptor-managed values
+        (stored in ``state_.fields_cache``) are reached correctly.
         """
         self._root = root
         self._owner = owner
+
+        for field_name, field_obj in association_fields(self).items():
+            if isinstance(field_obj, HasMany):
+                items = getattr(self, field_name, None) or []
+                for item in items:
+                    item._set_root_and_owner(root, self)
+            elif isinstance(field_obj, HasOne):
+                item = getattr(self, field_name, None)
+                if item is not None:
+                    item._set_root_and_owner(root, self)
 
     # ------------------------------------------------------------------
     # Event raising (delegates to aggregate root)
@@ -929,14 +1067,29 @@ class BaseEntity(BaseModel, OptionsMixin):
     def to_dict(self) -> dict[str, Any]:
         """Return entity data as a dictionary.
 
-        Internal fields (prefixed with ``_``, e.g. ``_version``) are excluded,
-        matching the legacy ``data_fields()`` behavior.
+        Internal fields (prefixed with ``_``, e.g. ``_version``) are excluded.
+        Reference fields are skipped (they are navigation, not data).
+        ValueObject fields are included only when non-None.
         """
         result: dict[str, Any] = {}
-        for fname, shim in getattr(self, _FIELDS, {}).items():
+        for fname, field_obj in getattr(self, _FIELDS, {}).items():
             if fname.startswith("_"):
                 continue
-            result[fname] = shim.as_dict(getattr(self, fname, None))
+            if isinstance(field_obj, Reference):
+                continue
+
+            value = getattr(self, fname, None)
+
+            if isinstance(field_obj, ValueObject):
+                # Only include non-None value objects
+                dict_value = field_obj.as_dict(value)
+                if dict_value:
+                    result[fname] = dict_value
+            elif isinstance(field_obj, Association):
+                # HasOne/HasMany: delegate to descriptor's as_dict
+                result[fname] = field_obj.as_dict(value)
+            else:
+                result[fname] = field_obj.as_dict(value)
         return result
 
     @property

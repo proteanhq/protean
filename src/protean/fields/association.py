@@ -151,9 +151,13 @@ class Reference(FieldCacheMixin, Field):
         setattr(owner_cls, self.attribute_name, self.relation)
         self.relation.__set_name__(owner_cls, self.attribute_name)
 
-        # Remove the earlier attribute if it is still attached
+        # Remove the earlier attribute if it is still attached and different
+        # from the resolved one (when the target's id field is named 'id',
+        # old and new names are identical and must not be deleted).
         old_attribute_name = "{}_{}".format(self.field_name, "id")
-        if hasattr(owner_cls, old_attribute_name):
+        if old_attribute_name != self.attribute_name and hasattr(
+            owner_cls, old_attribute_name
+        ):
             delattr(owner_cls, old_attribute_name)
 
         # Update domain records because we enriched the class structure
