@@ -177,6 +177,10 @@ class ValueObject(Field):
         else:
             self._reset_values(instance)
 
+        # Mark Entity as Dirty
+        if hasattr(instance, "state_"):
+            instance.state_.mark_changed()
+
     def _set_own_value(self, instance, value):
         if value is None:
             instance.__dict__.pop(self.field_name, None)
