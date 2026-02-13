@@ -3,21 +3,27 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from collections import defaultdict
 from enum import Enum
-from typing import TYPE_CHECKING, Union, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Union, Optional
 
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
+from pydantic import BaseModel, ConfigDict, PrivateAttr
+
+from protean.core.value_object import (
+    _LegacyBaseValueObject as BaseValueObject,
+    _PydanticFieldShim,
+)
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
     InvalidDataError,
     DeserializationError,
 )
-from protean.fields import Boolean, DateTime, Field, String, ValueObject, Dict
+from protean.fields import Boolean, DateTime, String, ValueObject, Dict
 from protean.fields.basic import Integer
 from protean.fields.association import Association, Reference
 from protean.utils.container import BaseContainer, OptionsMixin
-from protean.utils.reflection import _ID_FIELD_NAME, declared_fields, fields
+from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, declared_fields, fields
 from protean.utils.globals import current_domain
 
 if TYPE_CHECKING:
@@ -191,8 +197,8 @@ class Metadata(BaseValueObject):
     event_store = ValueObject(EventStoreMeta)
 
 
-class BaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
-    """Base class inherited by Event and Command element classes.
+class _LegacyBaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
+    """Legacy base class inherited by Event and Command element classes.
 
     Core functionality associated with message type structures, like timestamping, are specified
     as part of this base class.
@@ -249,7 +255,7 @@ class BaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             id_field = next(
                 field
                 for _, field in declared_fields(subclass).items()
-                if isinstance(field, (Field)) and field.identifier
+                if getattr(field, "identifier", False)
             )
 
             setattr(subclass, _ID_FIELD_NAME, id_field.field_name)
@@ -298,6 +304,118 @@ class BaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
             field_name: field_obj.as_dict(getattr(self, field_name, None))
             for field_name, field_obj in fields(self).items()
         }
+
+
+# ---------------------------------------------------------------------------
+# New Pydantic-based BaseMessageType
+# ---------------------------------------------------------------------------
+class BaseMessageType(BaseModel, OptionsMixin):
+    """Pydantic-based base class for Command and Event element classes.
+
+    Uses Pydantic v2 BaseModel for field declaration, validation, and serialization.
+    Fields are declared using standard Python type annotations with optional
+    pydantic.Field constraints.
+    """
+
+    element_type: ClassVar[str] = ""
+
+    model_config = ConfigDict(extra="forbid")
+
+    _metadata: Any = PrivateAttr(default=None)
+
+    @classmethod
+    def _default_options(cls) -> list[tuple[str, Any]]:
+        return [
+            ("abstract", False),
+            ("aggregate_cluster", None),
+            ("part_of", None),
+        ]
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+
+        # Use explicit version if specified, else default to "v1"
+        if not hasattr(cls, "__version__"):
+            setattr(cls, "__version__", "v1")
+
+        # Initialize invariant storage
+        setattr(cls, "_invariants", defaultdict(dict))
+        # Set empty __container_fields__ as placeholder
+        setattr(cls, _FIELDS, {})
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """Called by Pydantic AFTER model_fields are fully populated."""
+        super().__pydantic_init_subclass__(**kwargs)
+
+        # Build __container_fields__ bridge from Pydantic model_fields
+        fields_dict: dict[str, _PydanticFieldShim] = {}
+        for fname, finfo in cls.model_fields.items():
+            fields_dict[fname] = _PydanticFieldShim(fname, finfo, finfo.annotation)
+        setattr(cls, _FIELDS, fields_dict)
+
+        # Track id field
+        if not cls.meta_.abstract:
+            cls.__track_id_field()
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if not getattr(self, "_initialized", False):
+            super().__setattr__(name, value)
+        else:
+            raise IncorrectUsageError(
+                "Event/Command Objects are immutable and cannot be modified once created"
+            )
+
+    @classmethod
+    def __track_id_field(cls) -> None:
+        """Check if an identifier field has been associated with the event/command.
+
+        When an identifier is provided, its value is used to construct
+        unique stream name."""
+        try:
+            id_field = next(
+                field
+                for _, field in getattr(cls, _FIELDS, {}).items()
+                if getattr(field, "identifier", False)
+            )
+            setattr(cls, _ID_FIELD_NAME, id_field.field_name)
+        except StopIteration:
+            pass
+
+    @property
+    def payload(self) -> dict[str, Any]:
+        """Return the payload of the event/command."""
+        return {
+            fname: shim.as_dict(getattr(self, fname, None))
+            for fname, shim in getattr(self, _FIELDS, {}).items()
+        }
+
+    def __eq__(self, other: object) -> bool:
+        """Equivalence check based only on identifier."""
+        if type(other) is not type(self):
+            return False
+        self_id = (
+            self._metadata.headers.id
+            if self._metadata and self._metadata.headers
+            else None
+        )
+        other_id = (
+            other._metadata.headers.id
+            if other._metadata and other._metadata.headers
+            else None
+        )
+        return self_id == other_id
+
+    def __hash__(self) -> int:
+        """Hash based on data."""
+        return hash(json.dumps(self.payload, sort_keys=True))
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return data as a dictionary, including metadata."""
+        result = self.payload.copy()
+        if self._metadata:
+            result["_metadata"] = self._metadata.to_dict()
+        return result
 
 
 class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin

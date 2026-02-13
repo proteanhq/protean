@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 
 from protean import handle
-from protean.core.event import BaseEvent
+from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.server.engine import Engine

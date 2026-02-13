@@ -8,7 +8,7 @@ from collections import defaultdict
 from typing import List
 
 from protean.core.entity import BaseEntity
-from protean.core.event import BaseEvent
+from protean.core.event import BaseEvent, _LegacyBaseEvent
 from protean.core.value_object import _LegacyBaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne, Integer, Reference, ValueObject
@@ -192,7 +192,7 @@ def element_to_fact_event(element_cls):
     #   We can now proceed to construct the Fact Event.
     event_cls = type(
         f"{element_cls.__name__}FactEvent",
-        (BaseEvent,),
+        (_LegacyBaseEvent,),
         attrs,
     )
 
@@ -276,7 +276,8 @@ def apply(fn):
                 {
                     value
                     for value in typing.get_type_hints(fn).values()
-                    if inspect.isclass(value) and issubclass(value, BaseEvent)
+                    if inspect.isclass(value)
+                    and issubclass(value, (BaseEvent, _LegacyBaseEvent))
                 }
             )
         )

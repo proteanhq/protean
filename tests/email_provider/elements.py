@@ -1,6 +1,6 @@
 from protean.core.aggregate import BaseAggregate
 from protean.core.email import BaseEmail
-from protean.core.event import BaseEvent
+from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import InsufficientDataError, InvalidDataError
 from protean.fields import Identifier, Integer, String

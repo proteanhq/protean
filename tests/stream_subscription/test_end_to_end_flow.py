@@ -6,9 +6,9 @@ from uuid import uuid4
 
 from protean.utils.mixins import handle
 from protean.core.aggregate import BaseAggregate
-from protean.core.command import BaseCommand
+from protean.core.command import _LegacyBaseCommand as BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.core.event import BaseEvent
+from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String, Integer
 from protean.server.engine import Engine

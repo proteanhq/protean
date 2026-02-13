@@ -210,15 +210,17 @@ class _PydanticFieldShim:
     ) -> None:
         self.field_name = field_name
         self.attribute_name = field_name
-        self.identifier = False
         self.unique = False
         self._python_type = python_type
 
-        # Extract referenced_as from json_schema_extra if present
+        # Extract metadata from json_schema_extra if present
         extra = getattr(field_info, "json_schema_extra", None) or {}
-        self.referenced_as = (
-            extra.get("referenced_as") if isinstance(extra, dict) else None
-        )
+        if isinstance(extra, dict):
+            self.identifier = extra.get("identifier", False)
+            self.referenced_as = extra.get("referenced_as")
+        else:
+            self.identifier = False
+            self.referenced_as = None
         if self.referenced_as:
             self.attribute_name = self.referenced_as
 

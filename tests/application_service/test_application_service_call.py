@@ -1,6 +1,6 @@
 from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService, use_case
-from protean.core.event import BaseEvent
+from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.fields import Identifier, String
 from protean.utils.globals import current_domain
 
