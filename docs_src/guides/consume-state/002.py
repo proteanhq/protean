@@ -100,7 +100,7 @@ class ProductInventoryProjector:
             description=event.description,
             price=event.price,
             stock_quantity=event.stock_quantity,
-            last_updated=event._metadata.timestamp,
+            last_updated=event._metadata.headers.time,
         )
 
         repository.add(inventory)
@@ -112,7 +112,7 @@ class ProductInventoryProjector:
         inventory = repository.get(event.product_id)
 
         inventory.stock_quantity = event.new_stock_quantity
-        inventory.last_updated = event._metadata.timestamp
+        inventory.last_updated = event._metadata.headers.time
 
         repository.add(inventory)
 

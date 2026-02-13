@@ -1,8 +1,39 @@
 import pytest
 
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import DatabaseError
+from protean.fields import Float, Identifier, String, ValueObject
 
 from .elements import Person, PersonRepository
+
+
+class Balance(BaseValueObject):
+    currency = String(max_length=3)
+    amount = Float()
+
+
+class BalanceUpdated(BaseEvent):
+    account_id = Identifier(required=True)
+    old_amount = Float()
+    new_amount = Float()
+
+
+class Account(BaseAggregate):
+    name = String(max_length=50, required=True)
+    balance = ValueObject(Balance)
+
+    def update_balance(self, new_balance: Balance) -> None:
+        old_amount = self.balance.amount if self.balance else 0.0
+        self.balance = new_balance
+        self.raise_(
+            BalanceUpdated(
+                account_id=self.id,
+                old_amount=old_amount,
+                new_amount=new_balance.amount,
+            )
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -109,3 +140,65 @@ class TestState:
 
         test_domain.repository_for(Person)._dao.delete(person)
         assert person.state_.is_destroyed
+
+
+@pytest.mark.database
+@pytest.mark.usefixtures("db")
+class TestValueObjectFieldState:
+    """Tests that ValueObject field changes correctly mark the aggregate as dirty"""
+
+    @pytest.fixture(autouse=True)
+    def register_vo_elements(self, test_domain):
+        test_domain.register(Account)
+        test_domain.register(Balance, part_of=Account)
+        test_domain.register(BalanceUpdated, part_of=Account)
+        test_domain.init(traverse=False)
+
+    def test_aggregate_marked_changed_on_value_object_update(self, test_domain):
+        account = test_domain.repository_for(Account)._dao.create(
+            name="Savings", balance=Balance(currency="USD", amount=100.0)
+        )
+        assert not account.state_.is_changed
+
+        account.balance = Balance(currency="USD", amount=200.0)
+        assert account.state_.is_changed
+
+    def test_new_aggregate_not_marked_changed_on_value_object_update(self):
+        account = Account(name="Savings", balance=Balance(currency="USD", amount=100.0))
+        assert not account.state_.is_changed
+
+        account.balance = Balance(currency="USD", amount=200.0)
+        assert not account.state_.is_changed
+
+    def test_vo_field_update_is_persisted_via_repo_add(self, test_domain):
+        """Regression: repo.add() must save the aggregate when only a VO field changed."""
+        repo = test_domain.repository_for(Account)
+        account = repo.add(
+            Account(name="Savings", balance=Balance(currency="USD", amount=100.0))
+        )
+        original_id = account.id
+
+        account.balance = Balance(currency="USD", amount=200.0)
+        repo.add(account)
+
+        refreshed = repo.get(original_id)
+        assert refreshed.balance.amount == 200.0
+
+    def test_events_dispatched_after_vo_field_mutation(self, test_domain):
+        """Regression: events raised alongside a VO mutation must not be lost."""
+        repo = test_domain.repository_for(Account)
+        account = repo.add(
+            Account(name="Savings", balance=Balance(currency="USD", amount=100.0))
+        )
+
+        account.update_balance(Balance(currency="USD", amount=250.0))
+        assert len(account._events) == 1
+
+        repo.add(account)
+
+        # Events should be cleared after successful commit (dispatched)
+        assert len(account._events) == 0
+
+        # Verify the value was also persisted
+        refreshed = repo.get(account.id)
+        assert refreshed.balance.amount == 250.0
