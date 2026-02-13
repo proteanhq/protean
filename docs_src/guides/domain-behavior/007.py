@@ -88,7 +88,7 @@ class Inventory:
 @domain.domain_service(part_of=[Order, Inventory])
 class OrderPlacementService:
     def __init__(self, order, inventories):
-        super().__init__(*(order, inventories))
+        super().__init__(order, inventories)
 
         self.order = order
         self.inventories = inventories

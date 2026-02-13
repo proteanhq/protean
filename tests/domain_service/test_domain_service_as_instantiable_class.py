@@ -81,7 +81,7 @@ class Inventory(BaseAggregate):
 
 class OrderPlacementRegularService(BaseDomainService):
     def __init__(self, order, inventories):
-        super().__init__(*(order, inventories))
+        super().__init__(order, inventories)
 
         self.order = order
         self.inventories = inventories
