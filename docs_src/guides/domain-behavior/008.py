@@ -88,11 +88,11 @@ class Inventory:
 @domain.domain_service(part_of=[Order, Inventory])
 class OrderPlacementService:
     @classmethod
-    def place_order(self, order, inventories):
-        for item in self.order.items:
+    def place_order(cls, order, inventories):
+        for item in order.items:
             inventory = next(
-                (i for i in self.inventories if i.product_id == item.product_id), None
+                (i for i in inventories if i.product_id == item.product_id), None
             )
             inventory.reserve_stock(item.quantity)
 
-        self.order.confirm()
+        order.confirm()
