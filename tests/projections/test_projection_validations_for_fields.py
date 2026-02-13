@@ -2,7 +2,7 @@ import pytest
 
 from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.entity import _LegacyBaseEntity as BaseEntity
-from protean.core.projection import BaseProjection
+from protean.core.projection import _LegacyBaseProjection as BaseProjection
 from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
 from protean.exceptions import IncorrectUsageError
 from protean.fields import HasOne, Identifier, Reference, String, ValueObject

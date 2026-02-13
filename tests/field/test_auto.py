@@ -6,7 +6,7 @@ from uuid import UUID
 import pytest
 
 from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.projection import BaseProjection
+from protean.core.projection import _LegacyBaseProjection as BaseProjection
 from protean.fields import Auto
 from tests.shared import assert_int_is_uuid, assert_str_is_uuid
 

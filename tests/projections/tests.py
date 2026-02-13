@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.projection import BaseProjection
+from protean.core.projection import _LegacyBaseProjection as BaseProjection
 from protean.exceptions import (
     IncorrectUsageError,
     InvalidOperationError,
@@ -141,7 +141,7 @@ def test_projection_cannot_be_instantiated(test_domain):
     with pytest.raises(NotSupportedError) as excinfo:
         BaseProjection()
 
-    assert "BaseProjection cannot be instantiated" in str(excinfo.value)
+    assert "cannot be instantiated" in str(excinfo.value)
 
 
 class TestProjectionRegistration:

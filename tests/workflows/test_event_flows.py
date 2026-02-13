@@ -16,7 +16,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.entity import _LegacyBaseEntity as BaseEntity
 from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.core.event_handler import BaseEventHandler
-from protean.core.projection import BaseProjection
+from protean.core.projection import _LegacyBaseProjection as BaseProjection
 from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
 from protean.domain import Domain
 from protean.exceptions import ObjectNotFoundError

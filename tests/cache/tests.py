@@ -3,7 +3,7 @@ import time
 import pytest
 
 from protean.adapters.cache.memory import MemoryCache
-from protean.core.projection import BaseProjection
+from protean.core.projection import _LegacyBaseProjection as BaseProjection
 from protean.fields import Identifier, String
 from protean.port.cache import BaseCache
 

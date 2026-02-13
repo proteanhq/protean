@@ -5,7 +5,7 @@ import pytest
 from redis import Redis
 
 from protean.adapters.cache.redis import RedisCache
-from protean.core.projection import BaseProjection
+from protean.core.projection import _LegacyBaseProjection as BaseProjection
 from protean.fields import Identifier, String
 
 

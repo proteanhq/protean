@@ -2,7 +2,7 @@ import pytest
 
 from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.event_handler import BaseEventHandler
-from protean.core.projection import BaseProjection
+from protean.core.projection import _LegacyBaseProjection as BaseProjection
 from protean.fields import String
 from protean.utils.eventing import Message
 from protean.utils.mixins import handle
