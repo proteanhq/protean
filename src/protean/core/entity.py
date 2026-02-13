@@ -26,6 +26,7 @@ from protean.fields.embedded import _ShadowField
 from protean.utils import (
     DomainObjects,
     Processing,
+    _has_legacy_data_fields,
     derive_element_class,
     generate_identity,
     inflection,
@@ -1161,11 +1162,19 @@ def entity_factory(element_cls, domain, **opts):
     if "limit" in opts and opts["limit"] is not None and opts["limit"] < 0:
         opts["limit"] = None
 
-    # Determine the correct base class
+    # Determine the correct base class:
+    # 1. Explicit Pydantic inheritance → Pydantic
+    # 2. Already inherits from legacy base → Legacy
+    # 3. Has legacy data fields (String, Integer, etc.) → Legacy
+    # 4. Otherwise (annotation-based or empty) → Pydantic
     if issubclass(element_cls, BaseEntity):
         base_cls = BaseEntity
-    else:
+    elif issubclass(element_cls, _LegacyBaseEntity):
         base_cls = _LegacyBaseEntity
+    elif _has_legacy_data_fields(element_cls):
+        base_cls = _LegacyBaseEntity
+    else:
+        base_cls = BaseEntity
 
     # Derive the entity class from the base entity class
     element_cls = derive_element_class(element_cls, base_cls, **opts)

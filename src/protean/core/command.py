@@ -13,7 +13,12 @@ from protean.exceptions import (
     NotSupportedError,
     ValidationError,
 )
-from protean.utils import DomainObjects, derive_element_class, fqn
+from protean.utils import (
+    DomainObjects,
+    _has_legacy_data_fields,
+    derive_element_class,
+    fqn,
+)
 from protean.utils.eventing import (
     BaseMessageType,
     DomainMeta,
@@ -252,11 +257,19 @@ class BaseCommand(BaseMessageType):
 # Factory
 # ---------------------------------------------------------------------------
 def command_factory(element_cls: type, domain: Any, **opts: Any) -> type:
-    # Determine the correct base class
+    # Determine the correct base class:
+    # 1. Explicit Pydantic inheritance → Pydantic
+    # 2. Already inherits from legacy base → Legacy
+    # 3. Has legacy data fields (String, Integer, etc.) → Legacy
+    # 4. Otherwise (annotation-based or empty) → Pydantic
     if issubclass(element_cls, BaseCommand):
         base_cls = BaseCommand
-    else:
+    elif issubclass(element_cls, _LegacyBaseCommand):
         base_cls = _LegacyBaseCommand
+    elif _has_legacy_data_fields(element_cls):
+        base_cls = _LegacyBaseCommand
+    else:
+        base_cls = BaseCommand
 
     element_cls = derive_element_class(element_cls, base_cls, **opts)
 

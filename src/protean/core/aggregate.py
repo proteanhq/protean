@@ -24,6 +24,7 @@ from protean.fields import List as ProteanList
 from protean.utils import (
     DomainObjects,
     Processing,
+    _has_legacy_data_fields,
     derive_element_class,
     fqn,
     inflection,
@@ -409,11 +410,19 @@ def aggregate_factory(element_cls, domain, **opts):
     if "limit" in opts and opts["limit"] is not None and opts["limit"] < 0:
         opts["limit"] = None
 
-    # Determine the correct base class
+    # Determine the correct base class:
+    # 1. Explicit Pydantic inheritance → Pydantic
+    # 2. Already inherits from legacy base → Legacy
+    # 3. Has legacy data fields (String, Integer, etc.) → Legacy
+    # 4. Otherwise (annotation-based or empty) → Pydantic
     if issubclass(element_cls, BaseAggregate):
         base_cls = BaseAggregate
-    else:
+    elif issubclass(element_cls, _LegacyBaseAggregate):
         base_cls = _LegacyBaseAggregate
+    elif _has_legacy_data_fields(element_cls):
+        base_cls = _LegacyBaseAggregate
+    else:
+        base_cls = BaseAggregate
 
     # Derive the aggregate class from the base aggregate class
     element_cls = derive_element_class(element_cls, base_cls, **opts)

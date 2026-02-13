@@ -17,7 +17,12 @@ from protean.exceptions import (
 )
 from protean.fields import Field, Reference, ValueObject
 from protean.fields.association import Association
-from protean.utils import DomainObjects, derive_element_class, inflection
+from protean.utils import (
+    DomainObjects,
+    _has_legacy_data_fields,
+    derive_element_class,
+    inflection,
+)
 from protean.utils.container import BaseContainer, OptionsMixin
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, declared_fields, id_field
 
@@ -290,11 +295,19 @@ def projection_factory(element_cls, domain, **opts):
     if "limit" in opts and opts["limit"] is not None and opts["limit"] < 0:
         opts["limit"] = None
 
-    # Determine the correct base class
+    # Determine the correct base class:
+    # 1. Explicit Pydantic inheritance → Pydantic
+    # 2. Already inherits from legacy base → Legacy
+    # 3. Has legacy data fields (String, Integer, etc.) → Legacy
+    # 4. Otherwise (annotation-based or empty) → Pydantic
     if issubclass(element_cls, BaseProjection):
         base_cls = BaseProjection
-    else:
+    elif issubclass(element_cls, _LegacyBaseProjection):
         base_cls = _LegacyBaseProjection
+    elif _has_legacy_data_fields(element_cls):
+        base_cls = _LegacyBaseProjection
+    else:
+        base_cls = BaseProjection
 
     # Derive the projection class from the base projection class
     element_cls = derive_element_class(element_cls, base_cls, **opts)
