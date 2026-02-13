@@ -1,9 +1,9 @@
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.command import BaseCommand
+from protean.core.command import _LegacyBaseCommand as BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.core.event import BaseEvent
+from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import Identifier, String
 from protean.utils.mixins import handle

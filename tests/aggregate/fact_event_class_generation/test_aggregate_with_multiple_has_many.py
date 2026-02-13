@@ -2,7 +2,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate, element_to_fact_event
 from protean.core.entity import BaseEntity
-from protean.core.event import BaseEvent
+from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.fields import Date, HasMany, List, String, ValueObject
 from protean.utils.reflection import declared_fields
 

@@ -1,33 +1,50 @@
+from __future__ import annotations
+
 import logging
-
 from datetime import datetime, timezone
+from typing import Any, ClassVar
 
+from pydantic import ValidationError as PydanticValidationError
+
+from protean.core.value_object import _convert_pydantic_errors
 from protean.exceptions import (
+    ConfigurationError,
     IncorrectUsageError,
+    InvalidDataError,
     NotSupportedError,
 )
 from protean.utils import DomainObjects, derive_element_class, fqn
-from protean.utils.eventing import BaseMessageType, Metadata, MessageHeaders, DomainMeta
+from protean.utils.eventing import (
+    BaseMessageType,
+    DomainMeta,
+    MessageHeaders,
+    Metadata,
+    _LegacyBaseMessageType,
+)
 from protean.utils.globals import g
 
 logger = logging.getLogger(__name__)
 
 
-class BaseEvent(BaseMessageType):
-    """Base Event class that all Events should inherit from.
+# ---------------------------------------------------------------------------
+# Legacy BaseEvent (old BaseContainer-based implementation)
+# ---------------------------------------------------------------------------
+class _LegacyBaseEvent(_LegacyBaseMessageType):
+    """Legacy Base Event class backed by BaseContainer and Protean field descriptors.
 
-    Core functionality associated with Events, like timestamping, are specified
-    as part of the base Event class.
+    This class preserves the original implementation for:
+    - Events created dynamically (element_to_fact_event)
+    - Internal framework usage that relies on BaseContainer patterns
     """
 
     element_type = DomainObjects.EVENT
 
-    def __new__(cls, *args, **kwargs):
-        if cls is BaseEvent:
-            raise NotSupportedError("BaseEvent cannot be instantiated")
+    def __new__(cls, *args: Any, **kwargs: Any) -> _LegacyBaseEvent:
+        if cls is _LegacyBaseEvent:
+            raise NotSupportedError("_LegacyBaseEvent cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
         # Store the expected version temporarily for use during persistence
@@ -108,8 +125,141 @@ class BaseEvent(BaseMessageType):
         self._initialized = True
 
 
-def domain_event_factory(element_cls, domain, **opts):
-    element_cls = derive_element_class(element_cls, BaseEvent, **opts)
+# ---------------------------------------------------------------------------
+# New Pydantic-based BaseEvent
+# ---------------------------------------------------------------------------
+class BaseEvent(BaseMessageType):
+    """Base Event class that all Events should inherit from.
+
+    Uses Pydantic v2 BaseModel for field declaration, validation, and serialization.
+    Fields are declared using standard Python type annotations with optional
+    pydantic.Field constraints.
+    """
+
+    element_type: ClassVar[str] = DomainObjects.EVENT
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> BaseEvent:
+        if cls is BaseEvent:
+            raise NotSupportedError("BaseEvent cannot be instantiated")
+        return super().__new__(cls)
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        incoming_metadata = kwargs.pop("_metadata", None)
+        expected_version = kwargs.pop("_expected_version", -1)
+
+        # Support template dict pattern: Event({"key": "val"}, key2="val2")
+        if args:
+            for template in args:
+                if not isinstance(template, dict):
+                    raise AssertionError(
+                        f"Positional argument {template} passed must be a dict. "
+                        f"This argument serves as a template for loading common "
+                        f"values.",
+                    )
+                kwargs.update(template)
+
+        try:
+            super().__init__(**kwargs)
+        except PydanticValidationError as e:
+            raise InvalidDataError(_convert_pydantic_errors(e))
+
+        # Store expected version as regular attr (before _initialized is set)
+        object.__setattr__(self, "_expected_version", expected_version)
+
+        # Build metadata
+        self._build_metadata(incoming_metadata)
+
+        object.__setattr__(self, "_initialized", True)
+
+    def model_post_init(self, __context: Any) -> None:
+        if not hasattr(self.__class__, "__type__"):
+            raise ConfigurationError(
+                f"`{self.__class__.__name__}` should be registered with a domain"
+            )
+
+    def _build_metadata(self, incoming: Metadata | None) -> None:
+        """Build metadata for the event from incoming metadata or defaults."""
+        origin_stream = None
+        if hasattr(g, "message_in_context"):
+            if (
+                g.message_in_context.metadata.domain.kind == "COMMAND"
+                and g.message_in_context.metadata.domain.origin_stream is not None
+            ):
+                origin_stream = g.message_in_context.metadata.domain.origin_stream
+
+        # Use existing headers if they exist, but ensure type is set
+        if incoming and hasattr(incoming, "headers") and incoming.headers:
+            headers = MessageHeaders(
+                id=incoming.headers.id,
+                time=incoming.headers.time,
+                type=incoming.headers.type or self.__class__.__type__,
+                traceparent=incoming.headers.traceparent,
+            )
+        else:
+            headers = MessageHeaders(
+                type=self.__class__.__type__, time=datetime.now(timezone.utc)
+            )
+
+        # If metadata already has domain with sequence_id and asynchronous set (from raise_),
+        # preserve those values
+        existing_domain = (
+            incoming.domain if incoming and hasattr(incoming, "domain") else None
+        )
+
+        # Build domain metadata
+        domain_meta = DomainMeta(
+            kind="EVENT",
+            fqn=fqn(self.__class__),
+            origin_stream=origin_stream,
+            stream_category=existing_domain.stream_category
+            if existing_domain and existing_domain.stream_category is not None
+            else None,
+            version=self.__class__.__version__,  # Was set in `__init_subclass__`
+            sequence_id=existing_domain.sequence_id
+            if existing_domain and existing_domain.sequence_id is not None
+            else None,
+            asynchronous=existing_domain.asynchronous
+            if existing_domain and hasattr(existing_domain, "asynchronous")
+            else True,
+        )
+
+        # Also preserve envelope if it exists
+        existing_envelope = (
+            incoming.envelope if incoming and hasattr(incoming, "envelope") else None
+        )
+
+        # Preserve stream in headers if it exists
+        existing_stream = None
+        if (
+            incoming
+            and hasattr(incoming, "headers")
+            and incoming.headers
+            and hasattr(incoming.headers, "stream")
+        ):
+            existing_stream = incoming.headers.stream
+
+        # Create new headers with stream if needed
+        if existing_stream:
+            headers = MessageHeaders(**{**headers.to_dict(), "stream": existing_stream})
+
+        self._metadata = Metadata(
+            headers=headers,
+            envelope=existing_envelope,
+            domain=domain_meta,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Factory
+# ---------------------------------------------------------------------------
+def domain_event_factory(element_cls: type, domain: Any, **opts: Any) -> type:
+    # Determine the correct base class
+    if issubclass(element_cls, BaseEvent):
+        base_cls = BaseEvent
+    else:
+        base_cls = _LegacyBaseEvent
+
+    element_cls = derive_element_class(element_cls, base_cls, **opts)
 
     if not element_cls.meta_.part_of and not element_cls.meta_.abstract:
         raise IncorrectUsageError(

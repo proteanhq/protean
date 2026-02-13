@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 
 from protean.core.aggregate import BaseAggregate, apply
-from protean.core.event import BaseEvent
+from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.fields import Identifier, String
 

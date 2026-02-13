@@ -1,7 +1,7 @@
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.event import BaseEvent
+from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.utils import fully_qualified_name

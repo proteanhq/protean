@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.event import BaseEvent
+from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier
 from protean.server.engine import Engine
