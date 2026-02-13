@@ -6,7 +6,7 @@ import logging
 from enum import Enum
 from typing import TYPE_CHECKING, Union, Optional
 
-from protean.core.value_object import BaseValueObject
+from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,

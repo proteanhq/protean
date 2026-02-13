@@ -9,7 +9,7 @@ from typing import List
 
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
-from protean.core.value_object import BaseValueObject
+from protean.core.value_object import _LegacyBaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import HasMany, HasOne, Integer, Reference, ValueObject
 from protean.fields import List as ProteanList
@@ -181,7 +181,7 @@ def element_to_fact_event(element_cls):
 
         value_object_cls = type(
             f"{element_cls.__name__}ValueObject",
-            (BaseValueObject,),
+            (_LegacyBaseValueObject,),
             attrs,
         )
         value_object_field = ValueObject(value_object_cls=value_object_cls)

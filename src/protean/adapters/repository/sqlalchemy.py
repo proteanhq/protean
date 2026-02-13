@@ -20,7 +20,7 @@ from sqlalchemy.types import CHAR, TypeDecorator
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
 from protean.core.queryset import ResultSet
-from protean.core.value_object import BaseValueObject
+from protean.core.value_object import BaseValueObject, _LegacyBaseValueObject
 from protean.exceptions import (
     ConfigurationError,
     DatabaseError as ProteanDatabaseError,
@@ -148,7 +148,7 @@ def _default(value):
 
     `TypeError` is raised for unknown types.
     """
-    if isinstance(value, BaseValueObject):
+    if isinstance(value, (BaseValueObject, _LegacyBaseValueObject)):
         return value.to_dict()
     raise TypeError()
 

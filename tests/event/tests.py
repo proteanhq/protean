@@ -4,7 +4,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
-from protean.core.value_object import BaseValueObject
+from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.fields import Identifier, String, ValueObject
 from protean.utils import fully_qualified_name

@@ -2,7 +2,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
-from protean.core.value_object import BaseValueObject
+from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
 from protean.exceptions import DatabaseError
 from protean.fields import Float, Identifier, String, ValueObject
 

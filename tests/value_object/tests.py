@@ -1,7 +1,6 @@
 import pytest
 
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
-from protean.fields import Float
 from protean.utils.reflection import attributes, declared_fields
 
 from .elements import (
@@ -18,7 +17,7 @@ from .elements import (
 
 def test_vo_marked_abstract_cannot_be_instantiated(test_domain):
     class AbstractBalance(Balance):
-        amount = Float()
+        pass
 
     test_domain.register(AbstractBalance, abstract=True)
 

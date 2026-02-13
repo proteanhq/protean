@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.value_object import BaseValueObject
+from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
 from protean.fields import String, ValueObject
 from protean.utils.reflection import fields
 

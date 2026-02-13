@@ -1,7 +1,7 @@
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
-from protean.core.value_object import BaseValueObject
+from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
 from protean.fields import Float, Identifier, String
 from protean.utils.reflection import declared_fields, id_field
 
