@@ -1,35 +1,43 @@
-from datetime import datetime
-from typing import List
+from __future__ import annotations
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
+from datetime import datetime
+from typing import Annotated, List
+from uuid import uuid4
+
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.core.repository import BaseRepository
-from protean.fields import (
-    Auto,
-    DateTime,
-    HasMany,
-    HasOne,
-    Integer,
-    Reference,
-    String,
-    Text,
-)
+from protean.fields import HasMany, HasOne, Reference
 
 
 class Role(BaseAggregate):
-    name = String(max_length=15, required=True)
-    created_on = DateTime(default=datetime.today())
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    name: Annotated[str, Field(max_length=15)]
+    created_on: datetime = Field(default_factory=datetime.today)
 
 
 class RoleClone(BaseAggregate):
-    name = String(max_length=15, required=True)
-    created_on = DateTime(default=datetime.today())
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    name: Annotated[str, Field(max_length=15)]
+    created_on: datetime = Field(default_factory=datetime.today)
 
 
 class Person(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    first_name: Annotated[str, Field(max_length=50)]
+    last_name: Annotated[str, Field(max_length=50)]
+    age: int = 21
 
 
 class PersonRepository(BaseRepository):
@@ -39,13 +47,19 @@ class PersonRepository(BaseRepository):
 
 # Aggregates to test Identity
 class PersonAutoSSN(BaseAggregate):
-    ssn = Auto(identifier=True)
-    name = String(max_length=25)
+    ssn: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    name: Annotated[str, Field(max_length=25)] | None = None
 
 
 class PersonExplicitID(BaseAggregate):
-    ssn = String(max_length=36, identifier=True)
-    name = String(max_length=25)
+    ssn: Annotated[
+        str,
+        Field(max_length=36, json_schema_extra={"identifier": True}),
+    ]
+    name: Annotated[str, Field(max_length=25)] | None = None
 
 
 # Aggregates to test Subclassing
@@ -55,11 +69,15 @@ class SubclassRole(Role):
 
 # Aggregates to test Abstraction # START #
 class AbstractRole(BaseAggregate):
-    foo = String(max_length=25)
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    foo: Annotated[str, Field(max_length=25)] | None = None
 
 
 class ConcreteRole(AbstractRole):
-    bar = String(max_length=25)
+    bar: Annotated[str, Field(max_length=25)] | None = None
 
 
 # Aggregates to test Abstraction # END #
@@ -67,45 +85,90 @@ class ConcreteRole(AbstractRole):
 
 # Aggregates to test associations # START #
 class Post(BaseAggregate):
-    content = Text(required=True)
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    content: str
     comments = HasMany("tests.aggregate.elements.Comment")
     author = Reference("tests.aggregate.elements.Author")
 
 
 class Comment(BaseEntity):
-    content = Text()
-    added_on = DateTime()
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    content: str | None = None
+    added_on: datetime | None = None
 
     post = Reference("tests.aggregate.elements.Post")
 
 
 class Account(BaseAggregate):
-    email = String(required=True, max_length=255, unique=True, identifier=True)
-    password = String(required=True, max_length=255)
-    username = String(max_length=255, unique=True)
+    email: Annotated[
+        str,
+        Field(
+            max_length=255,
+            json_schema_extra={"identifier": True, "unique": True},
+        ),
+    ]
+    password: Annotated[str, Field(max_length=255)]
+    username: (
+        Annotated[
+            str,
+            Field(max_length=255, json_schema_extra={"unique": True}),
+        ]
+        | None
+    ) = None
     author = HasOne("tests.aggregate.elements.Author")
 
 
 class Author(BaseEntity):
-    first_name = String(required=True, max_length=25)
-    last_name = String(max_length=25)
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    first_name: Annotated[str, Field(max_length=25)]
+    last_name: Annotated[str, Field(max_length=25)] | None = None
     account = Reference("tests.aggregate.elements.Account")
 
 
 class Profile(BaseEntity):
-    about_me = Text()
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    about_me: str | None = None
     account = Reference("tests.aggregate.elements.Account")
 
 
 class AccountWithId(BaseAggregate):
-    email = String(required=True, max_length=255, unique=True)
-    password = String(required=True, max_length=255)
-    username = String(max_length=255, unique=True)
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    email: Annotated[
+        str,
+        Field(max_length=255, json_schema_extra={"unique": True}),
+    ]
+    password: Annotated[str, Field(max_length=255)]
+    username: (
+        Annotated[
+            str,
+            Field(max_length=255, json_schema_extra={"unique": True}),
+        ]
+        | None
+    ) = None
     author = HasOne("tests.aggregate.elements.Author")
 
 
 class ProfileWithAccountId(BaseEntity):
-    about_me = Text()
+    id: str = Field(
+        json_schema_extra={"identifier": True},
+        default_factory=lambda: str(uuid4()),
+    )
+    about_me: str | None = None
     account = Reference("tests.aggregate.elements.AccountWithId")
 
 

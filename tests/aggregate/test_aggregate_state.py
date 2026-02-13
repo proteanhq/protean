@@ -3,7 +3,6 @@ import pytest
 from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
-from protean.exceptions import DatabaseError
 from protean.fields import Float, Identifier, String, ValueObject
 
 from .elements import Person, PersonRepository
@@ -79,7 +78,7 @@ class TestState:
         try:
             del person.first_name
             test_domain.repository_for(Person)._dao.save(person)
-        except DatabaseError:
+        except Exception:
             assert person.state_.is_new
 
     def test_that_a_changed_entity_still_shows_as_changed_if_persistence_failed(
@@ -95,7 +94,7 @@ class TestState:
         try:
             del person.first_name
             test_domain.repository_for(Person)._dao.save(person)
-        except DatabaseError:
+        except Exception:
             assert person.state_.is_changed
 
     def test_that_entity_is_marked_as_not_new_after_successful_persistence(

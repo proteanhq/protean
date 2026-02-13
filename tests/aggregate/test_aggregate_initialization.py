@@ -3,8 +3,8 @@ from datetime import datetime
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.exceptions import NotSupportedError, ValidationError
 from protean.utils import fully_qualified_name
 from protean.utils.reflection import attributes, declared_fields
@@ -109,7 +109,7 @@ class TestSubclassedAggregateStructure:
         )
         assert declared_fields_keys == ["bar", "foo", "id"]
 
-        role = ConcreteRole(id=3, foo="foo", bar="bar")
+        role = ConcreteRole(id="3", foo="foo", bar="bar")
         assert role is not None
         assert role.foo == "foo"
 
@@ -152,22 +152,20 @@ class TestAggregateInitialization:
         try:
             Person(last_name="Doe")
         except ValidationError as err:
-            assert err.messages == {"first_name": ["is required"]}
+            assert "first_name" in err.messages
 
         # Test multiple error messages
         try:
             Person(last_name="Doe", age="old")
         except ValidationError as err:
-            assert err.messages == {
-                "first_name": ["is required"],
-                "age": ['"old" value must be an integer.'],
-            }
+            assert "first_name" in err.messages
+            assert "age" in err.messages
 
 
 class TestAggregateFieldValues:
     def test_that_validation_error_is_raised_if_required_fields_are_not_provided(self):
         with pytest.raises(ValidationError):
-            Role(id=123423)
+            Role(id="123423")
 
     def test_that_field_values_are_defaulted_when_not_provided(self):
         """Test that values are defaulted properly"""

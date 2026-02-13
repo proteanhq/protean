@@ -16,6 +16,7 @@ from protean.core.value_object import _PydanticFieldShim
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
+    InvalidOperationError,
     NotSupportedError,
     ValidationError,
 )
@@ -831,12 +832,36 @@ class BaseEntity(BaseModel, OptionsMixin):
                         shadow_kwargs[tname] = template.pop(tname)
                 kwargs.update(template)
 
+        # Collect all validation errors (Pydantic + required descriptors) before raising
+        collected_errors: dict[str, list[str]] = {}
+
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
             from protean.core.value_object import _convert_pydantic_errors
 
-            raise ValidationError(_convert_pydantic_errors(e))
+            collected_errors.update(_convert_pydantic_errors(e))
+
+        # Check required descriptor fields (ValueObject, Reference, etc.)
+        for field_name, field_obj in getattr(type(self), _FIELDS, {}).items():
+            if (
+                isinstance(field_obj, (ValueObject, Reference))
+                and getattr(field_obj, "required", False)
+                and field_name not in descriptor_kwargs
+                and not any(
+                    sk in shadow_kwargs
+                    for sf in (
+                        field_obj.embedded_fields.values()
+                        if isinstance(field_obj, ValueObject)
+                        else []
+                    )
+                    for sk in [sf.attribute_name]
+                )
+            ):
+                collected_errors.setdefault(field_name, []).append("is required")
+
+        if collected_errors:
+            raise ValidationError(collected_errors)
 
         # Set hierarchy references
         if owner is not None:
@@ -967,6 +992,15 @@ class BaseEntity(BaseModel, OptionsMixin):
     # ------------------------------------------------------------------
     def __setattr__(self, name: str, value: Any) -> None:
         if name in self.__class__.model_fields and getattr(self, "_initialized", False):
+            # Prevent mutation of identifier fields once set
+            id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
+            if name == id_field_name:
+                existing = getattr(self, name, None)
+                if existing is not None and value != existing:
+                    raise InvalidOperationError(
+                        "Identifiers cannot be changed once set"
+                    )
+
             # Determine the target for invariant checks: aggregate root or self
             target = self._root if self._root is not None else self
 
@@ -1141,45 +1175,41 @@ def entity_factory(element_cls, domain, **opts):
             f"Entity `{element_cls.__name__}` needs to be associated with an Aggregate"
         )
 
-    # Reference auto-creation and shadow fields only apply to legacy entities
-    if issubclass(element_cls, _LegacyBaseEntity):
-        # Set up reference fields
-        if not element_cls.meta_.abstract:
-            reference_field = None
-            for field_obj in declared_fields(element_cls).values():
-                if isinstance(field_obj, Reference):
-                    # An explicit `Reference` field is already present
-                    reference_field = field_obj
-                    break
+    # Set up reference fields for entities with part_of
+    if not element_cls.meta_.abstract:
+        reference_field = None
+        for field_obj in declared_fields(element_cls).values():
+            if isinstance(field_obj, Reference):
+                # An explicit `Reference` field is already present
+                reference_field = field_obj
+                break
 
-            if reference_field is None:
-                # If no explicit Reference field is present, create one
-                reference_field = Reference(element_cls.meta_.part_of)
+        if reference_field is None:
+            # If no explicit Reference field is present, create one
+            reference_field = Reference(element_cls.meta_.part_of)
 
-                # If part_of is a string, set field name to inflection.underscore(part_of)
-                #   Else, if it is a class, extract class name and set field name to inflection.underscore(class_name)
-                if isinstance(element_cls.meta_.part_of, str):
-                    field_name = inflection.underscore(element_cls.meta_.part_of)
-                else:
-                    field_name = inflection.underscore(
-                        element_cls.meta_.part_of.__name__
-                    )
+            # If part_of is a string, set field name to inflection.underscore(part_of)
+            #   Else, if it is a class, extract class name and set field name to inflection.underscore(class_name)
+            if isinstance(element_cls.meta_.part_of, str):
+                field_name = inflection.underscore(element_cls.meta_.part_of)
+            else:
+                field_name = inflection.underscore(element_cls.meta_.part_of.__name__)
 
-                setattr(element_cls, field_name, reference_field)
+            setattr(element_cls, field_name, reference_field)
 
-                # Set the name of the field on itself
-                reference_field.__set_name__(element_cls, field_name)
+            # Set the name of the field on itself
+            reference_field.__set_name__(element_cls, field_name)
 
-                # FIXME Centralize this logic to add fields dynamically to _FIELDS
-                field_objects = getattr(element_cls, _FIELDS)
-                field_objects[field_name] = reference_field
-                setattr(element_cls, _FIELDS, field_objects)
+            # FIXME Centralize this logic to add fields dynamically to _FIELDS
+            field_objects = getattr(element_cls, _FIELDS)
+            field_objects[field_name] = reference_field
+            setattr(element_cls, _FIELDS, field_objects)
 
-            # Set up shadow fields for Reference fields
-            for _, field in fields(element_cls).items():
-                if isinstance(field, Reference):
-                    shadow_field_name, shadow_field = field.get_shadow_field()
-                    shadow_field.__set_name__(element_cls, shadow_field_name)
+        # Set up shadow fields for Reference fields
+        for _, field_obj in getattr(element_cls, _FIELDS, {}).items():
+            if isinstance(field_obj, Reference):
+                shadow_field_name, shadow_field = field_obj.get_shadow_field()
+                shadow_field.__set_name__(element_cls, shadow_field_name)
 
     # Iterate through methods marked as `@invariant` and record them for later use
     #   Uses MRO scan for Pydantic entities, inspect.getmembers for legacy
