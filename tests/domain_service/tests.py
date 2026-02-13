@@ -97,9 +97,11 @@ def test_that_domain_service_is_associated_with_aggregates(test_domain):
 def test_call_to_wrap_methods_with_invariant_calls(test_domain):
     # Mock the `wrap_call_method_with_invariants` method
     #   Ensure it returns a domain service element
-    mock_wrap = mock.Mock(return_value=perform_something)
-    domain_service.wrap_methods_with_invariant_calls = mock_wrap
+    with mock.patch.object(
+        domain_service,
+        "wrap_methods_with_invariant_calls",
+        return_value=perform_something,
+    ) as mock_wrap:
+        test_domain.register(perform_something, part_of=[Aggregate1, Aggregate2])
 
-    test_domain.register(perform_something, part_of=[Aggregate1, Aggregate2])
-
-    mock_wrap.assert_called_once()
+        mock_wrap.assert_called_once()

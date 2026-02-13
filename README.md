@@ -12,12 +12,7 @@
 Protean is available on PyPI:
 
 ```console
-$ python -m pip install protean
-Collecting protean
-  Downloading protean-0.13.0-py3-none-any.whl.metadata (5.9 kB)
-...
-Installing collected packages: ...
-Successfully installed ...
+$ pip install protean
 ```
 
 Protean officially supports Python 3.11+.

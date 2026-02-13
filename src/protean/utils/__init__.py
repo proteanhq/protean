@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import types
 from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Optional, Type
@@ -108,6 +109,146 @@ class DomainObjects(Enum):
     VALUE_OBJECT = "VALUE_OBJECT"
 
 
+def _rebuild_function_with_new_class_cell(
+    func: types.FunctionType | None,
+    new_cls: type,
+    original_cls: type,
+) -> types.FunctionType | None:
+    """Rebuild a function with its ``__class__`` cell repointed to *new_cls*.
+
+    When Python compiles a method using zero-argument ``super()``, the compiler
+    creates a ``__class__`` free variable referencing the class being defined
+    (PEP 3135).  If the class is later recreated via ``type()``, the copied
+    methods still hold closure cells pointing to the *original* class.  This
+    helper creates a new function object with the corrected closure.
+
+    Returns ``None`` if no change was needed.
+    """
+    if func is None or not isinstance(func, types.FunctionType):
+        return None
+
+    freevars = func.__code__.co_freevars
+    if "__class__" not in freevars:
+        return None
+
+    closure = func.__closure__
+    if (
+        closure is None
+    ):  # pragma: no cover – defensive; CPython always provides closure when freevars exist
+        return None
+
+    idx = freevars.index("__class__")
+
+    try:
+        current_value = closure[idx].cell_contents
+    except ValueError:
+        # Cell is empty.
+        return None
+
+    if current_value is not original_cls:
+        return None
+
+    # Build a new closure, replacing only the __class__ cell.
+    new_closure = tuple(
+        types.CellType(new_cls) if i == idx else cell for i, cell in enumerate(closure)
+    )
+
+    new_func = types.FunctionType(
+        func.__code__,
+        func.__globals__,
+        func.__name__,
+        func.__defaults__,
+        new_closure,
+    )
+    new_func.__kwdefaults__ = func.__kwdefaults__
+    new_func.__dict__.update(func.__dict__)
+    new_func.__module__ = func.__module__
+    new_func.__doc__ = func.__doc__
+    new_func.__annotations__ = func.__annotations__
+
+    # Update __qualname__ to reference the new class.
+    old_qualname = func.__qualname__
+    old_prefix = original_cls.__qualname__ + "."
+    if old_qualname.startswith(old_prefix):
+        new_func.__qualname__ = (
+            new_cls.__qualname__ + "." + old_qualname[len(old_prefix) :]
+        )
+    else:
+        new_func.__qualname__ = old_qualname
+
+    return new_func
+
+
+def _fix_function_class_cell(
+    attr_value: object,
+    new_cls: type,
+    original_cls: type,
+) -> object | None:
+    """Fix ``__class__`` cell in a single class attribute.
+
+    Handles plain functions, ``classmethod``, ``staticmethod``, and
+    ``property`` descriptors.  Returns the fixed attribute, or ``None``
+    if no change was needed.
+    """
+    # classmethod / staticmethod wrappers
+    if isinstance(attr_value, (classmethod, staticmethod)):
+        fixed = _rebuild_function_with_new_class_cell(
+            attr_value.__func__, new_cls, original_cls
+        )
+        if fixed is not None:
+            return type(attr_value)(fixed)  # re-wrap with same descriptor type
+        return None
+
+    # property descriptors
+    if isinstance(attr_value, property):
+        changed = False
+        fget, fset, fdel = attr_value.fget, attr_value.fset, attr_value.fdel
+
+        fixed_fget = _rebuild_function_with_new_class_cell(fget, new_cls, original_cls)
+        if fixed_fget is not None:
+            fget, changed = fixed_fget, True
+
+        fixed_fset = _rebuild_function_with_new_class_cell(fset, new_cls, original_cls)
+        if fixed_fset is not None:
+            fset, changed = fixed_fset, True
+
+        fixed_fdel = _rebuild_function_with_new_class_cell(fdel, new_cls, original_cls)
+        if fixed_fdel is not None:
+            fdel, changed = fixed_fdel, True
+
+        if changed:
+            return property(fget, fset, fdel, attr_value.__doc__)
+        return None
+
+    # Plain functions
+    if isinstance(attr_value, types.FunctionType):
+        return _rebuild_function_with_new_class_cell(attr_value, new_cls, original_cls)
+
+    return None
+
+
+def _rebind_class_cells(new_cls: type, original_cls: type) -> None:
+    """Rebind ``__class__`` closure cells in methods after dynamic class creation.
+
+    When a class is recreated via ``type()`` (as in ``derive_element_class`` or
+    ``clone_class``), copied methods still hold ``__class__`` closure cells
+    pointing to the *original* class.  This breaks zero-argument ``super()``
+    (PEP 3135).  This function walks the new class's namespace and rewrites
+    those cells to reference *new_cls*.
+    """
+    for attr_name in list(vars(new_cls)):
+        attr_value = vars(new_cls)[attr_name]
+        fixed = _fix_function_class_cell(attr_value, new_cls, original_cls)
+        if fixed is not None:
+            try:
+                type.__setattr__(new_cls, attr_name, fixed)
+            except (
+                AttributeError,
+                TypeError,
+            ):  # pragma: no cover – guard for C-extension / read-only descriptors
+                pass
+
+
 def derive_element_class(
     element_cls: Type[Element] | Type[Any],
     base_cls: Type[Element],
@@ -122,12 +263,18 @@ def derive_element_class(
 
     if not issubclass(element_cls, base_cls):
         try:
+            original_cls = element_cls
+
             new_dict = element_cls.__dict__.copy()
             new_dict.pop("__dict__", None)  # Remove __dict__ to prevent recursion
 
             new_dict["meta_"] = Options(opts)
 
             element_cls = type(element_cls.__name__, (base_cls,), new_dict)
+
+            # Fix zero-argument super() calls: rebind __class__ closure cells
+            # from original_cls to the newly created element_cls (PEP 3135).
+            _rebind_class_cells(element_cls, original_cls)
         except BaseException as exc:
             logger.debug("Error during Element registration: %s", repr(exc))
             raise
@@ -269,6 +416,10 @@ def clone_class(cls: Element, new_name: str) -> Type[Element]:
     # Set the qualified name to match the class name
     # This ensures proper representation in debugging and introspection
     new_cls.__qualname__ = new_name
+
+    # Fix zero-argument super() calls: rebind __class__ closure cells
+    # from the original cls to new_cls (PEP 3135).
+    _rebind_class_cells(new_cls, cls)
 
     return new_cls
 
