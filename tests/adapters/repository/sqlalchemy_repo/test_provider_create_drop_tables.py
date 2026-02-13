@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from protean.adapters.repository.sqlalchemy import PostgresqlProvider
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.fields import String
 
 

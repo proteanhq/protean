@@ -3,7 +3,7 @@ from datetime import datetime
 
 from elasticsearch_dsl import Keyword, Text
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import invariant
 from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject

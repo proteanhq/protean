@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.entity import BaseEntity
+from protean.core.entity import _LegacyBaseEntity as BaseEntity
 from protean.exceptions import ValidationError
 from protean.fields import String
 

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.queryset import QuerySet
 from protean.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
 from protean.fields import DateTime, Integer, String

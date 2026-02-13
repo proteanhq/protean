@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.domain import Domain
 from protean.exceptions import ConfigurationError
 from protean.fields import Auto

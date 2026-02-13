@@ -1,7 +1,7 @@
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.application_service import BaseApplicationService
 from protean.core.command import _LegacyBaseCommand as BaseCommand
-from protean.core.entity import BaseEntity
+from protean.core.entity import _LegacyBaseEntity as BaseEntity
 from protean.fields import String
 from protean.fields.basic import Identifier
 from protean.utils.reflection import has_id_field

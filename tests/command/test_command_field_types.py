@@ -1,8 +1,8 @@
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.command import _LegacyBaseCommand as BaseCommand
-from protean.core.entity import BaseEntity
+from protean.core.entity import _LegacyBaseEntity as BaseEntity
 from protean.exceptions import IncorrectUsageError
 from protean.fields import HasMany, HasOne, String
 

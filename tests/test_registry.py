@@ -4,8 +4,8 @@ from enum import Enum
 import inflection
 import pytest
 
-from protean.core.aggregate import BaseAggregate
-from protean.core.entity import BaseEntity
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.entity import _LegacyBaseEntity as BaseEntity
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import NotSupportedError
 from protean.fields import DateTime, Identifier, Integer, String

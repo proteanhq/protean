@@ -1,4 +1,4 @@
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.command import _LegacyBaseCommand as BaseCommand
 from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject

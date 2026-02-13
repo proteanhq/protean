@@ -1,6 +1,6 @@
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.command import _LegacyBaseCommand as BaseCommand
 from protean.exceptions import IncorrectUsageError, InvalidDataError, NotSupportedError
 from protean.fields import Integer, String

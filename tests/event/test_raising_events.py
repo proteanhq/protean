@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.fields import String
 from protean.fields.basic import Identifier

@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from protean import current_domain
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.core.projection import BaseProjection
 from protean.core.projector import BaseProjector, on

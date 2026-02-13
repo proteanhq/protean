@@ -1,4 +1,4 @@
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.email import BaseEmail
 from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.core.subscriber import BaseSubscriber

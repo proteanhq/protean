@@ -5,7 +5,7 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import Mock, patch
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.domain import Domain

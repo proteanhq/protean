@@ -2,7 +2,7 @@ from enum import Enum
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate, apply
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate, apply
 from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import Identifier, String

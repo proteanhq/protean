@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.entity import invariant
 from protean.core.repository import BaseRepository
 from protean.core.unit_of_work import UnitOfWork

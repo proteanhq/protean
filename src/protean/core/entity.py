@@ -1,11 +1,18 @@
 """Entity Functionality and Classes"""
 
+from __future__ import annotations
+
 import functools
 import inspect
 import logging
 from collections import defaultdict
 from functools import partial
+from typing import Any, ClassVar
 
+from pydantic import BaseModel, ConfigDict, PrivateAttr
+from pydantic import ValidationError as PydanticValidationError
+
+from protean.core.value_object import _PydanticFieldShim
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -26,6 +33,7 @@ from protean.utils.eventing import DomainMeta, Metadata, MessageHeaders, Message
 from protean.utils.globals import current_domain
 from protean.utils.reflection import (
     _FIELDS,
+    _ID_FIELD_NAME,
     reference_fields,
     data_fields,
     declared_fields,
@@ -91,7 +99,7 @@ class _EntityState:
     fields_cache = _FieldsCacheDescriptor()
 
 
-class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
+class _LegacyBaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
     """The Base class for Protean-Compliant Domain Entities.
 
     Provides helper methods to custom define entity attributes, and query attribute names
@@ -657,6 +665,300 @@ class BaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
                             item._set_root_and_owner(self._root, self)
 
 
+# ---------------------------------------------------------------------------
+# New Pydantic-based BaseEntity
+# ---------------------------------------------------------------------------
+class BaseEntity(BaseModel, OptionsMixin):
+    """Pydantic-based base class for Entity domain elements.
+
+    Mutable, identity-based equality, with invariant checking.
+    Uses Pydantic v2 BaseModel with ``validate_assignment=True`` for field
+    declaration, validation, and mutation.
+
+    Fields are declared using standard Python type annotations with optional
+    ``pydantic.Field`` constraints.  Identity fields must be annotated with
+    ``json_schema_extra={"identifier": True}``.
+    """
+
+    element_type: ClassVar[str] = DomainObjects.ENTITY
+
+    model_config = ConfigDict(
+        validate_assignment=True,
+        extra="forbid",
+    )
+
+    # Internal state (PrivateAttr — excluded from model_dump/schema)
+    _initialized: bool = PrivateAttr(default=False)
+    _state: _EntityState = PrivateAttr(default_factory=_EntityState)
+    _root: Any = PrivateAttr(default=None)
+    _owner: Any = PrivateAttr(default=None)
+    _temp_cache: Any = PrivateAttr(
+        default_factory=lambda: defaultdict(lambda: defaultdict(dict))
+    )
+    _events: list = PrivateAttr(default_factory=list)
+    _disable_invariant_checks: bool = PrivateAttr(default=False)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> BaseEntity:
+        if cls is BaseEntity:
+            raise NotSupportedError("BaseEntity cannot be instantiated")
+        return super().__new__(cls)
+
+    @classmethod
+    def _default_options(cls) -> list[tuple[str, Any]]:
+        return [
+            ("aggregate_cluster", None),
+            ("auto_add_id_field", True),
+            ("database_model", None),
+            ("part_of", None),
+            ("provider", "default"),
+            ("schema_name", inflection.underscore(cls.__name__)),
+            ("limit", 100),
+        ]
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+
+        # Initialize invariant storage
+        setattr(cls, "_invariants", defaultdict(dict))
+        # Set empty __container_fields__ as placeholder (populated later by __pydantic_init_subclass__)
+        setattr(cls, _FIELDS, {})
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """Called by Pydantic AFTER model_fields are fully populated."""
+        super().__pydantic_init_subclass__(**kwargs)
+
+        # Build __container_fields__ bridge from Pydantic model_fields
+        fields_dict: dict[str, _PydanticFieldShim] = {}
+        for fname, finfo in cls.model_fields.items():
+            fields_dict[fname] = _PydanticFieldShim(fname, finfo, finfo.annotation)
+        setattr(cls, _FIELDS, fields_dict)
+
+        # Track identity field
+        if not cls.meta_.abstract:
+            cls.__track_id_field()
+
+    @classmethod
+    def __track_id_field(cls) -> None:
+        """Find the field marked ``identifier=True`` and record its name."""
+        try:
+            id_fld = next(
+                field
+                for _, field in getattr(cls, _FIELDS, {}).items()
+                if getattr(field, "identifier", False)
+            )
+            setattr(cls, _ID_FIELD_NAME, id_fld.field_name)
+        except StopIteration:
+            pass
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        # Pop internal kwargs that should not reach Pydantic
+        owner = kwargs.pop("_owner", None)
+        root = kwargs.pop("_root", None)
+
+        # Support template dict pattern: Entity({"key": "val"}, key2="val2")
+        if args:
+            for template in args:
+                if not isinstance(template, dict):
+                    raise AssertionError(
+                        f"Positional argument {template} passed must be a dict. "
+                        f"This argument serves as a template for loading common "
+                        f"values.",
+                    )
+                kwargs.update(template)
+
+        try:
+            super().__init__(**kwargs)
+        except PydanticValidationError as e:
+            from protean.core.value_object import _convert_pydantic_errors
+
+            raise ValidationError(_convert_pydantic_errors(e))
+
+        # Set hierarchy references
+        if owner is not None:
+            self._owner = owner
+        if root is not None:
+            self._root = root
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.meta_.abstract is True:
+            raise NotSupportedError(
+                f"{self.__class__.__name__} class has been marked abstract"
+                f" and cannot be instantiated"
+            )
+
+        # Discover invariants from MRO
+        self._discover_invariants()
+
+        self.defaults()
+
+        # Run post-invariants after init
+        errors = self._run_invariants("post", return_errors=True) or {}
+        if errors:
+            raise ValidationError(errors)
+
+        self._initialized = True
+
+    def _discover_invariants(self) -> None:
+        """Scan class MRO for @invariant decorated methods and register them."""
+        for klass in type(self).__mro__:
+            for name, attr in vars(klass).items():
+                if callable(attr) and hasattr(attr, "_invariant"):
+                    self._invariants[attr._invariant][name] = attr
+
+    def defaults(self) -> None:
+        """Placeholder for defaults.
+
+        Override in subclass when an attribute's default depends on other attribute values.
+        """
+
+    # ------------------------------------------------------------------
+    # Invariant checks
+    # ------------------------------------------------------------------
+    def _run_invariants(
+        self, stage: str, return_errors: bool = False
+    ) -> dict[str, list[str]] | None:
+        """Run invariants for a given stage. Collect and return/raise errors."""
+        if self._disable_invariant_checks:
+            return {} if return_errors else None
+
+        errors: dict[str, list[str]] = defaultdict(list)
+
+        for invariant_method in self._invariants.get(stage, {}).values():
+            try:
+                invariant_method(self)
+            except ValidationError as err:
+                for field_name in err.messages:
+                    errors[field_name].extend(err.messages[field_name])
+
+        if return_errors:
+            return dict(errors) if errors else {}
+
+        if errors:
+            raise ValidationError(errors)
+
+        return None
+
+    def _precheck(self, return_errors: bool = False):
+        """Invariant checks performed before entity changes."""
+        return self._run_invariants("pre", return_errors=return_errors)
+
+    def _postcheck(self, return_errors: bool = False):
+        """Invariant checks performed after initialization and attribute changes."""
+        return self._run_invariants("post", return_errors=return_errors)
+
+    # ------------------------------------------------------------------
+    # Mutation with validation + invariant checks
+    # ------------------------------------------------------------------
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in self.__class__.model_fields and getattr(self, "_initialized", False):
+            # Determine the target for invariant checks: aggregate root or self
+            target = self._root if self._root is not None else self
+
+            # Pre-check invariants
+            target._precheck()
+
+            # Delegate to Pydantic (validates via validate_assignment)
+            try:
+                super().__setattr__(name, value)
+            except PydanticValidationError as e:
+                from protean.core.value_object import _convert_pydantic_errors
+
+                raise ValidationError(_convert_pydantic_errors(e))
+
+            # Post-check invariants
+            target._postcheck()
+
+            # Mark entity state as changed
+            self._state.mark_changed()
+        else:
+            super().__setattr__(name, value)
+
+    # ------------------------------------------------------------------
+    # Hierarchy management
+    # ------------------------------------------------------------------
+    def _set_root_and_owner(self, root: Any, owner: Any) -> None:
+        """Set the root and owner entities.
+
+        New Pydantic entities do not support associations, so no recursive
+        descent into child entities is needed.
+        """
+        self._root = root
+        self._owner = owner
+
+    # ------------------------------------------------------------------
+    # Event raising (delegates to aggregate root)
+    # ------------------------------------------------------------------
+    def raise_(self, event: Any) -> None:
+        """Raise an event in the aggregate cluster.
+
+        The event is always registered on the aggregate root, irrespective
+        of where it is raised in the entity cluster.
+        """
+        if event.meta_.part_of != self._root.__class__:
+            raise ConfigurationError(
+                f"Event `{event.__class__.__name__}` is not associated with"
+                f" aggregate `{self._root.__class__.__name__}`"
+            )
+
+        # Delegate to the root aggregate's raise_ (BaseAggregate overrides this)
+        self._root.raise_(event)
+
+    # ------------------------------------------------------------------
+    # Identity-based equality
+    # ------------------------------------------------------------------
+    def __eq__(self, other: object) -> bool:
+        if type(other) is not type(self):
+            return False
+
+        id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
+        if id_field_name is None:
+            return False
+
+        return getattr(self, id_field_name) == getattr(other, id_field_name)
+
+    def __hash__(self) -> int:
+        id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
+        if id_field_name is None:
+            return id(self)
+        return hash(getattr(self, id_field_name))
+
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
+    def to_dict(self) -> dict[str, Any]:
+        """Return entity data as a dictionary."""
+        result: dict[str, Any] = {}
+        for fname, shim in getattr(self, _FIELDS, {}).items():
+            result[fname] = shim.as_dict(getattr(self, fname, None))
+        return result
+
+    @property
+    def state_(self) -> _EntityState:
+        """Access entity lifecycle state."""
+        return self._state
+
+    @state_.setter
+    def state_(self, value: _EntityState) -> None:
+        self._state = value
+
+    def __repr__(self) -> str:
+        return "<%s: %s>" % (self.__class__.__name__, self)
+
+    def __str__(self) -> str:
+        id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
+        if id_field_name:
+            identifier = getattr(self, id_field_name)
+            return "%s object (%s)" % (
+                self.__class__.__name__,
+                "{}: {}".format(id_field_name, identifier),
+            )
+        return "%s object" % self.__class__.__name__
+
+
+# ---------------------------------------------------------------------------
+# Factory
+# ---------------------------------------------------------------------------
 def entity_factory(element_cls, domain, **opts):
     """Factory method to create an entity class.
 
@@ -666,57 +968,78 @@ def entity_factory(element_cls, domain, **opts):
     if "limit" in opts and opts["limit"] is not None and opts["limit"] < 0:
         opts["limit"] = None
 
+    # Determine the correct base class
+    if issubclass(element_cls, BaseEntity):
+        base_cls = BaseEntity
+    else:
+        base_cls = _LegacyBaseEntity
+
     # Derive the entity class from the base entity class
-    element_cls = derive_element_class(element_cls, BaseEntity, **opts)
+    element_cls = derive_element_class(element_cls, base_cls, **opts)
 
     if not element_cls.meta_.part_of:
         raise IncorrectUsageError(
             f"Entity `{element_cls.__name__}` needs to be associated with an Aggregate"
         )
 
-    # Set up reference fields
-    if not element_cls.meta_.abstract:
-        reference_field = None
-        for field_obj in declared_fields(element_cls).values():
-            if isinstance(field_obj, Reference):
-                # An explicit `Reference` field is already present
-                reference_field = field_obj
-                break
+    # Reference auto-creation and shadow fields only apply to legacy entities
+    if issubclass(element_cls, _LegacyBaseEntity):
+        # Set up reference fields
+        if not element_cls.meta_.abstract:
+            reference_field = None
+            for field_obj in declared_fields(element_cls).values():
+                if isinstance(field_obj, Reference):
+                    # An explicit `Reference` field is already present
+                    reference_field = field_obj
+                    break
 
-        if reference_field is None:
-            # If no explicit Reference field is present, create one
-            reference_field = Reference(element_cls.meta_.part_of)
+            if reference_field is None:
+                # If no explicit Reference field is present, create one
+                reference_field = Reference(element_cls.meta_.part_of)
 
-            # If part_of is a string, set field name to inflection.underscore(part_of)
-            #   Else, if it is a class, extract class name and set field name to inflection.underscore(class_name)
-            if isinstance(element_cls.meta_.part_of, str):
-                field_name = inflection.underscore(element_cls.meta_.part_of)
-            else:
-                field_name = inflection.underscore(element_cls.meta_.part_of.__name__)
+                # If part_of is a string, set field name to inflection.underscore(part_of)
+                #   Else, if it is a class, extract class name and set field name to inflection.underscore(class_name)
+                if isinstance(element_cls.meta_.part_of, str):
+                    field_name = inflection.underscore(element_cls.meta_.part_of)
+                else:
+                    field_name = inflection.underscore(
+                        element_cls.meta_.part_of.__name__
+                    )
 
-            setattr(element_cls, field_name, reference_field)
+                setattr(element_cls, field_name, reference_field)
 
-            # Set the name of the field on itself
-            reference_field.__set_name__(element_cls, field_name)
+                # Set the name of the field on itself
+                reference_field.__set_name__(element_cls, field_name)
 
-            # FIXME Centralize this logic to add fields dynamically to _FIELDS
-            field_objects = getattr(element_cls, _FIELDS)
-            field_objects[field_name] = reference_field
-            setattr(element_cls, _FIELDS, field_objects)
+                # FIXME Centralize this logic to add fields dynamically to _FIELDS
+                field_objects = getattr(element_cls, _FIELDS)
+                field_objects[field_name] = reference_field
+                setattr(element_cls, _FIELDS, field_objects)
 
-        # Set up shadow fields for Reference fields
-        for _, field in fields(element_cls).items():
-            if isinstance(field, Reference):
-                shadow_field_name, shadow_field = field.get_shadow_field()
-                shadow_field.__set_name__(element_cls, shadow_field_name)
+            # Set up shadow fields for Reference fields
+            for _, field in fields(element_cls).items():
+                if isinstance(field, Reference):
+                    shadow_field_name, shadow_field = field.get_shadow_field()
+                    shadow_field.__set_name__(element_cls, shadow_field_name)
 
     # Iterate through methods marked as `@invariant` and record them for later use
-    methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
-    for method_name, method in methods:
-        if not (
-            method_name.startswith("__") and method_name.endswith("__")
-        ) and hasattr(method, "_invariant"):
-            element_cls._invariants[method._invariant][method_name] = method
+    #   Uses MRO scan for Pydantic entities, inspect.getmembers for legacy
+    if issubclass(element_cls, BaseEntity):
+        for klass in element_cls.__mro__:
+            for method_name, method in vars(klass).items():
+                if (
+                    not (method_name.startswith("__") and method_name.endswith("__"))
+                    and callable(method)
+                    and hasattr(method, "_invariant")
+                ):
+                    element_cls._invariants[method._invariant][method_name] = method
+    else:
+        methods = inspect.getmembers(element_cls, predicate=inspect.isroutine)
+        for method_name, method in methods:
+            if not (
+                method_name.startswith("__") and method_name.endswith("__")
+            ) and hasattr(method, "_invariant"):
+                element_cls._invariants[method._invariant][method_name] = method
 
     return element_cls
 

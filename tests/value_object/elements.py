@@ -6,7 +6,7 @@ from typing import Annotated
 from pydantic import Field, field_validator
 
 from protean import invariant
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import String, ValueObject

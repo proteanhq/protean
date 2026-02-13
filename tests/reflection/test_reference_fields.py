@@ -1,7 +1,7 @@
 import pytest
 
-from protean.core.aggregate import BaseAggregate
-from protean.core.entity import BaseEntity
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.entity import _LegacyBaseEntity as BaseEntity
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, Reference, String
 from protean.utils.reflection import reference_fields

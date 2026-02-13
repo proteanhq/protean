@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from protean.core.aggregate import BaseAggregate
+from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
 from protean.core.event import _LegacyBaseEvent as BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
