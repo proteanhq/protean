@@ -249,11 +249,105 @@ def _rebind_class_cells(new_cls: type, original_cls: type) -> None:
                 pass
 
 
+def _has_legacy_data_fields(cls: type) -> bool:
+    """Check if a class uses legacy data field descriptors (String, Integer, etc.).
+
+    Returns True if the class has any attribute that is an instance of
+    ``protean.fields.base.Field`` but is NOT a Reference or ValueObject
+    (which are dual-compatible with both legacy and Pydantic classes).
+
+    Association descriptors (HasMany, HasOne) inherit from ``Association``,
+    not ``Field``, and are excluded automatically.
+    """
+    from protean.fields.association import Reference
+    from protean.fields.base import Field as LegacyDataField
+    from protean.fields.embedded import ValueObject
+
+    for attr in cls.__dict__.values():
+        if isinstance(attr, LegacyDataField) and not isinstance(
+            attr, (Reference, ValueObject)
+        ):
+            return True
+    return False
+
+
+def _prepare_pydantic_namespace(
+    new_dict: dict,
+    base_cls: type,
+    opts: dict,
+) -> None:
+    """Prepare a class namespace dict for dynamic Pydantic class creation.
+
+    When ``derive_element_class`` routes a plain (non-Pydantic) class to a
+    Pydantic base, the namespace must be adjusted:
+
+    1. ``meta_`` must have a ``ClassVar`` annotation (Pydantic rejects
+       non-annotated, non-ignored attributes).
+    2. For entity/aggregate base classes: if no identifier field is declared
+       and ``auto_add_id_field`` is not False, inject a Pydantic-compatible
+       auto-id annotation + default.
+    """
+    from typing import Annotated, ClassVar, get_args, get_origin
+
+    from pydantic import Field as PydanticField
+    from pydantic.fields import FieldInfo
+
+    from protean.utils.container import Options
+
+    annots = new_dict.get("__annotations__", {}).copy()
+
+    # 1. Annotate meta_ as ClassVar so Pydantic ignores it
+    annots["meta_"] = ClassVar[Options]
+
+    # 2. Auto-id injection for entity/aggregate types
+    needs_identity = any(
+        name == "auto_add_id_field" for name, _ in base_cls._default_options()
+    )
+    auto_add = opts.get("auto_add_id_field", True)
+
+    if needs_identity and auto_add is not False:
+        # Check if an identifier is already declared
+        has_id = False
+        for attr_name, annotation in annots.items():
+            if attr_name.startswith("_"):
+                continue
+
+            # Check Annotated[type, Field(..., json_schema_extra={"identifier": True})]
+            if get_origin(annotation) is Annotated:
+                for arg in get_args(annotation)[1:]:
+                    if isinstance(arg, FieldInfo):
+                        extra = getattr(arg, "json_schema_extra", None) or {}
+                        if isinstance(extra, dict) and extra.get("identifier"):
+                            has_id = True
+                            break
+            if has_id:
+                break
+
+            # Check direct default: field_name = Field(json_schema_extra={"identifier": True})
+            attr_val = new_dict.get(attr_name)
+            if isinstance(attr_val, FieldInfo):
+                extra = getattr(attr_val, "json_schema_extra", None) or {}
+                if isinstance(extra, dict) and extra.get("identifier"):
+                    has_id = True
+                    break
+
+        if not has_id:
+            annots["id"] = str
+            new_dict["id"] = PydanticField(
+                default_factory=lambda: str(uuid4()),
+                json_schema_extra={"identifier": True},
+            )
+
+    new_dict["__annotations__"] = annots
+
+
 def derive_element_class(
     element_cls: Type[Element] | Type[Any],
     base_cls: Type[Element],
     **opts: dict[str, str | bool],
 ) -> Type[Element]:
+    from pydantic import BaseModel
+
     from protean.utils.container import Options
 
     # Ensure options being passed in are known
@@ -269,6 +363,11 @@ def derive_element_class(
             new_dict.pop("__dict__", None)  # Remove __dict__ to prevent recursion
 
             new_dict["meta_"] = Options(opts)
+
+            # When routing to a Pydantic base, prepare the namespace so that
+            # Pydantic's ModelMetaclass can process it correctly.
+            if issubclass(base_cls, BaseModel):
+                _prepare_pydantic_namespace(new_dict, base_cls, opts)
 
             element_cls = type(element_cls.__name__, (base_cls,), new_dict)
 
@@ -425,6 +524,7 @@ def clone_class(cls: Element, new_name: str) -> Type[Element]:
 
 
 __all__ = [
+    "_has_legacy_data_fields",
     "Cache",
     "convert_str_values_to_list",
     "Database",

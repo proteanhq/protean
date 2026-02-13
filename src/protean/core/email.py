@@ -11,6 +11,7 @@ from protean.exceptions import ValidationError
 from protean.fields import Dict, List, String, Text
 from protean.utils import (
     DomainObjects,
+    _has_legacy_data_fields,
     convert_str_values_to_list,
     derive_element_class,
 )
@@ -222,10 +223,18 @@ class BaseEmail(BaseModel, OptionsMixin):
 # Factory
 # ---------------------------------------------------------------------------
 def email_factory(element_cls: type, domain: Any, **opts: Any) -> type:
-    # Determine the correct base class
+    # Determine the correct base class:
+    # 1. Explicit Pydantic inheritance → Pydantic
+    # 2. Already inherits from legacy base → Legacy
+    # 3. Has legacy data fields (String, Integer, etc.) → Legacy
+    # 4. Otherwise (annotation-based or empty) → Pydantic
     if issubclass(element_cls, BaseEmail):
         base_cls = BaseEmail
-    else:
+    elif issubclass(element_cls, _LegacyBaseEmail):
         base_cls = _LegacyBaseEmail
+    elif _has_legacy_data_fields(element_cls):
+        base_cls = _LegacyBaseEmail
+    else:
+        base_cls = BaseEmail
 
     return derive_element_class(element_cls, base_cls, **opts)

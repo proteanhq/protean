@@ -17,7 +17,7 @@ from protean.exceptions import (
 )
 from protean.fields import Reference, ValueObject
 from protean.fields.association import Association
-from protean.utils import DomainObjects, derive_element_class
+from protean.utils import DomainObjects, _has_legacy_data_fields, derive_element_class
 from protean.utils.container import BaseContainer, OptionsMixin, fields
 from protean.utils.reflection import _FIELDS
 
@@ -478,12 +478,18 @@ class BaseValueObject(BaseModel, OptionsMixin):
 # ---------------------------------------------------------------------------
 def value_object_factory(element_cls: type, domain: Any, **opts: Any) -> type:
     # Determine the correct base class:
-    # - If already a subclass of BaseValueObject (Pydantic), use that
-    # - Otherwise use _LegacyBaseValueObject (old-style field descriptors)
+    # 1. Explicit Pydantic inheritance → Pydantic
+    # 2. Already inherits from legacy base → Legacy
+    # 3. Has legacy data fields (String, Integer, etc.) → Legacy
+    # 4. Otherwise (annotation-based or empty) → Pydantic
     if issubclass(element_cls, BaseValueObject):
         base_cls = BaseValueObject
-    else:
+    elif issubclass(element_cls, _LegacyBaseValueObject):
         base_cls = _LegacyBaseValueObject
+    elif _has_legacy_data_fields(element_cls):
+        base_cls = _LegacyBaseValueObject
+    else:
+        base_cls = BaseValueObject
 
     element_cls = derive_element_class(element_cls, base_cls, **opts)
 
