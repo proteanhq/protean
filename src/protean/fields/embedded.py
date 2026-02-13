@@ -69,9 +69,9 @@ class ValueObject(Field):
 
     def _validate_value_object_cls(self, value_object_cls):
         """Validate that the value object class is a subclass of BaseValueObject"""
-        from protean.core.value_object import BaseValueObject
+        from protean.core.value_object import BaseValueObject, _LegacyBaseValueObject
 
-        if not issubclass(value_object_cls, BaseValueObject):
+        if not issubclass(value_object_cls, (BaseValueObject, _LegacyBaseValueObject)):
             raise IncorrectUsageError(
                 f"`{value_object_cls.__name__}` is not a valid Value Object "
                 "and cannot be embedded in a Value Object field"

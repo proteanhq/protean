@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 from enum import Enum
+from typing import Annotated
+
+from pydantic import Field, field_validator
 
 from protean import invariant
 from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
-from protean.fields import Float, Identifier, Integer, String, ValueObject
+from protean.fields import String, ValueObject
 
 
 class Email(BaseValueObject):
@@ -14,7 +19,7 @@ class Email(BaseValueObject):
     """
 
     # This is the external facing data attribute
-    address = String(max_length=254, required=True)
+    address: Annotated[str, Field(max_length=254)]
 
     @classmethod
     def from_address(cls, address):
@@ -65,8 +70,20 @@ class Balance(BaseValueObject):
     * amount - a float value
     """
 
-    currency = String(max_length=3, choices=Currency)
-    amount = Float()
+    currency: Annotated[str, Field(max_length=3)] | None = None
+    amount: float | None = None
+
+    @field_validator("currency")
+    @classmethod
+    def validate_currency_choices(cls, v: str | None) -> str | None:
+        if v is not None:
+            valid = {c.value for c in Currency}
+            if v not in valid:
+                raise ValueError(
+                    f"Value '{v}' is not a valid choice. "
+                    f"Valid choices are: {sorted(valid)}"
+                )
+        return v
 
     @invariant.post
     def validate_balance_cannot_be_less_than_1_trillion(self):
@@ -75,7 +92,6 @@ class Balance(BaseValueObject):
             raise ValidationError({"amount": ["cannot be less than 1 Trillion"]})
 
     def replace(self, **kwargs):
-        # FIXME Find a way to do this generically and move method to `BaseValueObject`
         currency = kwargs.pop("currency", None)
         amount = kwargs.pop("amount", None)
         return Balance(currency=currency or self.currency, amount=amount or self.amount)
@@ -92,9 +108,21 @@ class BuildingStatus(Enum):
 
 
 class Building(BaseValueObject):
-    name = String(max_length=50)
-    floors = Integer()
-    status = String(choices=BuildingStatus)
+    name: Annotated[str, Field(max_length=50)] | None = None
+    floors: int | None = None
+    status: str | None = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status_choices(cls, v: str | None) -> str | None:
+        if v is not None:
+            valid = {c.value for c in BuildingStatus}
+            if v not in valid:
+                raise ValueError(
+                    f"Value '{v}' is not a valid choice. "
+                    f"Valid choices are: {sorted(valid)}"
+                )
+        return v
 
     def defaults(self):
         if not self.status:
@@ -105,13 +133,21 @@ class Building(BaseValueObject):
 
     @invariant.post
     def check_building_status_based_on_floors(self):
-        if self.floors >= 4 and self.status != BuildingStatus.DONE.value:
+        if (
+            self.floors is not None
+            and self.floors >= 4
+            and self.status != BuildingStatus.DONE.value
+        ):
             raise ValidationError({"status": ["should be DONE"]})
 
 
 class PolymorphicConnection(BaseValueObject):
-    connected_id = Identifier(referenced_as="connected_id")
-    connected_type = String(referenced_as="connected_type", max_length=15)
+    connected_id: str | None = Field(
+        default=None, json_schema_extra={"referenced_as": "connected_id"}
+    )
+    connected_type: Annotated[str, Field(max_length=15)] | None = Field(
+        default=None, json_schema_extra={"referenced_as": "connected_type"}
+    )
 
 
 class PolymorphicOwner(BaseAggregate):

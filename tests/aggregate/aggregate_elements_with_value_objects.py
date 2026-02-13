@@ -1,7 +1,7 @@
 from enum import Enum
 
 from protean.core.aggregate import BaseAggregate
-from protean.core.value_object import BaseValueObject
+from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
 from protean.fields import String, ValueObject
 
 

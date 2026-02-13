@@ -6,7 +6,7 @@ from elasticsearch_dsl import Keyword, Text
 from protean.core.aggregate import BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import invariant
-from protean.core.value_object import BaseValueObject
+from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import DateTime, Integer, String, ValueObject
 from protean.fields import Text as ProteanText

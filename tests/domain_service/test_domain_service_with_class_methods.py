@@ -8,7 +8,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.domain_service import BaseDomainService
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
-from protean.core.value_object import BaseValueObject
+from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
 from protean.fields import (
     DateTime,
     Float,

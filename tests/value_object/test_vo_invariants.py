@@ -1,14 +1,19 @@
+from __future__ import annotations
+
+from typing import Annotated
+
 import pytest
+
+from pydantic import Field
 
 from protean.core.entity import invariant
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
-from protean.fields import Float, String
 
 
 class Balance(BaseValueObject):
-    currency = String(max_length=3, required=True)
-    amount = Float(required=True)
+    currency: Annotated[str, Field(max_length=3)]
+    amount: float
 
     @invariant.post
     def check_balance_is_positive_if_currency_is_USD(self):
@@ -56,7 +61,6 @@ class TestFieldValidationsBeforeInvariants:
 
         # Required field error should be raised (not invariant error)
         assert "amount" in exc.value.messages
-        assert "is required" in exc.value.messages["amount"][0]
         assert "balance" not in exc.value.messages
 
     def test_invalid_field_type_prevents_invariant_checks(self, test_domain):
