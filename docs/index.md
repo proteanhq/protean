@@ -12,7 +12,7 @@ infrastructure and zero boilerplate.
 
 [Get Started](./guides/getting-started/quickstart.md){ .md-button .md-button--primary }
 [Tutorial](./guides/getting-started/tutorial/index.md){ .md-button }
-[All Contents](./contents.md){ .md-button }
+[All Content](./contents.md){ .md-button }
 
 ---
 
