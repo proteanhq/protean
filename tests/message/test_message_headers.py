@@ -93,26 +93,26 @@ class TestTraceParent:
             result = TraceParent.build(invalid_format)
             assert result is None
 
-    def test_traceparent_to_dict_sampled(self):
-        """Test to_dict returns proper formatted string when sampled=True"""
+    def test_traceparent_to_w3c_sampled(self):
+        """Test to_w3c returns proper formatted string when sampled=True"""
         traceparent = TraceParent(
             trace_id="1234567890abcdef1234567890abcdef",
             parent_id="abcdef1234567890",
             sampled=True,
         )
 
-        result = traceparent.to_dict()
+        result = traceparent.to_w3c()
         assert result == "00-1234567890abcdef1234567890abcdef-abcdef1234567890-01"
 
-    def test_traceparent_to_dict_unsampled(self):
-        """Test to_dict returns proper formatted string when sampled=False"""
+    def test_traceparent_to_w3c_unsampled(self):
+        """Test to_w3c returns proper formatted string when sampled=False"""
         traceparent = TraceParent(
             trace_id="1234567890abcdef1234567890abcdef",
             parent_id="abcdef1234567890",
             sampled=False,
         )
 
-        result = traceparent.to_dict()
+        result = traceparent.to_w3c()
         assert result == "00-1234567890abcdef1234567890abcdef-abcdef1234567890-00"
 
     def test_traceparent_correlation_id_property(self):
@@ -143,12 +143,12 @@ class TestTraceParent:
 
         assert traceparent.sampled is False
 
-    def test_traceparent_roundtrip_build_to_dict(self):
-        """Test that build() and to_dict() are inverse operations"""
+    def test_traceparent_roundtrip_build_to_w3c(self):
+        """Test that build() and to_w3c() are inverse operations"""
         original_str = "00-1234567890abcdef1234567890abcdef-abcdef1234567890-01"
 
         traceparent = TraceParent.build(original_str)
-        result_str = traceparent.to_dict()
+        result_str = traceparent.to_w3c()
 
         assert result_str == original_str
 

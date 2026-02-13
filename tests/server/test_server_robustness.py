@@ -536,7 +536,9 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
         type=sync_event._metadata.headers.type,
         stream="test_stream-1",
     )
-    new_metadata = Metadata(sync_event._metadata.to_dict(), headers=new_headers)
+    new_metadata = Metadata(
+        **{**sync_event._metadata.to_dict(), "headers": new_headers}
+    )
     new_sync_event = EmailSent(
         id=sync_event.id, email=sync_event.email, _metadata=new_metadata
     )
@@ -545,7 +547,7 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
     # Create an asynchronous message (should be processed)
     async_event = EmailSent(id=str(uuid4()), email="async@example.com")
     new_domain_meta = DomainMeta(
-        async_event._metadata.domain.to_dict(), asynchronous=False
+        **{**async_event._metadata.domain.to_dict(), "asynchronous": False}
     )
     new_headers = MessageHeaders.build(
         id=async_event.id,
@@ -554,7 +556,11 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
         stream="test_stream-2",
     )
     new_metadata = Metadata(
-        async_event._metadata.to_dict(), domain=new_domain_meta, headers=new_headers
+        **{
+            **async_event._metadata.to_dict(),
+            "domain": new_domain_meta,
+            "headers": new_headers,
+        }
     )
     new_async_event = EmailSent(
         id=async_event.id, email=async_event.email, _metadata=new_metadata
@@ -619,8 +625,10 @@ async def test_subscription_exception_handling_with_position_updates(
 
     # Update the asynchronous flag in the domain metadata
     old_domain_meta = message.metadata.domain
-    new_domain_meta = DomainMeta(old_domain_meta.to_dict(), asynchronous=True)
-    message.metadata = Metadata(message.metadata.to_dict(), domain=new_domain_meta)
+    new_domain_meta = DomainMeta(**{**old_domain_meta.to_dict(), "asynchronous": True})
+    message.metadata = Metadata(
+        **{**message.metadata.to_dict(), "domain": new_domain_meta}
+    )
 
     # Process the batch
     await subscription.process_batch([message])

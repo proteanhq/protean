@@ -538,12 +538,14 @@ class _LegacyBaseEntity(OptionsMixin, IdentityMixin, BaseContainer):
 
         # Build domain metadata
         domain_meta = DomainMeta(
-            event._metadata.domain.to_dict(),
-            # FIXME Should Fact Events be a different category?
-            stream_category=self._root.meta_.stream_category,
-            sequence_id=sequence_id,
-            asynchronous=current_domain.config["event_processing"]
-            == Processing.ASYNC.value,
+            **{
+                **event._metadata.domain.to_dict(),
+                # FIXME Should Fact Events be a different category?
+                "stream_category": self._root.meta_.stream_category,
+                "sequence_id": sequence_id,
+                "asynchronous": current_domain.config["event_processing"]
+                == Processing.ASYNC.value,
+            }
         )
 
         metadata = Metadata(

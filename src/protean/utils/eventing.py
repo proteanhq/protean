@@ -4,13 +4,14 @@ import hashlib
 import json
 import logging
 from collections import defaultdict
+from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, Union, Optional
 
-from pydantic import BaseModel, ConfigDict, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field as PydanticField, PrivateAttr
 
 from protean.core.value_object import (
-    _LegacyBaseValueObject as BaseValueObject,
+    BaseValueObject,
     _PydanticFieldShim,
 )
 from protean.exceptions import (
@@ -19,8 +20,7 @@ from protean.exceptions import (
     InvalidDataError,
     DeserializationError,
 )
-from protean.fields import Boolean, DateTime, String, ValueObject, Dict
-from protean.fields.basic import Integer
+from protean.fields import Dict, ValueObject
 from protean.fields.association import Association, Reference
 from protean.utils.container import BaseContainer, OptionsMixin
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, declared_fields, fields
@@ -42,8 +42,8 @@ class MessageType(Enum):
 class MessageEnvelope(BaseValueObject):
     """Message envelope containing integrity and versioning information."""
 
-    specversion = String(default="1.0")
-    checksum = String()
+    specversion: str = "1.0"
+    checksum: str | None = None
 
     @classmethod
     def build(cls, payload: dict) -> MessageEnvelope:
@@ -63,9 +63,9 @@ class TraceParent(BaseValueObject):
     traceparent: 00-<trace_id>-<parent_id>-<trace_flags>
     """
 
-    trace_id = String(max_length=32, min_length=32)
-    parent_id = String(max_length=16, min_length=16)
-    sampled = Boolean(default=False)
+    trace_id: str
+    parent_id: str
+    sampled: bool = False
 
     @classmethod
     def build(cls, traceparent: str) -> TraceParent:
@@ -87,7 +87,8 @@ class TraceParent(BaseValueObject):
             logger.error(f"Provided traceparent: {traceparent}")
             return None
 
-    def to_dict(self) -> str:
+    def to_w3c(self) -> str:
+        """Return the W3C traceparent header string format."""
         return f"00-{self.trace_id}-{self.parent_id}-{'01' if self.sampled else '00'}"
 
     @property
@@ -102,99 +103,73 @@ class TraceParent(BaseValueObject):
 class MessageHeaders(BaseValueObject):
     """Structured headers for message metadata"""
 
-    #######################
-    # Core identification #
-    #######################
-    # FIXME Fix the format documentation for `id`
-    # Event Format is <domain-name>.<class-name>.<version>.<aggregate-id>.<aggregate-version>
-    # Command Format is <domain-name>.<class-name>.<version>
-    id = String()
+    # Event Format: <domain-name>.<class-name>.<version>.<aggregate-id>.<aggregate-version>
+    # Command Format: <domain-name>.<class-name>.<version>
+    id: str | None = None
 
     # Time of event generation
-    time = DateTime()
+    time: datetime | None = None
 
     # Type of the event
-    # Format is <domain-name>.<event-class-name>.<event-version>
-    type = String()
+    # Format: <domain-name>.<event-class-name>.<event-version>
+    type: str | None = None
 
     # Name of the stream to which the event/command is written
-    stream = String()
+    stream: str | None = None
 
-    ###########
-    # Tracing #
-    ###########
-    # OpenTelemetry compatible, W3C-spec compliant
-    #   Holds trace context information
-    #   Serves as a container for Correlation and Causation IDs as well
-    traceparent = ValueObject(TraceParent)
+    # OpenTelemetry compatible, W3C-spec compliant trace context
+    traceparent: TraceParent | None = None
 
-    ################
-    # Idempotency  #
-    ################
-    # Caller-provided key for command deduplication.
-    # When present, enables submission-level and subscription-level dedup.
-    idempotency_key = String()
+    # Caller-provided key for command deduplication
+    idempotency_key: str | None = None
 
     @classmethod
     def build(cls, **kwargs) -> MessageHeaders:
         headers = kwargs.copy()
-        if "traceparent" in headers:
+        if "traceparent" in headers and isinstance(headers["traceparent"], str):
             headers["traceparent"] = TraceParent.build(headers["traceparent"])
         return cls(**headers)
 
 
 class DomainMeta(BaseValueObject):
     # Fully Qualified Name of the event/command
-    fqn = String(sanitize=False)
+    fqn: str | None = None
 
-    # Kind of the object
-    # Can be one of "EVENT", "COMMAND"
-    kind = String()
+    # Kind of the object — "EVENT" or "COMMAND"
+    kind: str | None = None
 
     # Name of the stream that originated this event/command
-    origin_stream = String()
+    origin_stream: str | None = None
 
     # Stream category
-    # For events: the aggregate's stream category (e.g., "user", "order")
-    # For commands: the aggregate's stream category with ":command" suffix
-    stream_category = String()
+    stream_category: str | None = None
 
-    # Version of the event
-    # Can be overridden with `__version__` class attr in event/command class definition
-    version = String(default="v1")
+    # Version of the event (overridable via __version__ class attr)
+    version: str = "v1"
 
-    # Applies to Events only
-    # Sequence of the event in the aggregate
-    # This is the version of the aggregate as it will be *after* persistence.
-    #
-    # For Event Sourced aggregates, sequence_id is the same as version (like "1").
-    # For Regular aggregates, sequence_id is `version`.`eventnumber` (like "0.1"). This is to
-    #   ensure that the ordering is possible even when multiple events are raised as past of
-    #   single update.
-    sequence_id = String()
+    # Sequence of the event in the aggregate (version after persistence)
+    sequence_id: str | None = None
 
     # Sync or Async?
-    asynchronous = Boolean(default=True)
+    asynchronous: bool = True
 
     # Version that the stream is expected to be when the message is written
-    expected_version = Integer()
+    expected_version: int | None = None
 
 
 class EventStoreMeta(BaseValueObject):
-    # Primary key. The ordinal position of the message in the entire message store.
-    # Global position may have gaps.
-    global_position = Integer()
+    # The ordinal position of the message in the entire message store (may have gaps)
+    global_position: int | None = None
 
-    # The ordinal position of the message in its stream.
-    # Position is gapless.
-    position = Integer()
+    # The ordinal position of the message in its stream (gapless)
+    position: int | None = None
 
 
 class Metadata(BaseValueObject):
-    headers = ValueObject(MessageHeaders, required=True)
-    envelope = ValueObject(MessageEnvelope)
-    domain = ValueObject(DomainMeta)
-    event_store = ValueObject(EventStoreMeta)
+    headers: MessageHeaders
+    envelope: MessageEnvelope | None = PydanticField(default_factory=MessageEnvelope)
+    domain: DomainMeta | None = None
+    event_store: EventStoreMeta | None = None
 
 
 class _LegacyBaseMessageType(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
@@ -438,9 +413,10 @@ class Message(BaseContainer, OptionsMixin):  # FIXME Remove OptionsMixin
         """Build envelope within metadata if not present."""
         if "envelope" not in metadata_dict:
             envelope_data = message.get("envelope", {})
+            specversion = envelope_data.get("specversion") or "1.0"
             metadata_dict["envelope"] = MessageEnvelope(
-                specversion=envelope_data.get("specversion", "1.0"),
-                checksum=envelope_data.get("checksum", None),
+                specversion=specversion,
+                checksum=envelope_data.get("checksum"),
             )
 
     @classmethod

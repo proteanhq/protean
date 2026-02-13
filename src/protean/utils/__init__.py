@@ -380,6 +380,16 @@ def derive_element_class(
     else:
         element_cls.meta_ = Options(opts)
 
+        # For Pydantic-based elements that explicitly inherit from the base,
+        # ensure meta_ has a ClassVar annotation so that Pydantic ignores it
+        # during clone_class and other dynamic class operations.
+        if issubclass(base_cls, BaseModel):
+            from typing import ClassVar
+
+            annots = element_cls.__annotations__.copy()
+            annots["meta_"] = ClassVar[Options]
+            element_cls.__annotations__ = annots
+
     # Assign default options for remaining items
     element_cls._set_defaults()
 
@@ -481,6 +491,17 @@ def clone_class(cls: Element, new_name: str) -> Type[Element]:
         "__doc__",  # Will be inherited or can be set separately
         "__qualname__",  # Will be set explicitly below
     }
+
+    # For Pydantic models, creating a thin subclass is safer than
+    # re-creating the class from __dict__.  Pydantic internalises field
+    # defaults into model_fields during class creation, so a dict-copy
+    # clone loses them.  A subclass inherits everything through the MRO.
+    from pydantic import BaseModel
+
+    if isinstance(cls, type) and issubclass(cls, BaseModel):
+        new_cls = type(type(cls))(new_name, (cls,), {"__annotations__": {}})
+        new_cls.__qualname__ = new_name
+        return new_cls
 
     # Create a shallow copy of class attributes, excluding the unwanted ones
     attrs = {}

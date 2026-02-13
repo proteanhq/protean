@@ -325,9 +325,12 @@ class OutboxProcessor(BaseSubscription):
             message_dict = msg.to_dict()
 
             # Publish the standardized message structure to broker
-            broker_message_id = self.broker.publish(
-                message.metadata.domain.stream_category, message_dict
+            stream_category = (
+                message.metadata.domain.stream_category
+                if message.metadata.domain
+                else None
             )
+            broker_message_id = self.broker.publish(stream_category, message_dict)
 
             logger.debug(
                 f"Published message {message.message_id} to broker as {broker_message_id}"

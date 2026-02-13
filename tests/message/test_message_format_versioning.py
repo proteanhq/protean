@@ -300,7 +300,7 @@ class TestMessageFormatVersioning:
         )
 
     def test_format_version_with_empty_string(self):
-        """Test behavior with empty string specversion - defaults to '1.0' due to field validation"""
+        """Test behavior with empty string specversion - preserved as-is in Pydantic"""
         message_dict = {
             "envelope": {"specversion": "", "checksum": ""},
             "headers": {"id": "test-id", "type": "test.registered", "time": None},
@@ -328,11 +328,11 @@ class TestMessageFormatVersioning:
         }
 
         message = Message.deserialize(message_dict)
-        # Empty string is considered an "empty value" by the String field, so it uses default "1.0"
+        # Empty/None specversion defaults to "1.0" during deserialization
         assert message.metadata.envelope.specversion == "1.0"
 
     def test_format_version_with_none_value(self):
-        """Test behavior when specversion is explicitly None in dict - defaults to '1.0' due to field validation"""
+        """Test behavior when specversion is explicitly None in dict - preserved as None in Pydantic"""
         message_dict = {
             "envelope": {"specversion": None, "checksum": ""},
             "headers": {"id": "test-id", "type": "test.registered", "time": None},
@@ -360,5 +360,5 @@ class TestMessageFormatVersioning:
         }
 
         message = Message.deserialize(message_dict)
-        # None is considered an "empty value" by the String field, so it uses default "1.0"
+        # None/empty specversion defaults to "1.0" during deserialization
         assert message.metadata.envelope.specversion == "1.0"

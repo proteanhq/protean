@@ -30,7 +30,7 @@ def register_elements(test_domain):
 class TestMetadataType:
     def test_metadata_has_type_field(self):
         metadata_field = fields(Login)["_metadata"]
-        assert hasattr(metadata_field.value_object_cls, "headers")
+        assert "headers" in metadata_field.value_object_cls.model_fields
 
     def test_command_metadata_type_default(self):
         assert hasattr(Login, "__type__")
@@ -44,7 +44,7 @@ class TestMetadataType:
 class TestMetadataVersion:
     def test_metadata_has_command_version(self):
         metadata_field = fields(Login)["_metadata"]
-        assert hasattr(metadata_field.value_object_cls, "domain")
+        assert "domain" in metadata_field.value_object_cls.model_fields
 
     def test_command_metadata_version_default(self):
         command = Login(user_id=str(uuid4()))
@@ -65,7 +65,7 @@ class TestMetadataVersion:
 class TestMetadataAsynchronous:
     def test_metadata_has_asynchronous_field(self):
         metadata_field = fields(Login)["_metadata"]
-        assert hasattr(metadata_field.value_object_cls, "domain")
+        assert "domain" in metadata_field.value_object_cls.model_fields
 
     def test_command_metadata_asynchronous_default(self):
         command = Login(user_id=str(uuid4()))
