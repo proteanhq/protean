@@ -115,7 +115,7 @@ class TestPydanticAggregateStructure:
         from protean.utils.reflection import _FIELDS
 
         cf = getattr(Person, _FIELDS, {})
-        assert set(cf.keys()) == {"id", "first_name", "last_name", "age"}
+        assert set(cf.keys()) == {"id", "first_name", "last_name", "age", "_version"}
 
 
 # ---------------------------------------------------------------------------

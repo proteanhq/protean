@@ -209,7 +209,7 @@ class BaseProjection(BaseModel, OptionsMixin):
         """
 
     # ------------------------------------------------------------------
-    # Mutation with Pydantic error conversion
+    # Mutation with Pydantic error conversion + state tracking
     # ------------------------------------------------------------------
     def __setattr__(self, name: str, value: Any) -> None:
         if name in self.__class__.model_fields:
@@ -217,6 +217,9 @@ class BaseProjection(BaseModel, OptionsMixin):
                 super().__setattr__(name, value)
             except PydanticValidationError as e:
                 raise ValidationError(_convert_pydantic_errors(e))
+
+            # Mark projection as changed so repository persists updates
+            self._state.mark_changed()
         else:
             super().__setattr__(name, value)
 
@@ -243,9 +246,15 @@ class BaseProjection(BaseModel, OptionsMixin):
     # Serialization
     # ------------------------------------------------------------------
     def to_dict(self) -> dict[str, Any]:
-        """Return projection data as a dictionary."""
+        """Return projection data as a dictionary.
+
+        Internal fields (prefixed with ``_``) are excluded for consistency
+        with the entity ``to_dict()`` behaviour.
+        """
         result: dict[str, Any] = {}
         for fname, shim in getattr(self, _FIELDS, {}).items():
+            if fname.startswith("_"):
+                continue
             result[fname] = shim.as_dict(getattr(self, fname, None))
         return result
 

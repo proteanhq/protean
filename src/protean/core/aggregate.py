@@ -30,7 +30,7 @@ from protean.utils import (
 )
 from protean.utils.eventing import DomainMeta, MessageEnvelope, MessageHeaders, Metadata
 from protean.utils.globals import current_domain
-from protean.utils.reflection import _ID_FIELD_NAME, fields
+from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, fields
 
 logger = logging.getLogger(__name__)
 
@@ -210,8 +210,31 @@ class BaseAggregate(BaseEntity):
         setattr(cls, "_projections", defaultdict(set))
         setattr(cls, "_events_cls_map", {})
 
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """Called by Pydantic AFTER model_fields are fully populated.
+
+        Extends the parent hook to inject ``_version`` into
+        ``__container_fields__`` so that it is persisted and round-tripped
+        through the repository layer (needed for optimistic concurrency).
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+
+        from protean.core.value_object import _PydanticFieldShim
+
+        fields_dict = getattr(cls, _FIELDS, {})
+        fields_dict["_version"] = _PydanticFieldShim("_version", None, int)
+        setattr(cls, _FIELDS, fields_dict)
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        # Pop _version from kwargs before Pydantic init (it's a PrivateAttr,
+        # and extra="forbid" would reject it). Restore after construction.
+        version = kwargs.pop("_version", -1)
+
         super().__init__(*args, **kwargs)
+
+        # Restore _version from kwargs or default
+        self._version = version
 
         # Set self as root and owner
         self._set_root_and_owner(self, self)
