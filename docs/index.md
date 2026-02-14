@@ -23,9 +23,9 @@ from protean import Domain, handle
 from protean.fields import Identifier, String, Text
 from protean.utils.globals import current_domain
 
-domain = Domain()
+domain = Domain() # (1)!
 
-@domain.aggregate
+@domain.aggregate # (2)!
 class Post:
     title: String(max_length=100, required=True)
     body: Text(required=True)
@@ -33,26 +33,34 @@ class Post:
 
     def publish(self):
         self.status = "PUBLISHED"
-        self.raise_(PostPublished(post_id=self.id, title=self.title))
+        self.raise_(PostPublished(post_id=self.id, title=self.title)) # (3)!
 
-@domain.event(part_of="Post")
+@domain.event(part_of="Post") # (4)!
 class PostPublished:
     post_id: Identifier(required=True)
     title: String(required=True)
 
-@domain.command(part_of="Post")
+@domain.command(part_of="Post") # (5)!
 class CreatePost:
     title: String(max_length=100, required=True)
     body: Text(required=True)
 
-@domain.command_handler(part_of=Post)
+@domain.command_handler(part_of=Post) # (6)!
 class PostCommandHandler:
     @handle(CreatePost)
     def create_post(self, command: CreatePost):
         post = Post(title=command.title, body=command.body)
-        current_domain.repository_for(Post).add(post)
+        current_domain.repository_for(Post).add(post) # (7)!
         return post.id
 ```
+
+1. :material-domain: **Domain** — The central registry that wires all elements together.
+2. :material-cube-outline: **Aggregate** — The core building block encapsulating fields and business logic.
+3. :material-bell-ring-outline: **Raising an Event** — `raise_()` emits a domain event to notify the rest of the system.
+4. :material-lightning-bolt: **Event** — An immutable record of something that happened in the domain.
+5. :material-play-circle-outline: **Command** — An intent to change state, carrying just the needed data.
+6. :material-cog-outline: **Command Handler** — Receives a command, creates/updates aggregates, and persists them.
+7. :material-database-outline: **Repository** — Built-in persistence abstraction to add, get, or remove aggregates without touching the database directly.
 
 Aggregates, commands, events, and handlers — all in pure Python, with
 decorators that wire everything together. No infrastructure required
