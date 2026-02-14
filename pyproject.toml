@@ -141,9 +141,16 @@ inline = "protean.adapters.broker.inline:register"
 redis = "protean.adapters.broker.redis:register"
 redis_pubsub = "protean.adapters.broker.redis_pubsub:register"
 
+[tool.poetry.plugins."mypy.plugins"]
+protean = "protean.ext.mypy_plugin:plugin"
+
 ##################
 # Configurations #
 ##################
+
+[tool.ruff.lint.per-file-ignores]
+# Mypy test fixtures use reveal_type() which is a mypy built-in, not a runtime function
+"tests/ext/fixtures/*.py" = ["F821"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["protean"]
@@ -186,6 +193,7 @@ markers = [
 ]
 
 [tool.mypy]
+plugins = ["protean.ext.mypy_plugin"]
 exclude = [".venv", "src/protean/template", "docs_src"]
 
 [tool.coverage.paths]
