@@ -3,24 +3,24 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
-from protean.fields import ValueObject
+from protean.fields import Float, Identifier, String, ValueObject
 
 from .elements import Person, PersonRepository
 
 
 class Balance(BaseValueObject):
-    currency: str | None = None
-    amount: float | None = None
+    currency = String(max_length=3)
+    amount = Float()
 
 
 class BalanceUpdated(BaseEvent):
-    account_id: str
-    old_amount: float | None = None
-    new_amount: float | None = None
+    account_id = Identifier(required=True)
+    old_amount = Float()
+    new_amount = Float()
 
 
 class Account(BaseAggregate):
-    name: str
+    name = String(max_length=50, required=True)
     balance = ValueObject(Balance)
 
     def update_balance(self, new_balance: Balance) -> None:

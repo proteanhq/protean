@@ -2,24 +2,23 @@ import json
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
+from protean.fields import Identifier, String
 from protean.utils.reflection import id_field
 
 
 class User(BaseAggregate):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    user_id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Registered(BaseEvent):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    user_id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 @pytest.fixture(autouse=True)
@@ -38,7 +37,7 @@ def test_that_events_are_immutable():
 def test_that_no_id_field_is_assigned_if_event_is_marked_as_abstract(test_domain):
     @test_domain.event(abstract=True)
     class AbstractEvent:
-        foo: str = Field(json_schema_extra={"identifier": True})
+        foo = String(identifier=True)
 
     assert id_field(AbstractEvent) is None
 

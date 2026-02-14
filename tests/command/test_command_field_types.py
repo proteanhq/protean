@@ -1,37 +1,37 @@
 import pytest
 
-from pydantic import PydanticUserError
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.entity import BaseEntity
-from protean.fields import HasMany, HasOne
+from protean.exceptions import IncorrectUsageError
+from protean.fields import HasMany, HasOne, String
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
     account = HasOne("Account")
     addresses = HasMany("Address")
 
 
 class Account(BaseEntity):
-    password_hash: str | None = None
+    password_hash = String()
 
 
 class Address(BaseEntity):
-    street: str | None = None
-    city: str | None = None
-    state: str | None = None
-    postal_code: str | None = None
+    street = String()
+    city = String()
+    state = String()
+    postal_code = String()
 
 
-def test_events_cannot_hold_associations():
-    """With Pydantic-based BaseCommand, non-annotated association fields
-    are rejected by Pydantic itself as non-annotated attributes."""
-    with pytest.raises(PydanticUserError, match="non-annotated attribute was detected"):
+def test_commands_cannot_hold_associations():
+    with pytest.raises(
+        IncorrectUsageError,
+        match="Commands and Events can only contain basic field types",
+    ):
 
         class Register(BaseCommand):
-            email: str | None = None
-            name: str | None = None
+            email = String()
+            name = String()
             account = HasOne(Account)

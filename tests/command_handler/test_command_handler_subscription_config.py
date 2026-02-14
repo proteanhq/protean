@@ -5,10 +5,9 @@ including Meta attribute reading, setting via decorator and register(), and
 stream_category derivation from aggregate.
 """
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.command_handler import BaseCommandHandler
+from protean.fields import Identifier, String
 from protean.server.subscription.profiles import (
     SubscriptionProfile,
     SubscriptionType,
@@ -16,8 +15,8 @@ from protean.server.subscription.profiles import (
 
 
 class Order(BaseAggregate):
-    order_id: str = Field(json_schema_extra={"identifier": True})
-    customer_name: str | None = None
+    order_id = Identifier(identifier=True)
+    customer_name = String()
 
 
 class TestCommandHandlerSubscriptionDefaults:

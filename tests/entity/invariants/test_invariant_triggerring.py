@@ -6,7 +6,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate, atomic_change
 from protean.core.entity import BaseEntity, invariant
 from protean.exceptions import ValidationError
-from protean.fields import HasMany
+from protean.fields import Date, Float, HasMany, Identifier, Integer, String
 
 
 class OrderStatus(Enum):
@@ -16,10 +16,10 @@ class OrderStatus(Enum):
 
 
 class Order(BaseAggregate):
-    customer_id: str | None = None
-    order_date: date | None = None
-    total_amount: float | None = None
-    status: str | None = None
+    customer_id = Identifier()
+    order_date = Date()
+    total_amount = Float()
+    status = String(max_length=50, choices=OrderStatus)
     items = HasMany("OrderItem")
 
     @invariant.pre
@@ -70,10 +70,10 @@ class Order(BaseAggregate):
 
 
 class OrderItem(BaseEntity):
-    product_id: str | None = None
-    quantity: int | None = None
-    price: float | None = None
-    subtotal: float | None = None
+    product_id = Identifier()
+    quantity = Integer()
+    price = Float()
+    subtotal = Float()
 
     @invariant.post
     def the_quantity_must_be_a_positive_integer_and_the_subtotal_must_be_correctly_calculated(

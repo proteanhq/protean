@@ -1,20 +1,31 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import types as sa_types
 
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ValidationError
+from protean.fields import (
+    Auto,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    Identifier,
+    Integer,
+    List,
+    String,
+)
 
 
 class ArrayUser(BaseAggregate):
-    email: str
-    roles: list[str] = []
+    email = String(max_length=255, required=True, unique=True)
+    roles = List()  # Defaulted to String Content Type
 
 
 class IntegerArrayUser(BaseAggregate):
-    email: str
-    roles: list[int] = []
+    email = String(max_length=255, required=True, unique=True)
+    roles = List(content_type=Integer)
 
 
 @pytest.mark.sqlite
@@ -44,15 +55,16 @@ def test_array_content_type_validation(test_domain):
     test_domain.register(ArrayUser)
     test_domain.register(IntegerArrayUser)
 
-    # Pydantic's list[str] does not auto-coerce non-string values
     for kwargs in [
         {"email": "john.doe@gmail.com", "roles": [1, 2]},
         {"email": "john.doe@gmail.com", "roles": ["1", 2]},
         {"email": "john.doe@gmail.com", "roles": [1.0, 2.0]},
         {"email": "john.doe@gmail.com", "roles": [datetime.now(UTC)]},
     ]:
-        with pytest.raises(ValidationError):
+        try:
             ArrayUser(**kwargs)
+        except ValidationError:
+            pytest.fail("Failed to convert integers into strings in List field type")
 
     database_model_cls = test_domain.repository_for(IntegerArrayUser)._database_model
     user = IntegerArrayUser(email="john.doe@gmail.com", roles=[1, 2])
@@ -69,3 +81,41 @@ def test_array_content_type_validation(test_domain):
         with pytest.raises(ValidationError) as exception:
             IntegerArrayUser(**kwargs)
         assert "roles" in exception.value.messages
+
+
+@pytest.mark.sqlite
+def test_that_only_specific_primitive_types_are_allowed_as_content_types(test_domain):
+    from protean.fields.spec import FieldSpec
+
+    string_list = List(content_type=String)
+    assert isinstance(string_list, FieldSpec)
+    assert string_list.python_type == list[str]
+
+    identifier_list = List(content_type=Identifier)
+    assert isinstance(identifier_list, FieldSpec)
+    assert identifier_list.python_type == list[str]
+
+    integer_list = List(content_type=Integer)
+    assert isinstance(integer_list, FieldSpec)
+    assert integer_list.python_type == list[int]
+
+    float_list = List(content_type=Float)
+    assert isinstance(float_list, FieldSpec)
+    assert float_list.python_type == list[float]
+
+    boolean_list = List(content_type=Boolean)
+    assert isinstance(boolean_list, FieldSpec)
+    assert boolean_list.python_type == list[bool]
+
+    date_list = List(content_type=Date)
+    assert isinstance(date_list, FieldSpec)
+    assert date_list.python_type == list[date]
+
+    datetime_list = List(content_type=DateTime)
+    assert isinstance(datetime_list, FieldSpec)
+    assert datetime_list.python_type == list[datetime]
+
+    with pytest.raises(ValidationError) as error:
+        List(content_type=Auto)
+
+    assert error.value.messages == {"content_type": ["Content type not supported"]}

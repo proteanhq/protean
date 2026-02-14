@@ -1,13 +1,12 @@
 from protean import Domain
-from typing import Annotated
-from pydantic import Field
+from protean.fields import String
 
 domain = Domain()
 
 
 @domain.aggregate
 class UserProfile:
-    name: Annotated[str, Field(max_length=30)] | None = None
+    name = String(max_length=30)
 
 
 print(UserProfile.meta_.schema_name)

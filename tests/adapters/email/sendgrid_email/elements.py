@@ -3,14 +3,15 @@ from protean.core.email import BaseEmail
 from protean.core.event import BaseEvent
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import InsufficientDataError, InvalidDataError
+from protean.fields import Integer, String
 from protean.utils.globals import current_domain
 
 
 class Person(BaseAggregate):
-    email: str
-    first_name: str
-    last_name: str
-    age: int = 21
+    email = String(max_length=255, required=True)
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50, required=True)
+    age = Integer(default=21)
 
     @classmethod
     def add_newcomer(cls, person_dict):
@@ -29,10 +30,10 @@ class Person(BaseAggregate):
 
 
 class PersonAdded(BaseEvent):
-    email: str
-    first_name: str
-    last_name: str
-    age: int = 21
+    email = String(max_length=255, required=True)
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50, required=True)
+    age = Integer(default=21)
 
 
 class WelcomeEmail(BaseEmail):

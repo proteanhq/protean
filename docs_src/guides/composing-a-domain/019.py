@@ -4,17 +4,16 @@ from flask import Flask
 
 from protean import Domain
 from protean.domain.context import has_domain_context
-from typing import Annotated
-from pydantic import Field
+from protean.fields import Integer, String
 
 domain = Domain()
 
 
 @domain.aggregate
 class User:
-    first_name: Annotated[str, Field(max_length=50)] | None = None
-    last_name: Annotated[str, Field(max_length=50)] | None = None
-    age: int | None = None
+    first_name = String(max_length=50)
+    last_name = String(max_length=50)
+    age = Integer()
 
 
 def create_app(config):

@@ -2,17 +2,15 @@ from enum import Enum
 
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import HasMany, ValueObject
-from typing import Annotated
-from pydantic import Field
+from protean.fields import Float, HasMany, Integer, String, ValueObject
 
 domain = Domain()
 
 
 @domain.value_object
 class Money:
-    currency: Annotated[str, Field(max_length=3)] = "USD"
-    amount: float
+    currency = String(max_length=3, default="USD")
+    amount = Float(required=True)
 
 
 class OrderStatus(Enum):
@@ -25,8 +23,10 @@ class OrderStatus(Enum):
 # --8<-- [start:aggregate]
 @domain.aggregate
 class Order:
-    customer_name: Annotated[str, Field(max_length=150)]
-    status: Annotated[OrderStatus, Field(max_length=20)] = OrderStatus.PENDING.value
+    customer_name = String(max_length=150, required=True)
+    status = String(
+        max_length=20, choices=OrderStatus, default=OrderStatus.PENDING.value
+    )
     items = HasMany("OrderItem")
 
     def add_item(self, book_title: str, quantity: int, unit_price: Money):
@@ -76,8 +76,8 @@ class Order:
 
 @domain.entity(part_of=Order)
 class OrderItem:
-    book_title: Annotated[str, Field(max_length=200)]
-    quantity: int
+    book_title = String(max_length=200, required=True)
+    quantity = Integer(required=True)
     unit_price = ValueObject(Money)
 
 

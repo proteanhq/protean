@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from protean.core.value_object import _FieldShim
 from protean.exceptions import InvalidOperationError, ValidationError
 from protean.utils.reflection import (
     _ID_FIELD_NAME,
@@ -17,15 +18,16 @@ from .elements import PersonAutoSSN, PersonExplicitID, Role, RoleClone, Subclass
 class TestProperties:
     def test_conversion_of_aggregate_values_to_dict(self):
         current_time = datetime.now()
-        role = Role(id="12", name="ADMIN", created_on=current_time)
+        role = Role(id=12, name="ADMIN", created_on=current_time)
         assert role.to_dict() == {
-            "id": "12",
+            "id": 12,
             "name": "ADMIN",
             "created_on": str(current_time),
+            "_version": -1,
         }
 
     def test_repr_output_of_aggregate(self):
-        role = Role(id="12", name="ADMIN")
+        role = Role(id=12, name="ADMIN")
 
         assert str(role) == "Role object (id: 12)"
         assert repr(role) == "<Role: Role object (id: 12)>"
@@ -36,13 +38,14 @@ class TestIdentity:
 
     def test_for_id_field_presence(self):
         assert hasattr(Role, _ID_FIELD_NAME)
-        assert id_field(Role).field_name == "id"
+        assert isinstance(id_field(Role), _FieldShim)
         assert id_field(Role).identifier is True
 
     def test_default_id_field_construction(self):
         assert "id" in declared_fields(Role)
         assert "id" in attributes(Role)
 
+        assert isinstance(declared_fields(Role)["id"], _FieldShim)
         assert declared_fields(Role)["id"].identifier is True
         assert id_field(Role) == declared_fields(Role)["id"]
 
@@ -50,7 +53,8 @@ class TestIdentity:
         assert "id" not in declared_fields(PersonAutoSSN)
         assert "id" not in attributes(PersonAutoSSN)
 
-        assert declared_fields(PersonAutoSSN)["ssn"].identifier is True
+        assert isinstance(declared_fields(PersonAutoSSN)["ssn"], _FieldShim)
+        assert declared_fields(PersonAutoSSN)["ssn"].field_kind == "auto"
         assert id_field(PersonAutoSSN).field_name == "ssn"
         assert id_field(PersonAutoSSN) == declared_fields(PersonAutoSSN)["ssn"]
 
@@ -58,6 +62,7 @@ class TestIdentity:
         assert "id" not in declared_fields(PersonExplicitID)
         assert "id" not in attributes(PersonExplicitID)
 
+        assert isinstance(declared_fields(PersonExplicitID)["ssn"], _FieldShim)
         assert declared_fields(PersonExplicitID)["ssn"].identifier is True
         assert id_field(PersonExplicitID).field_name == "ssn"
         assert id_field(PersonExplicitID) == declared_fields(PersonExplicitID)["ssn"]
@@ -79,10 +84,10 @@ class TestIdentityValues:
 
     def test_that_ids_are_immutable(self):
         """Test that `id` cannot be changed once assigned"""
-        role = Role(id="12", name="ADMIN")
+        role = Role(id=12, name="ADMIN")
 
         with pytest.raises(InvalidOperationError):
-            role.id = "new-id"
+            role.id = 13
 
     def test_non_default_auto_id_field_value(self):
         role = PersonAutoSSN(name="John Doe")
@@ -99,13 +104,13 @@ class TestIdentityValues:
         with pytest.raises(ValidationError):
             role = PersonExplicitID(name="John Doe")
 
-        new_uuid = str(uuid4())
+        new_uuid = uuid4()
         role = PersonExplicitID(ssn=new_uuid, name="John Doe")
         assert role is not None
-        assert role.ssn == new_uuid
+        assert role.ssn == str(new_uuid)
 
     def test_that_explicit_id_can_be_supplied_to_auto_id_field(self):
-        new_uuid = str(uuid4())
+        new_uuid = uuid4()
         role = Role(id=new_uuid, name="ADMIN")
         assert role.id is not None
         assert role.id == new_uuid
@@ -113,13 +118,13 @@ class TestIdentityValues:
 
 class TestEquivalence:
     def test_that_two_entities_with_same_id_are_treated_as_equal(self):
-        role1 = Role(id="12345", name="ADMIN1")
-        role2 = Role(id="12346", name="ADMIN1")
+        role1 = Role(id=12345, name="ADMIN1")
+        role2 = Role(id=12346, name="ADMIN1")
 
         assert role1 != role2  # Because their identities are different
         assert role2 != role1  # Because their identities are different
 
-        role3 = Role(id="12345", name="ADMIN1")
+        role3 = Role(id=12345, name="ADMIN1")
         assert (
             role1 == role3
         )  # Because it's the same record even though attributes differ
@@ -129,8 +134,8 @@ class TestEquivalence:
         """Test that two entities are not considered equal even if they have the same ID
         and one belongs to a different Entity class
         """
-        role = Role(id="1", name="ADMIN")
-        role_clone = RoleClone(id="1", name="ADMIN")
+        role = Role(id=1, name="ADMIN")
+        role_clone = RoleClone(id=1, name="ADMIN")
 
         assert role != role_clone  # Even though their identities are the same
         assert role_clone != role  # Even though their identities are the same
@@ -139,23 +144,23 @@ class TestEquivalence:
         """Test that two entities are not considered equal even if they have the same ID
         and one is subclassed from the other
         """
-        role = Role(id="1", name="ADMIN")
-        subclass_role = SubclassRole(id="1", name="ADMIN")
+        role = Role(id=1, name="ADMIN")
+        subclass_role = SubclassRole(id=1, name="ADMIN")
 
         assert role != subclass_role  # Even though their identities are the same
         assert subclass_role != role  # Even though their identities are the same
 
     def test_generated_aggregate_hash(self):
         """Test that the entity's hash is based on its identity"""
-        hashed_id = hash("1")
+        hashed_id = hash(1)
 
-        role = Role(id="1", name="ADMIN")
+        role = Role(id=1, name="ADMIN")
         assert hashed_id == hash(
             role
         )  # FIXME Should hash be based on ID alone, or other attrs too?
 
     def test_that_two_aggregates_that_are_equal_have_equal_hash(self):
-        role1 = Role(id="12345", name="ADMIN1")
-        role2 = Role(id="12345", name="ADMIN1")
+        role1 = Role(id=12345, name="ADMIN1")
+        role2 = Role(id=12345, name="ADMIN1")
 
         assert hash(role1) == hash(role2)

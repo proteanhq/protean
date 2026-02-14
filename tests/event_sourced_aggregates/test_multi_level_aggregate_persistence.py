@@ -1,62 +1,69 @@
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
-from protean.fields import HasMany, HasOne
+from protean.fields import (
+    HasMany,
+    HasOne,
+    Identifier,
+    Integer,
+    List,
+    String,
+    ValueObject,
+)
 
 
 class Department(BaseEntity):
-    name: str | None = None
+    name = String(max_length=50)
     dean = HasOne("Dean")
 
 
 class Dean(BaseEntity):
-    name: str | None = None
-    age: int | None = None
+    name = String(max_length=50)
+    age = Integer(min_value=21)
     office = HasOne("Office")
 
 
 class Office(BaseEntity):
-    building: str | None = None
-    room: int | None = None
+    building = String(max_length=25)
+    room = Integer(min_value=1)
 
 
 class OfficeVO(BaseValueObject):
-    id: str | None = None
-    building: str | None = None
-    room: int | None = None
+    id = Identifier()
+    building = String(max_length=25)
+    room = Integer(min_value=1)
 
 
 class DeanVO(BaseValueObject):
-    id: str | None = None
-    name: str | None = None
-    age: int | None = None
-    office: OfficeVO | None = None
+    id = Identifier()
+    name = String(max_length=50)
+    age = Integer(min_value=21)
+    office = ValueObject(OfficeVO)
 
 
 class DepartmentVO(BaseValueObject):
-    id: str | None = None
-    name: str | None = None
-    dean: DeanVO | None = None
+    id = Identifier()
+    name = String(max_length=50)
+    dean = ValueObject(DeanVO)
 
 
 class UniversityCreated(BaseEvent):
-    id: str = Field(json_schema_extra={"identifier": True})
-    name: str | None = None
-    departments: list[DepartmentVO] = []
+    id = Identifier(identifier=True)
+    _version = Integer()
+    name = String(max_length=50)
+    departments = List(content_type=ValueObject(DepartmentVO))
 
 
 class NameChanged(BaseEvent):
-    id: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    name = String(max_length=50)
 
 
 class University(BaseAggregate):
-    name: str | None = None
+    name = String(max_length=50)
     departments = HasMany(Department)
 
     def raise_event(self):

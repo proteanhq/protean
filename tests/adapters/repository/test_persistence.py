@@ -1,13 +1,14 @@
 import pytest
 
 from protean.core.aggregate import BaseAggregate
+from protean.fields import DateTime, Integer, String
 from datetime import datetime
 
 
 class Event(BaseAggregate):
-    name: str
-    created_at: datetime | None = None
-    sequence_id: int | None = None
+    name = String(max_length=255, required=True)
+    created_at = DateTime(default=datetime.now)
+    sequence_id = Integer()
 
 
 @pytest.fixture(autouse=True)

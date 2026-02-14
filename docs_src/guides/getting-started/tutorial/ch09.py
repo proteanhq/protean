@@ -1,8 +1,6 @@
 from protean import Domain, use_case
-from protean.fields import ValueObject
+from protean.fields import Float, Identifier, String, Text, ValueObject
 from protean.utils.globals import current_domain
-from typing import Annotated
-from pydantic import Field
 
 domain = Domain()
 
@@ -12,17 +10,17 @@ domain.config["event_processing"] = "sync"
 
 @domain.value_object
 class Money:
-    currency: Annotated[str, Field(max_length=3)] = "USD"
-    amount: float
+    currency = String(max_length=3, default="USD")
+    amount = Float(required=True)
 
 
 @domain.aggregate
 class Book:
-    title: Annotated[str, Field(max_length=200)]
-    author: Annotated[str, Field(max_length=150)]
-    isbn: Annotated[str, Field(max_length=13)] | None = None
+    title = String(max_length=200, required=True)
+    author = String(max_length=150, required=True)
+    isbn = String(max_length=13)
     price = ValueObject(Money)
-    description: str | None = None
+    description = Text()
 
     def add_to_catalog(self):
         self.raise_(
@@ -37,10 +35,10 @@ class Book:
 
 @domain.event(part_of=Book)
 class BookAdded:
-    book_id: str
-    title: Annotated[str, Field(max_length=200)]
-    author: Annotated[str, Field(max_length=150)]
-    price_amount: float | None = None
+    book_id = Identifier(required=True)
+    title = String(max_length=200, required=True)
+    author = String(max_length=150, required=True)
+    price_amount = Float()
 
 
 # --8<-- [start:catalog_service]
@@ -54,7 +52,7 @@ class CatalogService:
         isbn: str = None,
         price_amount: float = 0.0,
         description: str = "",
-    ) -> str:
+    ) -> Identifier:
         """Add a new book to the catalog."""
         book = Book(
             title=title,
@@ -68,7 +66,7 @@ class CatalogService:
         return book.id
 
     @use_case
-    def get_book(self, book_id: str) -> Book:
+    def get_book(self, book_id: Identifier) -> Book:
         """Retrieve a book by its ID."""
         return current_domain.repository_for(Book).get(book_id)
 

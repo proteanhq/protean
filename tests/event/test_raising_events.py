@@ -2,19 +2,20 @@ from uuid import uuid4
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
+from protean.fields import String
+from protean.fields.basic import Identifier
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class UserLoggedIn(BaseEvent):
-    user_id: str = Field(json_schema_extra={"identifier": True})
+    user_id = Identifier(identifier=True)
 
 
 @pytest.mark.eventstore

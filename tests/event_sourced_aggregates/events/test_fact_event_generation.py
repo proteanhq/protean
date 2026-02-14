@@ -2,22 +2,23 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
+from protean.fields import Identifier, String
 
 
 class Registered(BaseEvent):
-    id: str | None = None
-    email: str | None = None
-    name: str | None = None
+    id = Identifier()
+    email = String()
+    name = String()
 
 
 class Renamed(BaseEvent):
-    id: str | None = None
-    name: str | None = None
+    id = Identifier()
+    name = String()
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
     @apply
     def registered(self, event: Registered) -> None:

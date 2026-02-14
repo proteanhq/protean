@@ -1,8 +1,9 @@
 from protean.core.aggregate import BaseAggregate
+from protean.fields import List
 
 
 class User(BaseAggregate):
-    emails: list = []
+    emails = List()
 
 
 def test_for_any_lookup(test_domain):

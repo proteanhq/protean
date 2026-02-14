@@ -8,37 +8,38 @@ from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
+from protean.fields import Identifier, String, Boolean
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 
 
 class Register(BaseCommand):
-    user_id: str | None = None
-    email: str | None = None
+    user_id = Identifier()
+    email = String()
 
 
 class RenameAndActivate(BaseCommand):
-    user_id: str | None = None
+    user_id = Identifier()
 
 
 class Registered(BaseEvent):
-    id: str | None = None
-    email: str | None = None
+    id = Identifier()
+    email = String()
 
 
 class Renamed(BaseEvent):
-    id: str | None = None
-    name: str | None = None
+    id = Identifier()
+    name = String()
 
 
 class Activated(BaseEvent):
-    id: str | None = None
+    id = Identifier()
 
 
 class User(BaseAggregate):
-    name: str | None = None
-    email: str | None = None
-    active: bool = False
+    name = String()
+    email = String()
+    active = Boolean(default=False)
 
     @apply
     def registered(self, event: Registered) -> None:

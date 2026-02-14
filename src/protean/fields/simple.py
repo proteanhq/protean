@@ -81,30 +81,36 @@ def DateTime(**kwargs: Any) -> FieldSpec:
     return FieldSpec(datetime.datetime, **kwargs)
 
 
-def Identifier(**kwargs: Any) -> FieldSpec:
-    """Shorthand for ``String(identifier=True)``.
+def Identifier(identifier: bool = False, **kwargs: Any) -> FieldSpec:
+    """A UUID-like string field.
 
-    Automatically generates a UUID string if no default is provided.
+    When ``identifier=True``, marks this field as the entity's identity
+    and auto-generates a UUID if no default is provided.
     """
-    kwargs.setdefault("identifier", True)
+    kwargs["identifier"] = identifier
     return FieldSpec(str, field_kind="identifier", **kwargs)
 
 
 def Auto(
     increment: bool = False,
+    identifier: bool = False,
     identity_strategy: str | None = None,
     identity_function: str | None = None,
     identity_type: str | None = None,
     **kwargs: Any,
 ) -> FieldSpec:
-    """Auto-generated identity field used internally.
+    """Auto-generated field for identifiers and auto-increment sequences.
 
     The ``increment`` flag is consumed by the memory adapter and DAO to
-    decide auto-increment behavior.
+    decide auto-increment behavior.  Set ``identifier=True`` to mark
+    this as the entity's identity field.
     """
     kwargs["required"] = False
-    kwargs["identifier"] = True
-    spec = FieldSpec(str, field_kind="auto", **kwargs)
+    kwargs["identifier"] = identifier
+    # Auto-increment fields store integers; non-increment fields (UUID
+    # identity) store strings.
+    python_type = int if increment else str
+    spec = FieldSpec(python_type, field_kind="auto", **kwargs)
     # Store auto-specific metadata as private attributes
     spec._increment = increment
     spec._identity_strategy = identity_strategy

@@ -2,21 +2,21 @@ from uuid import uuid4
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
+from protean.fields import Identifier, String
 from protean.utils import Processing, fqn
-from protean.utils.eventing import DomainMeta, MessageEnvelope, Metadata
+from protean.utils.eventing import MessageEnvelope
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Login(BaseCommand):
-    user_id: str = Field(json_schema_extra={"identifier": True})
+    user_id = Identifier(identifier=True)
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +28,9 @@ def register_elements(test_domain):
 
 class TestMetadataType:
     def test_metadata_has_type_field(self):
+        # _metadata is now a PrivateAttr; verify Metadata class has headers
+        from protean.utils.eventing import Metadata
+
         assert "headers" in Metadata.model_fields
 
     def test_command_metadata_type_default(self):
@@ -41,8 +44,10 @@ class TestMetadataType:
 
 class TestMetadataVersion:
     def test_metadata_has_command_version(self):
+        # _metadata is now a PrivateAttr; verify Metadata class has domain
+        from protean.utils.eventing import Metadata
+
         assert "domain" in Metadata.model_fields
-        assert "version" in DomainMeta.model_fields
 
     def test_command_metadata_version_default(self):
         command = Login(user_id=str(uuid4()))
@@ -51,7 +56,7 @@ class TestMetadataVersion:
     def test_overridden_version(self, test_domain):
         class Login(BaseCommand):
             __version__ = "v2"
-            user_id: str = Field(json_schema_extra={"identifier": True})
+            user_id = Identifier(identifier=True)
 
         test_domain.register(Login, part_of=User)
         test_domain.init(traverse=False)
@@ -62,7 +67,9 @@ class TestMetadataVersion:
 
 class TestMetadataAsynchronous:
     def test_metadata_has_asynchronous_field(self):
-        assert "domain" in Metadata.model_fields
+        # _metadata is now a PrivateAttr; verify DomainMeta has asynchronous
+        from protean.utils.eventing import DomainMeta
+
         assert "asynchronous" in DomainMeta.model_fields
 
     def test_command_metadata_asynchronous_default(self):

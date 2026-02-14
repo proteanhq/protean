@@ -1,21 +1,19 @@
-from typing import Annotated
-
 import pytest
-from annotated_types import MaxLen
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity, invariant
 from protean.exceptions import ValidationError
+from protean.fields import Float, Integer, String
 
 
 class Inventory(BaseAggregate):
-    name: str | None = None
+    name = String(max_length=50)
 
 
 class Product(BaseEntity):
-    name: Annotated[str, MaxLen(10)]
-    price: float
-    quantity: int
+    name = String(max_length=10, required=True)
+    price = Float(required=True)
+    quantity = Integer(required=True)
 
     @invariant.post
     def check_price_is_positive(self):

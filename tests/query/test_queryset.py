@@ -3,14 +3,9 @@
 import pytest
 
 from protean import QuerySet
-from protean.core.aggregate import BaseAggregate
 from protean.utils.query import Q
 
-
-class Person(BaseAggregate):
-    first_name: str
-    last_name: str
-    age: int = 21
+from .elements import Person
 
 
 class TestCriteriaConstruction:
@@ -316,9 +311,9 @@ class TestCriteriaConstruction:
         """Test that filter is evaluted on calling `list()`"""
         # Add multiple entries to the DB
         person_repo = test_domain.repository_for(Person)
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.filter(last_name="John").order_by("age")
@@ -335,7 +330,7 @@ class TestCriteriaConstruction:
             .order_by("age")
         )
         assert repr(query) == (
-            "<QuerySet: entity: <class 'tests.query.test_queryset.Person'>, "
+            "<QuerySet: entity: <class 'tests.query.elements.Person'>, "
             "criteria: ('protean.utils.query.Q', (), {'last_name': 'John'}), "
             "offset: 0, "
             "limit: 100, order_by: ['age']>"
@@ -355,7 +350,7 @@ class TestCriteriaConstruction:
         # Add multiple entries to the DB
         person_repo = test_domain.repository_for(Person)
 
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.filter(last_name="John").order_by("age")
@@ -367,9 +362,9 @@ class TestCriteriaConstruction:
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.filter(last_name="John").order_by("age")
@@ -380,13 +375,11 @@ class TestCriteriaConstruction:
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
-        person_repo.add(
-            Person(id="5", first_name="Fred", age=4, last_name="Constantine")
-        )
-        person_repo.add(Person(id="6", first_name="Flint", age=2, last_name="Steve"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=5, first_name="Fred", age=4, last_name="Constantine"))
+        person_repo.add(Person(id=6, first_name="Flint", age=2, last_name="Steve"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.order_by("age")
@@ -398,9 +391,9 @@ class TestCriteriaConstruction:
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.filter(last_name="John").order_by("age")
@@ -420,9 +413,9 @@ class TestCriteriaConstruction:
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.filter(last_name="John").order_by("age")
@@ -439,9 +432,9 @@ class TestCriteriaConstruction:
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.filter(last_name="John").order_by("age")
@@ -452,15 +445,15 @@ class TestCriteriaConstruction:
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.filter(last_name="John").order_by("age")
         assert query.total == 2
 
-        person_repo.add(Person(id="5", first_name="Berry", age=1, last_name="John"))
+        person_repo.add(Person(id=5, first_name="Berry", age=1, last_name="John"))
         assert query.total == 2
         assert query._result_cache.total == 2
 
@@ -475,9 +468,9 @@ class TestCriteriaConstruction:
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.filter(last_name="John").order_by("age")
@@ -488,27 +481,27 @@ class TestCriteriaConstruction:
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.filter(last_name="John").order_by("age")
-        assert query.items[0].id == "3"
+        assert query.items[0].id == 3
 
-        person_repo.add(Person(id="5", first_name="Berry", age=1, last_name="John"))
-        assert query.items[0].id == "3"
+        person_repo.add(Person(id=5, first_name="Berry", age=1, last_name="John"))
+        assert query.items[0].id == 3
 
-        assert query.all().items[0].id == "5"
+        assert query.all().items[0].id == 5
 
     def test_has_next(self, test_domain):
         """Test if there are results after the current set"""
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.limit(2)
@@ -519,10 +512,10 @@ class TestCriteriaConstruction:
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
         dog = person_repo.add(
-            Person(id="4", first_name="Bart", age=6, last_name="Carrie")
+            Person(id=4, first_name="Bart", age=6, last_name="Carrie")
         )
 
         # Filter by Dog attributes
@@ -539,9 +532,9 @@ class TestCriteriaConstruction:
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.offset(2).limit(2)
@@ -552,10 +545,10 @@ class TestCriteriaConstruction:
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
         dog = person_repo.add(
-            Person(id="4", first_name="Bart", age=6, last_name="Carrie")
+            Person(id=4, first_name="Bart", age=6, last_name="Carrie")
         )
 
         # Filter by Dog attributes
@@ -572,66 +565,66 @@ class TestCriteriaConstruction:
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.order_by("-age")
-        assert query.first.id == "2"
+        assert query.first.id == 2
 
     def test_first_with_cache(self, test_domain):
         """Test that the first item is retrieved correctly from the resultset"""
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
         query = person_repo._dao.query.order_by("-age")
-        assert query.first.id == "2"
+        assert query.first.id == 2
 
-        person_repo.add(Person(id="5", first_name="Berry", age=8, last_name="John"))
-        assert query.first.id == "2"
-        assert query.all().first.id == "5"
+        person_repo.add(Person(id=5, first_name="Berry", age=8, last_name="John"))
+        assert query.first.id == 2
+        assert query.all().first.id == 5
 
     def test_last(self, test_domain):
         """Test that the first item is retrieved correctly from the resultset"""
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         query = person_repo._dao.query.order_by("age")
-        assert query.last.id == "2"
+        assert query.last.id == 2
 
     def test_last_with_cache(self, test_domain):
         """Test that the first item is retrieved correctly from the resultset"""
         person_repo = test_domain.repository_for(Person)
 
         # Add multiple entries to the DB
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         query = person_repo._dao.query.order_by("age")
-        assert query.last.id == "2"
+        assert query.last.id == 2
 
-        person_repo.add(Person(id="5", first_name="Berry", age=8, last_name="John"))
-        assert query.last.id == "2"
-        assert query.all().last.id == "5"
+        person_repo.add(Person(id=5, first_name="Berry", age=8, last_name="John"))
+        assert query.last.id == 2
+        assert query.all().last.id == 5
 
     def test_raw(self, test_domain):
         """Test raw queries"""
         person_repo = test_domain.repository_for(Person)
 
-        person_repo.add(Person(id="2", first_name="Murdock", age=7, last_name="John"))
-        person_repo.add(Person(id="3", first_name="Jean", age=3, last_name="John"))
-        person_repo.add(Person(id="4", first_name="Bart", age=6, last_name="Carrie"))
+        person_repo.add(Person(id=2, first_name="Murdock", age=7, last_name="John"))
+        person_repo.add(Person(id=3, first_name="Jean", age=3, last_name="John"))
+        person_repo.add(Person(id=4, first_name="Bart", age=6, last_name="Carrie"))
 
         # Filter by Dog attributes
         results = person_repo._dao.query.raw('{"last_name":"John"}')

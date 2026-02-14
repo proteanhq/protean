@@ -3,11 +3,10 @@ from uuid import uuid4
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
+from protean.fields import Identifier, String
 
 
 class UserStatus(Enum):
@@ -17,25 +16,25 @@ class UserStatus(Enum):
 
 
 class UserRegistered(BaseEvent):
-    user_id: str
-    name: str
-    email: str
+    user_id = Identifier(required=True)
+    name = String(max_length=50, required=True)
+    email = String(required=True)
 
 
 class UserActivated(BaseEvent):
-    user_id: str
+    user_id = Identifier(required=True)
 
 
 class UserRenamed(BaseEvent):
-    user_id: str
-    name: str
+    user_id = Identifier(required=True)
+    name = String(required=True, max_length=50)
 
 
 class User(BaseAggregate):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    name: str
-    email: str
-    status: UserStatus | None = None
+    user_id = Identifier(identifier=True)
+    name = String(max_length=50, required=True)
+    email = String(required=True)
+    status = String(choices=UserStatus)
 
     @classmethod
     def register(cls, user_id, name, email):

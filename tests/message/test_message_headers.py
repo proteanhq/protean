@@ -6,7 +6,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.command import BaseCommand
 from protean.exceptions import DeserializationError
-
+from protean.fields import Identifier, String
 from protean.utils.eventing import (
     Message,
     MessageEnvelope,
@@ -15,24 +15,23 @@ from protean.utils.eventing import (
     DomainMeta,
     Metadata,
 )
-from pydantic import Field
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
 
 class Register(BaseCommand):
-    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Registered(BaseEvent):
-    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 @pytest.fixture(autouse=True)
@@ -94,8 +93,23 @@ class TestTraceParent:
             result = TraceParent.build(invalid_format)
             assert result is None
 
+    def test_traceparent_to_dict_sampled(self):
+        """Test to_dict returns dict with fields when sampled=True"""
+        traceparent = TraceParent(
+            trace_id="1234567890abcdef1234567890abcdef",
+            parent_id="abcdef1234567890",
+            sampled=True,
+        )
+
+        result = traceparent.to_dict()
+        assert result == {
+            "trace_id": "1234567890abcdef1234567890abcdef",
+            "parent_id": "abcdef1234567890",
+            "sampled": True,
+        }
+
     def test_traceparent_to_w3c_sampled(self):
-        """Test to_w3c returns proper formatted string when sampled=True"""
+        """Test to_w3c returns proper W3C formatted string when sampled=True"""
         traceparent = TraceParent(
             trace_id="1234567890abcdef1234567890abcdef",
             parent_id="abcdef1234567890",
@@ -105,16 +119,20 @@ class TestTraceParent:
         result = traceparent.to_w3c()
         assert result == "00-1234567890abcdef1234567890abcdef-abcdef1234567890-01"
 
-    def test_traceparent_to_w3c_unsampled(self):
-        """Test to_w3c returns proper formatted string when sampled=False"""
+    def test_traceparent_to_dict_unsampled(self):
+        """Test to_dict returns dict with fields when sampled=False"""
         traceparent = TraceParent(
             trace_id="1234567890abcdef1234567890abcdef",
             parent_id="abcdef1234567890",
             sampled=False,
         )
 
-        result = traceparent.to_w3c()
-        assert result == "00-1234567890abcdef1234567890abcdef-abcdef1234567890-00"
+        result = traceparent.to_dict()
+        assert result == {
+            "trace_id": "1234567890abcdef1234567890abcdef",
+            "parent_id": "abcdef1234567890",
+            "sampled": False,
+        }
 
     def test_traceparent_correlation_id_property(self):
         """Test that correlation_id property returns trace_id"""

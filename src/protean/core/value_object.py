@@ -15,6 +15,8 @@ from protean.exceptions import (
     NotSupportedError,
     ValidationError,
 )
+from protean.fields.association import HasMany, HasOne, Reference
+from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.spec import FieldSpec
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import OptionsMixin
@@ -24,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Pydantic Field Shim (compatibility bridge)
+# Field Shim (compatibility bridge)
 # ---------------------------------------------------------------------------
 _SHIM_ERROR_MESSAGES: dict[str, str] = {
     "unique": "{entity_name} with {field_name} '{value}' is already present.",
@@ -32,15 +34,15 @@ _SHIM_ERROR_MESSAGES: dict[str, str] = {
 }
 
 
-class _PydanticFieldShim:
-    """Wraps a Pydantic FieldInfo to satisfy the FieldBase interface.
+class _FieldShim:
+    """Wraps a FieldInfo to satisfy the FieldBase interface.
 
     This allows the reflection module (declared_fields, fields, attributes),
     the ValueObject embedding field (embedded.py), and the persistence layer
-    (adapters, DAO) to work with Pydantic-based elements through the
+    (adapters, DAO) to work with annotated elements through the
     ``__container_fields__`` bridge.
 
-    Attributes extracted from Pydantic's ``FieldInfo``:
+    Attributes extracted from ``FieldInfo``:
     - ``required``: True when field has no default/default_factory
     - ``default``: default value (None if undefined)
     - ``max_length``: from ``annotated_types.MaxLen`` in metadata
@@ -212,26 +214,43 @@ def _convert_pydantic_errors(exc: PydanticValidationError) -> dict[str, list[str
         # with the legacy field system.
         if msg == "Field required":
             msg = "is required"
+        # Strip Pydantic's "Value error, " prefix from custom validator messages
+        elif msg.startswith("Value error, "):
+            msg = msg[len("Value error, ") :]
         errors[field].append(msg)
     return dict(errors)
 
 
 # ---------------------------------------------------------------------------
-# New Pydantic-based BaseValueObject
+# BaseValueObject
 # ---------------------------------------------------------------------------
 class BaseValueObject(BaseModel, OptionsMixin):
     """Base class for Value Objects - immutable, no identity, equality by value.
 
-    Uses Pydantic v2 BaseModel for field declaration, validation, and serialization.
     Fields are declared using standard Python type annotations with optional
-    pydantic.Field constraints.
+    Field constraints.
     """
 
     element_type: ClassVar[str] = DomainObjects.VALUE_OBJECT
 
     model_config = ConfigDict(
         extra="forbid",
-        ignored_types=(FieldSpec,),
+        ignored_types=(
+            FieldSpec,
+            ValueObjectField,
+            HasOne,
+            HasMany,
+            Reference,
+            str,
+            int,
+            float,
+            bool,
+            list,
+            dict,
+            tuple,
+            set,
+            type,
+        ),
     )
 
     def __new__(cls, *args: Any, **kwargs: Any) -> BaseValueObject:
@@ -259,7 +278,50 @@ class BaseValueObject(BaseModel, OptionsMixin):
 
     @classmethod
     def _resolve_fieldspecs(cls) -> None:
-        from protean.fields.spec import resolve_fieldspecs
+        from typing import Annotated, Optional
+
+        from pydantic import Field as PydanticField
+
+        from protean.fields.embedded import ValueObject as ValueObjectDescriptor
+        from protean.fields.spec import FieldSpec, resolve_fieldspecs
+
+        # Validate VO constraints BEFORE resolving FieldSpecs
+        for name, value in list(vars(cls).items()):
+            if isinstance(value, FieldSpec):
+                if value.unique:
+                    raise IncorrectUsageError(
+                        f"Value Objects cannot contain fields marked 'unique' "
+                        f"(field '{name}')"
+                    )
+                if value.identifier:
+                    raise IncorrectUsageError(
+                        f"Value Objects cannot contain fields marked 'identifier' "
+                        f"(field '{name}')"
+                    )
+            elif isinstance(value, (HasOne, HasMany, Reference)):
+                raise IncorrectUsageError(
+                    f"Value Objects cannot have associations. "
+                    f"Remove {name} ({type(value).__name__}) from class {cls.__name__}"
+                )
+
+        # Handle ValueObject() descriptors — convert to Pydantic annotations
+        own_annots = vars(cls).get("__annotations__", {})
+        for name, value in list(vars(cls).items()):
+            if isinstance(value, ValueObjectDescriptor):
+                vo_cls = value.value_object_cls
+                # Remove the descriptor from the class namespace
+                try:
+                    delattr(cls, name)
+                except AttributeError:
+                    pass
+                # Add as a typed Pydantic annotation (optional by default)
+                required = getattr(value, "required", False)
+                if required:
+                    own_annots[name] = vo_cls
+                else:
+                    pf = PydanticField(default=None)
+                    own_annots[name] = Annotated[Optional[vo_cls], pf]
+                cls.__annotations__ = own_annots
 
         resolve_fieldspecs(cls)
 
@@ -269,14 +331,16 @@ class BaseValueObject(BaseModel, OptionsMixin):
         super().__pydantic_init_subclass__(**kwargs)
 
         # Build __container_fields__ bridge from Pydantic model_fields
-        fields_dict: dict[str, _PydanticFieldShim] = {}
+        fields_dict: dict[str, _FieldShim] = {}
         for fname, finfo in cls.model_fields.items():
-            fields_dict[fname] = _PydanticFieldShim(fname, finfo, finfo.annotation)
+            fields_dict[fname] = _FieldShim(fname, finfo, finfo.annotation)
         setattr(cls, _FIELDS, fields_dict)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         # Support template dict pattern: VO({"key": "val"}, key2="val2")
+        # Keyword args take precedence over template dict values.
         if args:
+            merged: dict[str, Any] = {}
             for template in args:
                 if not isinstance(template, dict):
                     raise AssertionError(
@@ -284,7 +348,9 @@ class BaseValueObject(BaseModel, OptionsMixin):
                         f"This argument serves as a template for loading common "
                         f"values.",
                     )
-                kwargs.update(template)
+                merged.update(template)
+            merged.update(kwargs)
+            kwargs = merged
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:

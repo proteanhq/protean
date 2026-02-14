@@ -27,14 +27,13 @@ from protean.utils.globals import g
 
 
 # ---------------------------------------------------------------------------
-# Pydantic-based BaseCommand
+# BaseCommand
 # ---------------------------------------------------------------------------
 class BaseCommand(BaseMessageType):
     """Base Command class that all commands should inherit from.
 
-    Uses Pydantic v2 BaseModel for field declaration, validation, and serialization.
     Fields are declared using standard Python type annotations with optional
-    pydantic.Field constraints.
+    Field constraints.
     """
 
     element_type: ClassVar[str] = DomainObjects.COMMAND
@@ -48,7 +47,9 @@ class BaseCommand(BaseMessageType):
         incoming_metadata = kwargs.pop("_metadata", None)
 
         # Support template dict pattern: Command({"key": "val"}, key2="val2")
+        # Keyword args take precedence over template dict values.
         if args:
+            merged: dict[str, Any] = {}
             for template in args:
                 if not isinstance(template, dict):
                     raise AssertionError(
@@ -56,13 +57,18 @@ class BaseCommand(BaseMessageType):
                         f"This argument serves as a template for loading common "
                         f"values.",
                     )
-                kwargs.update(template)
+                merged.update(template)
+            merged.update(kwargs)
+            kwargs = merged
 
-        # Template dicts (e.g. from to_dict()) may re-introduce _metadata;
-        # prefer the explicitly passed keyword arg, fall back to template value.
+        # Template dicts (e.g. from to_dict()) may re-introduce _metadata
+        # and _version; prefer the explicitly passed keyword arg, fall back
+        # to template value.  _version is an aggregate-internal field and is
+        # not part of the command schema, so discard it silently.
         template_metadata = kwargs.pop("_metadata", None)
         if incoming_metadata is None:
             incoming_metadata = template_metadata
+        kwargs.pop("_version", None)
 
         try:
             super().__init__(**kwargs)

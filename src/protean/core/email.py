@@ -6,7 +6,7 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
 
-from protean.core.value_object import _PydanticFieldShim, _convert_pydantic_errors
+from protean.core.value_object import _FieldShim, _convert_pydantic_errors
 from protean.exceptions import ValidationError
 from protean.utils import (
     DomainObjects,
@@ -37,10 +37,10 @@ class BaseEmailProvider:
 
 
 # ---------------------------------------------------------------------------
-# Pydantic-based BaseEmail
+# BaseEmail
 # ---------------------------------------------------------------------------
 class BaseEmail(BaseModel, OptionsMixin):
-    """Base Email class using Pydantic v2 BaseModel.
+    """Base Email class.
 
     All domain email message classes should inherit from this.
     This is also a marker class referenced when emails are registered
@@ -84,14 +84,16 @@ class BaseEmail(BaseModel, OptionsMixin):
         super().__pydantic_init_subclass__(**kwargs)
 
         # Build __container_fields__ bridge from Pydantic model_fields
-        fields_dict: dict[str, _PydanticFieldShim] = {}
+        fields_dict: dict[str, _FieldShim] = {}
         for fname, finfo in cls.model_fields.items():
-            fields_dict[fname] = _PydanticFieldShim(fname, finfo, finfo.annotation)
+            fields_dict[fname] = _FieldShim(fname, finfo, finfo.annotation)
         setattr(cls, _FIELDS, fields_dict)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         # Support template dict pattern: Email({"key": "val"}, key2="val2")
+        # Keyword args take precedence over template dict values.
         if args:
+            merged: dict[str, Any] = {}
             for template in args:
                 if not isinstance(template, dict):
                     raise AssertionError(
@@ -99,7 +101,9 @@ class BaseEmail(BaseModel, OptionsMixin):
                         f"This argument serves as a template for loading common "
                         f"values.",
                     )
-                kwargs.update(template)
+                merged.update(template)
+            merged.update(kwargs)
+            kwargs = merged
 
         try:
             super().__init__(**kwargs)

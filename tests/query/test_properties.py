@@ -1,9 +1,10 @@
 from protean.core.aggregate import BaseAggregate
+from protean.fields import Integer, String
 
 
 class Person(BaseAggregate):
-    name: str | None = None
-    age: int | None = None
+    name = String(max_length=255)
+    age = Integer()
 
 
 class TestQueryLimitProperty:

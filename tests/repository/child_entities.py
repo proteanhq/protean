@@ -1,30 +1,28 @@
 from datetime import datetime
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.fields import HasMany, HasOne, Reference
+from protean.fields import DateTime, HasMany, HasOne, Integer, Reference, String, Text
 
 
 class Post(BaseAggregate):
-    title: str
-    slug: str
-    content: str
-    posted_at: datetime = Field(default_factory=datetime.now)
+    title = String(required=True, max_length=1000)
+    slug = String(required=True, max_length=1024)
+    content = Text(required=True)
+    posted_at = DateTime(required=True, default=datetime.now)
 
     post_meta = HasOne("tests.repository.child_entities.PostMeta")
     comments = HasMany("tests.repository.child_entities.Comment")
 
 
 class PostMeta(BaseEntity):
-    likes: int = 0
+    likes = Integer(default=0)
 
     post = Reference(Post)
 
 
 class Comment(BaseEntity):
-    content: str
-    commented_at: datetime = Field(default_factory=datetime.now)
+    content = Text(required=True)
+    commented_at = DateTime(required=True, default=datetime.now())
 
     post = Reference(Post)

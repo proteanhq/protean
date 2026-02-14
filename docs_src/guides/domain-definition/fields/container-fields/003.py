@@ -1,7 +1,5 @@
 from protean import Domain
-from protean.fields import ValueObject
-from typing import Annotated
-from pydantic import Field
+from protean.fields import Float, String, ValueObject
 
 domain = Domain()
 
@@ -13,11 +11,11 @@ class Balance:
     * amount - a float value
     """
 
-    currency: Annotated[str, Field(max_length=3)]
-    amount: Annotated[float, Field(ge=0.0)]
+    currency = String(max_length=3, required=True)
+    amount = Float(required=True, min_value=0.0)
 
 
 @domain.aggregate
 class Account:
     balance = ValueObject(Balance)
-    name: Annotated[str, Field(max_length=30)] | None = None
+    name = String(max_length=30)

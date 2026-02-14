@@ -9,12 +9,11 @@ from uuid import uuid4
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import DuplicateCommandError
+from protean.fields import Identifier, String
 from protean.utils.mixins import handle
 
 # Use a dedicated Redis database for idempotency tests (db 5)
@@ -31,14 +30,14 @@ call_counter = 0
 
 
 class User(BaseAggregate):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    user_id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Register(BaseCommand):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    email: str | None = None
+    user_id = Identifier(identifier=True)
+    email = String()
 
 
 class UserCommandHandlers(BaseCommandHandler):
@@ -180,7 +179,7 @@ class TestFailureRecovery:
 
         # Use a separate command/handler pair to avoid "multiple handlers" conflict
         class Activate(BaseCommand):
-            user_id: str = Field(json_schema_extra={"identifier": True})
+            user_id = Identifier(identifier=True)
 
         fail_once = {"should_fail": True}
 
@@ -287,8 +286,8 @@ class TestFullFlowIntegration:
         test_domain._idempotency_store = None
 
         class UpdateEmail(BaseCommand):
-            user_id: str = Field(json_schema_extra={"identifier": True})
-            email: str | None = None
+            user_id = Identifier(identifier=True)
+            email = String()
 
         fail_flag = {"should_fail": True}
 
@@ -336,8 +335,8 @@ class TestFullFlowIntegration:
         to external APIs (e.g., Stripe)."""
 
         class ChargePayment(BaseCommand):
-            user_id: str = Field(json_schema_extra={"identifier": True})
-            amount: str | None = None
+            user_id = Identifier(identifier=True)
+            amount = String()
 
         class ChargePaymentHandlers(BaseCommandHandler):
             @handle(ChargePayment)

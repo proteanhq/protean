@@ -3,22 +3,23 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.fields import Identifier, String
 from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
 
 class Registered(BaseEvent):
-    user_id: str | None = None
-    email: str | None = None
+    user_id = Identifier()
+    email = String()
 
 
 class AddressChanged(BaseEvent):
-    user_id: str | None = None
-    full_address: str | None = None
+    user_id = Identifier()
+    full_address = String()
 
 
 def test_that_a_handler_is_recorded_against_event_handler(test_domain):

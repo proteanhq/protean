@@ -1,13 +1,10 @@
-import datetime as dt
-from datetime import datetime
+from datetime import date
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import NotSupportedError, ValidationError
-from protean.fields import HasMany, Reference
+from protean.fields import Date, DateTime, HasMany, Reference, String
 from protean.utils import fully_qualified_name, utcnow_func
 from protean.utils.reflection import declared_fields
 
@@ -16,13 +13,13 @@ class TestAggregateRegistration:
     def test_defining_aggregate_with_domain_decorator(self, test_domain):
         @test_domain.aggregate
         class Post(BaseAggregate):
-            name: str | None = None
+            name = String(max_length=50)
 
         assert fully_qualified_name(Post) in test_domain.registry.aggregates
 
     def test_manual_registration_of_aggregate_with_domain(self, test_domain):
         class Post(BaseAggregate):
-            name: str | None = None
+            name = String(max_length=50)
 
         test_domain.register(Post)
 
@@ -37,7 +34,7 @@ class TestAggregateFieldOptions:
     def test_unique_validation(self, test_domain):
         @test_domain.aggregate
         class Person:
-            email: str | None = Field(default=None, json_schema_extra={"unique": True})
+            email = String(unique=True)
 
         p1 = Person(email="john.doe@example.com")
         test_domain.repository_for(Person).add(p1)
@@ -57,16 +54,16 @@ class TestAggregateIdentity:
 
             @test_domain.aggregate
             class Person:
-                email: str = Field(json_schema_extra={"identifier": True})
-                username: str = Field(json_schema_extra={"identifier": True})
+                email = String(identifier=True)
+                username = String(identifier=True)
 
         assert "Only one identifier field is allowed" in exc.value.args[0]["_entity"][0]
 
     def test_that_abstract_aggregates_get_an_id_field_by_default(self, test_domain):
         @test_domain.aggregate(abstract=True)
         class TimeStamped:
-            created_at: datetime = utcnow_func
-            updated_at: datetime = utcnow_func
+            created_at = DateTime(default=utcnow_func)
+            updated_at = DateTime(default=utcnow_func)
 
         assert "id" in declared_fields(TimeStamped)
 
@@ -75,16 +72,16 @@ class TestAggregateIdentity:
     ):
         @test_domain.aggregate(auto_add_id_field=False)
         class TimeStamped:
-            created_at: datetime = utcnow_func
-            updated_at: datetime = utcnow_func
+            created_at = DateTime(default=utcnow_func)
+            updated_at = DateTime(default=utcnow_func)
 
         assert "id" not in declared_fields(TimeStamped)
 
     def test_that_abstract_aggregates_can_have_an_explicit_id_field(self, test_domain):
         @test_domain.aggregate(abstract=True)
         class User(BaseAggregate):
-            email: str = Field(json_schema_extra={"identifier": True})
-            name: str | None = None
+            email = String(identifier=True)
+            name = String(max_length=55)
 
         assert "email" in declared_fields(User)
 
@@ -101,14 +98,14 @@ class TestAggregateAssociations:
     def test_has_many(self, test_domain):
         @test_domain.aggregate
         class Post:
-            name: str | None = None
-            created_on: dt.date = Field(default_factory=dt.date.today)
+            name = String(max_length=50)
+            created_on = Date(default=date.today)
 
             comments = HasMany("Comment")
 
         @test_domain.entity(part_of=Post)
         class Comment:
-            content: str | None = None
+            content = String(max_length=500)
             post = Reference("Post")
 
         test_domain.init(traverse=False)

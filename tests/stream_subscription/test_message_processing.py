@@ -15,6 +15,7 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.fields import Identifier, Integer, String
 from protean.server.engine import Engine
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils.eventing import Message
@@ -23,9 +24,9 @@ from protean.utils.eventing import Message
 class Order(BaseAggregate):
     """Test aggregate for message processing tests."""
 
-    order_id: str
-    customer_id: str | None = None
-    amount: int | None = None
+    order_id = Identifier(required=True, identifier=True)
+    customer_id = String()
+    amount = Integer()
 
     def place_order(self):
         """Place an order and raise an event."""
@@ -39,9 +40,9 @@ class Order(BaseAggregate):
 class Payment(BaseAggregate):
     """Test aggregate for message processing tests."""
 
-    payment_id: str
-    order_id: str
-    amount: int | None = None
+    payment_id = Identifier(required=True, identifier=True)
+    order_id = Identifier(required=True)
+    amount = Integer()
 
     def process_payment(self):
         """Process a payment by issuing a command."""
@@ -53,17 +54,17 @@ class Payment(BaseAggregate):
 class OrderEvent(BaseEvent):
     """Test event for message processing tests."""
 
-    order_id: str
-    customer_id: str | None = None
-    amount: int | None = None
+    order_id = Identifier(required=True)
+    customer_id = String()
+    amount = Integer()
 
 
 class PaymentCommand(BaseCommand):
     """Test command for message processing tests."""
 
-    payment_id: str
-    order_id: str
-    amount: int | None = None
+    payment_id = Identifier(required=True)
+    order_id = Identifier(required=True)
+    amount = Integer()
 
 
 class OrderEventHandler(BaseEventHandler):

@@ -4,13 +4,12 @@ from uuid import uuid4
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.fields import Boolean, Identifier, String
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 
@@ -23,27 +22,27 @@ def count_up():
 
 
 class Register(BaseCommand):
-    user_id: str | None = None
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    user_id = Identifier()
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class Registered(BaseEvent):
-    user_id: str | None = None
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    user_id = Identifier()
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class User(BaseAggregate):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
-    address: str | None = None
+    user_id = Identifier(identifier=True)
+    email = String()
+    name = String()
+    password_hash = String()
+    address = String()
 
-    is_registered: bool | None = None
+    is_registered = Boolean()
 
     @classmethod
     def register(cls, command: Register) -> User:

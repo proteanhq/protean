@@ -1,27 +1,27 @@
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.fields import HasMany
+from protean.fields import Date, Float, HasMany, Identifier, String
 from protean.utils.reflection import declared_fields
 
 
 class Customer(BaseAggregate):
-    name: str | None = None
+    name = String(max_length=50)
     orders = HasMany("Order")
 
 
 class Order(BaseEntity):
-    ordered_on: date | None = None
+    ordered_on = Date()
     items = HasMany("OrderItem")
 
 
 class OrderItem(BaseEntity):
-    product_id: str
-    quantity: float | None = None
-    price: float | None = None
+    product_id = Identifier(required=True)
+    quantity = Float()
+    price = Float()
 
 
 @pytest.fixture(autouse=True)

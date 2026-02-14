@@ -1,9 +1,7 @@
 from datetime import datetime, timezone
 
 from protean.domain import Domain
-from protean.fields import HasMany, HasOne, Reference
-from typing import Annotated
-from pydantic import Field
+from protean.fields import DateTime, HasMany, HasOne, Integer, Reference, String
 
 publishing = Domain(__name__)
 
@@ -14,8 +12,8 @@ def utc_now():
 
 @publishing.aggregate
 class Post:
-    title: Annotated[str, Field(max_length=50)] | None = None
-    created_at: datetime = utc_now
+    title = String(max_length=50)
+    created_at = DateTime(default=utc_now)
 
     stats = HasOne("Statistic")
     comments = HasMany("Comment")
@@ -23,13 +21,13 @@ class Post:
 
 @publishing.entity(part_of=Post)
 class Statistic:
-    likes: int | None = None
-    dislikes: int | None = None
+    likes = Integer()
+    dislikes = Integer()
     post = Reference(Post)
 
 
 @publishing.entity(part_of=Post)
 class Comment:
-    content: Annotated[str, Field(max_length=500)] | None = None
+    content = String(max_length=500)
     post = Reference(Post)
-    added_at: datetime | None = None
+    added_at = DateTime()

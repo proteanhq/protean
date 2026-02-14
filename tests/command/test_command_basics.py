@@ -1,18 +1,18 @@
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
+from protean.fields import Identifier, String
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Register(BaseCommand):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    user_id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 def test_domain_stores_command_type_for_easy_retrieval(test_domain):

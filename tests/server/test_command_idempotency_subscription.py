@@ -14,6 +14,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
+from protean.fields import Identifier, String
 from protean.server.engine import Engine
 from protean.server.subscription.event_store_subscription import (
     EventStoreSubscription,
@@ -33,13 +34,13 @@ handler_call_count = 0
 
 
 class Account(BaseAggregate):
-    account_id: str | None = None
-    name: str | None = None
+    account_id = Identifier(identifier=True)
+    name = String()
 
 
 class OpenAccount(BaseCommand):
-    account_id: str | None = None
-    name: str | None = None
+    account_id = Identifier(identifier=True)
+    name = String()
 
 
 class AccountCommandHandlers(BaseCommandHandler):

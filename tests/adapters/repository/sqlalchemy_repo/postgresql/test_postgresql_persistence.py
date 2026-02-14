@@ -1,14 +1,15 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
 from protean.core.aggregate import BaseAggregate
+from protean.fields import DateTime, Dict, String
 
 
 class Event(BaseAggregate):
-    name: str | None = None
-    created_at: datetime | None = None
-    payload: dict | None = None
+    name = String(max_length=255)
+    created_at = DateTime(default=datetime.now(UTC))
+    payload = Dict()
 
 
 @pytest.mark.postgresql

@@ -1,10 +1,10 @@
-from datetime import date, datetime
+from datetime import datetime
 from enum import Enum
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity, invariant
 from protean.exceptions import ValidationError
-from protean.fields import HasMany
+from protean.fields import Date, Float, HasMany, Integer, String
 
 
 class OrderStatus(Enum):
@@ -14,10 +14,12 @@ class OrderStatus(Enum):
 
 
 class Order(BaseAggregate):
-    ordered_on: date | None = None
-    total: float | None = None
+    ordered_on = Date()
+    total = Float()
     items = HasMany("OrderItem")
-    status: str | None = OrderStatus.PENDING.value
+    status = String(
+        max_length=50, choices=OrderStatus, default=OrderStatus.PENDING.value
+    )
 
     @invariant.pre
     def order_date_must_be_in_the_past_and_status_pending_to_update_order(self):
@@ -52,9 +54,9 @@ class Order(BaseAggregate):
 
 
 class OrderItem(BaseEntity):
-    product_id: str | None = None
-    quantity: int | None = None
-    price: float | None = None
+    product_id = String(max_length=50)
+    quantity = Integer()
+    price = Float()
 
     @invariant.post
     def price_should_be_non_negative(self):

@@ -2,13 +2,12 @@ from uuid import uuid4
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.fields import Identifier, String
 from protean.utils import Processing
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
@@ -19,19 +18,19 @@ event_counter2 = 0
 
 
 class User(BaseAggregate):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    name: str | None = None
+    user_id = Identifier(identifier=True)
+    name = String()
 
 
 class LoginCommand(BaseCommand):
-    user_id: str | None = None
-    name: str | None = None
-    password: str | None = None
+    user_id = Identifier()
+    name = String()
+    password = String()
 
 
 class UserRegisteredEvent(BaseEvent):
-    user_id: str | None = None
-    name: str | None = None
+    user_id = Identifier()
+    name = String()
 
 
 class UserCommandHandler(BaseCommandHandler):

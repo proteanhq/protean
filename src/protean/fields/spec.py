@@ -122,8 +122,15 @@ class FieldSpec:
                 choices_values = tuple(self.choices)
             resolved = Literal[choices_values]  # type: ignore[valid-type]
 
-        # Wrap in Optional when not required, no explicit default, and not identifier
-        if not self.required and self.default is _UNSET and not self.identifier:
+        # Wrap in Optional when not required, no explicit default, and not identifier.
+        # Auto-increment identifiers are also Optional since the DAO assigns
+        # the actual integer value at persistence time.
+        is_increment_id = self.identifier and getattr(self, "_increment", False)
+        if (
+            not self.required
+            and self.default is _UNSET
+            and (not self.identifier or is_increment_id)
+        ):
             resolved = Optional[resolved]
 
         return resolved
@@ -136,11 +143,14 @@ class FieldSpec:
         json_extra: dict[str, Any] = {}
 
         # String-type constraints (only for str-based types)
-        if issubclass(self.python_type, str):
+        if isinstance(self.python_type, type) and issubclass(self.python_type, str):
             if self.max_length is not None:
                 kwargs["max_length"] = self.max_length
             if self.min_length is not None:
                 kwargs["min_length"] = self.min_length
+            # required=True on string fields means non-empty
+            if self.required and self.min_length is None:
+                kwargs["min_length"] = 1
 
         # Numeric constraints
         if self.max_value is not None:
@@ -152,8 +162,36 @@ class FieldSpec:
         if self.identifier:
             json_extra["identifier"] = True
             if self.default is _UNSET:
-                if self.python_type is str:
-                    kwargs["default_factory"] = lambda: str(uuid4())
+                if getattr(self, "_increment", False):
+                    # Auto-increment identifiers: the DAO handles the
+                    # actual value generation; default to None here.
+                    kwargs["default"] = None
+                elif self.field_kind in ("identifier", "auto"):
+                    # Use generate_identity with identity_* options from Auto()
+                    _id_strategy = getattr(self, "_identity_strategy", None)
+                    _id_function = getattr(self, "_identity_function", None)
+                    _id_type = getattr(self, "_identity_type", None)
+
+                    from protean.utils import generate_identity
+
+                    kwargs["default_factory"] = (
+                        lambda s=_id_strategy, f=_id_function, t=_id_type: (
+                            generate_identity(
+                                identity_strategy=s,
+                                identity_function=f,
+                                identity_type=t,
+                            )
+                        )
+                    )
+
+        # For non-identifier Auto fields, auto-generate UUIDs unless increment
+        if (
+            not self.identifier
+            and self.field_kind == "auto"
+            and self.default is _UNSET
+            and not getattr(self, "_increment", False)
+        ):
+            kwargs["default_factory"] = lambda: str(uuid4())
 
         # Handle default
         if self.default is not _UNSET:
@@ -164,7 +202,11 @@ class FieldSpec:
                 kwargs["default_factory"] = lambda d=self.default: type(d)(d)
             else:
                 kwargs["default"] = self.default
-        elif not self.required and not self.identifier:
+        elif (
+            not self.required
+            and not self.identifier
+            and "default_factory" not in kwargs
+        ):
             kwargs["default"] = None
 
         # Description
@@ -180,6 +222,8 @@ class FieldSpec:
             json_extra["field_kind"] = self.field_kind
         if self.sanitize:
             json_extra["sanitize"] = True
+        if getattr(self, "_increment", False):
+            json_extra["increment"] = True
         if self.validators:
             json_extra["_validators"] = list(self.validators)
         if self.error_messages:
@@ -199,7 +243,7 @@ class FieldSpec:
         """
         from typing import Annotated
 
-        from pydantic import AfterValidator
+        from pydantic import AfterValidator, BeforeValidator
         from pydantic import Field as PydanticField
 
         resolved_type = self.resolve_type()
@@ -208,8 +252,25 @@ class FieldSpec:
 
         extra_validators: list[Any] = []
 
+        # Coerce non-str values (e.g. int, UUID) to str for identifier
+        # and auto fields.  The old field system did this automatically;
+        # Pydantic v2 strict mode rejects them otherwise.
+        # Applies when:
+        #   - The field is marked as identifier=True, OR
+        #   - The field_kind is "identifier" or "auto" (e.g. Identifier()
+        #     used as a reference, not just as the entity's identity)
+        # Excludes Auto(increment=True) fields that store integer sequences.
+        if self.python_type is str and (
+            self.identifier or self.field_kind in ("identifier", "auto")
+        ):
+            extra_validators.append(BeforeValidator(_coerce_to_str))
+
         # Sanitization via AfterValidator
-        if self.sanitize and issubclass(self.python_type, str):
+        if (
+            self.sanitize
+            and isinstance(self.python_type, type)
+            and issubclass(self.python_type, str)
+        ):
             extra_validators.append(AfterValidator(_sanitize_string))
 
         # Per-field validators via AfterValidator
@@ -220,8 +281,19 @@ class FieldSpec:
                 v: Any,
                 validators: list[Callable] = captured_validators,
             ) -> Any:
+                from protean.exceptions import ValidationError as ProteanValidationError
+
                 for validator_fn in validators:
-                    validator_fn(v)
+                    try:
+                        validator_fn(v)
+                    except ProteanValidationError as e:
+                        # Re-raise as ValueError so Pydantic catches it and
+                        # maps it to the correct field name.
+                        msg = str(e.messages) if hasattr(e, "messages") else str(e)
+                        # If the validator set an error string on itself, use that
+                        if hasattr(validator_fn, "error"):
+                            msg = validator_fn.error
+                        raise ValueError(msg) from e
                 return v
 
             extra_validators.append(AfterValidator(_run_protean_validators))
@@ -235,18 +307,65 @@ class FieldSpec:
         return Annotated[resolved_type, pydantic_field]
 
     def __repr__(self) -> str:
-        parts = [self.python_type.__name__]
-        if self.field_kind != "standard":
-            parts.append(f"field_kind={self.field_kind!r}")
-        if self.required:
-            parts.append("required=True")
+        import datetime as _dt
+
+        # Map (python_type, field_kind) to user-friendly factory name
+        _FACTORY_NAMES: dict[tuple[type, str], str] = {
+            (str, "standard"): "String",
+            (str, "text"): "Text",
+            (str, "identifier"): "Identifier",
+            (str, "auto"): "Auto",
+            (int, "auto"): "Auto",
+            (int, "standard"): "Integer",
+            (float, "standard"): "Float",
+            (bool, "standard"): "Boolean",
+        }
+
+        base_type = self.python_type
+        # For container types (list[X], dict), extract the origin
+        origin = getattr(base_type, "__origin__", None)
+        if origin is list:
+            factory_name = "List"
+        elif origin is dict or base_type is dict:
+            factory_name = "Dict"
+        elif base_type is _dt.date:
+            factory_name = "Date"
+        elif base_type is _dt.datetime:
+            factory_name = "DateTime"
+        else:
+            factory_name = _FACTORY_NAMES.get((base_type, self.field_kind), "FieldSpec")
+
+        parts: list[str] = []
+        if self.description:
+            parts.append(f"description={self.description!r}")
         if self.identifier:
             parts.append("identifier=True")
+        if not self.identifier and self.required:
+            parts.append("required=True")
+        if self.referenced_as:
+            parts.append(f"referenced_as={self.referenced_as!r}")
         if self.default is not _UNSET:
-            parts.append(f"default={self.default!r}")
+            if callable(self.default):
+                parts.append(f"default={self.default.__name__}")
+            elif isinstance(self.default, str):
+                parts.append(f"default={self.default!r}")
+            else:
+                parts.append(f"default={self.default!r}")
         if self.max_length is not None:
             parts.append(f"max_length={self.max_length}")
-        return f"FieldSpec({', '.join(parts)})"
+        if self.min_length is not None:
+            parts.append(f"min_length={self.min_length}")
+        if self.max_value is not None:
+            parts.append(f"max_value={self.max_value}")
+        if self.min_value is not None:
+            parts.append(f"min_value={self.min_value}")
+        # Show sanitize only when it deviates from the factory default
+        if factory_name in ("String", "Text") and not self.sanitize:
+            parts.append("sanitize=False")
+        # Show increment for Auto fields
+        if factory_name == "Auto" and getattr(self, "_increment", False):
+            parts.append("increment=True")
+        return f"{factory_name}({', '.join(parts)})"
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +427,18 @@ def resolve_fieldspecs(cls: type) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+def _coerce_to_str(v: Any) -> str:
+    """Coerce a value to ``str`` for identifier/auto fields.
+
+    The old Protean field system automatically coerced ``int``, ``UUID``,
+    etc. to ``str``.  This ``BeforeValidator`` restores that behavior
+    under Pydantic v2's strict validation.
+    """
+    if v is None:
+        return v  # type: ignore[return-value]
+    return str(v)
+
+
 def _sanitize_string(v: str) -> str:
     """Sanitise a string value using bleach (if available)."""
     if not isinstance(v, str):

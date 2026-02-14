@@ -20,13 +20,13 @@ class TestDAO:
 
     def test_that_escaped_quotes_in_values_are_handled_properly(self, test_domain):
         test_domain.repository_for(Person)._dao.create(
-            id="1", first_name="Athos", last_name="Musketeer", age=2
+            id=1, first_name="Athos", last_name="Musketeer", age=2
         )
         test_domain.repository_for(Person)._dao.create(
-            id="2", first_name="Porthos", last_name="Musketeer", age=3
+            id=2, first_name="Porthos", last_name="Musketeer", age=3
         )
         test_domain.repository_for(Person)._dao.create(
-            id="3", first_name="Aramis", last_name="Musketeer", age=4
+            id=3, first_name="Aramis", last_name="Musketeer", age=4
         )
 
         person1 = test_domain.repository_for(Person)._dao.create(

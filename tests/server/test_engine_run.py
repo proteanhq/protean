@@ -8,6 +8,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.fields import Identifier
 from protean.server.engine import Engine
 from protean.utils import Processing
 from protean.utils.mixins import handle
@@ -21,11 +22,11 @@ def count_up():
 
 
 class User(BaseAggregate):
-    user_id: str | None = None
+    user_id = Identifier(identifier=True)
 
 
 class UserLoggedIn(BaseEvent):
-    user_id: str | None = None
+    user_id = Identifier(identifier=True)
 
 
 class UserEventHandler(BaseEventHandler):

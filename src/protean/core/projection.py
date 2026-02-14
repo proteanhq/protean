@@ -9,9 +9,10 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
 
 from protean.core.entity import _EntityState
-from protean.core.value_object import _PydanticFieldShim, _convert_pydantic_errors
+from protean.core.value_object import _FieldShim, _convert_pydantic_errors
 from protean.exceptions import (
     IncorrectUsageError,
+    InvalidOperationError,
     NotSupportedError,
     ValidationError,
 )
@@ -30,17 +31,17 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Pydantic-based BaseProjection
+# BaseProjection
 # ---------------------------------------------------------------------------
 class BaseProjection(BaseModel, OptionsMixin):
-    """Pydantic-based base class for Projection domain elements.
+    """Base class for Projection domain elements.
 
     Mutable, identity-based equality, with basic field types only.
-    Uses Pydantic v2 BaseModel with ``validate_assignment=True`` for field
-    declaration, validation, and mutation.
+    Uses ``validate_assignment=True`` for field declaration, validation,
+    and mutation.
 
     Fields are declared using standard Python type annotations with optional
-    ``pydantic.Field`` constraints. Identity fields must be annotated with
+    ``Field`` constraints. Identity fields must be annotated with
     ``json_schema_extra={"identifier": True}``.
     """
 
@@ -49,10 +50,26 @@ class BaseProjection(BaseModel, OptionsMixin):
     model_config = ConfigDict(
         validate_assignment=True,
         extra="forbid",
-        ignored_types=(HasOne, HasMany, Reference, ValueObject, FieldSpec),
+        ignored_types=(
+            HasOne,
+            HasMany,
+            Reference,
+            ValueObject,
+            FieldSpec,
+            str,
+            int,
+            float,
+            bool,
+            list,
+            dict,
+            tuple,
+            set,
+            type,
+        ),
     )
 
     # Internal state (PrivateAttr — excluded from model_dump/schema)
+    _initialized: bool = PrivateAttr(default=False)
     _state: _EntityState = PrivateAttr(default_factory=_EntityState)
 
     def __new__(cls, *args: Any, **kwargs: Any) -> BaseProjection:
@@ -105,9 +122,9 @@ class BaseProjection(BaseModel, OptionsMixin):
         super().__pydantic_init_subclass__(**kwargs)
 
         # Build __container_fields__ bridge from Pydantic model_fields
-        fields_dict: dict[str, _PydanticFieldShim] = {}
+        fields_dict: dict[str, _FieldShim] = {}
         for fname, finfo in cls.model_fields.items():
-            fields_dict[fname] = _PydanticFieldShim(fname, finfo, finfo.annotation)
+            fields_dict[fname] = _FieldShim(fname, finfo, finfo.annotation)
         setattr(cls, _FIELDS, fields_dict)
 
         # Track identity field
@@ -128,8 +145,18 @@ class BaseProjection(BaseModel, OptionsMixin):
             pass
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        # Check abstract before Pydantic validation to give a clear error
+        # (abstract classes may lack fields, causing misleading Pydantic errors)
+        if self.meta_.abstract is True:
+            raise NotSupportedError(
+                f"{self.__class__.__name__} class has been marked abstract"
+                f" and cannot be instantiated"
+            )
+
         # Support template dict pattern: Projection({"key": "val"}, key2="val2")
+        # Keyword args take precedence over template dict values.
         if args:
+            merged: dict[str, Any] = {}
             for template in args:
                 if not isinstance(template, dict):
                     raise AssertionError(
@@ -137,7 +164,9 @@ class BaseProjection(BaseModel, OptionsMixin):
                         f"This argument serves as a template for loading common "
                         f"values.",
                     )
-                kwargs.update(template)
+                merged.update(template)
+            merged.update(kwargs)
+            kwargs = merged
 
         try:
             super().__init__(**kwargs)
@@ -145,13 +174,8 @@ class BaseProjection(BaseModel, OptionsMixin):
             raise ValidationError(_convert_pydantic_errors(e))
 
     def model_post_init(self, __context: Any) -> None:
-        if self.meta_.abstract is True:
-            raise NotSupportedError(
-                f"{self.__class__.__name__} class has been marked abstract"
-                f" and cannot be instantiated"
-            )
-
         self.defaults()
+        self._initialized = True
 
     def defaults(self) -> None:
         """Placeholder for defaults.
@@ -164,7 +188,16 @@ class BaseProjection(BaseModel, OptionsMixin):
     # Mutation with Pydantic error conversion + state tracking
     # ------------------------------------------------------------------
     def __setattr__(self, name: str, value: Any) -> None:
-        if name in self.__class__.model_fields:
+        if name in self.__class__.model_fields and getattr(self, "_initialized", False):
+            # Prevent mutation of identifier fields once set
+            id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
+            if name == id_field_name:
+                existing = getattr(self, name, None)
+                if existing is not None and value != existing:
+                    raise InvalidOperationError(
+                        "Identifiers cannot be changed once set"
+                    )
+
             try:
                 super().__setattr__(name, value)
             except PydanticValidationError as e:

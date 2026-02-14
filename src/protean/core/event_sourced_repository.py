@@ -51,6 +51,9 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             if aggregate.meta_.fact_events:
                 payload = aggregate.to_dict()
 
+                # Remove internal attributes not needed for the Fact Event
+                payload.pop("_version", None)
+
                 # Construct and raise the Fact Event
                 fact_event_obj = aggregate._fact_event_cls(**payload)
                 aggregate.raise_(fact_event_obj)

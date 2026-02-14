@@ -12,6 +12,7 @@ from protean import handle
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.fields import Identifier, String
 from protean.server.engine import Engine
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils.eventing import Message
@@ -20,15 +21,15 @@ from protean.utils.eventing import Message
 class ErrorTestAggregate(BaseAggregate):
     """Test aggregate for error handling tests."""
 
-    test_id: str
-    message: str | None = None
+    test_id = Identifier(required=True)
+    message = String()
 
 
 class ErrorTestEvent(BaseEvent):
     """Test event for error scenarios."""
 
-    test_id: str
-    message: str | None = None
+    test_id = Identifier(required=True)
+    message = String()
 
 
 class ErrorTestEventHandler(BaseEventHandler):

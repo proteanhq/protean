@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field as PydanticField, PrivateAttr
 
 from protean.core.value_object import (
     BaseValueObject,
-    _PydanticFieldShim,
+    _FieldShim,
 )
 from protean.exceptions import (
     ConfigurationError,
@@ -20,6 +20,9 @@ from protean.exceptions import (
     InvalidDataError,
     DeserializationError,
 )
+from protean.fields.association import Association, Reference
+from protean.fields.base import FieldBase
+from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.spec import FieldSpec
 from protean.utils.container import OptionsMixin
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
@@ -172,19 +175,33 @@ class Metadata(BaseValueObject):
 
 
 # ---------------------------------------------------------------------------
-# Pydantic-based BaseMessageType
+# BaseMessageType
 # ---------------------------------------------------------------------------
 class BaseMessageType(BaseModel, OptionsMixin):
-    """Pydantic-based base class for Command and Event element classes.
+    """Base class for Command and Event element classes.
 
-    Uses Pydantic v2 BaseModel for field declaration, validation, and serialization.
     Fields are declared using standard Python type annotations with optional
-    pydantic.Field constraints.
+    ``Field`` constraints.
     """
 
     element_type: ClassVar[str] = ""
 
-    model_config = ConfigDict(extra="forbid", ignored_types=(FieldSpec,))
+    model_config = ConfigDict(
+        extra="forbid",
+        ignored_types=(
+            FieldSpec,
+            FieldBase,
+            str,
+            int,
+            float,
+            bool,
+            list,
+            dict,
+            tuple,
+            set,
+            type,
+        ),
+    )
 
     _metadata: Any = PrivateAttr(default=None)
 
@@ -211,6 +228,9 @@ class BaseMessageType(BaseModel, OptionsMixin):
         # Resolve FieldSpec declarations before Pydantic processes annotations
         cls._resolve_fieldspecs()
 
+        # Validate that only basic field types are used (no associations/references)
+        cls.__validate_for_basic_field_types()
+
     @classmethod
     def _resolve_fieldspecs(cls) -> None:
         from protean.fields.spec import resolve_fieldspecs
@@ -218,14 +238,24 @@ class BaseMessageType(BaseModel, OptionsMixin):
         resolve_fieldspecs(cls)
 
     @classmethod
+    def __validate_for_basic_field_types(cls) -> None:
+        """Reject association/reference field descriptors in Commands and Events."""
+        for field_name, field_obj in vars(cls).items():
+            if isinstance(field_obj, (Association, Reference, ValueObjectField)):
+                raise IncorrectUsageError(
+                    f"Commands and Events can only contain basic field types. "
+                    f"Remove {field_name} ({field_obj.__class__.__name__}) from class {cls.__name__}"
+                )
+
+    @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
         """Called by Pydantic AFTER model_fields are fully populated."""
         super().__pydantic_init_subclass__(**kwargs)
 
         # Build __container_fields__ bridge from Pydantic model_fields
-        fields_dict: dict[str, _PydanticFieldShim] = {}
+        fields_dict: dict[str, _FieldShim] = {}
         for fname, finfo in cls.model_fields.items():
-            fields_dict[fname] = _PydanticFieldShim(fname, finfo, finfo.annotation)
+            fields_dict[fname] = _FieldShim(fname, finfo, finfo.annotation)
         setattr(cls, _FIELDS, fields_dict)
 
         # Track id field

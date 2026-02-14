@@ -3,11 +3,12 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService
 from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.fields import String
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
 
 def test_that_base_command_handler_cannot_be_instantianted():

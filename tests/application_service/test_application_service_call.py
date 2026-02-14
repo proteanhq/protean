@@ -1,27 +1,28 @@
 from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService, use_case
 from protean.core.event import BaseEvent
+from protean.fields import Identifier, String
 from protean.utils.globals import current_domain
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
-    status: str = "INACTIVE"
+    email = String()
+    name = String()
+    status = String(choices=["INACTIVE", "ACTIVE", "ARCHIVED"], default="INACTIVE")
 
     def activate(self):
         self.status = "ACTIVE"
 
 
 class Registered(BaseEvent):
-    user_id: str | None = None
-    email: str | None = None
-    name: str | None = None
+    user_id = Identifier()
+    email = String()
+    name = String()
 
 
 class UserApplicationServices(BaseApplicationService):
     @use_case
-    def register_user(self, email: str, name: str) -> str:
+    def register_user(self, email: str, name: str) -> Identifier:
         user = User(email=email, name=name)
         user.raise_(Registered(user_id=user.id, email=user.email, name=user.name))
         current_domain.repository_for(User).add(user)
@@ -29,7 +30,7 @@ class UserApplicationServices(BaseApplicationService):
         return user.id
 
     @use_case
-    def activate_user(sefl, user_id: str) -> None:
+    def activate_user(sefl, user_id: Identifier) -> None:
         user = current_domain.repository_for(User).get(user_id)
         user.activate()
         current_domain.repository_for(User).add(user)

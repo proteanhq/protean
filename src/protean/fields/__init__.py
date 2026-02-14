@@ -1,6 +1,7 @@
+from . import validators
 from .association import HasMany, HasOne, Reference
 from .base import Field, FieldBase
-from .basic import ValueObjectList
+from .basic import Method, Nested, ValueObjectList
 from .containers import Dict, List
 from .embedded import ValueObject
 from .simple import (
@@ -34,10 +35,15 @@ __all__ = [
     # Legacy base
     "Field",
     "FieldBase",
+    # Serializer fields
+    "Method",
+    "Nested",
     # Association descriptors
     "HasMany",
     "HasOne",
     "Reference",
     "ValueObject",
     "ValueObjectList",
+    # Validators
+    "validators",
 ]

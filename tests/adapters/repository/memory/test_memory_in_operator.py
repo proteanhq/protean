@@ -1,9 +1,10 @@
 from protean.core.aggregate import BaseAggregate
+from protean.fields.basic import String
 from protean.utils.globals import current_domain
 
 
 class User(BaseAggregate):
-    email: str | None = None
+    email = String()
 
 
 def test_for_in_lookup(test_domain):

@@ -4,14 +4,15 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
+from protean.fields import Integer, String
 from protean.utils import fully_qualified_name
 from protean.utils.globals import current_domain
 
 
 class PersonGeneric(BaseAggregate):
-    first_name: str
-    last_name: str
-    age: int = 21
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50, required=True)
+    age = Integer(default=21)
 
 
 class PersonCustomRepository(BaseRepository):
@@ -22,9 +23,9 @@ class PersonCustomRepository(BaseRepository):
 
 
 class PersonSQLite(BaseAggregate):
-    first_name: str
-    last_name: str
-    age: int = 21
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50, required=True)
+    age = Integer(default=21)
 
 
 class PersonSQLiteGenericRepository(BaseRepository):

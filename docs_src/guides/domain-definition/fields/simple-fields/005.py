@@ -1,13 +1,12 @@
-from datetime import datetime, date
+from datetime import datetime
 
 from protean import Domain
-from typing import Annotated
-from pydantic import Field
+from protean.fields import Date, String
 
 domain = Domain()
 
 
 @domain.aggregate
 class Post:
-    title: Annotated[str, Field(max_length=255)] | None = None
-    published_on: date = lambda: datetime.today().date()
+    title = String(max_length=255)
+    published_on = Date(default=lambda: datetime.today().date())

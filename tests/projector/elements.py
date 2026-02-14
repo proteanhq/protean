@@ -1,17 +1,16 @@
 from datetime import datetime
 
-from pydantic import Field
-
 from protean import current_domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
 from protean.core.projector import BaseProjector, on
+from protean.fields import DateTime, Float, Identifier, String
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
     @classmethod
     def register(cls, email: str, name: str):
@@ -21,34 +20,34 @@ class User(BaseAggregate):
 
 
 class Registered(BaseEvent):
-    user_id: str | None = None
-    email: str | None = None
-    name: str | None = None
+    user_id = Identifier()
+    email = String()
+    name = String()
 
 
 class LoggedIn(BaseEvent):
-    user_id: str | None = None
+    user_id = Identifier()
 
 
 class LoggedOut(BaseEvent):
-    user_id: str | None = None
+    user_id = Identifier()
 
 
 class Token(BaseProjection):
-    key: str = Field(json_schema_extra={"identifier": True})
-    id: str
-    email: str
+    key = Identifier(identifier=True)
+    id = Identifier(required=True)
+    email = String(required=True)
 
 
 class FullUser(BaseProjection):
-    email: str = Field(json_schema_extra={"identifier": True})
-    name: str | None = None
+    email = String(identifier=True)
+    name = String()
 
 
 class NewUserReport(BaseProjection):
-    email: str = Field(json_schema_extra={"identifier": True})
-    name: str | None = None
-    registered_at: datetime | None = Field(default_factory=datetime.now)
+    email = String(identifier=True)
+    name = String()
+    registered_at = DateTime(default=datetime.now)
 
 
 class TokenProjector(BaseProjector):
@@ -89,27 +88,27 @@ class NewUserProjector(BaseProjector):
 
 
 class Transaction(BaseAggregate):
-    user_id: str | None = None
-    amount: float | None = None
-    at: datetime | None = Field(default_factory=datetime.now)
+    user_id = Identifier()
+    amount = Float()
+    at = DateTime(default=datetime.now)
 
     @classmethod
-    def transact(cls, user_id: str, amount: float):
+    def transact(cls, user_id: Identifier, amount: float):
         transaction = cls(user_id=user_id, amount=amount)
         transaction.raise_(Transacted(user_id=user_id, amount=amount))
         return transaction
 
 
 class Transacted(BaseEvent):
-    user_id: str | None = None
-    amount: float | None = None
-    at: datetime | None = Field(default_factory=datetime.now)
+    user_id = Identifier()
+    amount = Float()
+    at = DateTime(default=datetime.now)
 
 
 class Balances(BaseProjection):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    name: str | None = None
-    balance: float | None = None
+    user_id = Identifier(identifier=True)
+    name = String()
+    balance = Float()
 
 
 class TransactionProjector(BaseProjector):

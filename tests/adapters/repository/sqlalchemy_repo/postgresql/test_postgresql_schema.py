@@ -6,6 +6,7 @@ from sqlalchemy import inspect
 from protean import Domain
 from protean.adapters.repository.sqlalchemy import PostgresqlProvider
 from protean.core.aggregate import BaseAggregate
+from protean.fields import String, Integer
 
 
 @pytest.mark.postgresql
@@ -69,8 +70,8 @@ class TestPostgreSQLSchemaHandling:
 
         # Define test entity with a unique name to avoid conflicts
         class UniqueSchemaTestEntity(BaseAggregate):
-            name: str
-            count: int = 0
+            name = String(max_length=100, required=True)
+            count = Integer(default=0)
 
         domain.register(UniqueSchemaTestEntity)
         domain.init(traverse=False)
@@ -104,7 +105,7 @@ class TestPostgreSQLSchemaHandling:
 
         # Define test entity with custom schema name
         class UniqueCustomSchemaEntity(BaseAggregate):
-            title: str
+            title = String(max_length=200, required=True)
 
         domain.register(
             UniqueCustomSchemaEntity, schema_name="unique_custom_table_name"
@@ -188,7 +189,7 @@ class TestPostgreSQLSchemaHandling:
 
         # Define test entity
         class DropTestEntity(BaseAggregate):
-            name: str
+            name = String(max_length=100, required=True)
 
         domain.register(DropTestEntity)
         domain.init(traverse=False)

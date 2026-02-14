@@ -5,12 +5,11 @@ from uuid import uuid4
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import DuplicateCommandError
+from protean.fields import Identifier, String
 from protean.utils.idempotency import IdempotencyStore
 from protean.utils.mixins import handle
 
@@ -18,14 +17,14 @@ REDIS_IDEMPOTENCY_URL = "redis://localhost:6379/5"
 
 
 class User(BaseAggregate):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    user_id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Register(BaseCommand):
-    user_id: str = Field(json_schema_extra={"identifier": True})
-    email: str | None = None
+    user_id = Identifier(identifier=True)
+    email = String()
 
 
 class UserCommandHandlers(BaseCommandHandler):
@@ -172,7 +171,7 @@ class TestNoRedisIdempotencyBehavior:
 
     def test_no_redis_config_bypasses_dedup(self, test_domain):
         """Without Redis configured, process() with an idempotency key
-        works normally -- no dedup, no errors."""
+        works normally — no dedup, no errors."""
         id1 = str(uuid4())
         result1 = test_domain.process(
             Register(user_id=id1, email="a@example.com"),
@@ -184,7 +183,7 @@ class TestNoRedisIdempotencyBehavior:
             idempotency_key="key-2",
         )
 
-        # Both should process -- no Redis means no dedup
+        # Both should process — no Redis means no dedup
         assert result1 is not None
         assert result2 is not None
 
@@ -281,7 +280,7 @@ class TestIdempotencyStoreErrorHandling:
     """Test IdempotencyStore error-handling paths using a mocked Redis client.
 
     These paths can only be exercised by injecting failures into the Redis
-    connection -- they cannot be reliably tested against a live Redis server.
+    connection — they cannot be reliably tested against a live Redis server.
     """
 
     def _make_store_with_mock(self) -> tuple[IdempotencyStore, MagicMock]:

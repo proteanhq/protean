@@ -2,10 +2,11 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
+from protean.fields import String
 
 
 class User(BaseAggregate):
-    name: str | None = None
+    name = String()
 
 
 @pytest.fixture(autouse=True)

@@ -2,12 +2,13 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError
+from protean.fields import Integer, String
 from protean.utils.reflection import declared_fields
 
 
 class Person(BaseAggregate):
-    name: str
-    age: int | None = None
+    name = String(max_length=50, required=True)
+    age = Integer()
 
 
 def test_declared_fields():

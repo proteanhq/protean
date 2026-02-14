@@ -8,19 +8,20 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.domain.registry import _DomainRegistry
 from protean.exceptions import NotSupportedError
+from protean.fields import DateTime, Identifier, Integer, String
 from protean.utils import DomainObjects
 
 
 class User(BaseAggregate):
-    first_name: str | None = None
-    last_name: str | None = None
-    age: int | None = None
-    role_id: str | None = None
+    first_name = String(max_length=50)
+    last_name = String(max_length=50)
+    age = Integer()
+    role_id = Identifier()
 
 
 class Role(BaseEntity):
-    name: str
-    created_on: datetime = datetime.today()
+    name = String(max_length=15, required=True)
+    created_on = DateTime(default=datetime.today())
 
 
 def test_element_registration():
@@ -312,7 +313,7 @@ def test_elements_by_name_tracking():
     register = _DomainRegistry()
 
     class AnotherUser(BaseAggregate):
-        name: str | None = None
+        name = String(max_length=50)
 
     # Register first User - this should trigger the 'else' branch
     register.register_element(User)
@@ -342,10 +343,10 @@ def test_multiple_elements_same_name_different_qualname():
 
     # Create two classes with the same name but different modules
     class TestElement(BaseAggregate):
-        field: str | None = None
+        field = String()
 
     class AnotherTestElement(BaseAggregate):
-        field: str | None = None
+        field = String()
 
     # Manually set different module names
     TestElement.__name__ = "SameName"

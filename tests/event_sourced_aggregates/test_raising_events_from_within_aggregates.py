@@ -4,34 +4,33 @@ from uuid import uuid4
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
+from protean.fields import Identifier, String
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 
 
 class Register(BaseCommand):
-    id: str = Field(json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class Registered(BaseEvent):
-    id: str | None = None
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    id = Identifier()
+    email = String()
+    name = String()
+    password_hash = String()
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    email = String()
+    name = String()
+    password_hash = String()
 
     @classmethod
     def register(cls, command: Register) -> User:

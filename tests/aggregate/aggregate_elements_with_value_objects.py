@@ -2,7 +2,7 @@ from enum import Enum
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
-from protean.fields import ValueObject
+from protean.fields import String, ValueObject
 
 
 class FileType(Enum):
@@ -11,10 +11,10 @@ class FileType(Enum):
 
 
 class File(BaseValueObject):
-    url: str | None = None
-    type: FileType | None = None
+    url = String(max_length=1024)
+    type = String(max_length=15, choices=FileType)
 
 
 class Resource(BaseAggregate):
-    title: str
+    title = String(required=True, max_length=50)
     associated_file = ValueObject(File)

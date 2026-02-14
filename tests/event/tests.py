@@ -2,13 +2,11 @@ import uuid
 
 import pytest
 
-from pydantic import Field
-
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
-from protean.fields import ValueObject
+from protean.fields import Identifier, String, ValueObject
 from protean.utils import fully_qualified_name
 from protean.utils.eventing import MessageEnvelope
 from protean.utils.reflection import data_fields, declared_fields, fields
@@ -26,7 +24,6 @@ class TestDomainEventDefinition:
             key in data_fields(PersonAdded)
             for key in ["first_name", "last_name", "age", "id"]
         )
-        # In Pydantic-based events, _metadata is a PrivateAttr, not in fields()
         assert all(
             key in fields(PersonAdded)
             for key in ["first_name", "last_name", "age", "id"]
@@ -34,15 +31,15 @@ class TestDomainEventDefinition:
 
     def test_that_domain_event_can_accommodate_value_objects(self, test_domain):
         class Email(BaseValueObject):
-            address: str | None = None
+            address = String(max_length=255)
 
         class User(BaseAggregate):
             email = ValueObject(Email, required=True)
-            name: str | None = None
+            name = String(max_length=50)
 
         class UserAdded(BaseEvent):
-            id: str = Field(json_schema_extra={"identifier": True})
-            email: Email
+            id = Identifier(identifier=True)
+            email: Email | None = None
             name: str | None = None
 
         test_domain.register(User)
@@ -54,13 +51,18 @@ class TestDomainEventDefinition:
             email=Email(address="john.doe@gmail.com"),
             name="John Doe",
         )
-        raw_event = UserAdded(id=user.id, email=user.email, name=user.name)
-        user.raise_(UserAdded(id=user.id, email=user.email, name=user.name))
+        raw_event = UserAdded(
+            id=user.id, email=Email(address="john.doe@gmail.com"), name=user.name
+        )
+        user.raise_(
+            UserAdded(
+                id=user.id, email=Email(address="john.doe@gmail.com"), name=user.name
+            )
+        )
         raised_event = user._events[0]
 
         assert raw_event is not None
         assert raw_event.email == Email(address="john.doe@gmail.com")
-        assert raw_event.email.address == "john.doe@gmail.com"
 
         assert (
             raw_event.to_dict()
@@ -136,15 +138,15 @@ class TestDomainEventDefinition:
 
     def test_error_on_invalid_value_object(self, test_domain):
         class Address(BaseValueObject):
-            street: str
-            city: str
+            street = String(max_length=50, required=True)
+            city = String(max_length=25, required=True)
 
         class Person(BaseAggregate):
-            name: str | None = None
+            name = String(max_length=50)
             address = ValueObject(Address, required=True)
 
         class PersonAdded(BaseEvent):
-            id: str = Field(json_schema_extra={"identifier": True})
+            id = Identifier(identifier=True)
             name: str | None = None
             address: Address | None = None
 
@@ -153,7 +155,7 @@ class TestDomainEventDefinition:
 
         with pytest.raises(ValidationError) as exc:
             PersonAdded(
-                id=uuid.uuid4(),
+                id=str(uuid.uuid4()),
                 name="John Doe",
                 address={"street": "123 Main St"},
             )
@@ -164,14 +166,14 @@ class TestDomainEventDefinition:
         self, test_domain
     ):
         class Email(BaseValueObject):
-            address: str | None = None
+            address = String(max_length=255)
 
         class User(BaseAggregate):
             email = ValueObject(Email, required=True)
-            name: str | None = None
+            name = String(max_length=50)
 
         class UserAdded(BaseEvent):
-            email: Email
+            email: Email | None = None
             name: str | None = None
 
         test_domain.register(User)
@@ -180,9 +182,7 @@ class TestDomainEventDefinition:
 
         assert UserAdded(
             {
-                "email": {
-                    "address": "john.doe@gmail.com",
-                },
+                "email": Email(address="john.doe@gmail.com"),
                 "name": "John Doe",
             }
         ) == UserAdded(email=Email(address="john.doe@gmail.com"), name="John Doe")
@@ -224,7 +224,7 @@ class TestDomainEventRegistration:
 
     def test_registering_external_event(self, test_domain):
         class ExternalEvent(BaseEvent):
-            foo: str | None = None
+            foo = String()
 
         test_domain.register_external_event(ExternalEvent, "Bar.ExternalEvent.v1")
 

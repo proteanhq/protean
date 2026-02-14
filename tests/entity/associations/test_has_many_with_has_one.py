@@ -2,23 +2,23 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.fields import HasMany, HasOne
+from protean.fields import HasMany, HasOne, Integer, String
 from protean.utils.reflection import declared_fields
 
 
 class University(BaseAggregate):
-    name: str | None = None
+    name = String(max_length=50)
     departments = HasMany("Department")
 
 
 class Department(BaseEntity):
-    name: str | None = None
+    name = String(max_length=50)
     dean = HasOne("Dean")
 
 
 class Dean(BaseEntity):
-    name: str | None = None
-    age: int | None = None
+    name = String(max_length=50)
+    age = Integer(min_value=21)
 
 
 @pytest.fixture(autouse=True)

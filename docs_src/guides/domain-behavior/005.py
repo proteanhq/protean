@@ -1,8 +1,7 @@
 import re
 
 from protean import Domain
-from typing import Annotated
-from pydantic import Field
+from protean.fields import String
 
 domain = Domain()
 
@@ -22,7 +21,5 @@ class EmailValidator:
 
 @domain.aggregate
 class Person:
-    name: Annotated[str, Field(max_length=50)]
-    email: Annotated[
-        str, Field(max_length=254, json_schema_extra={"validators": [EmailValidator()]})
-    ]
+    name = String(required=True, max_length=50)
+    email = String(required=True, max_length=254, validators=[EmailValidator()])

@@ -1,17 +1,17 @@
 import time
 
 import pytest
-from pydantic import Field
 
 from protean.adapters.cache.memory import MemoryCache
 from protean.core.projection import BaseProjection
+from protean.fields import Identifier, String
 from protean.port.cache import BaseCache
 
 
 class Token(BaseProjection):
-    key: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    user_id: str
-    email: str
+    key = Identifier(identifier=True)
+    user_id = Identifier(required=True)
+    email = String(required=True)
 
 
 class TestCacheInitialization:

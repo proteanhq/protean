@@ -9,6 +9,7 @@ import pytest
 from protean import handle
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.fields import Identifier, String
 from protean.server.engine import Engine
 from protean.server.subscription.stream_subscription import StreamSubscription
 
@@ -16,8 +17,8 @@ from protean.server.subscription.stream_subscription import StreamSubscription
 class EdgeCaseEvent(BaseEvent):
     """Test event for testing."""
 
-    test_id: str
-    message: str | None = None
+    test_id = Identifier(required=True)
+    message = String()
 
 
 class EdgeCaseEventHandler(BaseEventHandler):

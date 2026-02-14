@@ -3,11 +3,12 @@ from uuid import uuid4
 import pytest
 
 from protean.core.aggregate import BaseAggregate
+from protean.fields import Integer, String
 
 
 class User(BaseAggregate):
-    name: str | None = None
-    age: int | None = None
+    name = String()
+    age = Integer()
 
 
 class TestEventSourcedAggregateEquivalence:

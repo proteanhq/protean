@@ -1,8 +1,11 @@
 from protean import Domain
+from protean.fields import List, String
 
 domain = Domain()
 
 
 @domain.aggregate
 class Building:
-    permit: list[str]
+    permit = List(
+        content_type=String, description="Licences and Approvals", required=True
+    )

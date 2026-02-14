@@ -18,7 +18,7 @@ class TestDAORetrievalFunctionality:
     @pytest.fixture
     def persisted_person(self, test_domain):
         person = test_domain.repository_for(Person)._dao.create(
-            id="1234", first_name="John", last_name="Doe"
+            id=1234, first_name="John", last_name="Doe"
         )
         return person
 
@@ -50,14 +50,14 @@ class TestDAORetrievalFunctionality:
         """Test the traversal of the filter results"""
         for counter in range(1, 5):
             test_domain.repository_for(Person)._dao.create(
-                id=str(counter), first_name=f"John{counter}", last_name="Doe"
+                id=counter, first_name=f"John{counter}", last_name="Doe"
             )
 
         people = test_domain.repository_for(Person)._dao.query.limit(2).order_by("id")
         assert people is not None
         assert people.total == 4
         assert len(people.items) == 2
-        assert people.first.id == "1"
+        assert people.first.id == 1
         assert people.has_next
         assert not people.has_prev
 
@@ -69,7 +69,7 @@ class TestDAORetrievalFunctionality:
             .all()
         )
         assert len(people.items) == 2
-        assert people.first.id == "3"
+        assert people.first.id == 3
         assert not people.has_next
         assert people.has_prev
 
@@ -77,19 +77,19 @@ class TestDAORetrievalFunctionality:
         """Test Entity Retrieval by its primary key"""
         dog = test_domain.repository_for(Person)._dao.get(persisted_person.id)
         assert dog is not None
-        assert dog.id == "1234"
+        assert dog.id == 1234
 
     def test_failed_entity_retrieval_by_its_primary_key(self, test_domain):
         """Test failed Entity Retrieval by its primary key"""
         with pytest.raises(ObjectNotFoundError):
-            test_domain.repository_for(Person)._dao.get("1235")
+            test_domain.repository_for(Person)._dao.get(1235)
 
     def test_entity_retrieval_by_specific_column_value(
         self, test_domain, persisted_person
     ):
         dog = test_domain.repository_for(Person)._dao.find_by(first_name="John")
         assert dog is not None
-        assert dog.id == "1234"
+        assert dog.id == 1234
 
     def test_failed_entity_retrieval_by_column_value(
         self, test_domain, persisted_person
@@ -99,24 +99,24 @@ class TestDAORetrievalFunctionality:
 
     def test_entity_retrieval_by_multiple_column_values(self, test_domain):
         test_domain.repository_for(Person)._dao.create(
-            id="2346", first_name="Johnny1", last_name="Bravo", age=8
+            id=2346, first_name="Johnny1", last_name="Bravo", age=8
         )
         test_domain.repository_for(Person)._dao.create(
-            id="2347", first_name="Johnny2", last_name="Bravo", age=6
+            id=2347, first_name="Johnny2", last_name="Bravo", age=6
         )
 
         dog = test_domain.repository_for(Person)._dao.find_by(
             first_name="Johnny1", age=8
         )
         assert dog is not None
-        assert dog.id == "2346"
+        assert dog.id == 2346
 
     def test_failed_entity_retrieval_by_multiple_column_values(self, test_domain):
         test_domain.repository_for(Person)._dao.create(
-            id="2346", first_name="Johnny1", last_name="Bravo", age=8
+            id=2346, first_name="Johnny1", last_name="Bravo", age=8
         )
         test_domain.repository_for(Person)._dao.create(
-            id="2347", first_name="Johnny2", last_name="Bravo", age=6
+            id=2347, first_name="Johnny2", last_name="Bravo", age=6
         )
 
         with pytest.raises(ObjectNotFoundError):
@@ -124,10 +124,10 @@ class TestDAORetrievalFunctionality:
 
     def test_error_on_finding_multiple_results(self, test_domain):
         test_domain.repository_for(Person)._dao.create(
-            id="2346", first_name="Johnny1", last_name="Bravo", age=8
+            id=2346, first_name="Johnny1", last_name="Bravo", age=8
         )
         test_domain.repository_for(Person)._dao.create(
-            id="2347", first_name="Johnny1", last_name="Gravo", age=6
+            id=2347, first_name="Johnny1", last_name="Gravo", age=6
         )
 
         with pytest.raises(TooManyObjectsError):
@@ -180,13 +180,13 @@ class TestDAORetrievalFunctionality:
     def test_filter_by_chaining_example_1(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            id="2", first_name="Murdock", age=7, last_name="John"
+            id=2, first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="3", first_name="Jean", age=3, last_name="John"
+            id=3, first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="4", first_name="Bart", age=6, last_name="Carrie"
+            id=4, first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by Person attributes
@@ -203,18 +203,18 @@ class TestDAORetrievalFunctionality:
         assert len(people.items) == 1
 
         person = people.first
-        assert person.id == "3"
+        assert person.id == 3
 
     def test_filter_by_chaining_example_2(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            id="2", first_name="Murdock", age=7, last_name="John"
+            id=2, first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="3", first_name="Jean", age=3, last_name="John"
+            id=3, first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="4", first_name="Bart", age=6, last_name="Carrie"
+            id=4, first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by Person attributes
@@ -226,18 +226,18 @@ class TestDAORetrievalFunctionality:
         assert len(people.items) == 2
 
         person = people.first
-        assert person.id == "2"
+        assert person.id == 2
 
     def test_filter_by_chaining_example_3(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            id="2", first_name="Murdock", age=7, last_name="John"
+            id=2, first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="3", first_name="Jean", age=3, last_name="John"
+            id=3, first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="4", first_name="Bart", age=6, last_name="Carrie"
+            id=4, first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by Dog attributes
@@ -253,18 +253,18 @@ class TestDAORetrievalFunctionality:
         assert len(people.items) == 2
 
         person = people.first
-        assert person.id == "3"
+        assert person.id == 3
 
     def test_results_retrieved_with_filter(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            id="2", first_name="Murdock", age=7, last_name="John"
+            id=2, first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="3", first_name="Jean", age=3, last_name="John"
+            id=3, first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="4", first_name="Bart", age=6, last_name="Carrie"
+            id=4, first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by the LastName
@@ -286,13 +286,13 @@ class TestDAORetrievalFunctionality:
     def test_results_retrieved_after_exclusion(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            id="2", first_name="Murdock", age=7, last_name="John"
+            id=2, first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="3", first_name="Jean", age=3, last_name="John"
+            id=3, first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="4", first_name="Bart", age=6, last_name="Carrie"
+            id=4, first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by Exclusion
@@ -306,13 +306,13 @@ class TestDAORetrievalFunctionality:
     def test_results_retrieved_after_multiple_value_exclusion(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            id="2", first_name="Murdock", age=7, last_name="John"
+            id=2, first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="3", first_name="Jean", age=3, last_name="John"
+            id=3, first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="4", first_name="Bart", age=6, last_name="Carrie"
+            id=4, first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by the first_name
@@ -328,13 +328,13 @@ class TestDAORetrievalFunctionality:
     def test_comparisons_using_different_operators(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            id="2", first_name="Murdock", age=7, last_name="John"
+            id=2, first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="3", first_name="Jean", age=3, last_name="john"
+            id=3, first_name="Jean", age=3, last_name="john"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="4", first_name="Bart", age=6, last_name="Carrie"
+            id=4, first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by the Owner
@@ -375,13 +375,13 @@ class TestDAORetrievalFunctionality:
     def test_exception_on_usage_of_unsupported_comparison_operator(self, test_domain):
         # Add multiple entries to the DB
         test_domain.repository_for(Person)._dao.create(
-            id="2", first_name="Murdock", age=7, last_name="John"
+            id=2, first_name="Murdock", age=7, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="3", first_name="Jean", age=3, last_name="John"
+            id=3, first_name="Jean", age=3, last_name="John"
         )
         test_domain.repository_for(Person)._dao.create(
-            id="4", first_name="Bart", age=6, last_name="Carrie"
+            id=4, first_name="Bart", age=6, last_name="Carrie"
         )
 
         # Filter by the Owner

@@ -7,42 +7,41 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.exceptions import InvalidDataError, DeserializationError
-
+from protean.fields import Identifier, String
 from protean.utils.eventing import Message, Metadata, DomainMeta, MessageHeaders
-from pydantic import Field
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
 
 class Register(BaseCommand):
-    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Activate(BaseCommand):
-    id: str | None = None
+    id = Identifier()
 
 
 class Registered(BaseEvent):
-    id: str | None = None
-    email: str | None = None
-    name: str | None = None
+    id = Identifier()
+    email = String()
+    name = String()
 
 
 class SendEmail(BaseAggregate):
-    to: str | None = None
-    subject: str | None = None
-    content: str | None = None
+    to = String()
+    subject = String()
+    content = String()
 
 
 class SendEmailCommand(BaseCommand):
-    to: str | None = None
-    subject: str | None = None
-    content: str | None = None
+    to = String()
+    subject = String()
+    content = String()
 
 
 @pytest.fixture(autouse=True)

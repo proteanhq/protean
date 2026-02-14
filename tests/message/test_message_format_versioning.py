@@ -5,7 +5,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
-
+from protean.fields import Identifier, String
 from protean.utils.eventing import (
     Message,
     MessageEnvelope,
@@ -13,24 +13,23 @@ from protean.utils.eventing import (
     DomainMeta,
     Metadata,
 )
-from pydantic import Field
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
 
 class Register(BaseCommand):
-    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 class Registered(BaseEvent):
-    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
-    email: str | None = None
-    name: str | None = None
+    id = Identifier(identifier=True)
+    email = String()
+    name = String()
 
 
 @pytest.fixture(autouse=True)
@@ -301,7 +300,7 @@ class TestMessageFormatVersioning:
         )
 
     def test_format_version_with_empty_string(self):
-        """Test behavior with empty string specversion - preserved as-is in Pydantic"""
+        """Test behavior with empty string specversion - defaults to '1.0' due to field validation"""
         message_dict = {
             "envelope": {"specversion": "", "checksum": ""},
             "headers": {"id": "test-id", "type": "test.registered", "time": None},
@@ -329,11 +328,11 @@ class TestMessageFormatVersioning:
         }
 
         message = Message.deserialize(message_dict)
-        # Empty/None specversion defaults to "1.0" during deserialization
+        # Empty string is considered an "empty value" by the String field, so it uses default "1.0"
         assert message.metadata.envelope.specversion == "1.0"
 
     def test_format_version_with_none_value(self):
-        """Test behavior when specversion is explicitly None in dict - preserved as None in Pydantic"""
+        """Test behavior when specversion is explicitly None in dict - defaults to '1.0' due to field validation"""
         message_dict = {
             "envelope": {"specversion": None, "checksum": ""},
             "headers": {"id": "test-id", "type": "test.registered", "time": None},
@@ -361,5 +360,5 @@ class TestMessageFormatVersioning:
         }
 
         message = Message.deserialize(message_dict)
-        # None/empty specversion defaults to "1.0" during deserialization
+        # None is considered an "empty value" by the String field, so it uses default "1.0"
         assert message.metadata.envelope.specversion == "1.0"

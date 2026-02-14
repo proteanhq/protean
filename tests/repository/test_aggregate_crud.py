@@ -1,4 +1,4 @@
-"""Tests for Pydantic-based aggregate persistence through the memory repository.
+"""Tests for aggregate persistence through the memory repository.
 
 Validates:
 - Basic CRUD operations (add, retrieve, update, delete, filter)
@@ -19,9 +19,9 @@ from protean.exceptions import ExpectedVersionError, ObjectNotFoundError
 
 
 # ---------------------------------------------------------------------------
-# Test domain elements (Pydantic syntax)
+# Test domain elements
 # ---------------------------------------------------------------------------
-class PydanticPerson(BaseAggregate):
+class Person(BaseAggregate):
     id: str = Field(
         json_schema_extra={"identifier": True},
         default_factory=lambda: str(uuid4()),
@@ -31,14 +31,14 @@ class PydanticPerson(BaseAggregate):
     age: int = 21
 
 
-class PydanticPersonRepository(BaseRepository):
+class PersonRepository(BaseRepository):
     pass
 
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(PydanticPerson)
-    test_domain.register(PydanticPersonRepository, part_of=PydanticPerson)
+    test_domain.register(Person)
+    test_domain.register(PersonRepository, part_of=Person)
     test_domain.init(traverse=False)
 
 
@@ -47,10 +47,10 @@ def register_elements(test_domain):
 # ---------------------------------------------------------------------------
 @pytest.mark.database
 @pytest.mark.usefixtures("db")
-class TestPydanticAggregateCRUD:
+class TestAggregateCRUD:
     def test_add_and_retrieve(self, test_domain):
-        repo = test_domain.repository_for(PydanticPerson)
-        person = PydanticPerson(first_name="John", last_name="Doe", age=30)
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe", age=30)
         repo.add(person)
 
         persisted = repo.get(person.id)
@@ -60,9 +60,9 @@ class TestPydanticAggregateCRUD:
         assert persisted.id == person.id
 
     def test_add_with_explicit_id(self, test_domain):
-        repo = test_domain.repository_for(PydanticPerson)
+        repo = test_domain.repository_for(Person)
         uid = str(uuid4())
-        person = PydanticPerson(id=uid, first_name="Jane", last_name="Doe")
+        person = Person(id=uid, first_name="Jane", last_name="Doe")
         repo.add(person)
 
         persisted = repo.get(uid)
@@ -70,8 +70,8 @@ class TestPydanticAggregateCRUD:
         assert persisted.first_name == "Jane"
 
     def test_update_via_repository(self, test_domain):
-        repo = test_domain.repository_for(PydanticPerson)
-        person = PydanticPerson(first_name="John", last_name="Doe")
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
         persisted = repo.get(person.id)
@@ -82,8 +82,8 @@ class TestPydanticAggregateCRUD:
         assert updated.last_name == "Dane"
 
     def test_delete_via_dao(self, test_domain):
-        repo = test_domain.repository_for(PydanticPerson)
-        person = PydanticPerson(first_name="John", last_name="Doe")
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
         assert repo.get(person.id) is not None
@@ -94,25 +94,25 @@ class TestPydanticAggregateCRUD:
             repo.get(person.id)
 
     def test_filter_by_criteria(self, test_domain):
-        repo = test_domain.repository_for(PydanticPerson)
-        repo.add(PydanticPerson(first_name="John", last_name="Doe", age=30))
-        repo.add(PydanticPerson(first_name="Jane", last_name="Doe", age=25))
-        repo.add(PydanticPerson(first_name="Bob", last_name="Smith", age=40))
+        repo = test_domain.repository_for(Person)
+        repo.add(Person(first_name="John", last_name="Doe", age=30))
+        repo.add(Person(first_name="Jane", last_name="Doe", age=25))
+        repo.add(Person(first_name="Bob", last_name="Smith", age=40))
 
         results = repo._dao.query.filter(last_name="Doe").all()
         assert len(results) == 2
 
     def test_count(self, test_domain):
-        repo = test_domain.repository_for(PydanticPerson)
-        repo.add(PydanticPerson(first_name="John", last_name="Doe"))
-        repo.add(PydanticPerson(first_name="Jane", last_name="Doe"))
+        repo = test_domain.repository_for(Person)
+        repo.add(Person(first_name="John", last_name="Doe"))
+        repo.add(Person(first_name="Jane", last_name="Doe"))
 
         results = repo._dao.query.all()
         assert results.total == 2
 
     def test_default_values_persisted(self, test_domain):
-        repo = test_domain.repository_for(PydanticPerson)
-        person = PydanticPerson(first_name="John", last_name="Doe")
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
         persisted = repo.get(person.id)
@@ -124,23 +124,23 @@ class TestPydanticAggregateCRUD:
 # ---------------------------------------------------------------------------
 @pytest.mark.database
 @pytest.mark.usefixtures("db")
-class TestPydanticAggregateStateTracking:
+class TestAggregateStateTracking:
     def test_new_state_before_persist(self):
-        person = PydanticPerson(first_name="John", last_name="Doe")
+        person = Person(first_name="John", last_name="Doe")
         assert person.state_.is_new is True
         assert person.state_.is_persisted is False
 
     def test_persisted_state_after_add(self, test_domain):
-        repo = test_domain.repository_for(PydanticPerson)
-        person = PydanticPerson(first_name="John", last_name="Doe")
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
         assert person.state_.is_new is False
         assert person.state_.is_persisted is True
 
     def test_retrieved_state(self, test_domain):
-        repo = test_domain.repository_for(PydanticPerson)
-        person = PydanticPerson(first_name="John", last_name="Doe")
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
         persisted = repo.get(person.id)
@@ -148,8 +148,8 @@ class TestPydanticAggregateStateTracking:
         assert persisted.state_.is_persisted is True
 
     def test_changed_state_after_mutation(self, test_domain):
-        repo = test_domain.repository_for(PydanticPerson)
-        person = PydanticPerson(first_name="John", last_name="Doe")
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
         persisted = repo.get(person.id)
@@ -157,8 +157,8 @@ class TestPydanticAggregateStateTracking:
         assert persisted.state_.is_changed is True
 
     def test_state_reset_after_re_add(self, test_domain):
-        repo = test_domain.repository_for(PydanticPerson)
-        person = PydanticPerson(first_name="John", last_name="Doe")
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
         persisted = repo.get(person.id)
@@ -174,22 +174,22 @@ class TestPydanticAggregateStateTracking:
 # ---------------------------------------------------------------------------
 @pytest.mark.database
 @pytest.mark.usefixtures("db")
-class TestPydanticAggregateVersionTracking:
+class TestAggregateVersionTracking:
     def test_initial_version(self):
-        person = PydanticPerson(first_name="John", last_name="Doe")
+        person = Person(first_name="John", last_name="Doe")
         assert person._version == -1
 
     def test_version_after_first_save(self, test_domain):
-        repo = test_domain.repository_for(PydanticPerson)
-        person = PydanticPerson(first_name="John", last_name="Doe")
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
         assert person._version == 0
 
     def test_version_survives_round_trip(self, test_domain):
         """Critical: version must persist and be restored on retrieval."""
-        repo = test_domain.repository_for(PydanticPerson)
-        person = PydanticPerson(first_name="John", last_name="Doe")
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
         persisted = repo.get(person.id)
@@ -197,8 +197,8 @@ class TestPydanticAggregateVersionTracking:
 
     def test_version_after_second_save(self, test_domain):
         """Validates optimistic concurrency works across saves."""
-        repo = test_domain.repository_for(PydanticPerson)
-        person = PydanticPerson(first_name="John", last_name="Doe")
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
         persisted = repo.get(person.id)
@@ -209,8 +209,8 @@ class TestPydanticAggregateVersionTracking:
 
     def test_version_conflict_detected(self, test_domain):
         """Two concurrent readers should detect version conflict."""
-        repo = test_domain.repository_for(PydanticPerson)
-        person = PydanticPerson(first_name="John", last_name="Doe")
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe")
         repo.add(person)
 
         reader1 = repo.get(person.id)

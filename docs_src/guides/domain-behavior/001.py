@@ -3,9 +3,7 @@ from enum import Enum
 
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import HasMany
-from typing import Annotated
-from pydantic import Field
+from protean.fields import Date, Float, HasMany, Identifier, Integer, String
 
 domain = Domain()
 
@@ -18,10 +16,10 @@ class OrderStatus(Enum):
 
 @domain.aggregate
 class Order:
-    customer_id: str | None = None
-    order_date: date | None = None
-    total_amount: float | None = None
-    status: Annotated[OrderStatus, Field(max_length=50)] | None = None
+    customer_id = Identifier()
+    order_date = Date()
+    total_amount = Float()
+    status = String(max_length=50, choices=OrderStatus)
     items = HasMany("OrderItem")
 
     @invariant.post
@@ -56,10 +54,13 @@ class Order:
 
 @domain.entity(part_of=Order)
 class OrderItem:
-    product_id: str | None = None
-    quantity: int | None = None
-    price: float | None = None
-    subtotal: float | None = None
+    product_id = Identifier()
+    quantity = Integer()
+    price = Float()
+    subtotal = Float()
+
+    class Meta:
+        part_of = Order
 
     @invariant.post
     def the_quantity_must_be_a_positive_integer_and_the_subtotal_must_be_correctly_calculated(

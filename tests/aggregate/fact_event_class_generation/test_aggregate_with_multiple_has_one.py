@@ -3,23 +3,23 @@ import pytest
 from protean.core.aggregate import BaseAggregate, element_to_fact_event
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
-from protean.fields import HasOne, ValueObject
+from protean.fields import HasOne, Integer, String, ValueObject
 from protean.utils.reflection import declared_fields
 
 
 class Department(BaseAggregate):
-    name: str | None = None
+    name = String(max_length=50)
     dean = HasOne("Dean")
     location = HasOne("Location")
 
 
 class Dean(BaseEntity):
-    name: str | None = None
-    age: int | None = None
+    name = String(max_length=50)
+    age = Integer(min_value=21)
 
 
 class Location(BaseEntity):
-    building: str | None = None
+    building = String(max_length=50)
 
 
 @pytest.fixture(autouse=True)

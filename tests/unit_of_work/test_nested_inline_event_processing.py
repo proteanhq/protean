@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime
 from uuid import uuid4
 
 import pytest
-
-from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.fields import DateTime, Identifier, String, Text
+from protean.fields.basic import Boolean
 from protean.utils import utcnow_func
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
@@ -20,26 +19,26 @@ published_count = 0
 
 
 class Create(BaseCommand):
-    id: str = Field(json_schema_extra={"identifier": True})
-    topic: str | None = None
-    content: str | None = None
+    id = Identifier(identifier=True)
+    topic = String()
+    content = Text()
 
 
 class Created(BaseEvent):
-    id: str = Field(json_schema_extra={"identifier": True})
-    topic: str | None = None
-    content: str | None = None
+    id = Identifier(identifier=True)
+    topic = String()
+    content = Text()
 
 
 class Published(BaseEvent):
-    id: str
-    published_time: datetime = Field(default_factory=utcnow_func)
+    id = Identifier(required=True)
+    published_time = DateTime(default=utcnow_func)
 
 
 class Post(BaseAggregate):
-    topic: str | None = None
-    content: str | None = None
-    is_published: bool = False
+    topic = String()
+    content = Text()
+    is_published = Boolean(default=False)
 
     @classmethod
     def initialize(cls, identifier, topic, content):

@@ -1,4 +1,4 @@
-"""Tests for Pydantic-based projection persistence through the memory repository.
+"""Tests for projection persistence through the memory repository.
 
 Validates:
 - Basic CRUD operations (add, retrieve, update, delete, filter)
@@ -16,9 +16,9 @@ from protean.exceptions import ObjectNotFoundError
 
 
 # ---------------------------------------------------------------------------
-# Test domain elements (Pydantic syntax)
+# Test domain elements
 # ---------------------------------------------------------------------------
-class PydanticPersonProjection(BaseProjection):
+class PersonProjection(BaseProjection):
     person_id: str = Field(json_schema_extra={"identifier": True})
     first_name: str
     last_name: str | None = None
@@ -27,7 +27,7 @@ class PydanticPersonProjection(BaseProjection):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(PydanticPersonProjection)
+    test_domain.register(PersonProjection)
     test_domain.init(traverse=False)
 
 
@@ -36,10 +36,10 @@ def register_elements(test_domain):
 # ---------------------------------------------------------------------------
 @pytest.mark.database
 @pytest.mark.usefixtures("db")
-class TestPydanticProjectionCRUD:
+class TestProjectionCRUD:
     def test_persist_and_retrieve(self, test_domain):
-        repo = test_domain.repository_for(PydanticPersonProjection)
-        person = PydanticPersonProjection(
+        repo = test_domain.repository_for(PersonProjection)
+        person = PersonProjection(
             person_id="1", first_name="John", last_name="Doe", age=25
         )
         repo.add(person)
@@ -51,8 +51,8 @@ class TestPydanticProjectionCRUD:
         assert refreshed.age == 25
 
     def test_update(self, test_domain):
-        repo = test_domain.repository_for(PydanticPersonProjection)
-        person = PydanticPersonProjection(
+        repo = test_domain.repository_for(PersonProjection)
+        person = PersonProjection(
             person_id="1", first_name="John", last_name="Doe", age=25
         )
         repo.add(person)
@@ -65,8 +65,8 @@ class TestPydanticProjectionCRUD:
         assert refreshed.last_name == "Doe"
 
     def test_delete(self, test_domain):
-        repo = test_domain.repository_for(PydanticPersonProjection)
-        person = PydanticPersonProjection(person_id="1", first_name="John")
+        repo = test_domain.repository_for(PersonProjection)
+        person = PersonProjection(person_id="1", first_name="John")
         repo.add(person)
 
         repo._dao.delete(person)
@@ -75,31 +75,25 @@ class TestPydanticProjectionCRUD:
             repo.get("1")
 
     def test_filter(self, test_domain):
-        repo = test_domain.repository_for(PydanticPersonProjection)
-        repo.add(
-            PydanticPersonProjection(person_id="1", first_name="John", last_name="Doe")
-        )
-        repo.add(
-            PydanticPersonProjection(person_id="2", first_name="Jane", last_name="Doe")
-        )
-        repo.add(
-            PydanticPersonProjection(person_id="3", first_name="Bob", last_name="Smith")
-        )
+        repo = test_domain.repository_for(PersonProjection)
+        repo.add(PersonProjection(person_id="1", first_name="John", last_name="Doe"))
+        repo.add(PersonProjection(person_id="2", first_name="Jane", last_name="Doe"))
+        repo.add(PersonProjection(person_id="3", first_name="Bob", last_name="Smith"))
 
         results = repo._dao.query.filter(last_name="Doe").all()
         assert len(results) == 2
 
     def test_default_values_persisted(self, test_domain):
-        repo = test_domain.repository_for(PydanticPersonProjection)
-        person = PydanticPersonProjection(person_id="1", first_name="John")
+        repo = test_domain.repository_for(PersonProjection)
+        person = PersonProjection(person_id="1", first_name="John")
         repo.add(person)
 
         refreshed = repo.get("1")
         assert refreshed.age == 21
 
     def test_optional_none_fields_persisted(self, test_domain):
-        repo = test_domain.repository_for(PydanticPersonProjection)
-        person = PydanticPersonProjection(person_id="1", first_name="John")
+        repo = test_domain.repository_for(PersonProjection)
+        person = PersonProjection(person_id="1", first_name="John")
         repo.add(person)
 
         refreshed = repo.get("1")
@@ -111,21 +105,21 @@ class TestPydanticProjectionCRUD:
 # ---------------------------------------------------------------------------
 @pytest.mark.database
 @pytest.mark.usefixtures("db")
-class TestPydanticProjectionStateTracking:
+class TestProjectionStateTracking:
     def test_new_state_before_persist(self):
-        person = PydanticPersonProjection(person_id="1", first_name="John")
+        person = PersonProjection(person_id="1", first_name="John")
         assert person.state_.is_new is True
 
     def test_persisted_state_after_add(self, test_domain):
-        repo = test_domain.repository_for(PydanticPersonProjection)
-        person = PydanticPersonProjection(person_id="1", first_name="John")
+        repo = test_domain.repository_for(PersonProjection)
+        person = PersonProjection(person_id="1", first_name="John")
         repo.add(person)
 
         assert person.state_.is_persisted is True
 
     def test_retrieved_state(self, test_domain):
-        repo = test_domain.repository_for(PydanticPersonProjection)
-        person = PydanticPersonProjection(person_id="1", first_name="John")
+        repo = test_domain.repository_for(PersonProjection)
+        person = PersonProjection(person_id="1", first_name="John")
         repo.add(person)
 
         refreshed = repo.get("1")

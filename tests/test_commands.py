@@ -1,25 +1,25 @@
 import pytest
-from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.exceptions import IncorrectUsageError, InvalidDataError, NotSupportedError
+from protean.fields import Integer, String
 from protean.utils import fully_qualified_name
 from protean.utils.reflection import fields
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
-    address: str | None = None
+    email = String()
+    name = String()
+    password_hash = String()
+    address = String()
 
 
 class UserRegistrationCommand(BaseCommand):
-    email: str
-    username: str = Field(max_length=50)
-    password: str
-    age: int = 21
+    email = String(required=True, identifier=True, max_length=250)
+    username = String(required=True, max_length=50)
+    password = String(required=True, max_length=255)
+    age = Integer(default=21)
 
 
 class TestCommandInitialization:
@@ -48,8 +48,8 @@ class TestCommandInitialization:
                 username="john.doe",
                 password="secret1!",
             )
-        assert "foo" in exception1.value.messages
-        assert exception1.value.messages["foo"] == ["Extra inputs are not permitted"]
+        assert "Extra inputs are not permitted" in str(exception1.value.messages["foo"])
+        assert "is required" in str(exception1.value.messages["email"])
 
         with pytest.raises(InvalidDataError) as exception2:
             UserRegistrationCommand(
@@ -57,8 +57,9 @@ class TestCommandInitialization:
                 username="123456789012345678901234567890123456789012345678901234567890",
                 password="secret1!",
             )
-        assert "username" in exception2.value.messages
-        assert "at most 50 characters" in exception2.value.messages["username"][0]
+        assert exception2.value.messages == {
+            "username": ["String should have at most 50 characters"]
+        }
 
 
 class TestCommandRegistration:
@@ -73,8 +74,8 @@ class TestCommandRegistration:
     def test_that_command_can_be_registered_via_annotations(self, test_domain):
         @test_domain.command(part_of=User)
         class ChangePasswordCommand:
-            old_password: str
-            new_password: str
+            old_password = String(required=True, max_length=255)
+            new_password = String(required=True, max_length=255)
 
         assert (
             fully_qualified_name(ChangePasswordCommand) in test_domain.registry.commands
@@ -139,10 +140,10 @@ class TestCommandProperties:
 
 class TestCommandInheritance:
     class AbstractCommand(BaseCommand):
-        foo: str | None = None
+        foo = String()
 
     class ConcreteCommand(AbstractCommand):
-        bar: str | None = None
+        bar = String()
 
     def test_inheritance_of_parent_fields(self):
         assert all(
@@ -153,11 +154,11 @@ class TestCommandInheritance:
     def test_inheritance_of_parent_fields_with_annotations(self, test_domain):
         @test_domain.command(abstract=True)
         class AbstractCommand2:
-            foo: str | None = None
+            foo = String()
 
         @test_domain.command(part_of=User)
         class ConcreteCommand2(AbstractCommand2):
-            bar: str | None = None
+            bar = String()
 
         assert all(
             field_name in fields(ConcreteCommand2) for field_name in ["foo", "bar"]
@@ -168,7 +169,7 @@ class TestCommandInheritance:
     ):
         @test_domain.command(part_of=User)
         class ConcreteCommand3(TestCommandInheritance.AbstractCommand):
-            bar: str | None = None
+            bar = String()
 
         assert all(
             field_name in fields(ConcreteCommand3) for field_name in ["foo", "bar"]

@@ -3,31 +3,32 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.subscriber import BaseSubscriber
+from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.utils import fqn
 from protean.utils.mixins import handle
 
 
 class UserRegistered(BaseEvent):
-    id: str | None = None
-    email: str | None = None
-    name: str | None = None
+    id = Identifier()
+    email = String()
+    name = String()
 
 
 class OrderPlaced(BaseEvent):
-    id: str | None = None
-    user_id: str | None = None
-    amount: str | None = None
+    id = Identifier()
+    user_id = Identifier()
+    amount = String()
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
 
 class Order(BaseAggregate):
-    user_id: str | None = None
-    amount: str | None = None
+    user_id = Identifier()
+    amount = String()
 
 
 class UserSubscriber(BaseSubscriber):

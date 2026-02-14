@@ -1,24 +1,23 @@
 from protean import Domain
-from typing import Annotated
-from pydantic import Field
+from protean.fields import Identifier, String
 
 domain = Domain()
 
 
 @domain.aggregate
 class User:
-    name: Annotated[str, Field(max_length=50)] | None = None
+    name = String(max_length=50)
 
 
 @domain.entity(part_of=User)
 class Credentials:
-    email: Annotated[str, Field(max_length=254)] | None = None
-    password_hash: Annotated[str, Field(max_length=128)] | None = None
+    email = String(max_length=254)
+    password_hash = String(max_length=128)
 
 
 @domain.event(part_of=User)
 class Registered:
-    id: str | None = None
-    email: str | None = None
-    name: str | None = None
-    password_hash: str | None = None
+    id = Identifier()
+    email = String()
+    name = String()
+    password_hash = String()

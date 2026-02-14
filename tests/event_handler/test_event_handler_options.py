@@ -4,16 +4,17 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.fields import Identifier, String
 
 
 class User(BaseAggregate):
-    email: str | None = None
-    name: str | None = None
+    email = String()
+    name = String()
 
 
 class Registered(BaseEvent):
-    user_id: str | None = None
-    email: str | None = None
+    user_id = Identifier()
+    email = String()
 
 
 def test_that_base_command_handler_cannot_be_instantianted():

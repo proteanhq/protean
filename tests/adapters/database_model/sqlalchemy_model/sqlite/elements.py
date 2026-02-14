@@ -1,6 +1,5 @@
 import re
 from datetime import datetime
-from typing import ClassVar
 
 from sqlalchemy import Column, Text
 
@@ -9,26 +8,26 @@ from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import invariant
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
-from protean.fields import ValueObject
+from protean.fields import DateTime, Integer, String, ValueObject
 
 
 class Person(BaseAggregate):
-    first_name: str
-    last_name: str
-    age: int = 21
-    created_at: datetime | None = datetime.now()
+    first_name = String(max_length=50, required=True)
+    last_name = String(max_length=50, required=True)
+    age = Integer(default=21)
+    created_at = DateTime(default=datetime.now())
 
 
 class User(BaseAggregate):
-    email: str
-    password: str | None = None
+    email = String(max_length=255, required=True, unique=True)
+    password = String(max_length=3026)
 
 
 class Email(BaseValueObject):
-    REGEXP: ClassVar[str] = r"\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?"
+    REGEXP = r"\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?"
 
     # This is the external facing data attribute
-    address: str
+    address = String(max_length=254, required=True)
 
     @invariant.post
     def validate_email_address(self):
@@ -39,12 +38,12 @@ class Email(BaseValueObject):
 
 class ComplexUser(BaseAggregate):
     email = ValueObject(Email, required=True)
-    password: str
+    password = String(required=True, max_length=255)
 
 
 class Provider(BaseAggregate):
-    name: str | None = None
-    age: int | None = None
+    name = String()
+    age = Integer()
 
 
 class ProviderCustomModel(BaseDatabaseModel):
@@ -52,5 +51,5 @@ class ProviderCustomModel(BaseDatabaseModel):
 
 
 class Receiver(BaseAggregate):
-    name: str | None = None
-    age: int | None = None
+    name = String()
+    age = Integer()

@@ -630,6 +630,16 @@ class Domain:
                         field_obj.content_type.value_object_cls
                     ].append(("ValueObject", (field_obj.content_type, new_cls)))
 
+            # Also scan FieldSpec metadata for ValueObject descriptors
+            # (e.g. List(content_type=ValueObject("InnerVO")))
+            field_meta = getattr(new_cls, "__protean_field_meta__", {})
+            for _, spec in field_meta.items():
+                ct = getattr(spec, "content_type", None)
+                if isinstance(ct, ValueObject) and isinstance(ct.value_object_cls, str):
+                    self._pending_class_resolutions[ct.value_object_cls].append(
+                        ("ValueObject", (ct, new_cls))
+                    )
+
         # 2. Meta Linkages
         if element_type in [
             DomainObjects.APPLICATION_SERVICE,

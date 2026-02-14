@@ -26,7 +26,7 @@ class TestAggregateStructure:
         with pytest.raises(NotSupportedError) as exc:
             BaseAggregate()
 
-        assert "cannot be instantiated" in str(exc.value)
+        assert str(exc.value) == "BaseAggregate cannot be instantiated"
 
     def test_aggregate_inheritance(self):
         assert issubclass(Role, BaseEntity)
@@ -109,7 +109,7 @@ class TestSubclassedAggregateStructure:
         )
         assert declared_fields_keys == ["bar", "foo", "id"]
 
-        role = ConcreteRole(id="3", foo="foo", bar="bar")
+        role = ConcreteRole(id=3, foo="foo", bar="bar")
         assert role is not None
         assert role.foo == "foo"
 
@@ -152,20 +152,24 @@ class TestAggregateInitialization:
         try:
             Person(last_name="Doe")
         except ValidationError as err:
-            assert "first_name" in err.messages
+            assert err.messages == {"first_name": ["is required"]}
 
         # Test multiple error messages
         try:
             Person(last_name="Doe", age="old")
         except ValidationError as err:
-            assert "first_name" in err.messages
-            assert "age" in err.messages
+            assert err.messages == {
+                "first_name": ["is required"],
+                "age": [
+                    "Input should be a valid integer, unable to parse string as an integer"
+                ],
+            }
 
 
 class TestAggregateFieldValues:
     def test_that_validation_error_is_raised_if_required_fields_are_not_provided(self):
         with pytest.raises(ValidationError):
-            Role(id="123423")
+            Role(id=123423)
 
     def test_that_field_values_are_defaulted_when_not_provided(self):
         """Test that values are defaulted properly"""

@@ -2,11 +2,12 @@ import pytest
 
 from protean.adapters.repository.sqlalchemy import Any, Contains, In, Overlap
 from protean.core.aggregate import BaseAggregate
+from protean.fields import List, String
 
 
 class GenericPostgres(BaseAggregate):
-    ids: list[str] = []
-    role: str | None = None
+    ids = List()
+    role = String()
 
 
 @pytest.mark.postgresql

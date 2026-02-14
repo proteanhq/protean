@@ -4,10 +4,11 @@ import pytest
 
 from protean.adapters.repository.sqlalchemy import PostgresqlProvider
 from protean.core.aggregate import BaseAggregate
+from protean.fields import String
 
 
 class Person(BaseAggregate):
-    name: str
+    name = String(required=True)
 
 
 @pytest.fixture

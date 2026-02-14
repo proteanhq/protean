@@ -12,7 +12,7 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
 
-from protean.core.value_object import _PydanticFieldShim
+from protean.core.value_object import _FieldShim
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -121,17 +121,17 @@ class _EntityState:
 
 
 # ---------------------------------------------------------------------------
-# Pydantic-based BaseEntity
+# BaseEntity
 # ---------------------------------------------------------------------------
 class BaseEntity(BaseModel, OptionsMixin):
-    """Pydantic-based base class for Entity domain elements.
+    """Base class for Entity domain elements.
 
     Mutable, identity-based equality, with invariant checking.
-    Uses Pydantic v2 BaseModel with ``validate_assignment=True`` for field
-    declaration, validation, and mutation.
+    Uses ``validate_assignment=True`` for field declaration, validation,
+    and mutation.
 
     Fields are declared using standard Python type annotations with optional
-    ``pydantic.Field`` constraints.  Identity fields must be annotated with
+    ``Field`` constraints.  Identity fields must be annotated with
     ``json_schema_extra={"identifier": True}``.
     """
 
@@ -147,6 +147,17 @@ class BaseEntity(BaseModel, OptionsMixin):
             ValueObject,
             ValueObjectList,
             FieldSpec,
+            # Allow plain class constants (e.g. REGEXP = r"...") without
+            # requiring ClassVar annotations — mirrors pre-Pydantic behavior.
+            str,
+            int,
+            float,
+            bool,
+            list,
+            dict,
+            tuple,
+            set,
+            type,
         ),
     )
 
@@ -278,7 +289,7 @@ class BaseEntity(BaseModel, OptionsMixin):
         # Build __container_fields__ bridge from Pydantic model_fields
         fields_dict: dict[str, Any] = {}
         for fname, finfo in cls.model_fields.items():
-            fields_dict[fname] = _PydanticFieldShim(fname, finfo, finfo.annotation)
+            fields_dict[fname] = _FieldShim(fname, finfo, finfo.annotation)
 
         # Add association and VO descriptors from the full MRO
         for klass in cls.__mro__:
@@ -337,6 +348,9 @@ class BaseEntity(BaseModel, OptionsMixin):
         # Pop internal kwargs that should not reach Pydantic
         owner = kwargs.pop("_owner", None)
         root = kwargs.pop("_root", None)
+        # _version is a PrivateAttr; accept it in kwargs for backward
+        # compatibility (e.g. repository hydration) but set it after init.
+        _version_value = kwargs.pop("_version", None)
 
         # Pop association/VO descriptor kwargs and shadow field kwargs before
         # Pydantic init.  Shadow fields (e.g. order_id, billing_address_street)
@@ -365,7 +379,9 @@ class BaseEntity(BaseModel, OptionsMixin):
                 shadow_kwargs[name] = kwargs.pop(name)
 
         # Support template dict pattern: Entity({"key": "val"}, key2="val2")
+        # Keyword args take precedence over template dict values.
         if args:
+            merged: dict[str, Any] = {}
             for template in args:
                 if not isinstance(template, dict):
                     raise AssertionError(
@@ -379,7 +395,9 @@ class BaseEntity(BaseModel, OptionsMixin):
                         descriptor_kwargs[tname] = template.pop(tname)
                     elif tname in _shadow_field_names:
                         shadow_kwargs[tname] = template.pop(tname)
-                kwargs.update(template)
+                merged.update(template)
+            merged.update(kwargs)
+            kwargs = merged
 
         # Collect all validation errors (Pydantic + required descriptors) before raising
         collected_errors: dict[str, list[str]] = {}
@@ -395,6 +413,7 @@ class BaseEntity(BaseModel, OptionsMixin):
                 "shadow_kwargs": shadow_kwargs,
                 "owner": owner,
                 "root": root,
+                "_version": _version_value,
             }
         )
         _init_context.stack = stack
@@ -442,17 +461,22 @@ class BaseEntity(BaseModel, OptionsMixin):
             shadow_kwargs: dict[str, Any] = ctx["shadow_kwargs"]
             owner = ctx["owner"]
             root = ctx["root"]
+            version_value = ctx.get("_version")
         else:
             descriptor_kwargs = {}
             shadow_kwargs = {}
             owner = None
             root = None
+            version_value = None
 
         # Set hierarchy references
         if owner is not None:
             self._owner = owner
         if root is not None:
             self._root = root
+        # Restore _version if provided (e.g. during repository hydration)
+        if version_value is not None:
+            self._version = version_value
 
         # Restore shadow field values directly into __dict__ (they bypass Pydantic)
         for name, value in shadow_kwargs.items():
@@ -748,14 +772,11 @@ class BaseEntity(BaseModel, OptionsMixin):
     def to_dict(self) -> dict[str, Any]:
         """Return entity data as a dictionary.
 
-        Internal fields (prefixed with ``_``, e.g. ``_version``) are excluded.
         Reference fields are skipped (they are navigation, not data).
         ValueObject fields are included only when non-None.
         """
         result: dict[str, Any] = {}
         for fname, field_obj in getattr(self, _FIELDS, {}).items():
-            if fname.startswith("_"):
-                continue
             if isinstance(field_obj, Reference):
                 continue
 

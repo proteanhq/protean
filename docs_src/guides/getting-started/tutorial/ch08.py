@@ -1,10 +1,16 @@
 from enum import Enum
 
 from protean import Domain, handle
-from protean.fields import HasMany, ValueObject
+from protean.fields import (
+    Float,
+    HasMany,
+    Identifier,
+    Integer,
+    String,
+    Text,
+    ValueObject,
+)
 from protean.utils.globals import current_domain
-from typing import Annotated
-from pydantic import Field
 
 domain = Domain()
 
@@ -14,17 +20,17 @@ domain.config["event_processing"] = "sync"
 
 @domain.value_object
 class Money:
-    currency: Annotated[str, Field(max_length=3)] = "USD"
-    amount: float
+    currency = String(max_length=3, default="USD")
+    amount = Float(required=True)
 
 
 @domain.aggregate
 class Book:
-    title: Annotated[str, Field(max_length=200)]
-    author: Annotated[str, Field(max_length=150)]
-    isbn: Annotated[str, Field(max_length=13)] | None = None
+    title = String(max_length=200, required=True)
+    author = String(max_length=150, required=True)
+    isbn = String(max_length=13)
     price = ValueObject(Money)
-    description: str | None = None
+    description = Text()
 
     def add_to_catalog(self):
         self.raise_(
@@ -39,10 +45,10 @@ class Book:
 
 @domain.event(part_of=Book)
 class BookAdded:
-    book_id: str
-    title: Annotated[str, Field(max_length=200)]
-    author: Annotated[str, Field(max_length=150)]
-    price_amount: float | None = None
+    book_id = Identifier(required=True)
+    title = String(max_length=200, required=True)
+    author = String(max_length=150, required=True)
+    price_amount = Float()
 
 
 class OrderStatus(Enum):
@@ -53,8 +59,10 @@ class OrderStatus(Enum):
 
 @domain.aggregate
 class Order:
-    customer_name: Annotated[str, Field(max_length=150)]
-    status: Annotated[OrderStatus, Field(max_length=20)] = OrderStatus.PENDING.value
+    customer_name = String(max_length=150, required=True)
+    status = String(
+        max_length=20, choices=OrderStatus, default=OrderStatus.PENDING.value
+    )
     items = HasMany("OrderItem")
 
     def confirm(self):
@@ -68,36 +76,36 @@ class Order:
 
 @domain.entity(part_of=Order)
 class OrderItem:
-    book_title: Annotated[str, Field(max_length=200)]
-    quantity: int
+    book_title = String(max_length=200, required=True)
+    quantity = Integer(required=True)
     unit_price = ValueObject(Money)
 
 
 @domain.event(part_of=Order)
 class OrderPlaced:
-    order_id: str
-    customer_name: Annotated[str, Field(max_length=150)]
-    total_items: int
+    order_id = Identifier(required=True)
+    customer_name = String(max_length=150, required=True)
+    total_items = Integer(required=True)
 
 
 @domain.event(part_of=Order)
 class OrderConfirmed:
-    order_id: str
-    customer_name: Annotated[str, Field(max_length=150)]
+    order_id = Identifier(required=True)
+    customer_name = String(max_length=150, required=True)
 
 
 @domain.event(part_of=Order)
 class OrderShipped:
-    order_id: str
-    customer_name: Annotated[str, Field(max_length=150)]
+    order_id = Identifier(required=True)
+    customer_name = String(max_length=150, required=True)
 
 
 # --8<-- [start:inventory]
 @domain.aggregate
 class Inventory:
-    book_id: str
-    title: Annotated[str, Field(max_length=200)]
-    quantity: int = 0
+    book_id = Identifier(required=True)
+    title = String(max_length=200, required=True)
+    quantity = Integer(default=0)
 
     def adjust_stock(self, amount: int):
         self.quantity += amount
@@ -145,17 +153,17 @@ class OrderEventHandler:
 
 @domain.command(part_of=Book)
 class AddBook:
-    title: Annotated[str, Field(max_length=200)]
-    author: Annotated[str, Field(max_length=150)]
-    isbn: Annotated[str, Field(max_length=13)] | None = None
-    price_amount: float
-    description: str | None = None
+    title = String(max_length=200, required=True)
+    author = String(max_length=150, required=True)
+    isbn = String(max_length=13)
+    price_amount = Float(required=True)
+    description = Text()
 
 
 @domain.command_handler(part_of=Book)
 class BookCommandHandler:
     @handle(AddBook)
-    def add_book(self, command: AddBook) -> str:
+    def add_book(self, command: AddBook) -> Identifier:
         book = Book(
             title=command.title,
             author=command.author,

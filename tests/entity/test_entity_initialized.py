@@ -3,16 +3,17 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity, invariant
 from protean.exceptions import ValidationError
+from protean.fields import Float, Integer, String
 
 
 class Store(BaseAggregate):
-    name: str | None = None
+    name = String(max_length=50)
 
 
 class Item(BaseEntity):
-    name: str
-    price: float
-    quantity: int = 0
+    name = String(max_length=10, required=True)
+    price = Float(required=True)
+    quantity = Integer(default=0)
 
     @invariant.post
     def check_price_is_positive(self):
