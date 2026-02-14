@@ -20,6 +20,7 @@ from protean.exceptions import (
     InvalidDataError,
     DeserializationError,
 )
+from protean.fields.spec import FieldSpec
 from protean.utils.container import OptionsMixin
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
 from protean.utils.globals import current_domain
@@ -183,7 +184,7 @@ class BaseMessageType(BaseModel, OptionsMixin):
 
     element_type: ClassVar[str] = ""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", ignored_types=(FieldSpec,))
 
     _metadata: Any = PrivateAttr(default=None)
 
@@ -206,6 +207,15 @@ class BaseMessageType(BaseModel, OptionsMixin):
         setattr(cls, "_invariants", defaultdict(dict))
         # Set empty __container_fields__ as placeholder
         setattr(cls, _FIELDS, {})
+
+        # Resolve FieldSpec declarations before Pydantic processes annotations
+        cls._resolve_fieldspecs()
+
+    @classmethod
+    def _resolve_fieldspecs(cls) -> None:
+        from protean.fields.spec import resolve_fieldspecs
+
+        resolve_fieldspecs(cls)
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:

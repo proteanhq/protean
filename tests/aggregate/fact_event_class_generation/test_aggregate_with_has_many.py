@@ -5,7 +5,8 @@ import pytest
 from protean.core.aggregate import BaseAggregate, element_to_fact_event
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
-from protean.fields import HasMany, List, ValueObject
+from protean.fields import HasMany, ValueObject
+from protean.fields.basic import ValueObjectList
 from protean.utils.reflection import declared_fields
 
 
@@ -44,7 +45,7 @@ def test_fact_event_class_generation(event_cls):
 def test_orders_is_a_list_of_value_objects(event_cls):
     orders_field = declared_fields(event_cls)["orders"]
 
-    assert isinstance(orders_field, List)
+    assert isinstance(orders_field, ValueObjectList)
     assert isinstance(orders_field.content_type, ValueObject)
     assert orders_field.content_type._value_object_cls.__name__ == "OrderValueObject"
 

@@ -17,6 +17,7 @@ from protean.exceptions import (
 )
 from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.fields.association import Association
+from protean.fields.spec import FieldSpec
 from protean.utils import (
     DomainObjects,
     derive_element_class,
@@ -48,7 +49,7 @@ class BaseProjection(BaseModel, OptionsMixin):
     model_config = ConfigDict(
         validate_assignment=True,
         extra="forbid",
-        ignored_types=(HasOne, HasMany, Reference, ValueObject),
+        ignored_types=(HasOne, HasMany, Reference, ValueObject, FieldSpec),
     )
 
     # Internal state (PrivateAttr — excluded from model_dump/schema)
@@ -76,8 +77,17 @@ class BaseProjection(BaseModel, OptionsMixin):
         # Set empty __container_fields__ as placeholder
         setattr(cls, _FIELDS, {})
 
+        # Resolve FieldSpec declarations before Pydantic processes annotations
+        cls._resolve_fieldspecs()
+
         # Validate that only basic field types are used (no descriptors)
         cls.__validate_for_basic_field_types()
+
+    @classmethod
+    def _resolve_fieldspecs(cls) -> None:
+        from protean.fields.spec import resolve_fieldspecs
+
+        resolve_fieldspecs(cls)
 
     @classmethod
     def __validate_for_basic_field_types(cls) -> None:

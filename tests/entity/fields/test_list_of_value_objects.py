@@ -3,7 +3,8 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.value_object import BaseValueObject
-from protean.fields import HasOne, List, ValueObject
+from protean.fields import HasOne, ValueObject
+from protean.fields.basic import ValueObjectList
 
 
 class Address(BaseValueObject):
@@ -16,7 +17,7 @@ class Address(BaseValueObject):
 class Customer(BaseEntity):
     name: str
     email: str
-    addresses = List(content_type=ValueObject(Address))
+    addresses = ValueObjectList(content_type=ValueObject(Address))
 
 
 # Aggregate that encloses Customer Entity

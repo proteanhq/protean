@@ -23,7 +23,7 @@ from protean.exceptions import (
     NotSupportedError,
 )
 from protean.fields import HasMany, HasOne, Reference, ValueObject
-from protean.fields import List as ProteanList
+from protean.fields.basic import ValueObjectList
 from protean.utils import (
     DomainObjects,
     Processing,
@@ -249,7 +249,7 @@ def _pydantic_element_to_fact_event(element_cls):
     # Track association descriptors (ValueObject / List) so we can inject them
     # into ``__container_fields__`` after the class is created.  This keeps
     # the introspection API compatible with the legacy path.
-    association_descriptors: dict[str, ValueObject | ProteanList] = {}
+    association_descriptors: dict[str, ValueObject | ValueObjectList] = {}
     model_field_info = getattr(element_cls, "model_fields", {})
 
     for key, value in fields(element_cls).items():
@@ -281,7 +281,7 @@ def _pydantic_element_to_fact_event(element_cls):
                 if isinstance(result, ValueObject)
                 else ValueObject(value_object_cls=result)
             )
-            list_descriptor = ProteanList(content_type=vo_descriptor)
+            list_descriptor = ValueObjectList(content_type=vo_descriptor)
             vo_cls = vo_descriptor.value_object_cls
             annotations[key] = list[vo_cls]
             namespace[key] = PydanticField(default_factory=list)

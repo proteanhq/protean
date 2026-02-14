@@ -35,7 +35,7 @@ from protean.exceptions import (
     NotSupportedError,
 )
 from protean.fields import HasMany, HasOne, Reference, ValueObject
-from protean.fields import List as ProteanList
+from protean.fields.basic import ValueObjectList
 from protean.utils import (
     DomainObjects,
     Processing,
@@ -622,7 +622,7 @@ class Domain:
 
                 # Record Value Object references in List fields to resolve later
                 if (
-                    isinstance(field_obj, ProteanList)
+                    isinstance(field_obj, ValueObjectList)
                     and isinstance(field_obj.content_type, ValueObject)
                     and isinstance(field_obj.content_type.value_object_cls, str)
                 ):

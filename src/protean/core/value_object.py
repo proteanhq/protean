@@ -15,6 +15,7 @@ from protean.exceptions import (
     NotSupportedError,
     ValidationError,
 )
+from protean.fields.spec import FieldSpec
 from protean.utils import DomainObjects, derive_element_class
 from protean.utils.container import OptionsMixin
 from protean.utils.reflection import _FIELDS
@@ -75,11 +76,20 @@ class _PydanticFieldShim:
             self.referenced_as = extra.get("referenced_as")
             self.unique = extra.get("unique", False)
             self.increment = extra.get("increment", False)
+            # FieldSpec-originated metadata
+            self.sanitize = extra.get("sanitize", False)
+            self.field_kind = extra.get("field_kind", "standard")
+            self._validators = extra.get("_validators", [])
+            self._error_messages = extra.get("_error_messages", {})
         else:
             self.identifier = False
             self.referenced_as = None
             self.unique = False
             self.increment = False
+            self.sanitize = False
+            self.field_kind = "standard"
+            self._validators = []
+            self._error_messages = {}
 
         # Identifiers are always unique (matching legacy Field behavior)
         if self.identifier:
@@ -118,6 +128,11 @@ class _PydanticFieldShim:
                         self.max_value = m.le
                     elif isinstance(m, Lt):
                         self.max_value = m.lt
+
+    @property
+    def pickled(self) -> bool:
+        """Legacy compatibility — FieldSpec fields are never pickled."""
+        return False
 
     @property
     def content_type(self) -> type | None:
@@ -214,7 +229,10 @@ class BaseValueObject(BaseModel, OptionsMixin):
 
     element_type: ClassVar[str] = DomainObjects.VALUE_OBJECT
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        ignored_types=(FieldSpec,),
+    )
 
     def __new__(cls, *args: Any, **kwargs: Any) -> BaseValueObject:
         if cls is BaseValueObject:
@@ -235,6 +253,15 @@ class BaseValueObject(BaseModel, OptionsMixin):
         setattr(cls, "_invariants", defaultdict(dict))
         # Set empty __container_fields__ as placeholder
         setattr(cls, _FIELDS, {})
+
+        # Resolve FieldSpec declarations before Pydantic processes annotations
+        cls._resolve_fieldspecs()
+
+    @classmethod
+    def _resolve_fieldspecs(cls) -> None:
+        from protean.fields.spec import resolve_fieldspecs
+
+        resolve_fieldspecs(cls)
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
