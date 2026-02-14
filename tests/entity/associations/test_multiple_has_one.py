@@ -1,24 +1,24 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
-from protean.fields import HasOne, Integer, String
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
+from protean.fields import HasOne
 from protean.utils.reflection import declared_fields
 
 
 class Department(BaseAggregate):
-    name = String(max_length=50)
+    name: str | None = None
     dean = HasOne("Dean")
     location = HasOne("Location")
 
 
 class Dean(BaseEntity):
-    name = String(max_length=50)
-    age = Integer(min_value=21)
+    name: str | None = None
+    age: int | None = None
 
 
 class Location(BaseEntity):
-    building = String(max_length=50)
+    building: str | None = None
 
 
 @pytest.fixture(autouse=True)

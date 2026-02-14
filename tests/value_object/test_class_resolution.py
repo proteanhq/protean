@@ -1,19 +1,19 @@
 """These tests ensure that the Value Object class is resolved correctly when it is specified as a string."""
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
-from protean.fields import Float, String, ValueObject
+from protean.core.aggregate import BaseAggregate
+from protean.core.value_object import BaseValueObject
+from protean.fields import ValueObject
 from protean.utils.reflection import declared_fields
 
 
 class Account(BaseAggregate):
     balance = ValueObject("Balance", required=True)
-    kind = String(max_length=15, required=True)
+    kind: str
 
 
 class Balance(BaseValueObject):
-    currency = String(max_length=3)
-    amount = Float()
+    currency: str | None = None
+    amount: float | None = None
 
 
 def test_value_object_class_resolution(test_domain):

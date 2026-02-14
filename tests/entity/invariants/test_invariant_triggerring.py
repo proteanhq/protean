@@ -3,10 +3,10 @@ from enum import Enum
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate, atomic_change
-from protean.core.entity import _LegacyBaseEntity as BaseEntity, invariant
+from protean.core.aggregate import BaseAggregate, atomic_change
+from protean.core.entity import BaseEntity, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Date, Float, HasMany, Identifier, Integer, String
+from protean.fields import HasMany
 
 
 class OrderStatus(Enum):
@@ -16,10 +16,10 @@ class OrderStatus(Enum):
 
 
 class Order(BaseAggregate):
-    customer_id = Identifier()
-    order_date = Date()
-    total_amount = Float()
-    status = String(max_length=50, choices=OrderStatus)
+    customer_id: str | None = None
+    order_date: date | None = None
+    total_amount: float | None = None
+    status: str | None = None
     items = HasMany("OrderItem")
 
     @invariant.pre
@@ -70,10 +70,10 @@ class Order(BaseAggregate):
 
 
 class OrderItem(BaseEntity):
-    product_id = Identifier()
-    quantity = Integer()
-    price = Float()
-    subtotal = Float()
+    product_id: str | None = None
+    quantity: int | None = None
+    price: float | None = None
+    subtotal: float | None = None
 
     @invariant.post
     def the_quantity_must_be_a_positive_integer_and_the_subtotal_must_be_correctly_calculated(
@@ -169,10 +169,10 @@ class TestEntityInvariantsOnInitialization:
                 items=[],
             )
 
-        assert exc.value.messages["_entity"] == [
+        assert set(exc.value.messages["_entity"]) == {
             "Customer ID must be non-null and the order must contain at least one item",
             "Total should be sum of item prices",
-        ]
+        }
 
     def test_when_quantity_is_negative(self):
         with pytest.raises(ValidationError) as exc:
@@ -250,10 +250,10 @@ class TestEntityInvariantsOnAttributeChanges:
         with pytest.raises(ValidationError) as exc:
             order.items = []
 
-        assert exc.value.messages["_entity"] == [
+        assert set(exc.value.messages["_entity"]) == {
             "Customer ID must be non-null and the order must contain at least one item",
             "Total should be sum of item prices",
-        ]
+        }
 
     def test_when_invalid_item_is_added(self, order):
         with pytest.raises(ValidationError) as exc:

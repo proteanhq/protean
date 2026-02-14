@@ -1,8 +1,7 @@
 import pytest
 
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
+from protean.core.entity import BaseEntity
 from protean.exceptions import ValidationError
-from protean.fields import String
 
 from .elements import Area, Building, BuildingStatus
 
@@ -26,7 +25,7 @@ class TestDefaults:
 
     def test_defaults_are_applied_before_validation(self):
         class Foo(BaseEntity):
-            name = String(required=True)
+            name: str | None = None
 
             def defaults(self):
                 self.name = "bar"

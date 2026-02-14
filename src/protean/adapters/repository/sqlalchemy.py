@@ -20,10 +20,15 @@ from sqlalchemy.types import CHAR, TypeDecorator
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
 from protean.core.queryset import ResultSet
-from protean.core.value_object import BaseValueObject, _LegacyBaseValueObject
+from protean.core.value_object import (
+    BaseValueObject,
+    _LegacyBaseValueObject,
+    _PydanticFieldShim,
+)
 from protean.exceptions import (
     ConfigurationError,
     DatabaseError as ProteanDatabaseError,
+    IncorrectUsageError,
     ObjectNotFoundError,
 )
 from protean.fields import (
@@ -32,7 +37,6 @@ from protean.fields import (
     Date,
     DateTime,
     Dict,
-    Field,
     Float,
     Identifier,
     Integer,
@@ -161,6 +165,54 @@ def _custom_json_dumps(value):
     return json.dumps(value, default=_default)
 
 
+def _resolve_shim_to_legacy_cls(shim: _PydanticFieldShim) -> type:
+    """Map a _PydanticFieldShim's Python type to its equivalent legacy field class.
+
+    This allows the SQLAlchemy model generation code to re-use the existing
+    legacy-field-class-keyed ``field_mapping`` dict for Pydantic elements.
+    """
+    import types
+    import typing
+
+    python_type = shim._python_type
+
+    # Unwrap Optional/Union: str | None → str
+    origin = typing.get_origin(python_type)
+    if origin is types.UnionType or origin is typing.Union:
+        args = [a for a in typing.get_args(python_type) if a is not type(None)]
+        if args:
+            python_type = args[0]
+            origin = typing.get_origin(python_type)
+
+    # Handle generic aliases: list[X] → List, dict[K, V] → Dict
+    if origin is list or python_type is list:
+        return List
+    if origin is dict or python_type is dict:
+        return Dict
+
+    # Handle BaseValueObject subclasses → ValueObject (maps to PickleType)
+    from protean.core.value_object import BaseValueObject
+
+    if isinstance(python_type, type) and issubclass(python_type, BaseValueObject):
+        return ValueObject
+
+    _type_map: dict[type, type] = {
+        bool: Boolean,
+        int: Integer,
+        float: Float,
+        str: String,
+    }
+
+    # Check for datetime types (import lazily to avoid circular imports at module level)
+    from datetime import date as _date
+    from datetime import datetime as _datetime
+
+    _type_map[_datetime] = DateTime
+    _type_map[_date] = Date
+
+    return _type_map.get(python_type, String)
+
+
 class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
     """Model representation for the Sqlalchemy Database"""
 
@@ -180,8 +232,17 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             ValueObject: sa_types.PickleType,
         }
 
-        def field_mapping_for(field_obj: Field):
+        def field_mapping_for(field_obj):
             """Return SQLAlchemy-equivalent type for Protean's field"""
+            # Handle _PydanticFieldShim: check increment first, then map Python type
+            if isinstance(field_obj, _PydanticFieldShim):
+                if field_obj.increment:
+                    return sa_types.Integer
+                if field_obj.identifier:
+                    return _get_identity_type()
+                legacy_cls = _resolve_shim_to_legacy_cls(field_obj)
+                return field_mapping.get(legacy_cls, sa_types.String)
+
             field_cls = type(field_obj)
 
             if field_cls is Auto:
@@ -204,7 +265,11 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     if isinstance(field_obj, _ShadowField):
                         field_obj = field_obj.field_obj
 
-                    field_cls = type(field_obj)
+                    # Resolve field class: for Pydantic shims, map to legacy equivalent
+                    if isinstance(field_obj, _PydanticFieldShim):
+                        field_cls = _resolve_shim_to_legacy_cls(field_obj)
+                    else:
+                        field_cls = type(field_obj)
                     type_args = []
                     type_kwargs = {}
 
@@ -213,41 +278,41 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
 
                     # Upgrade to Database-specific Data Types
                     dialect_name = subclass.__dict__["engine"].dialect.name
+                    pickled = getattr(field_obj, "pickled", False)
                     if dialect_name == "postgresql":
-                        if field_cls == Dict and not field_obj.pickled:
+                        if field_cls == Dict and not pickled:
                             sa_type_cls = psql.JSON
 
-                        if field_cls == List and not field_obj.pickled:
+                        if field_cls == List and not pickled:
                             sa_type_cls = psql.ARRAY
 
                             # Associate Content Type
-                            if field_obj.content_type:
+                            content_type = getattr(field_obj, "content_type", None)
+                            if content_type:
                                 # Treat `ValueObject` differently because it is a field object instance,
                                 #   not a field type class
                                 #
                                 # `ValueObject` instances are essentially treated as `Dict`. If not pickled,
                                 #   they are persisted as JSON.
-                                if isinstance(field_obj.content_type, ValueObject):
-                                    if not field_obj.pickled:
+                                if isinstance(content_type, ValueObject):
+                                    if not pickled:
                                         field_mapping_type = psql.JSON
                                     else:
                                         field_mapping_type = sa_types.PickleType
                                 else:
-                                    field_mapping_type = field_mapping.get(
-                                        field_obj.content_type
-                                    )
+                                    field_mapping_type = field_mapping.get(content_type)
                                 type_args.append(field_mapping_type)
                             else:
                                 type_args.append(sa_types.Text)
                     elif dialect_name == "mssql":
                         # SQL Server doesn't have native JSON/Array types, use custom JSON type for JSON-like data
-                        if field_cls == Dict and not field_obj.pickled:
+                        if field_cls == Dict and not pickled:
                             sa_type_cls = MSSQLJSON
                             type_args.append(
                                 None
                             )  # NVARCHAR(MAX) with JSON serialization
 
-                        if field_cls == List and not field_obj.pickled:
+                        if field_cls == List and not pickled:
                             sa_type_cls = MSSQLJSON
                             type_args.append(
                                 None
@@ -265,13 +330,40 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     }
 
                     # Update the arguments based on the field type
-                    if issubclass(field_cls, String):
-                        type_kwargs["length"] = field_obj.max_length
-                    # If the field is an Auto field and the type is a string, set the length to 255
+                    # For Auto/Identifier fields mapped to String, set length to 255
                     #   Without explicit length, we are leaving the decision to the database. And that
                     #   will not work for MSSQL.
-                    elif issubclass(field_cls, Auto) and sa_type_cls == sa_types.String:
+                    if issubclass(field_cls, Auto) and sa_type_cls == sa_types.String:
                         type_kwargs["length"] = 255
+                    # For Pydantic shims with identifier mapped to String, set length to 255
+                    elif (
+                        isinstance(field_obj, _PydanticFieldShim)
+                        and field_obj.identifier
+                        and sa_type_cls == sa_types.String
+                    ):
+                        type_kwargs["length"] = 255
+                    elif issubclass(field_cls, String):
+                        type_kwargs["length"] = field_obj.max_length
+
+                    # MSSQL requires explicit length on VARCHAR columns used
+                    # as primary keys or in unique constraints.  Raise early
+                    # with a clear message instead of letting the DB fail with
+                    # a cryptic "invalid for use as a key column" error.
+                    if (
+                        dialect_name == "mssql"
+                        and sa_type_cls == sa_types.String
+                        and (col_args.get("primary_key") or col_args.get("unique"))
+                        and not type_kwargs.get("length")
+                    ):
+                        raise IncorrectUsageError(
+                            f"Field '{attribute_name}' on "
+                            f"'{entity_cls.__name__}' is mapped to a "
+                            f"VARCHAR column and marked as "
+                            f"{'primary key' if col_args.get('primary_key') else 'unique'}. "
+                            f"MSSQL requires an explicit max_length for "
+                            f"indexed/unique string columns "
+                            f"(e.g. Field(max_length=255))."
+                        )
 
                     # Update the attributes of the class
                     column = Column(sa_type_cls(*type_args, **type_kwargs), **col_args)

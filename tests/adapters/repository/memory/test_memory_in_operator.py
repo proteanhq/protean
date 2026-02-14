@@ -1,10 +1,9 @@
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.fields.basic import String
+from protean.core.aggregate import BaseAggregate
 from protean.utils.globals import current_domain
 
 
 class User(BaseAggregate):
-    email = String()
+    email: str | None = None
 
 
 def test_for_in_lookup(test_domain):

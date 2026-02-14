@@ -7,12 +7,11 @@ and subscription setup without mocks.
 import pytest
 
 from protean import handle
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
-from protean.fields import Identifier, String
 from protean.server.engine import Engine
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils import fqn
@@ -21,24 +20,24 @@ from protean.utils import fqn
 class User(BaseAggregate):
     """User aggregate for initialization tests."""
 
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: str | None = None
+    email: str | None = None
+    name: str | None = None
 
 
 class UserRegistered(BaseEvent):
     """Test event for initialization tests."""
 
-    user_id = Identifier(required=True)
-    email = String()
-    name = String()
+    user_id: str
+    email: str | None = None
+    name: str | None = None
 
 
 class SendWelcomeEmail(BaseCommand):
     """Test command for initialization tests."""
 
-    user_id = Identifier(required=True)
-    email = String()
+    user_id: str
+    email: str | None = None
 
 
 class UserEventHandler(BaseEventHandler):

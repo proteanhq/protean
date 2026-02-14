@@ -2,23 +2,22 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.exceptions import IncorrectUsageError
-from protean.fields import String
-from protean.fields.basic import Identifier
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: str = Field(json_schema_extra={"identifier": True})
+    email: str | None = None
+    name: str | None = None
 
 
 def test_command_definition_without_aggregate_or_stream(test_domain):
@@ -35,7 +34,7 @@ def test_command_definition_without_aggregate_or_stream(test_domain):
 
 def test_that_abstract_commands_can_be_defined_without_aggregate_or_stream(test_domain):
     class AbstractCommand(BaseCommand):
-        foo = String()
+        foo: str | None = None
 
     try:
         test_domain.register(AbstractCommand, abstract=True)

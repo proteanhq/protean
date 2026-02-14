@@ -1,20 +1,20 @@
 import re
-from typing import List
+from typing import ClassVar, List
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import invariant
 from protean.core.repository import BaseRepository
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
-from protean.fields import Integer, String, Text, ValueObject
+from protean.fields import Text, ValueObject
 from protean.utils.globals import current_domain
 
 
 class Person(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    first_name: str
+    last_name: str
+    age: int = 21
 
 
 class PersonRepository(BaseRepository):
@@ -23,10 +23,10 @@ class PersonRepository(BaseRepository):
 
 
 class Email(BaseValueObject):
-    REGEXP = r"\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?"
+    REGEXP: ClassVar[str] = r"\"?([-a-zA-Z0-9.`?{}]+@\w+\.\w+)\"?"
 
     # This is the external facing data attribute
-    address = String(max_length=254, required=True)
+    address: str
 
     @invariant.post
     def validate_email_address(self):
@@ -37,12 +37,12 @@ class Email(BaseValueObject):
 
 class User(BaseAggregate):
     email = ValueObject(Email, required=True)
-    password = String(required=True, max_length=255)
+    password: str
 
 
 class Provider(BaseAggregate):
-    name = String()
-    age = Integer()
+    name: str | None = None
+    age: int | None = None
 
 
 class ProviderCustomModel(BaseDatabaseModel):
@@ -50,5 +50,5 @@ class ProviderCustomModel(BaseDatabaseModel):
 
 
 class Receiver(BaseAggregate):
-    name = String()
-    age = Integer()
+    name: str | None = None
+    age: int | None = None

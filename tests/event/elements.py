@@ -1,22 +1,23 @@
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService
-from protean.core.command import _LegacyBaseCommand as BaseCommand
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
-from protean.fields import Identifier, Integer, String
 from protean.utils.globals import current_domain
 
 
 class PersonCommand(BaseCommand):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    first_name: str
+    last_name: str
+    age: int = 21
 
 
 class Person(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    first_name: str
+    last_name: str
+    age: int = 21
 
     @classmethod
     def add_newcomer(cls, person_dict):
@@ -34,10 +35,10 @@ class Person(BaseAggregate):
 
 
 class PersonAdded(BaseEvent):
-    id = Identifier(required=True)
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
+    id: str = Field(json_schema_extra={"identifier": True})
+    first_name: str
+    last_name: str
+    age: int = 21
 
 
 class PersonService(BaseApplicationService):

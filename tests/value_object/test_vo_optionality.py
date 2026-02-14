@@ -1,28 +1,28 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
+from protean.core.aggregate import BaseAggregate
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
-from protean.fields import String, ValueObject
+from protean.fields import ValueObject
 
 
 class Foo(BaseValueObject):
-    bar = String()
-    qux = String()
+    bar: str | None = None
+    qux: str | None = None
 
 
 class Address(BaseValueObject):
-    unit_no = String()
-    street_no = String(required=True)
-    street_name = String(required=True)
-    province = String()
-    country = String(required=True)
-    zipcode = String(required=True)
+    unit_no: str | None = None
+    street_no: str
+    street_name: str
+    province: str | None = None
+    country: str
+    zipcode: str
 
 
 def test_that_a_vo_can_be_declared_optional():
     class Foobar(BaseAggregate):
-        baz = String(required=True)
+        baz: str
         foo = ValueObject(Foo)
 
     try:
@@ -33,7 +33,7 @@ def test_that_a_vo_can_be_declared_optional():
 
 def test_that_a_vo_can_be_declared_mandatory():
     class Foobar(BaseAggregate):
-        baz = String(required=True)
+        baz: str
         foo = ValueObject(Foo, required=True)
 
     with pytest.raises(ValidationError):
@@ -42,7 +42,7 @@ def test_that_a_vo_can_be_declared_mandatory():
 
 def test_that_a_vo_can_have_mandatory_fields_but_declared_optional():
     class User(BaseAggregate):
-        name = String(required=True)
+        name: str
         address = ValueObject(Address)
 
     try:
@@ -53,7 +53,7 @@ def test_that_a_vo_can_have_mandatory_fields_but_declared_optional():
 
 def test_that_a_vo_can_have_mandatory_fields_and_can_be_declared_mandatory():
     class User(BaseAggregate):
-        name = String(required=True)
+        name: str
         address = ValueObject(Address, required=True)
 
     with pytest.raises(ValidationError):

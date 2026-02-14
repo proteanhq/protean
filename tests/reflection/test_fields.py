@@ -1,14 +1,13 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Integer, String
 from protean.utils.reflection import fields
 
 
 class Person(BaseAggregate):
-    name = String(max_length=50, required=True)
-    age = Integer()
+    name: str
+    age: int | None = None
 
 
 def test_fields():

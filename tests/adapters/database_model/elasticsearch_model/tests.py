@@ -2,8 +2,7 @@ import pytest
 from elasticsearch_dsl import Keyword, Text
 
 from protean.adapters.repository.elasticsearch import ElasticsearchModel
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.fields import String
+from protean.core.aggregate import BaseAggregate
 
 from .elements import (
     ComplexUser,
@@ -79,8 +78,8 @@ class TestModelOptions:
     class TestModelName:
         def test_default_generated_index_name(self, test_domain):
             class Person(BaseAggregate):
-                name = String(max_length=50, required=True)
-                about = Text()
+                name: str
+                about: str | None = None
 
             test_domain.register(Person)
             test_domain.init(traverse=False)
@@ -92,8 +91,8 @@ class TestModelOptions:
 
         def test_explicit_index_name(self, test_domain):
             class Person(BaseAggregate):
-                name = String(max_length=50, required=True)
-                about = Text()
+                name: str
+                about: str | None = None
 
             test_domain.register(Person, schema_name="people")
             database_model_cls = test_domain.repository_for(Person)._database_model
@@ -102,12 +101,12 @@ class TestModelOptions:
 
         def test_explicit_index_name_in_custom_model(self, test_domain):
             class Person(BaseAggregate):
-                name = String(max_length=50, required=True)
-                about = Text()
+                name: str
+                about: str | None = None
 
             class PeopleModel(ElasticsearchModel):
                 name = Text(fields={"raw": Keyword()})
-                about = Text()
+                about: str | None = None
 
                 class Index:
                     name = "people"
@@ -126,8 +125,8 @@ class TestModelOptions:
 
         def test_generated_index_name_with_namespace_prefix(self, test_domain):
             class Person(BaseAggregate):
-                name = String(max_length=50, required=True)
-                about = Text()
+                name: str
+                about: str | None = None
 
             test_domain.register(Person)
             database_model_cls = test_domain.repository_for(Person)._database_model
@@ -139,8 +138,8 @@ class TestModelOptions:
             test_domain.config["databases"]["default"]["NAMESPACE_SEPARATOR"] = "#"
 
             class Person(BaseAggregate):
-                name = String(max_length=50, required=True)
-                about = Text()
+                name: str
+                about: str | None = None
 
             test_domain.register(Person)
             database_model_cls = test_domain.repository_for(Person)._database_model
@@ -150,8 +149,8 @@ class TestModelOptions:
 
         def test_explicit_index_name_with_namespace_prefix(self, test_domain):
             class Person(BaseAggregate):
-                name = String(max_length=50, required=True)
-                about = Text()
+                name: str
+                about: str | None = None
 
             test_domain.register(Person, schema_name="people")
             database_model_cls = test_domain.repository_for(Person)._database_model
@@ -162,12 +161,12 @@ class TestModelOptions:
             self, test_domain
         ):
             class Person(BaseAggregate):
-                name = String(max_length=50, required=True)
-                about = Text()
+                name: str
+                about: str | None = None
 
             class PeopleModel(ElasticsearchModel):
                 name = Text(fields={"raw": Keyword()})
-                about = Text()
+                about: str | None = None
 
                 class Index:
                     name = "custom-people"
@@ -188,8 +187,8 @@ class TestModelOptions:
 
         def test_provider_level_settings(self, test_domain):
             class Person(BaseAggregate):
-                name = String(max_length=50, required=True)
-                about = Text()
+                name: str
+                about: str | None = None
 
             test_domain.register(Person)
             database_model_cls = test_domain.repository_for(Person)._database_model
@@ -198,12 +197,12 @@ class TestModelOptions:
 
         def test_settings_override_in_custom_model(self, test_domain):
             class Person(BaseAggregate):
-                name = String(max_length=50, required=True)
-                about = Text()
+                name: str
+                about: str | None = None
 
             class PeopleModel(ElasticsearchModel):
                 name = Text(fields={"raw": Keyword()})
-                about = Text()
+                about: str | None = None
 
                 class Index:
                     name = "people"

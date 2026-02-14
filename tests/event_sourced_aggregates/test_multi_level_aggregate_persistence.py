@@ -1,9 +1,12 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate, apply
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
+from protean.core.aggregate import BaseAggregate, apply
+from protean.core.entity import BaseEntity
+from protean.core.event import _LegacyBaseEvent as LegacyBaseEvent
+from protean.core.event import BaseEvent
+from protean.core.value_object import (
+    _LegacyBaseValueObject as LegacyBaseValueObject,
+)
 from protean.fields import (
     HasMany,
     HasOne,
@@ -16,54 +19,56 @@ from protean.fields import (
 
 
 class Department(BaseEntity):
-    name = String(max_length=50)
+    name: str | None = None
     dean = HasOne("Dean")
 
 
 class Dean(BaseEntity):
-    name = String(max_length=50)
-    age = Integer(min_value=21)
+    name: str | None = None
+    age: int | None = None
     office = HasOne("Office")
 
 
 class Office(BaseEntity):
-    building = String(max_length=25)
-    room = Integer(min_value=1)
+    building: str | None = None
+    room: int | None = None
 
 
-class OfficeVO(BaseValueObject):
+# These VOs use ValueObject() descriptors, so they must stay on legacy base.
+class OfficeVO(LegacyBaseValueObject):
     id = Identifier()
     building = String(max_length=25)
     room = Integer(min_value=1)
 
 
-class DeanVO(BaseValueObject):
+class DeanVO(LegacyBaseValueObject):
     id = Identifier()
     name = String(max_length=50)
     age = Integer(min_value=21)
     office = ValueObject(OfficeVO)
 
 
-class DepartmentVO(BaseValueObject):
+class DepartmentVO(LegacyBaseValueObject):
     id = Identifier()
     name = String(max_length=50)
     dean = ValueObject(DeanVO)
 
 
-class UniversityCreated(BaseEvent):
+# This event uses ValueObject() and List(content_type=ValueObject(...)) descriptors,
+# so it must stay on the legacy base.
+class UniversityCreated(LegacyBaseEvent):
     id = Identifier(identifier=True)
-    _version = Integer()
     name = String(max_length=50)
     departments = List(content_type=ValueObject(DepartmentVO))
 
 
 class NameChanged(BaseEvent):
-    id = Identifier(identifier=True)
-    name = String(max_length=50)
+    id: str | None = None
+    name: str | None = None
 
 
 class University(BaseAggregate):
-    name = String(max_length=50)
+    name: str | None = None
     departments = HasMany(Department)
 
     def raise_event(self):

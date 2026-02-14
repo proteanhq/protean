@@ -1,15 +1,13 @@
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from uuid import uuid4
 
 import mock
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent, Metadata
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent, Metadata
 from protean.core.event_handler import BaseEventHandler
-from protean.fields import DateTime, Identifier, String
+
 from protean.server import Engine
 from protean.utils import fqn
 from protean.utils.eventing import Message
@@ -17,14 +15,14 @@ from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
-    password_hash = String()
+    email: str | None = None
+    name: str | None = None
+    password_hash: str | None = None
 
 
 class Email(BaseAggregate):
-    email = String()
-    sent_at = DateTime()
+    email: str | None = None
+    sent_at: datetime | None = None
 
 
 def dummy(*args):
@@ -32,20 +30,20 @@ def dummy(*args):
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
+    password_hash: str | None = None
 
 
 class Activated(BaseEvent):
-    id = Identifier()
-    activated_at = DateTime()
+    id: str | None = None
+    activated_at: datetime | None = None
 
 
 class Sent(BaseEvent):
-    email = String()
-    sent_at = DateTime()
+    email: str | None = None
+    sent_at: datetime | None = None
 
 
 class UserEventHandler(BaseEventHandler):

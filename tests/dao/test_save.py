@@ -21,15 +21,15 @@ class TestDAOSaveFunctionality:
 
     def test_entity_persistence_with_create_method_and_fetch(self, test_domain):
         person = test_domain.repository_for(Person)._dao.create(
-            id=11344234, first_name="John", last_name="Doe"
+            id="11344234", first_name="John", last_name="Doe"
         )
         assert person is not None
-        assert person.id == 11344234
+        assert person.id == "11344234"
         assert person.first_name == "John"
         assert person.last_name == "Doe"
         assert person.age == 21
 
-        db_person = test_domain.repository_for(Person)._dao.get(11344234)
+        db_person = test_domain.repository_for(Person)._dao.get("11344234")
         assert db_person is not None
         assert db_person == person
 

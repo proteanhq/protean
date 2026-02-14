@@ -2,27 +2,27 @@ from datetime import UTC, datetime
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.core.unit_of_work import UnitOfWork
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
-from protean.fields import DateTime, Dict, HasMany, Reference, Text, ValueObject
+from protean.core.value_object import BaseValueObject
+from protean.fields import HasMany, Reference, ValueObject
 
 
 class Comment(BaseEntity):
-    content = Text()
-    added_on = DateTime()
+    content: str | None = None
+    added_on: datetime | None = None
 
     post = Reference("Post")
 
 
 class Post(BaseAggregate):
-    content = Text(required=True)
+    content: str
     comments = HasMany(Comment)
 
 
 class Permission(BaseValueObject):
-    dict_object = Dict()
+    dict_object: dict | None = None
 
 
 class Audit(BaseAggregate):

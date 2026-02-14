@@ -1,18 +1,19 @@
-from protean.core.command import _LegacyBaseCommand as BaseCommand
-from protean.fields import Identifier, String
+from pydantic import Field
+
+from protean.core.command import BaseCommand
 from protean.utils.reflection import has_id_field, id_field
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: str = Field(json_schema_extra={"identifier": True})
+    email: str | None = None
+    name: str | None = None
 
 
 class SendEmail(BaseCommand):
-    to = String()
-    subject = String()
-    content = String()
+    to: str | None = None
+    subject: str | None = None
+    content: str | None = None
 
 
 def test_id_field_for_command_with_identifier():

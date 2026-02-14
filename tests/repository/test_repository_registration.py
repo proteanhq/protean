@@ -2,7 +2,6 @@ import pytest
 
 from protean.core.repository import BaseRepository
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.fields import String
 from protean.utils import fully_qualified_name
 
 from .elements import Person, PersonRepository
@@ -80,7 +79,7 @@ class TestRepositoryRegistration:
     def test_retrieving_custom_repository(self, test_domain):
         @test_domain.aggregate
         class GenericUser:
-            name = String()
+            name: str | None = None
 
         @test_domain.repository(part_of=GenericUser)
         class GenericUserRepository:
@@ -111,7 +110,7 @@ class TestRepositoryRegistration:
 
         @test_domain.aggregate
         class User:
-            name = String()
+            name: str | None = None
 
         @test_domain.repository(part_of=User, database="memory")
         class UserMemoryRepository:
@@ -128,7 +127,7 @@ class TestRepositoryRegistration:
         # Next, we test for a secondary database repository by relinking the User aggregate
         @test_domain.aggregate(provider="secondary")
         class User:
-            name = String()
+            name: str | None = None
 
         assert isinstance(test_domain.repository_for(User), UserElasticRepository)
         # FIXME Reset test_domain?
@@ -138,7 +137,7 @@ class TestRepositoryRegistration:
     ):
         @test_domain.aggregate(provider="secondary")
         class User:
-            name = String()
+            name: str | None = None
 
         with pytest.raises(IncorrectUsageError) as exc:
 

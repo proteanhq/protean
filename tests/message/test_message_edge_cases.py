@@ -4,11 +4,11 @@ import pytest
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.core.command import _LegacyBaseCommand as BaseCommand
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.command import BaseCommand
 from protean.exceptions import DeserializationError
-from protean.fields import Identifier, String
+
 from protean.utils.eventing import (
     Message,
     MessageEnvelope,
@@ -18,30 +18,31 @@ from protean.utils.eventing import (
     EventStoreMeta,
     MessageType,
 )
+from pydantic import Field
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
 
 class Register(BaseCommand):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
+    email: str | None = None
+    name: str | None = None
 
 
 class Registered(BaseEvent):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
+    email: str | None = None
+    name: str | None = None
 
 
 class UnregisteredCommand(BaseCommand):
     """Command that won't be registered with domain."""
 
-    id = Identifier(identifier=True)
-    data = String()
+    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
+    data: str | None = None
 
 
 @pytest.fixture(autouse=True)
@@ -436,9 +437,9 @@ class TestMessageFromDomainObjectEdgeCases:
         """Test that fact events don't get expected_version set."""
 
         class UserFactEvent(BaseEvent):
-            id = Identifier(identifier=True)
-            email = String()
-            name = String()
+            id: str | None = Field(default=None, json_schema_extra={"identifier": True})
+            email: str | None = None
+            name: str | None = None
 
         # Register the fact event
         test_domain.register(UserFactEvent, part_of=User)

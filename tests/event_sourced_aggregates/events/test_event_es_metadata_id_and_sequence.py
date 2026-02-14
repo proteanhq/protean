@@ -2,23 +2,23 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import String
-from protean.fields.basic import Identifier
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: str = Field(json_schema_extra={"identifier": True})
+    email: str | None = None
+    name: str | None = None
 
     def login(self):
         self.raise_(UserLoggedIn(user_id=self.id))
 
 
 class UserLoggedIn(BaseEvent):
-    user_id = Identifier(identifier=True)
+    user_id: str | None = None
 
 
 @pytest.fixture(autouse=True)

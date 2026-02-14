@@ -2,11 +2,12 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import ConfigurationError
-from protean.fields import Identifier, String
 from protean.utils import Processing
 from protean.utils.mixins import handle
 
@@ -14,18 +15,18 @@ counter = 0
 
 
 class User(BaseAggregate):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: str = Field(json_schema_extra={"identifier": True})
+    email: str | None = None
+    name: str | None = None
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
-    email = String()
+    user_id: str = Field(json_schema_extra={"identifier": True})
+    email: str | None = None
 
 
 class Login(BaseCommand):
-    user_id = Identifier()
+    user_id: str | None = None
 
 
 class UserCommandHandlers(BaseCommandHandler):

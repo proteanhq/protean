@@ -1,16 +1,16 @@
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import String
-from protean.fields.basic import Identifier
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
 
 class UserLoggedIn(BaseEvent):
-    user_id = Identifier(identifier=True)
+    user_id: str = Field(json_schema_extra={"identifier": True})
 
 
 def test_stream_category_from_part_of(test_domain):

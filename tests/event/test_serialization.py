@@ -13,7 +13,7 @@ def register_elements(test_domain):
 
 
 def test_that_message_has_unique_identifier():
-    event = PersonAdded(id=uuid4(), first_name="John", last_name="Doe")
+    event = PersonAdded(id=str(uuid4()), first_name="John", last_name="Doe")
 
     assert hasattr(event, "id")
     try:

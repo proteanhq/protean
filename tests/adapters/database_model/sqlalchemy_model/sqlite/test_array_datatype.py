@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import types as sa_types
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ValidationError
 from protean.fields import (
     Auto,
@@ -19,12 +19,12 @@ from protean.fields import (
 
 
 class ArrayUser(BaseAggregate):
-    email = String(max_length=255, required=True, unique=True)
+    email: str
     roles = List()  # Defaulted to String Content Type
 
 
 class IntegerArrayUser(BaseAggregate):
-    email = String(max_length=255, required=True, unique=True)
+    email: str
     roles = List(content_type=Integer)
 
 

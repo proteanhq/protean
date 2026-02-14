@@ -1,18 +1,20 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import DateTime, Identifier, String, Text
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.utils import utcnow_func
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String(max_length=50)
+    email: str | None = None
+    name: str | None = None
 
     @classmethod
     def register(cls, id, email, name):
@@ -30,23 +32,23 @@ class User(BaseAggregate):
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
 
 
 class Activated(BaseEvent):
-    id = Identifier(required=True)
+    id: str
 
 
 class Renamed(BaseEvent):
-    id = Identifier(required=True)
-    name = String(required=True, max_length=50)
+    id: str
+    name: str
 
 
 class Post(BaseAggregate):
-    topic = String()
-    content = Text()
+    topic: str | None = None
+    content: str | None = None
 
     @classmethod
     def create(self, id, topic, content):
@@ -60,14 +62,14 @@ class Post(BaseAggregate):
 
 
 class Created(BaseEvent):
-    id = Identifier(identifier=True)
-    topic = String()
-    content = Text()
+    id: str | None = None
+    topic: str | None = None
+    content: str | None = None
 
 
 class Published(BaseEvent):
-    id = Identifier(required=True)
-    published_time = DateTime(default=utcnow_func)
+    id: str
+    published_time: datetime = Field(default_factory=utcnow_func)
 
 
 @pytest.fixture(autouse=True)

@@ -4,15 +4,14 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from protean import UnitOfWork
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.fields import String, Integer
+from protean.core.aggregate import BaseAggregate
 from protean.exceptions import DatabaseError
 from protean.utils.query import Q
 
 
 class ExceptionTestEntity(BaseAggregate):
-    name = String(max_length=100, required=True)
-    value = Integer()
+    name: str
+    value: int | None = None
 
 
 @pytest.fixture(autouse=True)

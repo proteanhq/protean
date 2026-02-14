@@ -1,26 +1,25 @@
 import mock
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.core.application_service import BaseApplicationService, use_case
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import Identifier, String
+from protean.core.event import BaseEvent
 from protean.utils.globals import current_domain
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
 
 class Registered(BaseEvent):
-    user_id = Identifier()
-    email = String()
-    name = String()
+    user_id: str | None = None
+    email: str | None = None
+    name: str | None = None
 
 
 class UserApplicationServices(BaseApplicationService):
     @use_case
-    def register_user(self, email: str, name: str) -> Identifier:
+    def register_user(self, email: str, name: str) -> str:
         user = User(email=email, name=name)
         user.raise_(Registered(user_id=user.id, email=user.email, name=user.name))
         current_domain.repository_for(User).add(user)

@@ -20,6 +20,7 @@ from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import Q
 from protean.utils.reflection import attributes, id_field
+from protean.core.value_object import _PydanticFieldShim
 from protean.fields import Integer, Float, Boolean, DateTime, Date, Auto, Identifier
 
 logger = logging.getLogger(__name__)
@@ -491,10 +492,38 @@ class ESProvider(BaseProvider):
         Returns a set of field names that should use the .keyword subfield.
         This computation is done once during model construction for efficiency.
         """
+        import types
+        import typing
+        from datetime import date as _date
+        from datetime import datetime as _datetime
+
         keyword_fields = set()
         entity_attributes = attributes(entity_cls)
 
         for field_name, field_obj in entity_attributes.items():
+            # Handle Pydantic field shims: check Python type
+            if isinstance(field_obj, _PydanticFieldShim):
+                if field_obj.identifier:
+                    continue
+
+                # Unwrap Optional/Union to get the base type
+                python_type = field_obj._python_type
+                origin = typing.get_origin(python_type)
+                if origin is types.UnionType or origin is typing.Union:
+                    args = [
+                        a for a in typing.get_args(python_type) if a is not type(None)
+                    ]
+                    if args:
+                        python_type = args[0]
+
+                # Numeric and date types don't use .keyword
+                if python_type in (int, float, bool, _datetime, _date):
+                    continue
+
+                keyword_fields.add(field_name)
+                continue
+
+            # Legacy field path
             # Numeric and date fields should not use .keyword subfield
             # They are mapped as their native types (long, double, date) in Elasticsearch
             numeric_and_date_types = (Integer, Float, Boolean, DateTime, Date)

@@ -1,21 +1,21 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
-from protean.fields import HasOne, List, String, ValueObject
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
+from protean.core.value_object import BaseValueObject
+from protean.fields import HasOne, List, ValueObject
 
 
 class Address(BaseValueObject):
-    street = String(max_length=100)
-    city = String(max_length=25)
-    state = String(max_length=25)
-    country = String(max_length=25)
+    street: str | None = None
+    city: str | None = None
+    state: str | None = None
+    country: str | None = None
 
 
 class Customer(BaseEntity):
-    name = String(max_length=50, required=True)
-    email = String(max_length=254, required=True)
+    name: str
+    email: str
     addresses = List(content_type=ValueObject(Address))
 
 

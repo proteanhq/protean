@@ -1,6 +1,5 @@
 from enum import Enum
 
-from protean.fields import String
 from protean.utils import DomainObjects
 
 
@@ -9,8 +8,8 @@ class DummyElement(Enum):
 
 
 class User:
-    username = String(max_length=50)
-    password = String(max_length=255)
+    username: str | None = None
+    password: str | None = None
 
 
 class UserAggregate(User):

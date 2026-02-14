@@ -2,11 +2,13 @@ import uuid
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
-from protean.fields import Identifier, String, ValueObject
+from protean.fields import ValueObject
 from protean.utils import fully_qualified_name
 from protean.utils.eventing import MessageEnvelope
 from protean.utils.reflection import data_fields, declared_fields, fields
@@ -24,23 +26,24 @@ class TestDomainEventDefinition:
             key in data_fields(PersonAdded)
             for key in ["first_name", "last_name", "age", "id"]
         )
+        # In Pydantic-based events, _metadata is a PrivateAttr, not in fields()
         assert all(
             key in fields(PersonAdded)
-            for key in ["first_name", "last_name", "age", "id", "_metadata"]
+            for key in ["first_name", "last_name", "age", "id"]
         )
 
     def test_that_domain_event_can_accommodate_value_objects(self, test_domain):
         class Email(BaseValueObject):
-            address = String(max_length=255)
+            address: str | None = None
 
         class User(BaseAggregate):
             email = ValueObject(Email, required=True)
-            name = String(max_length=50)
+            name: str | None = None
 
         class UserAdded(BaseEvent):
-            id = Identifier(identifier=True)
-            email = ValueObject(Email, required=True)
-            name = String(max_length=50)
+            id: str = Field(json_schema_extra={"identifier": True})
+            email: Email
+            name: str | None = None
 
         test_domain.register(User)
         test_domain.register(UserAdded, part_of=User)
@@ -51,17 +54,13 @@ class TestDomainEventDefinition:
             email=Email(address="john.doe@gmail.com"),
             name="John Doe",
         )
-        raw_event = UserAdded(
-            id=user.id, email_address=user.email_address, name=user.name
-        )
-        user.raise_(
-            UserAdded(id=user.id, email_address=user.email_address, name=user.name)
-        )
+        raw_event = UserAdded(id=user.id, email=user.email, name=user.name)
+        user.raise_(UserAdded(id=user.id, email=user.email, name=user.name))
         raised_event = user._events[0]
 
         assert raw_event is not None
         assert raw_event.email == Email(address="john.doe@gmail.com")
-        assert raw_event.email_address == "john.doe@gmail.com"
+        assert raw_event.email.address == "john.doe@gmail.com"
 
         assert (
             raw_event.to_dict()
@@ -137,17 +136,17 @@ class TestDomainEventDefinition:
 
     def test_error_on_invalid_value_object(self, test_domain):
         class Address(BaseValueObject):
-            street = String(max_length=50, required=True)
-            city = String(max_length=25, required=True)
+            street: str
+            city: str
 
         class Person(BaseAggregate):
-            name = String(max_length=50)
+            name: str | None = None
             address = ValueObject(Address, required=True)
 
         class PersonAdded(BaseEvent):
-            id = Identifier(identifier=True)
-            name = String(max_length=50)
-            address = ValueObject(Address)
+            id: str = Field(json_schema_extra={"identifier": True})
+            name: str | None = None
+            address: Address | None = None
 
         test_domain.register(PersonAdded, part_of=Person)
         test_domain.init(traverse=False)
@@ -165,15 +164,15 @@ class TestDomainEventDefinition:
         self, test_domain
     ):
         class Email(BaseValueObject):
-            address = String(max_length=255)
+            address: str | None = None
 
         class User(BaseAggregate):
             email = ValueObject(Email, required=True)
-            name = String(max_length=50)
+            name: str | None = None
 
         class UserAdded(BaseEvent):
-            email = ValueObject(Email, required=True)
-            name = String(max_length=50)
+            email: Email
+            name: str | None = None
 
         test_domain.register(User)
         test_domain.register(UserAdded, part_of=User)
@@ -186,7 +185,7 @@ class TestDomainEventDefinition:
                 },
                 "name": "John Doe",
             }
-        ) == UserAdded(email_address="john.doe@gmail.com", name="John Doe")
+        ) == UserAdded(email=Email(address="john.doe@gmail.com"), name="John Doe")
 
 
 class TestDomainEventInitialization:
@@ -199,7 +198,7 @@ class TestDomainEventInitialization:
         test_domain.register(PersonAdded, part_of=Person)
         test_domain.init(traverse=False)
 
-        service = PersonAdded(id=uuid.uuid4(), first_name="John", last_name="Doe")
+        service = PersonAdded(id=str(uuid.uuid4()), first_name="John", last_name="Doe")
         assert service is not None
 
 
@@ -225,7 +224,7 @@ class TestDomainEventRegistration:
 
     def test_registering_external_event(self, test_domain):
         class ExternalEvent(BaseEvent):
-            foo = String()
+            foo: str | None = None
 
         test_domain.register_external_event(ExternalEvent, "Bar.ExternalEvent.v1")
 
@@ -250,7 +249,7 @@ class TestDomainEventEquivalence:
         test_domain.init(traverse=False)
 
     def test_that_two_domain_events_with_same_values_are_considered_equal(self):
-        identifier = uuid.uuid4()
+        identifier = str(uuid.uuid4())
         event_1 = PersonAdded(id=identifier, first_name="John", last_name="Doe")
         event_2 = PersonAdded(id=identifier, first_name="John", last_name="Doe")
 
@@ -259,10 +258,10 @@ class TestDomainEventEquivalence:
     def test_that_two_domain_events_with_different_values_are_not_considered_equal(
         self,
     ):
-        person1 = Person(id=uuid.uuid4(), first_name="John", last_name="Doe")
+        person1 = Person(id=str(uuid.uuid4()), first_name="John", last_name="Doe")
         person1.raise_(PersonAdded(id=person1.id, first_name="John", last_name="Doe"))
 
-        person2 = Person(id=uuid.uuid4(), first_name="Jane", last_name="Doe")
+        person2 = Person(id=str(uuid.uuid4()), first_name="Jane", last_name="Doe")
         person2.raise_(PersonAdded(id=person2.id, first_name="Jane", last_name="Doe"))
 
         assert person1._events[0] != person2._events[0]
@@ -270,7 +269,7 @@ class TestDomainEventEquivalence:
     def test_that_two_domain_events_with_different_values_are_not_considered_equal_with_different_types(
         self,
     ):
-        identifier = uuid.uuid4()
+        identifier = str(uuid.uuid4())
 
         class User(Person):
             pass

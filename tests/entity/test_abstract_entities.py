@@ -1,13 +1,12 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from protean.core.aggregate import BaseAggregate
 from protean.exceptions import NotSupportedError
-from protean.fields import String
 
 
 # Aggregates to test Abstraction # START #
 class AbstractRole(BaseAggregate):
-    foo = String(max_length=25)
+    foo: str | None = None
 
 
 def test_that_abstract_entities_cannot_be_initialized(test_domain):

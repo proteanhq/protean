@@ -2,22 +2,21 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
-from protean.fields import Identifier, String
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.utils import Processing, fqn
-from protean.utils.eventing import MessageEnvelope
-from protean.utils.reflection import fields
+from protean.utils.eventing import DomainMeta, MessageEnvelope, Metadata
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
 
 class Login(BaseCommand):
-    user_id = Identifier(identifier=True)
+    user_id: str = Field(json_schema_extra={"identifier": True})
 
 
 @pytest.fixture(autouse=True)
@@ -29,8 +28,7 @@ def register_elements(test_domain):
 
 class TestMetadataType:
     def test_metadata_has_type_field(self):
-        metadata_field = fields(Login)["_metadata"]
-        assert "headers" in metadata_field.value_object_cls.model_fields
+        assert "headers" in Metadata.model_fields
 
     def test_command_metadata_type_default(self):
         assert hasattr(Login, "__type__")
@@ -43,8 +41,8 @@ class TestMetadataType:
 
 class TestMetadataVersion:
     def test_metadata_has_command_version(self):
-        metadata_field = fields(Login)["_metadata"]
-        assert "domain" in metadata_field.value_object_cls.model_fields
+        assert "domain" in Metadata.model_fields
+        assert "version" in DomainMeta.model_fields
 
     def test_command_metadata_version_default(self):
         command = Login(user_id=str(uuid4()))
@@ -53,7 +51,7 @@ class TestMetadataVersion:
     def test_overridden_version(self, test_domain):
         class Login(BaseCommand):
             __version__ = "v2"
-            user_id = Identifier(identifier=True)
+            user_id: str = Field(json_schema_extra={"identifier": True})
 
         test_domain.register(Login, part_of=User)
         test_domain.init(traverse=False)
@@ -64,8 +62,8 @@ class TestMetadataVersion:
 
 class TestMetadataAsynchronous:
     def test_metadata_has_asynchronous_field(self):
-        metadata_field = fields(Login)["_metadata"]
-        assert "domain" in metadata_field.value_object_cls.model_fields
+        assert "domain" in Metadata.model_fields
+        assert "asynchronous" in DomainMeta.model_fields
 
     def test_command_metadata_asynchronous_default(self):
         command = Login(user_id=str(uuid4()))

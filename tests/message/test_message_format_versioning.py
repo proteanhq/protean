@@ -2,10 +2,10 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import Identifier, String
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
+
 from protean.utils.eventing import (
     Message,
     MessageEnvelope,
@@ -13,23 +13,24 @@ from protean.utils.eventing import (
     DomainMeta,
     Metadata,
 )
+from pydantic import Field
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
 
 class Register(BaseCommand):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
+    email: str | None = None
+    name: str | None = None
 
 
 class Registered(BaseEvent):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    id: str | None = Field(default=None, json_schema_extra={"identifier": True})
+    email: str | None = None
+    name: str | None = None
 
 
 @pytest.fixture(autouse=True)

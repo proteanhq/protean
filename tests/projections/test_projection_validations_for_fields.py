@@ -1,28 +1,31 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
-from protean.core.projection import _LegacyBaseProjection as BaseProjection
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
+from protean.core.projection import (
+    BaseProjection,
+    _LegacyBaseProjection,
+)
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError
-from protean.fields import HasOne, Identifier, Reference, String, ValueObject
+from protean.fields import HasOne, Identifier, Reference, ValueObject
 
 
 class User(BaseAggregate):
-    name = String()
+    name: str | None = None
 
 
 class Email(BaseValueObject):
-    address = String()
+    address: str | None = None
 
 
 class Role(BaseEntity):
-    name = String(max_length=50)
+    name: str | None = None
 
 
 def test_that_projections_should_have_at_least_one_identifier_field(test_domain):
     class User(BaseProjection):
-        first_name = String()
+        first_name: str | None = None
 
     with pytest.raises(IncorrectUsageError) as exception:
         test_domain.register(User)
@@ -36,7 +39,7 @@ def test_that_projections_should_have_at_least_one_identifier_field(test_domain)
 def test_that_projections_cannot_have_value_object_fields():
     with pytest.raises(IncorrectUsageError) as exception:
 
-        class User(BaseProjection):
+        class User(_LegacyBaseProjection):
             user_id = Identifier(identifier=True)
             email = ValueObject(Email)
 
@@ -49,7 +52,7 @@ def test_that_projections_cannot_have_value_object_fields():
 def test_that_projections_cannot_have_references():
     with pytest.raises(IncorrectUsageError) as exception:
 
-        class User(BaseProjection):
+        class User(_LegacyBaseProjection):
             user_id = Identifier(identifier=True)
             role = Reference(Role)
 
@@ -62,7 +65,7 @@ def test_that_projections_cannot_have_references():
 def test_that_projections_cannot_have_associations():
     with pytest.raises(IncorrectUsageError) as exception:
 
-        class User(BaseProjection):
+        class User(_LegacyBaseProjection):
             user_id = Identifier(identifier=True)
             role = HasOne(Role)
 

@@ -1,26 +1,26 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
-from protean.fields import Float, Identifier, String, ValueObject
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.value_object import BaseValueObject
+from protean.fields import ValueObject
 
 from .elements import Person, PersonRepository
 
 
 class Balance(BaseValueObject):
-    currency = String(max_length=3)
-    amount = Float()
+    currency: str | None = None
+    amount: float | None = None
 
 
 class BalanceUpdated(BaseEvent):
-    account_id = Identifier(required=True)
-    old_amount = Float()
-    new_amount = Float()
+    account_id: str
+    old_amount: float | None = None
+    new_amount: float | None = None
 
 
 class Account(BaseAggregate):
-    name = String(max_length=50, required=True)
+    name: str
     balance = ValueObject(Balance)
 
     def update_balance(self, new_balance: Balance) -> None:

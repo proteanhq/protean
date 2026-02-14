@@ -1,20 +1,19 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Identifier, String
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
 
 class Register(BaseCommand):
-    user_id = Identifier()
-    email = String()
+    user_id: str | None = None
+    email: str | None = None
 
 
 def test_part_of_is_mandatory(test_domain):

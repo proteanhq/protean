@@ -1,35 +1,41 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from uuid import uuid4
+
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.exceptions import ConfigurationError
-from protean.fields import Identifier, String
 
 
 class UserRegistered(BaseEvent):
-    user_id = Identifier(required=True)
-    name = String(max_length=50, required=True)
-    email = String(required=True)
+    user_id: str
+    name: str
+    email: str
 
 
 class UserActivated(BaseEvent):
-    user_id = Identifier(required=True)
+    user_id: str
 
 
 class UserRenamed(BaseEvent):
-    user_id = Identifier(required=True)
-    name = String(required=True, max_length=50)
+    user_id: str
+    name: str
 
 
 class UserArchived(BaseEvent):
-    user_id = Identifier(required=True)
+    user_id: str
 
 
 class User(BaseAggregate):
-    user_id = Identifier(identifier=True)
-    name = String(max_length=50, required=True)
-    email = String(required=True)
-    status = String(choices=["ACTIVE", "INACTIVE", "ARCHIVED"])
+    user_id: str = Field(
+        default_factory=lambda: str(uuid4()),
+        json_schema_extra={"identifier": True},
+    )
+    name: str
+    email: str
+    status: str | None = None
 
     @classmethod
     def register(cls, user_id, name, email):
@@ -49,7 +55,7 @@ class User2(User):
 
 
 class UserUnknownEvent(BaseEvent):
-    user_id = Identifier(required=True)
+    user_id: str
 
 
 @pytest.fixture(autouse=True)

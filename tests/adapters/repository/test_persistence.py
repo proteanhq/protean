@@ -1,14 +1,13 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.fields import DateTime, Integer, String
+from protean.core.aggregate import BaseAggregate
 from datetime import datetime
 
 
 class Event(BaseAggregate):
-    name = String(max_length=255, required=True)
-    created_at = DateTime(default=datetime.now)
-    sequence_id = Integer()
+    name: str
+    created_at: datetime | None = None
+    sequence_id: int | None = None
 
 
 @pytest.fixture(autouse=True)

@@ -9,11 +9,12 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.exceptions import DuplicateCommandError
-from protean.fields import Identifier, String
 from protean.utils.mixins import handle
 
 # Use a dedicated Redis database for idempotency tests (db 5)
@@ -30,14 +31,14 @@ call_counter = 0
 
 
 class User(BaseAggregate):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: str = Field(json_schema_extra={"identifier": True})
+    email: str | None = None
+    name: str | None = None
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
-    email = String()
+    user_id: str = Field(json_schema_extra={"identifier": True})
+    email: str | None = None
 
 
 class UserCommandHandlers(BaseCommandHandler):
@@ -179,7 +180,7 @@ class TestFailureRecovery:
 
         # Use a separate command/handler pair to avoid "multiple handlers" conflict
         class Activate(BaseCommand):
-            user_id = Identifier(identifier=True)
+            user_id: str = Field(json_schema_extra={"identifier": True})
 
         fail_once = {"should_fail": True}
 
@@ -286,8 +287,8 @@ class TestFullFlowIntegration:
         test_domain._idempotency_store = None
 
         class UpdateEmail(BaseCommand):
-            user_id = Identifier(identifier=True)
-            email = String()
+            user_id: str = Field(json_schema_extra={"identifier": True})
+            email: str | None = None
 
         fail_flag = {"should_fail": True}
 
@@ -335,8 +336,8 @@ class TestFullFlowIntegration:
         to external APIs (e.g., Stripe)."""
 
         class ChargePayment(BaseCommand):
-            user_id = Identifier(identifier=True)
-            amount = String()
+            user_id: str = Field(json_schema_extra={"identifier": True})
+            amount: str | None = None
 
         class ChargePaymentHandlers(BaseCommandHandler):
             @handle(ChargePayment)

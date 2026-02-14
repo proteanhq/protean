@@ -1,20 +1,19 @@
 import mock
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
-from protean.fields import Identifier, String
 from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
 
 class Registered(BaseEvent):
-    user_id = Identifier()
-    email = String()
+    user_id: str | None = None
+    email: str | None = None
 
 
 def dummy(*args):
@@ -42,7 +41,7 @@ def test_that_method_is_enclosed_in_uow(mock_exit, mock_dummy, mock_enter, test_
     mock_parent.attach_mock(mock_exit, "m3")
 
     handler_obj = UserEventHandlers()
-    event = Registered(user_id=1, email="foo@bar.com")
+    event = Registered(user_id="1", email="foo@bar.com")
 
     # Call the handler
     handler_obj.send_email_notification(event)

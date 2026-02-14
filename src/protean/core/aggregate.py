@@ -13,7 +13,11 @@ from pydantic import PrivateAttr
 
 from protean.core.entity import BaseEntity, _LegacyBaseEntity
 from protean.core.event import BaseEvent, _LegacyBaseEvent
-from protean.core.value_object import _LegacyBaseValueObject
+from protean.core.value_object import (
+    BaseValueObject,
+    _LegacyBaseValueObject,
+    _PydanticFieldShim,
+)
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -228,9 +232,17 @@ class BaseAggregate(BaseEntity):
         setattr(cls, _FIELDS, fields_dict)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        # Pop _version from kwargs before Pydantic init (it's a PrivateAttr,
+        # Pop _version before Pydantic init (it's a PrivateAttr,
         # and extra="forbid" would reject it). Restore after construction.
-        version = kwargs.pop("_version", -1)
+        # Check both kwargs and positional dict args (template dict pattern).
+        version = kwargs.pop("_version", None)
+        if version is None:
+            for arg in args:
+                if isinstance(arg, dict) and "_version" in arg:
+                    version = arg.pop("_version")
+                    break
+        if version is None:
+            version = -1
 
         super().__init__(*args, **kwargs)
 
@@ -354,7 +366,18 @@ def element_to_fact_event(element_cls):
     2. A `HasMany` association is replaced with a List of Value Objects.
 
     The target class of associations is constructed as the Value Object.
+
+    Dispatches to the legacy or Pydantic implementation based on the element's class hierarchy.
     """
+    from pydantic import BaseModel
+
+    if isinstance(element_cls, type) and issubclass(element_cls, BaseModel):
+        return _pydantic_element_to_fact_event(element_cls)
+    return _legacy_element_to_fact_event(element_cls)
+
+
+def _legacy_element_to_fact_event(element_cls):
+    """Legacy path: create fact events using legacy field descriptors and BaseContainer."""
     # Gather all fields defined in the element, except References.
     #   We ignore references in event payloads.
     attrs = {
@@ -395,6 +418,123 @@ def element_to_fact_event(element_cls):
         (_LegacyBaseEvent,),
         attrs,
     )
+
+    # Store the fact event class as part of the aggregate itself
+    setattr(element_cls, "_fact_event_cls", event_cls)
+
+    # Return the fact event class to be registered with the domain
+    return event_cls
+
+
+def _pydantic_element_to_fact_event(element_cls):
+    """Pydantic path: create fact events using Pydantic annotations and BaseModel."""
+    from pydantic import Field as PydanticField
+    from pydantic_core import PydanticUndefined
+
+    annotations: dict[str, Any] = {}
+    namespace: dict[str, Any] = {}
+    # Track association descriptors (ValueObject / List) so we can inject them
+    # into ``__container_fields__`` after the class is created.  This keeps
+    # the introspection API compatible with the legacy path.
+    association_descriptors: dict[str, ValueObject | ProteanList] = {}
+    model_field_info = getattr(element_cls, "model_fields", {})
+
+    for key, value in fields(element_cls).items():
+        if isinstance(value, Reference):
+            continue
+
+        # Skip internal fields (e.g. _version) — Pydantic treats _ prefix as private
+        if key.startswith("_"):
+            continue
+
+        if isinstance(value, HasOne):
+            # Recursively convert entity to VO
+            result = element_to_fact_event(value.to_cls)
+            vo_descriptor = (
+                result
+                if isinstance(result, ValueObject)
+                else ValueObject(value_object_cls=result)
+            )
+            vo_cls = vo_descriptor.value_object_cls
+            annotations[key] = vo_cls | None
+            namespace[key] = None
+            association_descriptors[key] = vo_descriptor
+
+        elif isinstance(value, HasMany):
+            # Recursively convert entity to list of VOs
+            result = element_to_fact_event(value.to_cls)
+            vo_descriptor = (
+                result
+                if isinstance(result, ValueObject)
+                else ValueObject(value_object_cls=result)
+            )
+            list_descriptor = ProteanList(content_type=vo_descriptor)
+            vo_cls = vo_descriptor.value_object_cls
+            annotations[key] = list[vo_cls]
+            namespace[key] = PydanticField(default_factory=list)
+            association_descriptors[key] = list_descriptor
+
+        elif isinstance(value, ValueObject):
+            # Legacy-style VO descriptor in a Pydantic element
+            vo_cls = value.value_object_cls
+            annotations[key] = vo_cls | None
+            namespace[key] = None
+            association_descriptors[key] = value
+
+        elif isinstance(value, _PydanticFieldShim):
+            # Regular Pydantic model field
+            finfo = model_field_info.get(key)
+            if finfo:
+                annotations[key] = finfo.annotation
+                if finfo.default is not PydanticUndefined:
+                    namespace[key] = finfo.default
+                elif finfo.default_factory is not None:
+                    namespace[key] = PydanticField(
+                        default_factory=finfo.default_factory
+                    )
+                # else: required field — no default needed
+            else:
+                annotations[key] = Any
+                namespace[key] = None
+
+    if element_cls.element_type == DomainObjects.ENTITY:
+        # Entity → Value Object conversion.
+        # Strip identifier/unique: make those fields optional with None default.
+        container_fields = fields(element_cls)
+        for key in list(annotations.keys()):
+            field_obj = container_fields.get(key)
+            if isinstance(field_obj, _PydanticFieldShim) and (
+                field_obj.identifier or field_obj.unique
+            ):
+                annotations[key] = annotations[key] | None
+                namespace[key] = None
+
+        ns = {"__annotations__": annotations, **namespace}
+        value_object_cls = type(
+            f"{element_cls.__name__}ValueObject",
+            (BaseValueObject,),
+            ns,
+        )
+
+        # Inject association descriptors into __container_fields__
+        cf = getattr(value_object_cls, _FIELDS, {})
+        cf.update(association_descriptors)
+        setattr(value_object_cls, _FIELDS, cf)
+
+        return ValueObject(value_object_cls=value_object_cls)
+
+    # Aggregate → Fact Event
+    ns = {"__annotations__": annotations, **namespace}
+    event_cls = type(
+        f"{element_cls.__name__}FactEvent",
+        (BaseEvent,),
+        ns,
+    )
+
+    # Inject association descriptors into __container_fields__
+    cf = getattr(event_cls, _FIELDS, {})
+    cf.update(association_descriptors)
+    setattr(event_cls, _FIELDS, cf)
 
     # Store the fact event class as part of the aggregate itself
     setattr(element_cls, "_fact_event_cls", event_cls)

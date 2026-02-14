@@ -1,33 +1,33 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import HasMany, HasOne, Identifier, Integer, String
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.entity import BaseEntity
+from protean.core.event import BaseEvent
+from protean.fields import HasMany, HasOne
 
 
 class University(BaseAggregate):
-    name = String(max_length=50)
+    name: str | None = None
     departments = HasMany("Department")
 
 
 class CloseDepartment(BaseCommand):
-    department_id = Integer()
+    department_id: int | None = None
 
 
 class DepartmentClosed(BaseEvent):
-    department_id = Integer()
+    department_id: int | None = None
 
 
 class Department(BaseEntity):
-    name = String(max_length=50)
+    name: str | None = None
     dean = HasOne("Dean")
 
 
 class Dean(BaseEntity):
-    name = String(max_length=50)
-    age = Integer(min_value=21)
+    name: str | None = None
+    age: int | None = None
 
 
 class TestAggregateClusterAssignment:
@@ -53,22 +53,21 @@ class TestAggregateClusterAssignment:
 
 
 class User(BaseAggregate):
-    id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
-    email = String()
-    name = String()
+    user_id: str | None = None
+    email: str | None = None
+    name: str | None = None
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
+    password_hash: str | None = None
 
 
 class TestEventSourcedAggregateClusterAssignment:

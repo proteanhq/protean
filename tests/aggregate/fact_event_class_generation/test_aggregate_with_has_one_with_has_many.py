@@ -1,38 +1,28 @@
+from datetime import date
+
 import pytest
 
-from protean.core.aggregate import (
-    _LegacyBaseAggregate as BaseAggregate,
-    element_to_fact_event,
-)
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import (
-    Date,
-    Float,
-    HasMany,
-    HasOne,
-    Integer,
-    List,
-    String,
-    ValueObject,
-)
+from protean.core.aggregate import BaseAggregate, element_to_fact_event
+from protean.core.entity import BaseEntity
+from protean.core.event import BaseEvent
+from protean.fields import HasMany, HasOne, List, ValueObject
 from protean.utils.reflection import declared_fields
 
 
 class Shipment(BaseAggregate):
-    tracking_id = String(max_length=50)
+    tracking_id: str | None = None
     order = HasOne("Order")
 
 
 class Order(BaseEntity):
-    ordered_on = Date()
+    ordered_on: date | None = None
     items = HasMany("OrderItem")
 
 
 class OrderItem(BaseEntity):
-    product_id = String(max_length=50)
-    quantity = Integer()
-    price = Float()
+    product_id: str | None = None
+    quantity: int | None = None
+    price: float | None = None
 
 
 @pytest.fixture(autouse=True)

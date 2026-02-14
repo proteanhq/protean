@@ -312,6 +312,14 @@ def _prepare_pydantic_namespace(
             if attr_name.startswith("_"):
                 continue
 
+            # Handle string annotations (from __future__ import annotations)
+            if isinstance(annotation, str) and '"identifier": True' in annotation:
+                has_id = True
+                break
+            if isinstance(annotation, str) and "'identifier': True" in annotation:
+                has_id = True
+                break
+
             # Check Annotated[type, Field(..., json_schema_extra={"identifier": True})]
             if get_origin(annotation) is Annotated:
                 for arg in get_args(annotation)[1:]:
@@ -332,13 +340,17 @@ def _prepare_pydantic_namespace(
                     break
 
         if not has_id:
-            annots["id"] = str
+            annots["id"] = str | int | UUID
             new_dict["id"] = PydanticField(
-                default_factory=lambda: str(uuid4()),
+                default_factory=generate_identity,
                 json_schema_extra={"identifier": True},
             )
 
     new_dict["__annotations__"] = annots
+
+    # Sentinel: prevent BaseEntity.__init_subclass__ from re-injecting id.
+    # This namespace was already processed (auto_add_id_field respected).
+    new_dict["__auto_id_handled__"] = True
 
 
 def derive_element_class(

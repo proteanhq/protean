@@ -3,13 +3,12 @@
 import pytest
 
 from protean import UnitOfWork
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.fields import String, Integer
+from protean.core.aggregate import BaseAggregate
 
 
 class Product(BaseAggregate):
-    name = String(max_length=100, required=True)
-    price = Integer()
+    name: str
+    price: int | None = None
 
 
 @pytest.fixture(autouse=True)

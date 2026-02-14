@@ -2,12 +2,13 @@
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.fields import Date
+from datetime import date
+
+from protean.core.aggregate import BaseAggregate
 
 
 class Order(BaseAggregate):
-    ordered_on = Date()
+    ordered_on: date | None = None
 
 
 @pytest.fixture(autouse=True)

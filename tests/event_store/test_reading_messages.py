@@ -4,30 +4,28 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import String
-from protean.fields.basic import Identifier
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.utils.eventing import Message
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String(max_length=50)
+    email: str | None = None
+    name: str | None = None
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
+    id: str | None = None
+    email: str | None = None
 
 
 class Activated(BaseEvent):
-    id = Identifier(required=True)
+    id: str
 
 
 class Renamed(BaseEvent):
-    id = Identifier(required=True)
-    name = String(required=True, max_length=50)
+    id: str
+    name: str
 
 
 @pytest.fixture(autouse=True)

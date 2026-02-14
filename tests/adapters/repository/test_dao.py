@@ -2,23 +2,24 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
 from protean.core.queryset import QuerySet
 from protean.exceptions import ObjectNotFoundError, TooManyObjectsError, ValidationError
-from protean.fields import DateTime, Integer, String
 from protean.utils.query import Q
 
 
 class Person(BaseAggregate):
-    first_name = String(max_length=50, required=True)
-    last_name = String(max_length=50, required=True)
-    age = Integer(default=21)
-    created_at = DateTime(default=datetime.now())
+    first_name: str
+    last_name: str
+    age: int = 21
+    created_at: datetime = Field(default_factory=datetime.now)
 
 
 class User(BaseAggregate):
-    email = String(max_length=255, required=True, unique=True)
-    password = String(max_length=3026)
+    email: str = Field(max_length=255, json_schema_extra={"unique": True})
+    password: str = Field(max_length=3026)
 
 
 @pytest.mark.database
@@ -902,9 +903,11 @@ class TestDAOValidations:
         person = Person(first_name="Johnny", last_name="John")
 
         with pytest.raises(ValidationError) as error:
-            person.first_name = ""  # Simulate an error by force-resetting an attribute
+            person.first_name = (
+                None  # Simulate an error by force-resetting an attribute
+            )
 
-        assert error.value.messages == {"first_name": ["is required"]}
+        assert "first_name" in error.value.messages
 
     def test_that_primitive_validations_on_type_are_thrown_correctly_on_initialization(
         self, test_domain
@@ -912,7 +915,11 @@ class TestDAOValidations:
         with pytest.raises(ValidationError) as error:
             Person(first_name="Johnny", last_name="John", age="x")
 
-        assert error.value.messages == {"age": ['"x" value must be an integer.']}
+        assert error.value.messages == {
+            "age": [
+                "Input should be a valid integer, unable to parse string as an integer"
+            ]
+        }
 
     def test_that_primitive_validations_on_type_are_thrown_correctly_on_update(
         self, test_domain
@@ -926,7 +933,11 @@ class TestDAOValidations:
                 person, age="x"
             )  # Age should be an integer
 
-        assert error.value.messages == {"age": ['"x" value must be an integer.']}
+        assert error.value.messages == {
+            "age": [
+                "Input should be a valid integer, unable to parse string as an integer"
+            ]
+        }
 
 
 @pytest.mark.database

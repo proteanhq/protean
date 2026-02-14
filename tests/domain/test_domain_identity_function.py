@@ -4,10 +4,12 @@ import time
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
 from protean.exceptions import ConfigurationError
-from protean.fields import Auto
+from protean.utils import generate_identity
 
 
 def gen_ids(prefix="id"):
@@ -70,7 +72,10 @@ def test_domain_identity_function_is_used_with_explicit_auto_field():
     domain.config["identity_strategy"] = "function"
 
     class TestAggregate(BaseAggregate):
-        aggregate_id = Auto(identifier=True)
+        aggregate_id: str = Field(
+            default_factory=generate_identity,
+            json_schema_extra={"identifier": True},
+        )
 
     domain.register(TestAggregate)
     domain.init(traverse=False)
@@ -90,7 +95,10 @@ def test_invalid_identity_function_raises_exception():
     domain.config["identity_strategy"] = "function"
 
     class TestAggregate(BaseAggregate):
-        aggregate_id = Auto(identifier=True)
+        aggregate_id: str = Field(
+            default_factory=generate_identity,
+            json_schema_extra={"identifier": True},
+        )
 
     domain.register(TestAggregate)
     domain.init(traverse=False)
@@ -110,7 +118,10 @@ def test_identity_function_returns_no_value():
     domain.config["identity_strategy"] = "function"
 
     class TestAggregate(BaseAggregate):
-        aggregate_id = Auto(identifier=True)
+        aggregate_id: str = Field(
+            default_factory=generate_identity,
+            json_schema_extra={"identifier": True},
+        )
 
     domain.register(TestAggregate)
     domain.init(traverse=False)

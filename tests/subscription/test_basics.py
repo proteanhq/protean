@@ -1,28 +1,26 @@
-from __future__ import annotations
-
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
-from protean.fields import Identifier, String
+
 from protean.server import Engine
 from protean.utils import fqn
 from protean.utils.mixins import handle
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
+    password_hash: str | None = None
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
-    password_hash = String()
+    email: str | None = None
+    name: str | None = None
+    password_hash: str | None = None
 
     @classmethod
     def register(cls, id, email, name, password_hash):

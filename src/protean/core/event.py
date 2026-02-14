@@ -162,6 +162,15 @@ class BaseEvent(BaseMessageType):
                     )
                 kwargs.update(template)
 
+        # Template dicts (e.g. from to_dict()) may re-introduce _metadata
+        # and _expected_version; prefer the explicitly passed keyword args.
+        template_metadata = kwargs.pop("_metadata", None)
+        if incoming_metadata is None:
+            incoming_metadata = template_metadata
+        template_expected_version = kwargs.pop("_expected_version", None)
+        if expected_version == -1 and template_expected_version is not None:
+            expected_version = template_expected_version
+
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:

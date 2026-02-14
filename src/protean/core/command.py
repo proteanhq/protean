@@ -161,6 +161,12 @@ class BaseCommand(BaseMessageType):
                     )
                 kwargs.update(template)
 
+        # Template dicts (e.g. from to_dict()) may re-introduce _metadata;
+        # prefer the explicitly passed keyword arg, fall back to template value.
+        template_metadata = kwargs.pop("_metadata", None)
+        if incoming_metadata is None:
+            incoming_metadata = template_metadata
+
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:

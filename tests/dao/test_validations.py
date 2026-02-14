@@ -35,9 +35,13 @@ class TestValidations:
         person = Person(first_name="Johnny", last_name="John")
 
         with pytest.raises(ValidationError) as error:
-            person.first_name = ""  # Simulate an error by force-resetting an attribute
+            person.first_name = (
+                None  # Simulate an error by setting a non-optional field to None
+            )
 
-        assert error.value.messages == {"first_name": ["is required"]}
+        assert error.value.messages == {
+            "first_name": ["Input should be a valid string"]
+        }
 
     def test_that_primitive_validations_on_type_are_thrown_correctly_on_initialization(
         self, test_domain
@@ -45,7 +49,11 @@ class TestValidations:
         with pytest.raises(ValidationError) as error:
             Person(first_name="Johnny", last_name="John", age="x")
 
-        assert error.value.messages == {"age": ['"x" value must be an integer.']}
+        assert error.value.messages == {
+            "age": [
+                "Input should be a valid integer, unable to parse string as an integer"
+            ]
+        }
 
     def test_that_primitive_validations_on_type_are_thrown_correctly_on_update(
         self, test_domain
@@ -59,4 +67,8 @@ class TestValidations:
                 person, age="x"
             )  # Age should be an integer
 
-        assert error.value.messages == {"age": ['"x" value must be an integer.']}
+        assert error.value.messages == {
+            "age": [
+                "Input should be a valid integer, unable to parse string as an integer"
+            ]
+        }

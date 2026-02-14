@@ -1,29 +1,28 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.fields import Identifier, String
 from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
 
 class Register(BaseCommand):
-    id = Identifier()
-    email = String()
-    name = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
 
 
 def test_that_base_command_handler_cannot_be_instantianted():
@@ -74,8 +73,8 @@ def test_command_and_command_handler_have_to_be_associated_with_same_aggregate(
             pass
 
     class User2(BaseAggregate):
-        email = String()
-        name = String()
+        email: str | None = None
+        name: str | None = None
 
     test_domain.register(User)
     test_domain.register(User2)

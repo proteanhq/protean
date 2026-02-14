@@ -4,21 +4,20 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
-from protean.fields import Identifier
 from protean.server.engine import Engine
 from protean.utils import Processing
 from protean.utils.mixins import handle
 
 
 class User(BaseAggregate):
-    user_id = Identifier(identifier=True)
+    user_id: str | None = None
 
 
 class UserLoggedIn(BaseEvent):
-    user_id = Identifier(identifier=True)
+    user_id: str | None = None
 
 
 class UserEventHandler(BaseEventHandler):

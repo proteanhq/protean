@@ -4,42 +4,41 @@ import random
 import string
 from uuid import uuid4
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate, apply
-from protean.core.command import _LegacyBaseCommand as BaseCommand
+from protean.core.aggregate import BaseAggregate, apply
+from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import Identifier, String, Boolean
+from protean.core.event import BaseEvent
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 
 
 class Register(BaseCommand):
-    user_id = Identifier()
-    email = String()
+    user_id: str | None = None
+    email: str | None = None
 
 
 class RenameAndActivate(BaseCommand):
-    user_id = Identifier()
+    user_id: str | None = None
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
+    id: str | None = None
+    email: str | None = None
 
 
 class Renamed(BaseEvent):
-    id = Identifier()
-    name = String()
+    id: str | None = None
+    name: str | None = None
 
 
 class Activated(BaseEvent):
-    id = Identifier()
+    id: str | None = None
 
 
 class User(BaseAggregate):
-    name = String()
-    email = String()
-    active = Boolean(default=False)
+    name: str | None = None
+    email: str | None = None
+    active: bool = False
 
     @apply
     def registered(self, event: Registered) -> None:

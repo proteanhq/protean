@@ -73,7 +73,7 @@ class TestOutboxCreation:
         assert outbox.stream_name == "test-stream"
         assert outbox.type == "TestEvent"
         assert outbox.data == {"key": "value"}
-        assert outbox.metadata == sample_metadata
+        assert outbox.metadata_ == sample_metadata
         assert outbox.priority == 5
         assert outbox.correlation_id == "corr-123"
         assert outbox.trace_id == "trace-456"
@@ -676,4 +676,4 @@ class TestEdgeCases:
         )
 
         assert outbox.data == {"minimal": "data"}
-        assert outbox.metadata == sample_metadata
+        assert outbox.metadata_ == sample_metadata

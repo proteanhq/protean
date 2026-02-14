@@ -1,39 +1,39 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.entity import _LegacyBaseEntity as BaseEntity
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Float, Integer, String, ValueObject
+from protean.fields import ValueObject
 from protean.utils.reflection import value_object_fields
 
 
 class Address(BaseValueObject):
-    street = String(max_length=100)
-    city = String(max_length=50)
-    postal_code = String(max_length=10)
+    street: str | None = None
+    city: str | None = None
+    postal_code: str | None = None
 
 
 class Balance(BaseValueObject):
-    amount = Float(required=True)
-    currency = String(max_length=3, default="USD")
+    amount: float
+    currency: str = "USD"
 
 
 class User(BaseAggregate):
-    name = String(max_length=50, required=True)
-    age = Integer()
+    name: str
+    age: int | None = None
     address = ValueObject(Address)
 
 
 class Account(BaseAggregate):
-    email = String(max_length=255, required=True)
+    email: str
     balance = ValueObject(Balance)
     primary_address = ValueObject(Address)
 
 
 class PersonWithoutValueObjects(BaseAggregate):
-    name = String(max_length=50, required=True)
-    age = Integer()
+    name: str
+    age: int | None = None
 
 
 def test_value_object_fields():
@@ -104,7 +104,7 @@ def test_value_object_fields_with_string_reference():
     """Test ValueObject field defined with string class name"""
 
     class ProductWithStringRef(BaseAggregate):
-        name = String(max_length=100)
+        name: str | None = None
         shipping_address = ValueObject("Address")
 
     vo_fields = value_object_fields(ProductWithStringRef)
@@ -118,7 +118,7 @@ def test_value_object_fields_on_entity():
     """Test value_object_fields works on entities"""
 
     class OrderItem(BaseEntity):
-        name = String(max_length=100)
+        name: str | None = None
         price = ValueObject(Balance)
 
     vo_fields = value_object_fields(OrderItem)
@@ -132,8 +132,8 @@ def test_value_object_fields_mixed_with_other_fields():
     """Test element with mix of ValueObject and other field types"""
 
     class ComplexEntity(BaseAggregate):
-        name = String(max_length=100)
-        age = Integer()
+        name: str | None = None
+        age: int | None = None
         address = ValueObject(Address)
         balance = ValueObject(Balance)
 

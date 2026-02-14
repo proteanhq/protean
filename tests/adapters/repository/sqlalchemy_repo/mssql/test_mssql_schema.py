@@ -5,8 +5,8 @@ from sqlalchemy import inspect
 
 from protean import Domain
 from protean.adapters.repository.sqlalchemy import MssqlProvider
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.fields import String, Integer, Dict, List
+from protean.core.aggregate import BaseAggregate
+from protean.exceptions import IncorrectUsageError
 
 
 @pytest.mark.mssql
@@ -70,9 +70,9 @@ class TestMSSQLSchemaHandling:
 
         # Define test entity with unique name
         class UniqueMssqlSchemaTestEntity(BaseAggregate):
-            name = String(max_length=100, required=True)
-            count = Integer(default=0)
-            metadata = Dict()  # Test MSSQL JSON handling
+            name: str
+            count: int = 0
+            metadata: dict | None = None  # Test MSSQL JSON handling
 
         domain.register(UniqueMssqlSchemaTestEntity)
         domain.init(traverse=False)
@@ -107,8 +107,8 @@ class TestMSSQLSchemaHandling:
 
         # Define test entity with custom schema name
         class UniqueMssqlCustomSchemaEntity(BaseAggregate):
-            title = String(max_length=200, required=True)
-            data = Dict()  # Test MSSQL custom JSON type
+            title: str
+            data: dict | None = None  # Test MSSQL custom JSON type
 
         domain.register(
             UniqueMssqlCustomSchemaEntity, schema_name="unique_mssql_custom_table"
@@ -142,9 +142,9 @@ class TestMSSQLSchemaHandling:
 
         # Define test entity with JSON fields - use unique class name to avoid conflicts
         class MssqlJsonUniqueEntity(BaseAggregate):
-            name = String(max_length=100, required=True)
-            config_data = Dict()  # Test MSSQL JSON handling
-            tags = List()  # Test MSSQL array-like handling
+            name: str
+            config_data: dict | None = None  # Test MSSQL JSON handling
+            tags: list = []  # Test MSSQL array-like handling
 
         domain.register(MssqlJsonUniqueEntity)
         domain.init(traverse=False)
@@ -351,3 +351,33 @@ class TestMSSQLSchemaHandling:
         assert len(results_upper) == 1
         assert len(results_lower) == 1
         assert results_upper[0].id != results_lower[0].id
+
+    @pytest.mark.no_test_domain
+    def test_unique_string_without_max_length_raises_error(self):
+        """MSSQL rejects VARCHAR(max) on unique/indexed columns.
+
+        When a string field is marked unique but has no explicit max_length,
+        the framework should raise an IncorrectUsageError at model-construction
+        time instead of letting the DB return a cryptic error.
+        """
+        from pydantic import Field as PydanticField
+
+        domain = Domain("MSSQL Unique String Validation")
+        domain.config["databases"]["default"] = {
+            "provider": "mssql",
+            "database_uri": "mssql+pyodbc://sa:Protean123!@localhost:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes",
+            "schema": "dbo",
+        }
+
+        class BadUniqueEntity(BaseAggregate):
+            email: str = PydanticField(json_schema_extra={"unique": True})
+
+        domain.register(BadUniqueEntity)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            with pytest.raises(IncorrectUsageError) as exc_info:
+                domain.repository_for(BadUniqueEntity)
+
+            assert "max_length" in str(exc_info.value)
+            assert "email" in str(exc_info.value)

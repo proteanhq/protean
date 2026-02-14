@@ -1,38 +1,39 @@
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.core.value_object import _LegacyBaseValueObject as BaseValueObject
-from protean.fields import Float, Identifier, String
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
+from protean.core.value_object import BaseValueObject
 from protean.utils.reflection import declared_fields, id_field
 
 
 class Balance(BaseValueObject):
-    currency = String(max_length=3, required=True)
-    amount = Float(required=True)
+    currency: str
+    amount: float
 
 
 class User(BaseAggregate):
-    name = String()
+    name: str | None = None
 
 
 class Account(BaseAggregate):
-    account_id = String(identifier=True)
+    account_id: str = Field(json_schema_extra={"identifier": True})
 
 
 class Register(BaseCommand):
-    user_id = Identifier(identifier=True)
+    user_id: str = Field(json_schema_extra={"identifier": True})
 
 
 class SendEmail(BaseCommand):
-    email = String()
+    email: str | None = None
 
 
 class Registered(BaseEvent):
-    user_id = Identifier(identifier=True)
+    user_id: str = Field(json_schema_extra={"identifier": True})
 
 
 class EmailSent(BaseEvent):
-    email = String()
+    email: str | None = None
 
 
 def test_id_field_values():

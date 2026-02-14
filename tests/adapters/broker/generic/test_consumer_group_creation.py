@@ -1,34 +1,33 @@
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.event import _LegacyBaseEvent as BaseEvent
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.core.subscriber import BaseSubscriber
-from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.utils import fqn
 from protean.utils.mixins import handle
 
 
 class UserRegistered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
 
 
 class OrderPlaced(BaseEvent):
-    id = Identifier()
-    user_id = Identifier()
-    amount = String()
+    id: str | None = None
+    user_id: str | None = None
+    amount: str | None = None
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
+    email: str | None = None
+    name: str | None = None
 
 
 class Order(BaseAggregate):
-    user_id = Identifier()
-    amount = String()
+    user_id: str | None = None
+    amount: str | None = None
 
 
 class UserSubscriber(BaseSubscriber):

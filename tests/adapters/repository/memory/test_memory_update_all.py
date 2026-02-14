@@ -3,16 +3,15 @@
 import pytest
 
 from protean import UnitOfWork
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.fields import String, Integer, Boolean
+from protean.core.aggregate import BaseAggregate
 from protean.utils.query import Q
 
 
 class UpdateTestEntity(BaseAggregate):
-    name = String(max_length=100, required=True)
-    category = String(max_length=50)
-    value = Integer()
-    active = Boolean(default=True)
+    name: str
+    category: str | None = None
+    value: int | None = None
+    active: bool = True
 
 
 @pytest.fixture(autouse=True)

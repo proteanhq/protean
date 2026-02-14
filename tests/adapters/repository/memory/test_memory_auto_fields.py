@@ -2,28 +2,32 @@
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.fields import Auto, String
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
 
 
 class AutoEntity(BaseAggregate):
-    name = String(max_length=100)
-    sequence = Auto(increment=True)
+    name: str | None = None
+    sequence: int | None = Field(default=None, json_schema_extra={"increment": True})
 
 
 class AutoIdentifierEntity(BaseAggregate):
-    id = Auto(identifier=True, increment=True)
-    name = String(max_length=100)
+    id: int | None = Field(
+        default=None,
+        json_schema_extra={"identifier": True, "increment": True},
+    )
+    name: str | None = None
 
 
 class NoAutoEntity(BaseAggregate):
-    name = String(max_length=100)
+    name: str | None = None
 
 
 class MultipleAutoEntity(BaseAggregate):
-    name = String(max_length=100)
-    seq1 = Auto(increment=True)
-    seq2 = Auto(increment=True)
+    name: str | None = None
+    seq1: int | None = Field(default=None, json_schema_extra={"increment": True})
+    seq2: int | None = Field(default=None, json_schema_extra={"increment": True})
 
 
 @pytest.fixture(autouse=True)

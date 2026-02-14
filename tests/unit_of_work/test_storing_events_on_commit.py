@@ -4,27 +4,25 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.aggregate import _LegacyBaseAggregate as BaseAggregate
-from protean.core.command import _LegacyBaseCommand as BaseCommand
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.core.event import _LegacyBaseEvent as BaseEvent
-from protean.fields import String
-from protean.fields.basic import Identifier
+from protean.core.event import BaseEvent
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 
 
 class Register(BaseCommand):
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
+    password_hash: str | None = None
 
 
 class User(BaseAggregate):
-    email = String()
-    name = String()
-    password_hash = String()
+    email: str | None = None
+    name: str | None = None
+    password_hash: str | None = None
 
     @classmethod
     def register(cls, command: Registered) -> User:
@@ -49,10 +47,10 @@ class User(BaseAggregate):
 
 
 class Registered(BaseEvent):
-    id = Identifier()
-    email = String()
-    name = String()
-    password_hash = String()
+    id: str | None = None
+    email: str | None = None
+    name: str | None = None
+    password_hash: str | None = None
 
 
 class UserCommandHandler(BaseCommandHandler):
