@@ -86,6 +86,7 @@ specific area.
 **Fields**
 
 - [Fields Overview](./guides/domain-definition/fields/index.md) -- Field types, attributes, options, and functionalities.
+- [Defining Fields](./guides/domain-definition/fields/defining-fields.md) -- Three styles for declaring fields: annotation, assignment, and raw Pydantic.
 - [Simple Fields](./guides/domain-definition/fields/simple-fields.md) -- String, Text, Integer, Float, Boolean, and other primitives.
 - [Container Fields](./guides/domain-definition/fields/container-fields.md) -- Fields that hold and embed value objects.
 - [Association Fields](./guides/domain-definition/fields/association-fields.md) -- HasOne, HasMany, and Reference fields for relationships.
@@ -249,6 +250,15 @@ Protean supports but does not enforce.
 - [Connecting Concepts Across Bounded Contexts](./patterns/connect-concepts-across-domains.md) -- Synchronize the same real-world concept across multiple contexts.
 - [Consuming Events from Other Domains](./patterns/consuming-events-from-other-domains.md) -- Subscribers as anti-corruption layers for external events.
 - [Sharing Event Classes Across Domains](./patterns/sharing-event-classes-across-domains.md) -- Share schemas, not code; use contract tests for compatibility.
+
+---
+
+## Internals
+
+Design reasoning and internal architecture for contributors and advanced users.
+
+- [Internals Overview](./internals/index.md) -- What this section covers.
+- [Field System](./internals/field-system.md) -- How FieldSpec translates domain vocabulary to Pydantic, and why three definition styles are supported.
 
 ---
 

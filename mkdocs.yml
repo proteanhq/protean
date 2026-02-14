@@ -129,6 +129,7 @@ nav:
         - guides/domain-definition/index.md
         - Fields:
           - guides/domain-definition/fields/index.md
+          - guides/domain-definition/fields/defining-fields.md
           - guides/domain-definition/fields/simple-fields.md
           - guides/domain-definition/fields/container-fields.md
           - guides/domain-definition/fields/association-fields.md
@@ -265,6 +266,10 @@ nav:
       - patterns/connect-concepts-across-domains.md
       - patterns/consuming-events-from-other-domains.md
       - patterns/sharing-event-classes-across-domains.md
+
+  - Internals:
+    - internals/index.md
+    - internals/field-system.md
 
   - glossary.md
 

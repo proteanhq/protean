@@ -13,6 +13,7 @@ need by what you're trying to accomplish.
 | Choose between an entity and a value object     | [Deciding Between Elements](./guides/domain-definition/deciding-between-elements.md) |
 | Connect entities with relationships             | [Relationships](./guides/domain-definition/relationships.md) |
 | Add typed attributes to domain objects          | [Fields](./guides/domain-definition/fields/index.md) |
+| Choose between field definition styles          | [Defining Fields](./guides/domain-definition/fields/defining-fields.md) |
 | Define a domain event                           | [Events](./guides/domain-definition/events.md) |
 
 ## Add Business Rules
@@ -92,3 +93,10 @@ need by what you're trying to accomplish.
 | Use Redis as a cache                            | [Redis Cache](./adapters/cache/redis.md) |
 | Use Message DB as an event store                | [Message DB](./adapters/eventstore/message-db.md) |
 | Build a custom broker adapter                   | [Custom Brokers](./adapters/broker/custom-brokers.md) |
+
+## Understand Internals
+
+| I want to...                                    | Guide |
+|-------------------------------------------------|-------|
+| Understand how the field system works           | [Field System](./internals/field-system.md) |
+| Learn why three field definition styles exist   | [Field System](./internals/field-system.md) |
